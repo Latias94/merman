@@ -87,11 +87,21 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       crate_versions: ${{ steps.crates.outputs.crate_versions }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           persist-credentials: false
+
+      - name: Resolve verified source commit
+        id: source
+        run: |
+          set -euo pipefail
+
+          source_sha="$(git rev-parse HEAD)"
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          echo "Verified source commit: $source_sha"
 
       - name: Use validated release metadata
         id: version
@@ -227,8 +237,27 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ needs.preflight.outputs.source_sha }}
           persist-credentials: false
+
+      - name: Verify pinned source commit
+        env:
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid preflight source SHA: $SOURCE_SHA"
+            exit 1
+          fi
+
+          current_sha="$(git rev-parse HEAD)"
+          if [ "$current_sha" != "$SOURCE_SHA" ]; then
+            echo "::error::Publish checkout $current_sha does not match preflight source $SOURCE_SHA"
+            exit 1
+          fi
+
+          echo "Publishing verified source commit: $current_sha"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -285,6 +314,24 @@ jobs:
             fi
           }
 
+          workspace_crate_version() {
+            local crate="$1"
+
+            cargo pkgid -p "$crate" | sed 's/.*@//'
+          }
+
+          verify_workspace_crate_version() {
+            local crate="$1"
+            local expected_version="$2"
+            local actual_version
+
+            actual_version="$(workspace_crate_version "$crate")"
+            if [ "$actual_version" != "$expected_version" ]; then
+              echo "::error::$crate version $actual_version in publish checkout does not match preflight version $expected_version"
+              return 1
+            fi
+          }
+
           publish_crate_version() {
             local crate="$1"
             local crate_version="$2"
@@ -318,5 +365,6 @@ jobs:
               continue
             fi
             validate_crate_version_line "$crate" "$crate_version"
+            verify_workspace_crate_version "$crate" "$crate_version"
             publish_crate_version "$crate" "$crate_version"
           done <<< "$CRATE_VERSIONS"

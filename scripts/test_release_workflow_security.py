@@ -178,8 +178,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
             checkout_count = text.count("uses: actions/checkout")
             validated_ref_count = text.count("ref: ${{ needs.validate-inputs.outputs.source_ref }}")
+            pinned_ref_count = text.count("ref: ${{ needs.preflight.outputs.source_sha }}")
             with self.subTest(workflow=path.name):
-                self.assertEqual(validated_ref_count, checkout_count)
+                self.assertEqual(validated_ref_count + pinned_ref_count, checkout_count)
                 self.assertNotIn("ref: ${{ inputs.source_ref }}", text)
                 self.assertNotIn("inputs.source_ref ||", text)
 
@@ -330,14 +331,24 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
         self.assertIn("--dry-run", preflight_step)
         self.assertNotIn("CARGO_REGISTRY_TOKEN", preflight_job)
+        self.assertNotIn("secrets.", preflight_job)
+        self.assertNotIn("environment: crates.io", preflight_job)
+        self.assertIn("source_sha: ${{ steps.source.outputs.source_sha }}", preflight_job)
+        self.assertIn('source_sha="$(git rev-parse HEAD)"', preflight_job)
         self.assertIn("needs: [validate-inputs, preflight]", publish_job)
+        self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", publish_job)
+        self.assertNotIn("ref: ${{ needs.validate-inputs.outputs.source_ref }}", publish_job)
+        self.assertIn("Verify pinned source commit", publish_job)
         self.assertIn(
             "CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}",
             upload_step,
         )
         self.assertIn('--token "$CARGO_REGISTRY_TOKEN"', upload_run)
         self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", upload_run)
+        self.assertNotIn("${{ secrets.", upload_run)
         self.assertNotIn("--dry-run", upload_run)
+        self.assertIn('verify_workspace_crate_version "$crate" "$crate_version"', upload_run)
+        self.assertIn('actual_version="$(workspace_crate_version "$crate")"', upload_run)
         self.assertGreaterEqual(
             upload_run.count('wait_for_crate_version "$crate" "$crate_version"'),
             2,
