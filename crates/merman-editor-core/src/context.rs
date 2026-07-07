@@ -174,6 +174,12 @@ impl<'a> CompletionContext<'a> {
             );
         }
 
+        if self.degraded_flowchart_payload_context()
+            && shape_object_value_prefix(self.prefix.trim_end()).is_none()
+        {
+            return false;
+        }
+
         self.offers(FenceCursorCompletionKind::Shape)
     }
 
@@ -435,13 +441,16 @@ fn flowchart_target_token_start(prefix: &str) -> Option<usize> {
     let trimmed = &prefix[..trimmed_end];
     let (_, operator_end) = last_flowchart_operator(trimmed)?;
     let mut target_start = operator_end;
-    let operator_tail = &trimmed[target_start..];
-
-    if operator_tail.starts_with('|') {
-        target_start += flowchart_edge_label_len(operator_tail)?;
-    }
 
     target_start += leading_whitespace_len(&prefix[target_start..]);
+    let mut replacement_start = target_start;
+    let operator_tail = prefix.get(target_start..)?;
+    if operator_tail.starts_with('|') {
+        target_start += flowchart_edge_label_len(operator_tail)?;
+        replacement_start = target_start;
+        target_start += leading_whitespace_len(&prefix[target_start..]);
+    }
+
     let target = &prefix[target_start..];
     if target.chars().any(char::is_whitespace) {
         return None;
@@ -450,7 +459,7 @@ fn flowchart_target_token_start(prefix: &str) -> Option<usize> {
         return None;
     }
 
-    Some(target_start)
+    Some(replacement_start)
 }
 
 fn last_flowchart_operator(prefix: &str) -> Option<(usize, usize)> {
@@ -476,12 +485,13 @@ fn flowchart_scan_line(prefix: &str) -> FlowchartLineScan {
             cursor += operator.len();
             scan.last_operator = Some((start, cursor));
 
-            if prefix[cursor..].starts_with('|') {
-                let Some(label_len) = flowchart_edge_label_len(&prefix[cursor..]) else {
+            let label_start = cursor + leading_whitespace_len(&prefix[cursor..]);
+            if prefix[label_start..].starts_with('|') {
+                let Some(label_len) = flowchart_edge_label_len(&prefix[label_start..]) else {
                     scan.inside_payload = true;
                     return scan;
                 };
-                cursor += label_len;
+                cursor = label_start + label_len;
             }
             continue;
         }

@@ -814,6 +814,144 @@ mod tests {
         );
     }
 
+    #[test]
+    fn degraded_parser_flowchart_spaced_pipe_label_payload_returns_no_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "A",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(13, 14),
+            SourceSpan::new(13, 14),
+        ));
+        let line = "C --> |go --";
+        let snapshot = snapshot_with_facts(
+            &format!("flowchart TD\nA-->B\n{line}"),
+            Some("flowchart-v2"),
+            facts,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(2, line.len()));
+
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
+        );
+        assert!(
+            completion.items.is_empty(),
+            "degraded parser pipe-label payload must not offer completions: {:?}",
+            completion
+                .items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn degraded_parser_flowchart_spaced_pipe_label_target_reuses_known_entity_ids() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "A",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(13, 14),
+            SourceSpan::new(13, 14),
+        ));
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "B",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(18, 19),
+            SourceSpan::new(18, 19),
+        ));
+        let line = "C --> |go|   ";
+        let snapshot = snapshot_with_facts(
+            &format!("flowchart TD\nA-->B\n{line}"),
+            Some("flowchart-v2"),
+            facts,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(2, line.len()));
+
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
+        );
+        let item = completion
+            .items
+            .iter()
+            .find(|item| item.label == "B")
+            .expect("known node id completion");
+        let edit = item.text_edit.as_ref().expect("completion text edit");
+        assert_eq!(edit.new_text, "B");
+        assert_eq!(edit.range.start.line, 2);
+        assert_eq!(edit.range.start.character, "C --> |go|".len());
+        assert_eq!(edit.range.end.line, 2);
+        assert_eq!(edit.range.end.character, line.len());
+    }
+
+    #[test]
+    fn degraded_parser_flowchart_payload_shape_trigger_returns_no_completion() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+        let line = "A[\"Start [";
+        let snapshot = snapshot_with_facts(
+            &format!("flowchart TD\n{line}"),
+            Some("flowchart-v2"),
+            facts,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
+
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
+        );
+        assert!(
+            completion.items.is_empty(),
+            "degraded parser payload shape trigger must not offer completions: {:?}",
+            completion
+                .items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn degraded_parser_flowchart_shape_object_value_still_completes_shapes() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+        let line = "A@{ shape: rou";
+        let snapshot = snapshot_with_facts(
+            &format!("flowchart TD\n{line}"),
+            Some("flowchart-v2"),
+            facts,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
+
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
+        );
+        assert!(
+            completion.items.iter().any(|item| item
+                .data
+                .as_ref()
+                .is_some_and(|data| data.kind == CompletionDataKind::Shape)),
+            "degraded parser shape object value should offer shape completions: {:?}",
+            completion
+                .items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
     fn snapshot_with_facts(
         text: &str,
         diagram_type: Option<&str>,
