@@ -784,6 +784,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn degraded_parser_flowchart_payload_suppresses_operator_items() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "A",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(13, 14),
+            SourceSpan::new(13, 14),
+        ));
+        let snapshot = snapshot_with_facts("flowchart TD\nA[\"Start", Some("flowchart-v2"), facts);
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, 5));
+
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
+        );
+        assert!(
+            completion.items.is_empty(),
+            "degraded parser payload context must not offer body completions: {:?}",
+            completion
+                .items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
     fn snapshot_with_facts(
         text: &str,
         diagram_type: Option<&str>,

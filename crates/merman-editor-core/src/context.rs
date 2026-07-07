@@ -147,6 +147,7 @@ impl<'a> CompletionContext<'a> {
 
     pub fn offer_operator_items(&self) -> bool {
         self.offers(FenceCursorCompletionKind::Operator)
+            && !self.degraded_flowchart_payload_context()
     }
 
     pub fn offer_directive_items(&self) -> bool {
@@ -383,6 +384,14 @@ impl<'a> CompletionContext<'a> {
         self.range_for_offsets(self.prefix_start_offset + token_start, self.cursor_offset)
     }
 
+    fn degraded_flowchart_payload_context(&self) -> bool {
+        self.expected_syntax.is_none()
+            && self.source.is_parser_backed()
+            && !self.source.has_source_mapped_spans()
+            && is_flowchart_diagram_type(self.fence.diagram_type.as_deref())
+            && flowchart_scan_line(&self.prefix).inside_payload
+    }
+
     fn current_token_range(&self, is_delimiter: fn(char) -> bool) -> Option<Range> {
         let prefix = self.prefix.as_str();
         let token_start = prefix
@@ -445,19 +454,101 @@ fn flowchart_target_token_start(prefix: &str) -> Option<usize> {
 }
 
 fn last_flowchart_operator(prefix: &str) -> Option<(usize, usize)> {
-    let mut best: Option<(usize, usize)> = None;
-    for operator in FLOWCHART_TARGET_OPERATORS {
-        let mut search_start = 0usize;
-        while let Some(relative) = prefix[search_start..].find(operator) {
-            let start = search_start + relative;
-            let end = start + operator.len();
-            if best.is_none_or(|(_, best_end)| end >= best_end) {
-                best = Some((start, end));
+    flowchart_scan_line(prefix).last_operator
+}
+
+#[derive(Debug, Default)]
+struct FlowchartLineScan {
+    last_operator: Option<(usize, usize)>,
+    inside_payload: bool,
+}
+
+fn flowchart_scan_line(prefix: &str) -> FlowchartLineScan {
+    let mut scan = FlowchartLineScan::default();
+    let mut state = FlowchartOperatorScanState::default();
+    let mut cursor = 0usize;
+
+    while cursor < prefix.len() {
+        if state.is_operator_site()
+            && let Some(operator) = flowchart_operator_at(prefix, cursor)
+        {
+            let start = cursor;
+            cursor += operator.len();
+            scan.last_operator = Some((start, cursor));
+
+            if prefix[cursor..].starts_with('|') {
+                let Some(label_len) = flowchart_edge_label_len(&prefix[cursor..]) else {
+                    scan.inside_payload = true;
+                    return scan;
+                };
+                cursor += label_len;
             }
-            search_start = end;
+            continue;
+        }
+
+        let Some(ch) = prefix[cursor..].chars().next() else {
+            break;
+        };
+        state.accept(ch);
+        cursor += ch.len_utf8();
+    }
+
+    scan.inside_payload = !state.is_operator_site();
+    scan
+}
+
+#[derive(Debug, Default)]
+struct FlowchartOperatorScanState {
+    bracket_depth: usize,
+    paren_depth: usize,
+    brace_depth: usize,
+    quote: Option<char>,
+    escaped: bool,
+}
+
+impl FlowchartOperatorScanState {
+    fn is_operator_site(&self) -> bool {
+        self.quote.is_none()
+            && self.bracket_depth == 0
+            && self.paren_depth == 0
+            && self.brace_depth == 0
+    }
+
+    fn accept(&mut self, ch: char) {
+        if let Some(quote) = self.quote {
+            if self.escaped {
+                self.escaped = false;
+                return;
+            }
+            if ch == '\\' {
+                self.escaped = true;
+                return;
+            }
+            if ch == quote {
+                self.quote = None;
+            }
+            return;
+        }
+
+        match ch {
+            '"' | '\'' | '`' => self.quote = Some(ch),
+            '[' => self.bracket_depth += 1,
+            ']' => self.bracket_depth = self.bracket_depth.saturating_sub(1),
+            '(' => self.paren_depth += 1,
+            ')' => self.paren_depth = self.paren_depth.saturating_sub(1),
+            '{' => self.brace_depth += 1,
+            '}' => self.brace_depth = self.brace_depth.saturating_sub(1),
+            _ => {}
         }
     }
-    best
+}
+
+fn flowchart_operator_at(prefix: &str, offset: usize) -> Option<&'static str> {
+    let tail = prefix.get(offset..)?;
+    FLOWCHART_TARGET_OPERATORS
+        .iter()
+        .copied()
+        .find(|operator| tail.starts_with(operator))
 }
 
 fn flowchart_edge_label_len(tail: &str) -> Option<usize> {
