@@ -211,7 +211,7 @@ const DEPRECATED_FLOWCHART_HTML_LABELS_RULE: RuleDescriptor = RuleDescriptor {
     default_enabled: true,
     default_profile: AnalysisRuleProfile::Core,
     origin: RuleOrigin::MermaidCompatibility,
-    fixable: true,
+    fixable: false,
 };
 
 const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE: RuleDescriptor = RuleDescriptor {
@@ -870,7 +870,6 @@ fn deprecated_flowchart_html_labels_diagnostics(
     init_matching_paths: &[&[&str]],
     frontmatter_matching_paths: &[&[&str]],
 ) -> Vec<AnalysisDiagnostic> {
-    let fix = crate::source_config_rewrite::flowchart_html_labels_to_root_fix(source, source_map);
     config_key_diagnostics(
         source,
         source_map,
@@ -881,14 +880,6 @@ fn deprecated_flowchart_html_labels_diagnostics(
         "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
         "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
     )
-    .into_iter()
-    .map(|mut diagnostic| {
-        if let Some(fix) = fix.clone() {
-            diagnostic = diagnostic.with_fix(fix);
-        }
-        diagnostic
-    })
-    .collect()
 }
 
 fn deprecated_external_diagram_loading_diagnostics(

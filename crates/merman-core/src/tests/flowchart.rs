@@ -2844,6 +2844,21 @@ fn parse_flowchart_editor_facts_recovers_from_incomplete_input() {
 }
 
 #[test]
+fn parse_flowchart_editor_facts_recovers_from_malformed_label_without_hanging() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA[bad (label)]\nB-->C\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
+        .unwrap()
+        .expect("flowchart editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "A"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "B"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "C"));
+}
+
+#[test]
 fn parse_flowchart_editor_facts_expect_target_after_pipe_edge_label() {
     let engine = Engine::new();
     let text = "flowchart TD\nA-->B\nA -->|go|";

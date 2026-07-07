@@ -35,6 +35,10 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    pub(super) fn position(&self) -> usize {
+        self.pos
+    }
+
     pub(super) fn bump(&mut self) -> Option<u8> {
         if self.pos >= self.input.len() {
             return None;
@@ -964,6 +968,7 @@ impl<'input> Lexer<'input> {
                         return Some(Ok((start, token, self.pos)));
                     }
                     let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                    self.pos = token_end;
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `/]` or `\\]`)",
                         SourceSpan::new(start, token_end),
@@ -989,7 +994,10 @@ impl<'input> Lexer<'input> {
                 None,
             ) {
                 Ok(v) => v,
-                Err(e) => return Some(Err(e)),
+                Err(e) => {
+                    self.pos = token_end;
+                    return Some(Err(e));
+                }
             };
             self.pos = token_end;
             return Some(Ok((start, token, self.pos)));
@@ -1018,6 +1026,7 @@ impl<'input> Lexer<'input> {
                         return Some(Ok((start, token, self.pos)));
                     }
                     let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                    self.pos = token_end;
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `/]` or `\\]`)",
                         SourceSpan::new(start, token_end),
@@ -1043,7 +1052,10 @@ impl<'input> Lexer<'input> {
                 None,
             ) {
                 Ok(v) => v,
-                Err(e) => return Some(Err(e)),
+                Err(e) => {
+                    self.pos = token_end;
+                    return Some(Err(e));
+                }
             };
             self.pos = token_end;
             return Some(Ok((start, token, self.pos)));
@@ -1077,13 +1089,17 @@ impl<'input> Lexer<'input> {
                     None,
                 ) {
                     Ok(v) => v,
-                    Err(e) => return Some(Err(e)),
+                    Err(e) => {
+                        self.pos = token_end;
+                        return Some(Err(e));
+                    }
                 };
                 self.pos = token_end;
                 token
             } else {
                 if !self.recover_partial_node_labels {
                     let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                    self.pos = token_end;
                     return Some(Err(LexError::with_span(
                         format!("Unterminated node label (missing `{close}`)"),
                         SourceSpan::new(start, token_end),
@@ -1125,13 +1141,17 @@ impl<'input> Lexer<'input> {
                     None,
                 ) {
                     Ok(v) => v,
-                    Err(e) => return Some(Err(e)),
+                    Err(e) => {
+                        self.pos = token_end;
+                        return Some(Err(e));
+                    }
                 };
                 self.pos = token_end;
                 token
             } else {
                 if !self.recover_partial_node_labels {
                     let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                    self.pos = token_end;
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `]`)",
                         SourceSpan::new(start, token_end),
@@ -1170,13 +1190,17 @@ impl<'input> Lexer<'input> {
                         None,
                     ) {
                         Ok(v) => v,
-                        Err(e) => return Some(Err(e)),
+                        Err(e) => {
+                            self.pos = token_end;
+                            return Some(Err(e));
+                        }
                     };
                     self.pos = token_end;
                     token
                 } else {
                     if !self.recover_partial_node_labels {
                         let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                        self.pos = token_end;
                         return Some(Err(LexError::with_span(
                             "Unterminated node label (missing `}`)",
                             SourceSpan::new(start, token_end),
@@ -1210,13 +1234,17 @@ impl<'input> Lexer<'input> {
                         None,
                     ) {
                         Ok(v) => v,
-                        Err(e) => return Some(Err(e)),
+                        Err(e) => {
+                            self.pos = token_end;
+                            return Some(Err(e));
+                        }
                     };
                     self.pos = token_end;
                     token
                 } else {
                     if !self.recover_partial_node_labels {
                         let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
+                        self.pos = token_end;
                         return Some(Err(LexError::with_span(
                             "Unterminated node label (missing `)`)",
                             SourceSpan::new(start, token_end),

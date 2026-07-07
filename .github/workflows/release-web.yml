@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Protected branch (main), matching release tag, refs/tags/<release-tag>, or full 40-character SHA to build from"
+        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to build from"
         required: true
         default: "main"
         type: string
@@ -100,15 +100,6 @@ jobs:
             is_release_tag "${ref#refs/tags/}"
           }
 
-          is_sha_ref() {
-            local ref="$1"
-            [[ "${#ref}" -eq 40 ]] || return 1
-            case "$ref" in
-              *[!0-9a-fA-F]*) return 1 ;;
-              *) return 0 ;;
-            esac
-          }
-
           RELEASE_TAG="$DISPATCH_RELEASE_TAG"
           SOURCE_REF="$DISPATCH_SOURCE_REF"
 
@@ -116,13 +107,11 @@ jobs:
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif is_sha_ref "$SOURCE_REF"; then
-            :
           elif is_release_tag "$SOURCE_REF" || is_release_tag_ref "$SOURCE_REF"; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
           else
-            fail "source_ref must be main, refs/heads/main, a matching release tag, refs/tags/<release-tag>, or a full 40-character SHA."
+            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
           fi
 
           VERSION="${RELEASE_TAG#v}"

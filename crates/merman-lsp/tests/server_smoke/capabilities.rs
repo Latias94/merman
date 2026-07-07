@@ -37,6 +37,13 @@ async fn lsp_service_smoke_handles_initialize() {
             " ".to_string(),
             "\n".to_string(),
             "-".to_string(),
+            ">".to_string(),
+            "%".to_string(),
+            "[".to_string(),
+            "(".to_string(),
+            "{".to_string(),
+            "/".to_string(),
+            "\\".to_string(),
             "@".to_string(),
             ":".to_string(),
         ])

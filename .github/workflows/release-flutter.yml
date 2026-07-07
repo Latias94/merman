@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Protected branch (main), matching release tag, refs/tags/<release-tag>, or full 40-character SHA to build from"
+        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to build from"
         required: true
         default: "main"
         type: string
@@ -47,8 +47,6 @@ jobs:
 
           semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
           tag_re="^v${semver_re#^}"
-          sha_re='^[0-9a-fA-F]{40}$'
-
           fail() {
             echo "::error::$1" >&2
             exit 1
@@ -66,13 +64,11 @@ jobs:
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
-          elif [[ "$SOURCE_REF" =~ $sha_re ]]; then
-            :
           elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
           else
-            fail "source_ref must be main, refs/heads/main, a matching release tag, refs/tags/<release-tag>, or a full 40-character SHA."
+            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
           fi
 
           VERSION="${RELEASE_TAG#v}"

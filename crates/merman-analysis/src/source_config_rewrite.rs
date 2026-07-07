@@ -37,29 +37,6 @@ pub(crate) fn init_directives_to_frontmatter_fix(
     )
 }
 
-pub(crate) fn flowchart_html_labels_to_root_fix(
-    source: &str,
-    source_map: &SourceMap,
-) -> Option<DiagnosticFix> {
-    let mut config = merged_deprecated_html_labels_config(source)?;
-    if !move_flowchart_html_labels_to_root(&mut config) {
-        return None;
-    }
-
-    let removals = init_directive_spans(source)
-        .into_iter()
-        .map(|directive| directive_removal_span(source, directive.full))
-        .collect::<Vec<_>>();
-
-    frontmatter_config_fix(
-        source,
-        source_map,
-        config,
-        removals,
-        "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`",
-    )
-}
-
 pub(crate) fn frontmatter_config_fix(
     source: &str,
     source_map: &SourceMap,
@@ -117,10 +94,6 @@ fn merged_diagram_config(source: &str) -> Option<Value> {
         .map(|metadata| metadata.config.as_value().clone())
 }
 
-fn merged_deprecated_html_labels_config(source: &str) -> Option<Value> {
-    merged_diagram_config(source)
-}
-
 fn migration_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(Engine::new)
@@ -132,16 +105,19 @@ struct FrontmatterEdit {
 }
 
 fn frontmatter_config_edit(source: &str, config: Value) -> Option<FrontmatterEdit> {
+    let newline = newline_for_source(source);
     let Some(frontmatter) = split_frontmatter_block(source) else {
         return Some(FrontmatterEdit {
             span: ByteSpan { start: 0, end: 0 },
             replacement: frontmatter_document(
                 frontmatter_fields_with_config(Map::new(), config)?,
                 "",
+                newline,
             )?,
         });
     };
 
+    let newline = newline_for_source(&source[frontmatter.full.start..frontmatter.full.end]);
     let existing_fields = parse_frontmatter_fields(frontmatter.dedented_body.as_ref())?;
     if !existing_fields.contains_key("config") {
         return Some(FrontmatterEdit {
@@ -149,7 +125,7 @@ fn frontmatter_config_edit(source: &str, config: Value) -> Option<FrontmatterEdi
                 start: frontmatter.body.end,
                 end: frontmatter.body.end,
             },
-            replacement: frontmatter_config_insertion(source, &frontmatter, config)?,
+            replacement: frontmatter_config_insertion(source, &frontmatter, config, newline)?,
         });
     }
     if frontmatter_contains_lossy_yaml_syntax(frontmatter.dedented_body.as_ref()) {
@@ -164,6 +140,7 @@ fn frontmatter_config_edit(source: &str, config: Value) -> Option<FrontmatterEdi
         replacement: frontmatter_document(
             frontmatter_fields_with_config(existing_fields, config)?,
             frontmatter.indent,
+            newline,
         )?,
     })
 }
@@ -180,20 +157,31 @@ fn frontmatter_config_insertion(
     source: &str,
     frontmatter: &FrontmatterBlock<'_>,
     config: Value,
+    newline: &str,
 ) -> Option<String> {
     let mut fields = Map::new();
     fields.insert("config".to_string(), config);
     let body = frontmatter_body(fields)?;
     let mut insertion = String::new();
-    if !source[frontmatter.body.start..frontmatter.body.end]
-        .trim()
-        .is_empty()
-    {
-        insertion.push('\n');
+    let existing_body = &source[frontmatter.body.start..frontmatter.body.end];
+    let insertion_splits_crlf =
+        existing_body.ends_with('\r') && source[frontmatter.body.end..].starts_with('\n');
+    if !existing_body.trim().is_empty() {
+        if insertion_splits_crlf {
+            insertion.push('\n');
+        } else if !existing_body.ends_with('\n') {
+            insertion.push_str(newline);
+        }
     }
-    insertion.push_str(&frontmatter_body_with_indent(&body, frontmatter.indent));
-    if frontmatter.body.start == frontmatter.body.end {
-        insertion.push('\n');
+    insertion.push_str(&frontmatter_body_with_indent(
+        &body,
+        frontmatter.indent,
+        newline,
+    ));
+    if insertion_splits_crlf {
+        insertion.push('\r');
+    } else if frontmatter.body.start == frontmatter.body.end {
+        insertion.push_str(newline);
     }
     Some(insertion)
 }
@@ -249,9 +237,9 @@ fn frontmatter_line_uses_block_scalar(trimmed: &str) -> bool {
         .is_some_and(|value| value.starts_with('|') || value.starts_with('>'))
 }
 
-fn frontmatter_document(fields: Map<String, Value>, indent: &str) -> Option<String> {
+fn frontmatter_document(fields: Map<String, Value>, indent: &str, newline: &str) -> Option<String> {
     let body = frontmatter_body(fields)?;
-    Some(frontmatter_document_with_indent(&body, indent))
+    Some(frontmatter_document_with_indent(&body, indent, newline))
 }
 
 fn frontmatter_body(fields: Map<String, Value>) -> Option<String> {
@@ -268,11 +256,11 @@ fn frontmatter_body(fields: Map<String, Value>) -> Option<String> {
     Some(body)
 }
 
-fn frontmatter_body_with_indent(body: &str, indent: &str) -> String {
+fn frontmatter_body_with_indent(body: &str, indent: &str, newline: &str) -> String {
     let mut document = String::with_capacity(body.len() + (indent.len() * body.lines().count()));
     for (index, line) in body.split_inclusive('\n').enumerate() {
         if index > 0 {
-            document.push('\n');
+            document.push_str(newline);
         }
         document.push_str(indent);
         document.push_str(line.trim_end_matches('\n'));
@@ -280,108 +268,33 @@ fn frontmatter_body_with_indent(body: &str, indent: &str) -> String {
     document
 }
 
-fn frontmatter_document_with_indent(body: &str, indent: &str) -> String {
+fn frontmatter_document_with_indent(body: &str, indent: &str, newline: &str) -> String {
     let mut document =
         String::with_capacity(body.len() + (indent.len() * (body.lines().count() + 2)) + 8);
     document.push_str(indent);
-    document.push_str("---\n");
-    for line in body.split_inclusive('\n') {
+    document.push_str("---");
+    document.push_str(newline);
+    for line in body.split_terminator('\n') {
         document.push_str(indent);
         document.push_str(line);
+        document.push_str(newline);
     }
     document.push_str(indent);
-    document.push_str("---\n");
+    document.push_str("---");
+    document.push_str(newline);
     document
-}
-
-fn move_flowchart_html_labels_to_root(config: &mut Value) -> bool {
-    let Value::Object(root) = config else {
-        return false;
-    };
-    let root_had_html_labels = root.contains_key("htmlLabels");
-
-    let Some((html_labels, cleanup_path)) = take_flowchart_html_labels(root) else {
-        return false;
-    };
-
-    if !root_had_html_labels {
-        root.insert("htmlLabels".to_string(), html_labels);
-    }
-
-    match cleanup_path {
-        FlowchartHtmlLabelsPath::Direct { flowchart_is_empty } => {
-            if flowchart_is_empty {
-                root.remove("flowchart");
-            }
-        }
-        FlowchartHtmlLabelsPath::DirectiveConfigWrappedFlowchart { flowchart_is_empty } => {
-            if flowchart_is_empty {
-                root.remove("flowchart");
-            }
-        }
-    }
-
-    true
-}
-
-enum FlowchartHtmlLabelsPath {
-    Direct { flowchart_is_empty: bool },
-    DirectiveConfigWrappedFlowchart { flowchart_is_empty: bool },
-}
-
-fn take_flowchart_html_labels(
-    root: &mut Map<String, Value>,
-) -> Option<(Value, FlowchartHtmlLabelsPath)> {
-    if let Some(result) = take_direct_flowchart_html_labels(root) {
-        return Some(result);
-    }
-    if let Some(result) = take_directive_config_wrapped_flowchart_html_labels(root) {
-        return Some(result);
-    }
-    None
-}
-
-fn take_direct_flowchart_html_labels(
-    root: &mut Map<String, Value>,
-) -> Option<(Value, FlowchartHtmlLabelsPath)> {
-    let Value::Object(flowchart) = root.get_mut("flowchart")? else {
-        return None;
-    };
-    let html_labels = flowchart.remove("htmlLabels")?;
-    let flowchart_is_empty = flowchart.is_empty();
-
-    Some((
-        html_labels,
-        FlowchartHtmlLabelsPath::Direct { flowchart_is_empty },
-    ))
-}
-
-fn take_directive_config_wrapped_flowchart_html_labels(
-    root: &mut Map<String, Value>,
-) -> Option<(Value, FlowchartHtmlLabelsPath)> {
-    let Value::Object(flowchart) = root.get_mut("flowchart")? else {
-        return None;
-    };
-    let (html_labels, nested_flowchart_is_empty) = {
-        let Value::Object(nested_flowchart) = flowchart.get_mut("flowchart")? else {
-            return None;
-        };
-        let html_labels = nested_flowchart.remove("htmlLabels")?;
-        (html_labels, nested_flowchart.is_empty())
-    };
-    if nested_flowchart_is_empty {
-        flowchart.remove("flowchart");
-    }
-    let flowchart_is_empty = flowchart.is_empty();
-
-    Some((
-        html_labels,
-        FlowchartHtmlLabelsPath::DirectiveConfigWrappedFlowchart { flowchart_is_empty },
-    ))
 }
 
 fn parse_frontmatter_fields(yaml_body: &str) -> Option<Map<String, Value>> {
     parse_frontmatter_yaml_fields(yaml_body).ok()
+}
+
+fn newline_for_source(source: &str) -> &'static str {
+    if source.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    }
 }
 
 fn directive_removal_span(source: &str, directive: ByteSpan) -> ByteSpan {
@@ -431,6 +344,15 @@ mod tests {
         edited
     }
 
+    fn assert_only_crlf_newlines(text: &str) {
+        let bytes = text.as_bytes();
+        for (index, byte) in bytes.iter().enumerate() {
+            if *byte == b'\n' {
+                assert!(index > 0 && bytes[index - 1] == b'\r');
+            }
+        }
+    }
+
     #[test]
     fn init_directive_migration_inserts_frontmatter_and_removes_directive_line() {
         let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
@@ -459,6 +381,51 @@ mod tests {
         assert!(edited.contains("theme: dark\n"));
         assert!(!edited.contains("%%{ init"));
         assert_eq!(fix.edits.len(), 2);
+    }
+
+    #[test]
+    fn init_directive_migration_preserves_crlf_when_creating_frontmatter() {
+        let source = "%%{ init: {\"theme\":\"dark\"} }%%\r\nflowchart TD\r\nA-->B\r\n";
+        let source_map = SourceMap::new(source);
+
+        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+
+        assert!(edited.starts_with("---\r\nconfig:\r\n"));
+        assert!(edited.contains("theme: dark\r\n"));
+        assert!(!edited.contains("%%{ init"));
+        assert_only_crlf_newlines(&edited);
+    }
+
+    #[test]
+    fn init_directive_migration_preserves_crlf_when_inserting_config() {
+        let source = "---\r\ntitle: Demo\r\ncustom: keep\r\n---\r\n%%{ init: {\"theme\":\"dark\"} }%%\r\nflowchart TD\r\nA-->B\r\n";
+        let source_map = SourceMap::new(source);
+
+        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+
+        assert!(
+            edited.starts_with("---\r\ntitle: Demo\r\ncustom: keep\r\nconfig:\r\n"),
+            "{edited:?}"
+        );
+        assert!(edited.contains("theme: dark\r\n"));
+        assert!(!edited.contains("%%{ init"));
+        assert_only_crlf_newlines(&edited);
+    }
+
+    #[test]
+    fn init_directive_migration_preserves_crlf_when_rewriting_config() {
+        let source = "---\r\ntitle: Demo\r\nconfig:\r\n  theme: default\r\n---\r\n%%{ init: {\"theme\":\"dark\"} }%%\r\nflowchart TD\r\nA-->B\r\n";
+        let source_map = SourceMap::new(source);
+
+        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+
+        assert!(edited.starts_with("---\r\ntitle: Demo\r\nconfig:\r\n"));
+        assert!(edited.contains("theme: dark\r\n"));
+        assert!(!edited.contains("%%{ init"));
+        assert_only_crlf_newlines(&edited);
     }
 
     #[test]
@@ -556,76 +523,5 @@ mod tests {
         assert!(!edited.contains("%%{ init"));
         assert_eq!(migrated.config.as_value(), original.config.as_value());
         assert_eq!(migrated.title.as_deref(), Some("Demo"));
-    }
-
-    #[test]
-    fn flowchart_html_labels_to_root_fix_promotes_deprecated_key() {
-        let source = "---\nconfig:\n  flowchart:\n    curve: basis\n---\n%%{ init: {\"flowchart\":{\"htmlLabels\":false}} }%%\nflowchart TD\nA-->B\n";
-        let source_map = SourceMap::new(source);
-
-        let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
-        let edited = apply_fix(source, &fix);
-
-        assert!(fix.is_preferred);
-        assert!(edited.contains("htmlLabels: false"));
-        assert!(!edited.contains("flowchart:\n    htmlLabels: false"));
-        assert!(edited.contains("config:\n  flowchart:\n    curve: basis"));
-    }
-
-    #[test]
-    fn flowchart_html_labels_to_root_fix_preserves_unrelated_nested_config_key() {
-        let source = "---\nconfig:\n  config:\n    keep: true\n---\n%%{ init: {\"flowchart\":{\"htmlLabels\":false}} }%%\nflowchart TD\nA-->B\n";
-        let source_map = SourceMap::new(source);
-        let engine = Engine::new();
-
-        let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
-        let edited = apply_fix(source, &fix);
-        let migrated = engine
-            .parse_metadata_sync(&edited, ParseOptions::strict())
-            .unwrap()
-            .expect("migrated metadata");
-        let config = migrated.config.as_value();
-
-        assert_eq!(config.pointer("/htmlLabels"), Some(&Value::Bool(false)));
-        assert_eq!(config.pointer("/config/keep"), Some(&Value::Bool(true)));
-        assert!(config.get("keep").is_none());
-    }
-
-    #[test]
-    fn flowchart_html_labels_to_root_fix_promotes_raw_config_html_labels() {
-        let source = "%%{init: {\"config\": {\"htmlLabels\": false, \"secure\": [\"x\"], \"__proto__\": {\"polluted\": true}, \"themeCSS\": \"url(data:text/css,a)\"}, \"theme\": \"base\"}}%%\nflowchart TD\nA-->B\n";
-        let source_map = SourceMap::new(source);
-
-        let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
-        let edited = apply_fix(source, &fix);
-
-        assert!(fix.is_preferred);
-        assert!(edited.contains("config:"));
-        assert!(edited.contains("htmlLabels: false"));
-        assert!(edited.contains("theme: base"));
-        assert!(!edited.contains("secure"));
-        assert!(!edited.contains("__proto__"));
-        assert!(!edited.contains("polluted"));
-        assert!(!edited.contains("url(data:"));
-        assert!(!edited.contains("config:\n  config:"));
-    }
-
-    #[test]
-    fn flowchart_html_labels_to_root_fix_uses_core_semantics_for_config_wrapped_flowchart() {
-        let source = "%%{init: {\"config\": {\"flowchart\": {\"htmlLabels\": true, \"curve\": \"basis\", \"secure\": [\"x\"], \"__proto__\": {\"polluted\": true}, \"themeCSS\": \"url(data:text/css,a)\"}}, \"theme\": \"base\"}}%%\nflowchart TD\nA-->B\n";
-        let source_map = SourceMap::new(source);
-
-        let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
-        let edited = apply_fix(source, &fix);
-
-        assert!(fix.is_preferred);
-        assert!(edited.contains("htmlLabels: true"));
-        assert!(edited.contains("theme: base"));
-        assert!(edited.contains("curve: basis"));
-        assert!(!edited.contains("secure"));
-        assert!(!edited.contains("__proto__"));
-        assert!(!edited.contains("polluted"));
-        assert!(!edited.contains("url(data:"));
-        assert!(!edited.contains("flowchart:\n    htmlLabels: true"));
     }
 }

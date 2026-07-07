@@ -11,7 +11,9 @@ use merman_bindings_core::{TextMeasurer as CoreTextMeasurer, VendoredFontMetrics
 use serde_json::Value;
 #[cfg(feature = "render")]
 use std::cell::RefCell;
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+#[cfg(feature = "render")]
+use std::sync::Mutex;
+use std::sync::{Arc, OnceLock, RwLock};
 
 pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 2;
 
@@ -691,6 +693,7 @@ impl MermanReusableEngine {
     pub fn new(options_json: Option<String>) -> Result<Arc<Self>, MermanError> {
         let inner = BindingEngine::new(options_bytes(options_json.as_deref()))
             .map_err(MermanError::from_binding)?;
+        #[cfg(feature = "render")]
         let render_gate = Arc::new(Mutex::new(ReusableRenderGate::default()));
         Ok(Arc::new(Self {
             #[cfg(feature = "render")]

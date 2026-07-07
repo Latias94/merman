@@ -182,6 +182,13 @@ fn capabilities_advertise_completion_and_incremental_sync() {
                 " ".to_string(),
                 "\n".to_string(),
                 "-".to_string(),
+                ">".to_string(),
+                "%".to_string(),
+                "[".to_string(),
+                "(".to_string(),
+                "{".to_string(),
+                "/".to_string(),
+                "\\".to_string(),
                 "@".to_string(),
                 ":".to_string(),
             ])

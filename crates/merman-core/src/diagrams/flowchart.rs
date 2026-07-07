@@ -426,9 +426,17 @@ fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts
     let mut facts = EditorSemanticFacts::new();
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
+    let mut lexer = Lexer::recovering(code);
+    let mut last_position = lexer.position();
 
-    for (start, token, end) in Lexer::recovering(code).flatten() {
-        collector.accept(code, token, start, end, &mut facts);
+    while let Some(result) = lexer.next() {
+        let current_position = lexer.position();
+        if let Ok((start, token, end)) = result {
+            collector.accept(code, token, start, end, &mut facts);
+        } else if current_position == last_position {
+            break;
+        }
+        last_position = current_position;
     }
     collector.finish(code.len(), &mut facts);
 
@@ -436,8 +444,15 @@ fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts
 }
 
 fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFacts) {
-    for result in Lexer::new(code) {
+    let mut lexer = Lexer::new(code);
+    let mut last_position = lexer.position();
+    while let Some(result) = lexer.next() {
+        let current_position = lexer.position();
         let Ok((start, token, end)) = result else {
+            if current_position == last_position {
+                break;
+            }
+            last_position = current_position;
             continue;
         };
 
@@ -455,6 +470,7 @@ fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFac
             }
             _ => {}
         }
+        last_position = current_position;
     }
 }
 

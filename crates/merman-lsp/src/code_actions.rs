@@ -600,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn deprecated_flowchart_html_labels_fix_produces_quickfix_action() {
+    fn deprecated_flowchart_html_labels_diagnostic_has_no_quickfix_action() {
         let source = "%%{init: { \"flowchart\": { \"htmlLabels\": false, \"curve\": \"linear\" } }}%%\nflowchart TD\nA-->B\n";
         let uri = Url::parse("file:///tmp/example.mmd").unwrap();
         let payload = Analyzer::new().analyze(source);
@@ -621,24 +621,7 @@ mod tests {
             partial_result_params: Default::default(),
         };
 
-        let actions = code_actions_for_params(&params, Some(DOC_VERSION))
-            .expect("expected deprecated htmlLabels quickfix");
-        let action = actions
-            .iter()
-            .filter_map(|action| match action {
-                CodeActionOrCommand::CodeAction(action) => Some(action),
-                CodeActionOrCommand::Command(_) => None,
-            })
-            .find(|action| {
-                action.title == "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
-            })
-            .expect("missing deprecated htmlLabels quickfix");
-
-        assert_eq!(action.kind, Some(CodeActionKind::QUICKFIX));
-        assert_eq!(action.is_preferred, Some(true));
-        let edits = text_edits_for_action(action, &uri, DOC_VERSION);
-        assert!(!edits.is_empty());
-        assert!(edits[0].new_text.contains("htmlLabels: false"));
+        assert!(code_actions_for_params(&params, Some(DOC_VERSION)).is_none());
     }
 
     #[test]

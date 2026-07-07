@@ -625,10 +625,10 @@ mod tests {
     use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
     use crate::types::{DocumentKind, DocumentUri, Position};
     use crate::workspace::DocumentWorkspace;
-    use merman_analysis::{FenceTextIndex, SharedTextSlice, SourceMap};
+    use merman_analysis::{FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceMap};
     use merman_core::{
         EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-        EditorSemanticSymbol, SourceSpan,
+        EditorSemanticSymbol, EditorSpanCoordinateSpace, SourceSpan,
     };
     use std::sync::Arc;
 
@@ -740,6 +740,47 @@ mod tests {
                 .map(|item| item.label.as_str())
                 .collect::<Vec<_>>(),
             vec!["A"]
+        );
+    }
+
+    #[test]
+    fn degraded_parser_flowchart_target_reuses_known_entity_ids() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "A",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(13, 14),
+            SourceSpan::new(13, 14),
+        ));
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "B",
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            SourceSpan::new(18, 19),
+            SourceSpan::new(18, 19),
+        ));
+        let snapshot =
+            snapshot_with_facts("flowchart TD\nA-->B\nC-->", Some("flowchart-v2"), facts);
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(2, 4));
+
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
+        );
+        assert_eq!(
+            completion
+                .items
+                .iter()
+                .filter(|item| item
+                    .data
+                    .as_ref()
+                    .is_some_and(|data| data.kind == CompletionDataKind::NodeIdentifier))
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A", "B"]
         );
     }
 

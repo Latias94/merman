@@ -111,6 +111,12 @@ jobs:
         if: matrix.parity
         run: cargo nextest run -p merman-ffi --no-default-features --features core-full,core-host --test c_consumer_smoke --cargo-quiet
 
+      - name: Check UniFFI no-render feature sets
+        if: matrix.parity
+        run: |
+          cargo check -p merman-uniffi --no-default-features
+          cargo check -p merman-uniffi --no-default-features --features ascii
+
       - name: Build (release)
         run: cargo build --release --locked -p merman-cli
 

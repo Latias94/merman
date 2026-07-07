@@ -29,7 +29,7 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: "Git ref to package from"
+        description: "Protected branch (main), version tag, or refs/tags/<version-tag> to package from"
         required: true
         default: "main"
         type: string
@@ -60,28 +60,24 @@ jobs:
 
           semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
           tag_re="^v${semver_re#^}"
-          sha_re='^[0-9a-fA-F]{40}$'
-
           fail() {
             echo "::error::$1" >&2
             exit 1
           }
 
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            SOURCE_REF="$DISPATCH_SOURCE_REF"
-          else
-            SOURCE_REF="$GIT_SHA"
+          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
+            printf 'source_ref=%s\n' "$GIT_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
-            :
-          elif [[ "$SOURCE_REF" =~ $sha_re ]]; then
             :
           elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
             :
           else
-            fail "source_ref must be main, refs/heads/main, a version tag, refs/tags/<release-tag>, or a full 40-character SHA."
+            fail "source_ref must be main, refs/heads/main, a version tag, or refs/tags/<release-tag>."
           fi
 
           printf 'source_ref=%s\n' "$SOURCE_REF" >> "$GITHUB_OUTPUT"

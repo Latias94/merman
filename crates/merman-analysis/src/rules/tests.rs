@@ -172,18 +172,7 @@ fn source_lint_reports_deprecated_flowchart_html_labels_directive() {
     assert_eq!(diagnostic.id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
     assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
     assert_eq!(diagnostic.category, DiagnosticCategory::Config);
-    assert_eq!(diagnostic.fixes.len(), 1);
-    assert_eq!(
-        diagnostic.fixes[0].title,
-        "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
-    );
-    assert!(diagnostic.fixes[0].is_preferred);
-    assert_eq!(diagnostic.fixes[0].edits.len(), 1);
-    assert!(
-        diagnostic.fixes[0].edits[0]
-            .replacement
-            .contains("htmlLabels: false")
-    );
+    assert!(diagnostic.fixes.is_empty());
     let span = diagnostic.span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
 }
@@ -212,11 +201,7 @@ fn parsed_source_lint_reports_flowchart_config_wrapped_flowchart_html_labels_dir
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
-    assert_eq!(diagnostics[0].fixes.len(), 1);
-    assert_eq!(
-        diagnostics[0].fixes[0].title,
-        "Move deprecated `flowchart.htmlLabels` to root `htmlLabels`"
-    );
+    assert!(diagnostics[0].fixes.is_empty());
     let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
 }
@@ -245,7 +230,7 @@ fn parsed_source_lint_reports_flowchart_config_wrapped_root_html_labels_directiv
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
-    assert_eq!(diagnostics[0].fixes.len(), 1);
+    assert!(diagnostics[0].fixes.is_empty());
     let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
 }
@@ -632,7 +617,7 @@ fn rule_descriptors_expose_stable_rule_metadata() {
         DiagnosticSeverity::Warning
     );
     assert_eq!(deprecated_html_labels.category, DiagnosticCategory::Config);
-    assert!(deprecated_html_labels.fixable);
+    assert!(!deprecated_html_labels.fixable);
     assert!(
             deprecated_html_labels
                 .evidence
@@ -1020,7 +1005,7 @@ fn rule_catalog_serializes_public_rule_metadata() {
         RuleOrigin::MermaidCompatibility
     );
     assert!(deprecated_html_labels.default_enabled);
-    assert!(deprecated_html_labels.fixable);
+    assert!(!deprecated_html_labels.fixable);
     let resource_limit = catalog
         .iter()
         .find(|entry| entry.id == RESOURCE_LIMIT_RULE_ID)

@@ -299,7 +299,7 @@ async fn lsp_service_pull_after_close_returns_stable_empty_report() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_with_quickfix() {
+async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quickfix() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -394,31 +394,7 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_with_quickfi
         .unwrap()
         .expect("code action response");
     let result = response.result().expect("code action result");
-    let actions = result.as_array().expect("code action array");
-    let action = actions
-        .iter()
-        .find(|action| {
-            action.get("title").and_then(|value| value.as_str())
-                == Some("Move deprecated `flowchart.htmlLabels` to root `htmlLabels`")
-        })
-        .expect("missing deprecated htmlLabels quickfix");
-    let document_change = action["edit"]["documentChanges"]
-        .as_array()
-        .and_then(|changes| changes.first())
-        .expect("expected versioned document change");
-    assert_eq!(
-        document_change["textDocument"]["uri"].as_str(),
-        Some(uri.as_str())
-    );
-    assert_eq!(document_change["textDocument"]["version"].as_i64(), Some(1));
-    let edits = document_change["edits"]
-        .as_array()
-        .expect("expected text edits");
-    assert!(edits.iter().any(|edit| {
-        edit["newText"]
-            .as_str()
-            .is_some_and(|text| text.contains("htmlLabels: false"))
-    }));
+    assert!(result.is_null());
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -184,6 +184,10 @@ impl<'a> CompletionContext<'a> {
             );
         }
 
+        if self.degraded_flowchart_target_range().is_some() {
+            return true;
+        }
+
         if self.has_parser_backed_facts() && self.offer_directive_target_node_items() {
             return true;
         }
@@ -263,6 +267,10 @@ impl<'a> CompletionContext<'a> {
 
         if self.offer_directive_target_node_items() {
             return self.current_token_range(is_directive_target_delimiter);
+        }
+
+        if let Some(range) = self.degraded_flowchart_target_range() {
+            return Some(range);
         }
 
         if self.offer_operator_items() {
@@ -361,6 +369,20 @@ impl<'a> CompletionContext<'a> {
             == DirectiveCompletionSlot::Target
     }
 
+    fn degraded_flowchart_target_range(&self) -> Option<Range> {
+        if self.expected_syntax.is_some()
+            || self.comment_or_directive_line
+            || !self.source.is_parser_backed()
+            || self.source.has_source_mapped_spans()
+            || !is_flowchart_diagram_type(self.fence.diagram_type.as_deref())
+        {
+            return None;
+        }
+
+        let token_start = flowchart_target_token_start(&self.prefix)?;
+        self.range_for_offsets(self.prefix_start_offset + token_start, self.cursor_offset)
+    }
+
     fn current_token_range(&self, is_delimiter: fn(char) -> bool) -> Option<Range> {
         let prefix = self.prefix.as_str();
         let token_start = prefix
@@ -394,6 +416,71 @@ fn operator_suffix_start(prefix: &str) -> Option<usize> {
 
     seen_operator.then_some(start)
 }
+
+fn is_flowchart_diagram_type(diagram_type: Option<&str>) -> bool {
+    diagram_type.is_some_and(|diagram_type| diagram_type.starts_with("flowchart"))
+}
+
+fn flowchart_target_token_start(prefix: &str) -> Option<usize> {
+    let trimmed_end = prefix.trim_end().len();
+    let trimmed = &prefix[..trimmed_end];
+    let (_, operator_end) = last_flowchart_operator(trimmed)?;
+    let mut target_start = operator_end;
+    let operator_tail = &trimmed[target_start..];
+
+    if operator_tail.starts_with('|') {
+        target_start += flowchart_edge_label_len(operator_tail)?;
+    }
+
+    target_start += leading_whitespace_len(&prefix[target_start..]);
+    let target = &prefix[target_start..];
+    if target.chars().any(char::is_whitespace) {
+        return None;
+    }
+    if !target.chars().all(is_flowchart_target_fragment_char) {
+        return None;
+    }
+
+    Some(target_start)
+}
+
+fn last_flowchart_operator(prefix: &str) -> Option<(usize, usize)> {
+    let mut best: Option<(usize, usize)> = None;
+    for operator in FLOWCHART_TARGET_OPERATORS {
+        let mut search_start = 0usize;
+        while let Some(relative) = prefix[search_start..].find(operator) {
+            let start = search_start + relative;
+            let end = start + operator.len();
+            if best.is_none_or(|(_, best_end)| end >= best_end) {
+                best = Some((start, end));
+            }
+            search_start = end;
+        }
+    }
+    best
+}
+
+fn flowchart_edge_label_len(tail: &str) -> Option<usize> {
+    let label = tail.strip_prefix('|')?;
+    let close = label.find('|')?;
+    Some(1 + close + 1)
+}
+
+fn leading_whitespace_len(input: &str) -> usize {
+    input
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .map(char::len_utf8)
+        .sum()
+}
+
+fn is_flowchart_target_fragment_char(ch: char) -> bool {
+    ch == '_' || ch == '-' || ch == '.' || ch == ':' || ch.is_alphanumeric()
+}
+
+const FLOWCHART_TARGET_OPERATORS: &[&str] = &[
+    "-.->", "<-->", "-->", "---", "==>", "<--", "--x", "--o", "x--", "o--", "*--",
+];
 
 const TEMPLATE_PREFIXES: &[&str] = &[
     "flow", "seq", "icon", "acc", "class", "state", "er", "gantt", "pie", "journey", "mind",

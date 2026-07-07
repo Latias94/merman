@@ -334,6 +334,7 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
         while self.pos < self.body_end && depth > 0 {
             match self.peek_char() {
                 Some('"') | Some('\'') => self.skip_quoted(),
+                Some('/') if self.skip_comment() => {}
                 Some(ch) if ch == open => {
                     self.next_char();
                     depth += 1;
@@ -370,18 +371,70 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
     }
 
     fn skip_ws(&mut self) {
-        while self.peek_char().is_some_and(char::is_whitespace) {
-            self.next_char();
+        loop {
+            let mut advanced = false;
+            while self.peek_char().is_some_and(char::is_whitespace) {
+                self.next_char();
+                advanced = true;
+            }
+            if self.skip_comment() {
+                advanced = true;
+            }
+            if !advanced {
+                break;
+            }
         }
     }
 
     fn skip_ws_and_commas(&mut self) {
-        while self
-            .peek_char()
-            .is_some_and(|ch| ch.is_whitespace() || ch == ',')
-        {
-            self.next_char();
+        loop {
+            let mut advanced = false;
+            while self
+                .peek_char()
+                .is_some_and(|ch| ch.is_whitespace() || ch == ',')
+            {
+                self.next_char();
+                advanced = true;
+            }
+            if self.skip_comment() {
+                advanced = true;
+            }
+            if !advanced {
+                break;
+            }
         }
+    }
+
+    fn skip_comment(&mut self) -> bool {
+        let Some(tail) = self.source.get(self.pos..self.body_end) else {
+            return false;
+        };
+        if tail.starts_with("//") {
+            self.pos += 2;
+            while let Some(ch) = self.peek_char() {
+                if matches!(ch, '\n' | '\r') {
+                    break;
+                }
+                self.next_char();
+            }
+            return true;
+        }
+        if tail.starts_with("/*") {
+            self.pos += 2;
+            while self.pos < self.body_end {
+                let Some(tail) = self.source.get(self.pos..self.body_end) else {
+                    self.pos = self.body_end;
+                    return true;
+                };
+                if tail.starts_with("*/") {
+                    self.pos += 2;
+                    return true;
+                }
+                self.next_char();
+            }
+            return true;
+        }
+        false
     }
 
     fn peek_char(&self) -> Option<char> {
@@ -762,6 +815,26 @@ mod tests {
     #[test]
     fn init_directive_config_key_spans_match_quoted_config_wrapper_path() {
         let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\n";
+
+        let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn init_directive_config_key_spans_match_json5_line_comments() {
+        let source = "%%{ init: {\n  // kept by json5\n  flowchart: {\n    // deprecated fallback\n    htmlLabels: false\n  }\n} }%%\nflowchart TD\n";
+
+        let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn init_directive_config_key_spans_match_json5_block_comments() {
+        let source = "%%{ init: { config: /* wrapper { ignored } */ { flowchart: { /* fallback */ htmlLabels: true } } } }%%\nflowchart TD\n";
 
         let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
 

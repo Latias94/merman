@@ -314,6 +314,19 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 )
                 self.assertNotIn("source_ref", outputs)
 
+    def test_validation_scripts_reject_full_sha_source_ref_values(self) -> None:
+        full_sha = "0123456789abcdef0123456789abcdef01234567"
+        for path in SOURCE_REF_WORKFLOWS:
+            with self.subTest(workflow=path.name):
+                result, outputs = run_workflow_validation(path, source_ref=full_sha)
+
+                self.assertNotEqual(
+                    result.returncode,
+                    0,
+                    msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                )
+                self.assertNotIn("source_ref", outputs)
+
     def test_release_validation_scripts_reject_mismatched_source_tags(self) -> None:
         for path in RELEASE_WORKFLOWS:
             text = read_workflow(path)
@@ -341,12 +354,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
             validate_job = indented_block(text, "validate-inputs:")
             with self.subTest(workflow=path.name):
-                self.assertTrue(
-                    "sha_re='^[0-9a-fA-F]{40}$'" in validate_job
-                    or "is_sha_ref()" in validate_job
-                )
                 self.assertIn('[[ "$SOURCE_REF" != *$\'\\n\'*', validate_job)
                 self.assertIn("source_ref must be", validate_job)
+                self.assertNotIn("sha_re=", validate_job)
+                self.assertNotIn("is_sha_ref", validate_job)
+                self.assertNotIn("40-character SHA", text)
 
     def test_release_validation_jobs_reject_untrusted_ref_and_version_shapes(self) -> None:
         for path in RELEASE_WORKFLOWS:
@@ -444,6 +456,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("python -m twine check wheels/merman-*.whl", verify_job)
 
         self.assertIn("contents: write", github_release_job)
+        self.assertIn("environment: github-release", github_release_job)
         self.assertNotIn("environment: pypi", github_release_job)
         self.assertNotIn("id-token: write", github_release_job)
         self.assertIn("actions/download-artifact", github_release_job)
@@ -598,8 +611,10 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertNotRegex(job, re.compile(r'"?contents"?:\s+"?write"?'))
 
         self.assertRegex(plan_job, re.compile(r'permissions:\n\s+contents:\s+write'))
+        self.assertIn("environment: github-release", plan_job)
         self.assertIn("host --steps=create", plan_job)
         self.assertRegex(host_job, re.compile(r'permissions:\n\s+contents:\s+write'))
+        self.assertIn("environment: github-release", host_job)
         self.assertIn("needs.plan.outputs.publishing == 'true'", host_job)
         self.assertIn("gh release create", host_job)
 
