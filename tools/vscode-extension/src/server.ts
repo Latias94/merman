@@ -59,13 +59,8 @@ export interface ConfigSchemaResponse {
 
 export async function createLanguageClient(
   context: vscode.ExtensionContext,
+  outputChannel: vscode.LogOutputChannel,
 ): Promise<LanguageClient> {
-  const outputChannel = vscode.window.createOutputChannel(
-    "Merman Language Server",
-    { log: true },
-  );
-  context.subscriptions.push(outputChannel);
-
   const serverOptions = await resolveServerOptions(context, outputChannel);
   const clientOptions: LanguageClientOptions = {
     documentSelector: [

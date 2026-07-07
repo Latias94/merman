@@ -23,6 +23,7 @@ import {
   languageIntelligenceDisabledMessage,
   type LanguageClientLifecycleAction,
 } from "./language-intelligence.js";
+import { ensureLanguageServerOutputChannel } from "./language-server-output.js";
 import { startLanguageClientWithCleanup } from "./language-client-start.js";
 import { registerPreview } from "./preview.js";
 import { runRestartLanguageServerCommand } from "./restart-command.js";
@@ -197,7 +198,10 @@ async function startClient(
   ensureStatusItem(context);
   let nextClient: LanguageClient;
   try {
-    nextClient = await createLanguageClient(context);
+    nextClient = await createLanguageClient(
+      context,
+      ensureLanguageServerOutputChannel(context),
+    );
   } catch (error) {
     if (isCurrentLifecycleGeneration(generation)) {
       updateStatusBar("Failed", "Merman language server failed to start.");
