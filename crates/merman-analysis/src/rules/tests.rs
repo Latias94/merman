@@ -320,6 +320,16 @@ fn source_lint_reports_deprecated_flowchart_html_labels_flow_style_frontmatter_c
 }
 
 #[test]
+fn source_lint_does_not_treat_json5_comments_as_flow_style_frontmatter_comments() {
+    let source = "---\nconfig: { flowchart /* family */: { htmlLabels: false } }\n---\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert!(diagnostics.is_empty());
+}
+
+#[test]
 fn source_lint_reports_deprecated_external_diagram_loading_directive_config() {
     let source = "%%{init: { \"lazyLoadedDiagrams\": true, \"loadExternalDiagramsAtStartup\": false }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);

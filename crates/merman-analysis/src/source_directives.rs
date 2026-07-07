@@ -66,7 +66,8 @@ pub(crate) fn init_directive_config_key_spans(
                 directive.body.start,
                 directive.body.end,
                 matching_paths,
-            );
+            )
+            .with_comment_mode(ConfigCommentMode::Json5);
             scanner.matching_config_key_spans()
         })
         .collect()
@@ -156,6 +157,13 @@ struct DirectiveConfigScanner<'source, 'query> {
     body_end: usize,
     pos: usize,
     matching_paths: &'query [&'query [&'query str]],
+    comment_mode: ConfigCommentMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ConfigCommentMode {
+    None,
+    Json5,
 }
 
 impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
@@ -170,7 +178,13 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
             body_end,
             pos: body_start,
             matching_paths,
+            comment_mode: ConfigCommentMode::None,
         }
+    }
+
+    fn with_comment_mode(mut self, comment_mode: ConfigCommentMode) -> Self {
+        self.comment_mode = comment_mode;
+        self
     }
 
     fn matching_config_key_spans(&mut self) -> Vec<ByteSpan> {
@@ -414,6 +428,9 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
     }
 
     fn skip_comment(&mut self) -> bool {
+        if self.comment_mode != ConfigCommentMode::Json5 {
+            return false;
+        }
         let Some(tail) = self.source.get(self.pos..self.body_end) else {
             return false;
         };
@@ -446,6 +463,9 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
     }
 
     fn starts_comment(&self) -> bool {
+        if self.comment_mode != ConfigCommentMode::Json5 {
+            return false;
+        }
         self.source
             .get(self.pos..self.body_end)
             .is_some_and(|tail| tail.starts_with("//") || tail.starts_with("/*"))
@@ -900,6 +920,16 @@ mod tests {
 
         assert_eq!(spans.len(), 1);
         assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn frontmatter_config_key_spans_do_not_treat_json5_comments_as_yaml_comments() {
+        let source =
+            "---\nconfig: { flowchart /* family */: { htmlLabels: false } }\n---\nflowchart TD\n";
+
+        let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert!(spans.is_empty());
     }
 
     #[test]
