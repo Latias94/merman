@@ -178,6 +178,19 @@ fn source_lint_reports_deprecated_flowchart_html_labels_directive() {
 }
 
 #[test]
+fn source_lint_reports_deprecated_flowchart_html_labels_after_json5_key_comments() {
+    let source = "%%{init: { flowchart /* family */: { htmlLabels /* leaf */: false } }}%%\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+    let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
+    assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+}
+
+#[test]
 fn source_lint_defers_config_wrapped_flowchart_html_labels_until_diagram_type_is_known() {
     let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);

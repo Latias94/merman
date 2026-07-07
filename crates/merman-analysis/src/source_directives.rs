@@ -288,6 +288,9 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
             if matches!(ch, ':' | '\n' | '\r' | '}' | ']') {
                 break;
             }
+            if ch == '/' && self.starts_comment() {
+                break;
+            }
             self.next_char();
         }
 
@@ -299,13 +302,15 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
             return None;
         }
 
-        Some(ConfigKeySpan {
+        let span = ConfigKeySpan {
             name: trimmed,
             span: ByteSpan {
                 start: raw_start + leading,
                 end: raw_start + leading + trimmed.len(),
             },
-        })
+        };
+        self.skip_ws();
+        Some(span)
     }
 
     fn skip_value(&mut self) {
@@ -438,6 +443,12 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
             return true;
         }
         false
+    }
+
+    fn starts_comment(&self) -> bool {
+        self.source
+            .get(self.pos..self.body_end)
+            .is_some_and(|tail| tail.starts_with("//") || tail.starts_with("/*"))
     }
 
     fn peek_char(&self) -> Option<char> {
@@ -838,6 +849,16 @@ mod tests {
     #[test]
     fn init_directive_config_key_spans_match_json5_block_comments() {
         let source = "%%{ init: { config: /* wrapper { ignored } */ { flowchart: { /* fallback */ htmlLabels: true } } } }%%\nflowchart TD\n";
+
+        let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn init_directive_config_key_spans_match_json5_comments_after_bare_keys() {
+        let source = "%%{ init: { flowchart /* family */: { htmlLabels /* leaf */: false } } }%%\nflowchart TD\n";
 
         let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
 
