@@ -41,6 +41,7 @@ export class PreviewSession {
   private preferredEditorUri: string | undefined;
   private selectedSource: PreviewSourceSelection | undefined;
   private lockedSourceSelection: PreviewSourceSelection | undefined;
+  private trackedLockedMarkdownSource: TrackedMarkdownSource | undefined;
   private theme: PreviewDiagramTheme;
   private displayMode: PreviewDisplayMode;
   private background: PreviewBackground;
@@ -82,6 +83,7 @@ export class PreviewSession {
     this.preferredEditorUri = undefined;
     this.selectedSource = undefined;
     this.lockedSourceSelection = undefined;
+    this.trackedLockedMarkdownSource = undefined;
     this.theme = this.defaults.diagramTheme;
     this.displayMode = this.defaults.displayMode;
     this.background = this.defaults.background;
@@ -93,6 +95,7 @@ export class PreviewSession {
     this.preferredEditorUri = undefined;
     this.selectedSource = undefined;
     this.lockedSourceSelection = undefined;
+    this.trackedLockedMarkdownSource = undefined;
   }
 
   rememberResource(uri: vscode.Uri, options: { preferOnce?: boolean } = {}): void {
@@ -105,6 +108,7 @@ export class PreviewSession {
   clearSelectedSource(): void {
     this.selectedSource = undefined;
     this.lockedSourceSelection = undefined;
+    this.trackedLockedMarkdownSource = undefined;
   }
 
   setLocked(locked: boolean): boolean {
@@ -117,6 +121,9 @@ export class PreviewSession {
     } else if (this.lockedSourceSelection && sameSelection(this.selectedSource, this.lockedSourceSelection)) {
       this.selectedSource = undefined;
       this.lockedSourceSelection = undefined;
+      this.trackedLockedMarkdownSource = undefined;
+    } else if (!locked) {
+      this.trackedLockedMarkdownSource = undefined;
     }
     return true;
   }
@@ -124,6 +131,41 @@ export class PreviewSession {
   rememberSnapshot(snapshot: PreviewSnapshot): void {
     this.lastPreviewEditorUri = snapshot.documentUri;
     this.currentSnapshot = snapshot;
+  }
+
+  trackDocumentChange(
+    event: Pick<vscode.TextDocumentChangeEvent, "document"> &
+      Partial<Pick<vscode.TextDocumentChangeEvent, "contentChanges">>,
+  ): void {
+    if (
+      !this.locked ||
+      !this.trackedLockedMarkdownSource ||
+      this.trackedLockedMarkdownSource.uri !== event.document.uri.toString()
+    ) {
+      return;
+    }
+    if (event.document.version < this.trackedLockedMarkdownSource.documentVersion) {
+      return;
+    }
+
+    const contentChanges = event.contentChanges ?? [];
+    if (contentChanges.length === 0) {
+      return;
+    }
+    if (event.document.version !== this.trackedLockedMarkdownSource.documentVersion + 1) {
+      this.trackedLockedMarkdownSource = invalidateTrackedMarkdownSource(
+        this.trackedLockedMarkdownSource,
+        event.document.version,
+      );
+      return;
+    }
+    const tracked = trackMarkdownSourceChanges(
+      this.trackedLockedMarkdownSource,
+      contentChanges,
+      event.document.version,
+    );
+    this.trackedLockedMarkdownSource =
+      tracked ?? invalidateTrackedMarkdownSource(this.trackedLockedMarkdownSource, event.document.version);
   }
 
   createSnapshot(
@@ -211,6 +253,9 @@ export class PreviewSession {
       identity: previewSourceIdentity(input),
     };
     this.lockedSourceSelection = undefined;
+    this.trackedLockedMarkdownSource = this.locked
+      ? trackedMarkdownSourceForInput(this.selectedSource.uri, input, editor.document.version)
+      : undefined;
     return true;
   }
 
@@ -241,12 +286,18 @@ export class PreviewSession {
   private resolvePreviewInput(editor: vscode.TextEditor): PreviewInput | null {
     const editorUri = editor.document.uri.toString();
     if (this.selectedSource?.uri === editorUri) {
-      const selected = resolvePreviewInputIdentity(
-        listPreviewInputsFromDocument(editor.document, editor.selection.active.line),
-        this.selectedSource.identity,
-      );
+      const inputs = listPreviewInputsFromDocument(editor.document, editor.selection.active.line);
+      if (this.trackedLockedMarkdownSource?.invalid) {
+        return null;
+      }
+      const tracked = this.resolveTrackedMarkdownInput(editorUri, editor.document.version, inputs);
+      const selected =
+        tracked ??
+        (this.trackedLockedMarkdownSource?.contentChanged
+          ? null
+          : resolvePreviewInputIdentity(inputs, this.selectedSource.identity));
       if (selected) {
-        this.rememberResolvedSelectedInput(selected);
+        this.rememberResolvedSelectedInput(selected, editor.document.version);
         return selected;
       }
       if (this.locked) {
@@ -301,7 +352,7 @@ export class PreviewSession {
   }
 
   private lockCurrentSnapshotSource(): void {
-    if (!this.currentSnapshot || this.selectedSource) {
+    if (!this.currentSnapshot) {
       return;
     }
 
@@ -309,12 +360,19 @@ export class PreviewSession {
       uri: this.currentSnapshot.documentUri,
       identity: previewSourceIdentity(this.currentSnapshot.input),
     };
-    this.selectedSource = selection;
-    this.lockedSourceSelection = selection;
+    if (!this.selectedSource) {
+      this.selectedSource = selection;
+      this.lockedSourceSelection = selection;
+    }
+    this.trackedLockedMarkdownSource = trackedMarkdownSourceForInput(
+      selection.uri,
+      this.currentSnapshot.input,
+      this.currentSnapshot.documentVersion,
+    );
     this.lastPreviewEditorUri = selection.uri;
   }
 
-  private rememberResolvedSelectedInput(input: PreviewInput): void {
+  private rememberResolvedSelectedInput(input: PreviewInput, documentVersion: number): void {
     if (!this.selectedSource) {
       return;
     }
@@ -327,12 +385,61 @@ export class PreviewSession {
     if (sameSelection(this.lockedSourceSelection, previousSelection)) {
       this.lockedSourceSelection = nextSelection;
     }
+    if (this.locked) {
+      this.trackedLockedMarkdownSource = trackedMarkdownSourceForInput(
+        nextSelection.uri,
+        input,
+        documentVersion,
+      );
+    }
+  }
+
+  private resolveTrackedMarkdownInput(
+    editorUri: string,
+    documentVersion: number,
+    inputs: readonly PreviewInput[],
+  ): PreviewInput | null {
+    const tracked = this.trackedLockedMarkdownSource;
+    if (
+      !tracked ||
+      tracked.uri !== editorUri ||
+      tracked.documentVersion !== documentVersion ||
+      !tracked.contentChanged
+    ) {
+      return null;
+    }
+
+    const input =
+      inputs.find(
+        (candidate) =>
+          candidate.kind === "markdown-fence" &&
+          candidate.sourceRange.startLine === tracked.sourceRange.startLine &&
+          candidate.sourceRange.endLine === tracked.sourceRange.endLine,
+      ) ?? null;
+    if (!input) {
+      this.trackedLockedMarkdownSource = undefined;
+    }
+    return input;
   }
 }
 
 interface PreviewSourceSelection {
   uri: string;
   identity: PreviewSourceIdentity;
+}
+
+interface LineRange {
+  startLine: number;
+  endLine: number;
+}
+
+interface TrackedMarkdownSource {
+  uri: string;
+  sourceRange: LineRange;
+  contentRange: LineRange;
+  documentVersion: number;
+  contentChanged: boolean;
+  invalid?: boolean;
 }
 
 function sameSelection(
@@ -355,9 +462,170 @@ function inputMatchesSelection(input: PreviewInput, selection: PreviewSourceSele
   const identity = previewSourceIdentity(input);
   return (
     identity.kind === selection.identity.kind &&
-    (identity.sourceHash === selection.identity.sourceHash ||
-      (identity.sourceId === selection.identity.sourceId &&
-        identity.sourceRange.startLine === selection.identity.sourceRange.startLine &&
-        identity.sourceRange.endLine === selection.identity.sourceRange.endLine))
+    identity.sourceId === selection.identity.sourceId &&
+    identity.sourceHash === selection.identity.sourceHash &&
+    identity.sourceRange.startLine === selection.identity.sourceRange.startLine &&
+    identity.sourceRange.endLine === selection.identity.sourceRange.endLine
   );
+}
+
+function trackedMarkdownSourceForInput(
+  uri: string,
+  input: PreviewInput,
+  documentVersion: number,
+): TrackedMarkdownSource | undefined {
+  if (input.kind !== "markdown-fence") {
+    return undefined;
+  }
+
+  return {
+    uri,
+    sourceRange: {
+      startLine: input.sourceRange.startLine,
+      endLine: input.sourceRange.endLine,
+    },
+    contentRange: {
+      startLine: input.diagnosticRange.startLine,
+      endLine: input.diagnosticRange.endLine,
+    },
+    documentVersion,
+    contentChanged: false,
+  };
+}
+
+function invalidateTrackedMarkdownSource(
+  tracked: TrackedMarkdownSource,
+  documentVersion: number,
+): TrackedMarkdownSource {
+  return {
+    ...tracked,
+    documentVersion,
+    invalid: true,
+  };
+}
+
+function trackMarkdownSourceChanges(
+  tracked: TrackedMarkdownSource,
+  changes: readonly vscode.TextDocumentContentChangeEvent[],
+  documentVersion: number,
+): TrackedMarkdownSource | undefined {
+  let next = { ...tracked, documentVersion };
+  for (const change of changes) {
+    const trackedAfterChange = trackMarkdownSourceChange(next, change);
+    if (!trackedAfterChange) {
+      return undefined;
+    }
+    next = trackedAfterChange;
+  }
+  return next;
+}
+
+function trackMarkdownSourceChange(
+  tracked: TrackedMarkdownSource,
+  change: vscode.TextDocumentContentChangeEvent,
+): TrackedMarkdownSource | undefined {
+  const lineDelta = insertedLineCount(change.text) - removedLineCount(change.range);
+
+  if (isChangeBeforeRange(change, tracked.sourceRange)) {
+    return shiftTrackedMarkdownSource(tracked, lineDelta);
+  }
+  if (isChangeAfterRange(change, tracked.sourceRange)) {
+    return tracked;
+  }
+  if (!isSafeMarkdownFenceBodyChange(change, tracked.sourceRange, tracked.contentRange)) {
+    return undefined;
+  }
+
+  return {
+    ...tracked,
+    sourceRange: {
+      startLine: tracked.sourceRange.startLine,
+      endLine: tracked.sourceRange.endLine + lineDelta,
+    },
+    contentRange: {
+      startLine: tracked.contentRange.startLine,
+      endLine: tracked.contentRange.endLine + lineDelta,
+    },
+    contentChanged: true,
+  };
+}
+
+function shiftTrackedMarkdownSource(
+  tracked: TrackedMarkdownSource,
+  lineDelta: number,
+): TrackedMarkdownSource {
+  if (lineDelta === 0) {
+    return tracked;
+  }
+
+  return {
+    ...tracked,
+    sourceRange: shiftRange(tracked.sourceRange, lineDelta),
+    contentRange: shiftRange(tracked.contentRange, lineDelta),
+  };
+}
+
+function shiftRange(range: LineRange, lineDelta: number): LineRange {
+  return {
+    startLine: range.startLine + lineDelta,
+    endLine: range.endLine + lineDelta,
+  };
+}
+
+function isChangeBeforeRange(
+  change: vscode.TextDocumentContentChangeEvent,
+  range: LineRange,
+): boolean {
+  return change.range.end.line < range.startLine;
+}
+
+function isChangeAfterRange(
+  change: vscode.TextDocumentContentChangeEvent,
+  range: LineRange,
+): boolean {
+  return change.range.start.line > range.endLine;
+}
+
+function isSafeMarkdownFenceBodyChange(
+  change: vscode.TextDocumentContentChangeEvent,
+  sourceRange: LineRange,
+  contentRange: LineRange,
+): boolean {
+  if (change.range.start.line < contentRange.startLine) {
+    return false;
+  }
+  if (change.range.end.line <= contentRange.endLine) {
+    return true;
+  }
+
+  return (
+    isZeroLengthChange(change) &&
+    insertedLineCount(change.text) > 0 &&
+    change.range.start.line === sourceRange.endLine &&
+    change.range.start.character === 0 &&
+    change.range.end.line === sourceRange.endLine &&
+    change.range.end.character === 0
+  );
+}
+
+function isZeroLengthChange(change: vscode.TextDocumentContentChangeEvent): boolean {
+  return (
+    change.range.start.line === change.range.end.line &&
+    change.range.start.character === change.range.end.character
+  );
+}
+
+function insertedLineCount(text: string): number {
+  let count = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "\n") {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function removedLineCount(range: vscode.Range): number {
+  return range.end.line - range.start.line;
 }

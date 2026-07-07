@@ -226,6 +226,142 @@ describe("preview session", () => {
     assert.equal(snapshot?.locked, true);
   });
 
+  it("updates a locked Markdown fence after a tracked body edit", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7, 1);
+    const edited = textEditor(uri, "notes.md", markdownWithEditedSecondFence(), "markdown", 7, 2);
+
+    session.rememberResource(original.document.uri);
+    assert.equal(session.selectSource(original, [original], "fence-2"), true);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    session.trackDocumentChange(documentChange(edited.document, 7, 7, "Alice->>Bob: hello"));
+    const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, uri);
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.input.source, "sequenceDiagram\nAlice->>Bob: hello");
+    assert.equal(snapshot?.documentVersion, 2);
+    assert.equal(snapshot?.locked, true);
+    assert.equal(snapshot?.selected, true);
+  });
+
+  it("keeps the locked snapshot when a tracked Markdown edit skips a document version", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7, 1);
+    const edited = textEditor(uri, "notes.md", markdownWithEditedSecondFence(), "markdown", 7, 3);
+
+    session.rememberResource(original.document.uri);
+    assert.equal(session.selectSource(original, [original], "fence-2"), true);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    session.trackDocumentChange(documentChange(edited.document, 7, 7, "Alice->>Bob: hello"));
+    const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, uri);
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.input.source, "sequenceDiagram\nA->>B: hi");
+    assert.equal(snapshot?.documentVersion, 1);
+    assert.equal(snapshot?.locked, true);
+  });
+
+  it("updates a locked Markdown fence range after a tracked body line insertion", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7, 1);
+    const edited = textEditor(uri, "notes.md", markdownWithInsertedSecondFenceLine(), "markdown", 7, 2);
+
+    session.rememberResource(original.document.uri);
+    assert.equal(session.selectSource(original, [original], "fence-2"), true);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    session.trackDocumentChange(documentChange(edited.document, 8, 8, "Bob-->>Alice: ok\n"));
+    const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, uri);
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.input.source, "sequenceDiagram\nA->>B: hi\nBob-->>Alice: ok");
+    assert.deepEqual(snapshot?.input.sourceRange, { startLine: 5, endLine: 9 });
+    assert.equal(snapshot?.locked, true);
+    assert.equal(snapshot?.selected, true);
+  });
+
+  it("tracks a locked Markdown fence across a preceding fence insertion before body edit", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7, 1);
+    const inserted = textEditor(uri, "notes.md", markdownWithInsertedFence(), "markdown", 12, 2);
+    const edited = textEditor(
+      uri,
+      "notes.md",
+      markdownWithInsertedFenceAndEditedOriginalSecondFence(),
+      "markdown",
+      12,
+      3,
+    );
+
+    session.rememberResource(original.document.uri);
+    assert.equal(session.selectSource(original, [original], "fence-2"), true);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    session.trackDocumentChange(
+      documentChange(inserted.document, 5, 5, "```mermaid\nstateDiagram-v2\n[*] --> Inserted\n```\n\n"),
+    );
+    const afterInsert = session.createSnapshot(inserted, [inserted], emptyDiagnostics);
+    assert.equal(afterInsert?.input.sourceId, "fence-3");
+    assert.equal(afterInsert?.input.source, "sequenceDiagram\nA->>B: hi");
+    session.rememberSnapshot(assertDefined(afterInsert));
+
+    session.trackDocumentChange(documentChange(edited.document, 12, 12, "Alice->>Bob: hello"));
+    const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, uri);
+    assert.equal(snapshot?.input.sourceId, "fence-3");
+    assert.equal(snapshot?.input.source, "sequenceDiagram\nAlice->>Bob: hello");
+    assert.deepEqual(snapshot?.input.sourceRange, { startLine: 10, endLine: 13 });
+    assert.equal(snapshot?.locked, true);
+    assert.equal(snapshot?.selected, true);
+  });
+
+  it("keeps the locked snapshot when a tracked change replaces the fence delimiters", () => {
+    const session = new PreviewSession();
+    const uri = "file:///workspace/notes.md";
+    const original = textEditor(uri, "notes.md", markdownWithTwoFences(), "markdown", 7, 1);
+    const edited = textEditor(uri, "notes.md", markdownWithReplacementSecondFence(), "markdown", 7, 2);
+
+    session.rememberResource(original.document.uri);
+    assert.equal(session.selectSource(original, [original], "fence-2"), true);
+    const initial = session.createSnapshot(original, [original], emptyDiagnostics);
+    assert.equal(initial?.input.sourceId, "fence-2");
+    session.rememberSnapshot(assertDefined(initial));
+    assert.equal(session.setLocked(true), true);
+
+    session.trackDocumentChange(
+      documentChange(edited.document, 5, 8, "```mermaid\npie title Replacement\n  \"A\" : 1\n```"),
+    );
+    const snapshot = session.createSnapshot(edited, [edited], emptyDiagnostics);
+
+    assert.equal(snapshot?.documentUri, uri);
+    assert.equal(snapshot?.input.sourceId, "fence-2");
+    assert.equal(snapshot?.input.source, "sequenceDiagram\nA->>B: hi");
+    assert.equal(snapshot?.documentVersion, 1);
+    assert.equal(snapshot?.locked, true);
+  });
+
   it("locks the current Markdown fence even when it was selected by cursor position", () => {
     const session = new PreviewSession();
     const uri = "file:///workspace/notes.md";
@@ -266,6 +402,7 @@ function textEditor(
   text: string,
   languageId = "mermaid",
   activeLine = 0,
+  version = 1,
 ): vscode.TextEditor {
   const lines = text.split(/\r?\n/);
   return {
@@ -276,7 +413,7 @@ function textEditor(
       },
       languageId,
       fileName,
-      version: 1,
+      version,
       lineCount: lines.length,
       getText: () => text,
       lineAt: (lineIndex: number) => ({
@@ -289,6 +426,28 @@ function textEditor(
       },
     },
   } as unknown as vscode.TextEditor;
+}
+
+function documentChange(
+  document: vscode.TextDocument,
+  startLine: number,
+  endLine: number,
+  text: string,
+): vscode.TextDocumentChangeEvent {
+  return {
+    document,
+    contentChanges: [
+      {
+        range: {
+          start: { line: startLine, character: 0 },
+          end: { line: endLine, character: 0 },
+        },
+        rangeOffset: 0,
+        rangeLength: 0,
+        text,
+      },
+    ],
+  } as unknown as vscode.TextDocumentChangeEvent;
 }
 
 function markdownWithTwoFences(): string {
@@ -305,14 +464,70 @@ function markdownWithTwoFences(): string {
   ].join("\n");
 }
 
+function markdownWithEditedSecondFence(): string {
+  return [
+    "```mermaid",
+    "flowchart TD",
+    "A --> B",
+    "```",
+    "",
+    "```mermaid",
+    "sequenceDiagram",
+    "Alice->>Bob: hello",
+    "```",
+  ].join("\n");
+}
+
+function markdownWithInsertedSecondFenceLine(): string {
+  return [
+    "```mermaid",
+    "flowchart TD",
+    "A --> B",
+    "```",
+    "",
+    "```mermaid",
+    "sequenceDiagram",
+    "A->>B: hi",
+    "Bob-->>Alice: ok",
+    "```",
+  ].join("\n");
+}
+
 function markdownWithInsertedFence(): string {
   return [
+    "```mermaid",
+    "flowchart TD",
+    "A --> B",
+    "```",
+    "",
     "```mermaid",
     "stateDiagram-v2",
     "[*] --> Inserted",
     "```",
     "",
-    markdownWithTwoFences(),
+    "```mermaid",
+    "sequenceDiagram",
+    "A->>B: hi",
+    "```",
+  ].join("\n");
+}
+
+function markdownWithInsertedFenceAndEditedOriginalSecondFence(): string {
+  return [
+    "```mermaid",
+    "flowchart TD",
+    "A --> B",
+    "```",
+    "",
+    "```mermaid",
+    "stateDiagram-v2",
+    "[*] --> Inserted",
+    "```",
+    "",
+    "```mermaid",
+    "sequenceDiagram",
+    "Alice->>Bob: hello",
+    "```",
   ].join("\n");
 }
 

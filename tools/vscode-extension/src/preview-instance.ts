@@ -189,6 +189,10 @@ export class PreviewInstance implements vscode.Disposable {
     return trackedUri === uri.toString();
   }
 
+  trackDocumentChange(event: vscode.TextDocumentChangeEvent): void {
+    this.session.trackDocumentChange(event);
+  }
+
   async showSource(): Promise<boolean> {
     const snapshot = this.session.snapshot;
     if (!snapshot) {

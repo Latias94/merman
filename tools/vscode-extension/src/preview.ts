@@ -70,6 +70,7 @@ class MermanPreviewManager implements vscode.Disposable {
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument((event) => {
         for (const instance of this.instances) {
+          instance.trackDocumentChange(event);
           const trackedEditor = instance.resolvePreviewEditor();
           if (!isTrackedPreviewDocumentChange(trackedEditor, event.document) && !instance.tracksDocument(event.document.uri)) {
             continue;
