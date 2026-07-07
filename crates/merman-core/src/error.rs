@@ -110,6 +110,12 @@ impl ParseDiagnostic {
         self
     }
 
+    pub(crate) fn without_span(mut self) -> Self {
+        self.span = None;
+        self.span_kind = ParseDiagnosticSpanKind::Fallback;
+        self
+    }
+
     pub fn message(&self) -> &str {
         &self.message
     }

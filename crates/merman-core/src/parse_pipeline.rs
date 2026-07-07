@@ -127,13 +127,32 @@ impl<'a> EditorParseSourceMap<'a> {
                 diagnostic,
             } => Error::DiagramParse {
                 diagram_type,
-                diagnostic: diagnostic.map_span(|span| self.remap_source_span(span)),
+                diagnostic: self.remap_parse_diagnostic(diagnostic),
             },
             err => err,
         }
     }
 
+    fn remap_parse_diagnostic(&self, diagnostic: crate::ParseDiagnostic) -> crate::ParseDiagnostic {
+        let Some(span) = diagnostic.span() else {
+            return diagnostic;
+        };
+        match self.try_remap_source_span(span) {
+            Some(remapped) => diagnostic.map_span(|_| remapped),
+            None => diagnostic.without_span(),
+        }
+    }
+
+    fn try_remap_source_span(&self, span: SourceSpan) -> Option<SourceSpan> {
+        let start = self.try_remap_offset(span.start)?;
+        let end = self.try_remap_offset(span.end)?;
+        (start <= end).then(|| SourceSpan::new(start, end))
+    }
+
     fn remap_offset(&self, offset: usize) -> usize {
+        if let Some(remapped) = self.try_remap_offset(offset) {
+            return remapped;
+        }
         match &self.remap {
             EditorSourceRemap::None => offset,
             EditorSourceRemap::Offset(base) => offset + base,
@@ -148,6 +167,23 @@ impl<'a> EditorParseSourceMap<'a> {
                     .copied()
                     .unwrap_or_else(|| normalized_to_original.last().copied().unwrap_or(offset))
             }
+        }
+    }
+
+    fn try_remap_offset(&self, offset: usize) -> Option<usize> {
+        if offset > self.parser_input.len() {
+            return None;
+        }
+        match &self.remap {
+            EditorSourceRemap::None => Some(offset),
+            EditorSourceRemap::Offset(base) => base.checked_add(offset),
+            EditorSourceRemap::ParserInputCoordinates => None,
+            EditorSourceRemap::Normalized {
+                normalized_offset,
+                normalized_to_original,
+            } => normalized_to_original
+                .get(normalized_offset.checked_add(offset)?)
+                .copied(),
         }
     }
 }
@@ -183,6 +219,69 @@ fn normalize_original_with_offsets(original: &str) -> (String, Vec<usize>) {
 
     normalized_to_original.push(original.len());
     (normalized, normalized_to_original)
+}
+
+#[cfg(test)]
+mod editor_parse_source_map_tests {
+    use super::EditorParseSourceMap;
+    use crate::{Error, ParseDiagnosticSpanKind, SourceSpan};
+
+    #[test]
+    fn parser_input_coordinate_parse_error_drops_span() {
+        let map = EditorParseSourceMap::new(
+            "flowchart TD\nA%% removed comment %%-->B\n",
+            "flowchart TD\nA-->B\n",
+        );
+        let error = map.remap_parse_error(Error::diagram_parse_exact(
+            "flowchart-v2",
+            "bad parser input span",
+            SourceSpan::new(13, 14),
+        ));
+
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), None);
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
+    }
+
+    #[test]
+    fn normalized_parse_error_remaps_valid_crlf_span() {
+        let original = "flowchart TD\r\nA-->B\r\n";
+        let preprocessed = "flowchart TD\nA-->B\n";
+        let target = preprocessed.find('B').expect("parser input target");
+        let map = EditorParseSourceMap::new(original, preprocessed);
+        let error = map.remap_parse_error(Error::diagram_parse_exact(
+            "flowchart-v2",
+            "bad parser input span",
+            SourceSpan::new(target, target + 1),
+        ));
+
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected parse diagnostic");
+        };
+        let span = diagnostic.span().expect("remapped span");
+        assert_eq!(&original[span.start..span.end], "B");
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn normalized_parse_error_drops_out_of_bounds_span() {
+        let original = "flowchart TD\r\nA-->B\r\n";
+        let preprocessed = "flowchart TD\nA-->B\n";
+        let map = EditorParseSourceMap::new(original, preprocessed);
+        let error = map.remap_parse_error(Error::diagram_parse_exact(
+            "flowchart-v2",
+            "bad parser input span",
+            SourceSpan::new(preprocessed.len() + 1, preprocessed.len() + 2),
+        ));
+
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), None);
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
+    }
 }
 
 impl<'a> ParsePipeline<'a> {

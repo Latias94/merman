@@ -77,6 +77,28 @@ fn analyze_parse_failure_remaps_crlf_frontmatter_spans_and_deduplicates_recovery
     assert_single_remapped_flowchart_parse_error(source, 5, 5);
 }
 
+#[test]
+fn analyze_parse_failure_downgrades_unmapped_parser_input_spans_to_fallback() {
+    let source = "---\ntitle: quoted\n---\nflowchart TD\nA[unterminated #quot;\n";
+    let analyzer = Analyzer::new();
+    let payload = analyzer.analyze(source);
+
+    assert!(!payload.valid);
+    let diagnostic = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == crate::rules::DIAGRAM_PARSE_RULE_ID)
+        .expect("parse error diagnostic");
+    let span = diagnostic.span.as_ref().expect("fallback parse span");
+    assert_eq!(span.byte_start, 0);
+    assert_eq!(span.byte_end, source.len());
+    assert!(diagnostic.related.iter().any(|related| {
+        related
+            .message
+            .contains("Parser did not report a precise source location")
+    }));
+}
+
 fn assert_single_remapped_flowchart_parse_error(source: &str, line: usize, column: usize) {
     let analyzer = Analyzer::new();
     let payload = analyzer.analyze(source);
