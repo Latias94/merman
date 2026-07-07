@@ -74,8 +74,8 @@ semantic-token delta state, custom requests, and `tower_lsp::lsp_types` projecti
   `merman.compatibility.config.deprecated_flowchart_html_labels` and
   `merman.compatibility.config.deprecated_external_diagram_loading` can be core-profile warnings
   when the pinned Mermaid source or docs expose the same warning. The flowchart htmlLabels rule
-  also carries a preferred migration quickfix into root `htmlLabels` when the source shape allows
-  it.
+  reports deprecated `flowchart.htmlLabels` but does not provide an automatic migration quickfix,
+  because moving it to root `htmlLabels` can change Mermaid rendering semantics.
 - Full-document, range, and delta semantic tokens are role-aware and parser-backed; configuration
   changes trigger `workspace/semanticTokens/refresh` when the client advertises refresh support,
   and delta requests reuse cached snapshot token state when the previous result id matches.

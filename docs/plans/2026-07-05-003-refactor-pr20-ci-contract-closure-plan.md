@@ -173,7 +173,7 @@ The largest integration risk is that multiple units may touch analysis rule meta
 | Preserving both `warnings` and `warningFacts` could duplicate data and confuse snapshots. | Make `warningFacts` canonical, keep `warnings` as a compatibility alias, and assert both explicitly in parse/snapshot tests. |
 | Resource-rule CLI behavior changes tests that previously expected disable/override success. | Reframe CLI tests around rejected configuration or hard-guard behavior and keep analyzer tests as the source of truth. |
 | LSP all-document refresh could hurt large-workspace latency. | Batch refreshes, check staleness/cancellation between batches, and test both completeness and stale-document avoidance. |
-| Release workflow hardening can break legitimate manual release refs. | Validate source refs before checkout, document accepted protected-branch/tag/SHA forms in workflow help or test fixtures, and minimize publish-capable permissions by job. |
+| Release workflow hardening can break legitimate manual release refs. | Validate source refs before checkout, document accepted protected-branch or matching release-tag forms in workflow help or test fixtures, and minimize publish-capable permissions by job. |
 | WASM reuse work can add an unnecessary public API. | Measure repeated parse cost first, prefer internal caching when sufficient, and export a session handle only when current editor flows justify it. |
 
 ### Sources and Research

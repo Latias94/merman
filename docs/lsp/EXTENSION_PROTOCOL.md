@@ -83,7 +83,7 @@ Response:
       "default_profile": "core",
       "origin": "mermaid_compatibility",
       "configurable": true,
-      "fixable": true
+      "fixable": false
     },
     {
       "id": "merman.compatibility.config.deprecated_external_diagram_loading",

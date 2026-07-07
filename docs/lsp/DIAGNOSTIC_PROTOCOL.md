@@ -41,7 +41,8 @@ analysis path, and serves both standard push diagnostics and LSP 3.17 pull diagn
   workspace scanning exists.
 - Workspace symbols are wired from tracked document snapshots.
 - Core config diagnostics include source-backed Mermaid compatibility warnings such as deprecated
-  directive usage of `flowchart.htmlLabels` (now with a preferred migration quickfix) and
+  directive usage of `flowchart.htmlLabels` (diagnostic-only because automatic migration can
+  change rendering semantics) and
   deprecated external diagram loading config; diagnostics without `DiagnosticFix` metadata do not
   produce quickfixes.
 - Recommended-profile authoring hints include the canonical `init` alias reminder and the

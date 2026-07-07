@@ -418,7 +418,7 @@ fn cli_lint_rules_lists_rule_catalog_json() {
         .iter()
         .find(|rule| rule["id"] == "merman.compatibility.config.deprecated_flowchart_html_labels")
         .expect("deprecated flowchart htmlLabels rule");
-    assert_eq!(flowchart_html_labels["fixable"], true);
+    assert_eq!(flowchart_html_labels["fixable"], false);
 }
 
 #[test]

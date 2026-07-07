@@ -197,7 +197,7 @@ Remaining fallback ledger:
 - Config lint: Mermaid-backed compatibility warnings can be enabled in the core profile when
   upstream emits or documents the same warning.
   `merman.compatibility.config.deprecated_flowchart_html_labels` reports deprecated
-  `flowchart.htmlLabels` and carries a preferred quickfix to move it to root `htmlLabels`, while
+  `flowchart.htmlLabels` without an automatic quickfix, while
   `merman.compatibility.config.deprecated_external_diagram_loading` reports deprecated
   `lazyLoadedDiagrams` / `loadExternalDiagramsAtStartup` directive config. Both intentionally
   remain source-backed compatibility warnings.
