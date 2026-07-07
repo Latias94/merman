@@ -105,11 +105,13 @@ jobs:
 
           is_release_tag "$RELEASE_TAG" || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
           elif is_release_tag "$SOURCE_REF" || is_release_tag_ref "$SOURCE_REF"; then
             source_tag="${SOURCE_REF#refs/tags/}"
             [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
+            validated_source_ref="refs/tags/$source_tag"
           else
             fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
           fi
@@ -123,7 +125,7 @@ jobs:
           fi
 
           {
-            printf 'source_ref=%s\n' "$SOURCE_REF"
+            printf 'source_ref=%s\n' "$validated_source_ref"
             printf 'release_tag=%s\n' "$RELEASE_TAG"
             printf 'version=%s\n' "$VERSION"
             printf 'npm_dist_tag=%s\n' "$npm_dist_tag"

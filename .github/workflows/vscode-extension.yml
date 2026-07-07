@@ -72,15 +72,17 @@ jobs:
 
           SOURCE_REF="$DISPATCH_SOURCE_REF"
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          validated_source_ref="$SOURCE_REF"
           if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
             :
           elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
             :
+            validated_source_ref="refs/tags/${SOURCE_REF#refs/tags/}"
           else
             fail "source_ref must be main, refs/heads/main, a version tag, or refs/tags/<release-tag>."
           fi
 
-          printf 'source_ref=%s\n' "$SOURCE_REF" >> "$GITHUB_OUTPUT"
+          printf 'source_ref=%s\n' "$validated_source_ref" >> "$GITHUB_OUTPUT"
 
   package:
     needs: validate-inputs

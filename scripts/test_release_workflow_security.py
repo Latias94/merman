@@ -263,6 +263,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
                 )
                 self.assertEqual(outputs["release_tag"], release_tag)
+                self.assertEqual(outputs["source_ref"], f"refs/tags/{release_tag}")
                 self.assertEqual(outputs["version"], release_tag.removeprefix("v"))
                 self.assertEqual(outputs["npm_dist_tag"], expected_dist_tag)
 
@@ -301,6 +302,25 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                     msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
                 )
                 self.assertEqual(outputs["source_ref"], "main")
+
+    def test_validation_scripts_canonicalize_tag_source_refs(self) -> None:
+        cases = ["v1.2.3", "refs/tags/v1.2.3"]
+        for path in SOURCE_REF_WORKFLOWS:
+            for source_ref in cases:
+                with self.subTest(workflow=path.name, source_ref=source_ref):
+                    result, outputs = run_workflow_validation(
+                        path,
+                        release_tag="v1.2.3",
+                        version="1.2.3",
+                        source_ref=source_ref,
+                    )
+
+                    self.assertEqual(
+                        result.returncode,
+                        0,
+                        msg=f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}",
+                    )
+                    self.assertEqual(outputs["source_ref"], "refs/tags/v1.2.3")
 
     def test_validation_scripts_reject_multiline_source_ref_values(self) -> None:
         for path in SOURCE_REF_WORKFLOWS:
