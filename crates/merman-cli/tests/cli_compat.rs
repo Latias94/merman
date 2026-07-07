@@ -716,6 +716,36 @@ fn cli_lint_reports_markdown_fence_path_from_stdin_file_name() {
 }
 
 #[test]
+fn cli_lint_reports_markdown_fence_failure_as_json_from_stdin_file_name() {
+    let output = run_with_stdin_input(
+        &[
+            "lint",
+            "--markdown",
+            "--stdin-file-name",
+            "notes.md",
+            "--format",
+            "json",
+            "-",
+        ],
+        b"before\n```mermaid\nflowchart TD\nA -->\n```\nafter\n",
+    );
+
+    assert!(
+        !output.status.success(),
+        "lint should fail on invalid markdown"
+    );
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], false);
+    assert_eq!(payload["source"]["path"], "notes.md");
+    assert_eq!(payload["summary"]["errors"], 1);
+    let diagnostic = &payload["diagnostics"][0];
+    assert_eq!(diagnostic["id"], "merman.parse.diagram_parse");
+    assert_eq!(diagnostic["span"]["line"], 4);
+    assert_eq!(diagnostic["span"]["column"], 6);
+}
+
+#[test]
 fn cli_parse_gantt_fixed_today_makes_missing_year_dates_deterministic() {
     let output = run_with_stdin(
         &[

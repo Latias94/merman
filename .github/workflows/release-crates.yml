@@ -82,10 +82,11 @@ jobs:
             printf 'version=%s\n' "$VERSION"
           } >> "$GITHUB_OUTPUT"
 
-  publish:
+  preflight:
     needs: validate-inputs
     runs-on: ubuntu-24.04
-    environment: crates.io
+    outputs:
+      crate_versions: ${{ steps.crates.outputs.crate_versions }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -127,7 +128,8 @@ jobs:
       - name: Verify release crate publish order
         run: python3 scripts/verify-release-crate-order.py
 
-      - name: Publish crates in dependency order
+      - name: Preflight crates in dependency order
+        id: crates
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -173,38 +175,13 @@ jobs:
             local crate="$1"
             local crate_version="$2"
 
-            echo "Dry-running $crate $crate_version"
-            cargo publish -p "$crate" --locked --dry-run --registry crates-io
-          }
-
-          publish_crate_version() {
-            local crate="$1"
-            local crate_version="$2"
-
             if crate_version_available "$crate" "$crate_version"; then
-              echo "Skipping $crate $crate_version because it is already published"
+              echo "Skipping dry-run for $crate $crate_version because it is already published"
               return 0
             fi
 
-            dry_run_crate_version "$crate" "$crate_version"
-
-            echo "Publishing $crate $crate_version"
-            for attempt in 1 2 3; do
-              if cargo publish -p "$crate" --locked --no-verify --registry crates-io --token "${{ secrets.CARGO_REGISTRY_TOKEN }}"; then
-                wait_for_crate_version "$crate" "$crate_version"
-                return $?
-              fi
-
-              if crate_version_available "$crate" "$crate_version"; then
-                echo "$crate $crate_version became visible after a failed publish attempt; continuing"
-                return 0
-              fi
-
-              if [ "$attempt" = 3 ]; then
-                return 1
-              fi
-              sleep $((attempt * 30))
-            done
+            echo "Dry-running $crate $crate_version"
+            cargo publish -p "$crate" --locked --dry-run --registry crates-io
           }
 
           crates=(
@@ -230,6 +207,116 @@ jobs:
             merman-wasm
           )
 
+          crate_versions=()
           for crate in "${crates[@]}"; do
-            publish_crate_version "$crate" "$(workspace_crate_version "$crate")"
+            crate_version="$(workspace_crate_version "$crate")"
+            dry_run_crate_version "$crate" "$crate_version"
+            crate_versions+=("${crate}=${crate_version}")
           done
+
+          {
+            echo 'crate_versions<<EOF'
+            printf '%s\n' "${crate_versions[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: [validate-inputs, preflight]
+    runs-on: ubuntu-24.04
+    environment: crates.io
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Upload crates to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CRATE_VERSIONS: ${{ needs.preflight.outputs.crate_versions }}
+        run: |
+          set -euo pipefail
+
+          crate_version_available() {
+            local crate="$1"
+            local version="$2"
+            local tmpdir="${RUNNER_TEMP:-/tmp}"
+
+            (
+              cd "$tmpdir"
+              cargo info "$crate@$version" --registry crates-io >/dev/null 2>&1
+            )
+          }
+
+          wait_for_crate_version() {
+            local crate="$1"
+            local version="$2"
+
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if crate_version_available "$crate" "$version"; then
+                echo "$crate $version is visible in crates.io"
+                return 0
+              fi
+
+              if [ "$attempt" = 12 ]; then
+                echo "::error::$crate $version was published but did not become visible in crates.io in time."
+                return 1
+              fi
+
+              sleep 15
+            done
+          }
+
+          validate_crate_version_line() {
+            local crate="$1"
+            local version="$2"
+
+            if [[ ! "$crate" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+              echo "::error::Invalid crate name in preflight output: $crate"
+              return 1
+            fi
+
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+              echo "::error::Invalid crate version in preflight output for $crate: $version"
+              return 1
+            fi
+          }
+
+          publish_crate_version() {
+            local crate="$1"
+            local crate_version="$2"
+
+            if crate_version_available "$crate" "$crate_version"; then
+              echo "Skipping $crate $crate_version because it is already published"
+              return 0
+            fi
+
+            echo "Publishing $crate $crate_version"
+            for attempt in 1 2 3; do
+              if cargo publish -p "$crate" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"; then
+                wait_for_crate_version "$crate" "$crate_version"
+                return $?
+              fi
+
+              if wait_for_crate_version "$crate" "$crate_version"; then
+                echo "$crate $crate_version became visible after a failed publish attempt; continuing"
+                return 0
+              fi
+
+              if [ "$attempt" = 3 ]; then
+                return 1
+              fi
+              sleep $((attempt * 30))
+            done
+          }
+
+          while IFS='=' read -r crate crate_version; do
+            if [ -z "$crate" ]; then
+              continue
+            fi
+            validate_crate_version_line "$crate" "$crate_version"
+            publish_crate_version "$crate" "$crate_version"
+          done <<< "$CRATE_VERSIONS"

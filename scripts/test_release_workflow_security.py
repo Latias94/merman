@@ -320,16 +320,28 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertIn("contents: write", upload_job)
                 self.assertIn("gh release upload", upload_job)
 
-    def test_crates_token_is_only_used_for_no_verify_upload(self) -> None:
+    def test_crates_token_upload_step_is_isolated_from_preflight(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-crates.yml")
-        publish_step = indented_block(text, "- name: Publish crates in dependency order")
+        preflight_job = indented_block(text, "preflight:")
+        publish_job = indented_block(text, "publish:")
+        preflight_step = indented_block(text, "- name: Preflight crates in dependency order")
+        upload_step = indented_block(text, "- name: Upload crates to crates.io")
+        upload_run = upload_step.split("run: |", 1)[1]
 
-        self.assertNotIn("- name: Preflight crates in dependency order", text)
-        self.assertIn("--dry-run", publish_step)
-        self.assertIn("--no-verify", publish_step)
-        self.assertIn('--token "${{ secrets.CARGO_REGISTRY_TOKEN }}"', publish_step)
-        self.assertNotIn("CARGO_REGISTRY_TOKEN:", publish_step)
-        self.assertLess(publish_step.index("--dry-run"), publish_step.index("--no-verify"))
+        self.assertIn("--dry-run", preflight_step)
+        self.assertNotIn("CARGO_REGISTRY_TOKEN", preflight_job)
+        self.assertIn("needs: [validate-inputs, preflight]", publish_job)
+        self.assertIn(
+            "CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}",
+            upload_step,
+        )
+        self.assertIn('--token "$CARGO_REGISTRY_TOKEN"', upload_run)
+        self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", upload_run)
+        self.assertNotIn("--dry-run", upload_run)
+        self.assertGreaterEqual(
+            upload_run.count('wait_for_crate_version "$crate" "$crate_version"'),
+            2,
+        )
 
     def test_trusted_npm_publish_job_only_downloads_artifact_and_publishes(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-web.yml")

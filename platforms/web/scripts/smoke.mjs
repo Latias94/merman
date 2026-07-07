@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { parseSmokeCli, smokeUsage } from "./smoke-cli.mjs";
 import {
   allSurfaceRuntimeExportNames,
@@ -77,7 +77,7 @@ const {
   manifestRel,
 } = parseCli(args);
 
-const api = await import(resolveEntryModuleHref(entrySubpath));
+const api = await import(toPackageSpecifier(entrySubpath));
 const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
 const surfaceContract = surfaceContractForEntry(entrySubpath);
 
@@ -710,8 +710,8 @@ async function runSameProcessSurfaceSmoke() {
     svg: { pipeline: "readable" },
     layout: { text_measurer: "deterministic" },
   };
-  const core = await import(resolveEntryModuleHref("./core"));
-  const full = await import(resolveEntryModuleHref("./full"));
+  const core = await import(toPackageSpecifier("./core"));
+  const full = await import(toPackageSpecifier("./full"));
 
   await core.initMerman({
     wasm: {
@@ -779,20 +779,10 @@ function assertExport(moduleApi, name, enabled) {
   }
 }
 
-function resolveEntryModuleHref(subpath) {
-  if (subpath === "." || subpath === "./index") {
-    return pathToFileURL(path.join(packageRoot, "dist", "index.js")).href;
-  }
-  const trimmed = subpath.replace(/^\.\//, "").replace(/^\//, "");
-  if (["core", "render", "ascii", "full"].includes(trimmed)) {
-    return pathToFileURL(
-      path.join(packageRoot, "dist", "surfaces", `${trimmed}.js`)
-    ).href;
-  }
-  return pathToFileURL(path.join(packageRoot, "dist", `${trimmed}.js`)).href;
-}
-
 function toPackageSpecifier(subpath) {
+  if (subpath === "." || subpath === "" || subpath === "./index") {
+    return "@mermanjs/web";
+  }
   if (subpath.startsWith("./")) {
     return `@mermanjs/web/${subpath.slice(2)}`;
   }
