@@ -341,6 +341,12 @@ pub(crate) fn render_model_kind_supports_diagram_type(
         .any(|fact| fact.model_kind == model_kind && fact.id == diagram_type)
 }
 
+pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
+    RENDER_PARSER_FACTS
+        .iter()
+        .find_map(|fact| (fact.id == diagram_type).then_some(fact.model_kind))
+}
+
 pub(crate) fn permits_json_render_fallback(
     profile: BaselineRegistryProfile,
     diagram_type: &str,

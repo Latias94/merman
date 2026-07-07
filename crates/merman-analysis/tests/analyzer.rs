@@ -556,6 +556,33 @@ fn flowchart_missing_direction_is_authoring_hint_in_recommended_profile() {
 }
 
 #[test]
+fn flowchart_missing_direction_fix_span_survives_frontmatter_preprocess() {
+    let source = "---\ntitle: Demo\n---\nflowchart\nA[Hello] --> B[World]\n";
+    let analyzer = Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    ));
+    let payload = analyzer.analyze(source);
+
+    assert!(payload.valid);
+    let diagnostic = payload
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == "merman.authoring.flowchart.explicit_direction")
+        .expect("missing direction diagnostic");
+    let span = diagnostic.span.as_ref().expect("diagnostic span");
+    assert_eq!(&source[span.byte_start..span.byte_end], "flowchart");
+
+    let edit = &diagnostic.fixes[0].edits[0];
+    assert_eq!(edit.replacement, " TB");
+    assert_eq!(
+        edit.span.byte_start,
+        source.find("flowchart").unwrap() + "flowchart".len()
+    );
+    assert_eq!(edit.span.byte_end, edit.span.byte_start);
+    assert_eq!(source[edit.span.byte_start..].chars().next(), Some('\n'));
+}
+
+#[test]
 fn flowchart_missing_direction_rule_can_be_disabled() {
     let options = AnalysisOptions::default().with_rule_config(
         AnalysisRuleConfig::default()
@@ -623,6 +650,16 @@ fn prefer_frontmatter_config_for_init_directives_is_a_recommended_hint() {
 #[test]
 fn class_html_labels_config_is_not_a_core_compatibility_warning() {
     let source = "%%{init: { \"class\": { \"htmlLabels\": true } }}%%\nclassDiagram\nA <|-- B\n";
+    let payload = analyze(source);
+
+    assert!(payload.valid);
+    assert_eq!(payload.summary.warnings, 0);
+    assert!(payload.diagnostics.is_empty());
+}
+
+#[test]
+fn class_config_wrapped_html_labels_config_is_not_a_core_compatibility_warning() {
+    let source = "%%{init: { \"config\": { \"htmlLabels\": true } }}%%\nclassDiagram\nA <|-- B\n";
     let payload = analyze(source);
 
     assert!(payload.valid);

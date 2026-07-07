@@ -10,6 +10,24 @@ pub(crate) struct InitDirectiveSpan {
     pub(crate) keyword: ByteSpan,
 }
 
+pub(crate) fn frontmatter_config_key_spans(
+    source: &str,
+    matching_paths: &[&[&str]],
+) -> Vec<ByteSpan> {
+    let Some(frontmatter) = merman_core::preprocess::split_frontmatter_block(source) else {
+        return Vec::new();
+    };
+
+    FrontmatterConfigScanner::new(
+        source,
+        frontmatter.body.start,
+        frontmatter.body.end,
+        frontmatter.indent,
+        matching_paths,
+    )
+    .matching_config_key_spans()
+}
+
 pub(crate) fn directive_keyword_spans(source: &str) -> Vec<ByteSpan> {
     directive_spans(source)
         .into_iter()
@@ -404,6 +422,220 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
         let ch = self.peek_char()?;
         self.pos += ch.len_utf8();
         Some(ch)
+    }
+}
+
+struct FrontmatterConfigScanner<'source, 'query> {
+    source: &'source str,
+    body_start: usize,
+    body_end: usize,
+    indent: &'source str,
+    matching_paths: &'query [&'query [&'query str]],
+}
+
+impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
+    fn new(
+        source: &'source str,
+        body_start: usize,
+        body_end: usize,
+        indent: &'source str,
+        matching_paths: &'query [&'query [&'query str]],
+    ) -> Self {
+        Self {
+            source,
+            body_start,
+            body_end,
+            indent,
+            matching_paths,
+        }
+    }
+
+    fn matching_config_key_spans(&self) -> Vec<ByteSpan> {
+        let mut spans = Vec::new();
+        let mut stack: Vec<(usize, &'source str)> = Vec::new();
+        let mut line_start = self.body_start;
+
+        while line_start < self.body_end {
+            let line_end_with_newline = self.source[line_start..self.body_end]
+                .find('\n')
+                .map_or(self.body_end, |relative| line_start + relative + 1);
+            let line_end = self.trim_line_end(line_start, line_end_with_newline);
+            self.collect_line_key_span(line_start, line_end, &mut stack, &mut spans);
+            line_start = line_end_with_newline;
+        }
+
+        spans
+    }
+
+    fn collect_line_key_span(
+        &self,
+        line_start: usize,
+        line_end: usize,
+        stack: &mut Vec<(usize, &'source str)>,
+        spans: &mut Vec<ByteSpan>,
+    ) {
+        if line_start >= line_end {
+            return;
+        }
+
+        let Some(line) = self.source.get(line_start..line_end) else {
+            return;
+        };
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            return;
+        }
+        if !self.indent.is_empty() && !line.starts_with(self.indent) {
+            return;
+        }
+
+        let logical_start = line_start + self.indent.len();
+        let logical = &self.source[logical_start..line_end];
+        let content_offset = logical
+            .as_bytes()
+            .iter()
+            .position(|byte| *byte != b' ')
+            .unwrap_or(logical.len());
+        let indent = content_offset;
+        let content_start = logical_start + content_offset;
+        if self.source[content_start..line_end].starts_with('#') {
+            return;
+        }
+
+        let Some((key, value_start)) = self.parse_line_key(content_start, line_end) else {
+            return;
+        };
+        while stack.last().is_some_and(|(level, _)| *level >= indent) {
+            stack.pop();
+        }
+
+        let parents = stack.iter().map(|(_, name)| *name).collect::<Vec<_>>();
+        if self.matches_path(&parents, key.name) {
+            spans.push(key.span);
+        }
+
+        if self.value_starts_mapping(value_start, line_end) {
+            stack.push((indent, key.name));
+        }
+    }
+
+    fn parse_line_key(
+        &self,
+        content_start: usize,
+        line_end: usize,
+    ) -> Option<(ConfigKeySpan<'source>, usize)> {
+        match self.source[content_start..line_end].chars().next()? {
+            '"' | '\'' => self.parse_quoted_line_key(content_start, line_end),
+            '-' => None,
+            _ => self.parse_bare_line_key(content_start, line_end),
+        }
+    }
+
+    fn parse_quoted_line_key(
+        &self,
+        content_start: usize,
+        line_end: usize,
+    ) -> Option<(ConfigKeySpan<'source>, usize)> {
+        let quote = self.source[content_start..line_end].chars().next()?;
+        let name_start = content_start + quote.len_utf8();
+        let mut pos = name_start;
+        let mut escaped = false;
+
+        while pos < line_end {
+            let ch = self.source[pos..line_end].chars().next()?;
+            let next = pos + ch.len_utf8();
+            if escaped {
+                escaped = false;
+                pos = next;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                pos = next;
+                continue;
+            }
+            if ch == quote {
+                let name = self.source.get(name_start..pos)?;
+                let colon = self.colon_after_key(next, line_end)?;
+                return Some((
+                    ConfigKeySpan {
+                        name,
+                        span: ByteSpan {
+                            start: name_start,
+                            end: pos,
+                        },
+                    },
+                    colon + 1,
+                ));
+            }
+            pos = next;
+        }
+
+        None
+    }
+
+    fn parse_bare_line_key(
+        &self,
+        content_start: usize,
+        line_end: usize,
+    ) -> Option<(ConfigKeySpan<'source>, usize)> {
+        let colon = self.source[content_start..line_end].find(':')? + content_start;
+        let raw = self.source.get(content_start..colon)?;
+        let trimmed_end = raw.trim_end().len();
+        let name = raw.get(..trimmed_end)?;
+        if name.is_empty() {
+            return None;
+        }
+
+        Some((
+            ConfigKeySpan {
+                name,
+                span: ByteSpan {
+                    start: content_start,
+                    end: content_start + name.len(),
+                },
+            },
+            colon + 1,
+        ))
+    }
+
+    fn colon_after_key(&self, mut pos: usize, line_end: usize) -> Option<usize> {
+        while pos < line_end {
+            let ch = self.source[pos..line_end].chars().next()?;
+            if ch == ':' {
+                return Some(pos);
+            }
+            if !ch.is_whitespace() {
+                return None;
+            }
+            pos += ch.len_utf8();
+        }
+        None
+    }
+
+    fn value_starts_mapping(&self, value_start: usize, line_end: usize) -> bool {
+        self.source
+            .get(value_start..line_end)
+            .map(str::trim)
+            .is_some_and(|value| value.is_empty() || value.starts_with('#'))
+    }
+
+    fn matches_path(&self, parents: &[&str], key_name: &str) -> bool {
+        self.matching_paths.iter().any(|target| {
+            target.len() == parents.len() + 1
+                && target[..parents.len()] == *parents
+                && target[parents.len()] == key_name
+        })
+    }
+
+    fn trim_line_end(&self, line_start: usize, line_end_with_newline: usize) -> usize {
+        let mut line_end = line_end_with_newline;
+        if line_end > line_start && self.source.as_bytes()[line_end - 1] == b'\n' {
+            line_end -= 1;
+        }
+        if line_end > line_start && self.source.as_bytes()[line_end - 1] == b'\r' {
+            line_end -= 1;
+        }
+        line_end
     }
 }
 

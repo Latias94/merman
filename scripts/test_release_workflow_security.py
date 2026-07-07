@@ -329,7 +329,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         upload_step = indented_block(text, "- name: Upload crates to crates.io")
         upload_run = upload_step.split("run: |", 1)[1]
 
-        self.assertIn("--dry-run", preflight_step)
+        self.assertNotIn("--dry-run", preflight_step)
         self.assertNotIn("CARGO_REGISTRY_TOKEN", preflight_job)
         self.assertNotIn("secrets.", preflight_job)
         self.assertNotIn("environment: crates.io", preflight_job)
@@ -346,7 +346,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn('--token "$CARGO_REGISTRY_TOKEN"', upload_run)
         self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", upload_run)
         self.assertNotIn("${{ secrets.", upload_run)
-        self.assertNotIn("--dry-run", upload_run)
+        self.assertIn("--dry-run", upload_run)
+        self.assertLess(
+            upload_run.index('cargo publish -p "$crate" --locked --dry-run --registry crates-io'),
+            upload_run.index(
+                'cargo publish -p "$crate" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"'
+            ),
+        )
         self.assertIn('verify_workspace_crate_version "$crate" "$crate_version"', upload_run)
         self.assertIn('actual_version="$(workspace_crate_version "$crate")"', upload_run)
         self.assertGreaterEqual(

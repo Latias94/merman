@@ -304,7 +304,15 @@ async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_with_quickfi
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::to_value(InitializeParams::default()).unwrap())
+        .params(serde_json::json!({
+            "capabilities": {
+                "workspace": {
+                    "workspaceEdit": {
+                        "documentChanges": true
+                    }
+                }
+            }
+        }))
         .id(1)
         .finish();
     let init_response = service

@@ -86,32 +86,40 @@ pub fn analysis_options_from_json_value(
 pub fn analysis_options_json_from_json_value(
     value: &Value,
 ) -> Result<AnalysisOptionsJson, AnalysisOptionsJsonError> {
-    let options_value = analysis_options_root_value(value);
+    let options_value = analysis_options_root_value(value)?;
     serde_json::from_value(options_value.clone()).map_err(|err| {
         AnalysisOptionsJsonError::new(format!("invalid analysis options JSON: {err}"))
     })
 }
 
-fn analysis_options_root_value(value: &Value) -> &Value {
+fn analysis_options_root_value(value: &Value) -> Result<&Value, AnalysisOptionsJsonError> {
     let Value::Object(map) = value else {
-        return value;
+        return Ok(value);
     };
 
     if analysis_option_keys_present(map) {
-        return value;
+        if ["merman", "analysis"]
+            .iter()
+            .any(|key| map.get(*key).is_some_and(Value::is_object))
+        {
+            return Err(AnalysisOptionsJsonError::new(
+                "options JSON must not mix top-level analysis options with `analysis` or `merman` wrappers",
+            ));
+        }
+        return Ok(value);
     }
 
     for key in ["merman", "analysis"] {
         if let Some(Value::Object(inner)) = map.get(key) {
             if analysis_option_keys_present(inner) {
-                return map
+                return Ok(map
                     .get(key)
-                    .expect("checked key existence and object shape");
+                    .expect("checked key existence and object shape"));
             }
         }
     }
 
-    value
+    Ok(value)
 }
 
 fn analysis_option_keys_present(map: &Map<String, Value>) -> bool {
@@ -524,5 +532,27 @@ mod tests {
         );
         assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
         assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+    }
+
+    #[test]
+    fn shared_analysis_options_json_rejects_mixed_direct_and_namespaced_options() {
+        let mixed = serde_json::json!({
+            "resources": {
+                "max_source_bytes": 1024
+            },
+            "analysis": {
+                "lint": {
+                    "profile": "recommended"
+                }
+            }
+        });
+
+        let err = analysis_options_from_json_value(&mixed).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("must not mix top-level analysis options with `analysis` or `merman`"),
+            "unexpected error: {err}"
+        );
     }
 }

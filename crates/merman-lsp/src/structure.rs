@@ -1,4 +1,7 @@
-use crate::protocol::{core_position_from_lsp, document_uri_to_lsp, location_to_lsp, range_to_lsp};
+use crate::protocol::{
+    WorkspaceEditEncoding, core_position_from_lsp, document_uri_to_lsp, location_to_lsp,
+    range_to_lsp,
+};
 use crate::snapshot::DocumentSnapshot;
 use merman_analysis::EditorSymbolKind;
 #[cfg(test)]
@@ -24,13 +27,24 @@ use tower_lsp::lsp_types::{
 };
 
 #[allow(deprecated)]
+#[cfg(test)]
 pub fn document_symbols(snapshot: &DocumentSnapshot) -> DocumentSymbolResponse {
-    DocumentSymbolResponse::Nested(
-        core_document_symbols(snapshot.as_editor())
-            .into_iter()
-            .map(document_symbol_to_lsp)
-            .collect(),
-    )
+    document_symbols_with_hierarchy_support(snapshot, true)
+}
+
+#[allow(deprecated)]
+pub fn document_symbols_with_hierarchy_support(
+    snapshot: &DocumentSnapshot,
+    hierarchical_supported: bool,
+) -> DocumentSymbolResponse {
+    let symbols = core_document_symbols(snapshot.as_editor());
+    if !hierarchical_supported {
+        let mut flat = Vec::new();
+        flatten_document_symbols(symbols, &snapshot.uri, None, &mut flat);
+        return DocumentSymbolResponse::Flat(flat);
+    }
+
+    DocumentSymbolResponse::Nested(symbols.into_iter().map(document_symbol_to_lsp).collect())
 }
 
 #[allow(deprecated)]
@@ -133,14 +147,32 @@ pub fn prepare_rename(
     core_prepare_rename(snapshot.as_editor(), core_position_from_lsp(position)).map(prepare_to_lsp)
 }
 
+#[cfg(test)]
 pub fn rename(snapshot: &DocumentSnapshot, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+    rename_with_workspace_edit_encoding(snapshot, params, WorkspaceEditEncoding::DocumentChanges)
+}
+
+pub fn rename_with_workspace_edit_encoding(
+    snapshot: &DocumentSnapshot,
+    params: RenameParams,
+    workspace_edit_encoding: WorkspaceEditEncoding,
+) -> Result<Option<WorkspaceEdit>> {
     let position = params.text_document_position.position;
     core_rename(
         snapshot.as_editor(),
         core_position_from_lsp(position),
         &params.new_name,
     )
-    .map(|edit| edit.and_then(|edit| workspace_edit_to_lsp(edit, &snapshot.uri, snapshot.version)))
+    .map(|edit| {
+        edit.and_then(|edit| {
+            workspace_edit_to_lsp(
+                edit,
+                &snapshot.uri,
+                snapshot.version,
+                workspace_edit_encoding,
+            )
+        })
+    })
     .map_err(rename_error_to_lsp)
 }
 
@@ -213,6 +245,27 @@ fn document_symbol_to_lsp(symbol: EditorDocumentSymbol) -> DocumentSymbol {
 }
 
 #[allow(deprecated)]
+fn flatten_document_symbols(
+    symbols: Vec<EditorDocumentSymbol>,
+    uri: &Url,
+    container_name: Option<String>,
+    out: &mut Vec<SymbolInformation>,
+) {
+    for symbol in symbols {
+        let child_container = Some(symbol.name.clone());
+        out.push(SymbolInformation {
+            name: symbol.name,
+            kind: symbol_kind(symbol.kind),
+            tags: None,
+            deprecated: None,
+            location: Location::new(uri.clone(), range_to_lsp(symbol.range)),
+            container_name: container_name.clone(),
+        });
+        flatten_document_symbols(symbol.children, uri, child_container, out);
+    }
+}
+
+#[allow(deprecated)]
 fn symbol_information_to_lsp(
     symbol: EditorSymbolInformation,
     fallback_uri: Option<&Url>,
@@ -239,35 +292,49 @@ fn workspace_edit_to_lsp(
     edit: EditorWorkspaceEdit,
     fallback_uri: &Url,
     version: i32,
+    workspace_edit_encoding: WorkspaceEditEncoding,
 ) -> Option<WorkspaceEdit> {
     let mut document_edits = Vec::new();
+    let mut plain_changes = HashMap::new();
     for (uri, edits) in edit.changes {
         let uri = document_uri_to_lsp(&uri, fallback_uri);
-        let edits = edits
+        let text_edits = edits
             .into_iter()
-            .map(|edit| OneOf::Left(TextEdit::new(range_to_lsp(edit.range), edit.new_text)))
+            .map(|edit| TextEdit::new(range_to_lsp(edit.range), edit.new_text))
             .collect::<Vec<_>>();
-        if edits.is_empty() {
+        if text_edits.is_empty() {
             continue;
         }
-        document_edits.push(TextDocumentEdit {
-            text_document: OptionalVersionedTextDocumentIdentifier {
-                uri,
-                version: Some(version),
-            },
-            edits,
-        });
+        match workspace_edit_encoding {
+            WorkspaceEditEncoding::DocumentChanges => {
+                document_edits.push(TextDocumentEdit {
+                    text_document: OptionalVersionedTextDocumentIdentifier {
+                        uri,
+                        version: Some(version),
+                    },
+                    edits: text_edits.into_iter().map(OneOf::Left).collect(),
+                });
+            }
+            WorkspaceEditEncoding::Changes => {
+                plain_changes.insert(uri, text_edits);
+            }
+        }
     }
 
-    if document_edits.is_empty() {
-        return None;
+    match workspace_edit_encoding {
+        WorkspaceEditEncoding::DocumentChanges if document_edits.is_empty() => None,
+        WorkspaceEditEncoding::DocumentChanges => Some(WorkspaceEdit {
+            changes: None,
+            document_changes: Some(DocumentChanges::Edits(document_edits)),
+            change_annotations: None,
+        }),
+        WorkspaceEditEncoding::Changes if plain_changes.is_empty() => None,
+        WorkspaceEditEncoding::Changes => Some(WorkspaceEdit {
+            changes: Some(plain_changes),
+            document_changes: None,
+            change_annotations: None,
+        }),
     }
-
-    Some(WorkspaceEdit {
-        changes: None,
-        document_changes: Some(DocumentChanges::Edits(document_edits)),
-        change_annotations: None,
-    })
 }
 
 fn rename_error_to_lsp(error: RenameError) -> Error {
@@ -293,10 +360,12 @@ fn symbol_kind(kind: EditorSymbolKind) -> SymbolKind {
 #[cfg(test)]
 mod tests {
     use super::{
-        document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references,
-        rename, selection_ranges, workspace_symbols,
+        document_symbols, document_symbols_with_hierarchy_support, folding_ranges, goto_definition,
+        hover, prepare_rename, references, rename, rename_with_workspace_edit_encoding,
+        selection_ranges, workspace_symbols,
     };
     use crate::document_store::DocumentStore;
+    use crate::protocol::WorkspaceEditEncoding;
     use tower_lsp::lsp_types::{
         DocumentChanges, DocumentSymbolResponse, FoldingRangeKind, GotoDefinitionResponse,
         HoverContents, Position, PrepareRenameResponse, RenameParams, TextDocumentIdentifier,
@@ -329,6 +398,33 @@ mod tests {
                 .iter()
                 .any(|symbol| symbol.name == "group")
         );
+    }
+
+    #[test]
+    fn document_symbols_can_fall_back_to_flat_symbol_information() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(
+            uri.clone(),
+            1,
+            "flowchart TD\nsubgraph group\nA-->B\nend\n".to_string(),
+        );
+
+        let response = document_symbols_with_hierarchy_support(&snapshot, false);
+        let flat = match response {
+            DocumentSymbolResponse::Flat(symbols) => symbols,
+            other => panic!("unexpected symbol response: {other:?}"),
+        };
+
+        assert!(
+            flat.iter()
+                .any(|symbol| symbol.name == "flowchart-v2 diagram")
+        );
+        assert!(flat.iter().any(|symbol| {
+            symbol.name == "group"
+                && symbol.container_name.as_deref() == Some("flowchart-v2 diagram")
+                && symbol.location.uri == uri
+        }));
     }
 
     #[test]
@@ -429,6 +525,32 @@ mod tests {
 
         let def = goto_definition(&snapshot, position).unwrap();
         assert!(matches!(def, GotoDefinitionResponse::Scalar(_)));
+    }
+
+    #[test]
+    fn rename_can_fall_back_to_workspace_edit_changes() {
+        let mut store = DocumentStore::new();
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let snapshot = store.upsert(uri.clone(), 1, "flowchart TD\nA-->B\nA-->C\n".to_string());
+
+        let edit = rename_with_workspace_edit_encoding(
+            &snapshot,
+            RenameParams {
+                text_document_position: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier { uri: uri.clone() },
+                    Position::new(1, 0),
+                ),
+                new_name: "X".to_string(),
+                work_done_progress_params: Default::default(),
+            },
+            WorkspaceEditEncoding::Changes,
+        )
+        .unwrap()
+        .expect("expected rename edit");
+
+        assert!(edit.document_changes.is_none());
+        let changes = edit.changes.as_ref().expect("plain changes");
+        assert_eq!(changes[&uri].len(), 2);
     }
 
     #[test]

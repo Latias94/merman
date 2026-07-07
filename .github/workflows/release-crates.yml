@@ -145,53 +145,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          crate_version_available() {
-            local crate="$1"
-            local version="$2"
-            local tmpdir="${RUNNER_TEMP:-/tmp}"
-
-            (
-              cd "$tmpdir"
-              cargo info "$crate@$version" --registry crates-io >/dev/null 2>&1
-            )
-          }
-
-          wait_for_crate_version() {
-            local crate="$1"
-            local version="$2"
-
-            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-              if crate_version_available "$crate" "$version"; then
-                echo "$crate $version is visible in crates.io"
-                return 0
-              fi
-
-              if [ "$attempt" = 12 ]; then
-                echo "::error::$crate $version was published but did not become visible in crates.io in time."
-                return 1
-              fi
-
-              sleep 15
-            done
-          }
-
           workspace_crate_version() {
             local crate="$1"
 
             cargo pkgid -p "$crate" | sed 's/.*@//'
-          }
-
-          dry_run_crate_version() {
-            local crate="$1"
-            local crate_version="$2"
-
-            if crate_version_available "$crate" "$crate_version"; then
-              echo "Skipping dry-run for $crate $crate_version because it is already published"
-              return 0
-            fi
-
-            echo "Dry-running $crate $crate_version"
-            cargo publish -p "$crate" --locked --dry-run --registry crates-io
           }
 
           crates=(
@@ -220,7 +177,6 @@ jobs:
           crate_versions=()
           for crate in "${crates[@]}"; do
             crate_version="$(workspace_crate_version "$crate")"
-            dry_run_crate_version "$crate" "$crate_version"
             crate_versions+=("${crate}=${crate_version}")
           done
 
@@ -340,6 +296,9 @@ jobs:
               echo "Skipping $crate $crate_version because it is already published"
               return 0
             fi
+
+            echo "Dry-running $crate $crate_version"
+            cargo publish -p "$crate" --locked --dry-run --registry crates-io
 
             echo "Publishing $crate $crate_version"
             for attempt in 1 2 3; do

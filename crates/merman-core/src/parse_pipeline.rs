@@ -4,8 +4,8 @@ use crate::{
     preprocess_diagram, preprocess_diagram_with_known_type, runtime, sanitize, theme,
 };
 use diagram::{
-    ParsedDiagram, ParsedDiagramRender, ParsedDiagramWithEditorFacts, ParsedEditorFacts,
-    RenderSemanticModel,
+    DiagramWarningFact, ParsedDiagram, ParsedDiagramRender, ParsedDiagramWithEditorFacts,
+    ParsedEditorFacts, RenderSemanticModel,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -29,6 +29,7 @@ pub(crate) struct ParsePipeline<'a> {
 }
 
 struct EditorParseSourceMap<'a> {
+    original: &'a str,
     parser_input: &'a str,
     remap: EditorSourceRemap,
 }
@@ -43,10 +44,13 @@ enum EditorSourceRemap {
     ParserInputCoordinates,
 }
 
+const WARNING_FACT_REMAP_CONTEXT_EXPANSIONS: [usize; 6] = [1, 4, 8, 16, 32, 64];
+
 impl<'a> EditorParseSourceMap<'a> {
     fn new(original: &'a str, preprocessed: &'a str) -> Self {
         if preprocessed == original {
             return Self {
+                original,
                 parser_input: original,
                 remap: EditorSourceRemap::None,
             };
@@ -54,6 +58,7 @@ impl<'a> EditorParseSourceMap<'a> {
 
         if preprocessed.is_empty() {
             return Self {
+                original,
                 parser_input: preprocessed,
                 remap: EditorSourceRemap::Offset(original.len()),
             };
@@ -61,6 +66,7 @@ impl<'a> EditorParseSourceMap<'a> {
 
         if let Some(offset) = original.rfind(preprocessed) {
             return Self {
+                original,
                 parser_input: preprocessed,
                 remap: EditorSourceRemap::Offset(offset),
             };
@@ -70,6 +76,7 @@ impl<'a> EditorParseSourceMap<'a> {
             let (normalized, normalized_to_original) = normalize_original_with_offsets(original);
             if let Some(normalized_offset) = normalized.rfind(preprocessed) {
                 return Self {
+                    original,
                     parser_input: preprocessed,
                     remap: EditorSourceRemap::Normalized {
                         normalized_offset,
@@ -80,6 +87,7 @@ impl<'a> EditorParseSourceMap<'a> {
         }
 
         Self {
+            original,
             parser_input: preprocessed,
             remap: EditorSourceRemap::ParserInputCoordinates,
         }
@@ -147,6 +155,68 @@ impl<'a> EditorParseSourceMap<'a> {
         let start = self.try_remap_offset(span.start)?;
         let end = self.try_remap_offset(span.end)?;
         (start <= end).then(|| SourceSpan::new(start, end))
+    }
+
+    fn try_remap_warning_source_span(&self, span: SourceSpan) -> Option<SourceSpan> {
+        self.try_remap_source_span(span)
+            .or_else(|| self.try_remap_span_by_unique_fragment(span))
+    }
+
+    fn try_remap_span_by_unique_fragment(&self, span: SourceSpan) -> Option<SourceSpan> {
+        if span.start >= span.end {
+            return None;
+        }
+        if let Some(mapped) = self.try_remap_span_with_unique_context(span, span.start, span.end) {
+            return Some(mapped);
+        }
+
+        // Some warning facts are produced after family-local masking, so the raw span text can
+        // also appear in frontmatter or config. Grow bounded context until the source fragment is
+        // unique, then translate only the original span within that fragment.
+        for extra_after in WARNING_FACT_REMAP_CONTEXT_EXPANSIONS {
+            let context_end = span
+                .end
+                .saturating_add(extra_after)
+                .min(self.parser_input.len());
+            if let Some(mapped) =
+                self.try_remap_span_with_unique_context(span, span.start, context_end)
+            {
+                return Some(mapped);
+            }
+        }
+
+        for extra_before in WARNING_FACT_REMAP_CONTEXT_EXPANSIONS {
+            let context_start = span.start.saturating_sub(extra_before);
+            if let Some(mapped) =
+                self.try_remap_span_with_unique_context(span, context_start, span.end)
+            {
+                return Some(mapped);
+            }
+        }
+
+        None
+    }
+
+    fn try_remap_span_with_unique_context(
+        &self,
+        span: SourceSpan,
+        context_start: usize,
+        context_end: usize,
+    ) -> Option<SourceSpan> {
+        let fragment = self.parser_input.get(context_start..context_end)?;
+        if fragment.is_empty() {
+            return None;
+        }
+
+        let mut matches = self.original.match_indices(fragment);
+        let (match_start, _) = matches.next()?;
+        if matches.next().is_some() {
+            return None;
+        }
+
+        let remapped_start = match_start.checked_add(span.start.checked_sub(context_start)?)?;
+        let remapped_end = remapped_start.checked_add(span.end.checked_sub(span.start)?)?;
+        (remapped_end <= self.original.len()).then(|| SourceSpan::new(remapped_start, remapped_end))
     }
 
     fn remap_offset(&self, offset: usize) -> usize {
@@ -326,6 +396,7 @@ impl<'a> ParsePipeline<'a> {
             common_db::apply_common_db_sanitization,
             error_diagram::suppressed_error_diagram,
             |meta, model| ParsedDiagram { meta, model },
+            Self::remap_value_warning_facts,
             |_| None,
         )
     }
@@ -377,6 +448,7 @@ impl<'a> ParsePipeline<'a> {
                 let sanitize_start = runtime::timing_start(timing_enabled);
                 common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
                 let sanitize = sanitize_start.map(runtime::timing_elapsed);
+                Self::remap_value_warning_facts(&mut model, &source_map);
                 timing.log_success(ParseTimingSuccess {
                     total_start,
                     meta: &meta,
@@ -438,6 +510,9 @@ impl<'a> ParsePipeline<'a> {
             }
         };
 
+        let mut parsed = parsed;
+        Self::remap_value_warning_facts(&mut parsed.model, &source_map);
+
         let editor_facts = match self.parse_editor_semantic_facts_from_preprocessed(
             editor_input,
             &parsed.meta,
@@ -461,6 +536,11 @@ impl<'a> ParsePipeline<'a> {
             RenderSemanticModel::sanitize_common_db_fields,
             error_diagram::suppressed_error_render_diagram,
             |meta, model| ParsedDiagramRender { meta, model },
+            |model, source_map| {
+                model.remap_warning_fact_spans(|fact| {
+                    Self::remap_warning_fact_spans(fact, source_map);
+                });
+            },
             |model| Some(model.kind()),
         )
     }
@@ -596,6 +676,7 @@ impl<'a> ParsePipeline<'a> {
         sanitize: impl FnOnce(&mut T, &MermaidConfig),
         suppressed: impl FnOnce(&ParseMetadata) -> O,
         finish: impl FnOnce(ParseMetadata, T) -> O,
+        postprocess: impl FnOnce(&mut T, &EditorParseSourceMap<'_>),
         model_kind: impl FnOnce(&T) -> Option<&'static str>,
     ) -> Result<Option<O>> {
         let timing_enabled = timing.is_enabled();
@@ -627,6 +708,7 @@ impl<'a> ParsePipeline<'a> {
         let sanitize_start = runtime::timing_start(timing_enabled);
         sanitize(&mut model, &meta.effective_config);
         let sanitize = sanitize_start.map(runtime::timing_elapsed);
+        postprocess(&mut model, &source_map);
 
         timing.log_success(ParseTimingSuccess {
             total_start,
@@ -639,6 +721,45 @@ impl<'a> ParsePipeline<'a> {
         });
 
         Ok(Some(finish(meta, model)))
+    }
+
+    fn remap_value_warning_facts(
+        model: &mut serde_json::Value,
+        source_map: &EditorParseSourceMap<'_>,
+    ) {
+        let Some(warning_facts_value) = model.get_mut("warningFacts") else {
+            return;
+        };
+        let Ok(mut warning_facts) =
+            serde_json::from_value::<Vec<DiagramWarningFact>>(warning_facts_value.clone())
+        else {
+            return;
+        };
+
+        for fact in &mut warning_facts {
+            Self::remap_warning_fact_spans(fact, source_map);
+        }
+
+        *warning_facts_value = serde_json::json!(warning_facts);
+    }
+
+    fn remap_warning_fact_spans(
+        fact: &mut DiagramWarningFact,
+        source_map: &EditorParseSourceMap<'_>,
+    ) {
+        let source_span = fact.span;
+        let remapped_span =
+            source_span.and_then(|span| source_map.try_remap_warning_source_span(span));
+        fact.span = remapped_span;
+        fact.fix_span = match (fact.fix_span, source_span, remapped_span) {
+            (Some(fix_span), Some(source_span), Some(remapped_span))
+                if fix_span.start == fix_span.end && fix_span.start == source_span.end =>
+            {
+                Some(SourceSpan::new(remapped_span.end, remapped_span.end))
+            }
+            (Some(fix_span), _, _) => source_map.try_remap_warning_source_span(fix_span),
+            (None, _, _) => None,
+        };
     }
 
     fn parse_render_semantic_model(

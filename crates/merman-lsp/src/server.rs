@@ -1,4 +1,4 @@
-use crate::code_actions::code_actions_for_params;
+use crate::code_actions::code_actions_for_params_with_encoding;
 use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::{
@@ -8,7 +8,7 @@ use crate::document_store::{
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
-    experimental_capabilities,
+    WorkspaceEditEncoding, experimental_capabilities,
 };
 use crate::semantic_tokens::{
     semantic_tokens_delta_result, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
@@ -17,10 +17,12 @@ use crate::semantic_tokens::{
 use crate::snapshot::DocumentSnapshot;
 use crate::snapshot_context::{self, SnapshotContextKind};
 use crate::structure::{
-    document_symbols as structure_document_symbols, folding_ranges as structure_folding_ranges,
-    goto_definition as structure_goto_definition, hover as structure_hover,
-    prepare_rename as structure_prepare_rename, references as structure_references,
-    rename as structure_rename, selection_ranges as structure_selection_ranges,
+    document_symbols_with_hierarchy_support as structure_document_symbols_with_hierarchy_support,
+    folding_ranges as structure_folding_ranges, goto_definition as structure_goto_definition,
+    hover as structure_hover, prepare_rename as structure_prepare_rename,
+    references as structure_references,
+    rename_with_workspace_edit_encoding as structure_rename_with_workspace_edit_encoding,
+    selection_ranges as structure_selection_ranges,
     workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
@@ -62,6 +64,8 @@ pub struct MermanLanguageServer {
     semantic_tokens_refresh_supported: AtomicBool,
     diagnostic_pull_supported: AtomicBool,
     diagnostic_refresh_supported: AtomicBool,
+    workspace_edit_document_changes_supported: AtomicBool,
+    hierarchical_document_symbols_supported: AtomicBool,
 }
 
 impl MermanLanguageServer {
@@ -72,6 +76,8 @@ impl MermanLanguageServer {
             semantic_tokens_refresh_supported: AtomicBool::new(false),
             diagnostic_pull_supported: AtomicBool::new(false),
             diagnostic_refresh_supported: AtomicBool::new(false),
+            workspace_edit_document_changes_supported: AtomicBool::new(false),
+            hierarchical_document_symbols_supported: AtomicBool::new(false),
         }
     }
 
@@ -388,6 +394,26 @@ impl MermanLanguageServer {
             .unwrap_or(false)
     }
 
+    fn client_supports_workspace_edit_document_changes(params: &InitializeParams) -> bool {
+        params
+            .capabilities
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.workspace_edit.as_ref())
+            .and_then(|workspace_edit| workspace_edit.document_changes)
+            .unwrap_or(false)
+    }
+
+    fn client_supports_hierarchical_document_symbols(params: &InitializeParams) -> bool {
+        params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|text_document| text_document.document_symbol.as_ref())
+            .and_then(|document_symbol| document_symbol.hierarchical_document_symbol_support)
+            .unwrap_or(false)
+    }
+
     async fn apply_initialization_options(
         &self,
         initialization_options: Option<serde_json::Value>,
@@ -435,6 +461,14 @@ impl LanguageServer for MermanLanguageServer {
         );
         self.diagnostic_refresh_supported.store(
             Self::client_supports_diagnostic_refresh(&params),
+            Ordering::Relaxed,
+        );
+        self.workspace_edit_document_changes_supported.store(
+            Self::client_supports_workspace_edit_document_changes(&params),
+            Ordering::Relaxed,
+        );
+        self.hierarchical_document_symbols_supported.store(
+            Self::client_supports_hierarchical_document_symbols(&params),
             Ordering::Relaxed,
         );
         self.apply_initialization_options(params.initialization_options)
@@ -598,7 +632,15 @@ impl LanguageServer for MermanLanguageServer {
                 .get(&params.text_document.uri)
                 .map(|document| document.version)
         };
-        Ok(code_actions_for_params(&params, current_document_version))
+        let workspace_edit_encoding = WorkspaceEditEncoding::from_document_changes_support(
+            self.workspace_edit_document_changes_supported
+                .load(Ordering::Relaxed),
+        );
+        Ok(code_actions_for_params_with_encoding(
+            &params,
+            current_document_version,
+            workspace_edit_encoding,
+        ))
     }
 
     async fn semantic_tokens_full(
@@ -717,9 +759,15 @@ impl LanguageServer for MermanLanguageServer {
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri;
+        let hierarchical_supported = self
+            .hierarchical_document_symbols_supported
+            .load(Ordering::Relaxed);
 
         self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(Some(structure_document_symbols(snapshot)))
+            Ok(Some(structure_document_symbols_with_hierarchy_support(
+                snapshot,
+                hierarchical_supported,
+            )))
         })
         .await
     }
@@ -769,9 +817,15 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri.clone();
+        let workspace_edit_encoding = WorkspaceEditEncoding::from_document_changes_support(
+            self.workspace_edit_document_changes_supported
+                .load(Ordering::Relaxed),
+        );
 
-        self.structure_snapshot_result(&uri, |snapshot| structure_rename(snapshot, params))
-            .await
+        self.structure_snapshot_result(&uri, |snapshot| {
+            structure_rename_with_workspace_edit_encoding(snapshot, params, workspace_edit_encoding)
+        })
+        .await
     }
 
     async fn symbol(

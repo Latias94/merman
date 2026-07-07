@@ -363,6 +363,27 @@ fn diagram_family_capabilities_follow_parser_fact_projection() {
 }
 
 #[test]
+fn diagram_type_family_kind_maps_parser_ids_to_shared_family_kind() {
+    assert_eq!(
+        crate::diagram_type_family_kind("flowchart-v2"),
+        Some("flowchart")
+    );
+    assert_eq!(
+        crate::diagram_type_family_kind("flowchart"),
+        Some("flowchart")
+    );
+    assert_eq!(
+        crate::diagram_type_family_kind("flowchart-elk"),
+        Some("flowchart")
+    );
+    assert_eq!(
+        crate::diagram_type_family_kind("classDiagram"),
+        Some("class")
+    );
+    assert_eq!(crate::diagram_type_family_kind("unknown"), None);
+}
+
+#[test]
 fn tiny_parser_projection_excludes_full_only_large_features() {
     let tiny_semantic = DiagramRegistry::pinned_mermaid_baseline_tiny();
     assert!(tiny_semantic.get("mindmap").is_none());

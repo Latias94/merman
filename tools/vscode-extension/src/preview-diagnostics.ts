@@ -17,16 +17,19 @@ export interface PreviewDiagnosticInput {
   source?: string;
   code?: string | number | { value: string | number };
   message: string;
+  data?: unknown;
 }
 
 export function collectMermanPreviewDiagnostics(
   diagnostics: readonly PreviewDiagnosticInput[],
   uri: string,
   diagnosticRange: { startLine: number; endLine: number },
+  documentVersion?: number,
 ): PreviewDiagnostics {
   const filtered = deduplicateDiagnostics(
     diagnostics
       .filter(isMermanDiagnostic)
+      .filter((diagnostic) => isDiagnosticForDocumentVersion(diagnostic, documentVersion))
       .filter((diagnostic) => isDiagnosticInRange(diagnostic, diagnosticRange))
       .sort(compareDiagnostics),
   );
@@ -56,6 +59,24 @@ function diagnosticCountLabel(count: number, label: string): string {
 
 function isMermanDiagnostic(diagnostic: PreviewDiagnosticInput): boolean {
   return diagnostic.source?.toLowerCase() === MERMAN_DIAGNOSTIC_SOURCE;
+}
+
+function isDiagnosticForDocumentVersion(
+  diagnostic: PreviewDiagnosticInput,
+  documentVersion: number | undefined,
+): boolean {
+  if (documentVersion === undefined) {
+    return true;
+  }
+  return diagnosticDocumentVersion(diagnostic.data) === documentVersion;
+}
+
+function diagnosticDocumentVersion(data: unknown): number | undefined {
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+  const version = (data as { documentVersion?: unknown }).documentVersion;
+  return typeof version === "number" ? version : undefined;
 }
 
 function deduplicateDiagnostics(

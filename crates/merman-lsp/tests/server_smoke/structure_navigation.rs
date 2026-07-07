@@ -6,7 +6,15 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::json!({"capabilities":{}}))
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "documentSymbol": {
+                        "hierarchicalDocumentSymbolSupport": true
+                    }
+                }
+            }
+        }))
         .id(1)
         .finish();
     let init_response = service
@@ -263,7 +271,15 @@ async fn lsp_service_smoke_handles_navigation_requests() {
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::json!({"capabilities":{}}))
+        .params(serde_json::json!({
+            "capabilities": {
+                "workspace": {
+                    "workspaceEdit": {
+                        "documentChanges": true
+                    }
+                }
+            }
+        }))
         .id(1)
         .finish();
     let init_response = service

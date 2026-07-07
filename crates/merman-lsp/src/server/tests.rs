@@ -366,6 +366,73 @@ fn diagnostic_refresh_support_comes_from_workspace_client_capabilities() {
     ));
 }
 
+#[test]
+fn workspace_edit_document_changes_support_comes_from_client_capabilities() {
+    let mut params = InitializeParams::default();
+    assert!(!MermanLanguageServer::client_supports_workspace_edit_document_changes(&params));
+
+    params.capabilities.workspace = Some(Default::default());
+    assert!(!MermanLanguageServer::client_supports_workspace_edit_document_changes(&params));
+
+    params
+        .capabilities
+        .workspace
+        .as_mut()
+        .unwrap()
+        .workspace_edit = Some(tower_lsp::lsp_types::WorkspaceEditClientCapabilities {
+        document_changes: None,
+        resource_operations: None,
+        failure_handling: None,
+        normalizes_line_endings: None,
+        change_annotation_support: None,
+    });
+    assert!(!MermanLanguageServer::client_supports_workspace_edit_document_changes(&params));
+
+    params
+        .capabilities
+        .workspace
+        .as_mut()
+        .unwrap()
+        .workspace_edit
+        .as_mut()
+        .unwrap()
+        .document_changes = Some(true);
+    assert!(MermanLanguageServer::client_supports_workspace_edit_document_changes(&params));
+}
+
+#[test]
+fn hierarchical_document_symbol_support_comes_from_client_capabilities() {
+    let mut params = InitializeParams::default();
+    assert!(!MermanLanguageServer::client_supports_hierarchical_document_symbols(&params));
+
+    params.capabilities.text_document = Some(Default::default());
+    assert!(!MermanLanguageServer::client_supports_hierarchical_document_symbols(&params));
+
+    params
+        .capabilities
+        .text_document
+        .as_mut()
+        .unwrap()
+        .document_symbol = Some(tower_lsp::lsp_types::DocumentSymbolClientCapabilities {
+        dynamic_registration: None,
+        symbol_kind: None,
+        hierarchical_document_symbol_support: None,
+        tag_support: None,
+    });
+    assert!(!MermanLanguageServer::client_supports_hierarchical_document_symbols(&params));
+
+    params
+        .capabilities
+        .text_document
+        .as_mut()
+        .unwrap()
+        .document_symbol
+        .as_mut()
+        .unwrap()
+        .hierarchical_document_symbol_support = Some(true);
+    assert!(MermanLanguageServer::client_supports_hierarchical_document_symbols(&params));
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn did_open_defers_editor_snapshot_until_editor_request() {
     let (service, _socket) = MermanLanguageServer::service();
@@ -1052,7 +1119,7 @@ async fn lsp_handlers_return_hover_and_symbols() {
         .unwrap();
     assert!(matches!(
         document_symbols,
-        Some(DocumentSymbolResponse::Nested(_))
+        Some(DocumentSymbolResponse::Flat(_))
     ));
 
     let workspace_symbols = server

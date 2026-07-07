@@ -578,4 +578,24 @@ mod tests {
             Some("recommended")
         );
     }
+
+    #[test]
+    fn parse_options_rejects_mixed_direct_and_wrapped_analysis_options() {
+        let err = parse_options(
+            br#"{
+                "resources": { "max_source_bytes": 4 },
+                "analysis": {
+                    "lint": { "profile": "recommended" }
+                }
+            }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            err.message()
+                .contains("must not mix top-level analysis options"),
+            "{err:?}"
+        );
+    }
 }

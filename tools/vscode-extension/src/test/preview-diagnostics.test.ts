@@ -98,6 +98,34 @@ describe("preview diagnostics", () => {
     assert.equal(diagnostics.totalCount, 1);
     assert.equal(diagnostics.firstTarget?.startLine, 4);
   });
+
+  it("drops stale Merman diagnostics from another document version", () => {
+    const diagnostics = collectMermanPreviewDiagnostics(
+      [
+        diagnostic({
+          source: "merman",
+          severity: 0,
+          message: "old syntax issue",
+          startLine: 2,
+          documentVersion: 1,
+        }),
+        diagnostic({
+          source: "merman",
+          severity: 1,
+          message: "current style issue",
+          startLine: 3,
+          documentVersion: 2,
+        }),
+      ],
+      "file:///workspace/notes.md",
+      { startLine: 1, endLine: 4 },
+      2,
+    );
+
+    assert.equal(diagnostics.summary, "0 errors, 1 warning, 0 infos, 0 hints");
+    assert.equal(diagnostics.totalCount, 1);
+    assert.equal(diagnostics.firstTarget?.startLine, 3);
+  });
 });
 
 function diagnostic(options: {
@@ -106,6 +134,7 @@ function diagnostic(options: {
   message: string;
   startLine?: number;
   code?: PreviewDiagnosticInput["code"];
+  documentVersion?: number;
 }): PreviewDiagnosticInput {
   const startLine = options.startLine ?? 1;
   return {
@@ -123,5 +152,9 @@ function diagnostic(options: {
     source: options.source,
     code: options.code,
     message: options.message,
+    data:
+      options.documentVersion === undefined
+        ? undefined
+        : { documentVersion: options.documentVersion },
   };
 }

@@ -298,12 +298,12 @@
         "ruleId": "merman.authoring.flowchart.explicit_direction",
         "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
         "span": {
-          "start": 0,
-          "end": 9
+          "start": 132,
+          "end": 141
         },
         "fixSpan": {
-          "start": 9,
-          "end": 9
+          "start": 141,
+          "end": 141
         }
       }
     ],

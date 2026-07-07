@@ -1,7 +1,9 @@
 use crate::{
     AnalysisDiagnostic, AnalysisStatus, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
     DiagnosticSeverity, DiagnosticSpan, SourceMap,
-    source_directives::{directive_keyword_spans, init_directive_config_key_spans},
+    source_directives::{
+        directive_keyword_spans, frontmatter_config_key_spans, init_directive_config_key_spans,
+    },
 };
 use merman_core::{
     BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
@@ -36,13 +38,22 @@ pub const FLOWCHART_UNKNOWN_STYLE_TARGET_RULE_ID: &str =
     "merman.semantic.flowchart.unknown_style_target";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
 
-const DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS: [&[&str]; 3] = [
-    &["flowchart", "htmlLabels"],
+const DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS: [&[&str]; 1] =
+    [&["flowchart", "htmlLabels"]];
+const DEPRECATED_FLOWCHART_HTML_LABELS_FLOWCHART_INIT_WRAPPER_PATHS: [&[&str]; 2] = [
     &["config", "htmlLabels"],
+    &["config", "flowchart", "htmlLabels"],
+];
+const DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS: [&[&str]; 2] = [
+    &["flowchart", "htmlLabels"],
     &["config", "flowchart", "htmlLabels"],
 ];
 const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS: [&[&str]; 2] =
     [&["lazyLoadedDiagrams"], &["loadExternalDiagramsAtStartup"]];
+const DEPRECATED_EXTERNAL_DIAGRAM_LOADING_FRONTMATTER_CONFIG_PATHS: [&[&str]; 2] = [
+    &["config", "lazyLoadedDiagrams"],
+    &["config", "loadExternalDiagramsAtStartup"],
+];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -567,6 +578,8 @@ pub(crate) fn source_lint_diagnostics(
         source,
         source_map,
         rule_config,
+        &DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS,
+        &DEPRECATED_FLOWCHART_HTML_LABELS_FRONTMATTER_CONFIG_PATHS,
     ));
     diagnostics.extend(deprecated_external_diagram_loading_diagnostics(
         source,
@@ -574,6 +587,25 @@ pub(crate) fn source_lint_diagnostics(
         rule_config,
     ));
     diagnostics
+}
+
+pub(crate) fn parsed_source_lint_diagnostics(
+    source: &str,
+    source_map: &SourceMap,
+    rule_config: &AnalysisRuleConfig,
+    diagram_type: &str,
+) -> Vec<AnalysisDiagnostic> {
+    if merman_core::diagram_type_family_kind(diagram_type) != Some("flowchart") {
+        return Vec::new();
+    }
+
+    deprecated_flowchart_html_labels_diagnostics(
+        source,
+        source_map,
+        rule_config,
+        &DEPRECATED_FLOWCHART_HTML_LABELS_FLOWCHART_INIT_WRAPPER_PATHS,
+        &[],
+    )
 }
 
 pub(crate) fn semantic_warning_diagnostics(
@@ -803,14 +835,17 @@ fn deprecated_flowchart_html_labels_diagnostics(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
+    init_matching_paths: &[&[&str]],
+    frontmatter_matching_paths: &[&[&str]],
 ) -> Vec<AnalysisDiagnostic> {
     let fix = crate::source_config_rewrite::flowchart_html_labels_to_root_fix(source, source_map);
-    init_directive_config_key_diagnostics(
+    config_key_diagnostics(
         source,
         source_map,
         rule_config,
         DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
-        &DEPRECATED_FLOWCHART_HTML_LABELS_CONFIG_PATHS,
+        init_matching_paths,
+        frontmatter_matching_paths,
         "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
         "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
     )
@@ -829,23 +864,25 @@ fn deprecated_external_diagram_loading_diagnostics(
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
 ) -> Vec<AnalysisDiagnostic> {
-    init_directive_config_key_diagnostics(
+    config_key_diagnostics(
         source,
         source_map,
         rule_config,
         DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE,
         &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS,
+        &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_FRONTMATTER_CONFIG_PATHS,
         "deprecated external diagram loading config; use `registerExternalDiagrams` instead",
         "Mermaid warns that `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` are deprecated in favor of the `registerExternalDiagrams` API.",
     )
 }
 
-fn init_directive_config_key_diagnostics(
+fn config_key_diagnostics(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
     descriptor: RuleDescriptor,
-    matching_paths: &[&[&str]],
+    init_matching_paths: &[&[&str]],
+    frontmatter_matching_paths: &[&[&str]],
     message: &'static str,
     help: &'static str,
 ) -> Vec<AnalysisDiagnostic> {
@@ -854,7 +891,13 @@ fn init_directive_config_key_diagnostics(
     }
     let severity = rule_config.severity_for(descriptor);
 
-    init_directive_config_key_spans(source, matching_paths)
+    let mut spans = init_directive_config_key_spans(source, init_matching_paths);
+    spans.extend(frontmatter_config_key_spans(
+        source,
+        frontmatter_matching_paths,
+    ));
+
+    spans
         .into_iter()
         .filter_map(|span| {
             let span = source_map.span(span.start, span.end).ok()?;

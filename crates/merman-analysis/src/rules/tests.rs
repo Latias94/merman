@@ -189,11 +189,26 @@ fn source_lint_reports_deprecated_flowchart_html_labels_directive() {
 }
 
 #[test]
-fn source_lint_reports_config_wrapped_flowchart_html_labels_directive() {
+fn source_lint_defers_config_wrapped_flowchart_html_labels_until_diagram_type_is_known() {
     let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
 
     let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert!(diagnostics.is_empty());
+}
+
+#[test]
+fn parsed_source_lint_reports_flowchart_config_wrapped_flowchart_html_labels_directive() {
+    let source = "%%{init: { \"config\": { \"flowchart\": { \"htmlLabels\": true } } }}%%\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = parsed_source_lint_diagnostics(
+        source,
+        &source_map,
+        &AnalysisRuleConfig::default(),
+        "flowchart-v2",
+    );
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
@@ -207,17 +222,47 @@ fn source_lint_reports_config_wrapped_flowchart_html_labels_directive() {
 }
 
 #[test]
-fn source_lint_reports_config_wrapped_root_html_labels_directive() {
+fn source_lint_defers_config_wrapped_root_html_labels_until_diagram_type_is_known() {
     let source = "%%{init: { \"config\": { \"htmlLabels\": true } }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
 
     let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert!(diagnostics.is_empty());
+}
+
+#[test]
+fn parsed_source_lint_reports_flowchart_config_wrapped_root_html_labels_directive() {
+    let source = "%%{init: { \"config\": { \"htmlLabels\": true } }}%%\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = parsed_source_lint_diagnostics(
+        source,
+        &source_map,
+        &AnalysisRuleConfig::default(),
+        "flowchart-v2",
+    );
 
     assert_eq!(diagnostics.len(), 1);
     assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
     assert_eq!(diagnostics[0].fixes.len(), 1);
     let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
     assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+}
+
+#[test]
+fn parsed_source_lint_does_not_report_non_flowchart_config_wrapped_html_labels() {
+    let source = "%%{init: { \"config\": { \"htmlLabels\": true } }}%%\nclassDiagram\nA <|-- B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = parsed_source_lint_diagnostics(
+        source,
+        &source_map,
+        &AnalysisRuleConfig::default(),
+        "classDiagram",
+    );
+
+    assert!(diagnostics.is_empty());
 }
 
 #[test]
@@ -251,6 +296,19 @@ fn rule_config_can_disable_deprecated_flowchart_html_labels_rule() {
 }
 
 #[test]
+fn source_lint_reports_deprecated_flowchart_html_labels_frontmatter_config() {
+    let source = "---\nconfig:\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+    let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
+    assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+}
+
+#[test]
 fn source_lint_reports_deprecated_external_diagram_loading_directive_config() {
     let source = "%%{init: { \"lazyLoadedDiagrams\": true, \"loadExternalDiagramsAtStartup\": false }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
@@ -267,6 +325,28 @@ fn source_lint_reports_deprecated_external_diagram_loading_directive_config() {
     let spans: Vec<_> = diagnostics
         .iter()
         .map(|diagnostic| {
+            let span = diagnostic.span.as_ref().expect("deprecated key span");
+            &source[span.byte_start..span.byte_end]
+        })
+        .collect();
+    assert_eq!(
+        spans,
+        vec!["lazyLoadedDiagrams", "loadExternalDiagramsAtStartup"]
+    );
+}
+
+#[test]
+fn source_lint_reports_deprecated_external_diagram_loading_frontmatter_config() {
+    let source = "---\nconfig:\n  lazyLoadedDiagrams: true\n  loadExternalDiagramsAtStartup: false\n---\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert_eq!(diagnostics.len(), 2);
+    let spans: Vec<_> = diagnostics
+        .iter()
+        .map(|diagnostic| {
+            assert_eq!(diagnostic.id, DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID);
             let span = diagnostic.span.as_ref().expect("deprecated key span");
             &source[span.byte_start..span.byte_end]
         })

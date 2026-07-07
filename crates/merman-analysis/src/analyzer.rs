@@ -237,6 +237,12 @@ impl Analyzer {
     ) -> LocalAnalysis {
         let (parsed, precomputed_editor_facts) = parsed.into_parts();
         let diagram_type = parsed.meta.diagram_type;
+        diagnostics.extend(crate::rules::parsed_source_lint_diagnostics(
+            source,
+            source_map,
+            &self.options.rule_config,
+            &diagram_type,
+        ));
         diagnostics.extend(crate::rules::semantic_warning_diagnostics(
             &diagram_type,
             &parsed.model,

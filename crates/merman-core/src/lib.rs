@@ -47,7 +47,7 @@ pub use editor::{
     SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
-pub use family::{DiagramFamilyCapability, DiagramHeaderFact};
+pub use family::{DiagramFamilyCapability, DiagramHeaderFact, diagram_type_family_kind};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.

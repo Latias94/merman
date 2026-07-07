@@ -20,6 +20,7 @@ import {
 export type PreviewDiagnosticsProvider = (
   uri: vscode.Uri,
   diagnosticRange: { startLine: number; endLine: number },
+  documentVersion: number,
 ) => PreviewDiagnostics;
 
 export interface PreviewSessionDefaults {
@@ -184,7 +185,11 @@ export class PreviewSession {
     }
 
     const sources = listPreviewInputsFromDocument(editor.document, editor.selection.active.line);
-    const diagnostics = diagnosticsProvider(editor.document.uri, input.diagnosticRange);
+    const diagnostics = diagnosticsProvider(
+      editor.document.uri,
+      input.diagnosticRange,
+      editor.document.version,
+    );
     return createPreviewSnapshot({
       documentUri: editor.document.uri.toString(),
       documentVersion: editor.document.version,

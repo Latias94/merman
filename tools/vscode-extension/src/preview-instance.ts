@@ -584,11 +584,13 @@ export class PreviewInstance implements vscode.Disposable {
 function collectPreviewDiagnostics(
   uri: vscode.Uri,
   diagnosticRange: { startLine: number; endLine: number },
+  documentVersion: number,
 ): PreviewDiagnostics {
   return collectMermanPreviewDiagnostics(
     vscode.languages.getDiagnostics(uri),
     uri.toString(),
     diagnosticRange,
+    documentVersion,
   );
 }
 

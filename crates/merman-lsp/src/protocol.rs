@@ -12,6 +12,22 @@ pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceEditEncoding {
+    DocumentChanges,
+    Changes,
+}
+
+impl WorkspaceEditEncoding {
+    pub const fn from_document_changes_support(supported: bool) -> Self {
+        if supported {
+            Self::DocumentChanges
+        } else {
+            Self::Changes
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleCatalogResponse {
     pub version: u32,

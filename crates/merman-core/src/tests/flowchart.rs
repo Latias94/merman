@@ -2257,6 +2257,77 @@ fn parse_flowchart_render_model_carries_missing_direction_warning_fact() {
 }
 
 #[test]
+fn parse_flowchart_render_model_remaps_missing_direction_warning_fact_after_frontmatter() {
+    let engine = Engine::new();
+    let text = "---\ntitle: Demo\n---\nflowchart\nA-->B";
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let flowchart_start = text.find("flowchart").expect("flowchart header");
+
+    match parsed.model {
+        RenderSemanticModel::Flowchart(model) => {
+            assert_eq!(
+                model.warning_facts[0].span,
+                Some(SourceSpan::new(
+                    flowchart_start,
+                    flowchart_start + "flowchart".len()
+                ))
+            );
+            assert_eq!(
+                model.warning_facts[0].fix_span,
+                Some(SourceSpan::new(
+                    flowchart_start + "flowchart".len(),
+                    flowchart_start + "flowchart".len()
+                ))
+            );
+        }
+        other => panic!("flowchart render parse should return typed model, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_flowchart_warning_fact_span_survives_entity_preprocess() {
+    let engine = Engine::new();
+    let text = "flowchart\n  classDef cat fill:#f9d5e5\n  A:::cat\n";
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        parsed.model["warningFacts"][0]["span"],
+        json!({ "start": 0, "end": 9 })
+    );
+    assert_eq!(
+        parsed.model["warningFacts"][0]["fixSpan"],
+        json!({ "start": 9, "end": 9 })
+    );
+}
+
+#[test]
+fn parse_flowchart_warning_fact_span_uses_context_after_frontmatter_and_entity_preprocess() {
+    let engine = Engine::new();
+    let text = "---\nconfig:\n  flowchart:\n    htmlLabels: true\n---\n\nflowchart\n  classDef cat fill:#f9d5e5\n  A:::cat\n";
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+    let flowchart_start = text
+        .rfind("\nflowchart\n")
+        .map(|offset| offset + 1)
+        .expect("body flowchart header");
+
+    assert_eq!(
+        parsed.model["warningFacts"][0]["span"],
+        json!({ "start": flowchart_start, "end": flowchart_start + "flowchart".len() })
+    );
+    assert_eq!(
+        parsed.model["warningFacts"][0]["fixSpan"],
+        json!({ "start": flowchart_start + "flowchart".len(), "end": flowchart_start + "flowchart".len() })
+    );
+}
+
+#[test]
 fn parse_flowchart_editor_facts_preserve_parser_node_id_spans() {
     let engine = Engine::new();
     let text = "flowchart TD\nA-->B\n";

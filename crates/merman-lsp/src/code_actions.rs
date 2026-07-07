@@ -1,3 +1,4 @@
+use crate::protocol::WorkspaceEditEncoding;
 use merman_editor_core::{
     DiagnosticCodeActionData, EditorCodeActionEdit, Position as EditorPosition,
     code_actions_from_fixes,
@@ -9,9 +10,22 @@ use tower_lsp::lsp_types::{
     TextEdit, Url, WorkspaceEdit,
 };
 
+#[cfg(test)]
 pub fn code_actions_for_params(
     params: &CodeActionParams,
     current_document_version: Option<i32>,
+) -> Option<CodeActionResponse> {
+    code_actions_for_params_with_encoding(
+        params,
+        current_document_version,
+        WorkspaceEditEncoding::DocumentChanges,
+    )
+}
+
+pub fn code_actions_for_params_with_encoding(
+    params: &CodeActionParams,
+    current_document_version: Option<i32>,
+    workspace_edit_encoding: WorkspaceEditEncoding,
 ) -> Option<CodeActionResponse> {
     if !allows_quickfix(&params.context) {
         return None;
@@ -27,6 +41,7 @@ pub fn code_actions_for_params(
                 diagnostic,
                 &params.text_document.uri,
                 current_document_version,
+                workspace_edit_encoding,
             )
         })
         .collect::<Vec<_>>();
@@ -49,6 +64,7 @@ fn code_actions_for_diagnostic(
     diagnostic: &Diagnostic,
     uri: &Url,
     current_document_version: i32,
+    workspace_edit_encoding: WorkspaceEditEncoding,
 ) -> Vec<CodeActionOrCommand> {
     if diagnostic.source.as_deref() != Some("merman") {
         return Vec::new();
@@ -66,7 +82,12 @@ fn code_actions_for_diagnostic(
     code_actions_from_fixes(&data.inner.fixes)
         .into_iter()
         .filter_map(|action| {
-            let edit = workspace_edit_for_edits(&action.edits, uri, current_document_version)?;
+            let edit = workspace_edit_for_edits(
+                &action.edits,
+                uri,
+                current_document_version,
+                workspace_edit_encoding,
+            )?;
             Some(tower_lsp::lsp_types::CodeAction {
                 title: action.title,
                 kind: Some(CodeActionKind::QUICKFIX),
@@ -94,32 +115,40 @@ fn workspace_edit_for_edits(
     planned_edits: &[EditorCodeActionEdit],
     uri: &Url,
     current_document_version: i32,
+    workspace_edit_encoding: WorkspaceEditEncoding,
 ) -> Option<WorkspaceEdit> {
-    let edits = planned_edits
+    let text_edits = planned_edits
         .iter()
         .map(|edit| {
             let range = tower_lsp::lsp_types::Range::new(
                 editor_position_to_lsp(edit.range.start),
                 editor_position_to_lsp(edit.range.end),
             );
-            OneOf::Left(TextEdit::new(range, edit.new_text.clone()))
+            TextEdit::new(range, edit.new_text.clone())
         })
         .collect::<Vec<_>>();
-    if edits.is_empty() {
+    if text_edits.is_empty() {
         return None;
     }
 
-    Some(WorkspaceEdit {
-        changes: None,
-        document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit {
-            text_document: OptionalVersionedTextDocumentIdentifier {
-                uri: uri.clone(),
-                version: Some(current_document_version),
-            },
-            edits,
-        }])),
-        change_annotations: None,
-    })
+    match workspace_edit_encoding {
+        WorkspaceEditEncoding::DocumentChanges => Some(WorkspaceEdit {
+            changes: None,
+            document_changes: Some(DocumentChanges::Edits(vec![TextDocumentEdit {
+                text_document: OptionalVersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: Some(current_document_version),
+                },
+                edits: text_edits.into_iter().map(OneOf::Left).collect(),
+            }])),
+            change_annotations: None,
+        }),
+        WorkspaceEditEncoding::Changes => Some(WorkspaceEdit {
+            changes: Some([(uri.clone(), text_edits)].into_iter().collect()),
+            document_changes: None,
+            change_annotations: None,
+        }),
+    }
 }
 
 fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp::lsp_types::Position {
@@ -128,8 +157,9 @@ fn editor_position_to_lsp(position: EditorPosition) -> tower_lsp::lsp_types::Pos
 
 #[cfg(test)]
 mod tests {
-    use super::code_actions_for_params;
+    use super::{code_actions_for_params, code_actions_for_params_with_encoding};
     use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
+    use crate::protocol::WorkspaceEditEncoding;
     use merman_analysis::{
         AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticCategory,
         DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, SourceMap, Utf16Position,
@@ -252,6 +282,41 @@ mod tests {
         );
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].new_text, "fixed");
+    }
+
+    #[test]
+    fn quickfixes_can_fall_back_to_workspace_edit_changes() {
+        let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+        let params = CodeActionParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+            range: Range {
+                start: Position::new(0, 0),
+                end: Position::new(0, 5),
+            },
+            context: CodeActionContext {
+                diagnostics: vec![diagnostic_with_fix()],
+                only: Some(vec![CodeActionKind::QUICKFIX]),
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        let actions = code_actions_for_params_with_encoding(
+            &params,
+            Some(DOC_VERSION),
+            WorkspaceEditEncoding::Changes,
+        )
+        .expect("expected quickfix actions");
+        let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+            panic!("expected code action")
+        };
+        let edit = action.edit.as_ref().expect("workspace edit");
+
+        assert!(edit.document_changes.is_none());
+        let changes = edit.changes.as_ref().expect("plain changes");
+        assert_eq!(changes[&uri].len(), 1);
+        assert_eq!(changes[&uri][0].new_text, "fixed");
     }
 
     #[test]

@@ -228,6 +228,45 @@ impl RenderSemanticModel {
         }
     }
 
+    pub(crate) fn remap_warning_fact_spans(
+        &mut self,
+        mut remap: impl FnMut(&mut DiagramWarningFact),
+    ) {
+        match self {
+            Self::Json(v) => Self::remap_json_warning_fact_spans(v, &mut remap),
+            Self::Flowchart(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
+            Self::Block(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
+            Self::GitGraph(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
+            _ => {}
+        }
+    }
+
+    fn remap_warning_fact_slice(
+        facts: &mut [DiagramWarningFact],
+        remap: &mut impl FnMut(&mut DiagramWarningFact),
+    ) {
+        for fact in facts {
+            remap(fact);
+        }
+    }
+
+    fn remap_json_warning_fact_spans(
+        model: &mut Value,
+        remap: &mut impl FnMut(&mut DiagramWarningFact),
+    ) {
+        let Some(warning_facts_value) = model.get_mut("warningFacts") else {
+            return;
+        };
+        let Ok(mut warning_facts) =
+            serde_json::from_value::<Vec<DiagramWarningFact>>(warning_facts_value.clone())
+        else {
+            return;
+        };
+
+        Self::remap_warning_fact_slice(&mut warning_facts, remap);
+        *warning_facts_value = serde_json::json!(warning_facts);
+    }
+
     /// Returns a stable family label for diagnostics and timing output.
     pub fn kind(&self) -> &'static str {
         match self {

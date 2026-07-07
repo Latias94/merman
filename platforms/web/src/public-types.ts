@@ -122,10 +122,12 @@ export interface CommonBindingOptions extends AnalysisBindingOptions {
 export type AsciiCharsetOption = "ascii" | "unicode";
 export type AsciiDirectionOption =
   | "lr"
+  | "leftRight"
   | "left-right"
   | "left_right"
   | "td"
   | "tb"
+  | "topDown"
   | "top-down"
   | "top_down";
 export type AsciiColorModeOption =

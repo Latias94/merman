@@ -76,8 +76,8 @@
         "ruleId": "merman.semantic.flowchart.unknown_style_target",
         "message": "Style applied to unknown node \"T\". This may indicate a typo. The node will be created automatically.",
         "span": {
-          "start": 39,
-          "end": 40
+          "start": 40,
+          "end": 41
         }
       }
     ],
