@@ -115,29 +115,12 @@ fn merged_diagram_config(source: &str) -> Option<Value> {
 }
 
 fn merged_deprecated_html_labels_config(source: &str) -> Option<Value> {
-    let mut config = merged_diagram_config(source)?;
-    for directive_config in init_directive_config_values(source) {
-        deep_merge_config(&mut config, directive_config);
-    }
-    Some(config)
+    merged_diagram_config(source)
 }
 
 fn migration_engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(Engine::new)
-}
-
-fn init_directive_config_values(source: &str) -> Vec<Value> {
-    init_directive_spans(source)
-        .into_iter()
-        .filter_map(|directive| {
-            let body = source.get(directive.keyword.end..directive.full.end)?;
-            let rest = body.trim_start();
-            let rest = rest.strip_prefix(':')?.trim_start();
-            let body = rest.strip_suffix("}%%").unwrap_or(rest).trim();
-            json5::from_str::<Value>(body).ok()
-        })
-        .collect()
 }
 
 fn deep_merge_config(target: &mut Value, source: Value) {
@@ -244,6 +227,11 @@ fn move_flowchart_html_labels_to_root(config: &mut Value) -> bool {
                 root.remove("flowchart");
             }
         }
+        FlowchartHtmlLabelsPath::DirectiveConfigWrappedFlowchart { flowchart_is_empty } => {
+            if flowchart_is_empty {
+                root.remove("flowchart");
+            }
+        }
         FlowchartHtmlLabelsPath::ConfigWrapped {
             flowchart_is_empty,
             config_is_empty,
@@ -270,6 +258,9 @@ enum FlowchartHtmlLabelsPath {
     Direct {
         flowchart_is_empty: bool,
     },
+    DirectiveConfigWrappedFlowchart {
+        flowchart_is_empty: bool,
+    },
     ConfigWrapped {
         flowchart_is_empty: bool,
         config_is_empty: bool,
@@ -282,20 +273,51 @@ enum FlowchartHtmlLabelsPath {
 fn take_flowchart_html_labels(
     root: &mut Map<String, Value>,
 ) -> Option<(Value, FlowchartHtmlLabelsPath)> {
-    let (html_labels, flowchart_is_empty) = {
-        let Some(Value::Object(flowchart)) = root.get_mut("flowchart") else {
-            return take_config_wrapped_flowchart_html_labels(root);
-        };
-        let Some(html_labels) = flowchart.remove("htmlLabels") else {
-            return take_config_wrapped_flowchart_html_labels(root);
-        };
-        let flowchart_is_empty = flowchart.is_empty();
-        (html_labels, flowchart_is_empty)
+    if let Some(result) = take_direct_flowchart_html_labels(root) {
+        return Some(result);
+    }
+    if let Some(result) = take_directive_config_wrapped_flowchart_html_labels(root) {
+        return Some(result);
+    }
+    take_config_wrapped_flowchart_html_labels(root)
+}
+
+fn take_direct_flowchart_html_labels(
+    root: &mut Map<String, Value>,
+) -> Option<(Value, FlowchartHtmlLabelsPath)> {
+    let Value::Object(flowchart) = root.get_mut("flowchart")? else {
+        return None;
     };
+    let html_labels = flowchart.remove("htmlLabels")?;
+    let flowchart_is_empty = flowchart.is_empty();
 
     Some((
         html_labels,
         FlowchartHtmlLabelsPath::Direct { flowchart_is_empty },
+    ))
+}
+
+fn take_directive_config_wrapped_flowchart_html_labels(
+    root: &mut Map<String, Value>,
+) -> Option<(Value, FlowchartHtmlLabelsPath)> {
+    let Value::Object(flowchart) = root.get_mut("flowchart")? else {
+        return None;
+    };
+    let (html_labels, nested_flowchart_is_empty) = {
+        let Value::Object(nested_flowchart) = flowchart.get_mut("flowchart")? else {
+            return None;
+        };
+        let html_labels = nested_flowchart.remove("htmlLabels")?;
+        (html_labels, nested_flowchart.is_empty())
+    };
+    if nested_flowchart_is_empty {
+        flowchart.remove("flowchart");
+    }
+    let flowchart_is_empty = flowchart.is_empty();
+
+    Some((
+        html_labels,
+        FlowchartHtmlLabelsPath::DirectiveConfigWrappedFlowchart { flowchart_is_empty },
     ))
 }
 
@@ -503,7 +525,7 @@ mod tests {
 
     #[test]
     fn flowchart_html_labels_to_root_fix_promotes_raw_config_html_labels() {
-        let source = "%%{init: {\"config\": {\"htmlLabels\": false}, \"theme\": \"base\"}}%%\nflowchart TD\nA-->B\n";
+        let source = "%%{init: {\"config\": {\"htmlLabels\": false, \"secure\": [\"x\"], \"__proto__\": {\"polluted\": true}, \"themeCSS\": \"url(data:text/css,a)\"}, \"theme\": \"base\"}}%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
         let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
@@ -513,6 +535,29 @@ mod tests {
         assert!(edited.contains("config:"));
         assert!(edited.contains("htmlLabels: false"));
         assert!(edited.contains("theme: base"));
+        assert!(!edited.contains("secure"));
+        assert!(!edited.contains("__proto__"));
+        assert!(!edited.contains("polluted"));
+        assert!(!edited.contains("url(data:"));
         assert!(!edited.contains("config:\n  config:"));
+    }
+
+    #[test]
+    fn flowchart_html_labels_to_root_fix_uses_core_semantics_for_config_wrapped_flowchart() {
+        let source = "%%{init: {\"config\": {\"flowchart\": {\"htmlLabels\": true, \"curve\": \"basis\", \"secure\": [\"x\"], \"__proto__\": {\"polluted\": true}, \"themeCSS\": \"url(data:text/css,a)\"}}, \"theme\": \"base\"}}%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+
+        assert!(fix.is_preferred);
+        assert!(edited.contains("htmlLabels: true"));
+        assert!(edited.contains("theme: base"));
+        assert!(edited.contains("curve: basis"));
+        assert!(!edited.contains("secure"));
+        assert!(!edited.contains("__proto__"));
+        assert!(!edited.contains("polluted"));
+        assert!(!edited.contains("url(data:"));
+        assert!(!edited.contains("flowchart:\n    htmlLabels: true"));
     }
 }

@@ -390,7 +390,7 @@ class SvgSafetyScanner {
       if (valueEnd < 0) {
         throw this.error("malformed SVG CSS.");
       }
-      const rawValue = normalized.slice(valueStart, valueEnd).trim();
+      const rawValue = withoutComments.slice(valueStart, valueEnd).trim();
       const unquoted =
         (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
         (rawValue.startsWith("'") && rawValue.endsWith("'"))

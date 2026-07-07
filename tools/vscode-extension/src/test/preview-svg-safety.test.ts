@@ -26,6 +26,9 @@ describe("preview SVG safety", () => {
         '<svg><defs><linearGradient id="fill"></linearGradient><filter id="shadow"></filter><clipPath id="clip"></clipPath><mask id="mask"></mask><marker id="arrow"></marker></defs><rect fill="url(#fill)" filter="url(#shadow)" clip-path="url(#clip)" mask="url(#mask)" marker-end="url(#arrow)"/><a href="#node">x</a><image href="data:image/png;base64,iVBORw0KGgo="/></svg>',
       ),
     );
+    assert.doesNotThrow(() =>
+      assertSafePreviewSvg('<svg><style>text { fill: url(/* local */ #fill); }</style><text>ok</text></svg>'),
+    );
   });
 
   it("accepts comments around a single SVG root", () => {
@@ -161,6 +164,13 @@ describe("preview SVG safety", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: url(//example.com/a.svg#x); }</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'), /CSS resource|CSS URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: u&#x2f;*hidden*&#x2f;rl(javascript:alert(1)); }</style></svg>'), /CSS resource|CSS URL/);
+    assert.throws(
+      () =>
+        assertSafePreviewSvg(
+          '<svg><style>text { fill: url(#ok); stroke: /* padding #safe */ url(https://example.com/x.svg#x); }</style></svg>',
+        ),
+      /CSS resource|CSS URL/,
+    );
   });
 
   it("rejects CSS resource keywords hidden behind CSS escapes", () => {
