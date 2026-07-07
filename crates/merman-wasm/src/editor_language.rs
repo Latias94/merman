@@ -822,4 +822,27 @@ mod tests {
         assert_eq!(edits[1].range.start, Position::new(0, 5));
         assert_eq!(edits[1].new_text, "late");
     }
+
+    #[test]
+    fn wasm_code_actions_include_frontmatter_config_migration_quickfix() {
+        let source = "%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let uri = "file:///tmp/example.mmd";
+        let payload =
+            editor_analysis_payload(source, Some(r#"{"lint":{"profile":"recommended"}}"#), uri)
+                .expect("analysis payload");
+        let diagnostics = analysis_payload_to_diagnostics(&payload);
+        let actions = code_actions_for_diagnostics(&diagnostics, uri);
+
+        let action = actions
+            .iter()
+            .find(|action| action.title == "Move init directive config into frontmatter")
+            .expect("frontmatter migration action");
+        assert!(action.is_preferred);
+        let edits = action.edit.changes.get(uri).expect("uri edits");
+        assert_eq!(edits.len(), 1);
+        assert!(edits[0].new_text.starts_with("---\nconfig:\n"));
+        assert!(edits[0].new_text.contains("theme: dark\n"));
+        assert_eq!(edits[0].range.start, Position::new(0, 0));
+        assert_eq!(edits[0].range.end, Position::new(1, 0));
+    }
 }

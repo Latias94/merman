@@ -9,6 +9,21 @@ pub struct PreprocessResult {
     pub config: MermaidConfig,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrontmatterByteSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct FrontmatterBlock<'a> {
+    pub full: FrontmatterByteSpan,
+    pub body: FrontmatterByteSpan,
+    pub indent: &'a str,
+    pub dedented_body: Cow<'a, str>,
+    pub stripped: &'a str,
+}
+
 #[cfg(feature = "full-config")]
 const FRONTMATTER_DIAGRAM_CONFIG_KEYS: &[&str] = &[
     "architecture",
@@ -368,6 +383,10 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
 }
 
 fn split_frontmatter(input: &str) -> Option<(Cow<'_, str>, &str)> {
+    split_frontmatter_block(input).map(|block| (block.dedented_body, block.stripped))
+}
+
+pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
     let open_line_end = input.find('\n')?;
     let open_line = input[..open_line_end].trim_end_matches('\r');
     let indent_end = frontmatter_indent_end(open_line);
@@ -386,7 +405,19 @@ fn split_frontmatter(input: &str) -> Option<(Cow<'_, str>, &str)> {
         if is_frontmatter_closing_line(without_newline, indent) {
             let body = rest[..offset].strip_suffix('\n').unwrap_or(&rest[..offset]);
             let stripped = &rest[offset + line.len()..];
-            return Some((dedent_frontmatter_body(body, indent), stripped));
+            return Some(FrontmatterBlock {
+                full: FrontmatterByteSpan {
+                    start: 0,
+                    end: body_start + offset + line.len(),
+                },
+                body: FrontmatterByteSpan {
+                    start: body_start,
+                    end: body_start + body.len(),
+                },
+                indent,
+                dedented_body: dedent_frontmatter_body(body, indent),
+                stripped,
+            });
         }
         offset += line.len();
     }

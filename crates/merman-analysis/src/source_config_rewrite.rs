@@ -2,7 +2,7 @@ use crate::{
     DiagnosticFix, DiagnosticFixEdit, SourceMap,
     source_directives::{ByteSpan, init_directive_spans},
 };
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, ParseOptions, preprocess::split_frontmatter_block};
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
@@ -164,22 +164,27 @@ struct FrontmatterEdit {
 }
 
 fn frontmatter_config_edit(source: &str, config: Value) -> Option<FrontmatterEdit> {
-    let Some(frontmatter) = split_frontmatter(source) else {
+    let Some(frontmatter) = split_frontmatter_block(source) else {
         return Some(FrontmatterEdit {
             span: ByteSpan { start: 0, end: 0 },
-            replacement: frontmatter_document(frontmatter_fields_with_config(Map::new(), config)?)?,
+            replacement: frontmatter_document(
+                frontmatter_fields_with_config(Map::new(), config)?,
+                "",
+            )?,
         });
     };
 
-    let existing_body = source.get(frontmatter.body.start..frontmatter.body.end)?;
-    let existing_fields = parse_frontmatter_fields(existing_body)?;
+    let existing_fields = parse_frontmatter_fields(frontmatter.dedented_body.as_ref())?;
 
     Some(FrontmatterEdit {
-        span: frontmatter.full,
-        replacement: frontmatter_document(frontmatter_fields_with_config(
-            existing_fields,
-            config,
-        )?)?,
+        span: ByteSpan {
+            start: frontmatter.full.start,
+            end: frontmatter.full.end,
+        },
+        replacement: frontmatter_document(
+            frontmatter_fields_with_config(existing_fields, config)?,
+            frontmatter.indent,
+        )?,
     })
 }
 
@@ -191,7 +196,7 @@ fn frontmatter_fields_with_config(
     Some(fields)
 }
 
-fn frontmatter_document(fields: Map<String, Value>) -> Option<String> {
+fn frontmatter_document(fields: Map<String, Value>, indent: &str) -> Option<String> {
     let mut body = serde_yaml::to_string(&Value::Object(fields)).ok()?;
     if let Some(stripped) = body.strip_prefix("---\n") {
         body = stripped.to_string();
@@ -202,7 +207,21 @@ fn frontmatter_document(fields: Map<String, Value>) -> Option<String> {
     if !body.ends_with('\n') {
         body.push('\n');
     }
-    Some(format!("---\n{body}---\n"))
+    Some(frontmatter_document_with_indent(&body, indent))
+}
+
+fn frontmatter_document_with_indent(body: &str, indent: &str) -> String {
+    let mut document =
+        String::with_capacity(body.len() + (indent.len() * (body.lines().count() + 2)) + 8);
+    document.push_str(indent);
+    document.push_str("---\n");
+    for line in body.split_inclusive('\n') {
+        document.push_str(indent);
+        document.push_str(line);
+    }
+    document.push_str(indent);
+    document.push_str("---\n");
+    document
 }
 
 fn move_flowchart_html_labels_to_root(config: &mut Value) -> bool {
@@ -345,44 +364,6 @@ fn parse_frontmatter_fields(yaml_body: &str) -> Option<Map<String, Value>> {
     }
 }
 
-struct FrontmatterBlock {
-    full: ByteSpan,
-    body: ByteSpan,
-}
-
-fn split_frontmatter(source: &str) -> Option<FrontmatterBlock> {
-    let after_marker = source.strip_prefix("---")?;
-    let open_line_end = after_marker.find('\n')?;
-    if !after_marker[..open_line_end].trim().is_empty() {
-        return None;
-    }
-
-    let body_start = 3 + open_line_end + 1;
-    let rest = &source[body_start..];
-    let mut offset = 0usize;
-
-    for line in rest.split_inclusive('\n') {
-        let without_newline = line.trim_end_matches(['\r', '\n']);
-        if without_newline.trim() == "---" {
-            let body_end = body_start + offset;
-            let full_end = body_start + offset + line.len();
-            return Some(FrontmatterBlock {
-                full: ByteSpan {
-                    start: 0,
-                    end: full_end,
-                },
-                body: ByteSpan {
-                    start: body_start,
-                    end: body_end,
-                },
-            });
-        }
-        offset += line.len();
-    }
-
-    None
-}
-
 fn directive_removal_span(source: &str, directive: ByteSpan) -> ByteSpan {
     let line_start = source[..directive.start]
         .rfind('\n')
@@ -479,6 +460,31 @@ mod tests {
 
         assert_eq!(migrated.config.as_value(), original.config.as_value());
         assert!(!edited.contains("%%{ initialize"));
+    }
+
+    #[test]
+    fn init_directive_migration_updates_indented_frontmatter_with_core_semantics() {
+        let source = "  ---\n  title: Demo\n  config:\n    theme: default\n  ---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+        let engine = Engine::new();
+        let original = engine
+            .parse_metadata_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("original metadata");
+
+        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+        let migrated = engine
+            .parse_metadata_sync(&edited, ParseOptions::strict())
+            .unwrap()
+            .expect("migrated metadata");
+
+        assert!(edited.starts_with("  ---\n"));
+        assert!(!edited.starts_with("---\n  ---\n"));
+        assert_eq!(edited.matches("title: Demo").count(), 1);
+        assert!(!edited.contains("%%{ init"));
+        assert_eq!(migrated.config.as_value(), original.config.as_value());
+        assert_eq!(migrated.title.as_deref(), Some("Demo"));
     }
 
     #[test]
