@@ -981,6 +981,35 @@ mod tests {
     }
 
     #[test]
+    fn degraded_parser_flowchart_payload_shape_object_text_after_top_level_marker_returns_no_completion()
+     {
+        let mut facts = EditorSemanticFacts::new();
+        facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+        let line = "A@{ icon: \"home\" } B[\"docs @{ shape: rou";
+        let snapshot = snapshot_with_facts(
+            &format!("flowchart TD\n{line}"),
+            Some("flowchart-v2"),
+            facts,
+        );
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
+
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
+        );
+        assert!(
+            completion.items.is_empty(),
+            "degraded parser payload shape-object text after top-level marker must not offer completions: {:?}",
+            completion
+                .items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn degraded_parser_flowchart_shape_object_value_still_completes_shapes() {
         let mut facts = EditorSemanticFacts::new();
         facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;

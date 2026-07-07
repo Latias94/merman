@@ -493,7 +493,7 @@ fn flowchart_top_level_shape_object_value(prefix: &str) -> bool {
     let mut search_end = prefix.len();
 
     while let Some(marker) = prefix[..search_end].rfind("@{") {
-        if shape_object_value_prefix(&prefix[marker..]).is_some()
+        if shape_object_value_prefix(&prefix[marker..search_end]).is_some()
             && !flowchart_scan_line(&prefix[..marker]).inside_payload
         {
             return true;
