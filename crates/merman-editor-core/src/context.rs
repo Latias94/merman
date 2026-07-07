@@ -627,6 +627,13 @@ enum FlowchartLinkFamily {
     Invisible,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlowchartLinkMarker {
+    Arrow,
+    Circle,
+    Cross,
+}
+
 fn flowchart_operator_at(prefix: &str, offset: usize) -> Option<FlowchartOperatorMatch> {
     flowchart_full_link_at(prefix, offset)
         .or_else(|| flowchart_new_notation_link_at(prefix, offset))
@@ -641,7 +648,7 @@ fn flowchart_full_link_at(prefix: &str, offset: usize) -> Option<FlowchartOperat
     ]
     .into_iter()
     .find_map(|family| {
-        let link = flowchart_link_end_at(prefix, offset, family, false)?;
+        let link = flowchart_link_end_at(prefix, offset, family, false, true)?;
         Some(FlowchartOperatorMatch {
             end: link.end,
             inside_payload: false,
@@ -653,7 +660,9 @@ fn flowchart_new_notation_link_at(prefix: &str, offset: usize) -> Option<Flowcha
     let start = flowchart_start_link_at(prefix, offset)?;
     let mut cursor = start.end;
     while cursor < prefix.len() {
-        if let Some(link) = flowchart_link_end_at(prefix, cursor, start.family, true) {
+        if let Some(link) = flowchart_link_end_at(prefix, cursor, start.family, true, false)
+            && flowchart_new_notation_markers_match(start.marker, link.marker)
+        {
             return Some(FlowchartOperatorMatch {
                 end: link.end,
                 inside_payload: false,
@@ -671,21 +680,25 @@ fn flowchart_new_notation_link_at(prefix: &str, offset: usize) -> Option<Flowcha
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FlowchartStartLink {
     family: FlowchartLinkFamily,
+    marker: Option<FlowchartLinkMarker>,
     end: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FlowchartLinkEnd {
+    marker: Option<FlowchartLinkMarker>,
     end: usize,
 }
 
 fn flowchart_start_link_at(prefix: &str, offset: usize) -> Option<FlowchartStartLink> {
     let bytes = prefix.as_bytes();
     let mut cursor = offset;
+    let mut marker = None;
     if cursor >= bytes.len() {
         return None;
     }
-    if matches!(bytes[cursor], b'x' | b'o' | b'<') {
+    if let Some(next_marker) = flowchart_start_marker(bytes[cursor]) {
+        marker = Some(next_marker);
         cursor += 1;
         if cursor >= bytes.len() {
             return None;
@@ -695,18 +708,21 @@ fn flowchart_start_link_at(prefix: &str, offset: usize) -> Option<FlowchartStart
     if bytes.get(cursor) == Some(&b'-') && bytes.get(cursor + 1) == Some(&b'-') {
         return Some(FlowchartStartLink {
             family: FlowchartLinkFamily::Normal,
+            marker,
             end: cursor + 2,
         });
     }
     if bytes.get(cursor) == Some(&b'=') && bytes.get(cursor + 1) == Some(&b'=') {
         return Some(FlowchartStartLink {
             family: FlowchartLinkFamily::Thick,
+            marker,
             end: cursor + 2,
         });
     }
     if bytes.get(cursor) == Some(&b'-') && bytes.get(cursor + 1) == Some(&b'.') {
         return Some(FlowchartStartLink {
             family: FlowchartLinkFamily::Dotted,
+            marker,
             end: cursor + 2,
         });
     }
@@ -719,6 +735,7 @@ fn flowchart_link_end_at(
     offset: usize,
     family: FlowchartLinkFamily,
     allow_leading_ws: bool,
+    allow_leading_marker: bool,
 ) -> Option<FlowchartLinkEnd> {
     let bytes = prefix.as_bytes();
     let mut cursor = offset;
@@ -732,13 +749,14 @@ fn flowchart_link_end_at(
         return None;
     }
 
-    if matches!(bytes[cursor], b'x' | b'o' | b'<') {
+    if allow_leading_marker && flowchart_start_marker(bytes[cursor]).is_some() {
         cursor += 1;
         if cursor >= bytes.len() {
             return None;
         }
     }
 
+    let mut marker = None;
     match family {
         FlowchartLinkFamily::Invisible => {
             cursor = token_start;
@@ -761,7 +779,10 @@ fn flowchart_link_end_at(
             }
             if cursor < bytes.len() {
                 match bytes[cursor] {
-                    b'x' | b'o' | b'>' => cursor += 1,
+                    b'x' | b'o' | b'>' => {
+                        marker = flowchart_end_marker(bytes[cursor]);
+                        cursor += 1;
+                    }
                     _ if hyphens < 3 => return None,
                     _ => {}
                 }
@@ -780,7 +801,10 @@ fn flowchart_link_end_at(
             }
             if cursor < bytes.len() {
                 match bytes[cursor] {
-                    b'x' | b'o' | b'>' => cursor += 1,
+                    b'x' | b'o' | b'>' => {
+                        marker = flowchart_end_marker(bytes[cursor]);
+                        cursor += 1;
+                    }
                     _ if eqs < 3 => return None,
                     _ => {}
                 }
@@ -804,12 +828,41 @@ fn flowchart_link_end_at(
             }
             cursor += 1;
             if cursor < bytes.len() && matches!(bytes[cursor], b'x' | b'o' | b'>') {
+                marker = flowchart_end_marker(bytes[cursor]);
                 cursor += 1;
             }
         }
     }
 
-    Some(FlowchartLinkEnd { end: cursor })
+    Some(FlowchartLinkEnd {
+        marker,
+        end: cursor,
+    })
+}
+
+fn flowchart_start_marker(byte: u8) -> Option<FlowchartLinkMarker> {
+    match byte {
+        b'<' => Some(FlowchartLinkMarker::Arrow),
+        b'o' => Some(FlowchartLinkMarker::Circle),
+        b'x' => Some(FlowchartLinkMarker::Cross),
+        _ => None,
+    }
+}
+
+fn flowchart_end_marker(byte: u8) -> Option<FlowchartLinkMarker> {
+    match byte {
+        b'>' => Some(FlowchartLinkMarker::Arrow),
+        b'o' => Some(FlowchartLinkMarker::Circle),
+        b'x' => Some(FlowchartLinkMarker::Cross),
+        _ => None,
+    }
+}
+
+fn flowchart_new_notation_markers_match(
+    start: Option<FlowchartLinkMarker>,
+    end: Option<FlowchartLinkMarker>,
+) -> bool {
+    start.is_none_or(|start| end == Some(start))
 }
 
 fn flowchart_edge_label_len(tail: &str) -> Option<usize> {

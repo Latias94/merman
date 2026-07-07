@@ -173,6 +173,29 @@ describe("preview SVG safety", () => {
     );
   });
 
+  it("rejects shadow-scoping CSS selectors", () => {
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><style>:host{position:fixed;inset:0}</style></svg>"),
+      /shadow CSS/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><style>:host-context(body){z-index:999999}</style></svg>"),
+      /shadow CSS/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><style>::slotted(*){display:block}</style></svg>"),
+      /shadow CSS/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><style>:h\\6fst{position:fixed}</style></svg>"),
+      /shadow CSS/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><style>:h/*hidden*/ost{position:fixed}</style></svg>"),
+      /shadow CSS/,
+    );
+  });
+
   it("rejects CSS resource keywords hidden behind CSS escapes", () => {
     assert.throws(
       () => assertSafePreviewSvg('<svg><style>@im\\70ort "https://example.com/a.css";</style></svg>'),

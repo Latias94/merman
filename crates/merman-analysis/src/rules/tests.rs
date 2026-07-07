@@ -195,6 +195,7 @@ fn source_lint_does_not_scan_past_init_directive_envelope_value() {
     let cases = [
         "%%{ init: \"not config\", init: { flowchart: { htmlLabels: false } } }%%\nflowchart TD\nA-->B\n",
         "%%{ init /* comment */: { flowchart: { htmlLabels: false } } }%%\nflowchart TD\nA-->B\n",
+        "%%{ init { flowchart: { htmlLabels: false } } }%%\nflowchart TD\nA-->B\n",
     ];
 
     for source in cases {
@@ -445,6 +446,28 @@ fn source_lint_reports_deprecated_external_diagram_loading_flow_style_frontmatte
 fn source_lint_reports_deprecated_external_diagram_loading_multiline_flow_style_frontmatter_config()
 {
     let source = "---\nconfig: {\n  lazyLoadedDiagrams: true,\n  loadExternalDiagramsAtStartup: false\n}\n---\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert_eq!(diagnostics.len(), 2);
+    let spans: Vec<_> = diagnostics
+        .iter()
+        .map(|diagnostic| {
+            assert_eq!(diagnostic.id, DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID);
+            let span = diagnostic.span.as_ref().expect("deprecated key span");
+            &source[span.byte_start..span.byte_end]
+        })
+        .collect();
+    assert_eq!(
+        spans,
+        vec!["lazyLoadedDiagrams", "loadExternalDiagramsAtStartup"]
+    );
+}
+
+#[test]
+fn source_lint_reports_deprecated_flow_style_frontmatter_config_after_yaml_comments() {
+    let source = "---\nconfig: {\n  url: https://example.com/#section,\n  # braces in comments do not close the flow mapping }\n  lazyLoadedDiagrams: true,\n  loadExternalDiagramsAtStartup: false\n}\n---\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
 
     let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());

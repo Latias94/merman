@@ -367,6 +367,9 @@ class SvgSafetyScanner {
     if (lower.includes("@import")) {
       throw this.error("SVG with external CSS resource references.");
     }
+    if (containsShadowScopingSelector(lower)) {
+      throw this.error("SVG with unsafe shadow CSS selectors.");
+    }
     if (
       containsCssFunction(lower, "image-set") ||
       containsCssFunction(lower, "-webkit-image-set")
@@ -512,6 +515,10 @@ function containsCssFunction(css: string, name: string): boolean {
     }
   }
   return false;
+}
+
+function containsShadowScopingSelector(css: string): boolean {
+  return css.includes(":host") || css.includes("::slotted");
 }
 
 function decodeCssEscapes(value: string): string {

@@ -90,17 +90,14 @@ fn init_directive_value_span(source: &str, body_start: usize, body_end: usize) -
         pos += ch.len_utf8();
     }
 
-    match source[pos..body_end].chars().next()? {
-        ':' => Some(ByteSpan {
-            start: pos + ':'.len_utf8(),
-            end: body_end,
-        }),
-        '{' => Some(ByteSpan {
-            start: pos,
-            end: body_end,
-        }),
-        _ => None,
+    if source[pos..body_end].chars().next()? != ':' {
+        return None;
     }
+
+    Some(ByteSpan {
+        start: pos + ':'.len_utf8(),
+        end: body_end,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,12 +158,7 @@ fn directive_keyword_span(source: &str, body_start: usize, body_end: usize) -> O
 
     let keyword_end = keyword_start + keyword_len;
     let after_keyword = source.get(keyword_end..body_end)?.trim_start();
-    if after_keyword.is_empty()
-        || after_keyword
-            .chars()
-            .next()
-            .is_some_and(|ch| matches!(ch, ':' | '{'))
-    {
+    if after_keyword.is_empty() || after_keyword.chars().next().is_some_and(|ch| ch == ':') {
         Some(ByteSpan {
             start: keyword_start,
             end: keyword_end,
@@ -194,6 +186,20 @@ struct DirectiveConfigScanner<'source, 'query> {
 enum ConfigCommentMode {
     None,
     Json5,
+    Yaml,
+}
+
+fn starts_yaml_comment(source: &str, pos: usize, lower_bound: usize) -> bool {
+    if source.as_bytes().get(pos) != Some(&b'#') {
+        return false;
+    }
+    if pos <= lower_bound {
+        return true;
+    }
+    source[..pos]
+        .chars()
+        .next_back()
+        .is_some_and(|ch| ch.is_whitespace() || matches!(ch, '{' | '[' | ','))
 }
 
 impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
@@ -315,7 +321,7 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
             if matches!(ch, ':' | '\n' | '\r' | '}' | ']') {
                 break;
             }
-            if ch == '/' && self.starts_comment() {
+            if self.starts_comment() {
                 break;
             }
             self.next_char();
@@ -351,7 +357,7 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
                     if matches!(ch, ',' | '\n' | '\r' | '}' | ']') {
                         break;
                     }
-                    if ch == '/' && self.skip_comment() {
+                    if self.starts_comment() && self.skip_comment() {
                         continue;
                     }
                     self.next_char();
@@ -369,7 +375,7 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
         while self.pos < self.body_end && depth > 0 {
             match self.peek_char() {
                 Some('"') | Some('\'') => self.skip_quoted(),
-                Some('/') if self.skip_comment() => {}
+                Some(_) if self.starts_comment() && self.skip_comment() => {}
                 Some(ch) if ch == open => {
                     self.next_char();
                     depth += 1;
@@ -441,12 +447,25 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
     }
 
     fn skip_comment(&mut self) -> bool {
-        if self.comment_mode != ConfigCommentMode::Json5 {
-            return false;
-        }
         let Some(tail) = self.source.get(self.pos..self.body_end) else {
             return false;
         };
+        if self.comment_mode == ConfigCommentMode::Yaml {
+            if !tail.starts_with('#') || !starts_yaml_comment(self.source, self.pos, 0) {
+                return false;
+            }
+            self.pos += '#'.len_utf8();
+            while let Some(ch) = self.peek_char() {
+                if matches!(ch, '\n' | '\r') {
+                    break;
+                }
+                self.next_char();
+            }
+            return true;
+        }
+        if self.comment_mode != ConfigCommentMode::Json5 {
+            return false;
+        }
         if tail.starts_with("//") {
             self.pos += 2;
             while let Some(ch) = self.peek_char() {
@@ -476,12 +495,19 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
     }
 
     fn starts_comment(&self) -> bool {
-        if self.comment_mode != ConfigCommentMode::Json5 {
-            return false;
+        match self.comment_mode {
+            ConfigCommentMode::None => false,
+            ConfigCommentMode::Json5 => self
+                .source
+                .get(self.pos..self.body_end)
+                .is_some_and(|tail| tail.starts_with("//") || tail.starts_with("/*")),
+            ConfigCommentMode::Yaml => {
+                self.source
+                    .get(self.pos..self.body_end)
+                    .is_some_and(|tail| tail.starts_with('#'))
+                    && starts_yaml_comment(self.source, self.pos, 0)
+            }
         }
-        self.source
-            .get(self.pos..self.body_end)
-            .is_some_and(|tail| tail.starts_with("//") || tail.starts_with("/*"))
     }
 
     fn peek_char(&self) -> Option<char> {
@@ -625,7 +651,8 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
                 flow_span.start,
                 flow_span.end,
                 self.matching_paths,
-            );
+            )
+            .with_comment_mode(ConfigCommentMode::Yaml);
             scanner.collect_value_spans(&mut inline_path, spans);
             line_scan.skip_until = Some(self.line_start_after_offset(flow_span.end));
         }
@@ -785,7 +812,7 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
 
             match ch {
                 '"' | '\'' => quote = Some(ch),
-                '#' => yaml_comment = true,
+                '#' if starts_yaml_comment(self.source, pos, start) => yaml_comment = true,
                 '{' => depth += 1,
                 '}' => {
                     depth = depth.saturating_sub(1);
@@ -989,6 +1016,7 @@ mod tests {
         let cases = [
             "%%{ init: \"not config\", init: { flowchart: { htmlLabels: false } } }%%\nflowchart TD\n",
             "%%{ init /* comment */: { flowchart: { htmlLabels: false } } }%%\nflowchart TD\n",
+            "%%{ init { flowchart: { htmlLabels: false } } }%%\nflowchart TD\n",
         ];
 
         for source in cases {
@@ -1051,6 +1079,16 @@ mod tests {
     #[test]
     fn frontmatter_config_key_spans_match_flow_style_root_config() {
         let source = "---\nconfig: { htmlLabels: true }\n---\nflowchart TD\n";
+
+        let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn frontmatter_config_key_spans_match_flow_style_yaml_comments() {
+        let source = "---\nconfig: {\n  url: https://example.com/#section,\n  # braces in comments do not close the flow mapping }\n  flowchart: { htmlLabels: false }\n}\n---\nflowchart TD\n";
 
         let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
 

@@ -940,6 +940,42 @@ mod tests {
     }
 
     #[test]
+    fn degraded_parser_flowchart_new_notation_mismatched_markers_return_no_completion() {
+        for line in ["C x-- label -->", "C o== label ==x", "C <-. label .-o"] {
+            let mut facts = EditorSemanticFacts::new();
+            facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+            facts.push_symbol(EditorSemanticSymbol::new(
+                "A",
+                Some("flowchart node".to_string()),
+                EditorSemanticKind::Module,
+                SourceSpan::new(13, 14),
+                SourceSpan::new(13, 14),
+            ));
+            let snapshot = snapshot_with_facts(
+                &format!("flowchart TD\nA-->B\n{line}"),
+                Some("flowchart-v2"),
+                facts,
+            );
+
+            let completion = completion_for_snapshot(&snapshot, Position::new(2, line.len()));
+
+            assert_eq!(
+                completion.fact_source,
+                Some(FenceTextIndexSource::ParserCompleteDegradedSpans)
+            );
+            assert!(
+                completion.items.is_empty(),
+                "mismatched flowchart markers must not complete targets for {line:?}: {:?}",
+                completion
+                    .items
+                    .iter()
+                    .map(|item| item.label.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
     fn degraded_parser_flowchart_spaced_pipe_label_payload_returns_no_completion() {
         let mut facts = EditorSemanticFacts::new();
         facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
