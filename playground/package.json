@@ -9,6 +9,7 @@
     "postbuild": "node scripts/verify-dist-wasm.mjs",
     "preview": "vite preview",
     "verify:dist": "node scripts/verify-dist-wasm.mjs",
+    "test:render-artifacts": "node --test --experimental-strip-types src/lib/render-artifacts.test.ts",
     "test:semantic-tokens": "node --test scripts/semantic-tokens.test.mjs",
     "lint": "eslint ."
   },
