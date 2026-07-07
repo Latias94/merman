@@ -41,8 +41,17 @@ const stableWrapperOnlyExports = new Set([
 ]);
 
 const rawWasmExports = [...extractExportedFunctionNames(read(fullWasmTypes))];
+const publicEntryApi = read(publicApiSource);
 const publicApi = publicApiTypeSources.map(read).join("\n");
-const publicWrappers = extractExportedFunctionNames(publicApi);
+const publicCatalogValueExports = extractNamedReExport(
+  publicEntryApi,
+  "./public-catalog.js",
+  publicApiSource,
+);
+const publicWrappers = new Set([
+  ...extractExportedFunctionNames(publicEntryApi),
+  ...publicCatalogValueExports,
+]);
 const wasmModuleProperties = extractInterfaceProperties(publicApi, "MermanWasmModule");
 const runtimeBindings = extractSurfaceRuntimeBindings(read(surfaceRuntimeSource));
 const generatedSurfaceBindings = new Set(allSurfaceRuntimeExportNames);
@@ -96,6 +105,14 @@ const requiredTypeStringLiterals = new Map([
 ]);
 
 let failed = false;
+failed ||= reportPolicyFailure(
+  "check-contracts: root public API must type-re-export the public catalog",
+  !hasTypeStarReExportFrom(publicEntryApi, "./public-catalog.js"),
+);
+failed ||= reportPolicyFailure(
+  "check-contracts: root public API must type-re-export the public types",
+  !hasTypeStarReExportFrom(publicEntryApi, "./public-types.js"),
+);
 failed ||= reportMissing(
   "check-contracts: wasm-bindgen exports without public TypeScript wrappers",
   requiredRawWrappers.filter((name) => !publicWrappers.has(name)),
@@ -256,6 +273,13 @@ function hasValueStarExport(source) {
 
 function hasTypeStarExport(source) {
   return /^\s*export\s+type\s+\*\s+from\s+["']\.\.\/index\.js["'];/m.test(source);
+}
+
+function hasTypeStarReExportFrom(source, fromPath) {
+  const escapedPath = fromPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^\\s*export\\s+type\\s+\\*\\s+from\\s+["']${escapedPath}["'];`, "m").test(
+    source,
+  );
 }
 
 function matches(source, pattern) {
