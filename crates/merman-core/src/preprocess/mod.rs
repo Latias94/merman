@@ -1,5 +1,5 @@
 use crate::{DetectorRegistry, Error, MermaidConfig, Result};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
@@ -50,10 +50,11 @@ const FRONTMATTER_DIAGRAM_CONFIG_KEYS: &[&str] = &[
     "xyChart",
 ];
 
-#[cfg(feature = "full-config")]
 const FRONTMATTER_DIAGRAM_CONFIG_ALIASES: &[(&str, &str)] = &[
     ("classDiagram", "class"),
     ("erDiagram", "er"),
+    ("flowchart-v2", "flowchart"),
+    ("flowchart-elk", "flowchart"),
     ("stateDiagram", "state"),
     ("xychart", "xyChart"),
 ];
@@ -425,6 +426,35 @@ pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
     None
 }
 
+pub fn parse_frontmatter_yaml_fields(
+    input: &str,
+) -> std::result::Result<Map<String, Value>, String> {
+    #[cfg(feature = "full-config")]
+    {
+        let parsed = crate::yaml_config::parse_yaml_value(input, MAX_CONFIG_NESTING_DEPTH)?;
+        return match parsed {
+            Value::Object(map) => Ok(map),
+            other => {
+                crate::config::drop_value_nonrecursive(other);
+                Ok(Map::new())
+            }
+        };
+    }
+
+    #[cfg(not(feature = "full-config"))]
+    {
+        let _ = input;
+        Ok(Map::new())
+    }
+}
+
+pub fn diagram_config_key_for_type(diagram_type: &str) -> &str {
+    FRONTMATTER_DIAGRAM_CONFIG_ALIASES
+        .iter()
+        .find_map(|(source_key, target_key)| (*source_key == diagram_type).then_some(*target_key))
+        .unwrap_or(diagram_type)
+}
+
 fn frontmatter_indent_end(line: &str) -> usize {
     let mut end = 0usize;
     for (idx, ch) in line.char_indices() {
@@ -554,12 +584,10 @@ fn detect_init(
                     .map(ToString::to_string)
             });
 
-            if let Some(mut ty) = detected {
-                if ty == "flowchart-v2" {
-                    ty = "flowchart".to_string();
-                }
+            if let Some(ty) = detected {
+                let key = diagram_config_key_for_type(&ty).to_string();
                 if let Value::Object(obj) = &mut args {
-                    if let Some(old) = obj.insert(ty, diagram_specific) {
+                    if let Some(old) = obj.insert(key, diagram_specific) {
                         crate::config::drop_value_nonrecursive(old);
                     }
                     if let Some(old) = obj.remove("config") {

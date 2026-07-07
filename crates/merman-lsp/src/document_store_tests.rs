@@ -4,7 +4,7 @@ use merman_analysis::{
     FenceTextIndexSource,
 };
 use merman_editor_core::DocumentKind;
-use tower_lsp::lsp_types::{SemanticToken, Url};
+use tower_lsp::lsp_types::{Position, Range, SemanticToken, TextDocumentContentChangeEvent, Url};
 
 #[test]
 fn plain_mermaid_documents_create_single_snapshot_fence() {
@@ -197,10 +197,14 @@ fn apply_text_change_rejects_missing_documents() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/missing.mmd").unwrap();
 
-    let update = store.apply_text_change(
+    let update = store.apply_text_changes(
         uri.clone(),
         2,
-        "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        }],
     );
 
     assert_eq!(update, TextDocumentUpdate::MissingDocument);
@@ -225,7 +229,15 @@ fn apply_text_change_rejects_stale_versions_without_invalidating_current_state()
     assert_eq!(snapshot.version, 3);
     assert!(store.has_snapshot(&uri));
 
-    let update = store.apply_text_change(uri.clone(), 2, "flowchart TD\nA-->B\n".to_string());
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "flowchart TD\nA-->B\n".to_string(),
+        }],
+    );
 
     assert_eq!(
         update,
@@ -237,6 +249,75 @@ fn apply_text_change_rejects_stale_versions_without_invalidating_current_state()
     let stored = store.get(&uri).expect("expected current document");
     assert_eq!(stored.version, 3);
     assert!(stored.text.contains("sequenceDiagram"));
+    assert!(store.has_snapshot(&uri));
+}
+
+#[test]
+fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA[🤓]-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(1, 2), Position::new(1, 4))),
+                range_length: None,
+                text: "C".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(1, 8), Position::new(1, 8))),
+                range_length: None,
+                text: "\nC-->D".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected updated document");
+    assert_eq!(stored.version, 2);
+    assert_eq!(stored.text.as_ref(), "flowchart TD\nA[C]-->B\nC-->D\n");
+}
+
+#[test]
+fn apply_text_changes_rejects_invalid_ranges_without_invalidating_current_state() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let snapshot = store
+        .snapshot(&uri)
+        .expect("expected current snapshot before invalid edit");
+    assert_eq!(snapshot.version, 1);
+    assert!(store.has_snapshot(&uri));
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
+            range_length: None,
+            text: "bad".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::InvalidRange);
+    let stored = store.get(&uri).expect("expected current document");
+    assert_eq!(stored.version, 1);
+    assert_eq!(stored.text.as_ref(), "flowchart TD\nA-->B\n");
     assert!(store.has_snapshot(&uri));
 }
 

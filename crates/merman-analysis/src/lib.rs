@@ -31,7 +31,8 @@ pub use document::{
 pub use editor::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
     FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceSemanticItem,
-    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, ShapeObjectValuePrefix,
+    shape_object_value_prefix,
 };
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,
@@ -52,9 +53,11 @@ pub use result::{
     AnalyzedDiagram,
 };
 pub use rules::{
-    AnalysisRuleConfig, AnalysisRuleProfile, RuleCatalogEntry, RuleDescriptor, RuleOrigin,
-    configurable_rule_catalog, configurable_rule_catalog_json_bytes, configurable_rule_descriptor,
-    configurable_rule_descriptors, rule_catalog, rule_catalog_json_bytes, rule_descriptors,
+    AnalysisRuleConfig, AnalysisRuleProfile, RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry,
+    RuleCatalogResponse, RuleDescriptor, RuleOrigin, configurable_rule_catalog,
+    configurable_rule_catalog_response, configurable_rule_catalog_response_json_bytes,
+    configurable_rule_descriptor, configurable_rule_descriptors, rule_catalog,
+    rule_catalog_response, rule_catalog_response_json_bytes, rule_descriptors,
 };
 pub use source_map::{LineCol, SourceMap, SourceMapError};
 pub use status::AnalysisStatus;

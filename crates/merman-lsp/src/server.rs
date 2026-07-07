@@ -90,7 +90,9 @@ impl MermanLanguageServer {
 
     pub fn capabilities() -> ServerCapabilities {
         ServerCapabilities {
-            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            text_document_sync: Some(TextDocumentSyncCapability::Kind(
+                TextDocumentSyncKind::INCREMENTAL,
+            )),
             selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             completion_provider: Some(CompletionOptions {
@@ -501,14 +503,11 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let doc = params.text_document;
-        let Some(change) = params.content_changes.into_iter().last() else {
-            return;
-        };
-        let update =
-            self.store
-                .lock()
-                .await
-                .apply_text_change(doc.uri.clone(), doc.version, change.text);
+        let update = self.store.lock().await.apply_text_changes(
+            doc.uri.clone(),
+            doc.version,
+            params.content_changes,
+        );
         if matches!(update, TextDocumentUpdate::Applied) {
             self.publish_for_uri(&doc.uri).await;
         }

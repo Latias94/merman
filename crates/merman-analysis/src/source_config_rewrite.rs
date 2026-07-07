@@ -2,7 +2,10 @@ use crate::{
     DiagnosticFix, DiagnosticFixEdit, SourceMap,
     source_directives::{ByteSpan, init_directive_spans},
 };
-use merman_core::{Engine, ParseOptions, preprocess::split_frontmatter_block};
+use merman_core::{
+    Engine, ParseOptions,
+    preprocess::{parse_frontmatter_yaml_fields, split_frontmatter_block},
+};
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
@@ -276,14 +279,7 @@ fn take_directive_config_wrapped_flowchart_html_labels(
 }
 
 fn parse_frontmatter_fields(yaml_body: &str) -> Option<Map<String, Value>> {
-    let raw_yaml: serde_yaml::Value = serde_yaml::from_str(yaml_body).ok()?;
-    match serde_json::to_value(raw_yaml).unwrap_or(Value::Null) {
-        Value::Object(map) => Some(map),
-        other => {
-            drop(other);
-            Some(Map::new())
-        }
-    }
+    parse_frontmatter_yaml_fields(yaml_body).ok()
 }
 
 fn directive_removal_span(source: &str, directive: ByteSpan) -> ByteSpan {
@@ -359,6 +355,22 @@ mod tests {
 
         assert!(edited.starts_with("---\ntitle: Demo\ncustom: keep\nconfig:\n"));
         assert!(edited.contains("theme: dark\n"));
+        assert!(!edited.contains("%%{ init"));
+        assert_eq!(fix.edits.len(), 2);
+    }
+
+    #[test]
+    fn init_directive_migration_ignores_non_string_frontmatter_keys_without_dropping_fields() {
+        let source = "---\ntitle: Demo\n? [non, string, key]\n: ignored\ncustom: keep\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+
+        assert!(edited.starts_with("---\ntitle: Demo\ncustom: keep\nconfig:\n"));
+        assert!(edited.contains("theme: dark\n"));
+        assert!(!edited.contains("ignored"));
+        assert!(!edited.contains("[non, string, key]"));
         assert!(!edited.contains("%%{ init"));
         assert_eq!(fix.edits.len(), 2);
     }

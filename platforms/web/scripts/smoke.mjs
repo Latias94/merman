@@ -90,9 +90,11 @@ if (typeof import.meta.resolve === "function") {
   );
 }
 
+const wasmBinary = await readFile(path.join(packageRoot, wasmBinaryRel));
+await exportedWasmModule.default({ module_or_path: wasmBinary });
 await api.initMerman({
   wasm: {
-    module_or_path: await readFile(path.join(packageRoot, wasmBinaryRel)),
+    module_or_path: wasmBinary,
   },
 });
 
@@ -201,6 +203,10 @@ assert.equal(
 
 const lintRules = api.lintRuleCatalog();
 assert.equal(Array.isArray(lintRules), true);
+const rawLintRuleCatalog = exportedWasmModule.lintRuleCatalog();
+assert.equal(rawLintRuleCatalog.version, 1);
+assert.equal(Array.isArray(rawLintRuleCatalog.rules), true);
+assert.equal(rawLintRuleCatalog.rules.length, lintRules.length);
 assert.equal(
   lintRules.some(
     (rule) =>
@@ -356,25 +362,53 @@ User Testing    :c2, after c1, 5d`;
   assert.ok(measureCallCount > 0);
   const measuredLayout = api.layoutJsonWithTextMeasurer(source, hostTextMeasurer, options);
   assert.equal(typeof JSON.parse(measuredLayout), "object");
-  for (const invalidResult of [
+  for (const fallbackResult of [
     undefined,
     { handled: false, width: 1, height: 1 },
-    { width: Number.POSITIVE_INFINITY, height: 1 },
-    { width: -1, height: 1 },
-    { width: 1, height: 1, line_count: 0 },
   ]) {
     let fallbackCallCount = 0;
     const fallbackSvg = api.renderSvgWithTextMeasurer(
       source,
       () => {
         fallbackCallCount += 1;
-        return invalidResult;
+        return fallbackResult;
       },
       options
     );
     assert.match(fallbackSvg, /<svg/);
     assert.ok(fallbackCallCount > 0);
   }
+  for (const invalidResult of [
+    { width: Number.POSITIVE_INFINITY, height: 1 },
+    { width: -1, height: 1 },
+    { width: 1, height: 1, line_count: 0 },
+  ]) {
+    let fallbackCallCount = 0;
+    assert.throws(
+      () =>
+        api.renderSvgWithTextMeasurer(
+          source,
+          () => {
+            fallbackCallCount += 1;
+            return invalidResult;
+          },
+          options
+        ),
+      /host text measurer returned/
+    );
+    assert.ok(fallbackCallCount > 0);
+  }
+  assert.throws(
+    () =>
+      api.renderSvgWithTextMeasurer(
+        source,
+        () => {
+          throw new Error("host measurer failed");
+        },
+        options
+      ),
+    /host measurer failed/
+  );
 
   assert.equal(typeof api.parseObject(source, deterministicTime), "object");
   assert.equal(typeof api.layoutObject(source, options), "object");

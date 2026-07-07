@@ -513,6 +513,18 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
             spans.push(key.span);
         }
 
+        if self.value_starts_flow_mapping(value_start, line_end) {
+            let mut inline_path = parents;
+            inline_path.push(key.name);
+            let mut scanner = DirectiveConfigScanner::new(
+                self.source,
+                value_start,
+                line_end,
+                self.matching_paths,
+            );
+            scanner.collect_value_spans(&mut inline_path, spans);
+        }
+
         if self.value_starts_mapping(value_start, line_end) {
             stack.push((indent, key.name));
         }
@@ -617,6 +629,13 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
             .get(value_start..line_end)
             .map(str::trim)
             .is_some_and(|value| value.is_empty() || value.starts_with('#'))
+    }
+
+    fn value_starts_flow_mapping(&self, value_start: usize, line_end: usize) -> bool {
+        self.source
+            .get(value_start..line_end)
+            .map(str::trim_start)
+            .is_some_and(|value| value.starts_with('{'))
     }
 
     fn matches_path(&self, parents: &[&str], key_name: &str) -> bool {
@@ -725,6 +744,26 @@ mod tests {
         let source = "%%{init: { \"config\": { \"htmlLabels\": true } }}%%\nflowchart TD\n";
 
         let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn frontmatter_config_key_spans_match_flow_style_nested_config() {
+        let source = "---\nconfig: { flowchart: { htmlLabels: false } }\n---\nflowchart TD\n";
+
+        let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn frontmatter_config_key_spans_match_flow_style_root_config() {
+        let source = "---\nconfig: { htmlLabels: true }\n---\nflowchart TD\n";
+
+        let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
 
         assert_eq!(spans.len(), 1);
         assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");

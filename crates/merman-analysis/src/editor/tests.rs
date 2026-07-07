@@ -1,7 +1,7 @@
 use super::text_scan::is_candidate_node_id;
 use super::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceExpectedSyntaxKind,
-    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, shape_object_value_prefix,
 };
 use merman_core::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -386,6 +386,28 @@ fn cursor_context_uses_fence_local_offsets_and_parser_backed_shape_context() {
     assert_eq!(context.cursor(), "  A@{ shape: ".len());
     assert!(context.offers(FenceCursorCompletionKind::Shape));
     assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
+}
+
+#[test]
+fn cursor_context_accepts_mermaid_shape_object_whitespace_variants() {
+    let index = FenceTextIndex::from_core_facts(EditorSemanticFacts::new());
+
+    for source in ["A@{shape: rou", "A@{       shape: rou", "A@{ shape : rou"] {
+        let context = index.cursor_context(source, source.len());
+        assert!(
+            context.offers(FenceCursorCompletionKind::Shape),
+            "expected shape completion for {source:?}"
+        );
+    }
+}
+
+#[test]
+fn shape_object_value_prefix_reports_replacement_start() {
+    let prefix = "A@{       shape : rou";
+    let parsed = shape_object_value_prefix(prefix).expect("shape object prefix");
+
+    assert_eq!(parsed.value_start, prefix.find("rou").unwrap());
+    assert!(parsed.has_separator_space);
 }
 
 #[test]

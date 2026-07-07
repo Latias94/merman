@@ -9,6 +9,8 @@ use merman_bindings_core::{BindingEngine, BindingError, BindingStatus};
 #[cfg(feature = "render")]
 use merman_bindings_core::{TextMeasurer as CoreTextMeasurer, VendoredFontMetricsTextMeasurer};
 use serde_json::Value;
+#[cfg(feature = "render")]
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 2;
@@ -62,30 +64,130 @@ pub struct MermanReusableEngine {
     #[cfg(feature = "render")]
     base: BindingEngine,
     #[cfg(feature = "render")]
-    render_gate: Mutex<ReusableRenderGate>,
-    #[cfg(feature = "render")]
-    host_text_measurer: RwLock<Option<Arc<UniffiHostTextMeasurer>>>,
+    render_gate: Arc<Mutex<ReusableRenderGate>>,
     inner: RwLock<BindingEngine>,
 }
 
 #[cfg(feature = "render")]
 #[derive(Debug, Default)]
 struct ReusableRenderGate {
-    active: bool,
+    active_renders: usize,
+    active_callbacks: usize,
+    active_mutations: usize,
 }
 
 #[cfg(feature = "render")]
-struct ReusableRenderGuard<'a> {
-    gate: &'a Mutex<ReusableRenderGate>,
+struct ReusableRenderGuard {
+    gate: Arc<Mutex<ReusableRenderGate>>,
 }
 
 #[cfg(feature = "render")]
-impl Drop for ReusableRenderGuard<'_> {
+struct ReusableMutationGuard {
+    gate: Arc<Mutex<ReusableRenderGate>>,
+}
+
+#[cfg(feature = "render")]
+struct ReusableCallbackGuard {
+    gate: Arc<Mutex<ReusableRenderGate>>,
+}
+
+#[cfg(feature = "render")]
+impl Drop for ReusableRenderGuard {
     fn drop(&mut self) {
         if let Ok(mut gate) = self.gate.lock() {
-            gate.active = false;
+            gate.active_renders = gate.active_renders.saturating_sub(1);
         }
     }
+}
+
+#[cfg(feature = "render")]
+impl Drop for ReusableMutationGuard {
+    fn drop(&mut self) {
+        if let Ok(mut gate) = self.gate.lock() {
+            gate.active_mutations = gate.active_mutations.saturating_sub(1);
+        }
+    }
+}
+
+#[cfg(feature = "render")]
+impl Drop for ReusableCallbackGuard {
+    fn drop(&mut self) {
+        if let Ok(mut gate) = self.gate.lock() {
+            gate.active_callbacks = gate.active_callbacks.saturating_sub(1);
+        }
+    }
+}
+
+#[cfg(feature = "render")]
+thread_local! {
+    static HOST_TEXT_MEASURE_ERROR: RefCell<Option<MermanError>> = const { RefCell::new(None) };
+}
+
+#[cfg(feature = "render")]
+impl ReusableRenderGuard {
+    fn enter(gate: &Arc<Mutex<ReusableRenderGate>>) -> Result<Self, MermanError> {
+        let mut state = gate
+            .lock()
+            .map_err(|_| MermanError::internal("reusable engine render gate poisoned"))?;
+        if state.active_callbacks > 0 || state.active_mutations > 0 {
+            return Err(reentrant_render_error());
+        }
+        state.active_renders += 1;
+        Ok(Self {
+            gate: Arc::clone(gate),
+        })
+    }
+}
+
+#[cfg(feature = "render")]
+impl ReusableMutationGuard {
+    fn enter(gate: &Arc<Mutex<ReusableRenderGate>>) -> Result<Self, MermanError> {
+        let mut state = gate
+            .lock()
+            .map_err(|_| MermanError::internal("reusable engine render gate poisoned"))?;
+        if state.active_renders > 0 || state.active_callbacks > 0 || state.active_mutations > 0 {
+            return Err(reentrant_render_error());
+        }
+        state.active_mutations += 1;
+        Ok(Self {
+            gate: Arc::clone(gate),
+        })
+    }
+}
+
+#[cfg(feature = "render")]
+impl ReusableCallbackGuard {
+    fn enter(gate: &Arc<Mutex<ReusableRenderGate>>) -> Result<Self, MermanError> {
+        let mut state = gate
+            .lock()
+            .map_err(|_| MermanError::internal("reusable engine render gate poisoned"))?;
+        state.active_callbacks += 1;
+        Ok(Self {
+            gate: Arc::clone(gate),
+        })
+    }
+}
+
+#[cfg(feature = "render")]
+fn clear_host_text_measure_error() {
+    HOST_TEXT_MEASURE_ERROR.with(|slot| {
+        *slot.borrow_mut() = None;
+    });
+}
+
+#[cfg(feature = "render")]
+fn record_host_text_measure_error(error: MermanError) {
+    HOST_TEXT_MEASURE_ERROR.with(|slot| {
+        let mut current = slot.borrow_mut();
+        if current.is_none() {
+            *current = Some(error);
+        }
+    });
+}
+
+#[cfg(feature = "render")]
+fn take_host_text_measure_error() -> Option<MermanError> {
+    HOST_TEXT_MEASURE_ERROR.with(|slot| slot.borrow_mut().take())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -194,41 +296,20 @@ pub trait MermanTextMeasurer: Send + Sync {
 struct UniffiHostTextMeasurer {
     callback: Arc<dyn MermanTextMeasurer>,
     fallback: VendoredFontMetricsTextMeasurer,
-    callback_error: RwLock<Option<MermanError>>,
+    render_gate: Arc<Mutex<ReusableRenderGate>>,
 }
 
 #[cfg(feature = "render")]
 impl UniffiHostTextMeasurer {
-    fn new(callback: Arc<dyn MermanTextMeasurer>) -> Self {
+    fn new(
+        callback: Arc<dyn MermanTextMeasurer>,
+        render_gate: Arc<Mutex<ReusableRenderGate>>,
+    ) -> Self {
         Self {
             callback,
             fallback: VendoredFontMetricsTextMeasurer::default(),
-            callback_error: RwLock::new(None),
+            render_gate,
         }
-    }
-
-    fn record_callback_error(&self, error: MermanError) {
-        if let Ok(mut callback_error) = self.callback_error.write()
-            && callback_error.is_none()
-        {
-            *callback_error = Some(error);
-        }
-    }
-
-    fn take_callback_error(&self) -> Result<Option<MermanError>, MermanError> {
-        self.callback_error
-            .write()
-            .map(|mut callback_error| callback_error.take())
-            .map_err(|_| MermanError::internal("host text measurer error lock poisoned"))
-    }
-
-    fn clear_callback_error(&self) -> Result<(), MermanError> {
-        self.callback_error
-            .write()
-            .map(|mut callback_error| {
-                *callback_error = None;
-            })
-            .map_err(|_| MermanError::internal("host text measurer error lock poisoned"))
     }
 
     fn call_host(
@@ -238,6 +319,13 @@ impl UniffiHostTextMeasurer {
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
     ) -> Option<merman_bindings_core::TextMetrics> {
+        let _callback_guard = match ReusableCallbackGuard::enter(&self.render_gate) {
+            Ok(guard) => guard,
+            Err(error) => {
+                record_host_text_measure_error(error);
+                return None;
+            }
+        };
         let result = match self.callback.measure(MermanTextMeasureRequest {
             text: text.to_string(),
             font_family: style.font_family.clone(),
@@ -255,7 +343,7 @@ impl UniffiHostTextMeasurer {
             Ok(Some(result)) => result,
             Ok(None) => return None,
             Err(error) => {
-                self.record_callback_error(error);
+                record_host_text_measure_error(error);
                 return None;
             }
         };
@@ -603,13 +691,12 @@ impl MermanReusableEngine {
     pub fn new(options_json: Option<String>) -> Result<Arc<Self>, MermanError> {
         let inner = BindingEngine::new(options_bytes(options_json.as_deref()))
             .map_err(MermanError::from_binding)?;
+        let render_gate = Arc::new(Mutex::new(ReusableRenderGate::default()));
         Ok(Arc::new(Self {
             #[cfg(feature = "render")]
             base: inner.clone(),
             #[cfg(feature = "render")]
-            render_gate: Mutex::new(ReusableRenderGate::default()),
-            #[cfg(feature = "render")]
-            host_text_measurer: RwLock::new(None),
+            render_gate,
             inner: RwLock::new(inner),
         }))
     }
@@ -699,12 +786,15 @@ impl MermanReusableEngine {
     ) -> Result<Arc<Self>, MermanError> {
         let base = BindingEngine::new(options_bytes(options_json.as_deref()))
             .map_err(MermanError::from_binding)?;
-        let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(measurer));
+        let render_gate = Arc::new(Mutex::new(ReusableRenderGate::default()));
+        let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
+            measurer,
+            Arc::clone(&render_gate),
+        ));
         let inner = base.with_text_measurer(host_text_measurer.clone());
         Ok(Arc::new(Self {
             base,
-            render_gate: Mutex::new(ReusableRenderGate::default()),
-            host_text_measurer: RwLock::new(Some(host_text_measurer)),
+            render_gate,
             inner: RwLock::new(inner),
         }))
     }
@@ -713,15 +803,15 @@ impl MermanReusableEngine {
         &self,
         measurer: Arc<dyn MermanTextMeasurer>,
     ) -> Result<(), MermanError> {
-        let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(measurer));
-        self.replace_render_inner(
-            self.base.with_text_measurer(host_text_measurer.clone()),
-            Some(host_text_measurer),
-        )
+        let host_text_measurer = Arc::new(UniffiHostTextMeasurer::new(
+            measurer,
+            Arc::clone(&self.render_gate),
+        ));
+        self.replace_render_inner(self.base.with_text_measurer(host_text_measurer))
     }
 
     pub fn clear_text_measurer(&self) -> Result<(), MermanError> {
-        self.replace_render_inner(self.base.clone(), None)
+        self.replace_render_inner(self.base.clone())
     }
 }
 
@@ -734,32 +824,14 @@ impl MermanReusableEngine {
     }
 
     #[cfg(feature = "render")]
-    fn replace_render_inner(
-        &self,
-        next_inner: BindingEngine,
-        next_host_text_measurer: Option<Arc<UniffiHostTextMeasurer>>,
-    ) -> Result<(), MermanError> {
-        let _render_guard = self.enter_render_call()?;
+    fn replace_render_inner(&self, next_inner: BindingEngine) -> Result<(), MermanError> {
+        let _mutation_guard = self.enter_render_mutation()?;
         let mut inner = self
             .inner
             .write()
             .map_err(|_| MermanError::internal("reusable engine lock poisoned"))?;
-        let mut host_text_measurer = self.host_text_measurer.write().map_err(|_| {
-            MermanError::internal("reusable engine host text measurer lock poisoned")
-        })?;
         *inner = next_inner;
-        *host_text_measurer = next_host_text_measurer;
         Ok(())
-    }
-
-    #[cfg(feature = "render")]
-    fn current_host_text_measurer(
-        &self,
-    ) -> Result<Option<Arc<UniffiHostTextMeasurer>>, MermanError> {
-        self.host_text_measurer
-            .read()
-            .map(|host_text_measurer| host_text_measurer.clone())
-            .map_err(|_| MermanError::internal("reusable engine host text measurer lock poisoned"))
     }
 
     #[cfg(feature = "render")]
@@ -779,34 +851,24 @@ impl MermanReusableEngine {
     ) -> Result<T, MermanError> {
         let _reentry_guard = self.enter_render_call()?;
         let inner = self.current_inner()?;
-        let host_text_measurer = self.current_host_text_measurer()?;
-        if let Some(host_text_measurer) = &host_text_measurer {
-            host_text_measurer.clear_callback_error()?;
-        }
+        clear_host_text_measure_error();
 
         let output = run(inner);
 
-        if let Some(host_text_measurer) = &host_text_measurer
-            && let Some(error) = host_text_measurer.take_callback_error()?
-        {
+        if let Some(error) = take_host_text_measure_error() {
             return Err(error);
         }
         output
     }
 
     #[cfg(feature = "render")]
-    fn enter_render_call(&self) -> Result<ReusableRenderGuard<'_>, MermanError> {
-        let mut gate = self
-            .render_gate
-            .lock()
-            .map_err(|_| MermanError::internal("reusable engine render gate poisoned"))?;
-        if gate.active {
-            return Err(reentrant_render_error());
-        }
-        gate.active = true;
-        Ok(ReusableRenderGuard {
-            gate: &self.render_gate,
-        })
+    fn enter_render_call(&self) -> Result<ReusableRenderGuard, MermanError> {
+        ReusableRenderGuard::enter(&self.render_gate)
+    }
+
+    #[cfg(feature = "render")]
+    fn enter_render_mutation(&self) -> Result<ReusableMutationGuard, MermanError> {
+        ReusableMutationGuard::enter(&self.render_gate)
     }
 }
 
@@ -879,7 +941,7 @@ mod tests {
     #[cfg(feature = "render")]
     use std::sync::atomic::{AtomicUsize, Ordering};
     #[cfg(feature = "render")]
-    use std::sync::{Condvar, Mutex as StdMutex, mpsc};
+    use std::sync::{Barrier, Condvar, Mutex as StdMutex, mpsc};
     #[cfg(feature = "render")]
     use std::thread;
     #[cfg(feature = "render")]
@@ -1375,6 +1437,35 @@ mod tests {
             .unwrap();
         assert!(svg.contains("<svg"));
         assert!(measurer.calls() > 0);
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn reusable_engine_allows_concurrent_render_calls_without_callback_reentry() {
+        let reusable = MermanReusableEngine::new(None).unwrap();
+        let barrier = Arc::new(Barrier::new(8));
+        let nodes = (0..128)
+            .map(|idx| format!("N{idx}[Node {idx}]"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let source = format!("flowchart TD\n{nodes}\nN0-->N127\n");
+
+        let handles = (0..8)
+            .map(|_| {
+                let reusable = reusable.clone();
+                let barrier = barrier.clone();
+                let source = source.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    reusable.render_svg(source)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            let svg = handle.join().unwrap().unwrap();
+            assert!(svg.contains("<svg"));
+        }
     }
 
     #[cfg(feature = "render")]

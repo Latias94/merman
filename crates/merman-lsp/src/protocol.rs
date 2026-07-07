@@ -1,4 +1,5 @@
-use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, RuleCatalogEntry, RuleOrigin};
+use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
+pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
 use merman_editor_core::{
     DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
 };
@@ -7,7 +8,6 @@ use serde_json::{Value, json};
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
 pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
-pub const RULE_CATALOG_RESPONSE_VERSION: u32 = 1;
 pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
@@ -24,59 +24,6 @@ impl WorkspaceEditEncoding {
             Self::DocumentChanges
         } else {
             Self::Changes
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RuleCatalogResponse {
-    pub version: u32,
-    pub rules: Vec<LspRuleCatalogEntry>,
-}
-
-impl RuleCatalogResponse {
-    pub fn current() -> Self {
-        Self {
-            version: RULE_CATALOG_RESPONSE_VERSION,
-            rules: merman_analysis::rule_catalog()
-                .into_iter()
-                .map(LspRuleCatalogEntry::from)
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LspRuleCatalogEntry {
-    pub id: String,
-    pub description: String,
-    pub evidence: Vec<String>,
-    pub default_severity: String,
-    pub category: String,
-    pub default_enabled: bool,
-    pub default_profile: String,
-    pub origin: String,
-    pub configurable: bool,
-    pub fixable: bool,
-}
-
-impl From<RuleCatalogEntry> for LspRuleCatalogEntry {
-    fn from(rule: RuleCatalogEntry) -> Self {
-        Self {
-            id: rule.id.to_string(),
-            description: rule.description.to_string(),
-            evidence: rule
-                .evidence
-                .iter()
-                .map(|evidence| evidence.to_string())
-                .collect(),
-            default_severity: rule.default_severity.as_str().to_string(),
-            category: rule.category.as_str().to_string(),
-            default_enabled: rule.default_enabled,
-            default_profile: profile_name(rule.default_profile).to_string(),
-            origin: origin_name(rule.origin).to_string(),
-            configurable: rule.configurable,
-            fixable: rule.fixable,
         }
     }
 }
@@ -147,10 +94,6 @@ pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Url) -> Location
 
 fn profile_name(profile: AnalysisRuleProfile) -> &'static str {
     profile.as_str()
-}
-
-fn origin_name(origin: RuleOrigin) -> &'static str {
-    origin.as_str()
 }
 
 fn severity_name(severity: DiagnosticSeverity) -> &'static str {
@@ -316,48 +259,48 @@ mod tests {
         assert_eq!(catalog.version, RULE_CATALOG_RESPONSE_VERSION);
         assert!(catalog.rules.iter().any(|rule| {
             rule.id == "merman.authoring.flowchart.explicit_direction"
-                && rule.origin == "merman_authoring"
-                && rule.default_profile == "recommended"
+                && rule.origin.as_str() == "merman_authoring"
+                && rule.default_profile.as_str() == "recommended"
                 && rule
                     .evidence
-                    .contains(&"docs/adr/0072-lint-rule-governance.md".to_string())
+                    .contains(&"docs/adr/0072-lint-rule-governance.md")
                 && rule.configurable
                 && rule.fixable
         }));
         assert!(catalog.rules.iter().any(|rule| {
             rule.id == "merman.authoring.config.prefer_frontmatter_config"
-                && rule.origin == "merman_authoring"
-                && rule.default_profile == "recommended"
-                && rule.default_severity == "hint"
-                && rule.category == "config"
+                && rule.origin.as_str() == "merman_authoring"
+                && rule.default_profile.as_str() == "recommended"
+                && rule.default_severity.as_str() == "hint"
+                && rule.category.as_str() == "config"
                 && rule.evidence.contains(
-                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md".to_string(),
+                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md",
                 )
                 && rule.configurable
                 && rule.fixable
         }));
         assert!(catalog.rules.iter().any(|rule| {
             rule.id == "merman.compatibility.config.deprecated_flowchart_html_labels"
-                && rule.origin == "mermaid_compatibility"
-                && rule.default_profile == "core"
+                && rule.origin.as_str() == "mermaid_compatibility"
+                && rule.default_profile.as_str() == "core"
                 && rule.default_enabled
-                && rule.default_severity == "warning"
-                && rule.category == "config"
+                && rule.default_severity.as_str() == "warning"
+                && rule.category.as_str() == "config"
                 && rule.evidence.contains(
-                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md".to_string(),
+                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md",
                 )
                 && rule.configurable
                 && rule.fixable
         }));
         assert!(catalog.rules.iter().any(|rule| {
             rule.id == "merman.compatibility.config.deprecated_external_diagram_loading"
-                && rule.origin == "mermaid_compatibility"
-                && rule.default_profile == "core"
+                && rule.origin.as_str() == "mermaid_compatibility"
+                && rule.default_profile.as_str() == "core"
                 && rule.default_enabled
-                && rule.default_severity == "warning"
-                && rule.category == "config"
+                && rule.default_severity.as_str() == "warning"
+                && rule.category.as_str() == "config"
                 && rule.evidence.contains(
-                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts".to_string(),
+                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
                 )
                 && rule.configurable
                 && !rule.fixable
@@ -433,5 +376,71 @@ mod tests {
             response.schema["allOf"][1]["properties"]["analysis"],
             json!({ "$ref": "#/$defs/analysisOptions" })
         );
+    }
+
+    #[test]
+    fn vscode_analysis_settings_match_lsp_config_schema_keys() {
+        let response = ConfigSchemaResponse::current();
+        let mut schema_keys = std::collections::BTreeSet::new();
+        collect_analysis_schema_leaf_keys(
+            &response.schema["$defs"]["analysisOptions"],
+            "",
+            &mut schema_keys,
+        );
+
+        let package_json_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/vscode-extension/package.json");
+        let package_json: Value = serde_json::from_str(
+            &std::fs::read_to_string(package_json_path)
+                .expect("expected VS Code package.json to be readable"),
+        )
+        .expect("expected VS Code package.json to parse as JSON");
+        let mut vscode_keys = std::collections::BTreeSet::new();
+        collect_vscode_analysis_setting_keys(&package_json, &mut vscode_keys);
+
+        assert_eq!(vscode_keys, schema_keys);
+    }
+
+    fn collect_analysis_schema_leaf_keys(
+        schema: &Value,
+        prefix: &str,
+        keys: &mut std::collections::BTreeSet<String>,
+    ) {
+        let Some(properties) = schema["properties"].as_object() else {
+            return;
+        };
+
+        for (key, value) in properties {
+            let full_key = if prefix.is_empty() {
+                key.to_string()
+            } else {
+                format!("{prefix}.{key}")
+            };
+            if value["properties"].is_object() {
+                collect_analysis_schema_leaf_keys(value, &full_key, keys);
+            } else {
+                keys.insert(full_key);
+            }
+        }
+    }
+
+    fn collect_vscode_analysis_setting_keys(
+        package_json: &Value,
+        keys: &mut std::collections::BTreeSet<String>,
+    ) {
+        let Some(configuration) = package_json["contributes"]["configuration"].as_array() else {
+            return;
+        };
+
+        for section in configuration {
+            let Some(properties) = section["properties"].as_object() else {
+                continue;
+            };
+            for key in properties.keys() {
+                if let Some(analysis_key) = key.strip_prefix("merman.analysis.") {
+                    keys.insert(analysis_key.to_string());
+                }
+            }
+        }
     }
 }

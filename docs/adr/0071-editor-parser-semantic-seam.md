@@ -43,9 +43,13 @@ LSP keeps mechanical protocol projection helpers local to `merman-lsp`, and its 
 legend is derived from the editor-core legend instead of maintaining a second token order.
 
 Every editor-core result that depends on semantic facts carries `FenceTextIndexSource` provenance:
-`ParserComplete`, `ParserRecovered`, or `TextScan`. Parser-backed and recovered results may be
-first-class editor behavior when covered by tests. Text-scan results remain bounded fallback
-behavior and must stay visible in capability docs and tests.
+`ParserComplete`, `ParserCompleteDegradedSpans`, `ParserRecovered`,
+`ParserRecoveredDegradedSpans`, or `TextScan`. Parser-backed and recovered results may be
+first-class editor behavior when covered by tests. The `*DegradedSpans` variants are still
+parser-backed facts, but their spans were produced in parser-input coordinates that could not be
+proven as exact original-source ranges; downstream payloads expose `source_mapped_spans=false` and
+must not use those spans for precise edits, rename ranges, or diagnostic source positions. Text-scan
+results remain bounded fallback behavior and must stay visible in capability docs and tests.
 
 `FenceTextIndex` must respect semantic roles when it projects parser facts. It should not treat
 every parser-produced span as a graph-node completion id. For example, ER attribute names can be

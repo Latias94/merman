@@ -108,6 +108,11 @@ public struct MermanLintRuleCatalogEntry: Decodable {
     }
 }
 
+private struct MermanLintRuleCatalogResponse: Decodable {
+    let version: UInt32
+    let rules: [MermanLintRuleCatalogEntry]
+}
+
 public final class MermanEngine {
     public static let abiVersion: UInt32 = 2
     private static let okCode: Int32 = 0
@@ -214,7 +219,8 @@ public final class MermanEngine {
             return lintRuleCatalogCache
         }
         let text = try decode(merman_lint_rule_catalog_json())
-        let values = try decodeJson([MermanLintRuleCatalogEntry].self, from: Data(text.utf8))
+        let response = try decodeJson(MermanLintRuleCatalogResponse.self, from: Data(text.utf8))
+        let values = response.rules
         lintRuleCatalogCache = values
         return values
     }

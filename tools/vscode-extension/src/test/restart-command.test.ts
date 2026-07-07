@@ -38,7 +38,7 @@ describe("restart language server command", () => {
     assert.deepEqual(infos, []);
   });
 
-  it("does not show a success notification after restart failure", async () => {
+  it("warns with the restart failure reason", async () => {
     const warnings: string[] = [];
     const infos: string[] = [];
 
@@ -57,7 +57,7 @@ describe("restart language server command", () => {
     });
 
     assert.equal(outcome, "failed");
-    assert.deepEqual(warnings, []);
+    assert.deepEqual(warnings, ["Merman language server restart failed: server start exploded"]);
     assert.deepEqual(infos, []);
   });
 

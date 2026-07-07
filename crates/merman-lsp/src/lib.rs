@@ -14,8 +14,8 @@ mod transport;
 
 pub use protocol::{
     CONFIG_SCHEMA_METHOD, CONFIG_SCHEMA_RESPONSE_VERSION, ConfigSchemaResponse,
-    EXPERIMENTAL_SCHEMA_VERSION, LspRuleCatalogEntry, RULE_CATALOG_METHOD,
-    RULE_CATALOG_RESPONSE_VERSION, RuleCatalogResponse,
+    EXPERIMENTAL_SCHEMA_VERSION, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION,
+    RuleCatalogEntry, RuleCatalogResponse,
 };
 pub use server::MermanLanguageServer;
 pub use transport::{LSP_HANDLER_CONCURRENCY, stdio_server};

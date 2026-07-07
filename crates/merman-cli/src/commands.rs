@@ -129,15 +129,23 @@ fn run_lint(args: LintArgs) -> Result<i32, CliError> {
 }
 
 fn run_lint_rules(args: LintRulesArgs) -> Result<(), CliError> {
-    let catalog = if args.configurable {
-        merman_analysis::configurable_rule_catalog()
-    } else {
-        merman_analysis::rule_catalog()
-    };
-
     match args.format {
-        LintOutputFormat::Json => print_json(&catalog, args.pretty),
-        LintOutputFormat::Text => print_lint_rules_text(&catalog),
+        LintOutputFormat::Json => {
+            let response = if args.configurable {
+                merman_analysis::configurable_rule_catalog_response()
+            } else {
+                merman_analysis::rule_catalog_response()
+            };
+            print_json(&response, args.pretty)
+        }
+        LintOutputFormat::Text => {
+            let catalog = if args.configurable {
+                merman_analysis::configurable_rule_catalog()
+            } else {
+                merman_analysis::rule_catalog()
+            };
+            print_lint_rules_text(&catalog)
+        }
     }
 }
 

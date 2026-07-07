@@ -204,7 +204,7 @@ pub fn lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
         return Ok(bytes.clone());
     }
 
-    let bytes = merman_analysis::rule_catalog_json_bytes().map_err(internal_json_error)?;
+    let bytes = merman_analysis::rule_catalog_response_json_bytes().map_err(internal_json_error)?;
     let _ = LINT_RULE_CATALOG_JSON.set(bytes.clone());
     Ok(bytes)
 }
@@ -214,8 +214,8 @@ pub fn configurable_lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
         return Ok(bytes.clone());
     }
 
-    let bytes =
-        merman_analysis::configurable_rule_catalog_json_bytes().map_err(internal_json_error)?;
+    let bytes = merman_analysis::configurable_rule_catalog_response_json_bytes()
+        .map_err(internal_json_error)?;
     let _ = CONFIGURABLE_LINT_RULE_CATALOG_JSON.set(bytes.clone());
     Ok(bytes)
 }
@@ -486,7 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn metadata_json_helpers_return_arrays() {
+    fn metadata_json_helpers_return_json_contracts() {
         let diagrams: Value = serde_json::from_slice(&supported_diagrams_json().unwrap()).unwrap();
         let ascii_diagrams: Value =
             serde_json::from_slice(&ascii_supported_diagrams_json().unwrap()).unwrap();
@@ -547,7 +547,12 @@ mod tests {
                 .iter()
                 .any(|capability| capability["diagram_type"] == "flowchart")
         );
-        assert!(lint_rules.as_array().unwrap().iter().any(|rule| {
+        assert_eq!(
+            lint_rules["version"],
+            merman_analysis::RULE_CATALOG_RESPONSE_VERSION
+        );
+        let lint_rules = lint_rules["rules"].as_array().unwrap();
+        assert!(lint_rules.iter().any(|rule| {
             rule["id"] == "merman.authoring.flowchart.explicit_direction"
                 && rule["origin"] == "merman_authoring"
                 && rule["evidence"]
@@ -556,8 +561,12 @@ mod tests {
                     .iter()
                     .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
         }));
+        assert_eq!(
+            configurable_lint_rules["version"],
+            merman_analysis::RULE_CATALOG_RESPONSE_VERSION
+        );
         assert!(
-            configurable_lint_rules
+            configurable_lint_rules["rules"]
                 .as_array()
                 .unwrap()
                 .iter()

@@ -179,12 +179,19 @@
             "scope": "resource",
             "order": 20
           },
+          "merman.analysis.site_config": {
+            "type": "object",
+            "default": {},
+            "markdownDescription": "Optional Mermaid site configuration object forwarded to `merman-lsp` analysis options.",
+            "scope": "resource",
+            "order": 30
+          },
           "merman.analysis.parse.suppress_errors": {
             "type": "boolean",
             "default": false,
             "markdownDescription": "Forward lenient parse mode to `merman-lsp`.",
             "scope": "resource",
-            "order": 30
+            "order": 40
           },
           "merman.analysis.resources.max_source_bytes": {
             "type": "integer",
@@ -192,7 +199,7 @@
             "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `0` means unset.",
             "scope": "resource",
             "minimum": 0,
-            "order": 40
+            "order": 50
           },
           "merman.analysis.lint.profile": {
             "type": "string",
@@ -211,7 +218,7 @@
               "Opt-in recommended authoring diagnostics.",
               "Strict authoring diagnostics."
             ],
-            "order": 50
+            "order": 60
           },
           "merman.analysis.lint.enable_rules": {
             "type": "array",
@@ -221,7 +228,7 @@
             "default": [],
             "markdownDescription": "Additional lint rules enabled in `merman-lsp`.",
             "scope": "resource",
-            "order": 60
+            "order": 70
           },
           "merman.analysis.lint.disable_rules": {
             "type": "array",
@@ -231,7 +238,7 @@
             "default": [],
             "markdownDescription": "Lint rules disabled in `merman-lsp`.",
             "scope": "resource",
-            "order": 70
+            "order": 80
           },
           "merman.analysis.lint.rule_severities": {
             "type": "array",
@@ -259,7 +266,7 @@
             "default": [],
             "markdownDescription": "Per-rule severity overrides forwarded to `merman-lsp`.",
             "scope": "resource",
-            "order": 80
+            "order": 90
           }
         }
       },

@@ -95,7 +95,9 @@ behavior:
 | Provenance | Meaning | Product status |
 | --- | --- | --- |
 | `ParserComplete` | Semantic facts came from a successful family parser/editor-facts path. | Mature when covered by the family row and editor-core tests. |
+| `ParserCompleteDegradedSpans` | Semantic facts came from a successful parser path, but at least one fact span could not be proven as an original-source coordinate after preprocessing. | Parser-backed for identity and outline behavior, but not mature for precise range edits or source-position projection unless callers check `source_mapped_spans=false` and avoid those spans. |
 | `ParserRecovered` | Semantic facts came from parser recovery after an incomplete or invalid edit buffer. | Mature for incomplete-buffer editing when tests cover the family and feature. |
+| `ParserRecoveredDegradedSpans` | Semantic facts came from parser recovery, but spans are in degraded parser-input coordinates rather than trusted original-source ranges. | Mature only for non-range-dependent recovery behavior; precise edits, rename ranges, and diagnostics must treat exposed spans as unavailable. |
 | `TextScan` | Semantic facts came from the bounded text-scan fallback. | Fallback only; not a mature family capability and must stay visible to callers. |
 
 The matrix above requires parser-backed complete or recovered provenance for first-class feature

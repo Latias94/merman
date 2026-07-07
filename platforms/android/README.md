@@ -49,8 +49,9 @@ Native errors are thrown as `MermanException` with the C ABI JSON error payload 
 package version through `packageVersion`.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
-`lintRuleCatalogJson()` returns the shared analyzer rule catalog, including evidence references, for
-settings, diagnostics, and LSP-related UI; hosts should prefer it over hard-coded rule metadata.
+`lintRuleCatalogJson()` returns the shared analyzer rule catalog as a versioned JSON response
+object with `{ "version": 1, "rules": [...] }`, including evidence references for settings,
+diagnostics, and LSP-related UI. Hosts should prefer it over hard-coded rule metadata.
 
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's

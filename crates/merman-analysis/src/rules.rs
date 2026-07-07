@@ -37,6 +37,7 @@ pub const FLOWCHART_EXPLICIT_DIRECTION_RULE_ID: &str =
 pub const FLOWCHART_UNKNOWN_STYLE_TARGET_RULE_ID: &str =
     "merman.semantic.flowchart.unknown_style_target";
 pub const GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID: &str = "merman.git_graph.duplicate_commit_id";
+pub const RULE_CATALOG_RESPONSE_VERSION: u32 = 1;
 
 const DEPRECATED_FLOWCHART_HTML_LABELS_INIT_CONFIG_PATHS: [&[&str]; 1] =
     [&["flowchart", "htmlLabels"]];
@@ -141,6 +142,29 @@ impl RuleCatalogEntry {
             configurable: is_configurable_rule_descriptor(descriptor),
             fixable: descriptor.fixable,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuleCatalogResponse {
+    pub version: u32,
+    pub rules: Vec<RuleCatalogEntry>,
+}
+
+impl RuleCatalogResponse {
+    pub fn from_rules(rules: Vec<RuleCatalogEntry>) -> Self {
+        Self {
+            version: RULE_CATALOG_RESPONSE_VERSION,
+            rules,
+        }
+    }
+
+    pub fn current() -> Self {
+        Self::from_rules(rule_catalog())
+    }
+
+    pub fn configurable() -> Self {
+        Self::from_rules(configurable_rule_catalog())
     }
 }
 
@@ -455,12 +479,20 @@ pub fn configurable_rule_catalog() -> Vec<RuleCatalogEntry> {
         .collect()
 }
 
-pub fn rule_catalog_json_bytes() -> Result<Vec<u8>, serde_json::Error> {
-    serde_json::to_vec(&rule_catalog())
+pub fn rule_catalog_response() -> RuleCatalogResponse {
+    RuleCatalogResponse::current()
 }
 
-pub fn configurable_rule_catalog_json_bytes() -> Result<Vec<u8>, serde_json::Error> {
-    serde_json::to_vec(&configurable_rule_catalog())
+pub fn configurable_rule_catalog_response() -> RuleCatalogResponse {
+    RuleCatalogResponse::configurable()
+}
+
+pub fn rule_catalog_response_json_bytes() -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(&rule_catalog_response())
+}
+
+pub fn configurable_rule_catalog_response_json_bytes() -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(&configurable_rule_catalog_response())
 }
 
 pub fn configurable_rule_descriptors() -> impl Iterator<Item = RuleDescriptor> {

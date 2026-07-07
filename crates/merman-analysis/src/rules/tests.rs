@@ -309,6 +309,19 @@ fn source_lint_reports_deprecated_flowchart_html_labels_frontmatter_config() {
 }
 
 #[test]
+fn source_lint_reports_deprecated_flowchart_html_labels_flow_style_frontmatter_config() {
+    let source = "---\nconfig: { flowchart: { htmlLabels: false } }\n---\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].id, DEPRECATED_FLOWCHART_HTML_LABELS_RULE_ID);
+    let span = diagnostics[0].span.as_ref().expect("htmlLabels span");
+    assert_eq!(&source[span.byte_start..span.byte_end], "htmlLabels");
+}
+
+#[test]
 fn source_lint_reports_deprecated_external_diagram_loading_directive_config() {
     let source = "%%{init: { \"lazyLoadedDiagrams\": true, \"loadExternalDiagramsAtStartup\": false }}%%\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
@@ -338,6 +351,28 @@ fn source_lint_reports_deprecated_external_diagram_loading_directive_config() {
 #[test]
 fn source_lint_reports_deprecated_external_diagram_loading_frontmatter_config() {
     let source = "---\nconfig:\n  lazyLoadedDiagrams: true\n  loadExternalDiagramsAtStartup: false\n---\nflowchart TD\nA-->B\n";
+    let source_map = SourceMap::new(source);
+
+    let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
+
+    assert_eq!(diagnostics.len(), 2);
+    let spans: Vec<_> = diagnostics
+        .iter()
+        .map(|diagnostic| {
+            assert_eq!(diagnostic.id, DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE_ID);
+            let span = diagnostic.span.as_ref().expect("deprecated key span");
+            &source[span.byte_start..span.byte_end]
+        })
+        .collect();
+    assert_eq!(
+        spans,
+        vec!["lazyLoadedDiagrams", "loadExternalDiagramsAtStartup"]
+    );
+}
+
+#[test]
+fn source_lint_reports_deprecated_external_diagram_loading_flow_style_frontmatter_config() {
+    let source = "---\nconfig: { lazyLoadedDiagrams: true, loadExternalDiagramsAtStartup: false }\n---\nflowchart TD\nA-->B\n";
     let source_map = SourceMap::new(source);
 
     let diagnostics = source_lint_diagnostics(source, &source_map, &AnalysisRuleConfig::default());
@@ -993,10 +1028,18 @@ fn rule_catalog_serializes_public_rule_metadata() {
     assert_eq!(resource_limit.category, DiagnosticCategory::Resource);
     assert!(!resource_limit.configurable);
 
-    let json: serde_json::Value =
-        serde_json::from_slice(&rule_catalog_json_bytes().expect("catalog JSON"))
-            .expect("catalog should serialize as JSON");
-    let first = json.as_array().expect("catalog array").first().unwrap();
+    let response = rule_catalog_response();
+    assert_eq!(response.version, RULE_CATALOG_RESPONSE_VERSION);
+    assert_eq!(response.rules.len(), catalog.len());
+
+    let response_json: serde_json::Value =
+        serde_json::from_slice(&rule_catalog_response_json_bytes().expect("catalog response JSON"))
+            .expect("catalog response should serialize as JSON");
+    assert_eq!(response_json["version"], RULE_CATALOG_RESPONSE_VERSION);
+    let response_rules = response_json["rules"]
+        .as_array()
+        .expect("catalog response rules array");
+    let first = response_rules.first().unwrap();
     assert_eq!(first["id"], PREFER_INIT_DIRECTIVE_RULE_ID);
     assert_eq!(first["origin"], "merman_authoring");
     assert_eq!(first["default_profile"], "recommended");

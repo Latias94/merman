@@ -24,6 +24,7 @@ import type {
   DiagramType,
   HostThemePresetName,
   LintRuleCatalogEntry,
+  LintRuleCatalogResponse,
   RegistryProfile,
   TextMeasurementCapabilities,
   ThemeName,
@@ -541,11 +542,11 @@ export function diagramFamilyCapabilities(): DiagramFamilyCapability[] {
 
 export function lintRuleCatalog(): LintRuleCatalogEntry[] {
   const state = currentMermanRuntimeState(defaultRuntimeState);
-  const rules = getMerman().lintRuleCatalog?.();
-  if (!rules) {
+  const response = getMerman().lintRuleCatalog?.();
+  if (!response) {
     throw new Error("Merman lintRuleCatalog() is not available in this artifact.");
   }
-  state.lintRuleCatalogCache ??= rules.map(normalizeLintRuleCatalogEntry);
+  state.lintRuleCatalogCache ??= normalizeLintRuleCatalogResponse(response);
   return state.lintRuleCatalogCache.map((rule) => ({
     ...rule,
     evidence: [...rule.evidence],
@@ -686,6 +687,23 @@ function normalizeLintRuleCatalogEntry(
     configurable: Boolean(rule.configurable),
     fixable: Boolean(rule.fixable),
   };
+}
+
+function normalizeLintRuleCatalogResponse(
+  response: LintRuleCatalogResponse
+): LintRuleCatalogEntry[] {
+  if (!response || typeof response !== "object") {
+    throw new Error("Merman WASM returned an invalid lint rule catalog response.");
+  }
+  if (response.version !== 1) {
+    throw new Error(
+      `Merman WASM returned unsupported lint rule catalog version: ${String(response.version)}.`
+    );
+  }
+  if (!Array.isArray(response.rules)) {
+    throw new Error("Merman WASM returned a lint rule catalog response without rules.");
+  }
+  return response.rules.map(normalizeLintRuleCatalogEntry);
 }
 
 function assertStringField(value: unknown, label: string): string {

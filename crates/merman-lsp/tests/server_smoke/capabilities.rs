@@ -55,7 +55,7 @@ async fn lsp_service_smoke_handles_initialize() {
     assert!(matches!(
         MermanLanguageServer::capabilities().text_document_sync,
         Some(tower_lsp::lsp_types::TextDocumentSyncCapability::Kind(
-            tower_lsp::lsp_types::TextDocumentSyncKind::FULL
+            tower_lsp::lsp_types::TextDocumentSyncKind::INCREMENTAL
         ))
     ));
 }

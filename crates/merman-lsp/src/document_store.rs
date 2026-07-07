@@ -1,9 +1,12 @@
 use crate::snapshot::DocumentSnapshot;
-use merman_analysis::{AnalysisOptions, Analyzer};
+use merman_analysis::{AnalysisOptions, Analyzer, SourceMap, Utf16Position};
 use merman_editor_core::{DocumentKind, DocumentWorkspace};
 use std::collections::HashMap;
+use std::ops::Range as ByteRange;
 use std::sync::Arc;
-use tower_lsp::lsp_types::{Diagnostic, SemanticToken, Url};
+use tower_lsp::lsp_types::{
+    Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Url,
+};
 
 pub const WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE: usize = 8;
 
@@ -37,6 +40,7 @@ pub struct StoredDocument {
 pub enum TextDocumentUpdate {
     Applied,
     MissingDocument,
+    InvalidRange,
     StaleVersion {
         current_version: i32,
         attempted_version: i32,
@@ -168,23 +172,30 @@ impl DocumentStore {
         self.upsert_text(uri, version, text, kind)
     }
 
-    pub fn apply_text_change(
+    pub fn apply_text_changes(
         &mut self,
         uri: Url,
         version: i32,
-        text: String,
+        changes: impl IntoIterator<Item = TextDocumentContentChangeEvent>,
     ) -> TextDocumentUpdate {
         let Some(current) = self.get(&uri) else {
             return TextDocumentUpdate::MissingDocument;
         };
         let current_version = current.version;
         let kind = current.kind;
+        let mut text = current.text.to_string();
 
         if version <= current_version {
             return TextDocumentUpdate::StaleVersion {
                 current_version,
                 attempted_version: version,
             };
+        }
+
+        for change in changes {
+            if !apply_text_content_change(&mut text, change) {
+                return TextDocumentUpdate::InvalidRange;
+            }
         }
 
         self.upsert_text(uri, version, text, kind);
@@ -604,4 +615,39 @@ pub(crate) fn analyzer_configuration_change(
     } else {
         AnalyzerConfigurationChange::SnapshotAffecting
     }
+}
+
+fn apply_text_content_change(text: &mut String, change: TextDocumentContentChangeEvent) -> bool {
+    if let Some(range) = change.range {
+        let Some(byte_range) = lsp_range_to_byte_range(text, range) else {
+            return false;
+        };
+        text.replace_range(byte_range, &change.text);
+    } else {
+        text.clear();
+        text.push_str(&change.text);
+    }
+    true
+}
+
+fn lsp_range_to_byte_range(text: &str, range: Range) -> Option<ByteRange<usize>> {
+    if !position_le(range.start, range.end) {
+        return None;
+    }
+
+    let source_map = SourceMap::new(text);
+    let start = source_map.byte_offset_for_utf16_position(position_to_utf16(range.start))?;
+    let end = source_map.byte_offset_for_utf16_position(position_to_utf16(range.end))?;
+    (start <= end).then_some(start..end)
+}
+
+fn position_to_utf16(position: Position) -> Utf16Position {
+    Utf16Position {
+        line: position.line as usize,
+        character: position.character as usize,
+    }
+}
+
+fn position_le(left: Position, right: Position) -> bool {
+    left.line < right.line || (left.line == right.line && left.character <= right.character)
 }

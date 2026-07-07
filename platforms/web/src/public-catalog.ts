@@ -161,6 +161,11 @@ export interface LintRuleCatalogEntry {
   fixable: boolean;
 }
 
+export interface LintRuleCatalogResponse {
+  version: number;
+  rules: LintRuleCatalogEntry[];
+}
+
 export interface LintRuleSeverityOverrideOptions {
   rule_id: string;
   severity: LintRuleSeverity;

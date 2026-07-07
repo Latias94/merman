@@ -1,7 +1,7 @@
 # Merman FFI Protocol
 
 Status: Draft
-Last updated: 2026-06-23
+Last updated: 2026-07-07
 
 This document defines the first C ABI protocol for `merman-ffi`.
 
@@ -259,8 +259,11 @@ MermanResult merman_engine_validate_json(
 
 Passing `engine == NULL` returns `MERMAN_INVALID_ARGUMENT`. Engines may be shared across render,
 parse, layout, analysis, or validation calls when the host treats the handle as borrowed for the
-duration of each call. Callers must externally synchronize `merman_engine_free` and
-`merman_engine_set_text_measure_callback` with any concurrent use of the same engine handle.
+duration of each call. `merman_engine_free` consumes the handle immediately from the host's
+perspective; if release is requested while a call is active, merman defers the actual drop until
+active calls return, and the host must not use the pointer again. Mutating host text measurement
+with `merman_engine_set_text_measure_callback` while any call or callback is active returns
+`MERMAN_INVALID_ARGUMENT`.
 
 ### Host Text Measurement
 
@@ -604,28 +607,32 @@ Hosts should use `support_level` and `summary_fallback` to label ASCII rendering
 ]
 ```
 
-`merman_lint_rule_catalog_json` returns a UTF-8 JSON array of objects from the shared
-`merman-analysis` rule catalog:
+`merman_lint_rule_catalog_json` returns a UTF-8 JSON response object from the shared
+`merman-analysis` rule catalog. The top-level `version` tracks the JSON response envelope; `rules`
+contains the catalog entries:
 
 ```json
-[
-  {
-    "id": "merman.authoring.flowchart.explicit_direction",
-    "description": "Recommend explicit flowchart header directions and offer an insertion quickfix.",
-    "evidence": [
-      "repo-ref/mermaid/packages/mermaid/src/docs/syntax/flowchart.md",
-      "crates/merman-core/src/diagrams/flowchart.rs",
-      "docs/adr/0072-lint-rule-governance.md"
-    ],
-    "default_severity": "hint",
-    "category": "semantic",
-    "default_enabled": false,
-    "default_profile": "recommended",
-    "origin": "merman_authoring",
-    "configurable": true,
-    "fixable": true
-  }
-]
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "merman.authoring.flowchart.explicit_direction",
+      "description": "Recommend explicit flowchart header directions and offer an insertion quickfix.",
+      "evidence": [
+        "repo-ref/mermaid/packages/mermaid/src/docs/syntax/flowchart.md",
+        "crates/merman-core/src/diagrams/flowchart.rs",
+        "docs/adr/0072-lint-rule-governance.md"
+      ],
+      "default_severity": "hint",
+      "category": "semantic",
+      "default_enabled": false,
+      "default_profile": "recommended",
+      "origin": "merman_authoring",
+      "configurable": true,
+      "fixable": true
+    }
+  ]
+}
 ```
 
 Hosts should use this catalog for rule-selection UI, config completion, and documenting whether a
@@ -643,5 +650,6 @@ ownership rules.
 
 Reusable-engine calls borrow the engine handle for the duration of each call. Hosts may issue
 concurrent read-style calls through the same handle only when any installed text-measure callback and
-its `user_data` are thread-safe. Hosts must not call `merman_engine_free` or
-`merman_engine_set_text_measure_callback` concurrently with another call using the same handle.
+its `user_data` are thread-safe. `merman_engine_free` consumes the handle and may defer the actual
+drop until active calls return. `merman_engine_set_text_measure_callback` is an exclusive mutation
+and returns `MERMAN_INVALID_ARGUMENT` while another call or host text-measure callback is active.

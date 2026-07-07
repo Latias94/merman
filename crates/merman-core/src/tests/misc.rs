@@ -327,6 +327,44 @@ fn parse_metadata_with_type_sync_moves_init_config_without_detection() {
 }
 
 #[test]
+fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
+    let engine = Engine::new();
+
+    for (diagram_type, source, config_key) in [
+        ("classDiagram", "classDiagram\nclass A\n", "class"),
+        ("stateDiagram", "stateDiagram-v2\n[*] --> A\n", "state"),
+        ("erDiagram", "erDiagram\nA ||--|| B : owns\n", "er"),
+        (
+            "xychart",
+            "xychart-beta\nx-axis [a]\ny-axis \"Y\" 0 --> 1\nbar [1]\n",
+            "xyChart",
+        ),
+        ("flowchart-elk", "flowchart-elk TD\nA-->B\n", "flowchart"),
+    ] {
+        let input = format!("%%{{init: {{\"config\": {{\"enabled\": true}}}}}}%%\n{source}");
+
+        let meta = engine
+            .parse_metadata_with_type_sync(diagram_type, &input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            meta.config
+                .as_value()
+                .pointer(&format!("/{config_key}/enabled")),
+            Some(&json!(true)),
+            "config key for {diagram_type}"
+        );
+        if diagram_type != config_key {
+            assert!(
+                meta.config.as_value().get(diagram_type).is_none(),
+                "raw diagram key should not survive for {diagram_type}"
+            );
+        }
+    }
+}
+
+#[test]
 fn parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect() {
     let engine = Engine::new();
     let input = "flowchart-elk TD\nA-->B;";

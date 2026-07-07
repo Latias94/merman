@@ -9,10 +9,22 @@ describe("analysis settings normalization", () => {
       ...defaultRawAnalysisSettings(),
       fixedToday: "2024-02-29",
       fixedLocalOffsetMinutes: -1439,
+      siteConfig: {
+        theme: "dark",
+        flowchart: {
+          htmlLabels: false,
+        },
+      },
       maxSourceBytes: 1024,
     }), {
       fixed_today: "2024-02-29",
       fixed_local_offset_minutes: -1439,
+      site_config: {
+        theme: "dark",
+        flowchart: {
+          htmlLabels: false,
+        },
+      },
       resources: {
         max_source_bytes: 1024,
       },
@@ -20,6 +32,19 @@ describe("analysis settings normalization", () => {
         profile: "core",
       },
     });
+  });
+
+  it("drops non-object site_config values before sending LSP settings", () => {
+    for (const siteConfig of [null, [], "dark"]) {
+      assert.deepEqual(normalizeAnalysisSettings({
+        ...defaultRawAnalysisSettings(),
+        siteConfig,
+      }), {
+        lint: {
+          profile: "core",
+        },
+      });
+    }
   });
 
   it("drops invalid fixed_today strings before sending LSP settings", () => {
@@ -72,6 +97,7 @@ function defaultRawAnalysisSettings(): RawAnalysisSettings {
   return {
     fixedToday: "",
     fixedLocalOffsetMinutes: null,
+    siteConfig: {},
     suppressErrors: false,
     maxSourceBytes: 0,
     lintProfile: "core",

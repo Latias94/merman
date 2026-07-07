@@ -1,6 +1,7 @@
 package io.merman.examples
 
 import io.merman.MermanEngine
+import io.merman.MermanException
 import io.merman.MermanReusableEngine
 import io.merman.MermanTextMeasureResult
 
@@ -72,6 +73,12 @@ fun runMermanSmoke() {
     check(MermanEngine.diagramFamilyCapabilitiesJson().contains("\"diagram_type\":\"flowchart\"")) {
         "diagram family capabilities smoke failed"
     }
+    check(MermanEngine.lintRuleCatalogJson().contains("\"version\":1")) {
+        "lint rule catalog envelope smoke failed"
+    }
+    check(MermanEngine.lintRuleCatalogJson().contains("\"rules\":")) {
+        "lint rule catalog rules envelope smoke failed"
+    }
     check(MermanEngine.lintRuleCatalogJson().contains("merman.authoring.flowchart.explicit_direction")) {
         "lint rule catalog smoke failed"
     }
@@ -87,7 +94,9 @@ fun runMermanSmoke() {
 
     val engine = MermanReusableEngine()
     try {
+        var measureCalls = 0
         engine.setTextMeasurer { request ->
+            measureCalls += 1
             if (request.text == "Hello") {
                 MermanTextMeasureResult(
                     width = 42.0,
@@ -101,6 +110,9 @@ fun runMermanSmoke() {
         val reusableSvg = engine.renderSvg(source)
         check(reusableSvg.contains("<svg") && reusableSvg.contains("Hello")) {
             "reusable engine SVG smoke failed"
+        }
+        check(measureCalls > 0) {
+            "text measurer callback smoke failed"
         }
         val reusableDocumentJson = engine.analyzeDocumentJson(
             documentSource,
@@ -119,6 +131,57 @@ fun runMermanSmoke() {
         engine.setTextMeasurer(null)
     } finally {
         engine.close()
+    }
+
+    val reentrantEngine = MermanReusableEngine()
+    try {
+        var reentryRejected = false
+        reentrantEngine.setTextMeasurer {
+            if (!reentryRejected) {
+                try {
+                    reentrantEngine.renderSvg(source)
+                    error("reentrant render unexpectedly succeeded")
+                } catch (error: MermanException) {
+                    check(error.message?.contains("re-entered") == true) {
+                        "unexpected reentrant error: ${error.message}"
+                    }
+                    reentryRejected = true
+                }
+            }
+            null
+        }
+        val reentrantSvg = reentrantEngine.renderSvg(source)
+        check(reentrantSvg.contains("<svg") && reentryRejected) {
+            "reentrant text measurer guard smoke failed"
+        }
+    } finally {
+        reentrantEngine.close()
+    }
+
+    val closingEngine = MermanReusableEngine()
+    var closeFromCallbackObserved = false
+    try {
+        closingEngine.setTextMeasurer {
+            if (!closeFromCallbackObserved) {
+                closeFromCallbackObserved = true
+                closingEngine.close()
+            }
+            null
+        }
+        val closingSvg = closingEngine.renderSvg(source)
+        check(closingSvg.contains("<svg") && closeFromCallbackObserved) {
+            "close-from-callback render smoke failed"
+        }
+        try {
+            closingEngine.renderSvg(source)
+            error("closed reusable engine unexpectedly rendered")
+        } catch (error: MermanException) {
+            check(error.message?.contains("closed") == true) {
+                "unexpected closed-engine error: ${error.message}"
+            }
+        }
+    } finally {
+        closingEngine.close()
     }
 
     val throwingEngine = MermanReusableEngine()

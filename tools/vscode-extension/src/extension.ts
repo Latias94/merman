@@ -20,6 +20,7 @@ import {
   LANGUAGE_INTELLIGENCE_SETTING,
   languageClientConfigurationAction,
   languageClientReconcileAction,
+  languageClientWorkspaceTrustAction,
   languageIntelligenceDisabledMessage,
   type LanguageClientLifecycleAction,
 } from "./language-intelligence.js";
@@ -115,6 +116,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           hasClient: Boolean(client),
           settings: getLanguageIntelligenceSettings(),
         }),
+      ).catch(() => undefined);
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidGrantWorkspaceTrust(async () => {
+      await runLanguageClientAction(
+        context,
+        languageClientWorkspaceTrustAction(getLanguageIntelligenceSettings(), Boolean(client)),
       ).catch(() => undefined);
     }),
   );

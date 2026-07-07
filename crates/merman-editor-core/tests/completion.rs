@@ -410,6 +410,36 @@ fn shape_value_completion_does_not_duplicate_existing_closing_brace() {
 }
 
 #[test]
+fn shape_value_completion_accepts_mermaid_whitespace_variants() {
+    for source in [
+        "flowchart TD\nA@{shape: rou }\n",
+        "flowchart TD\nA@{       shape: rou }\n",
+        "flowchart TD\nA@{ shape : rou }\n",
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace.upsert(
+            "file:///tmp/example.mmd",
+            1,
+            source.to_string(),
+            DocumentKind::Diagram,
+        );
+        let cursor = source.find("rou").unwrap() + "rou".len() - "flowchart TD\n".len();
+        let context = CompletionContext::from_snapshot(&snapshot, Position::new(1, cursor))
+            .expect("completion context");
+        let edit = context.shape_value_edit("circle").expect("shape edit");
+
+        assert_eq!(edit.range.start.line, 1);
+        assert_eq!(
+            edit.range.start.character,
+            source.find("rou").unwrap() - "flowchart TD\n".len()
+        );
+        assert_eq!(edit.range.end.line, 1);
+        assert_eq!(edit.range.end.character, cursor);
+        assert_eq!(edit.replacement, "circle");
+    }
+}
+
+#[test]
 fn shape_value_completion_appends_missing_brace_before_markdown_fence_close() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

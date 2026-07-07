@@ -7,6 +7,7 @@ import {
   LANGUAGE_INTELLIGENCE_SETTING,
   languageClientConfigurationAction,
   languageClientReconcileAction,
+  languageClientWorkspaceTrustAction,
   languageIntelligenceDisabledMessage,
   serverBackedCommandAction,
   shouldStartLanguageClient,
@@ -23,6 +24,13 @@ describe("language intelligence adoption", () => {
     assert.equal(languageClientReconcileAction({ enabled: false }, true), "stopAndDisable");
     assert.equal(languageClientReconcileAction({ enabled: true }, false), "start");
     assert.equal(languageClientReconcileAction({ enabled: true }, true), "pushConfiguration");
+  });
+
+  it("retries trusted runtime startup when Workspace Trust is granted", () => {
+    assert.equal(languageClientWorkspaceTrustAction({ enabled: true }, false), "start");
+    assert.equal(languageClientWorkspaceTrustAction({ enabled: true }, true), "pushConfiguration");
+    assert.equal(languageClientWorkspaceTrustAction({ enabled: false }, false), "showDisabledStatus");
+    assert.equal(languageClientWorkspaceTrustAction({ enabled: false }, true), "stopAndDisable");
   });
 
   it("restarts only enabled clients for server-shape configuration changes", () => {
@@ -118,6 +126,7 @@ describe("language intelligence adoption", () => {
     ]);
     assert.equal(properties["merman.analysis.fixed_local_offset_minutes"]?.minimum, -1439);
     assert.equal(properties["merman.analysis.fixed_local_offset_minutes"]?.maximum, 1439);
+    assert.equal(properties["merman.analysis.site_config"]?.type, "object");
     assert.equal(properties["merman.analysis.resources.max_source_bytes"]?.type, "integer");
     assert.equal(properties["merman.analysis.resources.max_source_bytes"]?.minimum, 0);
   });

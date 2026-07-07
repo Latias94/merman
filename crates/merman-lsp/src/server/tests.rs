@@ -134,12 +134,14 @@ fn analyzer_configuration_change_classifies_unchanged_options() {
 }
 
 #[test]
-fn capabilities_advertise_completion_and_full_sync() {
+fn capabilities_advertise_completion_and_incremental_sync() {
     let capabilities = MermanLanguageServer::capabilities();
 
     assert!(matches!(
         capabilities.text_document_sync,
-        Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL))
+        Some(TextDocumentSyncCapability::Kind(
+            TextDocumentSyncKind::INCREMENTAL
+        ))
     ));
     assert!(matches!(
         capabilities.hover_provider,
@@ -582,6 +584,61 @@ async fn did_change_rejects_stale_document_versions() {
         .expect("expected current snapshot");
     assert_eq!(snapshot.version, 3);
     assert_eq!(snapshot.fences[0].diagram_type.as_deref(), Some("sequence"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn did_change_applies_incremental_changes_in_order() {
+    let (service, _socket) = MermanLanguageServer::service();
+    let server = service.inner();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    server
+        .did_open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mermaid".to_string(),
+                version: 1,
+                text: "flowchart TD\nA-->B\n".to_string(),
+            },
+        })
+        .await;
+
+    server
+        .did_change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![
+                TextDocumentContentChangeEvent {
+                    range: Some(Range::new(Position::new(1, 4), Position::new(1, 5))),
+                    range_length: None,
+                    text: "C".to_string(),
+                },
+                TextDocumentContentChangeEvent {
+                    range: Some(Range::new(Position::new(1, 5), Position::new(1, 5))),
+                    range_length: None,
+                    text: "\nC-->D".to_string(),
+                },
+            ],
+        })
+        .await;
+
+    let stored = {
+        let store = server.store.lock().await;
+        store.get(&uri).expect("expected stored document").clone()
+    };
+    assert_eq!(stored.version, 2);
+    assert_eq!(stored.text.as_ref(), "flowchart TD\nA-->C\nC-->D\n");
+
+    let snapshot = server
+        .snapshot_for_uri(&uri)
+        .await
+        .expect("expected changed snapshot");
+    assert_eq!(
+        snapshot.fences[0].diagram_type.as_deref(),
+        Some("flowchart-v2")
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

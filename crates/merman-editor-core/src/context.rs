@@ -1,6 +1,9 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{Position, Range};
-use merman_analysis::{FenceCursorCompletionKind, FenceExpectedSyntaxKind, FenceTextIndexSource};
+use merman_analysis::{
+    FenceCursorCompletionKind, FenceExpectedSyntaxKind, FenceTextIndexSource,
+    shape_object_value_prefix,
+};
 
 #[derive(Debug)]
 pub struct CompletionContext<'a> {
@@ -312,21 +315,13 @@ impl<'a> CompletionContext<'a> {
     }
 
     fn shape_value_edit_parts_from_prefix(&self, prefix: &str) -> Option<(Range, bool)> {
-        let marker = prefix.rfind("@{ shape:")?;
-        let after_colon = marker + "@{ shape:".len();
-        let suffix = &prefix[after_colon..];
-        let whitespace = suffix
-            .chars()
-            .take_while(|ch| ch.is_whitespace())
-            .map(|ch| ch.len_utf8())
-            .sum::<usize>();
-        let has_separator_space = whitespace > 0;
+        let shape_prefix = shape_object_value_prefix(prefix)?;
         let range = self.range_for_offsets(
-            self.prefix_start_offset + after_colon + whitespace,
+            self.prefix_start_offset + shape_prefix.value_start,
             self.cursor_offset,
         )?;
 
-        Some((range, has_separator_space))
+        Some((range, shape_prefix.has_separator_space))
     }
 
     fn shape_value_edit_parts_from_expected_span(&self) -> Option<(Range, bool, bool)> {

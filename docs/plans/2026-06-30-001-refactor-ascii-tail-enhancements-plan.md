@@ -246,7 +246,7 @@ Sequence changes are narrower but user-visible because the same row pipeline ser
 | `cargo nextest run -p merman-ascii class er --status-level fail` | U1, U2, U3 | Class/ER planner, family adapters, and semantic fixtures pass. |
 | `cargo nextest run -p merman-ascii sequence --status-level fail` | U4 | Sequence wrapper and lifecycle fixtures pass. |
 | `cargo nextest run -p merman-ascii --status-level fail` | U1-U6 | Full ASCII package behavior remains green. |
-| `cargo nextest run -p merman-bindings-core --features ascii ascii_capabilities ascii_supported_diagrams metadata_json_helpers_return_arrays --status-level fail` | U5 | Capability metadata remains compatible with bindings. |
+| `cargo nextest run -p merman-bindings-core --features ascii ascii_capabilities ascii_supported_diagrams metadata_json_helpers_return_json_contracts --status-level fail` | U5 | Capability metadata remains compatible with bindings. |
 | `git diff --check` | All units | No trailing whitespace or patch artifacts remain. |
 
 ---

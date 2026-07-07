@@ -6,6 +6,7 @@ export interface LintRuleSeverityOverride {
 export interface AnalysisSettings {
   fixed_today?: string;
   fixed_local_offset_minutes?: number;
+  site_config?: Record<string, unknown>;
   parse?: {
     suppress_errors?: boolean;
   };
@@ -23,6 +24,7 @@ export interface AnalysisSettings {
 export interface RawAnalysisSettings {
   fixedToday: unknown;
   fixedLocalOffsetMinutes: unknown;
+  siteConfig: unknown;
   suppressErrors: boolean;
   maxSourceBytes: unknown;
   lintProfile: string;
@@ -40,6 +42,7 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
     -1439,
     1439,
   );
+  const siteConfig = normalizePlainObject(raw.siteConfig);
   const maxSourceBytes = normalizePositiveInteger(raw.maxSourceBytes);
   const lintProfile = normalizeLintProfile(raw.lintProfile);
   const enableRules = sanitizeStringArray(raw.enableRules);
@@ -49,6 +52,7 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
   return compactObject<AnalysisSettings>({
     fixed_today: fixedToday,
     fixed_local_offset_minutes: fixedLocalOffsetMinutes,
+    site_config: siteConfig,
     parse: raw.suppressErrors ? { suppress_errors: true } : undefined,
     resources: maxSourceBytes ? { max_source_bytes: maxSourceBytes } : undefined,
     lint:
@@ -61,6 +65,14 @@ export function normalizeAnalysisSettings(raw: RawAnalysisSettings): AnalysisSet
           })
         : undefined,
   });
+}
+
+function normalizePlainObject(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.keys(record).length > 0 ? record : undefined;
 }
 
 function sanitizeStringArray(value: unknown[] | undefined): string[] {

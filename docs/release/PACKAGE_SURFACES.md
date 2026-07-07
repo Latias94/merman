@@ -1,7 +1,7 @@
 # Package Surfaces
 
 Status: draft release planning notes.
-Last updated: 2026-06-23
+Last updated: 2026-07-07
 
 This document records merman package surfaces, current readiness, and the CI gates that should
 protect them before any registry publication is enabled.

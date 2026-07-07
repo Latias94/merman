@@ -1427,22 +1427,25 @@ class Merman {
     String text,
   ) {
     final decoded = jsonDecode(text);
-    if (decoded is List) {
-      return decoded.map((item) {
-        if (item is Map<String, Object?>) {
-          return MermanLintRuleCatalogEntry.fromJson(item);
-        }
-        throw const MermanException(
-          code: -1,
-          codeName: 'DART_JSON_TYPE_ERROR',
-          message: 'expected lint rule catalog JSON object',
-        );
-      }).toList(growable: false);
+    if (decoded is Map<String, Object?>) {
+      final rules = decoded['rules'];
+      if (rules is List) {
+        return rules.map((item) {
+          if (item is Map<String, Object?>) {
+            return MermanLintRuleCatalogEntry.fromJson(item);
+          }
+          throw const MermanException(
+            code: -1,
+            codeName: 'DART_JSON_TYPE_ERROR',
+            message: 'expected lint rule catalog JSON object',
+          );
+        }).toList(growable: false);
+      }
     }
     throw const MermanException(
       code: -1,
       codeName: 'DART_JSON_TYPE_ERROR',
-      message: 'expected lint rule catalog JSON array',
+      message: 'expected lint rule catalog JSON response object',
     );
   }
 

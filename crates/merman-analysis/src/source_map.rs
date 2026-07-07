@@ -1,5 +1,5 @@
 use crate::payload::{DiagnosticSpan, Utf16Position};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LineCol {
@@ -27,14 +27,16 @@ pub enum SourceMapError {
 pub struct SourceMap {
     source: Arc<str>,
     line_starts: Arc<[usize]>,
-    line_metrics: Arc<[LineMetric]>,
+    line_metrics: Arc<[OnceLock<LineMetric>]>,
 }
 
 impl SourceMap {
     pub fn new(source: impl Into<Arc<str>>) -> Self {
         let source = source.into();
         let line_starts = line_starts(source.as_ref());
-        let line_metrics = line_metrics(source.as_ref(), &line_starts);
+        let line_metrics = (0..line_starts.len())
+            .map(|_| OnceLock::new())
+            .collect::<Vec<_>>();
         Self {
             source,
             line_starts: Arc::from(line_starts.into_boxed_slice()),
@@ -101,14 +103,19 @@ impl SourceMap {
     }
 
     pub fn line_bounds(&self, line_index: usize) -> Option<(usize, usize)> {
-        let line = self.line_metrics.get(line_index)?;
+        let line = self.line_metric(line_index)?;
         Some((line.start, line.content_end))
     }
 
     pub fn byte_offset_for_utf16_position(&self, position: Utf16Position) -> Option<usize> {
-        let line = self.line_metrics.get(position.line)?;
-        let boundary_index = line.utf16_columns.binary_search(&position.character).ok()?;
-        Some(line.start + line.byte_boundaries[boundary_index])
+        let line = self.line_metric(position.line)?;
+        match line.utf16_columns.binary_search(&position.character) {
+            Ok(boundary_index) => Some(line.start + line.byte_boundaries[boundary_index]),
+            Err(boundary_index) if boundary_index >= line.utf16_columns.len() => {
+                Some(line.content_end)
+            }
+            Err(_) => None,
+        }
     }
 
     fn validate_offset(&self, offset: usize) -> Result<(), SourceMapError> {
@@ -135,7 +142,9 @@ impl SourceMap {
     fn offset_metrics(&self, offset: usize) -> Result<OffsetMetrics, SourceMapError> {
         self.validate_offset(offset)?;
         let line_index = self.line_index_for_offset(offset);
-        let line = &self.line_metrics[line_index];
+        let line = self
+            .line_metric(line_index)
+            .expect("validated source offset should map to a cached line");
         let clamped = offset.clamp(line.start, line.content_end);
         let relative = clamped - line.start;
         let boundary_index = line
@@ -150,15 +159,32 @@ impl SourceMap {
         })
     }
 
+    fn line_metric(&self, line_index: usize) -> Option<&LineMetric> {
+        let slot = self.line_metrics.get(line_index)?;
+        Some(slot.get_or_init(|| {
+            let start = self.line_starts[line_index];
+            let next_start = self
+                .line_starts
+                .get(line_index + 1)
+                .copied()
+                .unwrap_or(self.source.len());
+            line_metric(self.source.as_ref(), start, next_start)
+        }))
+    }
+
     #[cfg(test)]
     fn cached_line_metric_count(&self) -> usize {
-        self.line_metrics.len()
+        self.line_metrics
+            .iter()
+            .filter(|metric| metric.get().is_some())
+            .count()
     }
 
     #[cfg(test)]
     fn cached_line_boundary_count(&self, line_index: usize) -> Option<usize> {
         self.line_metrics
             .get(line_index)
+            .and_then(OnceLock::get)
             .map(|line| line.byte_boundaries.len())
     }
 }
@@ -183,26 +209,29 @@ pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan 
     let mut end_column = 1usize;
     let mut end_lsp_line = 0usize;
     let mut end_lsp_character = 0usize;
-    let mut pending_cr = false;
+    let mut chars = text.chars().peekable();
 
-    for ch in text.chars() {
-        if pending_cr && ch != '\n' {
-            end_column += 1;
-            end_lsp_character += 1;
-            pending_cr = false;
-        }
-
-        if ch == '\n' {
-            end_line += 1;
-            end_column = 1;
-            end_lsp_line += 1;
-            end_lsp_character = 0;
-            pending_cr = false;
-        } else if ch == '\r' {
-            pending_cr = true;
-        } else {
-            end_column += 1;
-            end_lsp_character += ch.len_utf16();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                end_line += 1;
+                end_column = 1;
+                end_lsp_line += 1;
+                end_lsp_character = 0;
+            }
+            '\n' => {
+                end_line += 1;
+                end_column = 1;
+                end_lsp_line += 1;
+                end_lsp_character = 0;
+            }
+            _ => {
+                end_column += 1;
+                end_lsp_character += ch.len_utf16();
+            }
         }
     }
 
@@ -226,44 +255,51 @@ pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan 
 
 fn line_starts(source: &str) -> Vec<usize> {
     let mut starts = vec![0];
-    for (idx, byte) in source.bytes().enumerate() {
-        if byte == b'\n' {
-            starts.push(idx + 1);
+    let bytes = source.as_bytes();
+    let mut idx = 0usize;
+    while idx < bytes.len() {
+        match bytes[idx] {
+            b'\r' => {
+                idx += 1;
+                if bytes.get(idx) == Some(&b'\n') {
+                    idx += 1;
+                }
+                starts.push(idx);
+            }
+            b'\n' => {
+                idx += 1;
+                starts.push(idx);
+            }
+            _ => {
+                idx += 1;
+            }
         }
     }
     starts
 }
 
-fn line_metrics(source: &str, starts: &[usize]) -> Vec<LineMetric> {
-    starts
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(index, start)| {
-            let next_start = starts.get(index + 1).copied().unwrap_or(source.len());
-            let content_end = line_content_end(source.as_bytes(), start, next_start);
-            let line = &source[start..content_end];
-            let mut byte_boundaries = Vec::with_capacity(line.chars().count() + 1);
-            let mut utf16_columns = Vec::with_capacity(byte_boundaries.capacity());
-            let mut utf16 = 0usize;
+fn line_metric(source: &str, start: usize, next_start: usize) -> LineMetric {
+    let content_end = line_content_end(source.as_bytes(), start, next_start);
+    let line = &source[start..content_end];
+    let mut byte_boundaries = Vec::with_capacity(line.chars().count() + 1);
+    let mut utf16_columns = Vec::with_capacity(byte_boundaries.capacity());
+    let mut utf16 = 0usize;
 
-            byte_boundaries.push(0);
-            utf16_columns.push(0);
+    byte_boundaries.push(0);
+    utf16_columns.push(0);
 
-            for (relative, ch) in line.char_indices() {
-                utf16 += ch.len_utf16();
-                byte_boundaries.push(relative + ch.len_utf8());
-                utf16_columns.push(utf16);
-            }
+    for (relative, ch) in line.char_indices() {
+        utf16 += ch.len_utf16();
+        byte_boundaries.push(relative + ch.len_utf8());
+        utf16_columns.push(utf16);
+    }
 
-            LineMetric {
-                start,
-                content_end,
-                byte_boundaries,
-                utf16_columns,
-            }
-        })
-        .collect()
+    LineMetric {
+        start,
+        content_end,
+        byte_boundaries,
+        utf16_columns,
+    }
 }
 
 fn line_content_end(bytes: &[u8], start: usize, next_start: usize) -> usize {
@@ -345,6 +381,48 @@ mod tests {
     }
 
     #[test]
+    fn bare_cr_line_bounds_and_positions_treat_carriage_return_as_line_ending() {
+        let source = "flowchart TD\rA-->B\rC-->D";
+        let map = SourceMap::new(source);
+        let first_cr = source.find('\r').unwrap();
+        let second_line_start = first_cr + 1;
+        let second_cr = source[second_line_start..].find('\r').unwrap() + second_line_start;
+
+        assert_eq!(map.line_bounds(0), Some((0, first_cr)));
+        assert_eq!(map.line_bounds(1), Some((second_line_start, second_cr)));
+        assert_eq!(
+            map.utf16_position(second_line_start).unwrap(),
+            Utf16Position {
+                line: 1,
+                character: 0,
+            }
+        );
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 2,
+                character: 0,
+            }),
+            Some(second_cr + 1)
+        );
+    }
+
+    #[test]
+    fn utf16_position_past_line_end_clamps_to_content_end() {
+        let source = "flowchart TD\nA[🤓]-->B\n";
+        let map = SourceMap::new(source);
+        let second_line_start = source.find("A[").unwrap();
+        let second_line_end = source[second_line_start..].find('\n').unwrap() + second_line_start;
+
+        assert_eq!(
+            map.byte_offset_for_utf16_position(Utf16Position {
+                line: 1,
+                character: 10_000,
+            }),
+            Some(second_line_end)
+        );
+    }
+
+    #[test]
     fn dense_span_conversion_uses_cached_line_metrics() {
         let nodes = (0..512)
             .map(|index| format!("N{index}[🤓]"))
@@ -353,11 +431,8 @@ mod tests {
         let source = format!("flowchart TD {nodes}");
         let map = SourceMap::new(source.clone());
 
-        assert_eq!(map.cached_line_metric_count(), 1);
-        assert_eq!(
-            map.cached_line_boundary_count(0),
-            Some(source.chars().count() + 1)
-        );
+        assert_eq!(map.cached_line_metric_count(), 0);
+        assert_eq!(map.cached_line_boundary_count(0), None);
 
         for offset in source.match_indices('N').map(|(offset, _)| offset) {
             let end = source[offset..].find('[').map(|len| offset + len).unwrap();
@@ -365,6 +440,11 @@ mod tests {
             assert_eq!(span.lsp_range.start.line, 0);
             assert!(span.lsp_range.end.character > span.lsp_range.start.character);
         }
+        assert_eq!(map.cached_line_metric_count(), 1);
+        assert_eq!(
+            map.cached_line_boundary_count(0),
+            Some(source.chars().count() + 1)
+        );
     }
 
     #[test]

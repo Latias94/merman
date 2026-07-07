@@ -56,9 +56,9 @@ until the current native call finishes. If the Kotlin callback throws, the JNI b
 pending Java exception, treats only that measurement request as unhandled, and lets merman fall back
 for the request. The next JNI call remains usable; host code should still log callback failures
 because repeated fallback can change geometry.
-`MermanEngine.lintRuleCatalogJson()` exposes the shared analyzer rule catalog as JSON, including
-evidence references, so Android hosts can build settings or LSP-related UI from the same rule
-metadata as CLI and other bindings.
+`MermanEngine.lintRuleCatalogJson()` exposes the shared analyzer rule catalog as a versioned JSON
+response object with `{ "version": 1, "rules": [...] }`, including evidence references, so Android
+hosts can build settings or LSP-related UI from the same rule metadata as CLI and other bindings.
 
 ## Text Measurement Guidance
 

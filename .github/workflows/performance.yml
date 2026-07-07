@@ -427,7 +427,17 @@ jobs:
 
       - name: Install mermaid-rs-renderer toolchain
         shell: bash
-        run: rustup toolchain install "${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}" --profile minimal
+        env:
+          MMDR_TOOLCHAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$MMDR_TOOLCHAIN" =~ ^([0-9]+(\.[0-9]+){0,2}|stable|beta|nightly)(-[0-9]{4}-[0-9]{2}-[0-9]{2})?$ ]]; then
+            echo "::error::mmdr_toolchain must be a Rust release number, stable, beta, nightly, or a dated channel."
+            exit 1
+          fi
+
+          rustup toolchain install "$MMDR_TOOLCHAIN" --profile minimal
 
       - name: Setup Node for Mermaid JS
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
@@ -444,20 +454,44 @@ jobs:
 
       - name: Run cross-repo comparison
         working-directory: head
+        env:
+          INCLUDE_MERMAID_JS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js || false }}
+          MMDR_TOOLCHAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}
+          PRESET: ${{ github.event_name == 'workflow_dispatch' && inputs.preset || 'long' }}
+          SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || 'canary' }}
         run: |
           set -euo pipefail
-          preset="${{ github.event_name == 'workflow_dispatch' && inputs.preset || 'long' }}"
-          suite="${{ github.event_name == 'workflow_dispatch' && inputs.suite || 'canary' }}"
-          mmdr_toolchain="${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}"
+
+          case "$PRESET" in
+            quick|long) ;;
+            *)
+              echo "::error::preset must be quick or long."
+              exit 1
+              ;;
+          esac
+
+          case "$SUITE" in
+            canary|standard|cross_family|full) ;;
+            *)
+              echo "::error::suite must be canary, standard, cross_family, or full."
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "$MMDR_TOOLCHAIN" =~ ^([0-9]+(\.[0-9]+){0,2}|stable|beta|nightly)(-[0-9]{4}-[0-9]{2}-[0-9]{2})?$ ]]; then
+            echo "::error::mmdr_toolchain must be a Rust release number, stable, beta, nightly, or a dated channel."
+            exit 1
+          fi
+
           args=(
-            --preset "$preset"
-            --suite "$suite"
+            --preset "$PRESET"
+            --suite "$SUITE"
             --mmdr-dir repo-ref/mermaid-rs-renderer
-            --mmdr-toolchain "$mmdr_toolchain"
+            --mmdr-toolchain "$MMDR_TOOLCHAIN"
             --out target/performance/reference_comparison.md
             --json-out target/performance/reference_comparison.json
           )
-          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js || false }}" = "true" ]; then
+          if [ "$INCLUDE_MERMAID_JS" = "true" ]; then
             echo "Mermaid JS comparison enabled."
           else
             args+=(--skip-mermaid-js)

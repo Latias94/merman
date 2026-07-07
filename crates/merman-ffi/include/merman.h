@@ -149,8 +149,10 @@ size_t merman_host_text_measure_result_struct_size(void);
  * code != MERMAN_OK:
  *   engine is NULL and data contains UTF-8 JSON error bytes.
  *
- * The caller must release a non-null engine with merman_engine_free.
- * The caller must not free an engine while another thread is using it.
+ * The caller must release a non-null engine exactly once with merman_engine_free.
+ * merman_engine_free consumes the handle immediately from the host's perspective. If release is
+ * requested while a call is active, merman defers the actual drop until active calls return; the
+ * host must not use the pointer again after requesting release.
  */
 MermanEngineResult merman_engine_new(
     const uint8_t* options_json,
@@ -169,6 +171,9 @@ void merman_engine_free(MermanEngine* engine);
  * Request strings are UTF-8 byte slices valid only for the duration of the callback. The callback
  * must not store those pointers. If the same engine is used concurrently, the callback and
  * user_data must be thread-safe.
+ *
+ * The engine cannot be mutated while any call or host text-measure callback is active.
+ * merman_engine_set_text_measure_callback returns MERMAN_INVALID_ARGUMENT in that state.
  *
  * The callback is synchronous. Return handled=0 instead of blocking on async UI-thread, WebView,
  * platform-channel, font-loading, or cross-isolate work that is not already cached. For
@@ -338,7 +343,7 @@ MermanResult merman_validate_json(
 );
 
 /*
- * Return UTF-8 JSON string arrays describing binding metadata.
+ * Return UTF-8 JSON values describing binding metadata.
  *
  * Success and error ownership rules are identical to merman_render_svg.
  */

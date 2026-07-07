@@ -218,6 +218,78 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
+      - name: Dry-run crates in dependency order
+        env:
+          CRATE_VERSIONS: ${{ needs.preflight.outputs.crate_versions }}
+        run: |
+          set -euo pipefail
+
+          crate_version_available() {
+            local crate="$1"
+            local version="$2"
+            local tmpdir="${RUNNER_TEMP:-/tmp}"
+
+            (
+              cd "$tmpdir"
+              cargo info "$crate@$version" --registry crates-io >/dev/null 2>&1
+            )
+          }
+
+          validate_crate_version_line() {
+            local crate="$1"
+            local version="$2"
+
+            if [[ ! "$crate" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+              echo "::error::Invalid crate name in preflight output: $crate"
+              return 1
+            fi
+
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+              echo "::error::Invalid crate version in preflight output for $crate: $version"
+              return 1
+            fi
+          }
+
+          workspace_crate_version() {
+            local crate="$1"
+
+            cargo pkgid -p "$crate" | sed 's/.*@//'
+          }
+
+          verify_workspace_crate_version() {
+            local crate="$1"
+            local expected_version="$2"
+            local actual_version
+
+            actual_version="$(workspace_crate_version "$crate")"
+            if [ "$actual_version" != "$expected_version" ]; then
+              echo "::error::$crate version $actual_version in publish checkout does not match preflight version $expected_version"
+              return 1
+            fi
+          }
+
+          dry_run_crate_version() {
+            local crate="$1"
+            local crate_version="$2"
+
+            if crate_version_available "$crate" "$crate_version"; then
+              echo "Skipping dry-run for $crate $crate_version because it is already published"
+              return 0
+            fi
+
+            echo "Dry-running $crate $crate_version"
+            cargo publish -p "$crate" --locked --dry-run --registry crates-io
+          }
+
+          while IFS='=' read -r crate crate_version; do
+            if [ -z "$crate" ]; then
+              continue
+            fi
+            validate_crate_version_line "$crate" "$crate_version"
+            verify_workspace_crate_version "$crate" "$crate_version"
+            dry_run_crate_version "$crate" "$crate_version"
+          done <<< "$CRATE_VERSIONS"
+
       - name: Upload crates to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -296,9 +368,6 @@ jobs:
               echo "Skipping $crate $crate_version because it is already published"
               return 0
             fi
-
-            echo "Dry-running $crate $crate_version"
-            cargo publish -p "$crate" --locked --dry-run --registry crates-io
 
             echo "Publishing $crate $crate_version"
             for attempt in 1 2 3; do

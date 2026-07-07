@@ -73,7 +73,7 @@ pub fn render_svg_with_text_measurer(
             merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
                 .map_err(binding_error_to_js)?;
         let engine = engine.with_text_measurer(Arc::new(WasmHostTextMeasurer::default()));
-        string_result(engine.render_svg(source.as_bytes()))
+        host_text_measure_result(string_result(engine.render_svg(source.as_bytes())))
     })
 }
 
@@ -89,7 +89,7 @@ pub fn layout_json_with_text_measurer(
             merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
                 .map_err(binding_error_to_js)?;
         let engine = engine.with_text_measurer(Arc::new(WasmHostTextMeasurer::default()));
-        string_result(engine.layout_json(source.as_bytes()))
+        host_text_measure_result(string_result(engine.layout_json(source.as_bytes())))
     })
 }
 
@@ -199,8 +199,7 @@ pub fn diagram_family_capabilities() -> Result<JsValue, JsValue> {
 
 #[wasm_bindgen(js_name = lintRuleCatalog)]
 pub fn lint_rule_catalog() -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(&merman_bindings_core::lint_rule_catalog())
-        .map_err(|err| JsValue::from_str(&err.to_string()))
+    json_value_result(merman_bindings_core::lint_rule_catalog_json())
 }
 
 #[wasm_bindgen(js_name = supportedThemes)]
@@ -272,6 +271,7 @@ fn wasm_error_payload(err: &BindingError) -> WasmErrorPayload<'_> {
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 thread_local! {
     static HOST_TEXT_MEASURE_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
+    static HOST_TEXT_MEASURE_ERROR: RefCell<Option<JsValue>> = const { RefCell::new(None) };
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
@@ -335,23 +335,43 @@ impl WasmHostTextMeasurer {
 
         HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
             let callback = slot.borrow().clone()?;
-            let value = callback.call1(&JsValue::NULL, &request).ok()?;
+            let value = match callback.call1(&JsValue::NULL, &request) {
+                Ok(value) => value,
+                Err(err) => {
+                    record_host_text_measure_error(err);
+                    return None;
+                }
+            };
             if value.is_null() || value.is_undefined() {
                 return None;
             }
 
-            let result: WasmHostTextMeasureResult = serde_wasm_bindgen::from_value(value).ok()?;
+            let result: WasmHostTextMeasureResult = match serde_wasm_bindgen::from_value(value) {
+                Ok(result) => result,
+                Err(err) => {
+                    record_host_text_measure_error(JsValue::from_str(&err.to_string()));
+                    return None;
+                }
+            };
             if result.handled == Some(false)
                 || !result.width.is_finite()
                 || !result.height.is_finite()
                 || result.width < 0.0
                 || result.height < 0.0
             {
+                if result.handled != Some(false) {
+                    record_host_text_measure_error(JsValue::from_str(
+                        "host text measurer returned invalid metrics",
+                    ));
+                }
                 return None;
             }
 
             let line_count = result.line_count.unwrap_or(1);
             if line_count == 0 {
+                record_host_text_measure_error(JsValue::from_str(
+                    "host text measurer returned zero line_count",
+                ));
                 return None;
             }
 
@@ -428,22 +448,55 @@ impl TextMeasurer for WasmHostTextMeasurer {
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
-struct HostTextMeasureCallbackGuard(Option<js_sys::Function>);
+struct HostTextMeasureCallbackGuard {
+    previous_callback: Option<js_sys::Function>,
+    previous_error: Option<JsValue>,
+}
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 impl Drop for HostTextMeasureCallbackGuard {
     fn drop(&mut self) {
         HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
-            slot.replace(self.0.take());
+            slot.replace(self.previous_callback.take());
+        });
+        HOST_TEXT_MEASURE_ERROR.with(|slot| {
+            slot.replace(self.previous_error.take());
         });
     }
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 fn with_host_text_measure_callback<R>(callback: js_sys::Function, f: impl FnOnce() -> R) -> R {
-    let previous = HOST_TEXT_MEASURE_CALLBACK.with(|slot| slot.replace(Some(callback)));
-    let _guard = HostTextMeasureCallbackGuard(previous);
+    let previous_callback = HOST_TEXT_MEASURE_CALLBACK.with(|slot| slot.replace(Some(callback)));
+    let previous_error = HOST_TEXT_MEASURE_ERROR.with(|slot| slot.replace(None));
+    let _guard = HostTextMeasureCallbackGuard {
+        previous_callback,
+        previous_error,
+    };
     f()
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn record_host_text_measure_error(err: JsValue) {
+    HOST_TEXT_MEASURE_ERROR.with(|slot| {
+        if slot.borrow().is_none() {
+            slot.replace(Some(err));
+        }
+    });
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn take_host_text_measure_error() -> Option<JsValue> {
+    HOST_TEXT_MEASURE_ERROR.with(|slot| slot.replace(None))
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn host_text_measure_result<T>(result: Result<T, JsValue>) -> Result<T, JsValue> {
+    if let Some(err) = take_host_text_measure_error() {
+        Err(err)
+    } else {
+        result
+    }
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]

@@ -115,6 +115,12 @@ pub enum FenceTextIndexSource {
     ParserRecoveredDegradedSpans,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShapeObjectValuePrefix {
+    pub value_start: usize,
+    pub has_separator_space: bool,
+}
+
 impl FenceTextIndexSource {
     pub fn is_parser_backed(self) -> bool {
         matches!(
@@ -647,13 +653,65 @@ fn offer_direction_items(prefix: &str) -> bool {
 fn offer_shape_items(prefix: &str) -> bool {
     let prefix = prefix.trim_end();
 
-    prefix.contains("@{ shape:")
+    shape_object_value_prefix(prefix).is_some()
         || prefix.ends_with("((")
         || prefix.ends_with("{{")
         || prefix.ends_with('[')
         || prefix.ends_with("[/")
         || prefix.ends_with("[\\")
         || prefix.ends_with('>')
+}
+
+pub fn shape_object_value_prefix(prefix: &str) -> Option<ShapeObjectValuePrefix> {
+    let mut search_end = prefix.len();
+    while let Some(marker) = prefix[..search_end].rfind("@{") {
+        let next_search_end = marker;
+        let mut offset = marker + "@{".len();
+        offset += leading_whitespace_len(&prefix[offset..]);
+
+        let tail = &prefix[offset..];
+        if !tail.starts_with("shape") {
+            search_end = next_search_end;
+            continue;
+        }
+        let after_shape = offset + "shape".len();
+        if prefix[after_shape..]
+            .chars()
+            .next()
+            .is_some_and(is_shape_key_continue)
+        {
+            search_end = next_search_end;
+            continue;
+        }
+
+        offset = after_shape;
+        offset += leading_whitespace_len(&prefix[offset..]);
+        if !prefix[offset..].starts_with(':') {
+            search_end = next_search_end;
+            continue;
+        }
+
+        offset += ':'.len_utf8();
+        let whitespace = leading_whitespace_len(&prefix[offset..]);
+        return Some(ShapeObjectValuePrefix {
+            value_start: offset + whitespace,
+            has_separator_space: whitespace > 0,
+        });
+    }
+
+    None
+}
+
+fn leading_whitespace_len(input: &str) -> usize {
+    input
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .map(char::len_utf8)
+        .sum()
+}
+
+fn is_shape_key_continue(ch: char) -> bool {
+    ch == '_' || ch == '-' || ch.is_ascii_alphanumeric()
 }
 
 fn diagram_header_prefix_matches(prefix: &str) -> bool {

@@ -34,6 +34,13 @@ export function languageClientReconcileAction(
   return hasClient ? "pushConfiguration" : "start";
 }
 
+export function languageClientWorkspaceTrustAction(
+  settings: LanguageIntelligenceSettings,
+  hasClient: boolean,
+): LanguageClientLifecycleAction {
+  return languageClientReconcileAction(settings, hasClient);
+}
+
 export function languageClientConfigurationAction(
   change: LanguageClientConfigurationChange,
 ): LanguageClientLifecycleAction {

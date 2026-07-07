@@ -6,6 +6,7 @@ import type {
   HostThemePresetName,
   LintBindingOptions,
   LintRuleCatalogEntry,
+  LintRuleCatalogResponse,
   LintRuleCategory,
   LintRuleSeverity,
 } from "./public-catalog.js";
@@ -760,7 +761,7 @@ export interface MermanWasmModule {
   bindingCapabilities?: () => BindingCapabilities;
   selectedRegistryProfile?: () => string;
   diagramFamilyCapabilities?: () => DiagramFamilyCapability[];
-  lintRuleCatalog?: () => LintRuleCatalogEntry[];
+  lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];
   supportedHostThemePresets?: () => string[];
   supportedThemes?: () => string[];

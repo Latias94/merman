@@ -3,6 +3,7 @@ import {
   serverBackedCommandAction,
   type LanguageIntelligenceSettings,
 } from "./language-intelligence.js";
+import { errorMessage } from "./error-message.js";
 
 export type RestartLanguageServerOutcome = "disabled" | "failed" | "restarted";
 
@@ -31,7 +32,8 @@ export async function runRestartLanguageServerCommand({
 
   try {
     await runRestart();
-  } catch {
+  } catch (error) {
+    void showWarningMessage(`Merman language server restart failed: ${errorMessage(error)}`);
     return "failed";
   }
   void showInformationMessage("Merman language server restarted.");

@@ -362,7 +362,10 @@ fn cli_lint_rules_lists_rule_catalog_json() {
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     let catalog: Value =
         serde_json::from_slice(&output.stdout).expect("lint-rules stdout should be JSON");
-    let rules = catalog.as_array().expect("rule catalog should be an array");
+    assert_eq!(catalog["version"], 1);
+    let rules = catalog["rules"]
+        .as_array()
+        .expect("rule catalog response should include a rules array");
     let authoring = rules
         .iter()
         .find(|rule| rule["id"] == "merman.authoring.flowchart.explicit_direction")
@@ -428,7 +431,10 @@ fn cli_lint_rules_configurable_filter_excludes_internal_and_resource_rules() {
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     let catalog: Value =
         serde_json::from_slice(&output.stdout).expect("lint-rules stdout should be JSON");
-    let rules = catalog.as_array().expect("rule catalog should be an array");
+    assert_eq!(catalog["version"], 1);
+    let rules = catalog["rules"]
+        .as_array()
+        .expect("rule catalog response should include a rules array");
 
     assert!(rules.iter().all(|rule| rule["category"] != "internal"
         && rule["category"] != "resource"
