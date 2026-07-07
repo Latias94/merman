@@ -47,6 +47,30 @@ assert.throws(
   /CSS URL/,
 );
 assert.throws(
+  () => assertSafeSvgForDom('<svg><text style="fill:u&#114l(https://example.com/a.svg#x)">x</text></svg>'),
+  /CSS resource|CSS URL/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><text style="fill:url&lpar;https://example.com/a.svg#x&rpar;">x</text></svg>'),
+  /CSS resource|CSS URL/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'),
+  /CSS resource/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'),
+  /CSS resource|CSS URL/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><a href="java&#115cript:alert(1)">x</a></svg>'),
+  /external|unsafe URL/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><a href="javascript&colon;alert(1)">x</a></svg>'),
+  /external|unsafe URL/,
+);
+assert.throws(
   () => assertSafeSvgForDom('<svg><foreignObject><div onclick="alert(1)">x</div></foreignObject></svg>'),
   /event/,
 );

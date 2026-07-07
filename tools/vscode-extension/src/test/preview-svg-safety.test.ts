@@ -88,6 +88,8 @@ describe("preview SVG safety", () => {
     );
     assert.throws(() => assertSafePreviewSvg('<svg><a href="javascript:alert(1)">x</a></svg>'), /unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><a href="java&#115;cript:alert(1)">x</a></svg>'), /unsafe URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><a href="java&#115cript:alert(1)">x</a></svg>'), /external|unsafe URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><a href="javascript&colon;alert(1)">x</a></svg>'), /external|unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><a xlink:href="JavaScript:alert(1)">x</a></svg>'), /unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><image href="data:text/html,hello"/></svg>'), /unsafe URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><image href="file:///etc/passwd"/></svg>'), /unsafe URL/);
@@ -134,6 +136,8 @@ describe("preview SVG safety", () => {
 
   it("rejects unsafe CSS references", () => {
     assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(javascript:alert(1))">x</text></svg>'), /CSS URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:u&#114l(https://example.com/a.svg#x)">x</text></svg>'), /CSS resource|CSS URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url&lpar;https://example.com/a.svg#x&rpar;">x</text></svg>'), /CSS resource|CSS URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(jav\\61script:alert(1))">x</text></svg>'), /CSS URL/);
     assert.throws(() => assertSafePreviewSvg('<svg><text style="fill:url(file:///tmp/a.svg)">x</text></svg>'), /CSS URL/);
     assert.throws(
@@ -152,7 +156,9 @@ describe("preview SVG safety", () => {
       /CSS resource/,
     );
     assert.throws(() => assertSafePreviewSvg('<svg><style>@import "https://example.com/a.css";</style></svg>'), /CSS resource/);
+    assert.throws(() => assertSafePreviewSvg('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: url(//example.com/a.svg#x); }</style></svg>'), /CSS resource/);
+    assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'), /CSS resource|CSS URL/);
   });
 
   it("rejects CSS resource keywords hidden behind CSS escapes", () => {

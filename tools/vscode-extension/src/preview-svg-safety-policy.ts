@@ -318,10 +318,18 @@ class SvgSafetyScanner {
   }
 
   private assertSafeUrl(value: string, source: "attribute" | "css"): void {
-    const compact = removeAsciiWhitespaceAndControl(value).toLowerCase();
-    const trimmed = value.trim().toLowerCase();
+    const normalized = decodeCssEscapes(decodeXmlEntities(value));
+    const compact = removeAsciiWhitespaceAndControl(normalized).toLowerCase();
+    const trimmed = normalized.trim().toLowerCase();
     if (compact.startsWith("#") || SAFE_RASTER_DATA_IMAGE_URL.test(compact)) {
       return;
+    }
+    if (containsCharacterReference(normalized)) {
+      throw this.error(
+        source === "css"
+          ? "SVG with unsafe CSS character references."
+          : "SVG with unsafe URL character references.",
+      );
     }
     if (
       trimmed.startsWith("http://") ||
@@ -353,6 +361,9 @@ class SvgSafetyScanner {
     const withoutComments = stripCssComments(css);
     const normalized = decodeCssEscapes(decodeXmlEntities(withoutComments));
     const lower = normalized.toLowerCase();
+    if (containsCharacterReference(normalized)) {
+      throw this.error("SVG with unsafe CSS character references.");
+    }
     if (lower.includes("@import")) {
       throw this.error("SVG with external CSS resource references.");
     }
@@ -543,29 +554,110 @@ function decodeCssEscapes(value: string): string {
 }
 
 function decodeXmlEntities(value: string): string {
-  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (entity, body: string) => {
-    const lower = body.toLowerCase();
-    if (lower.startsWith("#x")) {
-      return codePointToString(Number.parseInt(lower.slice(2), 16), entity);
+  let output = "";
+  let cursor = 0;
+
+  while (cursor < value.length) {
+    const ampersand = value.indexOf("&", cursor);
+    if (ampersand < 0) {
+      output += value.slice(cursor);
+      break;
     }
-    if (lower.startsWith("#")) {
-      return codePointToString(Number.parseInt(lower.slice(1), 10), entity);
+
+    output += value.slice(cursor, ampersand);
+    const next = value[ampersand + 1] ?? "";
+    if (next === "#") {
+      const parsed = decodeNumericCharacterReference(value, ampersand);
+      if (parsed) {
+        output += parsed.value;
+        cursor = parsed.end;
+        continue;
+      }
     }
-    switch (lower) {
-      case "amp":
-        return "&";
-      case "lt":
-        return "<";
-      case "gt":
-        return ">";
-      case "quot":
-        return '"';
-      case "apos":
-        return "'";
-      default:
-        return entity;
+
+    const parsed = decodeNamedCharacterReference(value, ampersand);
+    if (parsed) {
+      output += parsed.value;
+      cursor = parsed.end;
+      continue;
     }
-  });
+
+    output += "&";
+    cursor = ampersand + 1;
+  }
+
+  return output;
+}
+
+function decodeNumericCharacterReference(
+  value: string,
+  ampersand: number,
+): { value: string; end: number } | null {
+  let cursor = ampersand + 2;
+  let radix = 10;
+  if (value[cursor]?.toLowerCase() === "x") {
+    radix = 16;
+    cursor += 1;
+  }
+
+  const digitsStart = cursor;
+  while (
+    cursor < value.length &&
+    (radix === 16 ? isHexDigit(value[cursor] ?? "") : isAsciiDigit(value[cursor] ?? ""))
+  ) {
+    cursor += 1;
+  }
+
+  if (cursor === digitsStart) {
+    return null;
+  }
+
+  const body = value.slice(digitsStart, cursor);
+  const end = value[cursor] === ";" ? cursor + 1 : cursor;
+  return {
+    value: codePointToString(Number.parseInt(body, radix), value.slice(ampersand, end)),
+    end,
+  };
+}
+
+const NAMED_CHARACTER_REFERENCES = new Map<string, string>([
+  ["amp", "&"],
+  ["lt", "<"],
+  ["gt", ">"],
+  ["quot", '"'],
+  ["apos", "'"],
+  ["colon", ":"],
+  ["sol", "/"],
+  ["lpar", "("],
+  ["rpar", ")"],
+  ["newline", "\n"],
+  ["tab", "\t"],
+]);
+
+function decodeNamedCharacterReference(
+  value: string,
+  ampersand: number,
+): { value: string; end: number } | null {
+  let cursor = ampersand + 1;
+  while (cursor < value.length && isAsciiAlphanumeric(value[cursor] ?? "")) {
+    cursor += 1;
+  }
+  if (value[cursor] !== ";") {
+    return null;
+  }
+
+  const replacement = NAMED_CHARACTER_REFERENCES.get(
+    value.slice(ampersand + 1, cursor).toLowerCase(),
+  );
+  if (replacement === undefined) {
+    return null;
+  }
+
+  return { value: replacement, end: cursor + 1 };
+}
+
+function containsCharacterReference(value: string): boolean {
+  return /&(?:#x[0-9a-f]+|#\d+|[a-z][a-z0-9]+);?/i.test(value);
 }
 
 function codePointToString(codePoint: number, fallback: string): string {
@@ -577,6 +669,18 @@ function codePointToString(codePoint: number, fallback: string): string {
   } catch {
     return fallback;
   }
+}
+
+function isAsciiDigit(value: string): boolean {
+  return value >= "0" && value <= "9";
+}
+
+function isAsciiAlphanumeric(value: string): boolean {
+  return (
+    (value >= "0" && value <= "9") ||
+    (value >= "A" && value <= "Z") ||
+    (value >= "a" && value <= "z")
+  );
 }
 
 function removeAsciiWhitespaceAndControl(value: string): string {
