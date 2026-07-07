@@ -39,10 +39,16 @@ interface FakePanel {
   dispose(): void;
 }
 
+interface DeferredRender {
+  promise: Promise<void>;
+  release(): void;
+}
+
 class FakePreviewHost {
   readonly commands = new Map<string, CommandHandler>();
   readonly panels: FakePanel[] = [];
-  readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string }> = [];
+  readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string; background?: string }> = [];
+  readonly renderSignals: AbortSignal[] = [];
   readonly clipboardWrites: string[] = [];
   readonly writtenFiles: Array<{ path: string; data: string }> = [];
   readonly webviewOptions: Array<{
@@ -84,6 +90,7 @@ class FakePreviewHost {
   private readonly textDocumentChangeListeners: Array<(event: { document: vscode.TextDocument }) => void> = [];
   private readonly documents = new Map<string, vscode.TextDocument>();
   private readonly deferredDocumentOpens = new Map<string, { promise: Promise<void>; release: () => void }>();
+  private readonly deferredRenders: DeferredRender[] = [];
   private activeEditor = textEditor(this.activeDocument);
   private readonly visibleEditors: vscode.TextEditor[] = [this.activeEditor];
 
@@ -185,20 +192,21 @@ class FakePreviewHost {
           host.errors.push(message);
           return Promise.resolve(undefined);
         },
-        showSaveDialog: () => {
+        showSaveDialog: (options?: { defaultUri?: vscode.Uri; filters?: Record<string, string[]> }) => {
           this.saveDialogCounter += 1;
+          const extension = saveDialogExtension(options);
           if (this.saveDialogCounter === 1) {
             return Promise.resolve(
               uri(
-                "vscode-remote://ssh-remote+linux/c%3A/Users/frank/export-one.svg",
-                "C:\\Users\\frank\\export-one.svg",
+                `vscode-remote://ssh-remote+linux/c%3A/Users/frank/export-one.${extension}`,
+                `C:\\Users\\frank\\export-one.${extension}`,
               ),
             );
           }
           return Promise.resolve(
             uri(
-              `file:///workspace/export-${this.saveDialogCounter}.svg`,
-              `/workspace/export-${this.saveDialogCounter}.svg`,
+              `file:///workspace/export-${this.saveDialogCounter}.${extension}`,
+              `/workspace/export-${this.saveDialogCounter}.${extension}`,
             ),
           );
         },
@@ -292,6 +300,19 @@ class FakePreviewHost {
     });
     this.deferredDocumentOpens.set(documentUri.toString(), { promise, release });
     return release;
+  }
+
+  deferNextRender(): () => void {
+    let release: () => void = () => {};
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.deferredRenders.push({ promise, release });
+    return release;
+  }
+
+  takeDeferredRender(): DeferredRender | undefined {
+    return this.deferredRenders.shift();
   }
 
   private createPanel(title: string, viewColumn: number): FakePanel {
@@ -716,6 +737,7 @@ describe("preview manager", () => {
     await host.panels[1]?.receive({ type: "copySvg", svg: "<svg id=\"second\"></svg>", sourceKey: secondSourceKey });
     await host.panels[0]?.receive({ type: "exportRendered", format: "svg", sourceKey: firstSourceKey });
     await host.panels[1]?.receive({ type: "exportRendered", format: "png", sourceKey: secondSourceKey });
+    await flushPreviewWork();
 
     assert.deepEqual(host.clipboardWrites, [
       "<svg id=\"first\"></svg>",
@@ -724,13 +746,15 @@ describe("preview manager", () => {
     assert.deepEqual(host.renderCalls.map((call) => ({
       source: call.source,
       format: call.format,
+      background: call.background,
     })), [
-      { source: "flowchart TD\nA --> B\n", format: "svg" },
-      { source: "sequenceDiagram\nA->>B: hi\n", format: "png" },
+      { source: "flowchart TD\nA --> B\n", format: "svg", background: "white" },
+      { source: "sequenceDiagram\nA->>B: hi\n", format: "svg", background: "white" },
+      { source: "<svg viewBox=\"0 0 10 10\"></svg>", format: "png", background: "white" },
     ]);
     assert.deepEqual(host.informationMessages.slice(-2), [
       "Exported export-one.svg.",
-      "Exported export-2.svg.",
+      "Exported export-2.png.",
     ]);
   });
 
@@ -791,7 +815,7 @@ describe("preview manager", () => {
     ]);
   });
 
-  it("coalesces repeated document-change invalidations before the next render", async () => {
+  it("posts fresh invalidation tombstones for repeated document changes before the next render", async () => {
     const host = new FakePreviewHost();
     const { registerPreview } = loadPreviewModule(host);
 
@@ -813,7 +837,7 @@ describe("preview manager", () => {
       host.panels[0]?.postedMessages
         .map((message) => (message as { type?: string }).type)
         .filter((type) => type === "renderInvalidated"),
-      ["renderInvalidated"],
+      ["renderInvalidated", "renderInvalidated"],
     );
   });
 
@@ -843,6 +867,42 @@ describe("preview manager", () => {
         .filter((type) => type === "renderInvalidated"),
       ["renderInvalidated"],
     );
+  });
+
+  it("cancels an in-flight stale render when another document change arrives", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    host.panels[0]?.postedMessages.splice(0);
+    host.renderSignals.splice(0);
+
+    host.fireDocumentChange(host.targetDocument);
+    const releaseRender = host.deferNextRender();
+    await host.commands.get("merman.refreshPreview")?.();
+    await waitUntil(() => host.renderSignals.length === 1);
+
+    assert.equal(host.renderSignals[0]?.aborted, false);
+    host.fireDocumentChange(host.targetDocument);
+    assert.equal(host.renderSignals[0]?.aborted, true);
+
+    releaseRender();
+    await flushPreviewWork();
+
+    assert.equal(
+      host.panels[0]?.postedMessages.some(
+        (message) => (message as { type?: string }).type === "renderSucceeded",
+      ),
+      false,
+    );
+    host.panels[0]?.dispose();
   });
 
   it("reports failed webview copy messages without rejecting the message dispatch", async () => {
@@ -886,12 +946,26 @@ function loadPreviewModule(host: FakePreviewHost): typeof import("../preview.js"
     }
     if (request === "./renderer.js") {
       return {
-        renderMermanSource: async (renderRequest: { source: string; format?: string; outputPath?: string }) => {
+        renderMermanSource: async (renderRequest: {
+          source: string;
+          format?: string;
+          outputPath?: string;
+          background?: string;
+          signal?: AbortSignal;
+        }) => {
           host.renderCalls.push({
             source: renderRequest.source,
             format: renderRequest.format,
             outputPath: renderRequest.outputPath,
+            background: renderRequest.background,
           });
+          if (renderRequest.signal) {
+            host.renderSignals.push(renderRequest.signal);
+          }
+          const deferred = host.takeDeferredRender();
+          if (deferred) {
+            await deferred.promise;
+          }
           return {
             stdout: Buffer.from("<svg viewBox=\"0 0 10 10\"></svg>"),
             stderr: "",
@@ -957,6 +1031,16 @@ async function flushPreviewWork(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.fail("Condition was not met");
+}
+
 function lastRenderedSourceKey(panel: FakePanel | undefined): unknown {
   assert.ok(panel, "Expected preview panel");
   for (let index = panel.postedMessages.length - 1; index >= 0; index -= 1) {
@@ -969,6 +1053,17 @@ function lastRenderedSourceKey(panel: FakePanel | undefined): unknown {
     }
   }
   assert.fail("Expected a renderSucceeded message with a sourceKey");
+}
+
+function saveDialogExtension(
+  options: { defaultUri?: vscode.Uri; filters?: Record<string, string[]> } | undefined,
+): string {
+  const value = options?.defaultUri?.fsPath ?? options?.defaultUri?.path ?? options?.defaultUri?.toString() ?? "";
+  const defaultUriExtension = /\.([A-Za-z0-9]+)$/.exec(value)?.[1];
+  if (defaultUriExtension) {
+    return defaultUriExtension;
+  }
+  return Object.values(options?.filters ?? {}).flat()[0] ?? "svg";
 }
 
 function uri(value: string, fsPath = value): vscode.Uri {

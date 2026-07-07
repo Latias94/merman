@@ -259,6 +259,12 @@ describe("export commands", () => {
     })), [
       {
         source: "sequenceDiagram\nA->>B: hi",
+        format: "svg",
+        outputPath: undefined,
+        signalLabel: "export-png",
+      },
+      {
+        source: host.renderStdout,
         format: "png",
         outputPath: "C:\\workspace\\out.png",
         signalLabel: "export-png",
@@ -267,6 +273,31 @@ describe("export commands", () => {
     assert.deepEqual(host.writtenFiles, []);
     assert.equal(host.saveDialogs[0]?.saveLabel, "Export PNG");
     assert.deepEqual(host.saveDialogs[0]?.filters, { "PNG image": ["png"] });
+  });
+
+  it("rejects unsafe SVG before rasterizing PNG exports", async () => {
+    const host = new FakeExportHost();
+    host.saveDialogResult = uri("file:///workspace/out.png", "C:\\workspace\\out.png");
+    host.renderStdout = '<svg xmlns="http://www.w3.org/2000/svg"><image href="images/secret.png"/></svg>';
+    const { registerExport } = loadExportModule(host);
+
+    registerExport({
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.exportPng")?.();
+
+    assert.deepEqual(host.renderCalls.map(({ format, outputPath }) => ({
+      format,
+      outputPath,
+    })), [
+      {
+        format: "svg",
+        outputPath: undefined,
+      },
+    ]);
+    assert.deepEqual(host.writtenFiles, []);
+    assert.match(host.errors.at(-1) ?? "", /Merman export failed:/);
   });
 
   it("exports command target identities without retargeting after Markdown ordinal drift", async () => {
@@ -369,6 +400,10 @@ describe("export commands", () => {
       format,
       signalLabel,
     })), [
+      {
+        format: "svg",
+        signalLabel: "export-png",
+      },
       {
         format: "png",
         signalLabel: "export-png",

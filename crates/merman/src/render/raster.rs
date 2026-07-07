@@ -603,6 +603,7 @@ fn configure_usvg_options_for_raster(opt: &mut usvg::Options<'_>, svg: &str) {
     opt.font_family =
         raster_default_font_family(opt.fontdb.as_ref()).unwrap_or_else(|| "Arial".to_string());
     opt.font_resolver = browser_like_font_resolver();
+    opt.image_href_resolver = data_url_only_image_href_resolver();
 }
 
 fn configure_usvg_options_for_pdf(opt: &mut usvg::Options<'_>) {
@@ -611,6 +612,14 @@ fn configure_usvg_options_for_pdf(opt: &mut usvg::Options<'_>) {
     opt.font_family =
         raster_default_font_family(opt.fontdb.as_ref()).unwrap_or_else(|| "Arial".to_string());
     opt.font_resolver = browser_like_pdf_font_resolver();
+    opt.image_href_resolver = data_url_only_image_href_resolver();
+}
+
+fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
+    usvg::ImageHrefResolver {
+        resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+        resolve_string: Box::new(|_, _| None),
+    }
 }
 
 fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
@@ -847,6 +856,23 @@ mod tests {
     }
 
     #[test]
+    fn svg_to_png_does_not_load_local_image_hrefs() {
+        let local_image = TempFile::new("png", encode_rgba_png(1, 1, &[255, 0, 0, 255]));
+        let href = escape_xml_attr(&local_image.href_path());
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="white"/><image href="{href}" width="10" height="10"/></svg>"#
+        );
+
+        let bytes = svg_to_png(&svg, &RasterOptions::default()).unwrap();
+        let center = rgba_pixel(&bytes, 5, 5);
+
+        assert!(
+            center[0] > 240 && center[1] > 240 && center[2] > 240,
+            "expected local image href to be ignored, got center pixel {center:?}"
+        );
+    }
+
+    #[test]
     fn svg_to_pdf_produces_pdf_signature() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
         let bytes = svg_to_pdf(svg).unwrap();
@@ -967,6 +993,73 @@ mod tests {
         let reader = decoder.read_info().expect("png read_info");
         let info = reader.info();
         (info.width, info.height)
+    }
+
+    fn rgba_pixel(bytes: &[u8], x: u32, y: u32) -> [u8; 4] {
+        let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+        let mut reader = decoder.read_info().expect("png read_info");
+        let size = reader
+            .output_buffer_size()
+            .expect("invalid png output buffer size");
+        let mut buf = vec![0u8; size];
+        let info = reader.next_frame(&mut buf).expect("png next_frame");
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        assert_eq!(info.bit_depth, png::BitDepth::Eight);
+        assert!(x < info.width && y < info.height);
+        let offset = ((y * info.width + x) as usize) * 4;
+        [
+            buf[offset],
+            buf[offset + 1],
+            buf[offset + 2],
+            buf[offset + 3],
+        ]
+    }
+
+    fn encode_rgba_png(width: u32, height: u32, data: &[u8]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = png::Encoder::new(&mut bytes, width, height);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().expect("png write_header");
+            writer.write_image_data(data).expect("png write_image_data");
+        }
+        bytes
+    }
+
+    fn escape_xml_attr(value: &str) -> String {
+        value
+            .replace('&', "&amp;")
+            .replace('"', "&quot;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    }
+
+    struct TempFile {
+        path: std::path::PathBuf,
+    }
+
+    impl TempFile {
+        fn new(extension: &str, data: Vec<u8>) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "merman-raster-{}-{}.{}",
+                std::process::id(),
+                line!(),
+                extension
+            ));
+            std::fs::write(&path, data).expect("write temp image");
+            Self { path }
+        }
+
+        fn href_path(&self) -> String {
+            self.path.to_string_lossy().replace('\\', "/")
+        }
+    }
+
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 
     fn assert_png_has_visible_non_background_ink(bytes: &[u8]) {

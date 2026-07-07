@@ -85,13 +85,46 @@ async function writeRenderedExport(request: WriteRenderedExportRequest): Promise
     return;
   }
 
-  await renderMermanSource({
+  await renderSafeRaster({
     context: request.context,
+    outputChannel: request.outputChannel,
     source: request.source,
     format: request.format,
+    outputPath: request.target.fsPath,
+    signalLabel: request.signalLabel,
     theme: request.theme,
     background: request.background,
-    outputPath: request.target.fsPath,
+  });
+}
+
+export interface RenderSafeRasterRequest {
+  context: vscode.ExtensionContext;
+  outputChannel: vscode.LogOutputChannel;
+  source: string;
+  format: Exclude<ExportFormat, "svg">;
+  outputPath: string;
+  signalLabel: string;
+  theme?: string;
+  background?: string;
+}
+
+export async function renderSafeRaster(
+  request: RenderSafeRasterRequest,
+): Promise<void> {
+  const svg = await renderSafeSvg(
+    request.context,
+    request.outputChannel,
+    request.source,
+    request.signalLabel,
+    request.theme,
+    request.background,
+  );
+  await renderMermanSource({
+    context: request.context,
+    source: svg,
+    format: request.format,
+    outputPath: request.outputPath,
+    background: request.background,
     outputChannel: request.outputChannel,
     signalLabel: request.signalLabel,
   });

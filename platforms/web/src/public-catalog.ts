@@ -118,6 +118,16 @@ export interface TextMeasurementCapabilities {
   font_assets: boolean;
 }
 
+interface BindingCapabilityFlags {
+  render: boolean;
+  ascii: boolean;
+  core_full: boolean;
+  core_host: boolean;
+  elk_layout: boolean;
+  ratex_math: boolean;
+  editor_language: boolean;
+}
+
 export type RegistryProfile = "full" | "tiny";
 
 export interface DiagramFamilyCapability {
@@ -204,7 +214,37 @@ export interface AsciiCapability {
   evidence: AsciiCapabilityEvidence[];
 }
 
-export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
+export const CORE_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
+  render: false,
+  ascii: false,
+  core_full: false,
+  core_host: false,
+  elk_layout: false,
+  ratex_math: false,
+  editor_language: false,
+});
+
+export const RENDER_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
+  render: true,
+  ascii: false,
+  core_full: false,
+  core_host: false,
+  elk_layout: false,
+  ratex_math: false,
+  editor_language: false,
+});
+
+export const ASCII_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
+  render: false,
+  ascii: true,
+  core_full: true,
+  core_host: true,
+  elk_layout: false,
+  ratex_math: false,
+  editor_language: false,
+});
+
+export const FULL_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
   render: true,
   ascii: true,
   core_full: true,
@@ -212,13 +252,21 @@ export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
   elk_layout: true,
   ratex_math: false,
   editor_language: true,
-  text_measurement: {
-    vendored: true,
-    deterministic: true,
-    host_callback: false,
-    font_assets: false,
-  },
-};
+});
+
+export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = FULL_BINDING_CAPABILITIES;
+
+function bindingCapabilities(flags: BindingCapabilityFlags): BindingCapabilities {
+  return {
+    ...flags,
+    text_measurement: {
+      vendored: flags.render,
+      deterministic: flags.render,
+      host_callback: flags.render,
+      font_assets: false,
+    },
+  };
+}
 
 export function isThemeName(theme: string): theme is ThemeName {
   return (SUPPORTED_THEMES as readonly string[]).includes(theme);

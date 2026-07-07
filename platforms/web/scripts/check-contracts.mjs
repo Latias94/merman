@@ -155,7 +155,8 @@ for (const surface of surfaces) {
   const surfaceApi = read(surfaceSource);
   const surfaceBindings = extractRuntimeDestructure(surfaceApi, surfaceSource);
   const allowedRuntimeBindings = new Set(surface.runtimeExportNames);
-  const surfaceValueExports = extractNamedReExport(surfaceApi, "../index.js", surfaceSource);
+  const surfaceValueExportSpecs = extractNamedReExport(surfaceApi, "../index.js", surfaceSource);
+  const surfaceValueExports = new Set([...surfaceValueExportSpecs].map(exportedName));
 
   failed ||= reportMissing(
     `check-contracts: ./${surface.entry} surface entry is missing allowed runtime-bound wrappers`,
@@ -173,6 +174,12 @@ for (const surface of surfaces) {
     `check-contracts: ./${surface.entry} surface entry exports undeclared stable values`,
     [...surfaceValueExports].filter((name) => !surface.valueExportNames.includes(name)),
   );
+  failed ||= reportMissing(
+    `check-contracts: ./${surface.entry} surface entry must alias the matching default capabilities`,
+    [
+      `${surface.defaultBindingCapabilitiesExportName} as DEFAULT_BINDING_CAPABILITIES`,
+    ].filter((name) => !surfaceValueExportSpecs.has(name)),
+  );
   failed ||= reportPolicyFailure(
     `check-contracts: ./${surface.entry} surface entry must not use value star re-exports`,
     hasValueStarExport(surfaceApi),
@@ -181,6 +188,11 @@ for (const surface of surfaces) {
     `check-contracts: ./${surface.entry} surface entry must type-re-export the shared public types`,
     !hasTypeStarExport(surfaceApi),
   );
+}
+
+function exportedName(exportSpec) {
+  const alias = exportSpec.match(/\s+as\s+([A-Za-z_$][\w$]*)$/);
+  return alias ? alias[1] : exportSpec;
 }
 
 if (failed) {

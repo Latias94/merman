@@ -11,9 +11,8 @@ import {
   pngClipboardCommand,
   type ExportPreset,
 } from "./export-options.js";
-import { exportRenderedDiagram, renderSafeSvg } from "./export-workflow.js";
+import { exportRenderedDiagram, renderSafeRaster, renderSafeSvg } from "./export-workflow.js";
 import { runClipboardCommand } from "./clipboard-command.js";
-import { renderMermanSource } from "./renderer.js";
 import {
   extractPreviewInput,
   extractPreviewInputFromDocument,
@@ -154,12 +153,12 @@ async function copyPng(
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "merman-vscode-"));
   const tempPath = path.join(tempDir, `${source.input.exportBaseName}.png`);
   try {
-    await renderMermanSource({
+    await renderSafeRaster({
       context,
+      outputChannel,
       source: source.input.source,
       format: "png",
       outputPath: tempPath,
-      outputChannel,
       signalLabel: "copy-png",
     });
     const stdin =

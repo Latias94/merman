@@ -29,7 +29,7 @@ function writeSurfaceEntry(surface) {
     'import type { MermanWasmModule } from "../index.js";',
     'export type * from "../index.js";',
     "export {",
-    ...surface.valueExportNames.map((name) => `  ${name},`),
+    ...surface.valueExportNames.map((name) => `  ${surfaceValueExportSpec(surface, name)},`),
     '} from "../index.js";',
     "",
     "function surfaceLoader(): Promise<MermanWasmModule> {",
@@ -45,6 +45,13 @@ function writeSurfaceEntry(surface) {
     "",
   ].join("\n");
   writeFileSync(path.join(surfacesDir, `${surface.entry}.ts`), source);
+}
+
+function surfaceValueExportSpec(surface, name) {
+  if (name === "DEFAULT_BINDING_CAPABILITIES") {
+    return `${surface.defaultBindingCapabilitiesExportName} as DEFAULT_BINDING_CAPABILITIES`;
+  }
+  return name;
 }
 
 function normalizeImportPath(relativePath) {

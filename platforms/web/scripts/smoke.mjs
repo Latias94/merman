@@ -167,6 +167,7 @@ if (surfaceContract.render) {
 }
 
 const capabilities = api.bindingCapabilities();
+const defaultCapabilities = api.DEFAULT_BINDING_CAPABILITIES;
 assert.equal(typeof capabilities.render, "boolean");
 assert.equal(typeof capabilities.ascii, "boolean");
 assert.equal(typeof capabilities.core_full, "boolean");
@@ -183,6 +184,10 @@ assert.equal(capabilities.ascii, surfaceContract.ascii);
 assert.equal(capabilities.editor_language, surfaceContract.editor);
 assert.equal(capabilities.text_measurement.host_callback, capabilities.render);
 assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
+assert.equal(defaultCapabilities.render, surfaceContract.render);
+assert.equal(defaultCapabilities.ascii, surfaceContract.ascii);
+assert.equal(defaultCapabilities.editor_language, surfaceContract.editor);
+assert.equal(defaultCapabilities.text_measurement.host_callback, defaultCapabilities.render);
 
 const registryProfile = api.selectedRegistryProfile();
 assert.match(registryProfile, /^(full|tiny)$/);

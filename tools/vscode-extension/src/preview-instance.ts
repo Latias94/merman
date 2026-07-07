@@ -140,11 +140,11 @@ export class PreviewInstance implements vscode.Disposable {
     if (!this.panel || !this.session.snapshot) {
       return;
     }
-    if (this.renderedOutputStale) {
-      return;
-    }
+    const alreadyStale = this.renderedOutputStale;
     this.renderedOutputStale = true;
-    this.webviewClient.invalidateRenderedOutput();
+    if (!alreadyStale) {
+      this.webviewClient.invalidateRenderedOutput();
+    }
     const requestId = this.renderQueue.cancelPending();
     void this.postMessage({ type: "renderInvalidated", requestId, reason }).catch((error: unknown) => {
       this.handleRefreshError(error);

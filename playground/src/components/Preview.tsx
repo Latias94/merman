@@ -141,7 +141,9 @@ export function Preview({ className }: PreviewProps) {
   const [copiedAsciiKey, setCopiedAsciiKey] = useState<string | null>(null);
   const [copiedDiagnostic, setCopiedDiagnostic] = useState<DiagnosticKey | null>(null);
   const [copiedSvgKey, setCopiedSvgKey] = useState<string | null>(null);
-  const [exportingSvgKey, setExportingSvgKey] = useState<string | null>(null);
+  const [exportingSvgKeys, setExportingSvgKeys] = useState<Set<string>>(
+    () => new Set()
+  );
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticKey>("parse");
   const [diagnostics, setDiagnostics] =
     useState<Record<DiagnosticKey, DiagnosticArtifact>>(EMPTY_DIAGNOSTICS);
@@ -542,7 +544,7 @@ export function Preview({ className }: PreviewProps) {
     expectedRenderKey: string,
     actionKey: string
   ) => {
-    setExportingSvgKey(actionKey);
+    setExportingSvgKeys((keys) => new Set(keys).add(actionKey));
     try {
       const safeValue = requireFreshSvgArtifact(artifact, expectedRenderKey);
       let exportSvg = safeValue;
@@ -562,7 +564,11 @@ export function Preview({ className }: PreviewProps) {
     } catch {
       toast.error(t("export.failed"));
     } finally {
-      setExportingSvgKey((key) => (key === actionKey ? null : key));
+      setExportingSvgKeys((keys) => {
+        const next = new Set(keys);
+        next.delete(actionKey);
+        return next;
+      });
     }
   }, [code, diagramTheme, mermaidConfig, render, renderOptions, t]);
 
@@ -791,7 +797,7 @@ export function Preview({ className }: PreviewProps) {
             mermanController={mermanCompareViewport}
             mermaidController={mermaidCompareViewport}
             copiedSvgKey={copiedSvgKey}
-            exportingSvgKey={exportingSvgKey}
+            exportingSvgKeys={exportingSvgKeys}
             isDarkMode={isDarkMode}
             onCopySvg={handleCopySvg}
             onExportSvg={handleExportSvg}
@@ -1130,7 +1136,7 @@ function CompareView({
   mermanController,
   mermaidController,
   copiedSvgKey,
-  exportingSvgKey,
+  exportingSvgKeys,
   isDarkMode,
   onCopySvg,
   onExportSvg,
@@ -1142,7 +1148,7 @@ function CompareView({
   mermanController: SvgViewportController;
   mermaidController: SvgViewportController;
   copiedSvgKey: string | null;
-  exportingSvgKey: string | null;
+  exportingSvgKeys: ReadonlySet<string>;
   isDarkMode: boolean;
   onCopySvg(
     artifact: SvgRenderArtifact | null,
@@ -1169,7 +1175,7 @@ function CompareView({
           artifact={mermanArtifact}
           controller={mermanController}
           copied={copiedSvgKey === mermanArtifact.artifactKey}
-          exporting={exportingSvgKey === mermanArtifact.artifactKey}
+          exporting={exportingSvgKeys.has(mermanArtifact.artifactKey)}
           isDarkMode={isDarkMode}
           onCopySvg={onCopySvg}
           onExportSvg={onExportSvg}
@@ -1180,7 +1186,7 @@ function CompareView({
           artifact={mermaidArtifact}
           controller={mermaidController}
           copied={copiedSvgKey === mermaidArtifact.artifactKey}
-          exporting={exportingSvgKey === mermaidArtifact.artifactKey}
+          exporting={exportingSvgKeys.has(mermaidArtifact.artifactKey)}
           isDarkMode={isDarkMode}
           onCopySvg={onCopySvg}
           onExportSvg={onExportSvg}

@@ -108,6 +108,7 @@ export const surfaces = [
     entry: "core",
     preset: "browser-core",
     pkgDirRel: "pkg/core",
+    defaultBindingCapabilitiesExportName: "CORE_BINDING_CAPABILITIES",
     runtimeExportNames: coreRuntimeExportNames,
     valueExportNames: surfaceStableValueExportNames,
   },
@@ -115,6 +116,7 @@ export const surfaces = [
     entry: "render",
     preset: "browser-render",
     pkgDirRel: "pkg/render",
+    defaultBindingCapabilitiesExportName: "RENDER_BINDING_CAPABILITIES",
     runtimeExportNames: renderSurfaceRuntimeExportNames,
     valueExportNames: [
       ...surfaceStableValueExportNames,
@@ -125,6 +127,7 @@ export const surfaces = [
     entry: "ascii",
     preset: "browser-ascii",
     pkgDirRel: "pkg/ascii",
+    defaultBindingCapabilitiesExportName: "ASCII_BINDING_CAPABILITIES",
     runtimeExportNames: asciiSurfaceRuntimeExportNames,
     valueExportNames: surfaceStableValueExportNames,
   },
@@ -132,6 +135,7 @@ export const surfaces = [
     entry: "full",
     preset: "browser-full",
     pkgDirRel: "pkg/full",
+    defaultBindingCapabilitiesExportName: "FULL_BINDING_CAPABILITIES",
     runtimeExportNames: fullRuntimeExportNames,
     valueExportNames: [
       ...surfaceStableValueExportNames,
