@@ -199,16 +199,33 @@ fn frontmatter_config_insertion(
 }
 
 fn frontmatter_contains_lossy_yaml_syntax(yaml_body: &str) -> bool {
-    yaml_body.lines().any(|line| {
-        let trimmed = line.trim_start();
-        trimmed.starts_with('#')
-            || line.contains(" #")
-            || line.contains(" &")
-            || line.contains(": &")
-            || line.contains(" *")
-            || line.contains(": *")
-            || trimmed.starts_with("<<:")
-    })
+    yaml_body
+        .lines()
+        .any(frontmatter_line_contains_lossy_yaml_syntax)
+}
+
+fn frontmatter_line_contains_lossy_yaml_syntax(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with('#')
+        || line.contains(" #")
+        || line.contains(" &")
+        || line.contains(": &")
+        || line.contains(" *")
+        || line.contains(": *")
+        || trimmed.starts_with("<<:")
+        || trimmed == "?"
+        || trimmed.starts_with("? ")
+        || trimmed.starts_with('!')
+        || trimmed.starts_with("- !")
+        || line.contains(": !")
+        || frontmatter_line_uses_block_scalar(trimmed)
+}
+
+fn frontmatter_line_uses_block_scalar(trimmed: &str) -> bool {
+    trimmed
+        .split_once(':')
+        .map(|(_, value)| value.trim_start())
+        .is_some_and(|value| value.starts_with('|') || value.starts_with('>'))
 }
 
 fn frontmatter_document(fields: Map<String, Value>, indent: &str) -> Option<String> {
@@ -451,15 +468,15 @@ mod tests {
         let source = "---\ntitle: Demo\n? [non, string, key]\n: ignored\ncustom: keep\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
         let source_map = SourceMap::new(source);
 
-        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
-        let edited = apply_fix(source, &fix);
+        assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
+    }
 
-        assert!(edited.starts_with("---\ntitle: Demo\ncustom: keep\nconfig:\n"));
-        assert!(edited.contains("theme: dark\n"));
-        assert!(!edited.contains("ignored"));
-        assert!(!edited.contains("[non, string, key]"));
-        assert!(!edited.contains("%%{ init"));
-        assert_eq!(fix.edits.len(), 2);
+    #[test]
+    fn init_directive_migration_skips_lossy_config_rewrite_for_block_scalar_frontmatter() {
+        let source = "---\ntitle: Demo\nnotes: |\n  keep exact text\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
     }
 
     #[test]

@@ -208,7 +208,12 @@ impl<'a> CompletionContext<'a> {
             .cursor_offset
             .saturating_sub(self.fence.body_start)
             .min(self.fence.text.len());
-        is_frontmatter_authoring_position(&self.fence.text, relative_cursor, &self.prefix)
+        is_frontmatter_authoring_position(
+            &self.fence.text,
+            relative_cursor,
+            &self.prefix,
+            self.source_start,
+        )
     }
 
     pub fn offer_class_name_items(&self) -> bool {
@@ -519,13 +524,21 @@ fn is_frontmatter_token_delimiter(ch: char) -> bool {
     ch.is_whitespace() || ch == ':'
 }
 
-fn is_frontmatter_authoring_position(text: &str, cursor: usize, prefix: &str) -> bool {
+fn is_frontmatter_authoring_position(
+    text: &str,
+    cursor: usize,
+    prefix: &str,
+    source_start: bool,
+) -> bool {
     let trimmed_prefix = prefix.trim_end();
     if let Some(frontmatter) = split_frontmatter_block(text) {
         return cursor <= frontmatter.body.end;
     }
     if starts_with_frontmatter_opening_line(text) {
         return true;
+    }
+    if !source_start {
+        return false;
     }
 
     cursor == 0

@@ -368,6 +368,20 @@ fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
 }
 
 #[test]
+fn parse_sequence_editor_facts_stop_after_non_advancing_lexer_error() {
+    let engine = Engine::new();
+    let text = "sequenceDiagram\nparticipant Alice\nparticipant Bob @{\nAlice->>Bob: Hello\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Alice"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Bob"));
+}
+
+#[test]
 fn parse_diagram_sequence_multibyte_actor_ids_do_not_panic() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

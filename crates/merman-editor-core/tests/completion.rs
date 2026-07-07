@@ -645,6 +645,24 @@ fn completion_offers_themecss_inside_frontmatter() {
 }
 
 #[test]
+fn completion_does_not_offer_frontmatter_items_in_diagram_body() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "flowchart TD\n  theme".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(1, 7));
+
+    assert!(!list.items.iter().any(|item| {
+        item.data
+            .as_ref()
+            .is_some_and(|data| data.kind == CompletionDataKind::Frontmatter)
+    }));
+}
+
+#[test]
 fn completion_uses_core_frontmatter_semantics_for_indented_frontmatter() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

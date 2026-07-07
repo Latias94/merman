@@ -765,6 +765,24 @@ fn parse_state_editor_facts_recovers_from_incomplete_input() {
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "Running"));
 }
 
+#[test]
+fn parse_state_editor_facts_stop_after_non_advancing_lexer_error() {
+    let engine = Engine::new();
+    let text = "stateDiagram-v2\nstate {\nIdle --> Running\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("stateDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("state editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(
+        facts
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("state parser recovered"))
+    );
+}
+
 fn assert_expected_syntax_covers(
     facts: &EditorSemanticFacts,
     kind: EditorExpectedSyntaxKind,

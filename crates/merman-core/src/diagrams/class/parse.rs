@@ -93,7 +93,10 @@ fn collect_class_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
     while let Some(result) = lexer.next() {
         match result {
             Ok((start, token, end)) => collector.accept(token, start, end, &mut facts),
-            Err(_) => facts.mark_recovered(),
+            Err(_) => {
+                facts.mark_recovered();
+                break;
+            }
         }
     }
 

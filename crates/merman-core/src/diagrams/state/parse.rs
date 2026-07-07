@@ -215,7 +215,7 @@ fn collect_state_editor_events(code: &str) -> Vec<StateEditorEvent> {
             Ok((start, token, end)) => {
                 collector.collect_token(token, start, end, &mut events);
             }
-            Err(_) => {}
+            Err(_) => break,
         }
     }
     collector.flush_pending_entity(&mut events);

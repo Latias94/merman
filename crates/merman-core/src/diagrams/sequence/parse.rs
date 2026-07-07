@@ -87,6 +87,7 @@ fn collect_sequence_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts 
             Ok((start, token, end)) => collector.accept(token, start, end, code, &mut facts),
             Err(_) => {
                 facts.mark_recovered();
+                break;
             }
         }
     }

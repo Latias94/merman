@@ -572,6 +572,34 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("tools/publish.py --list-crates-io-packages", text)
         self.assertNotIn('package.get("publish") != []', text)
 
+    def test_cargo_dist_release_workflow_is_tag_only_and_scopes_write_permission(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release.yml")
+        header = text.split("\njobs:", 1)[0]
+        plan_job = indented_block(text, "plan:")
+        local_build_job = indented_block(text, "build-local-artifacts:")
+        global_build_job = indented_block(text, "build-global-artifacts:")
+        host_job = indented_block(text, "host:")
+
+        self.assertRegex(header, re.compile(r'permissions:\n\s+"?contents"?:\s+"?read"?'))
+        self.assertNotRegex(header, re.compile(r'permissions:\n\s+"?contents"?:\s+"?write"?'))
+        self.assertNotIn("pull_request:", header)
+        self.assertIn("push:", header)
+        self.assertNotIn("github.event.pull_request", text)
+        self.assertNotIn("pr_run_mode", text)
+
+        for job_name, job in [
+            ("build-local-artifacts", local_build_job),
+            ("build-global-artifacts", global_build_job),
+        ]:
+            with self.subTest(job=job_name):
+                self.assertNotRegex(job, re.compile(r'"?contents"?:\s+"?write"?'))
+
+        self.assertRegex(plan_job, re.compile(r'permissions:\n\s+contents:\s+write'))
+        self.assertIn("host --steps=create", plan_job)
+        self.assertRegex(host_job, re.compile(r'permissions:\n\s+contents:\s+write'))
+        self.assertIn("needs.plan.outputs.publishing == 'true'", host_job)
+        self.assertIn("gh release create", host_job)
+
 
 class CiWorkflowSecurityTests(unittest.TestCase):
     def test_ci_workflow_declares_read_only_contents_permission(self) -> None:
@@ -653,8 +681,34 @@ class PerformanceWorkflowSecurityTests(unittest.TestCase):
         text = read_workflow(WORKFLOW_ROOT / "performance.yml")
         paths = indented_block(text, "paths:")
 
+        self.assertIn('"Cargo.toml"', paths)
+        self.assertIn('"Cargo.lock"', paths)
         self.assertIn('"crates/merman-render/**"', paths)
         self.assertIn('"crates/roughr/**"', paths)
+
+    def test_performance_comment_bodies_are_rendered_before_artifact_upload(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
+        cases = [
+            (
+                "regression:",
+                "- name: Render regression PR comment",
+                "- name: Upload regression artifacts",
+                "head/target/performance/pr_comment.md",
+            ),
+            (
+                "frontmatter:",
+                "- name: Render frontmatter PR comment",
+                "- name: Upload frontmatter artifacts",
+                "head/target/performance/frontmatter_pr_comment.md",
+            ),
+        ]
+
+        for job_name, render_step, upload_step, comment_path in cases:
+            job = indented_block(text, job_name)
+            upload_block = indented_block(job, upload_step)
+            with self.subTest(job=job_name.removesuffix(":")):
+                self.assertLess(job.index(render_step), job.index(upload_step))
+                self.assertIn(comment_path, upload_block)
 
     def test_performance_checkouts_do_not_persist_credentials(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "performance.yml")

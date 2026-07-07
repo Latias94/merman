@@ -80,7 +80,8 @@ struct DirectiveSpan {
 
 fn directive_spans(source: &str) -> Vec<DirectiveSpan> {
     let mut spans = Vec::new();
-    let mut cursor = 0usize;
+    let mut cursor = merman_core::preprocess::split_frontmatter_block(source)
+        .map_or(0, |frontmatter| frontmatter.full.end);
 
     while let Some(relative_start) = source[cursor..].find("%%{") {
         let directive_start = cursor + relative_start;
@@ -106,36 +107,9 @@ fn directive_spans(source: &str) -> Vec<DirectiveSpan> {
 }
 
 fn find_directive_body_end(source: &str, body_start: usize) -> Option<usize> {
-    let mut cursor = body_start;
-    let mut quote = None;
-    let mut escaped = false;
-
-    while cursor < source.len() {
-        let ch = source[cursor..].chars().next()?;
-        let next = cursor + ch.len_utf8();
-
-        if let Some(active_quote) = quote {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == active_quote {
-                quote = None;
-            }
-            cursor = next;
-            continue;
-        }
-
-        match ch {
-            '"' | '\'' => quote = Some(ch),
-            '}' if source[next..].starts_with("%%") => return Some(cursor),
-            _ => {}
-        }
-
-        cursor = next;
-    }
-
-    None
+    source[body_start..]
+        .find("}%%")
+        .map(|relative| body_start + relative)
 }
 
 fn directive_keyword_span(source: &str, body_start: usize, body_end: usize) -> Option<ByteSpan> {
@@ -709,13 +683,20 @@ mod tests {
     }
 
     #[test]
-    fn init_directive_config_key_spans_ignore_closing_marker_inside_strings() {
+    fn init_directive_config_key_spans_stop_at_first_closing_marker_like_core() {
         let source = "%%{ init: { \"themeCSS\": \"}%%\", \"flowchart\": { \"htmlLabels\": true } } }%%\nflowchart TD\n";
 
         let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
 
-        assert_eq!(spans.len(), 1);
-        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn init_directive_spans_skip_frontmatter_body_like_core_preprocess() {
+        let source = "---\nnotes: \"%%{ init: { flowchart: { htmlLabels: false } } }%%\"\n---\nflowchart TD\n";
+
+        assert!(init_directive_spans(source).is_empty());
+        assert!(init_directive_config_key_spans(source, &HTML_LABEL_PATHS).is_empty());
     }
 
     #[test]

@@ -11,6 +11,8 @@ on:
       - unlabeled
     paths:
       - ".github/workflows/performance.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "tools/bench/**"
       - "tools/mermaid-cli/**"
       - "crates/merman/**"
@@ -181,16 +183,6 @@ jobs:
             --out target/performance/self_comparison.md \
             --json-out target/performance/self_comparison.json
 
-      - name: Upload regression artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: perf-regression
-          path: |
-            head/target/performance/self_comparison.md
-            head/target/performance/self_comparison.json
-            head/target/performance/pr_comment.md
-
       - name: Render regression PR comment
         if: ${{ always() && github.event_name == 'pull_request' }}
         working-directory: head
@@ -201,6 +193,16 @@ jobs:
             --out target/performance/pr_comment.md \
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --artifact perf-regression
+
+      - name: Upload regression artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-regression
+          path: |
+            head/target/performance/self_comparison.md
+            head/target/performance/self_comparison.json
+            head/target/performance/pr_comment.md
 
       - name: Write regression job summary
         if: ${{ always() && github.event_name == 'pull_request' }}
@@ -344,16 +346,6 @@ jobs:
             --out target/performance/frontmatter_comparison.md \
             --json-out target/performance/frontmatter_comparison.json
 
-      - name: Upload frontmatter artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: perf-frontmatter
-          path: |
-            head/target/performance/frontmatter_comparison.md
-            head/target/performance/frontmatter_comparison.json
-            head/target/performance/frontmatter_pr_comment.md
-
       - name: Render frontmatter PR comment
         if: ${{ always() && github.event_name == 'pull_request' }}
         working-directory: head
@@ -366,6 +358,16 @@ jobs:
             --artifact perf-frontmatter \
             --marker "<!-- merman-perf-frontmatter -->" \
             --title "Merman Frontmatter Performance Regression"
+
+      - name: Upload frontmatter artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-frontmatter
+          path: |
+            head/target/performance/frontmatter_comparison.md
+            head/target/performance/frontmatter_comparison.json
+            head/target/performance/frontmatter_pr_comment.md
 
       - name: Write frontmatter job summary
         if: ${{ always() && github.event_name == 'pull_request' }}
