@@ -1,3 +1,5 @@
+use super::prelude::*;
+
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_pulls_document_diagnostics() {
     let (mut service, _socket) = MermanLanguageServer::service();
@@ -476,7 +478,6 @@ async fn lsp_service_smoke_reports_flowchart_unknown_style_target_warning() {
     assert_eq!(diagnostic.range.end.line, 1);
     assert_eq!(diagnostic.range.end.character, 7);
 }
-
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_publishes_current_diagnostics_version() {

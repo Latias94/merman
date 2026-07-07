@@ -1,3 +1,5 @@
+use super::prelude::*;
+
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_initialize() {
     let (service, _socket) = MermanLanguageServer::service();

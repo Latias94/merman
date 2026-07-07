@@ -21,32 +21,20 @@ mod prelude {
     };
 }
 
-mod capabilities {
-    use super::prelude::*;
-    include!("server_smoke/capabilities.rs");
-}
+#[path = "server_smoke/capabilities.rs"]
+mod capabilities;
 
-mod completion {
-    use super::prelude::*;
-    include!("server_smoke/completion.rs");
-}
+#[path = "server_smoke/completion.rs"]
+mod completion;
 
-mod configuration {
-    use super::prelude::*;
-    include!("server_smoke/configuration.rs");
-}
+#[path = "server_smoke/configuration.rs"]
+mod configuration;
 
-mod diagnostics {
-    use super::prelude::*;
-    include!("server_smoke/diagnostics.rs");
-}
+#[path = "server_smoke/diagnostics.rs"]
+mod diagnostics;
 
-mod semantic_tokens {
-    use super::prelude::*;
-    include!("server_smoke/semantic_tokens.rs");
-}
+#[path = "server_smoke/semantic_tokens.rs"]
+mod semantic_tokens;
 
-mod structure_navigation {
-    use super::prelude::*;
-    include!("server_smoke/structure_navigation.rs");
-}
+#[path = "server_smoke/structure_navigation.rs"]
+mod structure_navigation;

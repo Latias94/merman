@@ -1,3 +1,5 @@
+use super::prelude::*;
+
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_hover_and_document_symbols() {
     let (mut service, mut socket) = MermanLanguageServer::service();

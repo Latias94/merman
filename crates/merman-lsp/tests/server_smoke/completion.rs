@@ -1,3 +1,5 @@
+use super::prelude::*;
+
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_resolves_completion_items() {
     let (mut service, _socket) = MermanLanguageServer::service();

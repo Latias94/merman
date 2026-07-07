@@ -1,3 +1,5 @@
+use super::prelude::*;
+
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_configuration_updates() {
     let (mut service, mut socket) = MermanLanguageServer::service();
@@ -939,7 +941,6 @@ async fn lsp_service_rejects_resource_rule_severity_on_configuration_change() {
         Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
     );
 }
-
 
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_applies_core_rule_severity_overrides_on_configuration_change() {
