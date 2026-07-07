@@ -613,10 +613,30 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertRegex(plan_job, re.compile(r'permissions:\n\s+contents:\s+write'))
         self.assertIn("environment: github-release", plan_job)
         self.assertIn("host --steps=create", plan_job)
+        self.assertIn("tag: ${{ steps.release-tag.outputs.tag }}", plan_job)
+        self.assertIn("RELEASE_TAG: ${{ github.ref_name }}", plan_job)
+        self.assertIn("RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}", plan_job)
+        self.assertIn("release_tag_re='^v[0-9]+\\.[0-9]+\\.[0-9]+", plan_job)
+        self.assertIn("printf 'tag=%s\\n' \"$RELEASE_TAG\" >> \"$GITHUB_OUTPUT\"", plan_job)
+        self.assertIn('--tag="$RELEASE_TAG"', plan_job)
         self.assertRegex(host_job, re.compile(r'permissions:\n\s+contents:\s+write'))
         self.assertIn("environment: github-release", host_job)
         self.assertIn("needs.plan.outputs.publishing == 'true'", host_job)
+        self.assertIn("RELEASE_TAG: ${{ needs.plan.outputs.tag }}", local_build_job)
+        self.assertIn('--tag="$RELEASE_TAG"', local_build_job)
+        self.assertIn("RELEASE_TAG: ${{ needs.plan.outputs.tag }}", global_build_job)
+        self.assertIn('--tag="$RELEASE_TAG"', global_build_job)
+        self.assertIn("RELEASE_TAG: ${{ needs.plan.outputs.tag }}", host_job)
+        self.assertIn("release_tag_re='^v[0-9]+\\.[0-9]+\\.[0-9]+", host_job)
+        self.assertIn('--tag="$RELEASE_TAG"', host_job)
         self.assertIn("gh release create", host_job)
+        self.assertIn('gh release create "$RELEASE_TAG"', host_job)
+        self.assertNotIn("tag-flag", text)
+        for index, block in enumerate(run_blocks(text)):
+            with self.subTest(run_block=index):
+                self.assertNotIn("${{ github.ref_name }}", block)
+                self.assertNotIn("${{ needs.plan.outputs.tag }}", block)
+                self.assertNotIn("${{ needs.plan.outputs.tag-flag }}", block)
 
 
 class CiWorkflowSecurityTests(unittest.TestCase):
