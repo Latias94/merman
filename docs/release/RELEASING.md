@@ -1,7 +1,7 @@
 # Releasing
 
 Status: draft release operator guide.
-Last updated: 2026-06-13
+Last updated: 2026-07-07
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
@@ -56,6 +56,12 @@ The npm package `@mermanjs/web` exists. Configure npm Trusted Publishing for wor
 `release-web.yml` and GitHub environment `npm`. Subsequent trusted publishes automatically include
 npm provenance; the workflow does not need `--provenance`. A manual first publish is only needed if
 the package name changes and the new npm package does not exist yet.
+
+The npm publish job is intentionally small: it runs on GitHub-hosted Ubuntu with Node 24, enters the
+`npm` environment, requests `id-token: write`, downloads the package artifact, and runs plain
+`npm publish` with the validated dist-tag. Do not add `NPM_TOKEN`, `NODE_AUTH_TOKEN`,
+`--provenance`, `provenance=false`, `NPM_CONFIG_PROVENANCE=false`, checkout, build, or test steps to
+that job. npm Trusted Publishing supplies the OIDC identity and provenance for public packages.
 
 The Apple workflow currently publishes a zipped `Merman.xcframework` and checksum as GitHub Release
 assets. It does not yet make the repository directly consumable as a remote SwiftPM package with a

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 import subprocess
@@ -14,6 +15,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
+WEB_PACKAGE_JSON = ROOT / "platforms" / "web" / "package.json"
+NPM_CONFIG_PATHS = [
+    ROOT / ".npmrc",
+    ROOT / "platforms" / "web" / ".npmrc",
+]
 RELEASE_WORKFLOWS = sorted(WORKFLOW_ROOT.glob("release-*.yml"))
 SOURCE_REF_WORKFLOWS = sorted(
     path
@@ -140,6 +146,22 @@ def checkout_blocks(text: str) -> list[str]:
             block.append(child)
         blocks.append("\n".join(block))
     return blocks
+
+
+def npm_publish_provenance_disabled_patterns() -> list[re.Pattern[str]]:
+    return [
+        re.compile(r"(?:^|\s)--(?:no-)?provenance\s*=\s*false(?:\s|$)", re.IGNORECASE),
+        re.compile(r"(?:^|\s)--no-provenance(?:\s|$)", re.IGNORECASE),
+        re.compile(r"(?:^|\s)provenance\s*=\s*false(?:\s|$)", re.IGNORECASE),
+        re.compile(r"(?:^|\s)NPM_CONFIG_PROVENANCE\s*[:=]\s*[\"']?false[\"']?(?:\s|$)", re.IGNORECASE),
+        re.compile(r'"provenance"\s*:\s*false', re.IGNORECASE),
+    ]
+
+
+def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) -> None:
+    for pattern in npm_publish_provenance_disabled_patterns():
+        with test_case.subTest(pattern=pattern.pattern):
+            test_case.assertIsNone(pattern.search(text))
 
 
 class ReleaseWorkflowSecurityTests(unittest.TestCase):
@@ -313,21 +335,78 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
         publish_job = indented_block(text, "publish:")
 
+        self.assertIn("runs-on: ubuntu-24.04", publish_job)
+        self.assertIn("environment: npm", publish_job)
+        self.assertIn("contents: read", publish_job)
         self.assertIn("id-token: write", publish_job)
+        self.assertIn("actions/setup-node@", publish_job)
+        self.assertIn('node-version: "24"', publish_job)
+        self.assertIn('registry-url: "https://registry.npmjs.org"', publish_job)
+        self.assertIn("package-manager-cache: false", publish_job)
         self.assertIn("actions/download-artifact", publish_job)
         self.assertIn('npm publish "$package_file"', publish_job)
         self.assertIn("NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}", publish_job)
         self.assertIn('--tag "$NPM_DIST_TAG"', publish_job)
         for forbidden in [
             "actions/checkout",
+            "NPM_TOKEN",
+            "NODE_AUTH_TOKEN",
             "platforms/web/scripts",
             "npm ci",
             "npm run",
+            "npm test",
             "cargo install",
+            "dtolnay/rust-toolchain",
             "wasm-pack",
         ]:
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, publish_job)
+
+    def test_trusted_npm_publish_job_does_not_disable_provenance(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
+        publish_job = indented_block(text, "publish:")
+
+        self.assertNotIn("--provenance", publish_job)
+        assert_no_npm_provenance_disable(self, publish_job)
+
+    def test_release_web_workflow_does_not_disable_provenance(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
+
+        assert_no_npm_provenance_disable(self, text)
+
+    def test_release_web_does_not_expose_npm_publish_tokens(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
+
+        for forbidden in [
+            "NPM_TOKEN",
+            "NODE_AUTH_TOKEN",
+            "secrets.NPM",
+            "secrets.NODE_AUTH_TOKEN",
+        ]:
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, text)
+
+    def test_web_package_metadata_supports_trusted_npm_provenance(self) -> None:
+        package = json.loads(WEB_PACKAGE_JSON.read_text(encoding="utf-8"))
+
+        self.assertEqual(package["name"], "@mermanjs/web")
+        self.assertEqual(package["repository"]["type"], "git")
+        self.assertEqual(
+            package["repository"]["url"],
+            "git+https://github.com/Latias94/merman.git",
+        )
+        self.assertEqual(package["publishConfig"]["access"], "public")
+        self.assertIsNot(package["publishConfig"].get("provenance"), False)
+        assert_no_npm_provenance_disable(self, json.dumps(package, sort_keys=True))
+
+    def test_npmrc_files_do_not_disable_provenance(self) -> None:
+        for path in NPM_CONFIG_PATHS:
+            with self.subTest(path=path.relative_to(ROOT).as_posix()):
+                if not path.exists():
+                    continue
+
+                text = path.read_text(encoding="utf-8")
+                assert_no_npm_provenance_disable(self, text)
 
     def test_trusted_pubdev_publish_job_only_downloads_artifact_and_publishes(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-flutter.yml")
