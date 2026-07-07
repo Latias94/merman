@@ -358,10 +358,10 @@ class SvgSafetyScanner {
   }
 
   private assertSafeCss(css: string): void {
-    const withoutComments = stripCssComments(css);
-    const normalized = decodeCssEscapes(decodeXmlEntities(withoutComments));
-    const lower = normalized.toLowerCase();
-    if (containsCharacterReference(normalized)) {
+    const normalized = decodeCssEscapes(decodeXmlEntities(css));
+    const withoutComments = stripCssComments(normalized);
+    const lower = withoutComments.toLowerCase();
+    if (containsCharacterReference(withoutComments)) {
       throw this.error("SVG with unsafe CSS character references.");
     }
     if (lower.includes("@import")) {

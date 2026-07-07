@@ -157,8 +157,10 @@ describe("preview SVG safety", () => {
     );
     assert.throws(() => assertSafePreviewSvg('<svg><style>@import "https://example.com/a.css";</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'), /CSS resource/);
+    assert.throws(() => assertSafePreviewSvg('<svg><style>@im&#x2f;*hidden*&#x2f;port "https://example.com/a.css";</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: url(//example.com/a.svg#x); }</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'), /CSS resource|CSS URL/);
+    assert.throws(() => assertSafePreviewSvg('<svg><style>text { fill: u&#x2f;*hidden*&#x2f;rl(javascript:alert(1)); }</style></svg>'), /CSS resource|CSS URL/);
   });
 
   it("rejects CSS resource keywords hidden behind CSS escapes", () => {

@@ -59,7 +59,15 @@ assert.throws(
   /CSS resource/,
 );
 assert.throws(
+  () => assertSafeSvgForDom('<svg><style>@im&#x2f;*hidden*&#x2f;port "https://example.com/a.css";</style></svg>'),
+  /CSS resource/,
+);
+assert.throws(
   () => assertSafeSvgForDom('<svg><style>text { fill: u&#x72l(https://example.com/a.svg#x); }</style></svg>'),
+  /CSS resource|CSS URL/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><style>text { fill: u&#x2f;*hidden*&#x2f;rl(javascript:alert(1)); }</style></svg>'),
   /CSS resource|CSS URL/,
 );
 assert.throws(
