@@ -101,8 +101,8 @@ fun runMermanSmoke() {
         var sawBreakSpaces = false
         var sawFontStyle = false
         var sawSpacingDefaults = false
-        val baselineSvg = engine.renderSvg(textMeasureSource)
-        val baselineWidth = foreignObjectWidthBeforeLabel(baselineSvg, "Condition?")
+        val baselineLayoutJson = engine.layoutJson(textMeasureSource)
+        val baselineWidth = flowchartNodeWidth(baselineLayoutJson, "B")
         engine.setTextMeasurer { request ->
             measureCalls += 1
             if (request.text == "Condition?") {
@@ -129,9 +129,10 @@ fun runMermanSmoke() {
         check(reusableSvg.contains("<svg") && reusableSvg.contains("Condition?")) {
             "reusable engine SVG smoke failed"
         }
-        val measuredWidth = foreignObjectWidthBeforeLabel(reusableSvg, "Condition?")
+        val measuredLayoutJson = engine.layoutJson(textMeasureSource)
+        val measuredWidth = flowchartNodeWidth(measuredLayoutJson, "B")
         check(measuredWidth > baselineWidth + 40.0) {
-            "text measurer callback width smoke failed: baseline=$baselineWidth measured=$measuredWidth"
+            "text measurer callback layout width smoke failed: baseline=$baselineWidth measured=$measuredWidth"
         }
         check(measureCalls > 0) {
             "text measurer callback smoke failed"
@@ -228,21 +229,27 @@ fun runMermanSmoke() {
     }
 }
 
-private fun foreignObjectWidthBeforeLabel(svg: String, label: String): Double {
-    val labelStart = svg.indexOf(label)
-    check(labelStart >= 0) {
-        "label text not found: $label"
+private fun flowchartNodeWidth(layoutJson: String, nodeId: String): Double {
+    val layoutStart = layoutJson.indexOf("\"FlowchartV2\"")
+    check(layoutStart >= 0) {
+        "FlowchartV2 layout not found"
     }
-    val beforeLabel = svg.substring(0, labelStart)
-    val widthMarker = "<foreignObject width=\""
-    val widthStart = beforeLabel.lastIndexOf(widthMarker)
-    check(widthStart >= 0) {
-        "foreignObject width marker not found"
+    val layoutSection = layoutJson.substring(layoutStart)
+    val nodesStart = layoutSection.indexOf("\"nodes\"")
+    val edgesStart = layoutSection.indexOf("\"edges\"", startIndex = nodesStart)
+    check(nodesStart >= 0 && edgesStart > nodesStart) {
+        "FlowchartV2 nodes section not found"
     }
-    val valueStart = widthStart + widthMarker.length
-    val valueEnd = svg.indexOf('"', valueStart)
-    check(valueEnd > valueStart) {
-        "foreignObject width end not found"
+    val nodesSection = layoutSection.substring(nodesStart, edgesStart)
+    val nodePattern = Regex("""\{[^{}]*"id"\s*:\s*"$nodeId"[^{}]*}""")
+    val node = nodePattern.find(nodesSection)?.value
+    check(node != null) {
+        "FlowchartV2 node not found: $nodeId"
     }
-    return svg.substring(valueStart, valueEnd).toDouble()
+    val widthPattern = Regex(""""width"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)""")
+    val width = widthPattern.find(node)?.groupValues?.get(1)?.toDoubleOrNull()
+    check(width != null) {
+        "FlowchartV2 node width not found: $nodeId"
+    }
+    return width
 }
