@@ -9,6 +9,11 @@ import {
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fullWasmTypes = path.join(root, "pkg", "full", "merman_wasm.d.ts");
 const publicApiSource = path.join(root, "src", "index.ts");
+const publicApiTypeSources = [
+  publicApiSource,
+  path.join(root, "src", "public-catalog.ts"),
+  path.join(root, "src", "public-types.ts"),
+];
 const surfaceRuntimeSource = path.join(root, "src", "surface-runtime.ts");
 const surfaceEntries = surfaces.map((surface) => surface.entry);
 
@@ -36,7 +41,7 @@ const stableWrapperOnlyExports = new Set([
 ]);
 
 const rawWasmExports = [...extractExportedFunctionNames(read(fullWasmTypes))];
-const publicApi = read(publicApiSource);
+const publicApi = publicApiTypeSources.map(read).join("\n");
 const publicWrappers = extractExportedFunctionNames(publicApi);
 const wasmModuleProperties = extractInterfaceProperties(publicApi, "MermanWasmModule");
 const runtimeBindings = extractSurfaceRuntimeBindings(read(surfaceRuntimeSource));
@@ -71,6 +76,10 @@ const requiredTypeProperties = new Map([
   [
     "AnalysisDiagramSyntaxFacts",
     ["source_mapped_spans"],
+  ],
+  [
+    "EditorDiagnosticData",
+    ["id", "code", "codeName", "category", "diagramType", "help", "fixes"],
   ],
 ]);
 const requiredTypeStringLiterals = new Map([
