@@ -123,24 +123,6 @@ fn migration_engine() -> &'static Engine {
     ENGINE.get_or_init(Engine::new)
 }
 
-fn deep_merge_config(target: &mut Value, source: Value) {
-    match (target, source) {
-        (Value::Object(target), Value::Object(source)) => {
-            for (key, value) in source {
-                match target.get_mut(&key) {
-                    Some(existing) => deep_merge_config(existing, value),
-                    None => {
-                        target.insert(key, value);
-                    }
-                }
-            }
-        }
-        (target, source) => {
-            *target = source;
-        }
-    }
-}
-
 struct FrontmatterEdit {
     span: ByteSpan,
     replacement: String,
@@ -232,42 +214,14 @@ fn move_flowchart_html_labels_to_root(config: &mut Value) -> bool {
                 root.remove("flowchart");
             }
         }
-        FlowchartHtmlLabelsPath::ConfigWrapped {
-            flowchart_is_empty,
-            config_is_empty,
-        } => {
-            if flowchart_is_empty && let Some(Value::Object(config)) = root.get_mut("config") {
-                config.remove("flowchart");
-            }
-            if config_is_empty {
-                root.remove("config");
-            }
-        }
-        FlowchartHtmlLabelsPath::ConfigWrappedRoot { config_is_empty } => {
-            if config_is_empty {
-                root.remove("config");
-            }
-        }
     }
-    flatten_config_wrapper(config);
 
     true
 }
 
 enum FlowchartHtmlLabelsPath {
-    Direct {
-        flowchart_is_empty: bool,
-    },
-    DirectiveConfigWrappedFlowchart {
-        flowchart_is_empty: bool,
-    },
-    ConfigWrapped {
-        flowchart_is_empty: bool,
-        config_is_empty: bool,
-    },
-    ConfigWrappedRoot {
-        config_is_empty: bool,
-    },
+    Direct { flowchart_is_empty: bool },
+    DirectiveConfigWrappedFlowchart { flowchart_is_empty: bool },
 }
 
 fn take_flowchart_html_labels(
@@ -279,7 +233,7 @@ fn take_flowchart_html_labels(
     if let Some(result) = take_directive_config_wrapped_flowchart_html_labels(root) {
         return Some(result);
     }
-    take_config_wrapped_flowchart_html_labels(root)
+    None
 }
 
 fn take_direct_flowchart_html_labels(
@@ -319,60 +273,6 @@ fn take_directive_config_wrapped_flowchart_html_labels(
         html_labels,
         FlowchartHtmlLabelsPath::DirectiveConfigWrappedFlowchart { flowchart_is_empty },
     ))
-}
-
-fn take_config_wrapped_flowchart_html_labels(
-    root: &mut Map<String, Value>,
-) -> Option<(Value, FlowchartHtmlLabelsPath)> {
-    let Value::Object(config) = root.get_mut("config")? else {
-        return None;
-    };
-    if let Some(html_labels) = config.remove("htmlLabels") {
-        let config_is_empty = config.is_empty();
-        return Some((
-            html_labels,
-            FlowchartHtmlLabelsPath::ConfigWrappedRoot { config_is_empty },
-        ));
-    }
-    let (html_labels, flowchart_is_empty, config_is_empty) = {
-        let Value::Object(flowchart) = config.get_mut("flowchart")? else {
-            return None;
-        };
-        let html_labels = flowchart.remove("htmlLabels")?;
-        let flowchart_is_empty = flowchart.is_empty();
-        let config_is_empty = flowchart_is_empty && config.len() == 1;
-        (html_labels, flowchart_is_empty, config_is_empty)
-    };
-
-    Some((
-        html_labels,
-        FlowchartHtmlLabelsPath::ConfigWrapped {
-            flowchart_is_empty,
-            config_is_empty,
-        },
-    ))
-}
-
-fn flatten_config_wrapper(config: &mut Value) {
-    let Value::Object(root) = config else {
-        return;
-    };
-    let Some(wrapper_value) = root.remove("config") else {
-        return;
-    };
-    let Value::Object(wrapper) = wrapper_value else {
-        root.insert("config".to_string(), wrapper_value);
-        return;
-    };
-
-    for (key, value) in wrapper {
-        match root.get_mut(&key) {
-            Some(existing) => deep_merge_config(existing, value),
-            None => {
-                root.insert(key, value);
-            }
-        }
-    }
 }
 
 fn parse_frontmatter_fields(yaml_body: &str) -> Option<Map<String, Value>> {
@@ -521,6 +421,25 @@ mod tests {
         assert!(edited.contains("htmlLabels: false"));
         assert!(!edited.contains("flowchart:\n    htmlLabels: false"));
         assert!(edited.contains("config:\n  flowchart:\n    curve: basis"));
+    }
+
+    #[test]
+    fn flowchart_html_labels_to_root_fix_preserves_unrelated_nested_config_key() {
+        let source = "---\nconfig:\n  config:\n    keep: true\n---\n%%{ init: {\"flowchart\":{\"htmlLabels\":false}} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+        let engine = Engine::new();
+
+        let fix = flowchart_html_labels_to_root_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+        let migrated = engine
+            .parse_metadata_sync(&edited, ParseOptions::strict())
+            .unwrap()
+            .expect("migrated metadata");
+        let config = migrated.config.as_value();
+
+        assert_eq!(config.pointer("/htmlLabels"), Some(&Value::Bool(false)));
+        assert_eq!(config.pointer("/config/keep"), Some(&Value::Bool(true)));
+        assert!(config.get("keep").is_none());
     }
 
     #[test]
