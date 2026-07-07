@@ -228,6 +228,9 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn offer_class_name_items(&self) -> bool {
+        if self.payload_completion_context() {
+            return false;
+        }
         if !self.has_parser_backed_facts() {
             return false;
         }
@@ -236,6 +239,9 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn offer_style_snippet_items(&self) -> bool {
+        if self.payload_completion_context() {
+            return false;
+        }
         if !self.has_parser_backed_facts() {
             return false;
         }
@@ -244,6 +250,9 @@ impl<'a> CompletionContext<'a> {
     }
 
     pub fn offer_interaction_snippet_items(&self) -> bool {
+        if self.payload_completion_context() {
+            return false;
+        }
         if !self.has_parser_backed_facts() {
             return false;
         }
@@ -398,6 +407,10 @@ impl<'a> CompletionContext<'a> {
             && flowchart_scan_line(&self.prefix).inside_payload
     }
 
+    fn payload_completion_context(&self) -> bool {
+        self.is_parser_controlled_payload() || self.degraded_flowchart_payload_context()
+    }
+
     fn current_token_range(&self, is_delimiter: fn(char) -> bool) -> Option<Range> {
         let prefix = self.prefix.as_str();
         let token_start = prefix
@@ -463,7 +476,11 @@ fn flowchart_target_token_start(prefix: &str) -> Option<usize> {
 }
 
 fn last_flowchart_operator(prefix: &str) -> Option<(usize, usize)> {
-    flowchart_scan_line(prefix).last_operator
+    let scan = flowchart_scan_line(prefix);
+    if scan.inside_payload {
+        return None;
+    }
+    scan.last_operator
 }
 
 fn flowchart_top_level_shape_completion_context(prefix: &str) -> bool {
@@ -520,8 +537,13 @@ fn flowchart_scan_line(prefix: &str) -> FlowchartLineScan {
             && let Some(operator) = flowchart_operator_at(prefix, cursor)
         {
             let start = cursor;
-            cursor += operator.len();
+            cursor = operator.end;
             scan.last_operator = Some((start, cursor));
+
+            if operator.inside_payload {
+                scan.inside_payload = true;
+                return scan;
+            }
 
             let label_start = cursor + leading_whitespace_len(&prefix[cursor..]);
             if prefix[label_start..].starts_with('|') {
@@ -591,12 +613,203 @@ impl FlowchartOperatorScanState {
     }
 }
 
-fn flowchart_operator_at(prefix: &str, offset: usize) -> Option<&'static str> {
-    let tail = prefix.get(offset..)?;
-    FLOWCHART_TARGET_OPERATORS
-        .iter()
-        .copied()
-        .find(|operator| tail.starts_with(operator))
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FlowchartOperatorMatch {
+    end: usize,
+    inside_payload: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlowchartLinkFamily {
+    Normal,
+    Thick,
+    Dotted,
+    Invisible,
+}
+
+fn flowchart_operator_at(prefix: &str, offset: usize) -> Option<FlowchartOperatorMatch> {
+    flowchart_full_link_at(prefix, offset)
+        .or_else(|| flowchart_new_notation_link_at(prefix, offset))
+}
+
+fn flowchart_full_link_at(prefix: &str, offset: usize) -> Option<FlowchartOperatorMatch> {
+    [
+        FlowchartLinkFamily::Invisible,
+        FlowchartLinkFamily::Thick,
+        FlowchartLinkFamily::Normal,
+        FlowchartLinkFamily::Dotted,
+    ]
+    .into_iter()
+    .find_map(|family| {
+        let link = flowchart_link_end_at(prefix, offset, family, false)?;
+        Some(FlowchartOperatorMatch {
+            end: link.end,
+            inside_payload: false,
+        })
+    })
+}
+
+fn flowchart_new_notation_link_at(prefix: &str, offset: usize) -> Option<FlowchartOperatorMatch> {
+    let start = flowchart_start_link_at(prefix, offset)?;
+    let mut cursor = start.end;
+    while cursor < prefix.len() {
+        if let Some(link) = flowchart_link_end_at(prefix, cursor, start.family, true) {
+            return Some(FlowchartOperatorMatch {
+                end: link.end,
+                inside_payload: false,
+            });
+        }
+        cursor += prefix[cursor..].chars().next()?.len_utf8();
+    }
+
+    Some(FlowchartOperatorMatch {
+        end: prefix.len(),
+        inside_payload: true,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FlowchartStartLink {
+    family: FlowchartLinkFamily,
+    end: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FlowchartLinkEnd {
+    end: usize,
+}
+
+fn flowchart_start_link_at(prefix: &str, offset: usize) -> Option<FlowchartStartLink> {
+    let bytes = prefix.as_bytes();
+    let mut cursor = offset;
+    if cursor >= bytes.len() {
+        return None;
+    }
+    if matches!(bytes[cursor], b'x' | b'o' | b'<') {
+        cursor += 1;
+        if cursor >= bytes.len() {
+            return None;
+        }
+    }
+
+    if bytes.get(cursor) == Some(&b'-') && bytes.get(cursor + 1) == Some(&b'-') {
+        return Some(FlowchartStartLink {
+            family: FlowchartLinkFamily::Normal,
+            end: cursor + 2,
+        });
+    }
+    if bytes.get(cursor) == Some(&b'=') && bytes.get(cursor + 1) == Some(&b'=') {
+        return Some(FlowchartStartLink {
+            family: FlowchartLinkFamily::Thick,
+            end: cursor + 2,
+        });
+    }
+    if bytes.get(cursor) == Some(&b'-') && bytes.get(cursor + 1) == Some(&b'.') {
+        return Some(FlowchartStartLink {
+            family: FlowchartLinkFamily::Dotted,
+            end: cursor + 2,
+        });
+    }
+
+    None
+}
+
+fn flowchart_link_end_at(
+    prefix: &str,
+    offset: usize,
+    family: FlowchartLinkFamily,
+    allow_leading_ws: bool,
+) -> Option<FlowchartLinkEnd> {
+    let bytes = prefix.as_bytes();
+    let mut cursor = offset;
+    if allow_leading_ws {
+        while cursor < bytes.len() && is_flowchart_link_ws(bytes[cursor]) {
+            cursor += 1;
+        }
+    }
+    let token_start = cursor;
+    if token_start >= bytes.len() {
+        return None;
+    }
+
+    if matches!(bytes[cursor], b'x' | b'o' | b'<') {
+        cursor += 1;
+        if cursor >= bytes.len() {
+            return None;
+        }
+    }
+
+    match family {
+        FlowchartLinkFamily::Invisible => {
+            cursor = token_start;
+            let tilde_start = cursor;
+            while cursor < bytes.len() && bytes[cursor] == b'~' {
+                cursor += 1;
+            }
+            if cursor - tilde_start < 3 {
+                return None;
+            }
+        }
+        FlowchartLinkFamily::Normal => {
+            let hyphen_start = cursor;
+            while cursor < bytes.len() && bytes[cursor] == b'-' {
+                cursor += 1;
+            }
+            let hyphens = cursor - hyphen_start;
+            if hyphens < 2 {
+                return None;
+            }
+            if cursor < bytes.len() {
+                match bytes[cursor] {
+                    b'x' | b'o' | b'>' => cursor += 1,
+                    _ if hyphens < 3 => return None,
+                    _ => {}
+                }
+            } else if hyphens < 3 {
+                return None;
+            }
+        }
+        FlowchartLinkFamily::Thick => {
+            let eq_start = cursor;
+            while cursor < bytes.len() && bytes[cursor] == b'=' {
+                cursor += 1;
+            }
+            let eqs = cursor - eq_start;
+            if eqs < 2 {
+                return None;
+            }
+            if cursor < bytes.len() {
+                match bytes[cursor] {
+                    b'x' | b'o' | b'>' => cursor += 1,
+                    _ if eqs < 3 => return None,
+                    _ => {}
+                }
+            } else if eqs < 3 {
+                return None;
+            }
+        }
+        FlowchartLinkFamily::Dotted => {
+            if cursor < bytes.len() && bytes[cursor] == b'-' {
+                cursor += 1;
+            }
+            let dot_start = cursor;
+            while cursor < bytes.len() && bytes[cursor] == b'.' {
+                cursor += 1;
+            }
+            if cursor == dot_start {
+                return None;
+            }
+            if cursor >= bytes.len() || bytes[cursor] != b'-' {
+                return None;
+            }
+            cursor += 1;
+            if cursor < bytes.len() && matches!(bytes[cursor], b'x' | b'o' | b'>') {
+                cursor += 1;
+            }
+        }
+    }
+
+    Some(FlowchartLinkEnd { end: cursor })
 }
 
 fn flowchart_edge_label_len(tail: &str) -> Option<usize> {
@@ -613,13 +826,13 @@ fn leading_whitespace_len(input: &str) -> usize {
         .sum()
 }
 
+fn is_flowchart_link_ws(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
+}
+
 fn is_flowchart_target_fragment_char(ch: char) -> bool {
     ch == '_' || ch == '-' || ch == '.' || ch == ':' || ch.is_alphanumeric()
 }
-
-const FLOWCHART_TARGET_OPERATORS: &[&str] = &[
-    "-.->", "<-->", "-->", "---", "==>", "<--", "--x", "--o", "x--", "o--", "*--",
-];
 
 const TEMPLATE_PREFIXES: &[&str] = &[
     "flow", "seq", "icon", "acc", "class", "state", "er", "gantt", "pie", "journey", "mind",

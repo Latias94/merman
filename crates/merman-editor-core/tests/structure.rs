@@ -261,6 +261,12 @@ fn workspace_symbols_filter_and_include_outline_items() {
         group_symbols[0].fact_source,
         FenceTextIndexSource::ParserComplete
     );
+
+    let uppercase_symbols = workspace_symbols(&snapshot, "A");
+    assert!(
+        uppercase_symbols.iter().any(|symbol| symbol.name == "A"),
+        "workspace symbol query should be case-insensitive for Mermaid identifiers"
+    );
 }
 
 #[test]

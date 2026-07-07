@@ -693,13 +693,24 @@ pub fn shape_object_value_prefix(prefix: &str) -> Option<ShapeObjectValuePrefix>
 
         offset += ':'.len_utf8();
         let whitespace = leading_whitespace_len(&prefix[offset..]);
+        let value_start = offset + whitespace;
+        if !shape_object_prefix_is_inside_shape_value(prefix, value_start) {
+            search_end = next_search_end;
+            continue;
+        }
         return Some(ShapeObjectValuePrefix {
-            value_start: offset + whitespace,
+            value_start,
             has_separator_space: whitespace > 0,
         });
     }
 
     None
+}
+
+fn shape_object_prefix_is_inside_shape_value(prefix: &str, value_start: usize) -> bool {
+    prefix[value_start..]
+        .chars()
+        .all(|ch| !matches!(ch, ',' | '}' | '\n' | '\r'))
 }
 
 fn leading_whitespace_len(input: &str) -> usize {

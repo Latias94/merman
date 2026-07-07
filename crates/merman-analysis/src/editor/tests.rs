@@ -439,6 +439,20 @@ fn shape_object_value_prefix_reports_replacement_start() {
 }
 
 #[test]
+fn shape_object_value_prefix_stops_after_shape_field_boundary() {
+    for prefix in [
+        "A@{ shape: rect, label: rou",
+        "A@{ shape: rect, icon: \"rou",
+        "A@{\n  shape: rect\n  label: rou",
+    ] {
+        assert!(
+            shape_object_value_prefix(prefix).is_none(),
+            "shape object completion must not cross into later fields: {prefix:?}"
+        );
+    }
+}
+
+#[test]
 fn cursor_context_clamps_to_utf8_char_boundaries() {
     let text = "\u{8282}\u{70b9}";
     let index = FenceTextIndex::from_text(text, Some("flowchart-v2"));

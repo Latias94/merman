@@ -60,17 +60,47 @@ pub(crate) fn init_directive_config_key_spans(
 ) -> Vec<ByteSpan> {
     directive_spans(source)
         .into_iter()
-        .flat_map(|directive| {
-            let mut scanner = DirectiveConfigScanner::new(
-                source,
-                directive.body.start,
-                directive.body.end,
-                matching_paths,
-            )
-            .with_comment_mode(ConfigCommentMode::Json5);
-            scanner.matching_config_key_spans()
+        .filter_map(|directive| {
+            init_directive_value_span(source, directive.body.start, directive.body.end)
+        })
+        .flat_map(|value| {
+            let mut scanner =
+                DirectiveConfigScanner::new(source, value.start, value.end, matching_paths)
+                    .with_comment_mode(ConfigCommentMode::Json5);
+            scanner.matching_config_value_key_spans()
         })
         .collect()
+}
+
+fn init_directive_value_span(source: &str, body_start: usize, body_end: usize) -> Option<ByteSpan> {
+    let keyword = directive_keyword_span(source, body_start, body_end)?;
+    if !matches!(
+        source.get(keyword.start..keyword.end),
+        Some("init" | "initialize")
+    ) {
+        return None;
+    }
+
+    let mut pos = keyword.end;
+    while pos < body_end {
+        let ch = source[pos..body_end].chars().next()?;
+        if !ch.is_whitespace() {
+            break;
+        }
+        pos += ch.len_utf8();
+    }
+
+    match source[pos..body_end].chars().next()? {
+        ':' => Some(ByteSpan {
+            start: pos + ':'.len_utf8(),
+            end: body_end,
+        }),
+        '{' => Some(ByteSpan {
+            start: pos,
+            end: body_end,
+        }),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,27 +217,10 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
         self
     }
 
-    fn matching_config_key_spans(&mut self) -> Vec<ByteSpan> {
+    fn matching_config_value_key_spans(&mut self) -> Vec<ByteSpan> {
         let mut spans = Vec::new();
-
-        while self.pos < self.body_end {
-            self.skip_ws_and_commas();
-            let Some(key) = self.parse_key() else {
-                break;
-            };
-            self.skip_ws();
-            if self.next_char() != Some(':') {
-                break;
-            }
-            self.skip_ws();
-            if matches!(key.name, "init" | "initialize") {
-                let mut path = Vec::new();
-                self.collect_value_spans(&mut path, &mut spans);
-            } else {
-                self.skip_value();
-            }
-        }
-
+        let mut path = Vec::new();
+        self.collect_value_spans(&mut path, &mut spans);
         spans
     }
 
@@ -494,6 +507,12 @@ struct FrontmatterConfigScanner<'source, 'query> {
     matching_paths: &'query [&'query [&'query str]],
 }
 
+#[derive(Debug, Default)]
+struct FrontmatterLineScan {
+    block_scalar_indent: Option<usize>,
+    skip_until: Option<usize>,
+}
+
 impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
     fn new(
         source: &'source str,
@@ -540,12 +559,12 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
                 }
                 block_scalar_indent = None;
             }
-            if let Some(scalar_indent) =
-                self.collect_line_key_span(line_start, line_end, &mut stack, &mut spans)
-            {
+            let line_scan =
+                self.collect_line_key_span(line_start, line_end, &mut stack, &mut spans);
+            if let Some(scalar_indent) = line_scan.block_scalar_indent {
                 block_scalar_indent = Some(scalar_indent);
             }
-            line_start = line_end_with_newline;
+            line_start = line_scan.skip_until.unwrap_or(line_end_with_newline);
         }
 
         spans
@@ -557,19 +576,19 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
         line_end: usize,
         stack: &mut Vec<(usize, &'source str)>,
         spans: &mut Vec<ByteSpan>,
-    ) -> Option<usize> {
+    ) -> FrontmatterLineScan {
         if line_start >= line_end {
-            return None;
+            return FrontmatterLineScan::default();
         }
 
         let Some(line) = self.source.get(line_start..line_end) else {
-            return None;
+            return FrontmatterLineScan::default();
         };
         if line.trim().is_empty() || line.trim_start().starts_with('#') {
-            return None;
+            return FrontmatterLineScan::default();
         }
         if !self.indent.is_empty() && !line.starts_with(self.indent) {
-            return None;
+            return FrontmatterLineScan::default();
         }
 
         let logical_start = line_start + self.indent.len();
@@ -582,11 +601,11 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
         let indent = content_offset;
         let content_start = logical_start + content_offset;
         if self.source[content_start..line_end].starts_with('#') {
-            return None;
+            return FrontmatterLineScan::default();
         }
 
         let Some((key, value_start)) = self.parse_line_key(content_start, line_end) else {
-            return None;
+            return FrontmatterLineScan::default();
         };
         while stack.last().is_some_and(|(level, _)| *level >= indent) {
             stack.pop();
@@ -597,27 +616,30 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
             spans.push(key.span);
         }
 
-        if self.value_starts_flow_mapping(value_start, line_end) {
+        let mut line_scan = FrontmatterLineScan::default();
+        if let Some(flow_span) = self.flow_mapping_span(value_start) {
             let mut inline_path = parents;
             inline_path.push(key.name);
             let mut scanner = DirectiveConfigScanner::new(
                 self.source,
-                value_start,
-                line_end,
+                flow_span.start,
+                flow_span.end,
                 self.matching_paths,
             );
             scanner.collect_value_spans(&mut inline_path, spans);
+            line_scan.skip_until = Some(self.line_start_after_offset(flow_span.end));
         }
 
         if self.value_starts_block_scalar(value_start, line_end) {
-            return Some(indent);
+            line_scan.block_scalar_indent = Some(indent);
+            return line_scan;
         }
 
         if self.value_starts_mapping(value_start, line_end) {
             stack.push((indent, key.name));
         }
 
-        None
+        line_scan
     }
 
     fn parse_line_key(
@@ -721,11 +743,62 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
             .is_some_and(|value| value.is_empty() || value.starts_with('#'))
     }
 
-    fn value_starts_flow_mapping(&self, value_start: usize, line_end: usize) -> bool {
-        self.source
-            .get(value_start..line_end)
-            .map(str::trim_start)
-            .is_some_and(|value| value.starts_with('{'))
+    fn flow_mapping_span(&self, value_start: usize) -> Option<ByteSpan> {
+        let mut pos = value_start;
+        while pos < self.body_end {
+            let ch = self.source[pos..self.body_end].chars().next()?;
+            if !ch.is_whitespace() {
+                break;
+            }
+            pos += ch.len_utf8();
+        }
+        if self.source[pos..self.body_end].chars().next()? != '{' {
+            return None;
+        }
+
+        let start = pos;
+        let mut depth = 0usize;
+        let mut quote = None;
+        let mut escaped = false;
+        let mut yaml_comment = false;
+        while pos < self.body_end {
+            let ch = self.source[pos..self.body_end].chars().next()?;
+            let next = pos + ch.len_utf8();
+            if yaml_comment {
+                if matches!(ch, '\n' | '\r') {
+                    yaml_comment = false;
+                }
+                pos = next;
+                continue;
+            }
+            if let Some(active_quote) = quote {
+                if escaped {
+                    escaped = false;
+                } else if ch == '\\' {
+                    escaped = true;
+                } else if ch == active_quote {
+                    quote = None;
+                }
+                pos = next;
+                continue;
+            }
+
+            match ch {
+                '"' | '\'' => quote = Some(ch),
+                '#' => yaml_comment = true,
+                '{' => depth += 1,
+                '}' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return Some(ByteSpan { start, end: next });
+                    }
+                }
+                _ => {}
+            }
+            pos = next;
+        }
+
+        None
     }
 
     fn value_starts_block_scalar(&self, value_start: usize, line_end: usize) -> bool {
@@ -765,6 +838,15 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
             line_end -= 1;
         }
         line_end
+    }
+
+    fn line_start_after_offset(&self, offset: usize) -> usize {
+        if offset >= self.body_end {
+            return self.body_end;
+        }
+        self.source[offset..self.body_end]
+            .find('\n')
+            .map_or(self.body_end, |relative| offset + relative + 1)
     }
 }
 
@@ -903,6 +985,20 @@ mod tests {
     }
 
     #[test]
+    fn init_directive_config_key_spans_only_scan_single_directive_value() {
+        let cases = [
+            "%%{ init: \"not config\", init: { flowchart: { htmlLabels: false } } }%%\nflowchart TD\n",
+            "%%{ init /* comment */: { flowchart: { htmlLabels: false } } }%%\nflowchart TD\n",
+        ];
+
+        for source in cases {
+            let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
+
+            assert!(spans.is_empty(), "source: {source}");
+        }
+    }
+
+    #[test]
     fn init_directive_config_key_spans_match_config_wrapped_root_path() {
         let source = "%%{init: { \"config\": { \"htmlLabels\": true } }}%%\nflowchart TD\n";
 
@@ -930,6 +1026,26 @@ mod tests {
         let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
 
         assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn frontmatter_config_key_spans_do_not_lift_multiline_flow_mapping_children() {
+        let source = "---\nmetadata: {\n  flowchart: { htmlLabels: false }\n}\n---\nflowchart TD\n";
+
+        let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn frontmatter_config_key_spans_match_multiline_flow_mapping_under_block_parent() {
+        let source =
+            "---\nconfig:\n  flowchart: {\n    htmlLabels: false\n  }\n---\nflowchart TD\n";
+
+        let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
     }
 
     #[test]

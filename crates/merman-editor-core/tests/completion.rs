@@ -68,6 +68,31 @@ fn completion_offers_class_names_for_class_references() {
 }
 
 #[test]
+fn completion_does_not_offer_class_names_inside_node_payload() {
+    let mut workspace = DocumentWorkspace::new();
+    let line = "A[\"docs :::h\"]";
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        format!("flowchart TD\nclassDef hot fill:#f00\n{line}\n"),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, line.find('h').unwrap() + 1));
+
+    assert!(
+        list.items.iter().all(|item| item
+            .data
+            .as_ref()
+            .is_none_or(|data| data.kind != CompletionDataKind::ClassName)),
+        "payload text must not offer class completions: {:?}",
+        list.items
+            .iter()
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn completion_offers_style_snippets_after_style_targets() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(
