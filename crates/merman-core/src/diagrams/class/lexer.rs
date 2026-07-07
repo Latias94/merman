@@ -99,6 +99,10 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    pub(super) fn position(&self) -> usize {
+        self.pos
+    }
+
     fn peek(&self) -> Option<u8> {
         self.input.as_bytes().get(self.pos).copied()
     }

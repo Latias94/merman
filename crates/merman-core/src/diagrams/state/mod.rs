@@ -102,6 +102,10 @@ impl<'input> Lexer<'input> {
         }
     }
 
+    fn position(&self) -> usize {
+        self.pos
+    }
+
     fn normalize_note_block_text(raw: &'input str) -> String {
         // Mermaid's state diagram note blocks do not preserve leading indentation for each line.
         // The upstream SVG baselines reflect line-wise trimming.

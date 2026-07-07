@@ -788,3 +788,16 @@ fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
 }
+
+#[test]
+fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
+    let engine = Engine::new();
+    let text = "classDiagram\n\"\nclass User\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("class editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+}

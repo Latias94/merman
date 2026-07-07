@@ -574,6 +574,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
 
     def test_cargo_dist_release_workflow_is_tag_only_and_scopes_write_permission(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release.yml")
+        dist_config = read_workflow(ROOT / "dist-workspace.toml")
         header = text.split("\njobs:", 1)[0]
         plan_job = indented_block(text, "plan:")
         local_build_job = indented_block(text, "build-local-artifacts:")
@@ -586,6 +587,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("push:", header)
         self.assertNotIn("github.event.pull_request", text)
         self.assertNotIn("pr_run_mode", text)
+        self.assertIn('pr-run-mode = "skip"', dist_config)
+        self.assertNotIn('pr-run-mode = "plan"', dist_config)
 
         for job_name, job in [
             ("build-local-artifacts", local_build_job),

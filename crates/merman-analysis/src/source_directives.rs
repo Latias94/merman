@@ -428,13 +428,36 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
         let mut spans = Vec::new();
         let mut stack: Vec<(usize, &'source str)> = Vec::new();
         let mut line_start = self.body_start;
+        let mut block_scalar_indent = None;
 
         while line_start < self.body_end {
             let line_end_with_newline = self.source[line_start..self.body_end]
                 .find('\n')
                 .map_or(self.body_end, |relative| line_start + relative + 1);
             let line_end = self.trim_line_end(line_start, line_end_with_newline);
-            self.collect_line_key_span(line_start, line_end, &mut stack, &mut spans);
+            if let Some(scalar_indent) = block_scalar_indent {
+                if self
+                    .source
+                    .get(line_start..line_end)
+                    .is_some_and(|line| line.trim().is_empty())
+                {
+                    line_start = line_end_with_newline;
+                    continue;
+                }
+                if self
+                    .logical_line_indent(line_start, line_end)
+                    .is_some_and(|indent| indent > scalar_indent)
+                {
+                    line_start = line_end_with_newline;
+                    continue;
+                }
+                block_scalar_indent = None;
+            }
+            if let Some(scalar_indent) =
+                self.collect_line_key_span(line_start, line_end, &mut stack, &mut spans)
+            {
+                block_scalar_indent = Some(scalar_indent);
+            }
             line_start = line_end_with_newline;
         }
 
@@ -447,19 +470,19 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
         line_end: usize,
         stack: &mut Vec<(usize, &'source str)>,
         spans: &mut Vec<ByteSpan>,
-    ) {
+    ) -> Option<usize> {
         if line_start >= line_end {
-            return;
+            return None;
         }
 
         let Some(line) = self.source.get(line_start..line_end) else {
-            return;
+            return None;
         };
         if line.trim().is_empty() || line.trim_start().starts_with('#') {
-            return;
+            return None;
         }
         if !self.indent.is_empty() && !line.starts_with(self.indent) {
-            return;
+            return None;
         }
 
         let logical_start = line_start + self.indent.len();
@@ -472,11 +495,11 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
         let indent = content_offset;
         let content_start = logical_start + content_offset;
         if self.source[content_start..line_end].starts_with('#') {
-            return;
+            return None;
         }
 
         let Some((key, value_start)) = self.parse_line_key(content_start, line_end) else {
-            return;
+            return None;
         };
         while stack.last().is_some_and(|(level, _)| *level >= indent) {
             stack.pop();
@@ -499,9 +522,15 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
             scanner.collect_value_spans(&mut inline_path, spans);
         }
 
+        if self.value_starts_block_scalar(value_start, line_end) {
+            return Some(indent);
+        }
+
         if self.value_starts_mapping(value_start, line_end) {
             stack.push((indent, key.name));
         }
+
+        None
     }
 
     fn parse_line_key(
@@ -610,6 +639,26 @@ impl<'source, 'query> FrontmatterConfigScanner<'source, 'query> {
             .get(value_start..line_end)
             .map(str::trim_start)
             .is_some_and(|value| value.starts_with('{'))
+    }
+
+    fn value_starts_block_scalar(&self, value_start: usize, line_end: usize) -> bool {
+        self.source
+            .get(value_start..line_end)
+            .map(str::trim_start)
+            .is_some_and(|value| value.starts_with('|') || value.starts_with('>'))
+    }
+
+    fn logical_line_indent(&self, line_start: usize, line_end: usize) -> Option<usize> {
+        if line_start >= line_end {
+            return None;
+        }
+        let line = self.source.get(line_start..line_end)?;
+        if !self.indent.is_empty() && !line.starts_with(self.indent) {
+            return None;
+        }
+        let logical_start = line_start + self.indent.len();
+        let logical = &self.source[logical_start..line_end];
+        logical.as_bytes().iter().position(|byte| *byte != b' ')
     }
 
     fn matches_path(&self, parents: &[&str], key_name: &str) -> bool {
@@ -748,6 +797,17 @@ mod tests {
 
         assert_eq!(spans.len(), 1);
         assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn frontmatter_config_key_spans_skip_block_scalar_contents() {
+        let source = "---\nconfig:\n  notes: |\n    flowchart:\n      htmlLabels: false\n  flowchart:\n    htmlLabels: true\n---\nflowchart TD\n";
+
+        let spans = frontmatter_config_key_spans(source, &HTML_LABEL_PATHS);
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+        assert_eq!(spans[0].start, source.find("htmlLabels: true").unwrap());
     }
 
     #[test]

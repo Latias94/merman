@@ -215,10 +215,31 @@ fn frontmatter_line_contains_lossy_yaml_syntax(line: &str) -> bool {
         || trimmed.starts_with("<<:")
         || trimmed == "?"
         || trimmed.starts_with("? ")
+        || frontmatter_line_starts_with_flow_complex_key(trimmed)
         || trimmed.starts_with('!')
         || trimmed.starts_with("- !")
         || line.contains(": !")
         || frontmatter_line_uses_block_scalar(trimmed)
+}
+
+fn frontmatter_line_starts_with_flow_complex_key(trimmed: &str) -> bool {
+    flow_complex_key_colon_offset(trimmed).is_some()
+        || trimmed
+            .strip_prefix("- ")
+            .is_some_and(|item| flow_complex_key_colon_offset(item.trim_start()).is_some())
+}
+
+fn flow_complex_key_colon_offset(trimmed: &str) -> Option<usize> {
+    let close = match trimmed.as_bytes().first().copied()? {
+        b'[' => b']',
+        b'{' => b'}',
+        _ => return None,
+    };
+    let close_offset = trimmed.as_bytes().iter().position(|byte| *byte == close)?;
+    trimmed[close_offset + 1..]
+        .trim_start()
+        .starts_with(':')
+        .then_some(close_offset)
 }
 
 fn frontmatter_line_uses_block_scalar(trimmed: &str) -> bool {
@@ -477,6 +498,18 @@ mod tests {
         let source_map = SourceMap::new(source);
 
         assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
+    }
+
+    #[test]
+    fn init_directive_migration_skips_lossy_config_rewrite_for_flow_style_complex_keys() {
+        for source in [
+            "---\ntitle: Demo\n[non, string, key]: ignored\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+            "---\ntitle: Demo\nmetadata:\n  [non, string, key]: ignored\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+        ] {
+            let source_map = SourceMap::new(source);
+
+            assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
+        }
     }
 
     #[test]

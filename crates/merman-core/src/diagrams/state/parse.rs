@@ -210,13 +210,20 @@ fn collect_state_editor_events(code: &str) -> Vec<StateEditorEvent> {
         relation_target_seen: false,
     };
     let mut events = Vec::new();
+    let mut last_position = lexer.position();
     while let Some(result) = lexer.next() {
+        let current_position = lexer.position();
         match result {
             Ok((start, token, end)) => {
                 collector.collect_token(token, start, end, &mut events);
             }
-            Err(_) => break,
+            Err(_) => {
+                if current_position == last_position {
+                    break;
+                }
+            }
         }
+        last_position = current_position;
     }
     collector.flush_pending_entity(&mut events);
     events

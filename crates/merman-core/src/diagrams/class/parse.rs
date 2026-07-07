@@ -90,14 +90,19 @@ fn collect_class_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
     let mut collector = ClassEditorFactCollector::new(code);
 
     let mut lexer = Lexer::new(code);
+    let mut last_position = lexer.position();
     while let Some(result) = lexer.next() {
+        let current_position = lexer.position();
         match result {
             Ok((start, token, end)) => collector.accept(token, start, end, &mut facts),
             Err(_) => {
                 facts.mark_recovered();
-                break;
+                if current_position == last_position {
+                    break;
+                }
             }
         }
+        last_position = current_position;
     }
 
     facts
