@@ -175,7 +175,7 @@ impl<'a> CompletionContext<'a> {
         }
 
         if self.degraded_flowchart_payload_context()
-            && shape_object_value_prefix(self.prefix.trim_end()).is_none()
+            && !flowchart_top_level_shape_completion_context(&self.prefix)
         {
             return false;
         }
@@ -464,6 +464,44 @@ fn flowchart_target_token_start(prefix: &str) -> Option<usize> {
 
 fn last_flowchart_operator(prefix: &str) -> Option<(usize, usize)> {
     flowchart_scan_line(prefix).last_operator
+}
+
+fn flowchart_top_level_shape_completion_context(prefix: &str) -> bool {
+    flowchart_top_level_shape_trigger(prefix) || flowchart_top_level_shape_object_value(prefix)
+}
+
+fn flowchart_top_level_shape_trigger(prefix: &str) -> bool {
+    let prefix = prefix.trim_end();
+    let trigger_len = if prefix.ends_with("((")
+        || prefix.ends_with("{{")
+        || prefix.ends_with("[/")
+        || prefix.ends_with("[\\")
+    {
+        2
+    } else if prefix.ends_with('[') || prefix.ends_with('>') {
+        1
+    } else {
+        return false;
+    };
+    let trigger_start = prefix.len().saturating_sub(trigger_len);
+
+    !flowchart_scan_line(&prefix[..trigger_start]).inside_payload
+}
+
+fn flowchart_top_level_shape_object_value(prefix: &str) -> bool {
+    let prefix = prefix.trim_end();
+    let mut search_end = prefix.len();
+
+    while let Some(marker) = prefix[..search_end].rfind("@{") {
+        if shape_object_value_prefix(&prefix[marker..]).is_some()
+            && !flowchart_scan_line(&prefix[..marker]).inside_payload
+        {
+            return true;
+        }
+        search_end = marker;
+    }
+
+    false
 }
 
 #[derive(Debug, Default)]
