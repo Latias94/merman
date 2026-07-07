@@ -261,15 +261,13 @@ jobs:
           python -m pip install --upgrade twine
           python -m twine check wheels/merman-*.whl
 
-  release:
+  github-release:
     needs:
       - validate-inputs
       - verify-wheel-metadata
     runs-on: ubuntu-24.04
-    environment: pypi
     permissions:
       contents: write
-      id-token: write
     steps:
       - name: Download wheel artifacts
         uses: actions/download-artifact@v7
@@ -289,8 +287,24 @@ jobs:
             echo "::warning::GitHub Release $RELEASE_TAG does not exist yet; wheel artifacts were uploaded for manual attachment."
           fi
 
+  publish:
+    needs:
+      - verify-wheel-metadata
+    if: ${{ inputs.publish_to_pypi }}
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: python-wheel-*
+          path: wheels
+          merge-multiple: true
+
       - name: Publish to PyPI
-        if: ${{ inputs.publish_to_pypi }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: wheels

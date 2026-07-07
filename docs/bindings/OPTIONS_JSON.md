@@ -181,7 +181,8 @@ Rule governance is intentionally conservative because Merman is not the Mermaid 
 | `merman_resource_policy` | Host/runtime budget diagnostics. | `core` |
 | `merman_internal` | Contract gaps and internal safety diagnostics. | not configurable |
 
-Current authoring rule ids are `merman.authoring.config.prefer_init_directive` and
+Current authoring rule ids are `merman.authoring.config.prefer_init_directive`,
+`merman.authoring.config.prefer_frontmatter_config`, and
 `merman.authoring.flowchart.explicit_direction`.
 
 `fixed_today` must be a `YYYY-MM-DD` date. `fixed_local_offset_minutes` must be an integer offset

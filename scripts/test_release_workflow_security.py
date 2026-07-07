@@ -434,7 +434,8 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
     def test_trusted_pypi_publish_job_only_downloads_artifact_and_publishes(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-python.yml")
         verify_job = indented_block(text, "verify-wheel-metadata:")
-        release_job = indented_block(text, "release:")
+        github_release_job = indented_block(text, "github-release:")
+        publish_job = indented_block(text, "publish:")
 
         self.assertIn("contents: read", verify_job)
         self.assertNotIn("contents: write", verify_job)
@@ -442,20 +443,29 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("python -m pip install --upgrade twine", verify_job)
         self.assertIn("python -m twine check wheels/merman-*.whl", verify_job)
 
-        self.assertIn("environment: pypi", release_job)
-        self.assertIn("contents: write", release_job)
-        self.assertIn("id-token: write", release_job)
-        self.assertIn("actions/download-artifact", release_job)
-        self.assertIn("pypa/gh-action-pypi-publish", release_job)
+        self.assertIn("contents: write", github_release_job)
+        self.assertNotIn("environment: pypi", github_release_job)
+        self.assertNotIn("id-token: write", github_release_job)
+        self.assertIn("actions/download-artifact", github_release_job)
+        self.assertIn("gh release upload", github_release_job)
+
+        self.assertIn("if: ${{ inputs.publish_to_pypi }}", publish_job)
+        self.assertIn("environment: pypi", publish_job)
+        self.assertIn("contents: read", publish_job)
+        self.assertNotIn("contents: write", publish_job)
+        self.assertIn("id-token: write", publish_job)
+        self.assertIn("actions/download-artifact", publish_job)
+        self.assertIn("pypa/gh-action-pypi-publish", publish_job)
         for forbidden in [
             "actions/checkout",
             "python -m pip install",
             "twine check",
             "npm ",
             "cargo ",
+            "gh release",
         ]:
             with self.subTest(forbidden=forbidden):
-                self.assertNotIn(forbidden, release_job)
+                self.assertNotIn(forbidden, publish_job)
 
     def test_trusted_npm_publish_job_only_downloads_artifact_and_publishes(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-web.yml")
@@ -612,13 +622,39 @@ class PagesWorkflowSecurityTests(unittest.TestCase):
 
 
 class PerformanceWorkflowSecurityTests(unittest.TestCase):
-    def test_comment_jobs_do_not_request_pull_request_write_permission(self) -> None:
+    def test_performance_head_jobs_do_not_hold_comment_tokens(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "performance.yml")
         for job_name in ["regression:", "frontmatter:"]:
             job = indented_block(text, job_name)
             with self.subTest(job=job_name.removesuffix(":")):
-                self.assertIn("issues: write", job)
+                self.assertNotIn("issues: write", job)
                 self.assertNotIn("pull-requests: write", job)
+                self.assertNotIn("GH_TOKEN:", job)
+                self.assertNotIn("gh api", job)
+
+    def test_performance_comment_jobs_are_isolated_from_pr_checkout(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
+        for job_name, artifact in [
+            ("regression-comment:", "perf-regression"),
+            ("frontmatter-comment:", "perf-frontmatter"),
+        ]:
+            job = indented_block(text, job_name)
+            with self.subTest(job=job_name.removesuffix(":")):
+                self.assertIn("issues: write", job)
+                self.assertIn("actions/download-artifact", job)
+                self.assertIn(f"name: {artifact}", job)
+                self.assertIn("GH_TOKEN: ${{ github.token }}", job)
+                self.assertIn("gh api", job)
+                self.assertNotIn("actions/checkout", job)
+                self.assertNotIn("working-directory: head", job)
+                self.assertNotIn("tools/bench/", job)
+
+    def test_performance_paths_cover_render_dependencies(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "performance.yml")
+        paths = indented_block(text, "paths:")
+
+        self.assertIn('"crates/merman-render/**"', paths)
+        self.assertIn('"crates/roughr/**"', paths)
 
     def test_performance_checkouts_do_not_persist_credentials(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "performance.yml")

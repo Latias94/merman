@@ -4,6 +4,7 @@ use merman_analysis::{
     FenceCursorCompletionKind, FenceExpectedSyntaxKind, FenceTextIndexSource,
     shape_object_value_prefix,
 };
+use merman_core::preprocess::split_frontmatter_block;
 
 #[derive(Debug)]
 pub struct CompletionContext<'a> {
@@ -520,9 +521,11 @@ fn is_frontmatter_token_delimiter(ch: char) -> bool {
 
 fn is_frontmatter_authoring_position(text: &str, cursor: usize, prefix: &str) -> bool {
     let trimmed_prefix = prefix.trim_end();
-    if text.starts_with("---") {
-        return frontmatter_closing_start(text)
-            .is_none_or(|closing_start| cursor <= closing_start + "---".len());
+    if let Some(frontmatter) = split_frontmatter_block(text) {
+        return cursor <= frontmatter.body.end;
+    }
+    if starts_with_frontmatter_opening_line(text) {
+        return true;
     }
 
     cursor == 0
@@ -533,10 +536,10 @@ fn is_frontmatter_authoring_position(text: &str, cursor: usize, prefix: &str) ->
                 .any(|frontmatter_prefix| frontmatter_prefix.starts_with(trimmed_prefix)))
 }
 
-fn frontmatter_closing_start(text: &str) -> Option<usize> {
-    text.get("---".len()..)?
-        .find("\n---")
-        .map(|offset| "---".len() + offset + "\n".len())
+fn starts_with_frontmatter_opening_line(text: &str) -> bool {
+    let first_line_end = text.find('\n').unwrap_or(text.len());
+    let first_line = text[..first_line_end].trim_end_matches('\r');
+    first_line.trim_start() == "---"
 }
 
 const FRONTMATTER_PREFIXES: &[&str] = &[

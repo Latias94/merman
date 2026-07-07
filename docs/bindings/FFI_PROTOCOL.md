@@ -619,8 +619,7 @@ contains the catalog entries:
       "id": "merman.authoring.flowchart.explicit_direction",
       "description": "Recommend explicit flowchart header directions and offer an insertion quickfix.",
       "evidence": [
-        "repo-ref/mermaid/packages/mermaid/src/docs/syntax/flowchart.md",
-        "crates/merman-core/src/diagrams/flowchart.rs",
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/syntax/flowchart.md",
         "docs/adr/0072-lint-rule-governance.md"
       ],
       "default_severity": "hint",
@@ -637,7 +636,8 @@ contains the catalog entries:
 
 Hosts should use this catalog for rule-selection UI, config completion, and documenting whether a
 rule is Mermaid-backed compatibility or a Merman authoring recommendation. `evidence` contains
-local source, fixture, or ADR references that justify the rule classification.
+public Mermaid source links, public Mermaid fixture links, or repo ADR references that justify the
+rule classification. It does not expose local `repo-ref/` checkout paths.
 
 This is diagnostic metadata for profile-aware hosts. `diagram_type` is the Mermaid parser/detector
 id and may include aliases such as `flowchart-v2`; `metadata_id` is the public supported-diagram

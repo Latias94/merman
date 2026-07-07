@@ -928,6 +928,12 @@ unsafe fn begin_engine_call(
             "engine free was requested during an active call",
         ));
     }
+    if lifecycle.active_mutations > 0 {
+        return Err(BindingError::new(
+            BindingStatus::InvalidArgument,
+            "engine cannot be used during an active mutation",
+        ));
+    }
     lifecycle.active_calls += 1;
     Ok(FfiEngineCallGuard { engine: ptr })
 }
@@ -1807,6 +1813,33 @@ mod tests {
         .unwrap();
 
         assert_eq!(output, source);
+    }
+
+    #[test]
+    fn ffi_engine_source_call_rejects_active_mutation() {
+        let base = BindingEngine::new(b"").unwrap();
+        let engine = MermanEngine {
+            #[cfg(feature = "render")]
+            base: base.clone(),
+            inner: base,
+            lifecycle: Mutex::new(FfiEngineLifecycle::default()),
+        };
+        let source = b"flowchart TD\nA[Hello]";
+        let _mutation =
+            unsafe { begin_engine_mutation((&engine as *const MermanEngine).cast_mut()).unwrap() };
+
+        let err = unsafe {
+            ffi_engine_source_call(
+                &engine,
+                source.as_ptr(),
+                source.len(),
+                |_engine, _source| Ok(Vec::new()),
+            )
+        }
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::InvalidArgument);
+        assert!(err.message().contains("active mutation"));
     }
 
     #[test]

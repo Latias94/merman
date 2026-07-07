@@ -291,6 +291,34 @@ fn text_scan_skips_non_symbol_directive_prefixes() {
 }
 
 #[test]
+fn text_scan_requires_directive_keyword_boundaries() {
+    let index = FenceTextIndex::from_text(
+        concat!(
+            "flowchart TD\n",
+            "clickableNode-->B\n",
+            "classNode-->C\n",
+            "styleNode-->D\n",
+        ),
+        Some("flowchart-v2"),
+    );
+
+    for required in ["clickableNode", "classNode", "styleNode"] {
+        assert!(
+            index.node_ids().any(|id| id == required),
+            "missing node id {required:?} from text-scan fallback"
+        );
+        assert!(
+            index
+                .outline_items()
+                .iter()
+                .any(|item| item.name == required
+                    && item.detail.as_deref() == Some("diagram element")),
+            "missing diagram outline item {required:?} from text-scan fallback"
+        );
+    }
+}
+
+#[test]
 fn text_scan_cursor_context_only_offers_source_start_headers() {
     let index = FenceTextIndex::from_text("flowchart TD\nA-->B\n", Some("flowchart-v2"));
 

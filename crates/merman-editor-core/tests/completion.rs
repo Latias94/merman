@@ -645,6 +645,30 @@ fn completion_offers_themecss_inside_frontmatter() {
 }
 
 #[test]
+fn completion_uses_core_frontmatter_semantics_for_indented_frontmatter() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/example.mmd",
+        1,
+        "  ---\n  config:\n    theme\n  ---\nflowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let list = completion_for_snapshot(&snapshot, Position::new(2, 9));
+
+    let item = list
+        .items
+        .iter()
+        .find(|item| item.label == "themeCSS: |")
+        .expect("themeCSS frontmatter completion");
+
+    assert_eq!(item.insert_text_format, CompletionInsertTextFormat::Snippet);
+    assert_eq!(
+        item.data.as_ref().unwrap().kind,
+        CompletionDataKind::Frontmatter
+    );
+}
+
+#[test]
 fn directive_helpers_use_snippet_placeholders() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

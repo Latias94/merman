@@ -6,9 +6,6 @@ import {
 import { assertSafeSvgForDom } from "./svg-safety.js";
 
 import {
-  DEFAULT_BINDING_CAPABILITIES,
-  SUPPORTED_HOST_THEME_PRESETS,
-  SUPPORTED_THEMES,
   isAsciiDiagramType,
   isDiagramType,
   isHostThemePresetName,
@@ -509,21 +506,15 @@ export function editorSemanticTokens(
 
 export function bindingCapabilities(): BindingCapabilities {
   const merman = getMerman();
-  const capabilities = merman.bindingCapabilities?.();
-  return capabilities
-    ? normalizeBindingCapabilities(capabilities, merman)
-    : {
-        ...DEFAULT_BINDING_CAPABILITIES,
-        editor_language: hasEditorLanguageBindings(merman),
-      };
+  return normalizeBindingCapabilities(merman.bindingCapabilities());
 }
 
 export function selectedRegistryProfile(): RegistryProfile {
-  const profile = getMerman().selectedRegistryProfile?.();
+  const profile = getMerman().selectedRegistryProfile();
   if (profile === "full" || profile === "tiny") {
     return profile;
   }
-  return bindingCapabilities().core_full ? "full" : "tiny";
+  throw new Error(`Merman WASM returned an invalid registry profile: ${String(profile)}`);
 }
 
 export function supportedDiagrams(): DiagramType[] {
@@ -563,9 +554,7 @@ export function asciiSupportedDiagrams(): AsciiDiagramType[] {
 
 export function asciiCapabilities(): AsciiCapability[] {
   const state = currentMermanRuntimeState(defaultRuntimeState);
-  state.asciiCapabilitiesCache ??= (
-    getMerman().asciiCapabilities?.() ?? fallbackAsciiCapabilities()
-  ).map(normalizeAsciiCapability);
+  state.asciiCapabilitiesCache ??= getMerman().asciiCapabilities().map(normalizeAsciiCapability);
   return state.asciiCapabilitiesCache.map((capability) => ({
     ...capability,
     supported_semantics: [...capability.supported_semantics],
@@ -576,20 +565,15 @@ export function asciiCapabilities(): AsciiCapability[] {
 
 export function supportedThemes(): ThemeName[] {
   const state = currentMermanRuntimeState(defaultRuntimeState);
-  const merman = getMerman();
-  state.supportedThemesCache ??= (
-    merman.supportedThemes?.() ??
-    merman.themes?.() ??
-    SUPPORTED_THEMES
-  ).map(assertThemeName);
+  state.supportedThemesCache ??= getMerman().supportedThemes().map(assertThemeName);
   return [...state.supportedThemesCache];
 }
 
 export function supportedHostThemePresets(): HostThemePresetName[] {
   const state = currentMermanRuntimeState(defaultRuntimeState);
-  state.supportedHostThemePresetsCache ??= (
-    getMerman().supportedHostThemePresets?.() ?? SUPPORTED_HOST_THEME_PRESETS
-  ).map(assertHostThemePresetName);
+  state.supportedHostThemePresetsCache ??= getMerman()
+    .supportedHostThemePresets()
+    .map(assertHostThemePresetName);
   return [...state.supportedHostThemePresetsCache];
 }
 
@@ -778,24 +762,6 @@ function normalizeAsciiSupportLevel(level: unknown): AsciiSupportLevel {
     : "unsupported";
 }
 
-function fallbackAsciiCapabilities(): AsciiCapability[] {
-  return asciiSupportedDiagrams().map((diagramType) => ({
-    diagram_type: diagramType,
-    display_name: diagramType,
-    support_level: "partial",
-    summary_fallback: false,
-    supported_semantics: [],
-    limits: [],
-    evidence: [
-      {
-        kind: "support_matrix",
-        source: "SUPPORTED_ASCII_DIAGRAMS",
-        note: "fallback capability synthesized from the legacy supported diagram list",
-      },
-    ],
-  }));
-}
-
 function assertThemeName(theme: string): ThemeName {
   if (isThemeName(theme)) {
     return theme;
@@ -810,10 +776,7 @@ function assertHostThemePresetName(preset: string): HostThemePresetName {
   throw new Error(`Merman WASM returned unknown host theme preset: ${preset}`);
 }
 
-function normalizeBindingCapabilities(
-  capabilities: Partial<BindingCapabilities>,
-  merman: MermanWasmModule
-): BindingCapabilities {
+function normalizeBindingCapabilities(capabilities: BindingCapabilities): BindingCapabilities {
   return {
     render: Boolean(capabilities.render),
     ascii: Boolean(capabilities.ascii),
@@ -821,10 +784,7 @@ function normalizeBindingCapabilities(
     core_host: Boolean(capabilities.core_host),
     elk_layout: Boolean(capabilities.elk_layout),
     ratex_math: Boolean(capabilities.ratex_math),
-    editor_language:
-      capabilities.editor_language === undefined
-        ? hasEditorLanguageBindings(merman)
-        : Boolean(capabilities.editor_language),
+    editor_language: Boolean(capabilities.editor_language),
     text_measurement: normalizeTextMeasurementCapabilities(
       capabilities.text_measurement,
       Boolean(capabilities.render)

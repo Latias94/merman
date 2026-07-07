@@ -215,7 +215,8 @@ provides a stable display path when linting from stdin.
 The default lint profile is `core`, which reports syntax, compatibility, resource, and internal
 diagnostics without enabling Merman authoring recommendations. Use `--lint-profile recommended` or
 `--enable-rule <RULE_ID>` to opt into authoring hints such as
-`merman.authoring.config.prefer_init_directive` and
+`merman.authoring.config.prefer_init_directive`,
+`merman.authoring.config.prefer_frontmatter_config`, and
 `merman.authoring.flowchart.explicit_direction`.
 
 `lint-rules` lists the governed rule catalog used by the analyzer:

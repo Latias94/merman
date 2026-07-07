@@ -185,7 +185,7 @@ Observed on 2026-06-22:
 | Browser | `browser-core` | no | none | 2,314,537 | 1,607,616 | 488,344 | 371,239 |
 | Browser | `browser-render` | no | `render` | 7,142,939 | 5,323,303 | 1,567,143 | 1,135,983 |
 | Browser | `browser-ascii` | no | `ascii` | 4,053,135 | 2,972,267 | 1,000,885 | 745,996 |
-| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii` | 9,139,597 | 6,824,157 | 2,136,333 | 1,536,058 |
+| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii`, `editor-language` | 9,139,597 | 6,824,157 | 2,136,333 | 1,536,058 |
 | Browser | `browser-full` | yes | none | 10,115,464 | 7,502,959 | 2,335,802 | 1,666,379 |
 | Browser | `browser-ratex-math` | yes | `ratex-math` | 13,398,073 | 10,231,577 | 3,277,885 | 2,349,234 |
 | Typst | `typst-bridge` | no | none | 48,359 | 34,296 | 13,553 | 11,482 |

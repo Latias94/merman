@@ -757,15 +757,14 @@ export interface MermanWasmModule {
     optionsJson?: string | null
   ) => EditorSemanticToken[];
   asciiSupportedDiagrams: () => string[];
-  asciiCapabilities?: () => AsciiCapability[];
-  bindingCapabilities?: () => BindingCapabilities;
-  selectedRegistryProfile?: () => string;
+  asciiCapabilities: () => AsciiCapability[];
+  bindingCapabilities: () => BindingCapabilities;
+  selectedRegistryProfile: () => string;
   diagramFamilyCapabilities?: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];
-  supportedHostThemePresets?: () => string[];
-  supportedThemes?: () => string[];
-  themes?: () => string[];
+  supportedHostThemePresets: () => string[];
+  supportedThemes: () => string[];
 }
 
 export type MermanWasmLoader = () => Promise<MermanWasmModule>;

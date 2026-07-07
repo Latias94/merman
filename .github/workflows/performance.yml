@@ -16,6 +16,7 @@ on:
       - "crates/merman/**"
       - "crates/merman-core/**"
       - "crates/merman-render/**"
+      - "crates/roughr/**"
       - "crates/manatee/**"
       - "crates/dugong/**"
       - "crates/dugong-graphlib/**"
@@ -129,7 +130,6 @@ jobs:
     if: (github.event_name == 'workflow_dispatch' && (inputs.run == 'regression' || inputs.run == 'full')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf'))
     permissions:
       contents: read
-      issues: write
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -189,6 +189,7 @@ jobs:
           path: |
             head/target/performance/self_comparison.md
             head/target/performance/self_comparison.json
+            head/target/performance/pr_comment.md
 
       - name: Render regression PR comment
         if: ${{ always() && github.event_name == 'pull_request' }}
@@ -217,9 +218,37 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  regression-comment:
+    name: perf-regression-comment
+    runs-on: ubuntu-24.04
+    needs:
+      - regression
+    if: ${{ always() && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf') }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Download regression artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: perf-regression
+          path: perf-regression
+
+      - name: Write regression job summary
+        run: |
+          set -euo pipefail
+          body_file="perf-regression/pr_comment.md"
+          if [ -s "$body_file" ]; then
+            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Merman Performance Regression"
+              echo
+              echo "The performance comment body was not generated. Check the perf-regression artifact."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Comment regression summary
-        if: ${{ always() && github.event_name == 'pull_request' }}
-        working-directory: head
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -227,7 +256,7 @@ jobs:
         run: |
           set -euo pipefail
           marker="<!-- merman-perf-regression -->"
-          body_file="target/performance/pr_comment.md"
+          body_file="perf-regression/pr_comment.md"
           if [ ! -s "$body_file" ]; then
             echo "::warning title=Performance comment unavailable::Performance comment body is missing; see the job summary and uploaded artifacts."
             exit 0
@@ -264,7 +293,6 @@ jobs:
     if: (github.event_name == 'workflow_dispatch' && (inputs.run == 'frontmatter' || inputs.run == 'full')) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf-frontmatter'))
     permissions:
       contents: read
-      issues: write
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -324,6 +352,7 @@ jobs:
           path: |
             head/target/performance/frontmatter_comparison.md
             head/target/performance/frontmatter_comparison.json
+            head/target/performance/frontmatter_pr_comment.md
 
       - name: Render frontmatter PR comment
         if: ${{ always() && github.event_name == 'pull_request' }}
@@ -354,9 +383,37 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  frontmatter-comment:
+    name: perf-frontmatter-comment
+    runs-on: ubuntu-24.04
+    needs:
+      - frontmatter
+    if: ${{ always() && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'perf-frontmatter') }}
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Download frontmatter artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: perf-frontmatter
+          path: perf-frontmatter
+
+      - name: Write frontmatter job summary
+        run: |
+          set -euo pipefail
+          body_file="perf-frontmatter/frontmatter_pr_comment.md"
+          if [ -s "$body_file" ]; then
+            cat "$body_file" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Merman Frontmatter Performance Regression"
+              echo
+              echo "The frontmatter performance comment body was not generated. Check the perf-frontmatter artifact."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Comment frontmatter summary
-        if: ${{ always() && github.event_name == 'pull_request' }}
-        working-directory: head
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -364,7 +421,7 @@ jobs:
         run: |
           set -euo pipefail
           marker="<!-- merman-perf-frontmatter -->"
-          body_file="target/performance/frontmatter_pr_comment.md"
+          body_file="perf-frontmatter/frontmatter_pr_comment.md"
           if [ ! -s "$body_file" ]; then
             echo "::warning title=Frontmatter performance comment unavailable::Frontmatter performance comment body is missing; see the job summary and uploaded artifacts."
             exit 0

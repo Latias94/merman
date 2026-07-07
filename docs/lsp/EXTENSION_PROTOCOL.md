@@ -44,7 +44,6 @@ Response:
       "description": "Recommend explicit flowchart header directions and offer an insertion quickfix.",
       "evidence": [
         "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/syntax/flowchart.md",
-        "crates/merman-core/src/diagrams/flowchart.rs",
         "docs/adr/0072-lint-rule-governance.md"
       ],
       "default_severity": "hint",
@@ -115,7 +114,8 @@ metadata.
 
 Request params: none.
 
-Response:
+Response. The JSON below is abbreviated; implementations return the complete
+`configurable_rule_ids` list from `merman/ruleCatalog` entries where `configurable == true`.
 
 ```json
 {

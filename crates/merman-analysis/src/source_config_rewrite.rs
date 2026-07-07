@@ -4,7 +4,7 @@ use crate::{
 };
 use merman_core::{
     Engine, ParseOptions,
-    preprocess::{parse_frontmatter_yaml_fields, split_frontmatter_block},
+    preprocess::{FrontmatterBlock, parse_frontmatter_yaml_fields, split_frontmatter_block},
 };
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
@@ -143,6 +143,18 @@ fn frontmatter_config_edit(source: &str, config: Value) -> Option<FrontmatterEdi
     };
 
     let existing_fields = parse_frontmatter_fields(frontmatter.dedented_body.as_ref())?;
+    if !existing_fields.contains_key("config") {
+        return Some(FrontmatterEdit {
+            span: ByteSpan {
+                start: frontmatter.body.end,
+                end: frontmatter.body.end,
+            },
+            replacement: frontmatter_config_insertion(source, &frontmatter, config)?,
+        });
+    }
+    if frontmatter_contains_lossy_yaml_syntax(frontmatter.dedented_body.as_ref()) {
+        return None;
+    }
 
     Some(FrontmatterEdit {
         span: ByteSpan {
@@ -164,7 +176,47 @@ fn frontmatter_fields_with_config(
     Some(fields)
 }
 
+fn frontmatter_config_insertion(
+    source: &str,
+    frontmatter: &FrontmatterBlock<'_>,
+    config: Value,
+) -> Option<String> {
+    let mut fields = Map::new();
+    fields.insert("config".to_string(), config);
+    let body = frontmatter_body(fields)?;
+    let mut insertion = String::new();
+    if !source[frontmatter.body.start..frontmatter.body.end]
+        .trim()
+        .is_empty()
+    {
+        insertion.push('\n');
+    }
+    insertion.push_str(&frontmatter_body_with_indent(&body, frontmatter.indent));
+    if frontmatter.body.start == frontmatter.body.end {
+        insertion.push('\n');
+    }
+    Some(insertion)
+}
+
+fn frontmatter_contains_lossy_yaml_syntax(yaml_body: &str) -> bool {
+    yaml_body.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with('#')
+            || line.contains(" #")
+            || line.contains(" &")
+            || line.contains(": &")
+            || line.contains(" *")
+            || line.contains(": *")
+            || trimmed.starts_with("<<:")
+    })
+}
+
 fn frontmatter_document(fields: Map<String, Value>, indent: &str) -> Option<String> {
+    let body = frontmatter_body(fields)?;
+    Some(frontmatter_document_with_indent(&body, indent))
+}
+
+fn frontmatter_body(fields: Map<String, Value>) -> Option<String> {
     let mut body = serde_yaml::to_string(&Value::Object(fields)).ok()?;
     if let Some(stripped) = body.strip_prefix("---\n") {
         body = stripped.to_string();
@@ -175,7 +227,19 @@ fn frontmatter_document(fields: Map<String, Value>, indent: &str) -> Option<Stri
     if !body.ends_with('\n') {
         body.push('\n');
     }
-    Some(frontmatter_document_with_indent(&body, indent))
+    Some(body)
+}
+
+fn frontmatter_body_with_indent(body: &str, indent: &str) -> String {
+    let mut document = String::with_capacity(body.len() + (indent.len() * body.lines().count()));
+    for (index, line) in body.split_inclusive('\n').enumerate() {
+        if index > 0 {
+            document.push('\n');
+        }
+        document.push_str(indent);
+        document.push_str(line.trim_end_matches('\n'));
+    }
+    document
 }
 
 fn frontmatter_document_with_indent(body: &str, indent: &str) -> String {
@@ -357,6 +421,29 @@ mod tests {
         assert!(edited.contains("theme: dark\n"));
         assert!(!edited.contains("%%{ init"));
         assert_eq!(fix.edits.len(), 2);
+    }
+
+    #[test]
+    fn init_directive_migration_inserts_config_without_dropping_frontmatter_comments() {
+        let source = "---\n# keep rationale\ntitle: Demo\ncustom: keep\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        let fix = init_directives_to_frontmatter_fix(source, &source_map).expect("migration fix");
+        let edited = apply_fix(source, &fix);
+
+        assert!(edited.starts_with("---\n# keep rationale\ntitle: Demo\ncustom: keep\nconfig:\n"));
+        assert!(edited.contains("theme: dark\n"));
+        assert!(!edited.contains("%%{ init"));
+        assert_eq!(edited.matches("# keep rationale").count(), 1);
+        assert_eq!(fix.edits.len(), 2);
+    }
+
+    #[test]
+    fn init_directive_migration_skips_lossy_config_rewrite_for_commented_frontmatter() {
+        let source = "---\n# keep rationale\ntitle: Demo\nconfig:\n  theme: default\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n";
+        let source_map = SourceMap::new(source);
+
+        assert!(init_directives_to_frontmatter_fix(source, &source_map).is_none());
     }
 
     #[test]

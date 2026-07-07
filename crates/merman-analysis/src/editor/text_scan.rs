@@ -141,9 +141,7 @@ pub(super) fn classify_line_item(
     ]
     .into_iter()
     .find_map(|(keyword, kind, detail)| {
-        trimmed
-            .strip_prefix(keyword)
-            .map(|_| (keyword, kind, detail))
+        directive_keyword_matches(trimmed, keyword).then_some((keyword, kind, detail))
     }) {
         let (name, selection) = token_after_prefix(trimmed, keyword, abs_start)?;
         return Some(FenceLineItem {
@@ -183,6 +181,15 @@ pub(super) fn classify_line_item(
         },
         selection,
     })
+}
+
+fn directive_keyword_matches(trimmed: &str, keyword: &str) -> bool {
+    let Some(rest) = trimmed.strip_prefix(keyword) else {
+        return false;
+    };
+    rest.chars()
+        .next()
+        .is_none_or(|ch| ch.is_whitespace() || matches!(ch, ':' | ',' | '"' | '\'' | '{'))
 }
 
 fn first_symbol_token(trimmed: &str, abs_start: usize) -> Option<(String, ByteSpan)> {
