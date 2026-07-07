@@ -319,6 +319,9 @@ impl<'source, 'query> DirectiveConfigScanner<'source, 'query> {
                     if matches!(ch, ',' | '\n' | '\r' | '}' | ']') {
                         break;
                     }
+                    if ch == '/' && self.skip_comment() {
+                        continue;
+                    }
                     self.next_char();
                 }
             }
@@ -840,6 +843,22 @@ mod tests {
 
         assert_eq!(spans.len(), 1);
         assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+    }
+
+    #[test]
+    fn init_directive_config_key_spans_skip_json5_comments_after_unquoted_scalars() {
+        let cases = [
+            "%%{ init: { theme: false /* comment hides } ] */, flowchart: { htmlLabels: false } } }%%\nflowchart TD\n",
+            "%%{ init: { themeVariables: 42 /* comment hides } ] */, flowchart: { htmlLabels: false } } }%%\nflowchart TD\n",
+            "%%{ init: { theme: null // comment hides } ]\n, flowchart: { htmlLabels: false } } }%%\nflowchart TD\n",
+        ];
+
+        for source in cases {
+            let spans = init_directive_config_key_spans(source, &HTML_LABEL_PATHS);
+
+            assert_eq!(spans.len(), 1, "source: {source}");
+            assert_eq!(&source[spans[0].start..spans[0].end], "htmlLabels");
+        }
     }
 
     #[test]
