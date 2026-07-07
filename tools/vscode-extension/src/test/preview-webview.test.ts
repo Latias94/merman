@@ -54,7 +54,7 @@ describe("preview webview app", () => {
       snapshot: snapshot({ sourceHash: "hash-a" }),
       content: '<svg viewBox="0 0 100 50"></svg>',
     });
-    const initialSvg = app.document.canvas.querySelector("svg");
+    const initialSvg = renderedSvg(app);
 
     app.dispatch({
       type: "renderStarted",
@@ -81,7 +81,7 @@ describe("preview webview app", () => {
       error: "syntax issue",
     });
 
-    assert.equal(app.document.canvas.querySelector("svg"), initialSvg);
+    assert.equal(renderedSvg(app), initialSvg);
     assert.equal(app.document.status.hidden, false);
     assert.equal(
       app.document.status.textContent,
@@ -205,7 +205,7 @@ describe("preview webview app", () => {
       error: "syntax issue",
     });
 
-    assert.equal(app.document.canvas.querySelector("svg"), null);
+    assert.equal(renderedSvg(app), null);
     assert.equal(app.document.empty.hidden, true);
     assert.equal(app.document.status.hidden, false);
     assert.equal(app.document.status.textContent, "syntax issue");
@@ -265,7 +265,7 @@ describe("preview webview app", () => {
       snapshot: snapshot({ sourceHash: "hash-a" }),
       content: '<svg viewBox="0 0 100 50"></svg>',
     });
-    const initialSvg = app.document.canvas.querySelector("svg");
+    const initialSvg = renderedSvg(app);
 
     app.dispatch({
       type: "renderStarted",
@@ -280,7 +280,7 @@ describe("preview webview app", () => {
       content: '<svg viewBox="0 0 300 150"></svg>',
     });
 
-    assert.equal(app.document.canvas.querySelector("svg"), initialSvg);
+    assert.equal(renderedSvg(app), initialSvg);
     assert.equal(app.persistedState.sourceIdentityKey, previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-a"));
   });
 
@@ -293,7 +293,7 @@ describe("preview webview app", () => {
       snapshot: snapshot({ sourceHash: "hash-c" }),
       content: '<svg viewBox="0 0 200 100"></svg>',
     });
-    const renderedSvg = app.document.canvas.querySelector("svg");
+    const visibleSvg = renderedSvg(app);
 
     app.dispatch({
       type: "showEmpty",
@@ -302,7 +302,7 @@ describe("preview webview app", () => {
       detail: "Open a supported file.",
     });
 
-    assert.equal(app.document.canvas.querySelector("svg"), renderedSvg);
+    assert.equal(renderedSvg(app), visibleSvg);
     assert.equal(app.document.empty.hidden, true);
     assert.equal(app.document.frame.dataset.renderState, "ready");
     assert.equal(app.persistedState.sourceIdentityKey, previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-c"));
@@ -317,7 +317,7 @@ describe("preview webview app", () => {
       snapshot: snapshot({ sourceHash: "hash-a" }),
       content: '<svg viewBox="0 0 100 50"></svg>',
     });
-    const initialSvg = app.document.canvas.querySelector("svg");
+    const initialSvg = renderedSvg(app);
 
     app.dispatch({
       type: "renderStarted",
@@ -338,7 +338,7 @@ describe("preview webview app", () => {
       content: '<svg viewBox="0 0 300 150"></svg>',
     });
 
-    assert.equal(app.document.canvas.querySelector("svg"), initialSvg);
+    assert.equal(renderedSvg(app), initialSvg);
     assert.equal(app.document.frame.dataset.renderState, "loading");
 
     app.dispatch({
@@ -348,7 +348,7 @@ describe("preview webview app", () => {
       content: '<svg viewBox="0 0 200 100"></svg>',
     });
 
-    assert.notEqual(app.document.canvas.querySelector("svg"), initialSvg);
+    assert.notEqual(renderedSvg(app), initialSvg);
     assert.equal(app.persistedState.sourceIdentityKey, previewSourceIdentity("file:///workspace/notes.md", "fence-1", "hash-c"));
   });
 
@@ -392,7 +392,7 @@ describe("preview webview app", () => {
       snapshot: snapshot({ sourceHash: "hash-a" }),
       content: '<svg viewBox="0 0 100 50"></svg>',
     });
-    const initialSvg = app.document.canvas.querySelector("svg");
+    const initialSvg = renderedSvg(app);
 
     app.dispatch({
       type: "diagnosticsUpdated",
@@ -412,7 +412,7 @@ describe("preview webview app", () => {
       }),
     });
 
-    assert.equal(app.document.canvas.querySelector("svg"), initialSvg);
+    assert.equal(renderedSvg(app), initialSvg);
     assert.equal(app.document.diagnostics.hidden, false);
     assert.match(app.document.diagnostics.textContentTree(), /1 errors/);
     assert.doesNotMatch(app.document.diagnostics.textContentTree(), /syntax issue/);
@@ -448,9 +448,55 @@ describe("preview webview app", () => {
     const textPreview = app.document.canvas.querySelector(".text-preview");
     assert.ok(textPreview);
     assert.equal(textPreview.textContent, "A --> B");
-    assert.equal(app.document.canvas.querySelector("svg"), null);
+    assert.equal(renderedSvg(app), null);
     assert.equal(app.persistedState.displayMode, "ascii");
     assert.equal(app.document.outputControls.hidden, true);
+  });
+
+  it("discards shadow-hosted SVG before text and empty renders", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+    assert.ok(renderedSvg(app));
+    assert.ok(renderedSvgHost(app));
+    assert.equal(app.document.canvas.shadowRoot, null);
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 2,
+      snapshot: snapshot({ displayMode: "ascii", sourceHash: "hash-b" }),
+      content: "A --> B",
+    });
+
+    const textPreview = app.document.canvas.querySelector(".text-preview");
+    assert.ok(textPreview);
+    assert.equal(textPreview.textContent, "A --> B");
+    assert.equal(renderedSvg(app), null);
+    assert.equal(renderedSvgHost(app), null);
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 3,
+      snapshot: snapshot({ sourceHash: "hash-c" }),
+      content: '<svg viewBox="0 0 100 50"></svg>',
+    });
+    assert.ok(renderedSvg(app));
+
+    app.dispatch({
+      type: "showEmpty",
+      heading: "No Mermaid source available",
+      detail: "Focus a Mermaid source.",
+    });
+
+    assert.equal(renderedSvg(app), null);
+    assert.equal(renderedSvgHost(app), null);
+    assert.equal(app.document.canvas.children.length, 0);
+    assert.equal(app.document.empty.hidden, false);
   });
 
   it("defaults the preview to paper background and keeps output controls visible for SVG", () => {
@@ -479,7 +525,7 @@ describe("preview webview app", () => {
       snapshot: snapshot({ sourceHash: "hash-a" }),
       content: '<svg viewBox="0 0 100 50"><path d="M0 0h100"/></svg>',
     });
-    const svg = app.document.canvas.querySelector("svg");
+    const svg = renderedSvg(app);
     assert.ok(svg);
     assert.equal(svg.getAttribute("width"), "100");
     assert.equal(svg.getAttribute("height"), "50");
@@ -496,6 +542,27 @@ describe("preview webview app", () => {
     assert.match(message.svg ?? "", /height="50"/);
     assert.doesNotMatch(message.svg ?? "", /width="250"/);
     assert.doesNotMatch(message.svg ?? "", /data-base-width/);
+  });
+
+  it("isolates rendered SVG styles from preview chrome", () => {
+    const app = loadPreviewApp();
+
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ sourceHash: "hash-a" }),
+      content:
+        '<svg viewBox="0 0 100 50"><style>.toolbar{display:none!important}</style><rect width="100" height="50"/></svg>',
+    });
+
+    assert.equal(app.document.canvas.querySelector("svg"), null);
+    assert.ok(renderedSvg(app));
+
+    app.click(app.document.copySvg);
+
+    const message = app.postedMessages.at(-1) as { type?: string; svg?: string };
+    assert.equal(message.type, "copySvg");
+    assert.match(message.svg ?? "", /<svg\b/);
   });
 
   it("supports drag pan, wheel zoom, fit, and actual-size controls in SVG mode", () => {
@@ -790,6 +857,14 @@ function sourceOption(sourceId: string, title: string, subtitle: string, kind: s
   };
 }
 
+function renderedSvg(app: PreviewAppHarness): FakeElement | null {
+  return renderedSvgHost(app)?.shadowRoot?.querySelector("svg") ?? null;
+}
+
+function renderedSvgHost(app: PreviewAppHarness): FakeElement | null {
+  return app.document.canvas.children.find((child) => child.shadowRoot?.querySelector("svg")) ?? null;
+}
+
 function previewSourceIdentity(documentUri: string, sourceId: string, sourceHash: string): string {
   return [documentUri, sourceId, sourceHash].join("\u0000");
 }
@@ -925,6 +1000,7 @@ class FakeElement {
   selected = false;
   clientWidth = 1;
   clientHeight = 1;
+  shadowRoot: FakeElement | null = null;
   parentElement: FakeElement | null = null;
   private attributes = new Map<string, string>();
   private html = "";
@@ -950,6 +1026,11 @@ class FakeElement {
     child.parentElement = this;
     this.children.push(child);
     return child;
+  }
+
+  attachShadow(_init: { mode: "open" }): FakeElement {
+    this.shadowRoot = new FakeElement("shadow-root");
+    return this.shadowRoot;
   }
 
   cloneNode(deep = false): FakeElement {
@@ -1058,7 +1139,7 @@ class FakeElement {
   }
 
   get offsetWidth(): number {
-    const svg = this.querySelector("svg");
+    const svg = this.queryShadowTree("svg") ?? this.querySelector("svg");
     if (svg) {
       return Number.parseFloat(svg.getAttribute("width") ?? "0") || 1;
     }
@@ -1066,7 +1147,7 @@ class FakeElement {
   }
 
   get offsetHeight(): number {
-    const svg = this.querySelector("svg");
+    const svg = this.queryShadowTree("svg") ?? this.querySelector("svg");
     if (svg) {
       return Number.parseFloat(svg.getAttribute("height") ?? "0") || 1;
     }
@@ -1080,6 +1161,20 @@ class FakeElement {
       width: this.clientWidth,
       height: this.clientHeight,
     };
+  }
+
+  private queryShadowTree(selector: string): FakeElement | null {
+    const ownShadowMatch = this.shadowRoot?.querySelector(selector);
+    if (ownShadowMatch) {
+      return ownShadowMatch;
+    }
+    for (const child of this.children) {
+      const match = child.queryShadowTree(selector);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
   }
 
   addEventListener(type: string, listener: (event: unknown) => void): void {

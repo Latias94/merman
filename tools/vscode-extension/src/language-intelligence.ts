@@ -15,6 +15,8 @@ export type LanguageClientLifecycleAction =
 export interface LanguageClientConfigurationChange {
   affectsMerman: boolean;
   affectsLanguageIntelligence: boolean;
+  diagnosticsEnabledChanged: boolean;
+  diagnosticsEnabled: boolean;
   serverShapeChanged: boolean;
   hasClient: boolean;
   settings: LanguageIntelligenceSettings;
@@ -52,6 +54,9 @@ export function languageClientConfigurationAction(
   }
   if (!shouldStartLanguageClient(change.settings)) {
     return "showDisabledStatus";
+  }
+  if (change.diagnosticsEnabledChanged && change.diagnosticsEnabled && change.hasClient) {
+    return "restart";
   }
   if (change.serverShapeChanged) {
     return "restart";

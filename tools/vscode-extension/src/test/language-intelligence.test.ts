@@ -37,6 +37,8 @@ describe("language intelligence adoption", () => {
     assert.equal(languageClientConfigurationAction({
       affectsMerman: true,
       affectsLanguageIntelligence: false,
+      diagnosticsEnabledChanged: false,
+      diagnosticsEnabled: true,
       serverShapeChanged: true,
       hasClient: true,
       settings: { enabled: true },
@@ -44,10 +46,42 @@ describe("language intelligence adoption", () => {
     assert.equal(languageClientConfigurationAction({
       affectsMerman: true,
       affectsLanguageIntelligence: false,
+      diagnosticsEnabledChanged: false,
+      diagnosticsEnabled: true,
       serverShapeChanged: true,
       hasClient: true,
       settings: { enabled: false },
     }), "showDisabledStatus");
+  });
+
+  it("restarts existing clients when diagnostics are re-enabled", () => {
+    assert.equal(languageClientConfigurationAction({
+      affectsMerman: true,
+      affectsLanguageIntelligence: false,
+      diagnosticsEnabledChanged: true,
+      diagnosticsEnabled: true,
+      serverShapeChanged: false,
+      hasClient: true,
+      settings: { enabled: true },
+    }), "restart");
+    assert.equal(languageClientConfigurationAction({
+      affectsMerman: true,
+      affectsLanguageIntelligence: false,
+      diagnosticsEnabledChanged: true,
+      diagnosticsEnabled: false,
+      serverShapeChanged: false,
+      hasClient: true,
+      settings: { enabled: true },
+    }), "pushConfiguration");
+    assert.equal(languageClientConfigurationAction({
+      affectsMerman: true,
+      affectsLanguageIntelligence: false,
+      diagnosticsEnabledChanged: true,
+      diagnosticsEnabled: true,
+      serverShapeChanged: false,
+      hasClient: false,
+      settings: { enabled: true },
+    }), "ignore");
   });
 
   it("keeps server-backed commands non-invasive when disabled", () => {

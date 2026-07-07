@@ -100,10 +100,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         event.affectsConfiguration("merman.server.useCargoRun") ||
         event.affectsConfiguration("merman.server.cargoArgs");
 
-      if (
-        event.affectsConfiguration("merman.diagnostics.enabled") &&
-        !getDiagnosticsSettings().enabled
-      ) {
+      const diagnosticsEnabledChanged = event.affectsConfiguration("merman.diagnostics.enabled");
+      const diagnosticsSettings = getDiagnosticsSettings();
+      if (diagnosticsEnabledChanged && !diagnosticsSettings.enabled) {
         client?.diagnostics?.clear();
       }
 
@@ -112,6 +111,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         languageClientConfigurationAction({
           affectsMerman: true,
           affectsLanguageIntelligence: event.affectsConfiguration(LANGUAGE_INTELLIGENCE_SETTING),
+          diagnosticsEnabledChanged,
+          diagnosticsEnabled: diagnosticsSettings.enabled,
           serverShapeChanged,
           hasClient: Boolean(client),
           settings: getLanguageIntelligenceSettings(),

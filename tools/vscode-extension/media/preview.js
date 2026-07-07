@@ -56,6 +56,8 @@
   };
   const minZoom = 0.1;
   const maxZoom = 8;
+  let svgRenderHost;
+  let svgRenderRoot;
 
   function post(type, payload) {
     vscode.postMessage({ type, ...payload });
@@ -231,6 +233,29 @@
     };
   }
 
+  function clearRenderedContent() {
+    if (canvas) {
+      canvas.replaceChildren();
+    }
+    svgRenderHost = undefined;
+    svgRenderRoot = undefined;
+  }
+
+  function svgContentRoot() {
+    if (!canvas) {
+      return undefined;
+    }
+    svgRenderHost = document.createElement("div");
+    svgRenderHost.className = "svg-preview-host";
+    svgRenderRoot = svgRenderHost.attachShadow({ mode: "open" });
+    canvas.replaceChildren(svgRenderHost);
+    return svgRenderRoot;
+  }
+
+  function renderedSvg() {
+    return svgRenderRoot?.querySelector("svg");
+  }
+
   function fitToView() {
     if (state.displayMode !== "svg" || !viewport || !canvas) {
       return;
@@ -256,7 +281,7 @@
   }
 
   function normalizeSvgSize() {
-    const svg = canvas?.querySelector("svg");
+    const svg = renderedSvg();
     if (!svg) {
       return;
     }
@@ -283,7 +308,7 @@
   }
 
   function applyVectorZoom(zoomOverride) {
-    const svg = canvas?.querySelector("svg");
+    const svg = renderedSvg();
     if (!svg) {
       return;
     }
@@ -351,7 +376,7 @@
   }
 
   function copySvg() {
-    const svg = canvas?.querySelector("svg");
+    const svg = renderedSvg();
     if (!svg || !state.sourceKey) {
       return;
     }
@@ -528,7 +553,7 @@
   }
 
   function hasPreviewContent() {
-    return !!canvas && canvas.children.length > 0;
+    return !!canvas && (canvas.children.length > 0 || !!renderedSvg());
   }
 
   function hideEmpty() {
@@ -554,9 +579,7 @@
       setText(headingElement, heading);
       setText(detailElement, detail);
     }
-    if (canvas) {
-      canvas.replaceChildren();
-    }
+    clearRenderedContent();
     if (frame) {
       frame.dataset.locked = "false";
     }
@@ -566,9 +589,7 @@
   }
 
   function clearPreviewContent(snapshot) {
-    if (canvas) {
-      canvas.replaceChildren();
-    }
+    clearRenderedContent();
     resetViewportForNewContent();
     state.sourceKey = undefined;
     state.sourceKeyId = sourceKeyId(snapshot);
@@ -596,9 +617,13 @@
     if (shouldResetViewport) {
       resetViewportForNewContent();
     }
-    canvas.replaceChildren();
+    clearRenderedContent();
     if (snapshot?.displayMode === "svg") {
-      canvas.innerHTML = content;
+      const root = svgContentRoot();
+      if (!root) {
+        return;
+      }
+      root.innerHTML = content;
       normalizeSvgSize();
       applyVectorZoom();
     } else {
