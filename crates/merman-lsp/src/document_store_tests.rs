@@ -288,7 +288,7 @@ fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
 }
 
 #[test]
-fn apply_text_changes_rejects_skipped_versions_for_incremental_ranges() {
+fn apply_text_changes_allows_nonconsecutive_versions_for_incremental_ranges() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -298,11 +298,6 @@ fn apply_text_changes_rejects_skipped_versions_for_incremental_ranges() {
         "flowchart TD\nA-->B\n".to_string(),
         DocumentKind::Diagram,
     );
-    let snapshot = store
-        .snapshot(&uri)
-        .expect("expected current snapshot before skipped-version edit");
-    assert_eq!(snapshot.version, 1);
-    assert!(store.has_snapshot(&uri));
 
     let update = store.apply_text_changes(
         uri.clone(),
@@ -314,17 +309,30 @@ fn apply_text_changes_rejects_skipped_versions_for_incremental_ranges() {
         }],
     );
 
-    assert_eq!(
-        update,
-        TextDocumentUpdate::StaleVersion {
-            current_version: 1,
-            attempted_version: 3,
-        }
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected updated document");
+    assert_eq!(stored.version, 3);
+    assert_eq!(stored.text.as_ref(), "flowchart TD\nC-->B\n");
+}
+
+#[test]
+fn apply_text_changes_rejects_empty_change_sets_without_advancing_version() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
     );
+
+    let update = store.apply_text_changes(uri.clone(), 3, []);
+
+    assert_eq!(update, TextDocumentUpdate::EmptyChangeSet);
     let stored = store.get(&uri).expect("expected current document");
     assert_eq!(stored.version, 1);
     assert_eq!(stored.text.as_ref(), "flowchart TD\nA-->B\n");
-    assert!(store.has_snapshot(&uri));
 }
 
 #[test]

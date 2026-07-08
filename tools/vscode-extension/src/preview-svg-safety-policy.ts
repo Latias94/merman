@@ -210,7 +210,10 @@ class SvgSafetyScanner {
         this.rootDepth = this.elementStack.length;
       }
       this.assertSafeElementName(elementName, inForeignObject);
-      this.assertSafeAttributes(tag.attributes, inForeignObject);
+      this.assertSafeAttributes(
+        tag.attributes,
+        inForeignObject || elementName === "foreignobject",
+      );
 
       if (elementName === "foreignobject" && !tag.selfClosing) {
         this.foreignObjectDepth += 1;
@@ -599,12 +602,7 @@ function containsShadowScopingSelector(css: string): boolean {
 }
 
 function containsViewportEscapingCssDeclaration(css: string): boolean {
-  return (
-    /(?:^|[;{\s])position\s*:\s*(?:fixed|sticky)\b/.test(css) ||
-    /(?:^|[;{\s])(?:inset(?:-(?:block|inline)(?:-(?:start|end))?)?|top|right|bottom|left|z-index)\s*:/.test(
-      css,
-    )
-  );
+  return /(?:^|[;{\s])position\s*:\s*(?:fixed|sticky)\b/.test(css);
 }
 
 function decodeCssEscapes(value: string): string {

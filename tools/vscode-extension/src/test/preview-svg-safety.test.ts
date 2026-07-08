@@ -29,6 +29,11 @@ describe("preview SVG safety", () => {
     assert.doesNotThrow(() =>
       assertSafePreviewSvg('<svg><style>text { fill: url(/* local */ #fill); }</style><text>ok</text></svg>'),
     );
+    assert.doesNotThrow(() =>
+      assertSafePreviewSvg(
+        '<svg><style>div.mermaidTooltip{position:absolute;pointer-events:none;z-index:100;}</style><text>ok</text></svg>',
+      ),
+    );
   });
 
   it("accepts comments around a single SVG root", () => {
@@ -85,6 +90,10 @@ describe("preview SVG safety", () => {
     );
     assert.throws(
       () => assertSafePreviewSvg('<svg><foreignObject><div tabindex="0">focus</div></foreignObject></svg>'),
+      /interactive/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><foreignObject tabindex="0"><div>focus</div></foreignObject></svg>'),
       /interactive/,
     );
   });

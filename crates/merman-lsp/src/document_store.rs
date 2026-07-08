@@ -40,6 +40,7 @@ pub struct StoredDocument {
 pub enum TextDocumentUpdate {
     Applied,
     MissingDocument,
+    EmptyChangeSet,
     InvalidRange,
     StaleVersion {
         current_version: i32,
@@ -193,11 +194,8 @@ impl DocumentStore {
             };
         }
 
-        if changes_are_incremental(&changes) && version != current_version + 1 {
-            return TextDocumentUpdate::StaleVersion {
-                current_version,
-                attempted_version: version,
-            };
+        if changes.is_empty() {
+            return TextDocumentUpdate::EmptyChangeSet;
         }
 
         for change in changes {
@@ -636,10 +634,6 @@ fn apply_text_content_change(text: &mut String, change: TextDocumentContentChang
         text.push_str(&change.text);
     }
     true
-}
-
-fn changes_are_incremental(changes: &[TextDocumentContentChangeEvent]) -> bool {
-    changes.iter().any(|change| change.range.is_some())
 }
 
 fn lsp_range_to_byte_range(text: &str, range: Range) -> Option<ByteRange<usize>> {
