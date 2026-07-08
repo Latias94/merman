@@ -87,6 +87,22 @@ impl<'a> CompletionContext<'a> {
         self.range_for_offsets(self.prefix_start_offset, self.cursor_offset)
     }
 
+    pub fn direction_value_range(&self) -> Option<Range> {
+        if matches!(
+            self.expected_syntax,
+            Some(FenceExpectedSyntaxKind::Direction)
+        ) && let Some((start, end)) = self.expected_syntax_span
+        {
+            return self.range_for_offsets(start, end);
+        }
+
+        None
+    }
+
+    pub fn is_block_diagram(&self) -> bool {
+        self.fence.diagram_type.as_deref() == Some("block")
+    }
+
     pub fn operator_range(&self) -> Option<Range> {
         let suffix_start = operator_suffix_start(&self.prefix)?;
         self.range_for_offsets(self.prefix_start_offset + suffix_start, self.cursor_offset)

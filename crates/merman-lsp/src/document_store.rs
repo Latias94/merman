@@ -184,8 +184,16 @@ impl DocumentStore {
         let current_version = current.version;
         let kind = current.kind;
         let mut text = current.text.to_string();
+        let changes = changes.into_iter().collect::<Vec<_>>();
 
         if version <= current_version {
+            return TextDocumentUpdate::StaleVersion {
+                current_version,
+                attempted_version: version,
+            };
+        }
+
+        if changes_are_incremental(&changes) && version != current_version + 1 {
             return TextDocumentUpdate::StaleVersion {
                 current_version,
                 attempted_version: version,
@@ -628,6 +636,10 @@ fn apply_text_content_change(text: &mut String, change: TextDocumentContentChang
         text.push_str(&change.text);
     }
     true
+}
+
+fn changes_are_incremental(changes: &[TextDocumentContentChangeEvent]) -> bool {
+    changes.iter().any(|change| change.range.is_some())
 }
 
 fn lsp_range_to_byte_range(text: &str, range: Range) -> Option<ByteRange<usize>> {

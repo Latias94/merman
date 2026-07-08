@@ -17,6 +17,66 @@ const ACTIVE_SVG_ELEMENTS = new Set([
   "set",
 ]);
 
+const SVG_ELEMENTS = new Set([
+  "a",
+  "circle",
+  "clippath",
+  "defs",
+  "desc",
+  "ellipse",
+  "feblend",
+  "fecolormatrix",
+  "fecomponenttransfer",
+  "fecomposite",
+  "feconvolvematrix",
+  "fediffuselighting",
+  "fedisplacementmap",
+  "fedistantlight",
+  "fedropshadow",
+  "feflood",
+  "fefunca",
+  "fefuncb",
+  "fefuncg",
+  "fefuncr",
+  "fegaussianblur",
+  "feimage",
+  "femerge",
+  "femergenode",
+  "femorphology",
+  "feoffset",
+  "fepointlight",
+  "fespecularlighting",
+  "fespotlight",
+  "fetile",
+  "feturbulence",
+  "filter",
+  "foreignobject",
+  "g",
+  "image",
+  "line",
+  "lineargradient",
+  "marker",
+  "mask",
+  "metadata",
+  "path",
+  "pattern",
+  "polygon",
+  "polyline",
+  "radialgradient",
+  "rect",
+  "stop",
+  "style",
+  "svg",
+  "switch",
+  "symbol",
+  "text",
+  "textpath",
+  "title",
+  "tspan",
+  "use",
+  "view",
+]);
+
 const FOREIGN_OBJECT_LABEL_ELEMENTS = new Set([
   "div",
   "span",
@@ -97,6 +157,7 @@ class SvgSafetyScanner {
   private rootDepth = 0;
   private rootClosedAt: number | null = null;
   private foreignObjectDepth = 0;
+  private readonly elementStack: string[] = [];
 
   constructor(
     private readonly source: string,
@@ -113,13 +174,18 @@ class SvgSafetyScanner {
         throw this.error("malformed SVG output.");
       }
       if (tag.kind === "end") {
-        if (localName(tag.name) === "foreignobject" && this.foreignObjectDepth > 0) {
-          this.foreignObjectDepth -= 1;
-        }
-        if (!this.sawRoot || this.rootDepth === 0) {
+        const elementName = localName(tag.name);
+        if (!this.sawRoot || this.elementStack.length === 0) {
           throw this.error("malformed SVG output.");
         }
-        this.rootDepth -= 1;
+        const openElementName = this.elementStack.pop();
+        if (openElementName !== elementName) {
+          throw this.error("malformed SVG output.");
+        }
+        if (elementName === "foreignobject" && this.foreignObjectDepth > 0) {
+          this.foreignObjectDepth -= 1;
+        }
+        this.rootDepth = this.elementStack.length;
         if (this.rootDepth === 0) {
           this.rootClosedAt = tag.end;
         }
@@ -134,12 +200,14 @@ class SvgSafetyScanner {
           throw this.error("non-SVG output.");
         }
         if (!tag.selfClosing) {
-          this.rootDepth = 1;
+          this.elementStack.push(elementName);
+          this.rootDepth = this.elementStack.length;
         } else {
           this.rootClosedAt = tag.end;
         }
       } else if (!tag.selfClosing) {
-        this.rootDepth += 1;
+        this.elementStack.push(elementName);
+        this.rootDepth = this.elementStack.length;
       }
       this.assertSafeElementName(elementName, inForeignObject);
       this.assertSafeAttributes(tag.attributes, inForeignObject);
@@ -161,7 +229,7 @@ class SvgSafetyScanner {
     if (!this.sawRoot) {
       throw this.error("non-SVG output.");
     }
-    if (this.rootClosedAt === null || this.rootDepth !== 0) {
+    if (this.rootClosedAt === null || this.rootDepth !== 0 || this.elementStack.length !== 0) {
       throw this.error("malformed SVG output.");
     }
     this.assertOnlyIgnorableRootTail(this.rootClosedAt);
@@ -277,11 +345,17 @@ class SvgSafetyScanner {
   }
 
   private assertSafeElementName(name: string, inForeignObject: boolean): void {
-    if (inForeignObject && !FOREIGN_OBJECT_LABEL_ELEMENTS.has(name)) {
-      throw this.error("SVG with unsupported foreignObject content.");
-    }
     if (ACTIVE_SVG_ELEMENTS.has(name)) {
       throw this.error("SVG with active embedded content.");
+    }
+    if (inForeignObject) {
+      if (!FOREIGN_OBJECT_LABEL_ELEMENTS.has(name)) {
+        throw this.error("SVG with unsupported foreignObject content.");
+      }
+      return;
+    }
+    if (!SVG_ELEMENTS.has(name)) {
+      throw this.error("SVG with unsupported element content.");
     }
   }
 
@@ -375,6 +449,9 @@ class SvgSafetyScanner {
       containsCssFunction(lower, "-webkit-image-set")
     ) {
       throw this.error("SVG with external CSS resource references.");
+    }
+    if (containsViewportEscapingCssDeclaration(lower)) {
+      throw this.error("SVG with viewport-escaping CSS.");
     }
 
     let cursor = 0;
@@ -519,6 +596,15 @@ function containsCssFunction(css: string, name: string): boolean {
 
 function containsShadowScopingSelector(css: string): boolean {
   return css.includes(":host") || css.includes("::slotted");
+}
+
+function containsViewportEscapingCssDeclaration(css: string): boolean {
+  return (
+    /(?:^|[;{\s])position\s*:\s*(?:fixed|sticky)\b/.test(css) ||
+    /(?:^|[;{\s])(?:inset(?:-(?:block|inline)(?:-(?:start|end))?)?|top|right|bottom|left|z-index)\s*:/.test(
+      css,
+    )
+  );
 }
 
 function decodeCssEscapes(value: string): string {

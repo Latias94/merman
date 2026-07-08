@@ -59,7 +59,7 @@
   let svgRenderHost;
   let svgRenderRoot;
 
-  function post(type, payload) {
+  function post(type, payload = {}) {
     vscode.postMessage({ type, ...payload });
   }
 
@@ -493,7 +493,6 @@
     summary.textContent = diagnosticsSummaryText(diagnostics);
     if (diagnostics.firstTarget) {
       summary.dataset.action = "diagnostic";
-      summary.dataset.target = JSON.stringify(diagnostics.firstTarget);
       summary.title = "Open first diagnostic location in editor";
     } else {
       summary.disabled = true;
@@ -763,7 +762,7 @@
         persistState();
         break;
       case "diagnostic":
-        post("revealDiagnostic", { target: actionElement.dataset.target });
+        post("revealDiagnostic");
         break;
     }
   });

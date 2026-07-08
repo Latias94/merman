@@ -35,6 +35,18 @@ fn parse_diagram_flowchart_basic_graph() {
 }
 
 #[test]
+fn parse_diagram_flowchart_accepts_acc_description_alias() {
+    let engine = Engine::new();
+    let text = "flowchart TD\naccTitle: Flow title\naccDescription: Flow description\nA-->B\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(res.model["accTitle"], json!("Flow title"));
+    assert_eq!(res.model["accDescr"], json!("Flow description"));
+}
+
+#[test]
 fn parse_diagram_flowchart_tolerates_edge_labels() {
     let engine = Engine::new();
     let text = "graph TD;A--x|text including URL space|B;";
@@ -2781,7 +2793,15 @@ fn parse_flowchart_editor_facts_recover_shape_value_expected_syntax() {
 #[test]
 fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
     let engine = Engine::new();
-    let text = "%%{init: {\"theme\": \"dark\"}}%%\nflowchart TD\nclassDef hot fill:#f00\nA-->B\n";
+    let text = concat!(
+        "%%{init: {\"theme\": \"dark\"}}%%\n",
+        "flowchart TD\n",
+        "accTitle: Flow title\n",
+        "accDescription: Flow description\n",
+        "accDescr: Legacy description\n",
+        "classDef hot fill:#f00\n",
+        "A-->B\n",
+    );
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
         .unwrap()
@@ -2798,6 +2818,24 @@ fn parse_flowchart_editor_facts_preserve_directive_prefixes() {
             .directive_prefixes
             .iter()
             .any(|prefix| prefix == "classDef")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "accTitle")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "accDescription")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "accDescr")
     );
 
     let a = facts

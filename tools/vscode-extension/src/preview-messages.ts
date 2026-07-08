@@ -83,7 +83,7 @@ export type PreviewFromWebviewMessage =
   | { type: "showSource" }
   | { type: "copySvg"; svg: string; sourceKey: PreviewSourceKey }
   | { type: "exportRendered"; format: "svg" | "png"; sourceKey: PreviewSourceKey }
-  | { type: "revealDiagnostic"; target: string }
+  | { type: "revealDiagnostic" }
   | { type: "selectSource"; sourceId: string }
   | { type: "setLocked"; locked: boolean }
   | { type: "setDiagramTheme"; theme: PreviewDiagramTheme }
@@ -130,7 +130,7 @@ export function isPreviewFromWebviewMessage(value: unknown): value is PreviewFro
         isPreviewSourceKey(record.sourceKey)
       );
     case "revealDiagnostic":
-      return typeof record.target === "string";
+      return !("target" in record);
     case "selectSource":
       return typeof record.sourceId === "string";
     case "setLocked":

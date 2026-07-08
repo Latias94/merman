@@ -38,6 +38,14 @@ assert.throws(
   /malformed/,
 );
 assert.throws(
+  () => assertSafeSvgForDom('<svg><div tabindex="0">run</div></svg>'),
+  /unsupported element/,
+);
+assert.throws(
+  () => assertSafeSvgForDom("<svg><g></svg></g>"),
+  /malformed/,
+);
+assert.throws(
   () => assertSafeSvgForDom("text before root<svg></svg>"),
   /non-SVG/,
 );
@@ -138,6 +146,14 @@ assert.throws(
       '<svg><foreignObject><div style="background-image:image-set(&quot;https://example.com/a.png&quot; 1x)">x</div></foreignObject></svg>',
     ),
   /CSS resource/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><style>svg{position:fixed;inset:0;z-index:999999}</style></svg>'),
+  /viewport-escaping CSS/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg style="position:fixed;inset:0"></svg>'),
+  /viewport-escaping CSS/,
 );
 assert.throws(
   () => assertSafeSvgForDom('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'),

@@ -55,6 +55,14 @@ describe("preview SVG safety", () => {
     );
   });
 
+  it("rejects unsupported elements and mismatched SVG tags", () => {
+    assert.throws(
+      () => assertSafePreviewSvg('<svg><div tabindex="0">run</div></svg>'),
+      /unsupported element/,
+    );
+    assert.throws(() => assertSafePreviewSvg("<svg><g></svg></g>"), /malformed/);
+  });
+
   it("rejects active embedded SVG content", () => {
     assert.throws(() => assertSafePreviewSvg("<svg><script>alert(1)</script></svg>"), /active/);
     assert.throws(() => assertSafePreviewSvg("<svg><iframe></iframe></svg>"), /active/);
@@ -157,6 +165,14 @@ describe("preview SVG safety", () => {
     assert.throws(
       () => assertSafePreviewSvg('<svg><style>text { background-image: -webkit-image-set("https://example.com/a.png" 1x); }</style></svg>'),
       /CSS resource/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><style>svg{position:fixed;inset:0;z-index:999999}</style></svg>"),
+      /viewport-escaping CSS/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg('<svg style="position:fixed;inset:0"></svg>'),
+      /viewport-escaping CSS/,
     );
     assert.throws(() => assertSafePreviewSvg('<svg><style>@import "https://example.com/a.css";</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'), /CSS resource/);

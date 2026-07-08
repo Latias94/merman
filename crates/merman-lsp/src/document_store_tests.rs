@@ -288,6 +288,74 @@ fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
 }
 
 #[test]
+fn apply_text_changes_rejects_skipped_versions_for_incremental_ranges() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let snapshot = store
+        .snapshot(&uri)
+        .expect("expected current snapshot before skipped-version edit");
+    assert_eq!(snapshot.version, 1);
+    assert!(store.has_snapshot(&uri));
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        3,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(1, 0), Position::new(1, 1))),
+            range_length: None,
+            text: "C".to_string(),
+        }],
+    );
+
+    assert_eq!(
+        update,
+        TextDocumentUpdate::StaleVersion {
+            current_version: 1,
+            attempted_version: 3,
+        }
+    );
+    let stored = store.get(&uri).expect("expected current document");
+    assert_eq!(stored.version, 1);
+    assert_eq!(stored.text.as_ref(), "flowchart TD\nA-->B\n");
+    assert!(store.has_snapshot(&uri));
+}
+
+#[test]
+fn apply_text_changes_allows_skipped_versions_for_full_replacements() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        4,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected updated document");
+    assert_eq!(stored.version, 4);
+    assert_eq!(stored.text.as_ref(), "sequenceDiagram\nAlice->>Bob: Hi\n");
+}
+
+#[test]
 fn apply_text_changes_rejects_invalid_ranges_without_invalidating_current_state() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();

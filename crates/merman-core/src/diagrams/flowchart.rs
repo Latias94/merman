@@ -98,9 +98,11 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
+    let original_code = code;
     let (code, acc_title, acc_descr) = flowchart_parser_input_and_accessibility(code);
     let ast = parse_flowchart_ast(&code, meta)?;
     let mut facts = editor_facts_from_flowchart_ast(&ast);
+    collect_accessibility_directive_prefixes(original_code, &mut facts);
     collect_expected_syntax_from_tokens(&code, &mut facts);
     let model = parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)?
         .into_compat_json(&meta.diagram_type, &meta.effective_config);
@@ -122,16 +124,19 @@ pub fn parse_flowchart_editor_facts(
     code: &str,
     _meta: &ParseMetadata,
 ) -> Result<EditorSemanticFacts> {
+    let original_code = code;
     let code = mask_flowchart_editor_parse_input(code);
     match flowchart_grammar::FlowchartAstParser::new().parse(Lexer::new(&code)) {
         Ok(ast) => {
             let mut facts = editor_facts_from_flowchart_ast(&ast);
+            collect_accessibility_directive_prefixes(original_code, &mut facts);
             collect_expected_syntax_from_tokens(&code, &mut facts);
             Ok(facts)
         }
         Err(error) => {
             let span = lalrpop_recovery_span(&error, code.len());
             let mut facts = recover_flowchart_editor_facts_from_tokens(&code);
+            collect_accessibility_directive_prefixes(original_code, &mut facts);
             facts.mark_recovered_from_parse_error(
                 format!(
                     "flowchart parser recovered after parse error: {}",
@@ -387,7 +392,7 @@ fn is_accessibility_title_line(trimmed: &str) -> bool {
 }
 
 fn accessibility_description_line_kind(trimmed: &str) -> Option<bool> {
-    for prefix in ["accDescr", "accDescription"] {
+    for prefix in ["accDescription", "accDescr"] {
         let Some(rest) = trimmed.strip_prefix(prefix) else {
             continue;
         };
@@ -974,6 +979,32 @@ fn shape_value_expected_span(code: &str, start: usize, end: usize) -> Option<Sou
         }
     }
 
+    None
+}
+
+fn collect_accessibility_directive_prefixes(code: &str, facts: &mut EditorSemanticFacts) {
+    for line in code.lines() {
+        let trimmed = line.trim_start();
+        if is_accessibility_title_line(trimmed) {
+            facts.push_directive_prefix("accTitle");
+            continue;
+        }
+        if let Some(prefix) = accessibility_description_prefix(trimmed) {
+            facts.push_directive_prefix(prefix);
+        }
+    }
+}
+
+fn accessibility_description_prefix(trimmed: &str) -> Option<&'static str> {
+    for prefix in ["accDescription", "accDescr"] {
+        let Some(rest) = trimmed.strip_prefix(prefix) else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        if rest.starts_with(':') || rest.starts_with('{') {
+            return Some(prefix);
+        }
+    }
     None
 }
 

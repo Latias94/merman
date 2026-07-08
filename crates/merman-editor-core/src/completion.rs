@@ -34,7 +34,7 @@ pub fn completion_for_snapshot(snapshot: &DocumentSnapshot, position: Position) 
     }
 
     if context.offer_direction_items() {
-        items.extend(direction_items(context.prefix_range()));
+        items.extend(direction_items(&context));
     }
 
     if context.offer_directive_items() {
@@ -206,37 +206,56 @@ fn is_directive_helper_prefix(prefix: &str) -> bool {
     )
 }
 
-fn direction_items(range: Option<Range>) -> Vec<CompletionItem> {
-    vec![
-        keyword_completion(
-            "direction TB",
-            "top to bottom",
-            range,
-            None,
-            CompletionDataKind::Direction,
-        ),
-        keyword_completion(
-            "direction BT",
-            "bottom to top",
-            range,
-            None,
-            CompletionDataKind::Direction,
-        ),
-        keyword_completion(
-            "direction LR",
-            "left to right",
-            range,
-            None,
-            CompletionDataKind::Direction,
-        ),
-        keyword_completion(
-            "direction RL",
-            "right to left",
-            range,
-            None,
-            CompletionDataKind::Direction,
-        ),
-    ]
+const FLOW_DIRECTION_VALUES: [(&str, &str); 4] = [
+    ("TB", "top to bottom"),
+    ("BT", "bottom to top"),
+    ("LR", "left to right"),
+    ("RL", "right to left"),
+];
+
+const BLOCK_DIRECTION_VALUES: [(&str, &str); 6] = [
+    ("right", "right"),
+    ("left", "left"),
+    ("up", "up"),
+    ("down", "down"),
+    ("x", "horizontal"),
+    ("y", "vertical"),
+];
+
+fn direction_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
+    if let Some(range) = context.direction_value_range() {
+        let values: &[(&str, &str)] = if context.is_block_diagram() {
+            &BLOCK_DIRECTION_VALUES
+        } else {
+            &FLOW_DIRECTION_VALUES
+        };
+
+        return values
+            .iter()
+            .map(|(value, detail)| {
+                keyword_completion(
+                    value,
+                    detail,
+                    Some(range),
+                    None,
+                    CompletionDataKind::Direction,
+                )
+            })
+            .collect();
+    }
+
+    FLOW_DIRECTION_VALUES
+        .iter()
+        .map(|(value, detail)| {
+            keyword_completion(
+                &format!("direction {value}"),
+                detail,
+                context.prefix_range(),
+                None,
+                CompletionDataKind::Direction,
+            )
+        })
+        .collect()
 }
 
 fn shape_items(context: &CompletionContext<'_>) -> Vec<CompletionItem> {
@@ -775,6 +794,93 @@ mod tests {
                 .map(|item| item.label.as_str())
                 .collect::<Vec<_>>(),
             vec!["A"]
+        );
+    }
+
+    #[test]
+    fn parser_expected_flowchart_direction_edits_only_direction_value() {
+        let mut facts = EditorSemanticFacts::new();
+        let text = "flowchart TD\nsubgraph group\ndirection LR\nend\n";
+        let value_start = text.find("LR").unwrap();
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::DirectionValue,
+            SourceSpan::new(value_start, value_start + "LR".len()),
+        ));
+        let snapshot = snapshot_with_facts(text, Some("flowchart-v2"), facts);
+
+        let completion = completion_for_snapshot(&snapshot, Position::new(2, "direction L".len()));
+
+        let labels = completion
+            .items
+            .iter()
+            .filter(|item| {
+                item.data
+                    .as_ref()
+                    .is_some_and(|data| data.kind == CompletionDataKind::Direction)
+            })
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(labels, vec!["TB", "BT", "LR", "RL"]);
+
+        let item = completion
+            .items
+            .iter()
+            .find(|item| item.label == "LR")
+            .expect("LR direction completion");
+        let edit = item.text_edit.as_ref().expect("direction text edit");
+        assert_eq!(edit.new_text, "LR");
+        assert_eq!(edit.range.start.line, 2);
+        assert_eq!(edit.range.start.character, "direction ".len());
+        assert_eq!(edit.range.end.line, 2);
+        assert_eq!(edit.range.end.character, "direction LR".len());
+    }
+
+    #[test]
+    fn parser_expected_block_arrow_direction_uses_block_values() {
+        let mut facts = EditorSemanticFacts::new();
+        let text = "block\n  blockArrow<[\"&nbsp;\"]>(right)\n";
+        let value_start = text.find("right").unwrap();
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::DirectionValue,
+            SourceSpan::new(value_start, value_start + "right".len()),
+        ));
+        let snapshot = snapshot_with_facts(text, Some("block"), facts);
+
+        let completion = completion_for_snapshot(
+            &snapshot,
+            Position::new(1, "  blockArrow<[\"&nbsp;\"]>(r".len()),
+        );
+
+        let labels = completion
+            .items
+            .iter()
+            .filter(|item| {
+                item.data
+                    .as_ref()
+                    .is_some_and(|data| data.kind == CompletionDataKind::Direction)
+            })
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(labels, vec!["right", "left", "up", "down", "x", "y"]);
+        assert!(!labels.contains(&"LR"));
+        assert!(!labels.contains(&"direction LR"));
+
+        let item = completion
+            .items
+            .iter()
+            .find(|item| item.label == "right")
+            .expect("right direction completion");
+        let edit = item.text_edit.as_ref().expect("direction text edit");
+        assert_eq!(edit.new_text, "right");
+        assert_eq!(edit.range.start.line, 1);
+        assert_eq!(
+            edit.range.start.character,
+            "  blockArrow<[\"&nbsp;\"]>(".len()
+        );
+        assert_eq!(edit.range.end.line, 1);
+        assert_eq!(
+            edit.range.end.character,
+            "  blockArrow<[\"&nbsp;\"]>(right".len()
         );
     }
 

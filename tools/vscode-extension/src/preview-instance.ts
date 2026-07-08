@@ -464,7 +464,7 @@ export class PreviewInstance implements vscode.Disposable {
         await this.exportRendered(message.format, message.sourceKey);
         return;
       case "revealDiagnostic":
-        await revealDiagnosticTarget(parseDiagnosticTarget(message.target));
+        await this.revealCurrentDiagnostic();
         return;
       case "selectSource":
         this.selectSource(message.sourceId);
@@ -590,6 +590,15 @@ export class PreviewInstance implements vscode.Disposable {
     }
     return snapshot;
   }
+
+  private async revealCurrentDiagnostic(): Promise<void> {
+    const snapshot = this.session.snapshot;
+    const target = snapshot?.diagnostics?.firstTarget;
+    if (!snapshot || !target || target.uri !== snapshot.documentUri) {
+      return;
+    }
+    await revealDiagnosticTarget(target);
+  }
 }
 
 function collectPreviewDiagnostics(
@@ -605,27 +614,10 @@ function collectPreviewDiagnostics(
   );
 }
 
-function parseDiagnosticTarget(raw: string): PreviewDiagnosticTarget {
-  const parsed = JSON.parse(raw) as Partial<PreviewDiagnosticTarget>;
-  if (
-    typeof parsed.uri !== "string" ||
-    typeof parsed.startLine !== "number" ||
-    typeof parsed.startCharacter !== "number" ||
-    typeof parsed.endLine !== "number" ||
-    typeof parsed.endCharacter !== "number"
-  ) {
-    throw new Error("Invalid preview diagnostic target");
-  }
-  return {
-    uri: parsed.uri,
-    startLine: parsed.startLine,
-    startCharacter: parsed.startCharacter,
-    endLine: parsed.endLine,
-    endCharacter: parsed.endCharacter,
-  };
-}
-
 async function revealDiagnosticTarget(target: PreviewDiagnosticTarget): Promise<void> {
+  if (!isValidDiagnosticTarget(target)) {
+    return;
+  }
   const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(target.uri));
   const range = new vscode.Range(
     new vscode.Position(target.startLine, target.startCharacter),
@@ -636,4 +628,20 @@ async function revealDiagnosticTarget(target: PreviewDiagnosticTarget): Promise<
     preserveFocus: false,
     selection: range,
   });
+}
+
+function isValidDiagnosticTarget(target: PreviewDiagnosticTarget): boolean {
+  return (
+    typeof target.uri === "string" &&
+    isNonNegativeInteger(target.startLine) &&
+    isNonNegativeInteger(target.startCharacter) &&
+    isNonNegativeInteger(target.endLine) &&
+    isNonNegativeInteger(target.endCharacter) &&
+    (target.startLine < target.endLine ||
+      (target.startLine === target.endLine && target.startCharacter <= target.endCharacter))
+  );
+}
+
+function isNonNegativeInteger(value: number): boolean {
+  return Number.isInteger(value) && value >= 0;
 }

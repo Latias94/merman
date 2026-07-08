@@ -130,6 +130,8 @@ describe("preview html", () => {
     assert.match(script, /post\("setDiagramTheme"/);
     assert.match(script, /post\("setDisplayMode"/);
     assert.match(script, /post\("setLocked"/);
+    assert.match(script, /post\("revealDiagnostic"\)/);
+    assert.doesNotMatch(script, /dataset\.target/);
     assert.match(script, /post\("exportRendered"/);
     assert.match(script, /document\.addEventListener\("pointermove"/);
     assert.doesNotMatch(script, /dataset\.action\) {\n\s+case "theme":/);
