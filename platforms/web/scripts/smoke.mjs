@@ -142,7 +142,7 @@ class FakeMeasureElement {
 }
 
 assert.equal(api.isMermanInitialized(), true);
-assert.equal(Number.isInteger(api.abiVersion()), true);
+assert.equal(api.abiVersion(), 2);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 if (surfaceContract.render) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");

@@ -8,34 +8,44 @@ import { fileURLToPath } from "node:url";
 import { runTests } from "@vscode/test-electron";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const args = parseArgs(process.argv.slice(2));
-const vsixPath = args.vsix ?? findDefaultVsix();
 
-if (!vsixPath) {
-  fail("Missing --vsix <path> and no .vsix file was found in the current directory.");
-}
-if (!fs.existsSync(vsixPath)) {
-  fail(`VSIX not found: ${vsixPath}`);
-}
-
-const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "merman-vsix-smoke-"));
 try {
-  const extensionRoot = path.join(tempRoot, "extension");
-  extractVsixExtension(vsixPath, tempRoot);
-  if (!fs.existsSync(path.join(extensionRoot, "package.json"))) {
-    fail("VSIX did not contain extension/package.json.");
+  await runSmoke();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
+
+async function runSmoke() {
+  const args = parseArgs(process.argv.slice(2));
+  const vsixPath = args.vsix ?? findDefaultVsix();
+
+  if (!vsixPath) {
+    fail("Missing --vsix <path> and no .vsix file was found in the current directory.");
+  }
+  if (!fs.existsSync(vsixPath)) {
+    fail(`VSIX not found: ${vsixPath}`);
   }
 
-  await runTests({
-    extensionDevelopmentPath: extensionRoot,
-    extensionTestsPath: path.join(packageRoot, "dist", "extension-host-smoke.js"),
-    launchArgs: [
-      path.join(packageRoot, "test-fixtures", "extension-host"),
-    ],
-  });
-  console.log(`packaged VSIX smoke passed: ${path.basename(vsixPath)}`);
-} finally {
-  fs.rmSync(tempRoot, { recursive: true, force: true });
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "merman-vsix-smoke-"));
+  try {
+    const extensionRoot = path.join(tempRoot, "extension");
+    extractVsixExtension(vsixPath, tempRoot);
+    if (!fs.existsSync(path.join(extensionRoot, "package.json"))) {
+      fail("VSIX did not contain extension/package.json.");
+    }
+
+    await runTests({
+      extensionDevelopmentPath: extensionRoot,
+      extensionTestsPath: path.join(packageRoot, "dist", "extension-host-smoke.js"),
+      launchArgs: [
+        path.join(packageRoot, "test-fixtures", "extension-host"),
+      ],
+    });
+    console.log(`packaged VSIX smoke passed: ${path.basename(vsixPath)}`);
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
 }
 
 function extractVsixExtension(filePath, destinationRoot) {
@@ -165,6 +175,5 @@ function printUsage() {
 }
 
 function fail(message) {
-  console.error(message);
-  process.exit(1);
+  throw new Error(message);
 }

@@ -568,6 +568,141 @@ async fn lsp_service_smoke_publishes_current_diagnostics_version() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_publishes_sync_error_after_invalid_incremental_range() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::to_value(InitializeParams::default()).unwrap())
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let opened = socket.next().await.expect("expected initial diagnostics");
+    let opened_params: PublishDiagnosticsParams =
+        from_value(opened.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(opened.method(), "textDocument/publishDiagnostics");
+    assert_eq!(opened_params.version, Some(1));
+    assert!(opened_params.diagnostics.is_empty());
+
+    let invalid_change = Request::build("textDocument/didChange")
+        .params(
+            serde_json::to_value(DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: Some(Range {
+                        start: Position::new(0, 100),
+                        end: Position::new(0, 100),
+                    }),
+                    range_length: None,
+                    text: "x".to_string(),
+                }],
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(invalid_change)
+            .await
+            .unwrap(),
+        None
+    );
+
+    let sync_lost = socket
+        .next()
+        .await
+        .expect("expected sync error diagnostics");
+    let sync_lost_params: PublishDiagnosticsParams =
+        from_value(sync_lost.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(sync_lost.method(), "textDocument/publishDiagnostics");
+    assert_eq!(sync_lost_params.uri, uri);
+    assert_eq!(sync_lost_params.version, Some(2));
+    assert_eq!(sync_lost_params.diagnostics.len(), 1);
+    let diagnostic = &sync_lost_params.diagnostics[0];
+    assert_eq!(
+        diagnostic.severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+    );
+    assert_eq!(
+        diagnostic.code,
+        Some(NumberOrString::String(
+            "merman.lsp.document_sync_lost".to_string()
+        ))
+    );
+
+    let replacement = Request::build("textDocument/didChange")
+        .params(
+            serde_json::to_value(DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 3,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                }],
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(replacement)
+            .await
+            .unwrap(),
+        None
+    );
+
+    let recovered = socket.next().await.expect("expected recovered diagnostics");
+    let recovered_params: PublishDiagnosticsParams =
+        from_value(recovered.params().cloned().expect("publish params")).unwrap();
+    assert_eq!(recovered.method(), "textDocument/publishDiagnostics");
+    assert_eq!(recovered_params.uri, uri);
+    assert_eq!(recovered_params.version, Some(3));
+    assert!(recovered_params.diagnostics.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_clears_push_diagnostics_on_close() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();

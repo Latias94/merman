@@ -10,23 +10,40 @@ const surfacesDir = path.join(srcDir, "surfaces");
 const tempSurfacesDir = path.join(srcDir, `.surfaces-${process.pid}-${Date.now()}`);
 const backupSurfacesDir = path.join(srcDir, `.surfaces-backup-${process.pid}-${Date.now()}`);
 
-rmSync(tempSurfacesDir, { recursive: true, force: true });
-mkdirSync(tempSurfacesDir, { recursive: true });
-
-try {
-  for (const surface of surfaces) {
-    run(process.execPath, [
-      "scripts/build-wasm.mjs",
-      "--preset",
-      surface.preset,
-      "--out-dir-rel",
-      surface.pkgDirRel,
-    ]);
-    writeSurfaceEntry(surface, tempSurfacesDir);
-  }
-  replaceSurfacesDir();
-} finally {
+if (isMainModule()) {
+  let exitCode = 0;
   rmSync(tempSurfacesDir, { recursive: true, force: true });
+  mkdirSync(tempSurfacesDir, { recursive: true });
+
+  try {
+    for (const surface of surfaces) {
+      run(process.execPath, [
+        "scripts/build-wasm.mjs",
+        "--preset",
+        surface.preset,
+        "--out-dir-rel",
+        surface.pkgDirRel,
+      ]);
+      writeSurfaceEntry(surface, tempSurfacesDir);
+    }
+    replaceSurfacesDir({
+      surfacesDir,
+      tempSurfacesDir,
+      backupSurfacesDir,
+    });
+  } catch (error) {
+    exitCode =
+      error && typeof error === "object" && "exitCode" in error
+        ? Number(error.exitCode) || 1
+        : 1;
+    console.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    rmSync(tempSurfacesDir, { recursive: true, force: true });
+  }
+
+  if (exitCode !== 0) {
+    process.exit(exitCode);
+  }
 }
 
 function writeSurfaceEntry(surface, targetDir) {
@@ -65,19 +82,24 @@ function normalizeImportPath(relativePath) {
   return relativePath.split(path.sep).join("/");
 }
 
-function replaceSurfacesDir() {
-  if (existsSync(backupSurfacesDir)) {
-    rmSync(backupSurfacesDir, { recursive: true, force: true });
+export function replaceSurfacesDir({
+  surfacesDir,
+  tempSurfacesDir,
+  backupSurfacesDir,
+  fsOps = { existsSync, renameSync, rmSync },
+}) {
+  if (fsOps.existsSync(backupSurfacesDir)) {
+    fsOps.rmSync(backupSurfacesDir, { recursive: true, force: true });
   }
   try {
-    if (existsSync(surfacesDir)) {
-      renameSync(surfacesDir, backupSurfacesDir);
+    if (fsOps.existsSync(surfacesDir)) {
+      fsOps.renameSync(surfacesDir, backupSurfacesDir);
     }
-    renameSync(tempSurfacesDir, surfacesDir);
-    rmSync(backupSurfacesDir, { recursive: true, force: true });
+    fsOps.renameSync(tempSurfacesDir, surfacesDir);
+    fsOps.rmSync(backupSurfacesDir, { recursive: true, force: true });
   } catch (error) {
-    if (!existsSync(surfacesDir) && existsSync(backupSurfacesDir)) {
-      renameSync(backupSurfacesDir, surfacesDir);
+    if (!fsOps.existsSync(surfacesDir) && fsOps.existsSync(backupSurfacesDir)) {
+      fsOps.renameSync(backupSurfacesDir, surfacesDir);
     }
     throw error;
   }
@@ -89,10 +111,18 @@ function run(command, args) {
     stdio: "inherit",
   });
   if (result.error) {
-    console.error(`Failed to run ${command}: ${result.error.message}`);
-    process.exit(1);
+    throw new Error(`Failed to run ${command}: ${result.error.message}`);
   }
   if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+    const error = new Error(`${command} exited with status ${result.status ?? 1}`);
+    error.exitCode = result.status ?? 1;
+    throw error;
   }
+}
+
+function isMainModule() {
+  return (
+    process.argv[1] !== undefined &&
+    path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  );
 }
