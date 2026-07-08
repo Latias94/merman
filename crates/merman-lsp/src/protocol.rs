@@ -192,7 +192,7 @@ fn analysis_options_schema(
                                 "type": "integer",
                                 "minimum": 0,
                                 "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
-                                "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted. Omit to use the LSP default."
+                                "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted. Use 0 or omit the field to use the LSP default."
                             }
                         }
                     },

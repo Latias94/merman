@@ -49,6 +49,7 @@ pub struct StoredDocument {
     pub text: Arc<str>,
     pub kind: DocumentKind,
     pub resource_limit: Option<DocumentResourceLimit>,
+    pub discarded_source: Option<DocumentDiscardedSource>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,10 +58,27 @@ pub struct DocumentResourceLimit {
     pub max_source_bytes: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DocumentDiscardedSource {
+    pub source_len: usize,
+    pub previous_max_source_bytes: usize,
+}
+
 impl StoredDocument {
-    pub fn is_resource_limited(&self) -> bool {
-        self.resource_limit.is_some()
+    pub fn has_unavailable_source(&self) -> bool {
+        self.resource_limit.is_some() || self.discarded_source.is_some()
     }
+}
+
+fn resource_state_source_len_and_previous_limit(
+    document: &StoredDocument,
+) -> Option<(usize, usize)> {
+    if let Some(resource_limit) = document.resource_limit {
+        return Some((resource_limit.source_len, resource_limit.max_source_bytes));
+    }
+    document
+        .discarded_source
+        .map(|discarded| (discarded.source_len, discarded.previous_max_source_bytes))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,6 +145,7 @@ impl DocumentStore {
 
     fn replace_analyzer(&mut self, analyzer: Analyzer) {
         self.analyzer = analyzer;
+        self.reclassify_unavailable_documents_for_current_limit();
         self.advance_snapshot_generation();
         self.advance_diagnostic_generation();
         self.snapshots.clear();
@@ -181,6 +200,7 @@ impl DocumentStore {
             text: Arc::<str>::from(text),
             kind,
             resource_limit: None,
+            discarded_source: None,
         };
         self.upsert_document(uri, document)
     }
@@ -198,6 +218,25 @@ impl DocumentStore {
             text: Arc::<str>::from(""),
             kind,
             resource_limit: Some(resource_limit),
+            discarded_source: None,
+        };
+        self.upsert_document(uri, document)
+    }
+
+    fn upsert_discarded_source(
+        &mut self,
+        uri: Url,
+        version: i32,
+        kind: DocumentKind,
+        discarded_source: DocumentDiscardedSource,
+    ) -> StoredDocument {
+        let document = StoredDocument {
+            uri: uri.clone(),
+            version,
+            text: Arc::<str>::from(""),
+            kind,
+            resource_limit: None,
+            discarded_source: Some(discarded_source),
         };
         self.upsert_document(uri, document)
     }
@@ -224,6 +263,34 @@ impl DocumentStore {
         })
     }
 
+    fn reclassify_unavailable_documents_for_current_limit(&mut self) {
+        let current_limit = self.analyzer.options().max_source_bytes;
+        for record in self.documents.values_mut() {
+            let Some((source_len, previous_max_source_bytes)) =
+                resource_state_source_len_and_previous_limit(&record.document)
+            else {
+                continue;
+            };
+
+            match current_limit {
+                Some(max_source_bytes) if source_len > max_source_bytes => {
+                    record.document.resource_limit = Some(DocumentResourceLimit {
+                        source_len,
+                        max_source_bytes,
+                    });
+                    record.document.discarded_source = None;
+                }
+                _ => {
+                    record.document.resource_limit = None;
+                    record.document.discarded_source = Some(DocumentDiscardedSource {
+                        source_len,
+                        previous_max_source_bytes,
+                    });
+                }
+            }
+        }
+    }
+
     pub fn open_text(
         &mut self,
         uri: Url,
@@ -246,6 +313,7 @@ impl DocumentStore {
         let current_version = current.version;
         let kind = current.kind;
         let resource_limit = current.resource_limit;
+        let discarded_source = current.discarded_source;
         let current_text = current.text.clone();
         let changes = changes.into_iter().collect::<Vec<_>>();
 
@@ -260,12 +328,13 @@ impl DocumentStore {
             return TextDocumentUpdate::EmptyChangeSet;
         }
 
-        if let Some(resource_limit) = resource_limit {
-            return self.apply_resource_limited_text_changes(
+        if resource_limit.is_some() || discarded_source.is_some() {
+            return self.apply_unavailable_source_text_changes(
                 uri,
                 version,
                 kind,
                 resource_limit,
+                discarded_source,
                 changes,
             );
         }
@@ -281,19 +350,30 @@ impl DocumentStore {
         TextDocumentUpdate::Applied
     }
 
-    fn apply_resource_limited_text_changes(
+    fn apply_unavailable_source_text_changes(
         &mut self,
         uri: Url,
         version: i32,
         kind: DocumentKind,
-        resource_limit: DocumentResourceLimit,
+        resource_limit: Option<DocumentResourceLimit>,
+        discarded_source: Option<DocumentDiscardedSource>,
         changes: Vec<TextDocumentContentChangeEvent>,
     ) -> TextDocumentUpdate {
         let mut known_text = None::<String>;
 
         for change in changes {
             if known_text.is_none() && change.range.is_some() {
-                self.upsert_resource_limited(uri, version, kind, resource_limit);
+                match (resource_limit, discarded_source) {
+                    (Some(resource_limit), _) => {
+                        self.upsert_resource_limited(uri, version, kind, resource_limit);
+                    }
+                    (None, Some(discarded_source)) => {
+                        self.upsert_discarded_source(uri, version, kind, discarded_source);
+                    }
+                    (None, None) => {
+                        unreachable!("checked unavailable source before applying edits")
+                    }
+                }
                 return TextDocumentUpdate::Applied;
             }
 
@@ -352,7 +432,7 @@ impl DocumentStore {
 
     pub fn snapshot_build_request(&self, uri: &Url) -> Option<SnapshotBuildRequest> {
         let record = self.documents.get(uri)?;
-        if record.document.is_resource_limited() {
+        if record.document.has_unavailable_source() {
             return None;
         }
         Some(SnapshotBuildRequest {
@@ -491,7 +571,7 @@ impl DocumentStore {
     fn snapshot_eligible_document_count(&self) -> usize {
         self.documents
             .values()
-            .filter(|record| !record.document.is_resource_limited())
+            .filter(|record| !record.document.has_unavailable_source())
             .count()
     }
 

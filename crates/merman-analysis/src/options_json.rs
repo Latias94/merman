@@ -172,6 +172,7 @@ impl AnalysisOptionsJson {
         self.resources
             .as_ref()
             .and_then(|resources| resources.max_source_bytes)
+            .filter(|max_source_bytes| *max_source_bytes > 0)
     }
 
     pub fn rule_config(&self) -> Result<AnalysisRuleConfig, AnalysisOptionsJsonError> {
@@ -532,6 +533,37 @@ mod tests {
         );
         assert!(analysis.rule_config.is_rule_enabled(*prefer_init));
         assert!(analysis.rule_config.is_rule_enabled(*prefer_frontmatter));
+    }
+
+    #[test]
+    fn shared_analysis_options_json_treats_zero_source_limit_as_unset() {
+        let zero = serde_json::json!({
+            "analysis": {
+                "resources": {
+                    "max_source_bytes": 0
+                }
+            }
+        });
+        let positive = serde_json::json!({
+            "analysis": {
+                "resources": {
+                    "max_source_bytes": 1024
+                }
+            }
+        });
+
+        assert_eq!(
+            analysis_options_from_json_value(&zero)
+                .unwrap()
+                .max_source_bytes,
+            None
+        );
+        assert_eq!(
+            analysis_options_from_json_value(&positive)
+                .unwrap()
+                .max_source_bytes,
+            Some(1024)
+        );
     }
 
     #[test]

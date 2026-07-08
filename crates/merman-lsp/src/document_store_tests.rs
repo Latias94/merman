@@ -1,6 +1,6 @@
 use crate::document_store::{
-    DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentResourceLimit, DocumentStore, SemanticTokensState,
-    TextDocumentUpdate, default_lsp_analysis_options,
+    DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiscardedSource, DocumentResourceLimit, DocumentStore,
+    SemanticTokensState, TextDocumentUpdate, default_lsp_analysis_options,
 };
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
@@ -191,6 +191,7 @@ fn upsert_text_limits_oversized_documents_without_retaining_source() {
             max_source_bytes: 8,
         })
     );
+    assert_eq!(document.discarded_source, None);
     assert!(store.snapshot(&uri).is_none());
     let plan = store.workspace_symbol_snapshot_build_plan(8);
     assert!(plan.contexts.is_empty());
@@ -226,6 +227,7 @@ fn full_replacement_recovers_from_resource_limited_document() {
     assert_eq!(stored.version, 2);
     assert_eq!(stored.text.as_ref(), "A-->B\n");
     assert_eq!(stored.resource_limit, None);
+    assert_eq!(stored.discarded_source, None);
 }
 
 #[test]
@@ -258,7 +260,69 @@ fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
             max_source_bytes: 8,
         })
     );
+    assert_eq!(stored.discarded_source, None);
     assert!(store.snapshot(&uri).is_none());
+}
+
+#[test]
+fn resource_limited_documents_update_limit_when_configuration_still_excludes_them() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n".to_string();
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(16)));
+
+    let stored = store.get(&uri).expect("expected limited document");
+    assert_eq!(
+        stored.resource_limit,
+        Some(DocumentResourceLimit {
+            source_len: source.len(),
+            max_source_bytes: 16,
+        })
+    );
+    assert_eq!(stored.discarded_source, None);
+    assert!(store.snapshot(&uri).is_none());
+}
+
+#[test]
+fn resource_limited_documents_become_discarded_when_configuration_would_allow_them() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n".to_string();
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(64)));
+
+    let stored = store.get(&uri).expect("expected discarded document");
+    assert_eq!(stored.resource_limit, None);
+    assert_eq!(
+        stored.discarded_source,
+        Some(DocumentDiscardedSource {
+            source_len: source.len(),
+            previous_max_source_bytes: 8,
+        })
+    );
+    assert!(store.snapshot(&uri).is_none());
+    assert!(store.workspace_symbol_snapshot_contexts_current(&[]));
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: source.clone(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected recovered document");
+    assert_eq!(stored.resource_limit, None);
+    assert_eq!(stored.discarded_source, None);
+    assert_eq!(stored.text.as_ref(), source);
 }
 
 #[test]

@@ -59,6 +59,8 @@ pub use rules::{
     configurable_rule_descriptor, configurable_rule_descriptors, rule_catalog,
     rule_catalog_response, rule_catalog_response_json_bytes, rule_descriptors,
 };
-pub use source_limits::source_limit_diagnostic_for_len;
+pub use source_limits::{
+    source_discarded_after_limit_change_diagnostic, source_limit_diagnostic_for_len,
+};
 pub use source_map::{LineCol, SourceMap, SourceMapError};
 pub use status::AnalysisStatus;

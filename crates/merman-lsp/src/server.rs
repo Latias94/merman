@@ -29,7 +29,7 @@ use crate::structure::{
 use merman_analysis::{
     AnalysisOptions, AnalysisPayload, Analyzer, SourceKind, document::analyze_document,
     options_json::analysis_options_from_json_value, source_descriptor_for_kind,
-    source_limit_diagnostic_for_len,
+    source_discarded_after_limit_change_diagnostic, source_limit_diagnostic_for_len,
 };
 use merman_editor_core::DocumentKind;
 use std::hash::{Hash, Hasher};
@@ -201,6 +201,14 @@ impl MermanLanguageServer {
                 vec![source_limit_diagnostic_for_len(
                     resource_limit.source_len,
                     resource_limit.max_source_bytes,
+                )],
+            )
+        } else if let Some(discarded_source) = document.discarded_source {
+            AnalysisPayload::new(
+                source,
+                vec![source_discarded_after_limit_change_diagnostic(
+                    discarded_source.source_len,
+                    discarded_source.previous_max_source_bytes,
                 )],
             )
         } else {
