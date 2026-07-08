@@ -530,9 +530,9 @@ export function supportedDiagrams(): DiagramType[] {
 
 export function diagramFamilyCapabilities(): DiagramFamilyCapability[] {
   const state = currentMermanRuntimeState(defaultRuntimeState);
-  state.diagramFamilyCapabilitiesCache ??= (
-    getMerman().diagramFamilyCapabilities?.() ?? []
-  ).map(normalizeDiagramFamilyCapability);
+  state.diagramFamilyCapabilitiesCache ??= getMerman()
+    .diagramFamilyCapabilities()
+    .map(normalizeDiagramFamilyCapability);
   return state.diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
 }
 

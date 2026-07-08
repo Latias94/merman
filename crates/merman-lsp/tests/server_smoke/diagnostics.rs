@@ -703,6 +703,189 @@ async fn lsp_service_smoke_publishes_sync_error_after_invalid_incremental_range(
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_pull_reports_sync_error_after_invalid_incremental_range() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": {}
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let invalid_change = Request::build("textDocument/didChange")
+        .params(
+            serde_json::to_value(DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: Some(Range {
+                        start: Position::new(0, 100),
+                        end: Position::new(0, 100),
+                    }),
+                    range_length: None,
+                    text: "x".to_string(),
+                }],
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(invalid_change)
+            .await
+            .unwrap(),
+        None
+    );
+
+    let request = Request::build("textDocument/diagnostic")
+        .params(
+            serde_json::to_value(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                identifier: None,
+                previous_result_id: None,
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("document diagnostic response");
+    let result: DocumentDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("document diagnostic result"),
+    )
+    .unwrap();
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(sync_lost)) = result
+    else {
+        panic!("expected full sync-lost diagnostic report");
+    };
+    assert_eq!(sync_lost.full_document_diagnostic_report.items.len(), 1);
+    let diagnostic = &sync_lost.full_document_diagnostic_report.items[0];
+    assert_eq!(
+        diagnostic.severity,
+        Some(tower_lsp::lsp_types::DiagnosticSeverity::ERROR)
+    );
+    assert_eq!(
+        diagnostic.code,
+        Some(NumberOrString::String(
+            "merman.lsp.document_sync_lost".to_string()
+        ))
+    );
+
+    let replacement = Request::build("textDocument/didChange")
+        .params(
+            serde_json::to_value(DidChangeTextDocumentParams {
+                text_document: VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 3,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                }],
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service
+            .ready()
+            .await
+            .unwrap()
+            .call(replacement)
+            .await
+            .unwrap(),
+        None
+    );
+
+    let request = Request::build("textDocument/diagnostic")
+        .params(
+            serde_json::to_value(DocumentDiagnosticParams {
+                text_document: TextDocumentIdentifier { uri },
+                identifier: None,
+                previous_result_id: None,
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(3)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("recovered document diagnostic response");
+    let result: DocumentDiagnosticReportResult = from_value(
+        response
+            .result()
+            .cloned()
+            .expect("recovered document diagnostic result"),
+    )
+    .unwrap();
+    let DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(recovered)) = result
+    else {
+        panic!("expected recovered full diagnostic report");
+    };
+    assert!(recovered.full_document_diagnostic_report.items.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_clears_push_diagnostics_on_close() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();

@@ -760,7 +760,7 @@ export interface MermanWasmModule {
   asciiCapabilities: () => AsciiCapability[];
   bindingCapabilities: () => BindingCapabilities;
   selectedRegistryProfile: () => string;
-  diagramFamilyCapabilities?: () => DiagramFamilyCapability[];
+  diagramFamilyCapabilities: () => DiagramFamilyCapability[];
   lintRuleCatalog?: () => LintRuleCatalogResponse;
   supportedDiagrams: () => string[];
   supportedHostThemePresets: () => string[];

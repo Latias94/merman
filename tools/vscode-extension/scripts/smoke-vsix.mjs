@@ -9,16 +9,23 @@ import { runTests } from "@vscode/test-electron";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-try {
-  await runSmoke();
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
+if (isMainModule()) {
+  try {
+    await runSmoke();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
 
-async function runSmoke() {
-  const args = parseArgs(process.argv.slice(2));
-  const vsixPath = args.vsix ?? findDefaultVsix();
+export async function runSmoke({
+  argv = process.argv.slice(2),
+  cwd = process.cwd(),
+  tempDir = os.tmpdir(),
+  testRunner = runTests,
+} = {}) {
+  const args = parseArgs(argv);
+  const vsixPath = args.vsix ?? findDefaultVsix(cwd);
 
   if (!vsixPath) {
     fail("Missing --vsix <path> and no .vsix file was found in the current directory.");
@@ -27,7 +34,7 @@ async function runSmoke() {
     fail(`VSIX not found: ${vsixPath}`);
   }
 
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "merman-vsix-smoke-"));
+  const tempRoot = fs.mkdtempSync(path.join(tempDir, "merman-vsix-smoke-"));
   try {
     const extensionRoot = path.join(tempRoot, "extension");
     extractVsixExtension(vsixPath, tempRoot);
@@ -35,7 +42,7 @@ async function runSmoke() {
       fail("VSIX did not contain extension/package.json.");
     }
 
-    await runTests({
+    await testRunner({
       extensionDevelopmentPath: extensionRoot,
       extensionTestsPath: path.join(packageRoot, "dist", "extension-host-smoke.js"),
       launchArgs: [
@@ -165,9 +172,9 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function findDefaultVsix() {
-  const files = fs.readdirSync(process.cwd()).filter((file) => file.endsWith(".vsix"));
-  return files.length === 1 ? files[0] : null;
+function findDefaultVsix(cwd) {
+  const files = fs.readdirSync(cwd).filter((file) => file.endsWith(".vsix"));
+  return files.length === 1 ? path.join(cwd, files[0]) : null;
 }
 
 function printUsage() {
@@ -176,4 +183,11 @@ function printUsage() {
 
 function fail(message) {
   throw new Error(message);
+}
+
+function isMainModule() {
+  return (
+    process.argv[1] !== undefined &&
+    path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  );
 }

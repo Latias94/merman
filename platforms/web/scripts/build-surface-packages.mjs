@@ -89,7 +89,11 @@ export function replaceSurfacesDir({
   fsOps = { existsSync, renameSync, rmSync },
 }) {
   if (fsOps.existsSync(backupSurfacesDir)) {
-    fsOps.rmSync(backupSurfacesDir, { recursive: true, force: true });
+    if (fsOps.existsSync(surfacesDir)) {
+      fsOps.rmSync(backupSurfacesDir, { recursive: true, force: true });
+    } else {
+      fsOps.renameSync(backupSurfacesDir, surfacesDir);
+    }
   }
   try {
     if (fsOps.existsSync(surfacesDir)) {

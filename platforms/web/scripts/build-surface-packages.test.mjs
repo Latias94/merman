@@ -54,4 +54,44 @@ describe("surface package generation", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("restores stale backup before replacing surfaces", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-surfaces-"));
+    try {
+      const srcDir = path.join(root, "src");
+      const surfacesDir = path.join(srcDir, "surfaces");
+      const tempSurfacesDir = path.join(srcDir, ".surfaces-temp");
+      const backupSurfacesDir = path.join(srcDir, ".surfaces-backup");
+      mkdirSync(tempSurfacesDir, { recursive: true });
+      mkdirSync(backupSurfacesDir, { recursive: true });
+      writeFileSync(path.join(tempSurfacesDir, "core.ts"), "generated");
+      writeFileSync(path.join(backupSurfacesDir, "core.ts"), "backup");
+
+      const fsOps = {
+        existsSync,
+        rmSync,
+        renameSync(source, target) {
+          if (source === tempSurfacesDir && target === surfacesDir) {
+            throw new Error("simulated final rename failure");
+          }
+          renameSync(source, target);
+        },
+      };
+
+      assert.throws(
+        () =>
+          replaceSurfacesDir({
+            surfacesDir,
+            tempSurfacesDir,
+            backupSurfacesDir,
+            fsOps,
+          }),
+        /simulated final rename failure/,
+      );
+      assert.equal(readFileSync(path.join(surfacesDir, "core.ts"), "utf8"), "backup");
+      assert.equal(existsSync(backupSurfacesDir), false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

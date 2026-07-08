@@ -377,6 +377,7 @@ impl DocumentStore {
             );
         }
 
+        let changes = changes_from_last_full_replacement(changes);
         let mut text = current_text.to_string();
         for change in changes {
             if !apply_text_content_change(&mut text, change) {
@@ -404,27 +405,26 @@ impl DocumentStore {
         sync_error: Option<DocumentSyncError>,
         changes: Vec<TextDocumentContentChangeEvent>,
     ) -> TextDocumentUpdate {
+        let Some(recovery_start) = changes.iter().rposition(|change| change.range.is_none()) else {
+            match (resource_limit, discarded_source, sync_error) {
+                (Some(resource_limit), _, _) => {
+                    self.upsert_resource_limited(uri, version, kind, resource_limit);
+                }
+                (None, Some(discarded_source), _) => {
+                    self.upsert_discarded_source(uri, version, kind, discarded_source);
+                }
+                (None, None, Some(sync_error)) => {
+                    self.upsert_sync_error(uri, version, kind, sync_error);
+                }
+                (None, None, None) => {
+                    unreachable!("checked unavailable source before applying edits")
+                }
+            }
+            return TextDocumentUpdate::Applied;
+        };
         let mut known_text = None::<String>;
 
-        for change in changes {
-            if known_text.is_none() && change.range.is_some() {
-                match (resource_limit, discarded_source, sync_error) {
-                    (Some(resource_limit), _, _) => {
-                        self.upsert_resource_limited(uri, version, kind, resource_limit);
-                    }
-                    (None, Some(discarded_source), _) => {
-                        self.upsert_discarded_source(uri, version, kind, discarded_source);
-                    }
-                    (None, None, Some(sync_error)) => {
-                        self.upsert_sync_error(uri, version, kind, sync_error);
-                    }
-                    (None, None, None) => {
-                        unreachable!("checked unavailable source before applying edits")
-                    }
-                }
-                return TextDocumentUpdate::Applied;
-            }
-
+        for change in changes.into_iter().skip(recovery_start) {
             match known_text.as_mut() {
                 Some(text) => {
                     if !apply_text_content_change(text, change) {
@@ -890,6 +890,15 @@ fn apply_text_content_change(text: &mut String, change: TextDocumentContentChang
         text.push_str(&change.text);
     }
     true
+}
+
+fn changes_from_last_full_replacement(
+    changes: Vec<TextDocumentContentChangeEvent>,
+) -> Vec<TextDocumentContentChangeEvent> {
+    let Some(recovery_start) = changes.iter().rposition(|change| change.range.is_none()) else {
+        return changes;
+    };
+    changes.into_iter().skip(recovery_start).collect()
 }
 
 fn lsp_range_to_byte_range(text: &str, range: Range) -> Option<ByteRange<usize>> {

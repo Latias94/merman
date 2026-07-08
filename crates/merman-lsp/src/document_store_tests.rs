@@ -690,6 +690,91 @@ fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
 }
 
 #[test]
+fn full_replacement_later_in_unsynced_batch_recovers_document() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(
+        store.apply_text_changes(
+            uri.clone(),
+            2,
+            [TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
+                range_length: None,
+                text: "bad".to_string(),
+            }],
+        ),
+        TextDocumentUpdate::InvalidRange
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        3,
+        [
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(0, 0), Position::new(0, 1))),
+                range_length: None,
+                text: "ignored".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected recovered document");
+    assert_eq!(stored.version, 3);
+    assert_eq!(stored.text.as_ref(), "sequenceDiagram\nAlice->>Bob: Hi\n");
+    assert_eq!(stored.sync_error, None);
+}
+
+#[test]
+fn full_replacement_later_in_available_batch_ignores_prior_invalid_ranges() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
+                range_length: None,
+                text: "bad".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected replaced document");
+    assert_eq!(stored.version, 2);
+    assert_eq!(stored.text.as_ref(), "sequenceDiagram\nAlice->>Bob: Hi\n");
+    assert_eq!(stored.sync_error, None);
+}
+
+#[test]
 fn stale_snapshot_build_request_is_not_committed_after_text_replacement() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
