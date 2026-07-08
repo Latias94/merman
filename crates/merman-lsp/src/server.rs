@@ -4,7 +4,8 @@ use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::{
     AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentStore,
     SemanticTokensState, SnapshotContext, StoredDocument, TextDocumentUpdate,
-    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
+    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE, analysis_options_with_lsp_resource_defaults,
+    default_lsp_analysis_options,
 };
 use crate::protocol::{
     CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
@@ -26,8 +27,9 @@ use crate::structure::{
     workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
-    AnalysisOptions, Analyzer, SourceKind, document::analyze_document,
+    AnalysisOptions, AnalysisPayload, Analyzer, SourceKind, document::analyze_document,
     options_json::analysis_options_from_json_value, source_descriptor_for_kind,
+    source_limit_diagnostic_for_len,
 };
 use merman_editor_core::DocumentKind;
 use std::hash::{Hash, Hasher};
@@ -193,7 +195,17 @@ impl MermanLanguageServer {
         analyzer: &Analyzer,
     ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
         let source = source_descriptor_for_document(&document.uri, document.kind);
-        let payload = analyze_document(document.text.as_ref(), analyzer, source);
+        let payload = if let Some(resource_limit) = document.resource_limit {
+            AnalysisPayload::new(
+                source,
+                vec![source_limit_diagnostic_for_len(
+                    resource_limit.source_len,
+                    resource_limit.max_source_bytes,
+                )],
+            )
+        } else {
+            analyze_document(document.text.as_ref(), analyzer, source)
+        };
         analysis_payload_to_versioned_diagnostics(&payload, &document.uri, document.version)
     }
 
@@ -429,12 +441,15 @@ impl MermanLanguageServer {
     ) -> tower_lsp::jsonrpc::Result<()> {
         match initialization_options {
             None => {
-                self.replace_analyzer(AnalysisOptions::default()).await;
+                self.replace_analyzer(default_lsp_analysis_options()).await;
                 Ok(())
             }
             Some(value) => {
-                let options = analysis_options_from_json_value(&value)
-                    .map_err(|err| tower_lsp::jsonrpc::Error::invalid_params(err.to_string()))?;
+                let options = analysis_options_with_lsp_resource_defaults(
+                    analysis_options_from_json_value(&value).map_err(|err| {
+                        tower_lsp::jsonrpc::Error::invalid_params(err.to_string())
+                    })?,
+                );
                 self.replace_analyzer(options).await;
                 Ok(())
             }
@@ -538,10 +553,10 @@ impl LanguageServer for MermanLanguageServer {
         params: tower_lsp::lsp_types::DidChangeConfigurationParams,
     ) {
         let options = if params.settings.is_null() {
-            AnalysisOptions::default()
+            default_lsp_analysis_options()
         } else {
             match analysis_options_from_json_value(&params.settings) {
-                Ok(options) => options,
+                Ok(options) => analysis_options_with_lsp_resource_defaults(options),
                 Err(err) => {
                     self.client
                         .log_message(

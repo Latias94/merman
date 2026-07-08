@@ -10,8 +10,8 @@ use crate::structure::{
     selection_ranges,
 };
 use merman_analysis::{
-    AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, DiagnosticCategory, DiagnosticFix,
-    DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
+    AnalysisDiagnostic, AnalysisOptions, AnalysisRuleConfig, Analyzer, DiagnosticCategory,
+    DiagnosticFix, DiagnosticFixEdit, DiagnosticSeverity, SourceMap,
 };
 use merman_core::ParseOptions;
 use merman_editor_core::DocumentKind;
@@ -134,6 +134,48 @@ fn analyzer_configuration_change_classifies_unchanged_options() {
 }
 
 #[test]
+fn diagnostics_for_resource_limited_documents_emit_resource_limit_with_document_version() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    let document = store.open_text(
+        uri.clone(),
+        5,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let analyzer =
+        Analyzer::with_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(&document, &analyzer);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code,
+        Some(NumberOrString::String(
+            "merman.resource.source_bytes_exceeded".to_string()
+        ))
+    );
+    assert!(
+        diagnostics[0]
+            .message
+            .contains("exceeding max_source_bytes 8")
+    );
+    assert_eq!(
+        diagnostics[0].range,
+        Range::new(Position::new(0, 0), Position::new(0, 0))
+    );
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("documentVersion")),
+        Some(&serde_json::json!(5))
+    );
+}
+
+#[test]
 fn capabilities_advertise_completion_and_incremental_sync() {
     let capabilities = MermanLanguageServer::capabilities();
 
@@ -228,6 +270,7 @@ fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
         version: 7,
         text: "before\n```mermaid\nflowchart TD\nA[unterminated\n```\nafter\n".into(),
         kind: DocumentKind::Markdown,
+        resource_limit: None,
     };
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,

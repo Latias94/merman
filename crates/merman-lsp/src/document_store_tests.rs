@@ -1,4 +1,7 @@
-use crate::document_store::{DocumentStore, SemanticTokensState, TextDocumentUpdate};
+use crate::document_store::{
+    DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentResourceLimit, DocumentStore, SemanticTokensState,
+    TextDocumentUpdate, default_lsp_analysis_options,
+};
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
     FenceTextIndexSource,
@@ -30,6 +33,16 @@ fn plain_mermaid_documents_create_single_snapshot_fence() {
         snapshot.fences[0]
             .text_index
             .has_directive_prefix("classDef")
+    );
+}
+
+#[test]
+fn new_store_uses_lsp_default_source_limit() {
+    let store = DocumentStore::new();
+
+    assert_eq!(
+        store.analyzer_options().max_source_bytes,
+        Some(DEFAULT_LSP_MAX_SOURCE_BYTES)
     );
 }
 
@@ -158,6 +171,94 @@ fn upsert_text_defers_snapshot_until_requested() {
         snapshot.fences[0].diagram_type.as_deref(),
         Some("flowchart-v2")
     );
+}
+
+#[test]
+fn upsert_text_limits_oversized_documents_without_retaining_source() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n".to_string();
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    let document = store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
+
+    assert_eq!(document.version, 1);
+    assert_eq!(document.text.as_ref(), "");
+    assert_eq!(
+        document.resource_limit,
+        Some(DocumentResourceLimit {
+            source_len: source.len(),
+            max_source_bytes: 8,
+        })
+    );
+    assert!(store.snapshot(&uri).is_none());
+    let plan = store.workspace_symbol_snapshot_build_plan(8);
+    assert!(plan.contexts.is_empty());
+    assert!(plan.batches.is_empty());
+    assert!(store.workspace_symbol_snapshot_contexts_current(&[]));
+}
+
+#[test]
+fn full_replacement_recovers_from_resource_limited_document() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "A-->B\n".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected recovered document");
+    assert_eq!(stored.version, 2);
+    assert_eq!(stored.text.as_ref(), "A-->B\n");
+    assert_eq!(stored.resource_limit, None);
+}
+
+#[test]
+fn ranged_changes_on_resource_limited_documents_keep_lightweight_state() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/large.mmd").unwrap();
+    let source = "flowchart TD\nA-->B\n".to_string();
+
+    store.apply_analyzer_options(AnalysisOptions::default().with_max_source_bytes(Some(8)));
+    store.open_text(uri.clone(), 1, source.clone(), DocumentKind::Diagram);
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(1, 0), Position::new(1, 1))),
+            range_length: None,
+            text: "C".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected limited document");
+    assert_eq!(stored.version, 2);
+    assert_eq!(stored.text.as_ref(), "");
+    assert_eq!(
+        stored.resource_limit,
+        Some(DocumentResourceLimit {
+            source_len: source.len(),
+            max_source_bytes: 8,
+        })
+    );
+    assert!(store.snapshot(&uri).is_none());
 }
 
 #[test]
@@ -603,7 +704,7 @@ fn unchanged_analyzer_update_preserves_context_generations_snapshots_and_tokens(
     ));
 
     assert_eq!(
-        store.apply_analyzer_options(AnalysisOptions::default()),
+        store.apply_analyzer_options(default_lsp_analysis_options()),
         crate::document_store::AnalyzerConfigurationChange::Unchanged
     );
 
@@ -641,7 +742,7 @@ fn diagnostic_only_analyzer_update_stales_diagnostics_but_preserves_snapshots_an
     ));
 
     store.apply_analyzer_options(
-        AnalysisOptions::default().with_rule_config(
+        default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
         ),
@@ -880,7 +981,7 @@ fn diagnostic_only_analyzer_update_preserves_cached_snapshot_and_tokens() {
     ));
 
     store.apply_analyzer_options(
-        AnalysisOptions::default().with_rule_config(
+        default_lsp_analysis_options().with_rule_config(
             AnalysisRuleConfig::default()
                 .with_rule_severity("merman.parse.no_diagram", DiagnosticSeverity::Hint),
         ),

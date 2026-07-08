@@ -30,9 +30,36 @@ pub(crate) fn source_limit_diagnostics(
 }
 
 fn source_limit_diagnostic(source: &str, limit: usize) -> AnalysisDiagnostic {
-    let source_len = source.len();
-    let message = format!("source is {source_len} bytes, exceeding max_source_bytes {limit}");
     let span = crate::source_map::whole_text_span_without_source_copy(source);
+    source_limit_diagnostic_for_len_and_span(source.len(), limit, span)
+}
+
+pub fn source_limit_diagnostic_for_len(source_len: usize, limit: usize) -> AnalysisDiagnostic {
+    let span = crate::DiagnosticSpan::new(
+        0,
+        0,
+        1,
+        1,
+        1,
+        1,
+        crate::Utf16Position {
+            line: 0,
+            character: 0,
+        },
+        crate::Utf16Position {
+            line: 0,
+            character: 0,
+        },
+    );
+    source_limit_diagnostic_for_len_and_span(source_len, limit, span)
+}
+
+fn source_limit_diagnostic_for_len_and_span(
+    source_len: usize,
+    limit: usize,
+    span: crate::DiagnosticSpan,
+) -> AnalysisDiagnostic {
+    let message = format!("source is {source_len} bytes, exceeding max_source_bytes {limit}");
     let Some(descriptor) = rule_descriptor(RESOURCE_LIMIT_RULE_ID) else {
         return internal_rule_registry_gap_diagnostic(
             format!(

@@ -9,6 +9,20 @@ use tower_lsp::lsp_types::{
 };
 
 pub const WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE: usize = 8;
+pub(crate) const DEFAULT_LSP_MAX_SOURCE_BYTES: usize = 4 * 1024 * 1024;
+
+pub(crate) fn default_lsp_analysis_options() -> AnalysisOptions {
+    AnalysisOptions::default().with_max_source_bytes(Some(DEFAULT_LSP_MAX_SOURCE_BYTES))
+}
+
+pub(crate) fn analysis_options_with_lsp_resource_defaults(
+    mut options: AnalysisOptions,
+) -> AnalysisOptions {
+    if options.max_source_bytes.is_none() {
+        options.max_source_bytes = Some(DEFAULT_LSP_MAX_SOURCE_BYTES);
+    }
+    options
+}
 
 #[derive(Debug)]
 pub struct DocumentStore {
@@ -34,6 +48,19 @@ pub struct StoredDocument {
     pub version: i32,
     pub text: Arc<str>,
     pub kind: DocumentKind,
+    pub resource_limit: Option<DocumentResourceLimit>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DocumentResourceLimit {
+    pub source_len: usize,
+    pub max_source_bytes: usize,
+}
+
+impl StoredDocument {
+    pub fn is_resource_limited(&self) -> bool {
+        self.resource_limit.is_some()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,7 +89,7 @@ impl SemanticTokensState {
 
 impl DocumentStore {
     pub fn new() -> Self {
-        let analyzer = Analyzer::new();
+        let analyzer = Analyzer::with_options(default_lsp_analysis_options());
         Self {
             analyzer,
             snapshot_generation: SnapshotGeneration::default(),
@@ -144,12 +171,38 @@ impl DocumentStore {
         text: String,
         kind: DocumentKind,
     ) -> StoredDocument {
+        if let Some(resource_limit) = self.resource_limit_for_source_len(text.len()) {
+            return self.upsert_resource_limited(uri, version, kind, resource_limit);
+        }
+
         let document = StoredDocument {
             uri: uri.clone(),
             version,
             text: Arc::<str>::from(text),
             kind,
+            resource_limit: None,
         };
+        self.upsert_document(uri, document)
+    }
+
+    fn upsert_resource_limited(
+        &mut self,
+        uri: Url,
+        version: i32,
+        kind: DocumentKind,
+        resource_limit: DocumentResourceLimit,
+    ) -> StoredDocument {
+        let document = StoredDocument {
+            uri: uri.clone(),
+            version,
+            text: Arc::<str>::from(""),
+            kind,
+            resource_limit: Some(resource_limit),
+        };
+        self.upsert_document(uri, document)
+    }
+
+    fn upsert_document(&mut self, uri: Url, document: StoredDocument) -> StoredDocument {
         self.snapshots.remove(&uri);
         self.diagnostic_state.remove(&uri);
         let epoch = self.next_document_epoch();
@@ -161,6 +214,14 @@ impl DocumentStore {
             },
         );
         document
+    }
+
+    fn resource_limit_for_source_len(&self, source_len: usize) -> Option<DocumentResourceLimit> {
+        let max_source_bytes = self.analyzer.options().max_source_bytes?;
+        (source_len > max_source_bytes).then_some(DocumentResourceLimit {
+            source_len,
+            max_source_bytes,
+        })
     }
 
     pub fn open_text(
@@ -184,7 +245,8 @@ impl DocumentStore {
         };
         let current_version = current.version;
         let kind = current.kind;
-        let mut text = current.text.to_string();
+        let resource_limit = current.resource_limit;
+        let current_text = current.text.clone();
         let changes = changes.into_iter().collect::<Vec<_>>();
 
         if version <= current_version {
@@ -198,12 +260,56 @@ impl DocumentStore {
             return TextDocumentUpdate::EmptyChangeSet;
         }
 
+        if let Some(resource_limit) = resource_limit {
+            return self.apply_resource_limited_text_changes(
+                uri,
+                version,
+                kind,
+                resource_limit,
+                changes,
+            );
+        }
+
+        let mut text = current_text.to_string();
         for change in changes {
             if !apply_text_content_change(&mut text, change) {
                 return TextDocumentUpdate::InvalidRange;
             }
         }
 
+        self.upsert_text(uri, version, text, kind);
+        TextDocumentUpdate::Applied
+    }
+
+    fn apply_resource_limited_text_changes(
+        &mut self,
+        uri: Url,
+        version: i32,
+        kind: DocumentKind,
+        resource_limit: DocumentResourceLimit,
+        changes: Vec<TextDocumentContentChangeEvent>,
+    ) -> TextDocumentUpdate {
+        let mut known_text = None::<String>;
+
+        for change in changes {
+            if known_text.is_none() && change.range.is_some() {
+                self.upsert_resource_limited(uri, version, kind, resource_limit);
+                return TextDocumentUpdate::Applied;
+            }
+
+            match known_text.as_mut() {
+                Some(text) => {
+                    if !apply_text_content_change(text, change) {
+                        return TextDocumentUpdate::InvalidRange;
+                    }
+                }
+                None => known_text = Some(change.text),
+            }
+        }
+
+        let Some(text) = known_text else {
+            return TextDocumentUpdate::EmptyChangeSet;
+        };
         self.upsert_text(uri, version, text, kind);
         TextDocumentUpdate::Applied
     }
@@ -218,6 +324,11 @@ impl DocumentStore {
 
     pub fn get(&self, uri: &Url) -> Option<&StoredDocument> {
         self.documents.get(uri).map(|record| &record.document)
+    }
+
+    #[cfg(test)]
+    pub fn analyzer_options(&self) -> &AnalysisOptions {
+        self.analyzer.options()
     }
 
     #[cfg(test)]
@@ -241,6 +352,9 @@ impl DocumentStore {
 
     pub fn snapshot_build_request(&self, uri: &Url) -> Option<SnapshotBuildRequest> {
         let record = self.documents.get(uri)?;
+        if record.document.is_resource_limited() {
+            return None;
+        }
         Some(SnapshotBuildRequest {
             document: record.document.clone(),
             analyzer: self.analyzer.clone(),
@@ -370,7 +484,15 @@ impl DocumentStore {
     }
 
     pub fn workspace_symbol_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
-        contexts.len() == self.documents.len() && self.is_snapshot_contexts_current(contexts)
+        contexts.len() == self.snapshot_eligible_document_count()
+            && self.is_snapshot_contexts_current(contexts)
+    }
+
+    fn snapshot_eligible_document_count(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|record| !record.document.is_resource_limited())
+            .count()
     }
 
     pub fn snapshot_contexts_for_requests(

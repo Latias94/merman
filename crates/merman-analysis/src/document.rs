@@ -507,16 +507,20 @@ fn markdown_fence_opening(line: &str) -> Option<MarkdownFenceOpening> {
         });
     }
 
-    let language_len = "mermaid".len();
-    if rest.len() < language_len {
+    let language = "mermaid";
+    let language_len = language.len();
+    if !rest
+        .as_bytes()
+        .get(..language_len)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(language.as_bytes()))
+    {
         return Some(MarkdownFenceOpening {
             delimiter: FenceDelimiter::new(marker, len),
             is_mermaid: false,
         });
     }
-    let (language, tail) = rest.split_at(language_len);
-    let is_mermaid = language.eq_ignore_ascii_case("mermaid")
-        && (tail.is_empty() || tail.starts_with(char::is_whitespace));
+    let tail = &rest[language_len..];
+    let is_mermaid = tail.is_empty() || tail.starts_with(char::is_whitespace);
     Some(MarkdownFenceOpening {
         delimiter: FenceDelimiter::new(marker, len),
         is_mermaid,
@@ -731,6 +735,14 @@ mod tests {
     fn markdown_document_source_rejects_mermaid_prefix_without_language_boundary() {
         let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
         let document = DocumentSource::new("```mermaidx\nflowchart LR\n```\n", source);
+
+        assert!(document.diagrams().is_empty());
+    }
+
+    #[test]
+    fn markdown_document_source_ignores_unicode_info_strings_without_panicking() {
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
+        let document = DocumentSource::new("```💡💡\nflowchart LR\n```\n", source);
 
         assert!(document.diagrams().is_empty());
     }

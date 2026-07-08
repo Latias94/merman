@@ -1,3 +1,4 @@
+use crate::document_store::DEFAULT_LSP_MAX_SOURCE_BYTES;
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
 use merman_editor_core::{
@@ -190,7 +191,8 @@ fn analysis_options_schema(
                             "max_source_bytes": {
                                 "type": "integer",
                                 "minimum": 0,
-                                "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted."
+                                "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
+                                "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted. Omit to use the LSP default."
                             }
                         }
                     },
@@ -363,6 +365,11 @@ mod tests {
         assert_eq!(
             response.schema["$defs"]["severity"]["enum"],
             json!(["error", "warning", "info", "hint"])
+        );
+        assert_eq!(
+            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["max_source_bytes"]
+                ["default"],
+            json!(DEFAULT_LSP_MAX_SOURCE_BYTES)
         );
         assert_eq!(
             response.schema["allOf"][0],

@@ -196,7 +196,7 @@
           "merman.analysis.resources.max_source_bytes": {
             "type": "integer",
             "default": 0,
-            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `0` means unset.",
+            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `0` uses the server default.",
             "scope": "resource",
             "minimum": 0,
             "order": 50
