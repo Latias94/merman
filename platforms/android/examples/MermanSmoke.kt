@@ -241,11 +241,17 @@ private fun flowchartNodeWidth(layoutJson: String, nodeId: String): Double {
         "FlowchartV2 nodes section not found"
     }
     val nodesSection = layoutSection.substring(nodesStart, edgesStart)
-    val nodePattern = Regex("""\{[^{}]*"id"\s*:\s*"$nodeId"[^{}]*}""")
-    val node = nodePattern.find(nodesSection)?.value
-    check(node != null) {
+    val idPattern = Regex(""""id"\s*:\s*"${Regex.escape(nodeId)}"""")
+    val idMatch = idPattern.find(nodesSection)
+    check(idMatch != null) {
         "FlowchartV2 node not found: $nodeId"
     }
+    val nodeStart = nodesSection.lastIndexOf('{', startIndex = idMatch.range.first)
+    val nodeEnd = nodesSection.indexOf('}', startIndex = idMatch.range.last)
+    check(nodeStart >= 0 && nodeEnd > nodeStart) {
+        "FlowchartV2 node object not found: $nodeId"
+    }
+    val node = nodesSection.substring(nodeStart, nodeEnd + 1)
     val widthPattern = Regex(""""width"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)""")
     val width = widthPattern.find(node)?.groupValues?.get(1)?.toDoubleOrNull()
     check(width != null) {
