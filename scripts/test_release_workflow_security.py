@@ -426,9 +426,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         preflight_job = indented_block(text, "preflight:")
         publish_job = indented_block(text, "publish:")
         preflight_step = indented_block(text, "- name: Preflight crates in dependency order")
-        dry_run_step = indented_block(text, "- name: Dry-run crates in dependency order")
         upload_step = indented_block(text, "- name: Upload crates to crates.io")
-        dry_run_run = dry_run_step.split("run: |", 1)[1]
         upload_run = upload_step.split("run: |", 1)[1]
 
         self.assertNotIn("--dry-run", preflight_step)
@@ -441,23 +439,27 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", publish_job)
         self.assertNotIn("ref: ${{ needs.validate-inputs.outputs.source_ref }}", publish_job)
         self.assertIn("Verify pinned source commit", publish_job)
-        self.assertIn("--dry-run", dry_run_run)
-        self.assertIn('cargo publish -p "$crate" --locked --dry-run --registry crates-io', dry_run_run)
-        self.assertNotIn("CARGO_REGISTRY_TOKEN", dry_run_step)
-        self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", dry_run_step)
-        self.assertNotIn("${{ secrets.", dry_run_step)
-        self.assertIn('verify_workspace_crate_version "$crate" "$crate_version"', dry_run_run)
-        self.assertIn('actual_version="$(workspace_crate_version "$crate")"', dry_run_run)
         self.assertIn(
             "CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}",
             upload_step,
         )
+        self.assertIn(
+            'env -u CARGO_REGISTRY_TOKEN cargo publish -p "$crate" --locked --dry-run --registry crates-io',
+            upload_run,
+        )
         self.assertIn('--token "$CARGO_REGISTRY_TOKEN"', upload_run)
         self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", upload_run)
         self.assertNotIn("${{ secrets.", upload_run)
-        self.assertNotIn("--dry-run", upload_run)
         self.assertIn('verify_workspace_crate_version "$crate" "$crate_version"', upload_run)
         self.assertIn('actual_version="$(workspace_crate_version "$crate")"', upload_run)
+        self.assertLess(
+            upload_run.index(
+                'env -u CARGO_REGISTRY_TOKEN cargo publish -p "$crate" --locked --dry-run --registry crates-io'
+            ),
+            upload_run.index(
+                'cargo publish -p "$crate" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"'
+            ),
+        )
         self.assertGreaterEqual(
             upload_run.count('wait_for_crate_version "$crate" "$crate_version"'),
             2,

@@ -47,8 +47,9 @@ recommendations remain opt-in through `recommended` or explicit rule enablement.
 
 ## Analysis And Validation
 
-`validate` is the current compatibility method. It returns the legacy validation payload with
-top-level `valid`, `error`, `message`, `code`, and `code_name` fields.
+`validate` is the current compatibility method. It returns the typed
+`MermanValidationResult` record with top-level `valid`, `error`, `code`, and `code_name` fields.
+Binding failures use `MermanError`, which carries `code`, `code_name`, and `message`.
 
 ADR 0070 makes diagnostics-first analysis the canonical method for linting, CI, editor integrations,
 and future LSP adapters. UniFFI exposes it as JSON rather than inventing a UniFFI-only diagnostic

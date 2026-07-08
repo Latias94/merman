@@ -567,14 +567,21 @@ fn repeated_marker_len(bytes: &[u8], marker: u8) -> usize {
 fn trim_line_ending(line: &str) -> &str {
     line.strip_suffix('\n')
         .map(|line| line.strip_suffix('\r').unwrap_or(line))
-        .unwrap_or(line)
+        .unwrap_or_else(|| line.strip_suffix('\r').unwrap_or(line))
 }
 
 fn next_line_end(source: &str, start: usize) -> usize {
-    match source[start..].find('\n') {
-        Some(relative) => start + relative + 1,
-        None => source.len(),
+    let bytes = source.as_bytes();
+    let mut index = start;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\n' => return index + 1,
+            b'\r' if bytes.get(index + 1) == Some(&b'\n') => return index + 2,
+            b'\r' => return index + 1,
+            _ => index += 1,
+        }
     }
+    source.len()
 }
 
 #[cfg(test)]
@@ -646,6 +653,34 @@ mod tests {
         );
         assert!(document.diagrams()[0].text.contains("flowchart LR"));
         assert!(document.diagrams()[1].text.contains("sequenceDiagram"));
+    }
+
+    #[test]
+    fn markdown_document_source_extracts_bare_cr_fences() {
+        let source = "before\r```mermaid\rflowchart LR\rA-->B\r```\rafter";
+        let document = DocumentSource::new(
+            source,
+            source_descriptor_for_markdown_path(Some("file:///tmp/example.md")),
+        );
+
+        assert_eq!(document.diagrams().len(), 1);
+        let diagram = &document.diagrams()[0];
+        assert_eq!(diagram.text.as_str(), "flowchart LR\rA-->B\r");
+
+        let local_map = SourceMap::new(diagram.text.as_str());
+        let start = local_map.source().find('A').unwrap();
+        let end = start + 1;
+        let diagnostic = AnalysisDiagnostic::error(
+            "merman.parse.diagram_parse",
+            DiagnosticCategory::Parse,
+            "boom",
+        )
+        .with_span(local_map.span(start, end).unwrap());
+
+        let remapped = document.remap_diagnostic_to_document(diagram, diagnostic);
+        let span = remapped.span.unwrap();
+        assert_eq!(&source[span.byte_start..span.byte_end], "A");
+        assert_eq!(span.line, 4);
     }
 
     #[test]
