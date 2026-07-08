@@ -2,7 +2,8 @@ use super::MermanLanguageServer;
 use super::stale_diagnostic_recompute_error;
 use crate::diagnostics::analysis_diagnostic_to_versioned_lsp;
 use crate::document_store::{
-    DocumentDiagnosticState, DocumentStore, StoredDocument, WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
+    DocumentDiagnosticState, DocumentStore, DocumentSyncError, StoredDocument,
+    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
 };
 use crate::protocol::{CONFIG_SCHEMA_METHOD, RULE_CATALOG_METHOD, RULE_CATALOG_RESPONSE_VERSION};
 use crate::structure::{
@@ -219,6 +220,41 @@ fn diagnostics_for_discarded_documents_request_full_resync_after_limit_increase(
 }
 
 #[test]
+fn diagnostics_for_unsynced_documents_request_full_replacement() {
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let document = StoredDocument {
+        uri,
+        version: 9,
+        text: "".into(),
+        kind: DocumentKind::Diagram,
+        resource_limit: None,
+        discarded_source: None,
+        sync_error: Some(DocumentSyncError::InvalidIncrementalRange),
+    };
+
+    let diagnostics = MermanLanguageServer::diagnostics_for_document(
+        &document,
+        &merman_analysis::Analyzer::new(),
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+        diagnostics[0].code,
+        Some(NumberOrString::String(
+            "merman.lsp.document_sync_lost".to_string()
+        ))
+    );
+    assert!(diagnostics[0].message.contains("full document replacement"));
+    assert_eq!(
+        diagnostics[0]
+            .data
+            .as_ref()
+            .and_then(|data| data.get("documentVersion")),
+        Some(&serde_json::json!(9))
+    );
+}
+
+#[test]
 fn capabilities_advertise_completion_and_incremental_sync() {
     let capabilities = MermanLanguageServer::capabilities();
 
@@ -315,6 +351,7 @@ fn diagnostics_use_stored_markdown_kind_for_extensionless_documents() {
         kind: DocumentKind::Markdown,
         resource_limit: None,
         discarded_source: None,
+        sync_error: None,
     };
     let diagnostics = MermanLanguageServer::diagnostics_for_document(
         &document,

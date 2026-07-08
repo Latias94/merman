@@ -420,6 +420,9 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
                 self.assertIn("environment: github-release", upload_job)
                 self.assertIn("contents: write", upload_job)
                 self.assertIn("gh release upload", upload_job)
+                self.assertIn("::error::GitHub Release", upload_job)
+                self.assertIn("exit 1", upload_job)
+                self.assertNotIn("::warning::GitHub Release", upload_job)
 
     def test_crates_token_upload_step_is_isolated_from_preflight(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release-crates.yml")
@@ -483,8 +486,11 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertNotIn("id-token: write", github_release_job)
         self.assertIn("actions/download-artifact", github_release_job)
         self.assertIn("gh release upload", github_release_job)
+        self.assertIn("::error::GitHub Release", github_release_job)
+        self.assertIn("exit 1", github_release_job)
 
         self.assertIn("if: ${{ inputs.publish_to_pypi }}", publish_job)
+        self.assertIn("- github-release", publish_job)
         self.assertIn("environment: pypi", publish_job)
         self.assertIn("contents: read", publish_job)
         self.assertNotIn("contents: write", publish_job)

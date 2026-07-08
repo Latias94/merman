@@ -163,5 +163,6 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" platforms/apple/Merman.xcframework-*.zip platforms/apple/Merman.xcframework-*.zip.checksum --clobber
           else
-            echo "::warning::GitHub Release $RELEASE_TAG does not exist yet; XCFramework artifact was uploaded for manual attachment."
+            echo "::error::GitHub Release $RELEASE_TAG does not exist; create it before uploading XCFramework assets."
+            exit 1
           fi

@@ -44,6 +44,11 @@ describe("preview SVG safety", () => {
     );
   });
 
+  it("accepts many ignorable chunks without recursive parsing", () => {
+    const prefix = Array.from({ length: 2_000 }, (_, index) => `<!-- ${index} -->`).join("");
+    assert.doesNotThrow(() => assertSafePreviewSvg(`${prefix}<svg><text>ok</text></svg>`));
+  });
+
   it("rejects non-SVG renderer output", () => {
     assert.throws(() => assertSafePreviewSvg("<html></html>"), /non-SVG/);
     assert.throws(() => assertSafePreviewSvg("text before root<svg></svg>"), /non-SVG/);

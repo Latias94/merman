@@ -3,7 +3,7 @@ use crate::completion::{completion_for_snapshot, resolve_completion_item};
 use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
 use crate::document_store::{
     AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentStore,
-    SemanticTokensState, SnapshotContext, StoredDocument, TextDocumentUpdate,
+    DocumentSyncError, SemanticTokensState, SnapshotContext, StoredDocument,
     WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE, analysis_options_with_lsp_resource_defaults,
     default_lsp_analysis_options,
 };
@@ -40,20 +40,20 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
-    DiagnosticOptions, DiagnosticServerCapabilities, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
-    FoldingRangeProviderCapability, FullDocumentDiagnosticReport, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability, InitializeParams,
-    InitializeResult, MessageType, OneOf, PrepareRenameResponse, ReferenceParams,
-    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, RenameOptions,
-    RenameParams, SelectionRange, SelectionRangeParams, SelectionRangeProviderCapability,
-    SemanticTokensDeltaParams, SemanticTokensFullDeltaResult, SemanticTokensParams,
-    SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, TextDocumentPositionParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, UnchangedDocumentDiagnosticReport,
-    WorkspaceEdit, WorkspaceSymbolParams,
+    Diagnostic, DiagnosticOptions, DiagnosticServerCapabilities, DiagnosticSeverity,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
+    DocumentDiagnosticReportResult, DocumentSymbolParams, DocumentSymbolResponse, FoldingRange,
+    FoldingRangeParams, FoldingRangeProviderCapability, FullDocumentDiagnosticReport,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, MessageType, NumberOrString, OneOf, Position,
+    PrepareRenameResponse, Range, ReferenceParams, RelatedFullDocumentDiagnosticReport,
+    RelatedUnchangedDocumentDiagnosticReport, RenameOptions, RenameParams, SelectionRange,
+    SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokensDeltaParams,
+    SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
+    SemanticTokensRangeResult, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, UnchangedDocumentDiagnosticReport, WorkspaceEdit, WorkspaceSymbolParams,
 };
 use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
 
@@ -190,10 +190,7 @@ impl MermanLanguageServer {
         .await
     }
 
-    fn diagnostics_for_document(
-        document: &StoredDocument,
-        analyzer: &Analyzer,
-    ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    fn diagnostics_for_document(document: &StoredDocument, analyzer: &Analyzer) -> Vec<Diagnostic> {
         let source = source_descriptor_for_document(&document.uri, document.kind);
         let payload = if let Some(resource_limit) = document.resource_limit {
             AnalysisPayload::new(
@@ -211,6 +208,8 @@ impl MermanLanguageServer {
                     discarded_source.previous_max_source_bytes,
                 )],
             )
+        } else if let Some(sync_error) = document.sync_error {
+            return vec![document_sync_error_diagnostic(sync_error, document.version)];
         } else {
             analyze_document(document.text.as_ref(), analyzer, source)
         };
@@ -538,7 +537,7 @@ impl LanguageServer for MermanLanguageServer {
             doc.version,
             params.content_changes,
         );
-        if matches!(update, TextDocumentUpdate::Applied) {
+        if update.affects_document_state() {
             self.publish_for_uri(&doc.uri).await;
         }
     }
@@ -880,6 +879,32 @@ fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
     let mut error = tower_lsp::jsonrpc::Error::content_modified();
     error.message = "diagnostic document changed while recomputing".into();
     error
+}
+
+fn document_sync_error_diagnostic(
+    sync_error: DocumentSyncError,
+    document_version: i32,
+) -> Diagnostic {
+    let message = match sync_error {
+        DocumentSyncError::InvalidIncrementalRange => {
+            "document text is out of sync after an invalid incremental edit range; send a full document replacement or reopen the document"
+        }
+    };
+    Diagnostic {
+        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+        severity: Some(DiagnosticSeverity::ERROR),
+        code: Some(NumberOrString::String(
+            "merman.lsp.document_sync_lost".to_string(),
+        )),
+        source: Some("merman".to_string()),
+        message: message.to_string(),
+        related_information: None,
+        tags: None,
+        code_description: None,
+        data: Some(serde_json::json!({
+            "documentVersion": document_version,
+        })),
+    }
 }
 
 fn source_descriptor_for_document(

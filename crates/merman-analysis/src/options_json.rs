@@ -180,15 +180,6 @@ impl AnalysisOptionsJson {
             .as_ref()
             .and_then(|resources| resources.max_source_bytes)
             .filter(|max_source_bytes| *max_source_bytes > 0);
-        if self
-            .resources
-            .as_ref()
-            .is_some_and(|resources| resources.max_source_bytes == Some(0))
-        {
-            return Err(AnalysisOptionsJsonError::new(
-                "resources.max_source_bytes must be a positive integer",
-            ));
-        }
         Ok(max_source_bytes)
     }
 
@@ -553,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_analysis_options_json_rejects_zero_source_limit() {
+    fn shared_analysis_options_json_treats_zero_source_limit_as_default() {
         let zero = serde_json::json!({
             "analysis": {
                 "resources": {
@@ -569,12 +560,11 @@ mod tests {
             }
         });
 
-        let err = analysis_options_from_json_value(&zero).unwrap_err();
-
-        assert!(
-            err.to_string()
-                .contains("resources.max_source_bytes must be a positive integer"),
-            "unexpected error: {err}"
+        assert_eq!(
+            analysis_options_from_json_value(&zero)
+                .unwrap()
+                .max_source_bytes,
+            None
         );
         assert_eq!(
             analysis_options_from_json_value(&positive)

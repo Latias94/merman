@@ -569,7 +569,8 @@
     "test:extension-host": "npm run build && node scripts/run-extension-host-smoke.mjs",
     "prepare:binaries": "node scripts/prepare-binaries.mjs",
     "package": "npm run build && node scripts/package-vsix.mjs",
-    "verify:vsix": "node scripts/verify-vsix.mjs"
+    "verify:vsix": "node scripts/verify-vsix.mjs",
+    "smoke:vsix": "node scripts/smoke-vsix.mjs"
   },
   "dependencies": {
     "vscode-languageclient": "10.0.1"

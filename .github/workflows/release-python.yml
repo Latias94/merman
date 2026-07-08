@@ -283,12 +283,14 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" wheels/merman-*.whl --clobber
           else
-            echo "::warning::GitHub Release $RELEASE_TAG does not exist yet; wheel artifacts were uploaded for manual attachment."
+            echo "::error::GitHub Release $RELEASE_TAG does not exist; create it before uploading Python wheel assets."
+            exit 1
           fi
 
   publish:
     needs:
       - verify-wheel-metadata
+      - github-release
     if: ${{ inputs.publish_to_pypi }}
     runs-on: ubuntu-24.04
     environment: pypi

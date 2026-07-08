@@ -52,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand("merman.restartLanguageServer", async () => {
-      await runRestartLanguageServerCommand({
+      return runRestartLanguageServerCommand({
         settings: getLanguageIntelligenceSettings(),
         updateDisabledStatus,
         runRestart: () => runLanguageClientAction(context, "restart"),

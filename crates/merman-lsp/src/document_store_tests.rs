@@ -1,6 +1,6 @@
 use crate::document_store::{
     DEFAULT_LSP_MAX_SOURCE_BYTES, DocumentDiscardedSource, DocumentResourceLimit, DocumentStore,
-    SemanticTokensState, TextDocumentUpdate, default_lsp_analysis_options,
+    DocumentSyncError, SemanticTokensState, TextDocumentUpdate, default_lsp_analysis_options,
 };
 use merman_analysis::{
     AnalysisOptions, AnalysisRuleConfig, DiagnosticSeverity, FenceSemanticRole,
@@ -529,7 +529,7 @@ fn apply_text_changes_allows_skipped_versions_for_full_replacements() {
 }
 
 #[test]
-fn apply_text_changes_rejects_invalid_ranges_without_invalidating_current_state() {
+fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -557,9 +557,136 @@ fn apply_text_changes_rejects_invalid_ranges_without_invalidating_current_state(
 
     assert_eq!(update, TextDocumentUpdate::InvalidRange);
     let stored = store.get(&uri).expect("expected current document");
-    assert_eq!(stored.version, 1);
-    assert_eq!(stored.text.as_ref(), "flowchart TD\nA-->B\n");
-    assert!(store.has_snapshot(&uri));
+    assert_eq!(stored.version, 2);
+    assert_eq!(stored.text.as_ref(), "");
+    assert_eq!(stored.resource_limit, None);
+    assert_eq!(stored.discarded_source, None);
+    assert_eq!(
+        stored.sync_error,
+        Some(DocumentSyncError::InvalidIncrementalRange)
+    );
+    assert!(!store.has_snapshot(&uri));
+}
+
+#[test]
+fn apply_text_changes_rejects_utf16_positions_past_line_end() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA[🤓]-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(
+                Position::new(1, 10_000),
+                Position::new(1, 10_000),
+            )),
+            range_length: None,
+            text: "bad".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::InvalidRange);
+    let stored = store.get(&uri).expect("expected unsynced document");
+    assert_eq!(stored.version, 2);
+    assert_eq!(
+        stored.sync_error,
+        Some(DocumentSyncError::InvalidIncrementalRange)
+    );
+}
+
+#[test]
+fn full_replacement_recovers_from_unsynced_document_after_invalid_range() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(
+        store.apply_text_changes(
+            uri.clone(),
+            2,
+            [TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
+                range_length: None,
+                text: "bad".to_string(),
+            }],
+        ),
+        TextDocumentUpdate::InvalidRange
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        3,
+        [TextDocumentContentChangeEvent {
+            range: None,
+            range_length: None,
+            text: "sequenceDiagram\nAlice->>Bob: Hi\n".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected recovered document");
+    assert_eq!(stored.version, 3);
+    assert_eq!(stored.text.as_ref(), "sequenceDiagram\nAlice->>Bob: Hi\n");
+    assert_eq!(stored.sync_error, None);
+}
+
+#[test]
+fn ranged_changes_on_unsynced_documents_keep_lightweight_state() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(
+        store.apply_text_changes(
+            uri.clone(),
+            2,
+            [TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(20, 0), Position::new(20, 1))),
+                range_length: None,
+                text: "bad".to_string(),
+            }],
+        ),
+        TextDocumentUpdate::InvalidRange
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        3,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(1, 0), Position::new(1, 1))),
+            range_length: None,
+            text: "C".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected unsynced document");
+    assert_eq!(stored.version, 3);
+    assert_eq!(stored.text.as_ref(), "");
+    assert_eq!(
+        stored.sync_error,
+        Some(DocumentSyncError::InvalidIncrementalRange)
+    );
 }
 
 #[test]

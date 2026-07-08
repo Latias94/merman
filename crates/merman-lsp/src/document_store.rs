@@ -50,6 +50,7 @@ pub struct StoredDocument {
     pub kind: DocumentKind,
     pub resource_limit: Option<DocumentResourceLimit>,
     pub discarded_source: Option<DocumentDiscardedSource>,
+    pub sync_error: Option<DocumentSyncError>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,9 +65,16 @@ pub struct DocumentDiscardedSource {
     pub previous_max_source_bytes: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentSyncError {
+    InvalidIncrementalRange,
+}
+
 impl StoredDocument {
     pub fn has_unavailable_source(&self) -> bool {
-        self.resource_limit.is_some() || self.discarded_source.is_some()
+        self.resource_limit.is_some()
+            || self.discarded_source.is_some()
+            || self.sync_error.is_some()
     }
 }
 
@@ -91,6 +99,12 @@ pub enum TextDocumentUpdate {
         current_version: i32,
         attempted_version: i32,
     },
+}
+
+impl TextDocumentUpdate {
+    pub fn affects_document_state(self) -> bool {
+        matches!(self, Self::Applied | Self::InvalidRange)
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -201,6 +215,7 @@ impl DocumentStore {
             kind,
             resource_limit: None,
             discarded_source: None,
+            sync_error: None,
         };
         self.upsert_document(uri, document)
     }
@@ -219,6 +234,7 @@ impl DocumentStore {
             kind,
             resource_limit: Some(resource_limit),
             discarded_source: None,
+            sync_error: None,
         };
         self.upsert_document(uri, document)
     }
@@ -237,6 +253,26 @@ impl DocumentStore {
             kind,
             resource_limit: None,
             discarded_source: Some(discarded_source),
+            sync_error: None,
+        };
+        self.upsert_document(uri, document)
+    }
+
+    fn upsert_sync_error(
+        &mut self,
+        uri: Url,
+        version: i32,
+        kind: DocumentKind,
+        sync_error: DocumentSyncError,
+    ) -> StoredDocument {
+        let document = StoredDocument {
+            uri: uri.clone(),
+            version,
+            text: Arc::<str>::from(""),
+            kind,
+            resource_limit: None,
+            discarded_source: None,
+            sync_error: Some(sync_error),
         };
         self.upsert_document(uri, document)
     }
@@ -314,6 +350,7 @@ impl DocumentStore {
         let kind = current.kind;
         let resource_limit = current.resource_limit;
         let discarded_source = current.discarded_source;
+        let sync_error = current.sync_error;
         let current_text = current.text.clone();
         let changes = changes.into_iter().collect::<Vec<_>>();
 
@@ -328,13 +365,14 @@ impl DocumentStore {
             return TextDocumentUpdate::EmptyChangeSet;
         }
 
-        if resource_limit.is_some() || discarded_source.is_some() {
+        if resource_limit.is_some() || discarded_source.is_some() || sync_error.is_some() {
             return self.apply_unavailable_source_text_changes(
                 uri,
                 version,
                 kind,
                 resource_limit,
                 discarded_source,
+                sync_error,
                 changes,
             );
         }
@@ -342,6 +380,12 @@ impl DocumentStore {
         let mut text = current_text.to_string();
         for change in changes {
             if !apply_text_content_change(&mut text, change) {
+                self.upsert_sync_error(
+                    uri,
+                    version,
+                    kind,
+                    DocumentSyncError::InvalidIncrementalRange,
+                );
                 return TextDocumentUpdate::InvalidRange;
             }
         }
@@ -357,20 +401,24 @@ impl DocumentStore {
         kind: DocumentKind,
         resource_limit: Option<DocumentResourceLimit>,
         discarded_source: Option<DocumentDiscardedSource>,
+        sync_error: Option<DocumentSyncError>,
         changes: Vec<TextDocumentContentChangeEvent>,
     ) -> TextDocumentUpdate {
         let mut known_text = None::<String>;
 
         for change in changes {
             if known_text.is_none() && change.range.is_some() {
-                match (resource_limit, discarded_source) {
-                    (Some(resource_limit), _) => {
+                match (resource_limit, discarded_source, sync_error) {
+                    (Some(resource_limit), _, _) => {
                         self.upsert_resource_limited(uri, version, kind, resource_limit);
                     }
-                    (None, Some(discarded_source)) => {
+                    (None, Some(discarded_source), _) => {
                         self.upsert_discarded_source(uri, version, kind, discarded_source);
                     }
-                    (None, None) => {
+                    (None, None, Some(sync_error)) => {
+                        self.upsert_sync_error(uri, version, kind, sync_error);
+                    }
+                    (None, None, None) => {
                         unreachable!("checked unavailable source before applying edits")
                     }
                 }
@@ -380,6 +428,12 @@ impl DocumentStore {
             match known_text.as_mut() {
                 Some(text) => {
                     if !apply_text_content_change(text, change) {
+                        self.upsert_sync_error(
+                            uri,
+                            version,
+                            kind,
+                            DocumentSyncError::InvalidIncrementalRange,
+                        );
                         return TextDocumentUpdate::InvalidRange;
                     }
                 }
@@ -844,9 +898,25 @@ fn lsp_range_to_byte_range(text: &str, range: Range) -> Option<ByteRange<usize>>
     }
 
     let source_map = SourceMap::new(text);
-    let start = source_map.byte_offset_for_utf16_position(position_to_utf16(range.start))?;
-    let end = source_map.byte_offset_for_utf16_position(position_to_utf16(range.end))?;
+    let start = strict_byte_offset_for_lsp_position(&source_map, range.start)?;
+    let end = strict_byte_offset_for_lsp_position(&source_map, range.end)?;
     (start <= end).then_some(start..end)
+}
+
+fn strict_byte_offset_for_lsp_position(
+    source_map: &SourceMap,
+    position: Position,
+) -> Option<usize> {
+    let position = position_to_utf16(position);
+    let (line_start, line_end) = source_map.line_bounds(position.line)?;
+    let line_utf16_len = source_map.source()[line_start..line_end]
+        .chars()
+        .map(char::len_utf16)
+        .sum::<usize>();
+    if position.character > line_utf16_len {
+        return None;
+    }
+    source_map.byte_offset_for_utf16_position(position)
 }
 
 fn position_to_utf16(position: Position) -> Utf16Position {

@@ -242,34 +242,36 @@ class SvgSafetyScanner {
   }
 
   private nextTag(): SvgTag | null {
-    const start = this.source.indexOf("<", this.cursor);
-    if (start < 0) {
-      this.cursor = this.source.length;
-      return null;
-    }
-    if (!this.sawRoot && !isOnlyWhitespace(this.source.slice(this.cursor, start))) {
-      throw this.error("non-SVG output.");
-    }
+    while (true) {
+      const start = this.source.indexOf("<", this.cursor);
+      if (start < 0) {
+        this.cursor = this.source.length;
+        return null;
+      }
+      if (!this.sawRoot && !isOnlyWhitespace(this.source.slice(this.cursor, start))) {
+        throw this.error("non-SVG output.");
+      }
 
-    if (this.source.startsWith("<!--", start)) {
-      this.cursor = this.consumeUntil(start + 4, "-->");
-      return this.nextTag();
-    }
-    if (this.source.startsWith("<?", start)) {
-      this.cursor = this.consumeUntil(start + 2, "?>");
-      return this.nextTag();
-    }
-    if (this.source.startsWith("<![CDATA[", start)) {
-      this.cursor = this.consumeUntil(start + 9, "]]>");
-      return this.nextTag();
-    }
-    if (this.source.startsWith("<!", start)) {
-      throw this.error("SVG with unsupported declarations.");
-    }
+      if (this.source.startsWith("<!--", start)) {
+        this.cursor = this.consumeUntil(start + 4, "-->");
+        continue;
+      }
+      if (this.source.startsWith("<?", start)) {
+        this.cursor = this.consumeUntil(start + 2, "?>");
+        continue;
+      }
+      if (this.source.startsWith("<![CDATA[", start)) {
+        this.cursor = this.consumeUntil(start + 9, "]]>");
+        continue;
+      }
+      if (this.source.startsWith("<!", start)) {
+        throw this.error("SVG with unsupported declarations.");
+      }
 
-    const tag = this.parseTag(start);
-    this.cursor = tag.end;
-    return tag;
+      const tag = this.parseTag(start);
+      this.cursor = tag.end;
+      return tag;
+    }
   }
 
   private parseTag(start: number): SvgTag {

@@ -117,14 +117,15 @@ Current release semantics are intentionally explicit:
   browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`, and
   `@mermanjs/web/ascii`; these slim subpaths omit unsupported runtime wrapper exports.
   `@mermanjs/web/full` is the explicit full-preset subpath.
-- `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
-  whether `editor_language` is available.
-  `selectedRegistryProfile()` and `diagramFamilyCapabilities()` report the selected diagram registry
-  profile and registered parser/render family facts. `lintRuleCatalog()` reports analyzer rule ids,
-  evidence references, default profiles, origins, configurability, and fixability. Consumers that
-  load an older artifact without the registry-profile exports should treat it as the historical full
-  browser artifact, but editor settings that depend on lint metadata should fail fast if the lint
-  catalog export is absent.
+- Browser WASM ABI 2 is the first ABI that requires the metadata exports used by the 0.8 wrapper.
+  `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
+  whether `editor_language` is available. `selectedRegistryProfile()` and
+  `diagramFamilyCapabilities()` report the selected diagram registry profile and registered
+  parser/render family facts. `lintRuleCatalog()` reports analyzer rule ids, evidence references,
+  default profiles, origins, configurability, and fixability. Consumers that load custom artifacts
+  must keep the generated wasm-bindgen artifact and TypeScript wrapper from the same package
+  version/ABI; the 0.8 wrapper does not provide compatibility fallback for pre-ABI-2 browser
+  artifacts that lack these metadata exports.
 - `merman-wasm` is the browser/wasm-bindgen crate. It should not be used as evidence that an
   artifact is Typst-compatible or pure-WASM compatible.
 - `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render

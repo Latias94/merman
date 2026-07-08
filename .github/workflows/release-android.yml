@@ -176,5 +176,6 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" target/release-assets/*.aar --clobber
           else
-            echo "::warning::GitHub Release $RELEASE_TAG does not exist yet; AAR artifact was uploaded for manual attachment."
+            echo "::error::GitHub Release $RELEASE_TAG does not exist; create it before uploading AAR assets."
+            exit 1
           fi
