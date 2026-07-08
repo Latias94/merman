@@ -602,7 +602,35 @@ function containsShadowScopingSelector(css: string): boolean {
 }
 
 function containsViewportEscapingCssDeclaration(css: string): boolean {
-  return /(?:^|[;{\s])position\s*:\s*(?:fixed|sticky)\b/.test(css);
+  return cssDeclarationBlocks(css).some((block) => {
+    if (/(?:^|[;\s])position\s*:\s*(?:fixed|sticky)\b/.test(block)) {
+      return true;
+    }
+    return (
+      /(?:^|[;\s])position\s*:\s*absolute\b/.test(block) &&
+      /(?:^|[;\s])(?:inset(?:-(?:block|inline)(?:-(?:start|end))?)?|top|right|bottom|left)\s*:/.test(
+        block,
+      )
+    );
+  });
+}
+
+function cssDeclarationBlocks(css: string): string[] {
+  const blocks: string[] = [];
+  let cursor = 0;
+  while (cursor < css.length) {
+    const open = css.indexOf("{", cursor);
+    if (open < 0) {
+      break;
+    }
+    const close = css.indexOf("}", open + 1);
+    if (close < 0) {
+      break;
+    }
+    blocks.push(css.slice(open + 1, close));
+    cursor = close + 1;
+  }
+  return blocks.length > 0 ? blocks : [css];
 }
 
 function decodeCssEscapes(value: string): string {

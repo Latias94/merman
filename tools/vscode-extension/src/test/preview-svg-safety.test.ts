@@ -183,6 +183,14 @@ describe("preview SVG safety", () => {
       () => assertSafePreviewSvg('<svg style="position:fixed;inset:0"></svg>'),
       /viewport-escaping CSS/,
     );
+    assert.throws(
+      () => assertSafePreviewSvg("<svg><style>svg{position:absolute;inset:0;z-index:999999}</style></svg>"),
+      /viewport-escaping CSS/,
+    );
+    assert.throws(
+      () => assertSafePreviewSvg('<svg style="position:absolute;left:0;top:0"></svg>'),
+      /viewport-escaping CSS/,
+    );
     assert.throws(() => assertSafePreviewSvg('<svg><style>@import "https://example.com/a.css";</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>@im&#112ort "https://example.com/a.css";</style></svg>'), /CSS resource/);
     assert.throws(() => assertSafePreviewSvg('<svg><style>@im&#x2f;*hidden*&#x2f;port "https://example.com/a.css";</style></svg>'), /CSS resource/);

@@ -165,6 +165,14 @@ assert.throws(
   /viewport-escaping CSS/,
 );
 assert.throws(
+  () => assertSafeSvgForDom('<svg><style>svg{position:absolute;inset:0;z-index:999999}</style></svg>'),
+  /viewport-escaping CSS/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg style="position:absolute;left:0;top:0"></svg>'),
+  /viewport-escaping CSS/,
+);
+assert.throws(
   () => assertSafeSvgForDom('<svg><animate attributeName="href" to="https://example.com/x"/></svg>'),
   /active/,
 );
