@@ -427,6 +427,10 @@ jobs:
         working-directory: tools/vscode-extension
         run: npm test
 
+      - name: Stage runtime binaries
+        working-directory: tools/vscode-extension
+        run: npm run prepare:binaries
+
       - name: Smoke extension host
         if: runner.os == 'Linux'
         working-directory: tools/vscode-extension
@@ -436,10 +440,6 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: tools/vscode-extension
         run: npm run test:extension-host
-
-      - name: Stage runtime binaries
-        working-directory: tools/vscode-extension
-        run: npm run prepare:binaries
 
       - name: Derive VSIX release metadata
         id: vsix
@@ -465,6 +465,16 @@ jobs:
         env:
           MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
         run: npm run verify:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix" --platform "${{ matrix.target }}" --target "${{ matrix.target }}"
+
+      - name: Smoke packaged VSIX
+        if: runner.os == 'Linux'
+        working-directory: tools/vscode-extension
+        run: xvfb-run -a npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
+
+      - name: Smoke packaged VSIX
+        if: runner.os != 'Linux'
+        working-directory: tools/vscode-extension
+        run: npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v6

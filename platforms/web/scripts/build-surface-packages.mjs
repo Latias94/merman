@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -9,6 +17,7 @@ const srcDir = path.join(packageRoot, "src");
 const surfacesDir = path.join(srcDir, "surfaces");
 const tempSurfacesDir = path.join(srcDir, `.surfaces-${process.pid}-${Date.now()}`);
 const backupSurfacesDir = path.join(srcDir, `.surfaces-backup-${process.pid}-${Date.now()}`);
+const backupSurfacesDirNamePrefix = ".surfaces-backup-";
 
 if (isMainModule()) {
   let exitCode = 0;
@@ -86,15 +95,9 @@ export function replaceSurfacesDir({
   surfacesDir,
   tempSurfacesDir,
   backupSurfacesDir,
-  fsOps = { existsSync, renameSync, rmSync },
+  fsOps = { existsSync, readdirSync, renameSync, rmSync, statSync },
 }) {
-  if (fsOps.existsSync(backupSurfacesDir)) {
-    if (fsOps.existsSync(surfacesDir)) {
-      fsOps.rmSync(backupSurfacesDir, { recursive: true, force: true });
-    } else {
-      fsOps.renameSync(backupSurfacesDir, surfacesDir);
-    }
-  }
+  restoreInterruptedSurfacesReplacement({ surfacesDir, backupSurfacesDir, fsOps });
   try {
     if (fsOps.existsSync(surfacesDir)) {
       fsOps.renameSync(surfacesDir, backupSurfacesDir);
@@ -106,6 +109,73 @@ export function replaceSurfacesDir({
       fsOps.renameSync(backupSurfacesDir, surfacesDir);
     }
     throw error;
+  }
+}
+
+function restoreInterruptedSurfacesReplacement({ surfacesDir, backupSurfacesDir, fsOps }) {
+  const backupDirs = findBackupSurfacesDirs({ surfacesDir, backupSurfacesDir, fsOps });
+  if (backupDirs.length === 0) {
+    return;
+  }
+  if (fsOps.existsSync(surfacesDir)) {
+    removeBackupDirs(backupDirs, fsOps);
+    return;
+  }
+  const [backupToRestore, ...staleBackupDirs] = backupDirs;
+  fsOps.renameSync(backupToRestore, surfacesDir);
+  removeBackupDirs(staleBackupDirs, fsOps);
+}
+
+function findBackupSurfacesDirs({ surfacesDir, backupSurfacesDir, fsOps }) {
+  const srcDir = path.dirname(surfacesDir);
+  const backupDirs = new Set();
+  if (fsOps.existsSync(backupSurfacesDir) && isDirectory(backupSurfacesDir, fsOps)) {
+    backupDirs.add(path.resolve(backupSurfacesDir));
+  }
+  if (typeof fsOps.readdirSync === "function") {
+    for (const entry of fsOps.readdirSync(srcDir, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name.startsWith(backupSurfacesDirNamePrefix)) {
+        backupDirs.add(path.resolve(srcDir, entry.name));
+      }
+    }
+  }
+  backupDirs.delete(path.resolve(surfacesDir));
+  return [...backupDirs].sort((left, right) => {
+    const mtimeDelta = backupMtimeMs(right, fsOps) - backupMtimeMs(left, fsOps);
+    if (mtimeDelta !== 0) {
+      return mtimeDelta;
+    }
+    return right.localeCompare(left);
+  });
+}
+
+function backupMtimeMs(backupDir, fsOps) {
+  if (typeof fsOps.statSync !== "function") {
+    return 0;
+  }
+  try {
+    return fsOps.statSync(backupDir).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+function isDirectory(backupDir, fsOps) {
+  if (typeof fsOps.statSync !== "function") {
+    return true;
+  }
+  try {
+    return fsOps.statSync(backupDir).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function removeBackupDirs(backupDirs, fsOps) {
+  for (const backupDir of backupDirs) {
+    if (fsOps.existsSync(backupDir)) {
+      fsOps.rmSync(backupDir, { recursive: true, force: true });
+    }
   }
 }
 

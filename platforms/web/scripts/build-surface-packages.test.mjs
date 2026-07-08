@@ -3,9 +3,11 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -55,20 +57,22 @@ describe("surface package generation", () => {
     }
   });
 
-  it("restores stale backup before replacing surfaces", () => {
+  it("restores stale backup from a previous process before replacing surfaces", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-surfaces-"));
     try {
       const srcDir = path.join(root, "src");
       const surfacesDir = path.join(srcDir, "surfaces");
       const tempSurfacesDir = path.join(srcDir, ".surfaces-temp");
-      const backupSurfacesDir = path.join(srcDir, ".surfaces-backup");
+      const backupSurfacesDir = path.join(srcDir, ".surfaces-backup-current-process");
+      const staleBackupSurfacesDir = path.join(srcDir, ".surfaces-backup-previous-process");
       mkdirSync(tempSurfacesDir, { recursive: true });
-      mkdirSync(backupSurfacesDir, { recursive: true });
+      mkdirSync(staleBackupSurfacesDir, { recursive: true });
       writeFileSync(path.join(tempSurfacesDir, "core.ts"), "generated");
-      writeFileSync(path.join(backupSurfacesDir, "core.ts"), "backup");
+      writeFileSync(path.join(staleBackupSurfacesDir, "core.ts"), "backup");
 
       const fsOps = {
         existsSync,
+        readdirSync,
         rmSync,
         renameSync(source, target) {
           if (source === tempSurfacesDir && target === surfacesDir) {
@@ -76,6 +80,7 @@ describe("surface package generation", () => {
           }
           renameSync(source, target);
         },
+        statSync,
       };
 
       assert.throws(
@@ -90,6 +95,7 @@ describe("surface package generation", () => {
       );
       assert.equal(readFileSync(path.join(surfacesDir, "core.ts"), "utf8"), "backup");
       assert.equal(existsSync(backupSurfacesDir), false);
+      assert.equal(existsSync(staleBackupSurfacesDir), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
