@@ -203,6 +203,7 @@ export function SvgViewport({
   contentClassName,
   empty,
 }: SvgViewportProps) {
+  const shadowHostRef = useRef<HTMLDivElement>(null);
   const displaySvg = useMemo(() => {
     if (!svg) return null;
 
@@ -215,6 +216,18 @@ export function SvgViewport({
       return null;
     }
   }, [svg]);
+
+  useEffect(() => {
+    const host = shadowHostRef.current;
+    if (!host || !displaySvg) return;
+
+    const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    root.innerHTML = displaySvg;
+
+    return () => {
+      root.replaceChildren();
+    };
+  }, [displaySvg]);
 
   return (
     <div
@@ -252,8 +265,9 @@ export function SvgViewport({
                 "preview-container inline-flex bg-white rounded-lg shadow-sm p-4",
                 contentClassName
               )}
-              dangerouslySetInnerHTML={{ __html: displaySvg }}
-            />
+            >
+              <div ref={shadowHostRef} className="inline-flex" />
+            </div>
           </div>
         </div>
       ) : (

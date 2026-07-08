@@ -109,14 +109,20 @@ fn analysis_options_root_value(value: &Value) -> Result<&Value, AnalysisOptionsJ
         return Ok(value);
     }
 
-    for key in ["merman", "analysis"] {
-        if let Some(Value::Object(inner)) = map.get(key) {
-            if analysis_option_keys_present(inner) {
-                return Ok(map
-                    .get(key)
-                    .expect("checked key existence and object shape"));
-            }
+    let mut wrapped_keys = ["merman", "analysis"].into_iter().filter(|key| {
+        map.get(*key)
+            .and_then(Value::as_object)
+            .is_some_and(analysis_option_keys_present)
+    });
+    if let Some(key) = wrapped_keys.next() {
+        if wrapped_keys.next().is_some() {
+            return Err(AnalysisOptionsJsonError::new(
+                "options JSON must not contain both `merman` and `analysis` wrappers with analysis options",
+            ));
         }
+        return Ok(map
+            .get(key)
+            .expect("checked key existence and object shape"));
     }
 
     Ok(value)
@@ -139,7 +145,7 @@ impl AnalysisOptionsJson {
     pub fn to_analysis_options(&self) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
         let mut analysis = AnalysisOptions::default()
             .with_parse_options(self.parse_options())
-            .with_max_source_bytes(self.max_source_bytes());
+            .with_max_source_bytes(self.max_source_bytes()?);
 
         if let Some(site_config) = self.site_config()? {
             analysis = analysis.with_site_config(site_config);
@@ -168,11 +174,22 @@ impl AnalysisOptionsJson {
         }
     }
 
-    pub fn max_source_bytes(&self) -> Option<usize> {
-        self.resources
+    pub fn max_source_bytes(&self) -> Result<Option<usize>, AnalysisOptionsJsonError> {
+        let max_source_bytes = self
+            .resources
             .as_ref()
             .and_then(|resources| resources.max_source_bytes)
-            .filter(|max_source_bytes| *max_source_bytes > 0)
+            .filter(|max_source_bytes| *max_source_bytes > 0);
+        if self
+            .resources
+            .as_ref()
+            .is_some_and(|resources| resources.max_source_bytes == Some(0))
+        {
+            return Err(AnalysisOptionsJsonError::new(
+                "resources.max_source_bytes must be a positive integer",
+            ));
+        }
+        Ok(max_source_bytes)
     }
 
     pub fn rule_config(&self) -> Result<AnalysisRuleConfig, AnalysisOptionsJsonError> {
@@ -536,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_analysis_options_json_treats_zero_source_limit_as_unset() {
+    fn shared_analysis_options_json_rejects_zero_source_limit() {
         let zero = serde_json::json!({
             "analysis": {
                 "resources": {
@@ -552,17 +569,42 @@ mod tests {
             }
         });
 
-        assert_eq!(
-            analysis_options_from_json_value(&zero)
-                .unwrap()
-                .max_source_bytes,
-            None
+        let err = analysis_options_from_json_value(&zero).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("resources.max_source_bytes must be a positive integer"),
+            "unexpected error: {err}"
         );
         assert_eq!(
             analysis_options_from_json_value(&positive)
                 .unwrap()
                 .max_source_bytes,
             Some(1024)
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_rejects_two_namespaced_analysis_wrappers() {
+        let mixed = serde_json::json!({
+            "merman": {
+                "lint": {
+                    "profile": "recommended"
+                }
+            },
+            "analysis": {
+                "resources": {
+                    "max_source_bytes": 1024
+                }
+            }
+        });
+
+        let err = analysis_options_from_json_value(&mixed).unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("must not contain both `merman` and `analysis` wrappers"),
+            "unexpected error: {err}"
         );
     }
 

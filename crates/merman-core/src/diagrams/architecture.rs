@@ -851,17 +851,23 @@ fn push_architecture_payload(
 }
 
 fn value_after_keyword_span(line: &str, keyword: &str, base_offset: usize) -> Option<SpannedText> {
-    let trimmed = line.trim_start();
+    let leading = line.len() - line.trim_start().len();
+    let trimmed = &line[leading..];
     if !trimmed.starts_with(keyword) {
         return None;
     }
-    let rest = &trimmed[keyword.len()..];
-    let rest = rest.strip_prefix(|ch: char| ch.is_whitespace())?;
-    let value = rest.trim();
+    let rest_start = leading + keyword.len();
+    let after_keyword = &line[rest_start..];
+    let rest = after_keyword.strip_prefix(|ch: char| ch.is_whitespace())?;
+    let rest_start = rest_start + after_keyword.len() - rest.len();
+    let value_leading = rest.len() - rest.trim_start().len();
+    let value_without_leading = &rest[value_leading..];
+    let value_trailing = value_without_leading.len() - value_without_leading.trim_end().len();
+    let value = &value_without_leading[..value_without_leading.len() - value_trailing];
     if value.is_empty() {
         return None;
     }
-    let rel = line.find(value)?;
+    let rel = rest_start + value_leading;
     Some(SpannedText {
         text: value.to_string(),
         span: SourceSpan::new(base_offset + rel, base_offset + rel + value.len()),
@@ -869,17 +875,24 @@ fn value_after_keyword_span(line: &str, keyword: &str, base_offset: usize) -> Op
 }
 
 fn value_after_colon_span(line: &str, keyword: &str, base_offset: usize) -> Option<SpannedText> {
-    let trimmed = line.trim_start();
+    let leading = line.len() - line.trim_start().len();
+    let trimmed = &line[leading..];
     if !trimmed.starts_with(keyword) {
         return None;
     }
-    let rest = &trimmed[keyword.len()..];
-    let rest = rest.trim_start().strip_prefix(':')?;
-    let value = rest.trim();
+    let rest_start = leading + keyword.len();
+    let rest = &line[rest_start..];
+    let rest_leading = rest.len() - rest.trim_start().len();
+    let colon_start = rest_start + rest_leading;
+    let value_raw = line[colon_start..].strip_prefix(':')?;
+    let value_leading = value_raw.len() - value_raw.trim_start().len();
+    let value_without_leading = &value_raw[value_leading..];
+    let value_trailing = value_without_leading.len() - value_without_leading.trim_end().len();
+    let value = &value_without_leading[..value_without_leading.len() - value_trailing];
     if value.is_empty() {
         return None;
     }
-    let rel = line.find(value)?;
+    let rel = colon_start + 1 + value_leading;
     Some(SpannedText {
         text: value.to_string(),
         span: SourceSpan::new(base_offset + rel, base_offset + rel + value.len()),
@@ -1897,7 +1910,7 @@ pub fn parse_architecture_model_for_render(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
+    use crate::{Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseOptions};
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1914,6 +1927,24 @@ mod tests {
             Error::DiagramParse { diagnostic, .. } => diagnostic,
             other => panic!("expected architecture parse error, got {other:?}"),
         }
+    }
+
+    fn test_meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "architecture".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        }
+    }
+
+    fn payload_selection(facts: &EditorSemanticFacts, detail: &str, name: &str) -> SourceSpan {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some(detail) && symbol.name == name)
+            .unwrap_or_else(|| panic!("missing payload symbol {detail:?} {name:?}"))
+            .selection
     }
 
     #[test]
@@ -1944,6 +1975,33 @@ mod tests {
             model["title"].as_str().unwrap(),
             "Simple Architecture Diagram"
         );
+    }
+
+    #[test]
+    fn architecture_editor_payload_spans_point_to_values_when_values_match_keywords() {
+        let text = "architecture-beta\n  title title\n  accTitle: accTitle\n  accDescr: accDescr\n";
+        let facts = parse_architecture_editor_facts(text, &test_meta());
+
+        for (detail, name, needle) in [
+            ("architecture title", "title", "title title"),
+            (
+                "architecture accessibility title",
+                "accTitle",
+                "accTitle: accTitle",
+            ),
+            (
+                "architecture accessibility description",
+                "accDescr",
+                "accDescr: accDescr",
+            ),
+        ] {
+            let value_start = text.find(needle).unwrap() + needle.rfind(name).unwrap();
+            assert_eq!(
+                payload_selection(&facts, detail, name),
+                SourceSpan::new(value_start, value_start + name.len()),
+                "wrong span for {detail}"
+            );
+        }
     }
 
     #[test]

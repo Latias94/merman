@@ -337,32 +337,62 @@ pub fn parse_requirement_model_for_render(
     parse_requirement_model(code, meta)
 }
 
-fn parse_colon_value_ci(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t
-        .get(..key.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(key))
-    {
-        return None;
-    }
-    let rest = &t[key.len()..];
-    let rest = rest.trim_start();
-    let value = rest.strip_prefix(':')?.trim();
-    if value.is_empty() {
-        return None;
-    }
-    Some(value.to_string())
+#[derive(Debug, Clone, Copy)]
+struct SpannedValue<'a> {
+    text: &'a str,
+    start: usize,
 }
 
-fn parse_keyword_rest_ci(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
+fn trim_spanned_value(raw: &str, raw_start: usize) -> Option<SpannedValue<'_>> {
+    let leading = raw.len() - raw.trim_start().len();
+    let without_leading = &raw[leading..];
+    let trailing = without_leading.len() - without_leading.trim_end().len();
+    let end = raw.len().saturating_sub(trailing);
+    if leading >= end {
+        return None;
+    }
+    Some(SpannedValue {
+        text: &raw[leading..end],
+        start: raw_start + leading,
+    })
+}
+
+fn parse_colon_value_ci<'a>(line: &'a str, key: &str) -> Option<SpannedValue<'a>> {
+    let leading = line.len() - line.trim_start().len();
+    let t = &line[leading..];
     if !t
         .get(..key.len())
         .is_some_and(|head| head.eq_ignore_ascii_case(key))
     {
         return None;
     }
-    Some(t[key.len()..].trim_start().to_string())
+    let rest_start = leading + key.len();
+    let rest = &line[rest_start..];
+    let rest_leading = rest.len() - rest.trim_start().len();
+    let colon_start = rest_start + rest_leading;
+    let value_raw = line[colon_start..].strip_prefix(':')?;
+    trim_spanned_value(value_raw, colon_start + 1)
+}
+
+fn parse_keyword_rest_ci<'a>(line: &'a str, key: &str) -> Option<(&'a str, usize)> {
+    let leading = line.len() - line.trim_start().len();
+    let t = &line[leading..];
+    if !t
+        .get(..key.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(key))
+    {
+        return None;
+    }
+    let rest_start = leading + key.len();
+    let rest = &line[rest_start..];
+    let rest_leading = rest.len() - rest.trim_start().len();
+    let rest_start = rest_start + rest_leading;
+    let rest = &line[rest_start..];
+    if rest.starts_with(':') || rest.starts_with('{') {
+        Some((rest, rest_start))
+    } else {
+        None
+    }
 }
 
 pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
@@ -405,33 +435,33 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
 
             match kind {
                 RequirementBlockKind::Requirement => {
-                    if let Some((key, value)) = split_key_value(trimmed) {
+                    if let Some((key, value)) = split_key_value_spanned(&stripped) {
                         match key.to_ascii_lowercase().as_str() {
                             "id" => push_requirement_payload_fact(
                                 &mut facts,
-                                value,
-                                line_start + line.find(value).unwrap_or(0),
+                                value.text,
+                                line_start + value.start,
                                 "requirement id",
                                 EditorSemanticKind::String,
                             ),
                             "text" => push_requirement_payload_fact(
                                 &mut facts,
-                                value,
-                                line_start + line.find(value).unwrap_or(0),
+                                value.text,
+                                line_start + value.start,
                                 "requirement text",
                                 EditorSemanticKind::String,
                             ),
                             "risk" => push_requirement_payload_fact(
                                 &mut facts,
-                                value,
-                                line_start + line.find(value).unwrap_or(0),
+                                value.text,
+                                line_start + value.start,
                                 "requirement risk",
                                 EditorSemanticKind::String,
                             ),
                             "verifymethod" => push_requirement_payload_fact(
                                 &mut facts,
-                                value,
-                                line_start + line.find(value).unwrap_or(0),
+                                value.text,
+                                line_start + value.start,
                                 "requirement verify method",
                                 EditorSemanticKind::String,
                             ),
@@ -440,19 +470,19 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
                     }
                 }
                 RequirementBlockKind::Element => {
-                    if let Some((key, value)) = split_key_value(trimmed) {
+                    if let Some((key, value)) = split_key_value_spanned(&stripped) {
                         match key.to_ascii_lowercase().as_str() {
                             "type" => push_requirement_payload_fact(
                                 &mut facts,
-                                value,
-                                line_start + line.find(value).unwrap_or(0),
+                                value.text,
+                                line_start + value.start,
                                 "requirement element type",
                                 EditorSemanticKind::String,
                             ),
                             "docref" => push_requirement_payload_fact(
                                 &mut facts,
-                                value,
-                                line_start + line.find(value).unwrap_or(0),
+                                value.text,
+                                line_start + value.start,
                                 "requirement doc ref",
                                 EditorSemanticKind::String,
                             ),
@@ -522,30 +552,26 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
             continue;
         }
 
-        if let Some(v) = parse_colon_value_ci(trimmed, "accTitle") {
+        if let Some(v) = parse_colon_value_ci(&stripped, "accTitle") {
             facts.push_directive_prefix("accTitle");
-            if let Some(rel) = line.find(&v) {
-                push_requirement_payload_fact(
-                    &mut facts,
-                    &v,
-                    line_start + rel,
-                    "requirement accessibility title",
-                    EditorSemanticKind::String,
-                );
-            }
+            push_requirement_payload_fact(
+                &mut facts,
+                v.text,
+                line_start + v.start,
+                "requirement accessibility title",
+                EditorSemanticKind::String,
+            );
             continue;
         }
 
-        if let Some(rest) = parse_keyword_rest_ci(trimmed, "accDescr") {
-            let rest = rest.trim_start();
+        if let Some((rest, rest_start)) = parse_keyword_rest_ci(&stripped, "accDescr") {
             if let Some(v) = rest.strip_prefix(':') {
-                let value = v.trim();
-                facts.push_directive_prefix("accDescr");
-                if let Some(rel) = line.find(value) {
+                if let Some(value) = trim_spanned_value(v, rest_start + 1) {
+                    facts.push_directive_prefix("accDescr");
                     push_requirement_payload_fact(
                         &mut facts,
-                        value,
-                        line_start + rel,
+                        value.text,
+                        line_start + value.start,
                         "requirement accessibility description",
                         EditorSemanticKind::String,
                     );
@@ -555,17 +581,15 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
             if let Some(after_lbrace) = rest.strip_prefix('{') {
                 facts.push_directive_prefix("accDescr");
                 let after = after_lbrace.trim_start();
-                let value_start = line_start
-                    + line.find('{').unwrap_or(0)
-                    + 1
-                    + after_lbrace.len().saturating_sub(after.len());
+                let value_start =
+                    line_start + rest_start + 1 + after_lbrace.len().saturating_sub(after.len());
                 if let Some(end_rel) = after.find('}') {
                     let value = after[..end_rel].trim();
                     if !value.is_empty() {
                         push_requirement_payload_fact(
                             &mut facts,
                             value,
-                            line_start + line.find(value).unwrap_or(0),
+                            value_start,
                             "requirement accessibility description",
                             EditorSemanticKind::String,
                         );
@@ -1144,20 +1168,18 @@ fn try_parse_acc_descr<'a>(t: &str, lines: &mut Peekable<Lines<'a>>) -> Result<O
 }
 
 fn parse_direction(t: &str) -> Option<&'static str> {
-    let tokens: Vec<&str> = t.split_whitespace().collect();
-    for i in 0..tokens.len() {
-        if tokens[i].eq_ignore_ascii_case("direction") {
-            let dir = tokens.get(i + 1).copied()?;
-            return match dir.to_ascii_uppercase().as_str() {
-                "TB" => Some("TB"),
-                "BT" => Some("BT"),
-                "LR" => Some("LR"),
-                "RL" => Some("RL"),
-                _ => None,
-            };
-        }
+    let (keyword, rest) = split_first_word(t)?;
+    if !keyword.eq_ignore_ascii_case("direction") {
+        return None;
     }
-    None
+    let (dir, _) = split_first_word(rest)?;
+    match dir.to_ascii_uppercase().as_str() {
+        "TB" => Some("TB"),
+        "BT" => Some("BT"),
+        "LR" => Some("LR"),
+        "RL" => Some("RL"),
+        _ => None,
+    }
 }
 
 fn parse_requirement_def_open(t: &str) -> Result<Option<RequirementDefOpen>> {
@@ -1363,9 +1385,13 @@ fn parse_element_body(lines: &mut Peekable<Lines<'_>>) -> Result<ElementBuilder>
 }
 
 fn split_key_value(input: &str) -> Option<(&str, &str)> {
+    split_key_value_spanned(input).map(|(key, value)| (key, value.text))
+}
+
+fn split_key_value_spanned(input: &str) -> Option<(&str, SpannedValue<'_>)> {
     let idx = input.find(':')?;
     let key = input[..idx].trim();
-    let value = input[idx + 1..].trim();
+    let value = trim_spanned_value(&input[idx + 1..], idx + 1)?;
     if key.is_empty() {
         return None;
     }
@@ -1440,10 +1466,12 @@ fn parse_shorthand_class_stmt(t: &str) -> Result<Option<(String, Vec<String>)>> 
 
 fn parse_style_stmt(t: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
     let t = t.trim_start();
-    if !t.to_ascii_lowercase().starts_with("style") {
+    let Some((keyword, rest)) = split_first_word(t) else {
+        return Ok(None);
+    };
+    if !keyword.eq_ignore_ascii_case("style") {
         return Ok(None);
     }
-    let rest = &t["style".len()..];
     let rest = rest.trim_start();
     let (ids, styles_str) = split_list_and_rest(rest)?;
     let styles = split_csv(styles_str);
@@ -1458,10 +1486,12 @@ fn parse_style_stmt(t: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
 
 fn parse_classdef_stmt(t: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
     let t = t.trim_start();
-    if !t.to_ascii_lowercase().starts_with("classdef") {
+    let Some((keyword, rest)) = split_first_word(t) else {
+        return Ok(None);
+    };
+    if !keyword.eq_ignore_ascii_case("classdef") {
         return Ok(None);
     }
-    let rest = &t["classdef".len()..];
     let rest = rest.trim_start();
     let (ids, styles_str) = split_list_and_rest(rest)?;
     let styles = split_csv(styles_str);
@@ -1476,13 +1506,12 @@ fn parse_classdef_stmt(t: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
 
 fn parse_class_stmt(t: &str) -> Result<Option<(Vec<String>, Vec<String>)>> {
     let t = t.trim_start();
-    if !t.to_ascii_lowercase().starts_with("class") {
+    let Some((keyword, rest)) = split_first_word(t) else {
+        return Ok(None);
+    };
+    if !keyword.eq_ignore_ascii_case("class") {
         return Ok(None);
     }
-    if t.to_ascii_lowercase().starts_with("classdef") {
-        return Ok(None);
-    }
-    let rest = &t["class".len()..];
     let rest = rest.trim_start();
     let (ids, classes_str) = split_list_and_rest(rest)?;
     let classes = parse_id_list_all(classes_str)?;
@@ -1642,7 +1671,7 @@ fn split_csv(input: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions};
+    use crate::{Engine, MermaidConfig, ParseOptions};
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -1652,6 +1681,31 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    fn parse_err(text: &str) -> String {
+        let engine = Engine::new();
+        block_on(engine.parse_diagram(text, ParseOptions::default()))
+            .unwrap_err()
+            .to_string()
+    }
+
+    fn test_meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "requirement".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        }
+    }
+
+    fn payload_selection(facts: &EditorSemanticFacts, detail: &str, name: &str) -> SourceSpan {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some(detail) && symbol.name == name)
+            .unwrap_or_else(|| panic!("missing payload symbol {detail:?} {name:?}"))
+            .selection
     }
 
     #[test]
@@ -1697,6 +1751,55 @@ element test_el {
         assert_eq!(model["elements"][0]["type"], json!("test_type"));
         assert_eq!(model["elements"][0]["docRef"], json!("test_ref"));
         assert_eq!(model["relationships"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn requirement_editor_payload_spans_point_to_values_when_values_match_keys() {
+        let text = r#"requirementDiagram
+accTitle: accTitle
+accDescr: accDescr
+requirement req {
+  id: id
+  text: text
+  risk: risk
+  verifymethod: verifymethod
+}
+element el {
+  type: type
+  docref: docref
+}
+"#;
+        let facts = parse_requirement_editor_facts(text, &test_meta());
+
+        for (detail, name, needle) in [
+            (
+                "requirement accessibility title",
+                "accTitle",
+                "accTitle: accTitle",
+            ),
+            (
+                "requirement accessibility description",
+                "accDescr",
+                "accDescr: accDescr",
+            ),
+            ("requirement id", "id", "id: id"),
+            ("requirement text", "text", "text: text"),
+            ("requirement risk", "risk", "risk: risk"),
+            (
+                "requirement verify method",
+                "verifymethod",
+                "verifymethod: verifymethod",
+            ),
+            ("requirement element type", "type", "type: type"),
+            ("requirement doc ref", "docref", "docref: docref"),
+        ] {
+            let value_start = text.find(needle).unwrap() + needle.rfind(name).unwrap();
+            assert_eq!(
+                payload_selection(&facts, detail, name),
+                SourceSpan::new(value_start, value_start + name.len()),
+                "wrong span for {detail}"
+            );
+        }
     }
 
     #[test]
@@ -1923,6 +2026,21 @@ classDef class2 color:blue
         for dir in ["TB", "BT", "LR", "RL"] {
             let model = parse(&format!("requirementDiagram\n\ndirection {dir}\n"));
             assert_eq!(model["direction"], json!(dir));
+        }
+    }
+
+    #[test]
+    fn requirement_top_level_directives_require_exact_first_word() {
+        for statement in [
+            "styleNode fill:#f00",
+            "classify myReq myClass",
+            "foo direction LR",
+        ] {
+            let message = parse_err(&format!("requirementDiagram\n{statement}\n"));
+            assert!(
+                message.contains("unexpected requirement statement"),
+                "unexpected error for {statement:?}: {message}"
+            );
         }
     }
 }

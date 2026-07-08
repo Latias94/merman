@@ -212,7 +212,8 @@ function applyTextMeasureStyle(
     style.lineHeight = `${Math.max(1, request.line_height || request.font_size)}px`;
     style.letterSpacing = `${request.letter_spacing || 0}px`;
     style.wordSpacing = `${request.word_spacing || 0}px`;
-    style.direction = request.direction === "rtl" ? "rtl" : "ltr";
+    probe.dir = request.direction;
+    style.direction = request.direction === "auto" ? "" : request.direction;
 }
 
 function measureProbeText(
