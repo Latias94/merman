@@ -603,12 +603,12 @@ function containsShadowScopingSelector(css: string): boolean {
 
 function containsViewportEscapingCssDeclaration(css: string): boolean {
   return cssDeclarationBlocks(css).some((block) => {
-    if (/(?:^|[;\s])position\s*:\s*(?:fixed|sticky)\b/.test(block)) {
+    if (/(?:^|[;{\s])position\s*:\s*(?:fixed|sticky)\b/.test(block)) {
       return true;
     }
     return (
-      /(?:^|[;\s])position\s*:\s*absolute\b/.test(block) &&
-      /(?:^|[;\s])(?:inset(?:-(?:block|inline)(?:-(?:start|end))?)?|top|right|bottom|left)\s*:/.test(
+      /(?:^|[;{\s])position\s*:\s*absolute\b/.test(block) &&
+      /(?:^|[;{\s])(?:inset(?:-(?:block|inline)(?:-(?:start|end))?)?|top|right|bottom|left)\s*:/.test(
         block,
       )
     );

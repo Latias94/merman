@@ -169,6 +169,14 @@ assert.throws(
   /viewport-escaping CSS/,
 );
 assert.throws(
+  () => assertSafeSvgForDom('<svg><style>@media all{svg{position:absolute;inset:0;z-index:999999}}</style></svg>'),
+  /viewport-escaping CSS/,
+);
+assert.throws(
+  () => assertSafeSvgForDom('<svg><style>@supports(display:block){svg{position:fixed;inset:0}}</style></svg>'),
+  /viewport-escaping CSS/,
+);
+assert.throws(
   () => assertSafeSvgForDom('<svg style="position:absolute;left:0;top:0"></svg>'),
   /viewport-escaping CSS/,
 );
