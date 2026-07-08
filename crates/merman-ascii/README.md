@@ -16,6 +16,18 @@ the right output format.
 This crate is intentionally model-driven. It consumes typed models from `merman-core`; it does not
 parse Mermaid syntax itself.
 
+Direct `merman-ascii` builds enable `core-full` and `core-host` by default to match native Mermaid
+compatibility expectations. Size-sensitive hosts can disable defaults and supply slim
+`merman-core` typed models instead:
+
+```toml
+merman-ascii = { version = "0.8.0-alpha.2", default-features = false }
+```
+
+When using the public `merman` facade, `merman --no-default-features --features ascii` keeps the
+ASCII renderer on that same slim core profile unless `core-full` or `core-host` is enabled
+explicitly.
+
 ## Current Status
 
 This crate contains the public API foundation, options, errors, third-party provenance, copied

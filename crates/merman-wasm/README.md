@@ -60,12 +60,12 @@ current artifact includes `render`, `ascii`, `core_full`, `core_host`, `ratex_ma
 `editor_language` support, which diagram parser/render facts are registered, and which lint rules
 are configurable or authoring-only. Lint rule entries include evidence references so browser hosts
 can explain why a rule is classified as Mermaid-backed compatibility or Merman authoring guidance.
-The ASCII preset still carries the full core registry because it depends on the browser ASCII
-implementation. Render entry points stay present on the JavaScript surface for shape stability, but
-artifacts built without render support return `MERMAN_UNSUPPORTED_FORMAT`; callers should use
-`bindingCapabilities().render` rather than function presence for capability checks. Optional
-surfaces such as editor-language and host text-measurement remain feature/preset gated when their
-features are not compiled into the artifact.
+The ASCII preset can stay on the slim core profile when built without `core-full`/`core-host`.
+Render entry points stay present on the JavaScript surface for shape stability, but artifacts built
+without render support return `MERMAN_UNSUPPORTED_FORMAT`; callers should use
+`bindingCapabilities().render` rather than function presence for capability checks. Optional surfaces
+such as editor-language and host text-measurement remain feature/preset gated when their features are
+not compiled into the artifact.
 
 The Rust feature boundary for the browser editor APIs is `editor-language`. Slim browser presets
 leave that feature off so they do not compile `merman-editor-core` into render-only or ASCII-only

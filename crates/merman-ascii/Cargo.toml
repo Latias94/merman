@@ -13,8 +13,13 @@ readme = "README.md"
 keywords = ["mermaid", "diagrams", "ascii", "unicode", "headless"]
 categories = ["visualization", "command-line-utilities"]
 
+[features]
+default = ["core-full", "core-host"]
+core-full = ["merman-core/full"]
+core-host = ["merman-core/host"]
+
 [dependencies]
 chrono.workspace = true
-merman-core = { workspace = true, features = ["full", "host"] }
+merman-core.workspace = true
 thiserror.workspace = true
 unicode-width.workspace = true

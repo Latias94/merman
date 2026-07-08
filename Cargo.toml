@@ -104,7 +104,7 @@ tower-lsp = "0.20.0"
 # duplicating version requirements across crates.
 merman = { path = "crates/merman", version = "0.8.0-alpha.2", default-features = false }
 merman-analysis = { path = "crates/merman-analysis", version = "0.8.0-alpha.2", default-features = false }
-merman-ascii = { path = "crates/merman-ascii", version = "0.8.0-alpha.2" }
+merman-ascii = { path = "crates/merman-ascii", version = "0.8.0-alpha.2", default-features = false }
 merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.8.0-alpha.2", default-features = false }
 merman-core = { path = "crates/merman-core", version = "0.8.0-alpha.2", default-features = false }
 merman-editor-core = { path = "crates/merman-editor-core", version = "0.8.0-alpha.2", default-features = false }

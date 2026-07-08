@@ -36,8 +36,11 @@
 //! - `ratex-math`: pure-Rust math label rendering for the SVG path; this implies
 //!   `render`.
 //!
-//! The default feature set is intentionally empty so parser-only users do not
-//! pull in layout, SVG, raster, or text-output dependencies.
+//! The default feature set keeps Mermaid-compatible full core parsing and host
+//! behavior enabled, but does not pull in layout, SVG, raster, or text-output
+//! dependencies. Use `default-features = false` for size-sensitive parser-only,
+//! pure-WASM, or Typst-style integrations, then opt into only the output
+//! feature you need.
 //!
 //! # SVG quickstart
 //!

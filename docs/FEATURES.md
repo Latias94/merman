@@ -49,8 +49,10 @@ crate.
 | `merman` | `cytoscape-layout` | Enables the Cytoscape-style Architecture and Mindmap layout seam through `merman-render`. Enabled by `core-full`. |
 | `merman` | `core-full` | Forwards to `merman-core/full`; enabled by default. |
 | `merman` | `core-host` | Forwards to `merman-core/host`; enabled by default. |
+| `merman-ascii` | `core-full` | Forwards to `merman-core/full`; enabled by default for direct `merman-ascii` users. |
+| `merman-ascii` | `core-host` | Forwards to `merman-core/host`; enabled by default for direct `merman-ascii` users. |
 | `merman-wasm` | `render` | Browser wasm-bindgen rendering surface for `@mermanjs/web`. |
-| `merman-wasm` | `ascii` | Browser wasm-bindgen ASCII/Unicode surface for `@mermanjs/web`. The current browser ASCII preset still pulls the full core registry through `merman-ascii`. |
+| `merman-wasm` | `ascii` | Browser wasm-bindgen ASCII/Unicode surface for `@mermanjs/web`; pair with `core-full`/`core-host` only when the artifact needs those core profiles. |
 | `merman-wasm` | `core-full` | Browser package full core profile; enabled by default. |
 | `merman-wasm` | `core-host` | Browser package host capability profile; enabled by default. |
 | `merman-wasm` | `cytoscape-layout` | Browser opt-in for Architecture and Mindmap Cytoscape-style layout when building non-full presets. Enabled by `core-full`. |
@@ -68,6 +70,11 @@ wasm-minimal-protocol and must keep browser/wasm-bindgen imports out of package 
 Bindings expose the selected registry profile and per-family parser/render capability metadata so
 hosts can inspect the actual full/tiny diagram surface in slim artifacts instead of inferring it
 from package names.
+
+The public `merman` facade disables `merman-ascii` default features internally and forwards
+`core-full`/`core-host` with weak optional dependency features. This keeps direct `merman-ascii`
+usage backwards-compatible while allowing `merman --no-default-features --features ascii` and
+browser ASCII presets to stay on the slim core profile.
 
 ## Host Profiles
 
