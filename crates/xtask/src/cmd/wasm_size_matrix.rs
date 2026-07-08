@@ -88,6 +88,14 @@ struct WasmPresetBudget {
 
 const PRESETS: &[WasmPreset] = &[
     WasmPreset {
+        name: "browser-bridge",
+        surface: Surface::Browser,
+        package: "merman-wasm",
+        artifact_name: "merman_wasm.wasm",
+        no_default_features: true,
+        features: &[],
+    },
+    WasmPreset {
         name: "browser-core",
         surface: Surface::Browser,
         package: "merman-wasm",

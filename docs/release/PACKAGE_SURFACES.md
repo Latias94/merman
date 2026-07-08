@@ -188,16 +188,17 @@ Recent observed matrix values:
 
 | Surface | Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| Browser | `browser-core` | no | `analysis` | 2,314,537 | 1,607,616 | 488,344 | 371,239 |
-| Browser | `browser-render` | no | `render`, `analysis` | 7,142,939 | 5,323,303 | 1,567,143 | 1,135,983 |
+| Browser | `browser-bridge` | no | none | 2,402,193 | 1,671,346 | 508,819 | 385,724 |
+| Browser | `browser-core` | no | `analysis` | 3,389,891 | 2,433,967 | 738,289 | 545,710 |
+| Browser | `browser-render` | no | `render`, `analysis` | 7,958,453 | 5,911,402 | 1,765,769 | 1,265,268 |
 | Browser | `browser-render-only` | no | `render` | 7,364,323 | 5,475,747 | 1,614,544 | 1,168,221 |
-| Browser | `browser-ascii` | no | `ascii` | 4,053,135 | 2,972,267 | 1,000,885 | 745,996 |
-| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 9,139,597 | 6,824,157 | 2,136,333 | 1,536,058 |
-| Browser | `browser-full` | yes | none | 10,115,464 | 7,502,959 | 2,335,802 | 1,666,379 |
-| Browser | `browser-ratex-math` | yes | `ratex-math` | 13,398,073 | 10,231,577 | 3,277,885 | 2,349,234 |
-| Typst | `typst-bridge` | no | none | 48,359 | 34,296 | 13,553 | 11,482 |
+| Browser | `browser-ascii` | no | `ascii` | 3,411,810 | 2,430,388 | 729,843 | 550,105 |
+| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 10,349,942 | 7,684,417 | 2,409,135 | 1,721,115 |
+| Browser | `browser-full` | yes | none | 11,385,227 | 8,407,735 | 2,619,570 | 1,862,231 |
+| Browser | `browser-ratex-math` | yes | `ratex-math` | 14,668,278 | 11,139,337 | 3,566,896 | 2,542,687 |
+| Typst | `typst-bridge` | no | none | 51,364 | 36,355 | 14,213 | 12,134 |
 | Typst | `typst-render-only-no-elk` | no | `render` | 6,751,372 | 5,201,760 | 1,554,893 | 1,122,068 |
-| Typst | `typst-render-analysis-no-elk` | no | `render`, `analysis` | 6,541,087 | 5,056,278 | 1,508,214 | 1,093,218 |
-| Typst | `typst-core-full-no-elk` | no | `render`, `analysis`, `core-full` | 8,164,316 | 6,307,341 | 1,989,926 | 1,434,971 |
-| Typst | `typst-full-elk` | yes | none | 7,514,778 | 5,735,845 | 1,707,876 | 1,227,566 |
-| Typst | `typst-ratex-math` | yes | `ratex-math` | 11,228,422 | 8,620,566 | 2,684,627 | 1,928,257 |
+| Typst | `typst-render-analysis-no-elk` | no | `render`, `analysis` | 7,266,306 | 5,586,691 | 1,690,307 | 1,211,638 |
+| Typst | `typst-core-full-no-elk` | no | `render`, `analysis`, `core-full` | 8,802,256 | 6,779,460 | 2,146,234 | 1,545,056 |
+| Typst | `typst-full-elk` | yes | none | 8,305,206 | 6,313,325 | 1,904,120 | 1,354,361 |
+| Typst | `typst-ratex-math` | yes | `ratex-math` | 12,022,147 | 9,203,967 | 2,886,822 | 2,057,657 |

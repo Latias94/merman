@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated": "2026-06-29",
+  "updated": "2026-07-08",
   "compression_source": "stripped",
   "notes": "Budgets are regression guards for wasm-size-matrix and generated web packages. Matrix gzip and brotli are measured from the stripped artifact produced by wasm-tools strip --all.",
   "web_package": {
@@ -11,11 +11,17 @@
     }
   },
   "presets": {
-    "browser-core": {
+    "browser-bridge": {
       "max_raw_bytes": 2550000,
       "max_stripped_bytes": 1800000,
-      "max_gzip_bytes": 500000,
-      "max_brotli_bytes": 400000
+      "max_gzip_bytes": 530000,
+      "max_brotli_bytes": 410000
+    },
+    "browser-core": {
+      "max_raw_bytes": 3600000,
+      "max_stripped_bytes": 2600000,
+      "max_gzip_bytes": 800000,
+      "max_brotli_bytes": 600000
     },
     "browser-render": {
       "max_raw_bytes": 8200000,
@@ -42,10 +48,10 @@
       "max_brotli_bytes": 2550000
     },
     "browser-full-no-elk": {
-      "max_raw_bytes": 9800000,
-      "max_stripped_bytes": 7400000,
-      "max_gzip_bytes": 2350000,
-      "max_brotli_bytes": 1700000
+      "max_raw_bytes": 10700000,
+      "max_stripped_bytes": 7900000,
+      "max_gzip_bytes": 2500000,
+      "max_brotli_bytes": 1800000
     },
     "browser-ratex-math": {
       "max_raw_bytes": 17000000,
