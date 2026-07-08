@@ -36,6 +36,366 @@ Bob-->Alice: I am good thanks!"#;
 }
 
 #[test]
+fn parse_sequence_editor_facts_preserve_actor_and_box_spans() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+title: Diagram Title
+accTitle: Accessible Title
+accDescr: Accessible Description
+participant Alice
+actor Bob
+box rgb(240,240,240) Team
+participant Carol
+end
+Alice->>Bob: Hello
+Note over Alice,Bob: Review
+details Alice: {"owner": "platform"}"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let first_symbol = |name: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .unwrap_or_else(|| panic!("missing symbol {name}"))
+    };
+
+    let alice_start = text.find("Alice").unwrap();
+    assert_eq!(first_symbol("Alice").selection.start, alice_start);
+    assert_eq!(
+        first_symbol("Alice").selection.end,
+        alice_start + "Alice".len()
+    );
+
+    let team_start = text.find("Team").unwrap();
+    let team = first_symbol("Team");
+    assert_eq!(team.detail.as_deref(), Some("sequence box"));
+    assert_eq!(team.selection.start, team_start);
+    assert_eq!(team.selection.end, team_start + "Team".len());
+
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence actor")
+    }));
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
+    }));
+
+    let payload_symbol = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing payload {name:?} / {detail:?}"))
+    };
+
+    for (name, detail) in [
+        ("Diagram Title", "sequence title"),
+        ("Accessible Title", "sequence accessibility title"),
+        (
+            "Accessible Description",
+            "sequence accessibility description",
+        ),
+        ("Hello", "sequence message"),
+        ("Review", "sequence note"),
+        (r#"{"owner": "platform"}"#, "sequence interaction payload"),
+    ] {
+        let symbol = payload_symbol(name, detail);
+        let start = text.find(name).unwrap();
+        assert_eq!(symbol.role, EditorSemanticRole::Payload);
+        assert_eq!(symbol.kind, EditorSemanticKind::String);
+        assert_eq!(symbol.selection.start, start);
+        assert_eq!(symbol.selection.end, start + name.len());
+    }
+
+    for prefix in ["title", "accTitle", "accDescr", "details"] {
+        assert!(facts.directive_prefixes.iter().any(|p| p == prefix));
+    }
+
+    for payload in ["Hello", "Review", r#"{"owner": "platform"}"#] {
+        let start = text.find(payload).unwrap();
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span.start <= start
+                    && expected.span.end >= start + payload.len()
+            }),
+            "missing payload expected syntax for {payload:?}"
+        );
+    }
+}
+
+#[test]
+fn parse_sequence_editor_payload_spans_skip_directive_prefix_text() {
+    let engine = Engine::new();
+    let text = r#"sequenceDiagram
+title: title
+accTitle: Title
+accDescr: accDescr
+Alice->>Bob: Alice"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    for (name, detail) in [
+        ("title", "sequence title"),
+        ("Title", "sequence accessibility title"),
+        ("accDescr", "sequence accessibility description"),
+        ("Alice", "sequence message"),
+    ] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing payload {name:?} / {detail:?}"));
+        let start = text.rfind(name).unwrap();
+        assert_eq!(symbol.role, EditorSemanticRole::Payload);
+        assert_eq!(symbol.kind, EditorSemanticKind::String);
+        assert_eq!(symbol.selection.start, start);
+        assert_eq!(symbol.selection.end, start + name.len());
+    }
+}
+
+#[test]
+fn parse_sequence_editor_facts_frontmatter_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = r#"---
+config:
+  theme: dark
+---
+sequenceDiagram
+participant Alice
+Alice->>Bob: Hello"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let alice = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
+        })
+        .expect("Alice participant symbol");
+    let alice_start = text.find("Alice").unwrap();
+    assert_eq!(alice.selection.start, alice_start);
+    assert_eq!(alice.selection.end, alice_start + "Alice".len());
+}
+
+#[test]
+fn parse_sequence_editor_facts_crlf_frontmatter_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "sequenceDiagram\r\n",
+        "participant Alice\r\n",
+        "Alice->>Bob: Hello",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let alice = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
+        })
+        .expect("Alice participant symbol");
+    let alice_start = text.find("Alice").unwrap();
+    assert_eq!(alice.selection.start, alice_start);
+    assert_eq!(alice.selection.end, alice_start + "Alice".len());
+}
+
+#[test]
+fn parse_sequence_editor_facts_init_directive_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = r#"%%{init: {"theme": "dark"}}%%
+sequenceDiagram
+participant Alice
+Alice->>Bob: Hello"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let bob = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Bob"
+                && symbol.detail.as_deref() == Some("sequence participant reference")
+        })
+        .expect("Bob participant reference");
+    let bob_start = text.find("Bob").unwrap();
+    assert_eq!(bob.selection.start, bob_start);
+    assert_eq!(bob.selection.end, bob_start + "Bob".len());
+}
+
+#[test]
+fn parse_sequence_editor_facts_crlf_init_directive_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = concat!(
+        "%%{init: {\"theme\": \"dark\"}}%%\r\n",
+        "sequenceDiagram\r\n",
+        "participant Alice\r\n",
+        "Alice->>Bob: Hello",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let bob = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Bob"
+                && symbol.detail.as_deref() == Some("sequence participant reference")
+        })
+        .expect("Bob participant reference");
+    let bob_start = text.find("Bob").unwrap();
+    assert_eq!(bob.selection.start, bob_start);
+    assert_eq!(bob.selection.end, bob_start + "Bob".len());
+}
+
+#[test]
+fn parse_sequence_editor_facts_crlf_frontmatter_init_unicode_spans_use_original_source() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "sequenceDiagram\r\n",
+        "participant 顧客\r\n",
+        "顧客->>サーバー: こんにちは",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let customer = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "顧客" && symbol.detail.as_deref() == Some("sequence participant")
+        })
+        .expect("Unicode participant symbol");
+    let customer_start = text.find("顧客").unwrap();
+    assert_eq!(customer.selection.start, customer_start);
+    assert_eq!(customer.selection.end, customer_start + "顧客".len());
+}
+
+#[test]
+fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\n",
+        "title: quoted\n",
+        "---\n",
+        "sequenceDiagram\n",
+        "participant Alice\n",
+        "Alice->>Bob: #quot;\n",
+    );
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert_eq!(
+        facts.span_coordinate_space,
+        EditorSpanCoordinateSpace::ParserInput
+    );
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
+    }));
+    let alice = facts
+        .symbols
+        .iter()
+        .find(|symbol| {
+            symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
+        })
+        .expect("Alice participant");
+    assert_eq!(alice.selection.start, "sequenceDiagram\nparticipant ".len());
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
+    }));
+    assert!(
+        facts.diagnostics.is_empty(),
+        "editor facts must parse the preprocessed Mermaid body, not the original frontmatter-bearing source"
+    );
+}
+
+#[test]
+fn parse_sequence_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Alice"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Bob"));
+}
+
+#[test]
+fn parse_sequence_editor_facts_stop_after_non_advancing_lexer_error() {
+    let engine = Engine::new();
+    let text = "sequenceDiagram\nparticipant Alice\nparticipant Bob @{\nAlice->>Bob: Hello\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Alice"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Bob"));
+}
+
+#[test]
+fn parse_sequence_editor_facts_continue_after_advancing_lexer_error() {
+    let engine = Engine::new();
+    let text = "sequenceDiagram\n<\nparticipant Alice\nAlice->>Bob: Hello\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())
+        .unwrap()
+        .expect("sequence editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Alice"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "Bob"));
+}
+
+#[test]
 fn parse_diagram_sequence_multibyte_actor_ids_do_not_panic() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

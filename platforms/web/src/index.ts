@@ -1,488 +1,107 @@
-export interface ParseOptions {
-  suppress_errors?: boolean;
-}
+import {
+  createMermanRuntimeState,
+  currentMermanRuntimeState,
+  type MermanRuntimeState,
+} from "./runtime-state.js";
+import { assertSafeSvgForDom } from "./svg-safety.js";
 
-export interface LayoutOptions {
-  viewport_width?: number;
-  viewport_height?: number;
-  text_measurer?: "vendored" | "deterministic";
-  math_renderer?: "none" | "ratex";
-  flowchart_elk_backend?: "source-ported" | "source_ported" | "source" | "compat";
-}
+import {
+  isAsciiDiagramType,
+  isDiagramType,
+  isHostThemePresetName,
+  isThemeName,
+} from "./public-catalog.js";
+import type {
+  AsciiCapability,
+  AsciiCapabilityEvidence,
+  AsciiDiagramType,
+  AsciiSupportLevel,
+  BindingCapabilities,
+  DiagramFamilyCapability,
+  DiagramType,
+  HostThemePresetName,
+  LintRuleCatalogEntry,
+  LintRuleCatalogResponse,
+  RegistryProfile,
+  TextMeasurementCapabilities,
+  ThemeName,
+} from "./public-catalog.js";
+import type {
+  AnalysisFactsResult,
+  AnalysisResult,
+  AsciiBindingOptions,
+  CommonBindingOptions,
+  EditorCodeAction,
+  EditorCompletionList,
+  EditorDiagnosticsResult,
+  EditorDocumentSymbol,
+  EditorHover,
+  EditorLocation,
+  EditorPosition,
+  EditorPrepareRename,
+  EditorSemanticToken,
+  EditorSemanticTokenLegend,
+  EditorSymbolInformation,
+  EditorWorkspaceEdit,
+  HostTextMeasureRequest,
+  HostTextMeasureResult,
+  HostTextMeasurer,
+  MermanInitInput,
+  MermanWasmModule,
+  SvgBindingOptions,
+  ValidationResult,
+} from "./public-types.js";
 
-export interface ResourceOptions {
-  profile?:
-    | "interactive"
-    | "typst-package"
-    | "typst_package"
-    | "typst"
-    | "trusted-native"
-    | "trusted_native"
-    | "trusted"
-    | "unbounded-for-trusted-input"
-    | "unbounded_for_trusted_input"
-    | "unbounded";
-  max_source_bytes?: number;
-  max_svg_bytes?: number;
-  max_flowchart_nodes?: number;
-  max_flowchart_edges?: number;
-  max_flowchart_subgraphs?: number;
-  max_label_bytes?: number;
-}
+export {
+  ASCII_BINDING_CAPABILITIES,
+  BINDING_STATUS_CODE_NAMES,
+  CORE_BINDING_CAPABILITIES,
+  DEFAULT_BINDING_CAPABILITIES,
+  FULL_BINDING_CAPABILITIES,
+  RENDER_BINDING_CAPABILITIES,
+  SUPPORTED_ASCII_DIAGRAMS,
+  SUPPORTED_DIAGRAMS,
+  SUPPORTED_HOST_THEME_PRESETS,
+  SUPPORTED_THEMES,
+  isAsciiDiagramType,
+  isBindingErrorPayload,
+  isBindingStatusCodeName,
+  isDiagramType,
+  isHostThemePresetName,
+  isThemeName,
+  normalizeHostThemePresetName,
+  normalizeThemeName,
+} from "./public-catalog.js";
+export type * from "./public-catalog.js";
+export type * from "./public-types.js";
+export { assertSafeSvgForDom } from "./svg-safety.js";
 
-export interface SvgOptions {
-  diagram_id?: string;
-  pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
-  scoped_css?: string;
-  css_override_policy?: "preserve" | "strip-existing-important" | "strip_existing_important";
-  root_background_color?: string;
-  drop_native_duplicate_fallbacks?: boolean;
-}
-
-export type HostThemeAppearance = "light" | "dark";
-
-export interface HostThemeRolesOptions {
-  canvas?: string;
-  surface?: string;
-  surface_alt?: string;
-  surface_muted?: string;
-  text?: string;
-  subtle_text?: string;
-  border?: string;
-  line?: string;
-  edge_label_background?: string;
-  cluster_background?: string;
-  cluster_border?: string;
-  note_background?: string;
-  note_border?: string;
-  note_text?: string;
-  actor_background?: string;
-  actor_border?: string;
-  actor_text?: string;
-  activation_background?: string;
-  activation_border?: string;
-  error?: string;
-  warning?: string;
-  success?: string;
-}
-
-export interface HostThemeOutputOptions {
-  pipeline?: "parity" | "readable" | "resvg-safe" | "resvg_safe";
-  css_override_policy?: "preserve" | "strip-existing-important" | "strip_existing_important";
-  root_background?: "none" | "canvas" | string;
-  drop_native_duplicate_fallbacks?: boolean;
-  scoped_css?: string;
-}
-
-export interface HostThemeOptions {
-  preset?: HostThemePresetName;
-  appearance?: HostThemeAppearance;
-  font_family?: string;
-  font_size?: string;
-  roles?: HostThemeRolesOptions;
-  series_palette?: string[];
-  output?: HostThemeOutputOptions;
-  themeVariables?: Record<string, unknown>;
-  theme_variables?: Record<string, unknown>;
-  site_config?: MermaidSiteConfig;
-}
-
-export type MermaidSiteConfig = Record<string, unknown>;
-
-export interface CommonBindingOptions {
-  version?: number;
-  fixed_today?: string;
-  fixed_local_offset_minutes?: number;
-  site_config?: MermaidSiteConfig;
-  parse?: ParseOptions;
-}
-
-export type AsciiCharsetOption = "ascii" | "unicode";
-export type AsciiDirectionOption =
-  | "lr"
-  | "left-right"
-  | "left_right"
-  | "td"
-  | "tb"
-  | "top-down"
-  | "top_down";
-export type AsciiColorModeOption =
-  | "plain"
-  | "none"
-  | "auto"
-  | "ansi16"
-  | "ansi-16"
-  | "ansi_16"
-  | "ansi256"
-  | "ansi-256"
-  | "ansi_256"
-  | "truecolor"
-  | "true-color"
-  | "true_color"
-  | "html";
-
-export interface AsciiThemeOptions {
-  foreground?: string;
-  fg?: string;
-  background?: string;
-  bg?: string;
-  line?: string;
-  accent?: string;
-  muted?: string;
-  surface?: string;
-  border?: string;
-}
-
-export interface AsciiRenderOptions {
-  charset?: AsciiCharsetOption;
-  default_direction?: AsciiDirectionOption;
-  defaultDirection?: AsciiDirectionOption;
-  color_mode?: AsciiColorModeOption;
-  colorMode?: AsciiColorModeOption;
-  theme?: AsciiThemeOptions;
-  sequence_mirror_actors?: boolean;
-  sequenceMirrorActors?: boolean;
-  xychart_vertical_plot_height?: number;
-  xychartVerticalPlotHeight?: number;
-  xychart_category_band_width?: number;
-  xychartCategoryBandWidth?: number;
-  xychart_horizontal_plot_width?: number;
-  xychartHorizontalPlotWidth?: number;
-  max_grid_cells?: number;
-  maxGridCells?: number;
-}
-
-export interface AsciiBindingOptions extends CommonBindingOptions {
-  ascii?: AsciiRenderOptions;
-}
-
-export interface SvgBindingOptions extends CommonBindingOptions {
-  host_theme?: HostThemeOptions;
-  layout?: LayoutOptions;
-  resources?: ResourceOptions;
-  svg?: SvgOptions;
-}
-
-export type BindingOptions = SvgBindingOptions;
-
-export type HostTextWrapMode =
-  | "svg-like"
-  | "svg-like-single-run"
-  | "html-like";
-
-export type HostTextWhiteSpace =
-  | "normal"
-  | "nowrap"
-  | "break-spaces"
-  | "pre-wrap";
-
-export interface HostTextMeasureRequest {
-  text: string;
-  font_family?: string | null;
-  font_size: number;
-  font_weight?: string | null;
-  font_style: string;
-  max_width?: number | null;
-  has_max_width: boolean;
-  line_height: number;
-  letter_spacing: number;
-  word_spacing: number;
-  wrap_mode: HostTextWrapMode;
-  direction: "auto" | "ltr" | "rtl";
-  white_space: HostTextWhiteSpace;
-}
-
-export interface HostTextMeasureResult {
-  handled?: boolean;
-  width: number;
-  height: number;
-  line_count?: number;
-}
-
-export type HostTextMeasurer = (
-  request: HostTextMeasureRequest
-) => HostTextMeasureResult | null | undefined;
-
-export const SUPPORTED_THEMES = [
-  "default",
-  "base",
-  "dark",
-  "forest",
-  "neutral",
-  "neo",
-  "neo-dark",
-  "redux",
-  "redux-dark",
-  "redux-color",
-  "redux-dark-color",
-] as const;
-
-export type ThemeName = (typeof SUPPORTED_THEMES)[number];
-
-export const SUPPORTED_HOST_THEME_PRESETS = [
-  "editor-light",
-  "editor-dark",
-  "one-dark",
-  "gruvbox-light",
-  "gruvbox-dark",
-  "ayu-light",
-  "ayu-dark",
-] as const;
-
-export type HostThemePresetName = (typeof SUPPORTED_HOST_THEME_PRESETS)[number];
-
-export const SUPPORTED_DIAGRAMS = [
-  "architecture",
-  "block",
-  "c4",
-  "class",
-  "er",
-  "flowchart",
-  "gantt",
-  "gitgraph",
-  "info",
-  "journey",
-  "kanban",
-  "mindmap",
-  "packet",
-  "pie",
-  "quadrantchart",
-  "radar",
-  "requirement",
-  "sankey",
-  "sequence",
-  "state",
-  "timeline",
-  "treemap",
-  "venn",
-  "xychart",
-  "zenuml",
-] as const;
-
-export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
-
-export const SUPPORTED_ASCII_DIAGRAMS = [
-  "class",
-  "er",
-  "flowchart",
-  "gantt",
-  "gitgraph",
-  "journey",
-  "kanban",
-  "mindmap",
-  "packet",
-  "sequence",
-  "state",
-  "timeline",
-  "treeView",
-  "xychart",
-  "zenuml",
-] as const;
-
-export type AsciiDiagramType = (typeof SUPPORTED_ASCII_DIAGRAMS)[number];
-
-export const BINDING_STATUS_CODE_NAMES = [
-  "MERMAN_OK",
-  "MERMAN_INVALID_ARGUMENT",
-  "MERMAN_UTF8_ERROR",
-  "MERMAN_OPTIONS_JSON_ERROR",
-  "MERMAN_NO_DIAGRAM",
-  "MERMAN_PARSE_ERROR",
-  "MERMAN_RENDER_ERROR",
-  "MERMAN_UNSUPPORTED_FORMAT",
-  "MERMAN_PANIC",
-  "MERMAN_INTERNAL_ERROR",
-  "MERMAN_RESOURCE_LIMIT_EXCEEDED",
-] as const;
-
-export type BindingStatusCodeName = (typeof BINDING_STATUS_CODE_NAMES)[number];
-
-export interface BindingErrorPayload {
-  version: number;
-  ok: false;
-  code: number;
-  code_name: BindingStatusCodeName | string;
-  message: string;
-}
-
-export interface BindingCapabilities {
-  render: boolean;
-  ascii: boolean;
-  core_full: boolean;
-  core_host: boolean;
-  elk_layout: boolean;
-  ratex_math: boolean;
-}
-
-export type RegistryProfile = "full" | "tiny";
-
-export interface DiagramFamilyCapability {
-  diagram_type: string;
-  metadata_id: DiagramType | null;
-  has_semantic_parser: boolean;
-  has_render_parser: boolean;
-}
-
-export type AsciiSupportLevel = "full" | "partial" | "summary" | "unsupported";
-
-export type AsciiEvidenceKind =
-  | "mermaid_ascii_oracle"
-  | "beautiful_mermaid_prior_art"
-  | "local_semantic_probe"
-  | "local_advantage"
-  | "support_matrix"
-  | "gap_registry";
-
-export interface AsciiCapabilityEvidence {
-  kind: AsciiEvidenceKind | string;
-  source: string;
-  note: string;
-}
-
-export interface AsciiCapability {
-  diagram_type: AsciiDiagramType | string;
-  display_name: string;
-  support_level: AsciiSupportLevel;
-  summary_fallback: boolean;
-  supported_semantics: string[];
-  limits: string[];
-  evidence: AsciiCapabilityEvidence[];
-}
-
-export const DEFAULT_BINDING_CAPABILITIES: BindingCapabilities = {
-  render: true,
-  ascii: true,
-  core_full: true,
-  core_host: true,
-  elk_layout: true,
-  ratex_math: false,
-};
-
-export function isThemeName(theme: string): theme is ThemeName {
-  return (SUPPORTED_THEMES as readonly string[]).includes(theme);
-}
-
-export function isHostThemePresetName(
-  preset: string
-): preset is HostThemePresetName {
-  return (SUPPORTED_HOST_THEME_PRESETS as readonly string[]).includes(preset);
-}
-
-export function isDiagramType(diagram: string): diagram is DiagramType {
-  return (SUPPORTED_DIAGRAMS as readonly string[]).includes(diagram);
-}
-
-export function isAsciiDiagramType(
-  diagram: string
-): diagram is AsciiDiagramType {
-  return (SUPPORTED_ASCII_DIAGRAMS as readonly string[]).includes(diagram);
-}
-
-export function isBindingStatusCodeName(
-  codeName: string
-): codeName is BindingStatusCodeName {
-  return (BINDING_STATUS_CODE_NAMES as readonly string[]).includes(codeName);
-}
-
-export function isBindingErrorPayload(error: unknown): error is BindingErrorPayload {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-  const payload = error as Record<string, unknown>;
-  return (
-    payload.ok === false &&
-    typeof payload.version === "number" &&
-    typeof payload.code === "number" &&
-    typeof payload.code_name === "string" &&
-    typeof payload.message === "string"
-  );
-}
-
-export function normalizeThemeName(theme: string | null | undefined): ThemeName {
-  return theme && isThemeName(theme) ? theme : "default";
-}
-
-export function normalizeHostThemePresetName(
-  preset: string | null | undefined
-): HostThemePresetName | null {
-  return preset && isHostThemePresetName(preset) ? preset : null;
-}
-
-export interface ValidationResult {
-  valid: boolean;
-  error?: string;
-  code: number;
-  code_name: BindingStatusCodeName;
-}
-
-export interface MermanWasmModule {
-  default: (input?: unknown) => Promise<unknown>;
-  abiVersion: () => number;
-  packageVersion: () => string;
-  renderSvg: (source: string, optionsJson?: string | null) => string;
-  renderSvgWithTextMeasurer?: (
-    source: string,
-    optionsJson: string | null | undefined,
-    measurer: HostTextMeasurer
-  ) => string;
-  renderAscii: (source: string, optionsJson?: string | null) => string;
-  parseJson: (source: string, optionsJson?: string | null) => string;
-  layoutJson: (source: string, optionsJson?: string | null) => string;
-  layoutJsonWithTextMeasurer?: (
-    source: string,
-    optionsJson: string | null | undefined,
-    measurer: HostTextMeasurer
-  ) => string;
-  validate: (source: string, optionsJson?: string | null) => ValidationResult;
-  asciiSupportedDiagrams: () => string[];
-  asciiCapabilities?: () => AsciiCapability[];
-  bindingCapabilities?: () => BindingCapabilities;
-  selectedRegistryProfile?: () => string;
-  diagramFamilyCapabilities?: () => DiagramFamilyCapability[];
-  supportedDiagrams: () => string[];
-  supportedHostThemePresets?: () => string[];
-  supportedThemes?: () => string[];
-  themes?: () => string[];
-}
-
-export type MermanWasmLoader = () => Promise<MermanWasmModule>;
-
-export interface MermanInitOptions {
-  loader?: MermanWasmLoader;
-  wasm?: unknown;
-}
-
-export type MermanInitInput = MermanWasmLoader | MermanInitOptions;
-
-let wasmModule: MermanWasmModule | null = null;
-let initPromise: Promise<MermanWasmModule> | null = null;
-let supportedDiagramsCache: DiagramType[] | null = null;
-let asciiSupportedDiagramsCache: AsciiDiagramType[] | null = null;
-let asciiCapabilitiesCache: AsciiCapability[] | null = null;
-let diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null = null;
-let supportedHostThemePresetsCache: HostThemePresetName[] | null = null;
-let supportedThemesCache: ThemeName[] | null = null;
+const defaultRuntimeState = createMermanRuntimeState(defaultLoader);
 
 export function initMerman(init?: MermanInitInput): Promise<MermanWasmModule> {
-  if (wasmModule) {
-    return Promise.resolve(wasmModule);
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  if (state.wasmModule) {
+    return Promise.resolve(state.wasmModule);
   }
-  if (initPromise) {
-    return initPromise;
+  if (state.initPromise) {
+    return state.initPromise;
   }
-  initPromise = doInit(init).catch((error) => {
-    initPromise = null;
+  state.initPromise = doInit(state, init).catch((error) => {
+    state.initPromise = null;
     throw error;
   });
-  return initPromise;
+  return state.initPromise;
 }
 
-async function doInit(init?: MermanInitInput): Promise<MermanWasmModule> {
+async function doInit(
+  state: MermanRuntimeState,
+  init?: MermanInitInput
+): Promise<MermanWasmModule> {
   const loader = typeof init === "function" ? init : init?.loader;
   const wasm = typeof init === "function" ? undefined : init?.wasm;
-  const module = loader ? await loader() : await defaultLoader();
+  const module = loader ? await loader() : await state.defaultLoader();
   await module.default(wasm);
-  wasmModule = module;
+  state.wasmModule = module;
   return module;
 }
 
@@ -491,14 +110,15 @@ async function defaultLoader(): Promise<MermanWasmModule> {
 }
 
 export function getMerman(): MermanWasmModule {
-  if (!wasmModule) {
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  if (!state.wasmModule) {
     throw new Error("Merman WASM is not initialized. Call initMerman() first.");
   }
-  return wasmModule;
+  return state.wasmModule;
 }
 
 export function isMermanInitialized(): boolean {
-  return wasmModule !== null;
+  return currentMermanRuntimeState(defaultRuntimeState).wasmModule !== null;
 }
 
 export function renderSvg(source: string, options?: SvgBindingOptions | string): string {
@@ -592,7 +212,8 @@ function applyTextMeasureStyle(
     style.lineHeight = `${Math.max(1, request.line_height || request.font_size)}px`;
     style.letterSpacing = `${request.letter_spacing || 0}px`;
     style.wordSpacing = `${request.word_spacing || 0}px`;
-    style.direction = request.direction === "rtl" ? "rtl" : "ltr";
+    probe.dir = request.direction;
+    style.direction = request.direction === "auto" ? "" : request.direction;
 }
 
 function measureProbeText(
@@ -664,6 +285,7 @@ export function renderSvgElement(
   }
 
   const svgText = renderSvg(source, options);
+  assertSafeSvgForDom(svgText);
   const parsed = new DOMParser().parseFromString(svgText, "image/svg+xml");
   const parseError = parsed.querySelector("parsererror");
   if (parseError) {
@@ -707,49 +329,238 @@ export function layoutObject<T = unknown>(source: string, options?: SvgBindingOp
   return JSON.parse(layoutJson(source, options)) as T;
 }
 
+export function analyze(source: string, options?: SvgBindingOptions | string): AnalysisResult {
+  const merman = getMerman();
+  const encodedOptions = encodeOptions(options);
+  const analysis =
+    merman.analyze?.(source, encodedOptions) ?? merman.analyzeJson?.(source, encodedOptions);
+  if (!analysis) {
+    throw new Error("Merman analyze() is not available in this artifact.");
+  }
+  return analysis;
+}
+
+export function analyzeJson(
+  source: string,
+  options?: SvgBindingOptions | string
+): AnalysisResult {
+  return analyze(source, options);
+}
+
+export function analysisFacts(
+  source: string,
+  options?: SvgBindingOptions | string
+): AnalysisFactsResult {
+  const merman = getMerman();
+  const facts = merman.analysisFacts;
+  if (!facts) {
+    throw new Error("Merman analysisFacts() is not available in this artifact.");
+  }
+  return facts(source, encodeOptions(options));
+}
+
+export function analyzeDocument(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): AnalysisResult {
+  const analyzeDocument = getMerman().analyzeDocument;
+  if (!analyzeDocument) {
+    throw new Error("Merman analyzeDocument() is not available in this artifact.");
+  }
+  return analyzeDocument(source, encodeOptions(options), uri);
+}
+
+export function analyzeDocumentFacts(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): AnalysisFactsResult {
+  const analyzeDocumentFacts = getMerman().analyzeDocumentFacts;
+  if (!analyzeDocumentFacts) {
+    throw new Error("Merman analyzeDocumentFacts() is not available in this artifact.");
+  }
+  return analyzeDocumentFacts(source, encodeOptions(options), uri);
+}
+
 export function validate(source: string, options?: SvgBindingOptions | string): ValidationResult {
   return getMerman().validate(source, encodeOptions(options));
 }
 
+export function editorDiagnostics(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): EditorDiagnosticsResult {
+  const diagnostics = requireEditorLanguage("editorDiagnostics", getMerman().editorDiagnostics);
+  return diagnostics(source, encodeOptions(options), uri);
+}
+
+export function editorCodeActions(
+  source: string,
+  options?: SvgBindingOptions | string,
+  uri?: string
+): EditorCodeAction[] {
+  const codeActions = requireEditorLanguage("editorCodeActions", getMerman().editorCodeActions);
+  return codeActions(source, encodeOptions(options), uri);
+}
+
+export function editorCompletions(
+  source: string,
+  position: EditorPosition,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorCompletionList {
+  const completions = requireEditorLanguage("editorCompletions", getMerman().editorCompletions);
+  return completions(source, position.line, position.character, uri, encodeOptions(options));
+}
+
+export function editorHover(
+  source: string,
+  position: EditorPosition,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorHover | null {
+  const hover = requireEditorLanguage("editorHover", getMerman().editorHover);
+  return hover(source, position.line, position.character, uri, encodeOptions(options));
+}
+
+export function editorDocumentSymbols(
+  source: string,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorDocumentSymbol[] {
+  const documentSymbols = requireEditorLanguage(
+    "editorDocumentSymbols",
+    getMerman().editorDocumentSymbols
+  );
+  return documentSymbols(source, uri, encodeOptions(options));
+}
+
+export function editorWorkspaceSymbols(
+  source: string,
+  query: string,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorSymbolInformation[] {
+  const workspaceSymbols = requireEditorLanguage(
+    "editorWorkspaceSymbols",
+    getMerman().editorWorkspaceSymbols
+  );
+  return workspaceSymbols(source, query, uri, encodeOptions(options));
+}
+
+export function editorDefinition(
+  source: string,
+  position: EditorPosition,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorLocation | null {
+  const definition = requireEditorLanguage("editorDefinition", getMerman().editorDefinition);
+  return definition(source, position.line, position.character, uri, encodeOptions(options));
+}
+
+export function editorReferences(
+  source: string,
+  position: EditorPosition,
+  includeDeclaration = true,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorLocation[] {
+  const refs = requireEditorLanguage("editorReferences", getMerman().editorReferences);
+  return refs(source, position.line, position.character, includeDeclaration, uri, encodeOptions(options));
+}
+
+export function editorPrepareRename(
+  source: string,
+  position: EditorPosition,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorPrepareRename | null {
+  const prepare = requireEditorLanguage("editorPrepareRename", getMerman().editorPrepareRename);
+  return prepare(source, position.line, position.character, uri, encodeOptions(options));
+}
+
+export function editorRename(
+  source: string,
+  position: EditorPosition,
+  newName: string,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorWorkspaceEdit | null {
+  const rename = requireEditorLanguage("editorRename", getMerman().editorRename);
+  return rename(source, position.line, position.character, newName, uri, encodeOptions(options));
+}
+
+export function editorSemanticTokenLegend(): EditorSemanticTokenLegend {
+  const legend = requireEditorLanguage(
+    "editorSemanticTokenLegend",
+    getMerman().editorSemanticTokenLegend
+  );
+  return legend();
+}
+
+export function editorSemanticTokens(
+  source: string,
+  uri?: string,
+  options?: SvgBindingOptions | string
+): EditorSemanticToken[] {
+  const tokens = requireEditorLanguage("editorSemanticTokens", getMerman().editorSemanticTokens);
+  return tokens(source, uri, encodeOptions(options));
+}
+
 export function bindingCapabilities(): BindingCapabilities {
-  const capabilities = getMerman().bindingCapabilities?.();
-  return capabilities
-    ? normalizeBindingCapabilities(capabilities)
-    : { ...DEFAULT_BINDING_CAPABILITIES };
+  const merman = getMerman();
+  return normalizeBindingCapabilities(merman.bindingCapabilities());
 }
 
 export function selectedRegistryProfile(): RegistryProfile {
-  const profile = getMerman().selectedRegistryProfile?.();
+  const profile = getMerman().selectedRegistryProfile();
   if (profile === "full" || profile === "tiny") {
     return profile;
   }
-  return bindingCapabilities().core_full ? "full" : "tiny";
+  throw new Error(`Merman WASM returned an invalid registry profile: ${String(profile)}`);
 }
 
 export function supportedDiagrams(): DiagramType[] {
-  supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
-  return [...supportedDiagramsCache];
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.supportedDiagramsCache ??= getMerman().supportedDiagrams().map(assertDiagramType);
+  return [...state.supportedDiagramsCache];
 }
 
 export function diagramFamilyCapabilities(): DiagramFamilyCapability[] {
-  diagramFamilyCapabilitiesCache ??= (
-    getMerman().diagramFamilyCapabilities?.() ?? []
-  ).map(normalizeDiagramFamilyCapability);
-  return diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.diagramFamilyCapabilitiesCache ??= getMerman()
+    .diagramFamilyCapabilities()
+    .map(normalizeDiagramFamilyCapability);
+  return state.diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
+}
+
+export function lintRuleCatalog(): LintRuleCatalogEntry[] {
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  const response = getMerman().lintRuleCatalog?.();
+  if (!response) {
+    throw new Error("Merman lintRuleCatalog() is not available in this artifact.");
+  }
+  state.lintRuleCatalogCache ??= normalizeLintRuleCatalogResponse(response);
+  return state.lintRuleCatalogCache.map((rule) => ({
+    ...rule,
+    evidence: [...rule.evidence],
+  }));
 }
 
 export function asciiSupportedDiagrams(): AsciiDiagramType[] {
-  asciiSupportedDiagramsCache ??= getMerman()
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.asciiSupportedDiagramsCache ??= getMerman()
     .asciiSupportedDiagrams()
     .map(assertAsciiDiagramType);
-  return [...asciiSupportedDiagramsCache];
+  return [...state.asciiSupportedDiagramsCache];
 }
 
 export function asciiCapabilities(): AsciiCapability[] {
-  asciiCapabilitiesCache ??= (
-    getMerman().asciiCapabilities?.() ?? fallbackAsciiCapabilities()
-  ).map(normalizeAsciiCapability);
-  return asciiCapabilitiesCache.map((capability) => ({
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.asciiCapabilitiesCache ??= getMerman().asciiCapabilities().map(normalizeAsciiCapability);
+  return state.asciiCapabilitiesCache.map((capability) => ({
     ...capability,
     supported_semantics: [...capability.supported_semantics],
     limits: [...capability.limits],
@@ -758,20 +569,17 @@ export function asciiCapabilities(): AsciiCapability[] {
 }
 
 export function supportedThemes(): ThemeName[] {
-  const merman = getMerman();
-  supportedThemesCache ??= (
-    merman.supportedThemes?.() ??
-    merman.themes?.() ??
-    SUPPORTED_THEMES
-  ).map(assertThemeName);
-  return [...supportedThemesCache];
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.supportedThemesCache ??= getMerman().supportedThemes().map(assertThemeName);
+  return [...state.supportedThemesCache];
 }
 
 export function supportedHostThemePresets(): HostThemePresetName[] {
-  supportedHostThemePresetsCache ??= (
-    getMerman().supportedHostThemePresets?.() ?? SUPPORTED_HOST_THEME_PRESETS
-  ).map(assertHostThemePresetName);
-  return [...supportedHostThemePresetsCache];
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  state.supportedHostThemePresetsCache ??= getMerman()
+    .supportedHostThemePresets()
+    .map(assertHostThemePresetName);
+  return [...state.supportedHostThemePresetsCache];
 }
 
 export function abiVersion(): number {
@@ -826,6 +634,91 @@ function normalizeDiagramFamilyCapability(
   };
 }
 
+function normalizeLintRuleCatalogEntry(
+  rule: LintRuleCatalogEntry
+): LintRuleCatalogEntry {
+  if (!rule || typeof rule !== "object") {
+    throw new Error("Merman WASM returned an invalid lint rule catalog entry.");
+  }
+  return {
+    id: assertStringField(rule.id, "lint rule id"),
+    description: assertStringField(rule.description, "lint rule description"),
+    evidence: assertStringArray(rule.evidence, "lint rule evidence"),
+    default_severity: assertCatalogValue(rule.default_severity, [
+      "error",
+      "warning",
+      "info",
+      "hint",
+    ]),
+    category: assertCatalogValue(rule.category, [
+      "parse",
+      "semantic",
+      "config",
+      "resource",
+      "compatibility",
+      "layout",
+      "render",
+      "internal",
+    ]),
+    default_enabled: Boolean(rule.default_enabled),
+    default_profile: assertCatalogValue(rule.default_profile, [
+      "core",
+      "recommended",
+      "strict",
+    ]),
+    origin: assertCatalogValue(rule.origin, [
+      "mermaid_syntax",
+      "mermaid_compatibility",
+      "merman_authoring",
+      "merman_resource_policy",
+      "merman_internal",
+    ]),
+    configurable: Boolean(rule.configurable),
+    fixable: Boolean(rule.fixable),
+  };
+}
+
+function normalizeLintRuleCatalogResponse(
+  response: LintRuleCatalogResponse
+): LintRuleCatalogEntry[] {
+  if (!response || typeof response !== "object") {
+    throw new Error("Merman WASM returned an invalid lint rule catalog response.");
+  }
+  if (response.version !== 1) {
+    throw new Error(
+      `Merman WASM returned unsupported lint rule catalog version: ${String(response.version)}.`
+    );
+  }
+  if (!Array.isArray(response.rules)) {
+    throw new Error("Merman WASM returned a lint rule catalog response without rules.");
+  }
+  return response.rules.map(normalizeLintRuleCatalogEntry);
+}
+
+function assertStringField(value: unknown, label: string): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  throw new Error(`Merman WASM returned an invalid ${label}.`);
+}
+
+function assertStringArray(value: unknown, label: string): string[] {
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+    return [...value];
+  }
+  throw new Error(`Merman WASM returned invalid ${label}.`);
+}
+
+function assertCatalogValue<const T extends string>(
+  value: unknown,
+  allowed: readonly T[]
+): T {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
+    return value as T;
+  }
+  throw new Error(`Merman WASM returned an invalid lint rule catalog value: ${String(value)}`);
+}
+
 function normalizeAsciiCapability(capability: AsciiCapability): AsciiCapability {
   if (!capability || typeof capability !== "object") {
     throw new Error("Merman WASM returned an invalid ASCII capability.");
@@ -874,24 +767,6 @@ function normalizeAsciiSupportLevel(level: unknown): AsciiSupportLevel {
     : "unsupported";
 }
 
-function fallbackAsciiCapabilities(): AsciiCapability[] {
-  return asciiSupportedDiagrams().map((diagramType) => ({
-    diagram_type: diagramType,
-    display_name: diagramType,
-    support_level: "partial",
-    summary_fallback: false,
-    supported_semantics: [],
-    limits: [],
-    evidence: [
-      {
-        kind: "support_matrix",
-        source: "SUPPORTED_ASCII_DIAGRAMS",
-        note: "fallback capability synthesized from the legacy supported diagram list",
-      },
-    ],
-  }));
-}
-
 function assertThemeName(theme: string): ThemeName {
   if (isThemeName(theme)) {
     return theme;
@@ -906,9 +781,7 @@ function assertHostThemePresetName(preset: string): HostThemePresetName {
   throw new Error(`Merman WASM returned unknown host theme preset: ${preset}`);
 }
 
-function normalizeBindingCapabilities(
-  capabilities: Partial<BindingCapabilities>
-): BindingCapabilities {
+function normalizeBindingCapabilities(capabilities: BindingCapabilities): BindingCapabilities {
   return {
     render: Boolean(capabilities.render),
     ascii: Boolean(capabilities.ascii),
@@ -916,5 +789,55 @@ function normalizeBindingCapabilities(
     core_host: Boolean(capabilities.core_host),
     elk_layout: Boolean(capabilities.elk_layout),
     ratex_math: Boolean(capabilities.ratex_math),
+    editor_language: Boolean(capabilities.editor_language),
+    text_measurement: normalizeTextMeasurementCapabilities(
+      capabilities.text_measurement,
+      Boolean(capabilities.render)
+    ),
   };
+}
+
+function normalizeTextMeasurementCapabilities(
+  capabilities: Partial<TextMeasurementCapabilities> | undefined,
+  renderEnabled: boolean
+): TextMeasurementCapabilities {
+  return {
+    vendored:
+      capabilities?.vendored === undefined
+        ? renderEnabled
+        : Boolean(capabilities.vendored),
+    deterministic:
+      capabilities?.deterministic === undefined
+        ? renderEnabled
+        : Boolean(capabilities.deterministic),
+    host_callback: Boolean(capabilities?.host_callback),
+    font_assets: Boolean(capabilities?.font_assets),
+  };
+}
+
+function requireEditorLanguage<T>(
+  apiName: string,
+  binding: T | undefined
+): T {
+  if (!bindingCapabilities().editor_language || binding === undefined) {
+    throw new Error(`Merman ${apiName}() is not available in this artifact.`);
+  }
+  return binding;
+}
+
+function hasEditorLanguageBindings(merman: MermanWasmModule): boolean {
+  return (
+    typeof merman.editorDiagnostics === "function" &&
+    typeof merman.editorCodeActions === "function" &&
+    typeof merman.editorCompletions === "function" &&
+    typeof merman.editorHover === "function" &&
+    typeof merman.editorDocumentSymbols === "function" &&
+    typeof merman.editorWorkspaceSymbols === "function" &&
+    typeof merman.editorDefinition === "function" &&
+    typeof merman.editorReferences === "function" &&
+    typeof merman.editorPrepareRename === "function" &&
+    typeof merman.editorRename === "function" &&
+    typeof merman.editorSemanticTokenLegend === "function" &&
+    typeof merman.editorSemanticTokens === "function"
+  );
 }

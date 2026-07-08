@@ -762,3 +762,117 @@ fn parse_diagram_er_multibyte_attribute_does_not_panic() {
     assert_eq!(attr["type"], json!("文字列"));
     assert_eq!(attr["name"], json!("名前"));
 }
+
+#[test]
+fn parse_er_editor_facts_preserve_parser_symbol_spans() {
+    let engine = Engine::new();
+    let text = r#"erDiagram
+CUSTOMER ||--o{ ORDER : places
+CUSTOMER {
+  string customer_id PK, FK "primary key"
+}
+ORDER:::important
+class CUSTOMER vip
+classDef important fill:#f9f
+style ORDER fill:#eee
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("er editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.selection.start == start)
+            .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+
+    let customer_start = text.find("CUSTOMER").unwrap();
+    assert_eq!(
+        symbol_at("CUSTOMER", customer_start).selection.end,
+        customer_start + "CUSTOMER".len()
+    );
+
+    let order_start = text.find("ORDER :").unwrap();
+    assert_eq!(
+        symbol_at("ORDER", order_start).selection.end,
+        order_start + "ORDER".len()
+    );
+
+    let attribute_start = text.find("customer_id").unwrap();
+    let attribute = symbol_at("customer_id", attribute_start);
+    assert_eq!(
+        attribute.selection.end,
+        attribute_start + "customer_id".len()
+    );
+    assert_eq!(attribute.role, EditorSemanticRole::Outline);
+
+    let type_start = text.find("string customer_id").unwrap();
+    let ty = symbol_at("string", type_start);
+    assert_eq!(ty.role, EditorSemanticRole::Payload);
+    assert_eq!(ty.detail.as_deref(), Some("er attribute type"));
+
+    let pk_start = text.find("PK").unwrap();
+    let pk = symbol_at("PK", pk_start);
+    assert_eq!(pk.role, EditorSemanticRole::Payload);
+    assert_eq!(pk.detail.as_deref(), Some("er attribute key"));
+
+    let fk_start = text.find("FK").unwrap();
+    let fk = symbol_at("FK", fk_start);
+    assert_eq!(fk.role, EditorSemanticRole::Payload);
+    assert_eq!(fk.detail.as_deref(), Some("er attribute key"));
+
+    let comment_start = text.find("\"primary key\"").unwrap();
+    let comment = symbol_at("primary key", comment_start + 1);
+    assert_eq!(comment.role, EditorSemanticRole::Payload);
+    assert_eq!(comment.detail.as_deref(), Some("er attribute comment"));
+    assert_eq!(comment.span.start, comment_start);
+    assert_eq!(comment.selection.start, comment_start + 1);
+    assert_eq!(
+        comment.selection.end,
+        comment_start + "\"primary key\"".len() - 1
+    );
+
+    let important_start = text.find("important").unwrap();
+    assert_eq!(
+        symbol_at("important", important_start).selection.end,
+        important_start + "important".len()
+    );
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "class"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
+}
+
+#[test]
+fn parse_er_editor_facts_recovers_from_incomplete_input() {
+    let engine = Engine::new();
+    let text = "erDiagram\nCUSTOMER ||--o{ ORDER : places\nCUSTOMER {";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("er editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "CUSTOMER"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "ORDER"));
+}
+
+#[test]
+fn parse_er_editor_facts_record_expected_id_list_spans() {
+    let engine = Engine::new();
+    let text = "erDiagram\nclassDef pink fill:#f9f\n";
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("er editor facts");
+
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::IdList
+            && expected.span.start == text.find("pink").unwrap()
+    }));
+}

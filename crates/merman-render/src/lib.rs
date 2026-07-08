@@ -949,7 +949,7 @@ Animal <|-- Duck
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "classDiagram");
+        assert_eq!(parsed.meta.diagram_type, "class");
         let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
         let LayoutDiagram::ClassDiagramV2(layout) = layout else {
             panic!("expected class layout");

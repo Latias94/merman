@@ -55,12 +55,23 @@ svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
 ascii_text = engine.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
 semantic_json = engine.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = engine.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
+document_json = engine.analyze_document_json(
+    "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
+    None,
+    "file:///tmp/example.md",
+)
+document_facts_json = engine.analyze_document_facts_json(
+    "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
+    None,
+    "file:///tmp/example.md",
+)
 validation = engine.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = engine.supported_diagrams()
 ascii_capabilities = engine.ascii_capabilities()
 themes = engine.supported_themes()
 host_presets = engine.supported_host_theme_presets()
 family_capabilities = engine.diagram_family_capabilities()
+lint_rules = engine.lint_rule_catalog()
 
 class Measurer(merman.MermanTextMeasurer):
     def measure(self, request):
@@ -74,6 +85,10 @@ reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
 svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
 
 reusable = engine.reusable_engine(None)
+reusable_document_json = reusable.analyze_document_json(
+    "```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```",
+    "file:///tmp/example.md",
+)
 reusable.set_text_measurer(Measurer())
 svg_with_host_metrics = reusable.render_svg("flowchart TD\nA[Hello] --> B[World]")
 reusable.clear_text_measurer()
@@ -83,6 +98,8 @@ Errors are exposed through the generated `MermanError` type. The underlying stat
 name, and message still come from `merman-bindings-core`.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
+`MermanEngine.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
+references, for editor settings, diagnostic explanations, or LSP rule configuration.
 
 ## Text Measurement
 
@@ -96,7 +113,10 @@ Python GUI or WebView hosts that need label geometry to match their own font sta
 `MermanReusableEngine.clear_text_measurer` to restore the engine's original built-in measurer.
 Return
 `None` for requests that the host cannot answer synchronously; merman will fall back to vendored
-metrics for that request. Follow [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
+metrics for that request. Raise `MermanError` or another callback exception only for host
+measurement failures that should fail the reusable `render_svg` or `layout_json` call; do not
+return exception objects from the callback. Follow
+[`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
 shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
 
 ## Verification
@@ -109,11 +129,15 @@ cargo nextest run -p merman-uniffi --features bindgen-smoke --test bindgen_smoke
 The nextest smoke stages a temporary package, generates `merman_uniffi.py`, copies the cdylib next to
 it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
 `MermanEngine.render_ascii`, `MermanEngine.parse_json`, `MermanEngine.layout_json`,
+`MermanEngine.analyze_document_json`, `MermanEngine.analyze_document_facts_json`,
 `MermanEngine.validate`, metadata methods, `MermanEngine.ascii_capabilities`,
 `MermanEngine.diagram_family_capabilities`,
-`MermanEngine.reusable_engine_with_text_measurer`, `MermanReusableEngine.set_text_measurer`,
-`MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`,
-`MermanEngine.package_version`, and checks `MermanError.Binding` fields for invalid options JSON.
+`MermanEngine.lint_rule_catalog`, `MermanEngine.configurable_lint_rule_catalog`,
+`MermanEngine.reusable_engine_with_text_measurer`,
+`MermanReusableEngine.analyze_document_json`,
+`MermanReusableEngine.analyze_document_facts_json`, `MermanReusableEngine.set_text_measurer`,
+`MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`, `MermanEngine.package_version`,
+and checks `MermanError.Binding` fields for invalid options JSON.
 
 ## Build A Local Wheel
 

@@ -42,6 +42,18 @@ pub(crate) struct SupportedDiagramFact {
     pub(crate) render_parser_ids: Vec<&'static str>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DiagramHeaderFact {
+    /// Mermaid diagram type id used for profile gating.
+    pub diagram_type: &'static str,
+    /// Header text suggested to the user.
+    pub label: &'static str,
+    /// Short description shown in completion details.
+    pub detail: &'static str,
+    /// Whether this header should only appear in the full baseline profile.
+    pub full_only: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiagramFamilyCapability {
     /// Mermaid diagram type id used by detector and parser registries.
@@ -56,7 +68,7 @@ pub struct DiagramFamilyCapability {
 
 pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
     match profile {
-        BaselineRegistryProfile::Tiny => DETECTOR_FACTS_TINY,
+        BaselineRegistryProfile::Tiny => detector_facts_tiny(),
         BaselineRegistryProfile::Full => DETECTOR_FACTS_FULL,
     }
 }
@@ -75,7 +87,7 @@ pub(crate) fn fast_detect_by_leading_keyword(
 
     let trimmed = text.trim_start();
     let keywords = match profile {
-        BaselineRegistryProfile::Tiny => FAST_DETECT_KEYWORDS_TINY,
+        BaselineRegistryProfile::Tiny => fast_detect_keyword_facts_tiny(),
         BaselineRegistryProfile::Full => FAST_DETECT_KEYWORDS_FULL,
     };
 
@@ -171,6 +183,34 @@ pub(crate) fn supported_diagram_metadata_ids(
     }
 }
 
+pub(crate) fn diagram_header_facts(
+    profile: BaselineRegistryProfile,
+) -> &'static [DiagramHeaderFact] {
+    fn build(profile: BaselineRegistryProfile) -> Vec<DiagramHeaderFact> {
+        let include_full_only = matches!(profile, BaselineRegistryProfile::Full);
+        DIAGRAM_HEADER_FACTS
+            .iter()
+            .copied()
+            .filter(|fact| {
+                diagram_type_supported_in_profile(profile, fact.diagram_type)
+                    && (!fact.full_only || include_full_only)
+            })
+            .collect()
+    }
+
+    static TINY_FACTS: OnceLock<Vec<DiagramHeaderFact>> = OnceLock::new();
+    static FULL_FACTS: OnceLock<Vec<DiagramHeaderFact>> = OnceLock::new();
+
+    match profile {
+        BaselineRegistryProfile::Tiny => TINY_FACTS
+            .get_or_init(|| build(BaselineRegistryProfile::Tiny))
+            .as_slice(),
+        BaselineRegistryProfile::Full => FULL_FACTS
+            .get_or_init(|| build(BaselineRegistryProfile::Full))
+            .as_slice(),
+    }
+}
+
 pub(crate) fn diagram_family_capabilities(
     profile: BaselineRegistryProfile,
 ) -> &'static [DiagramFamilyCapability] {
@@ -250,9 +290,39 @@ fn render_parser_facts_tiny() -> &'static [RenderParserFact] {
         .as_slice()
 }
 
-fn diagram_type_supported_in_profile(
+fn detector_facts_tiny() -> &'static [DetectorFact] {
+    static FACTS: OnceLock<Vec<DetectorFact>> = OnceLock::new();
+    FACTS
+        .get_or_init(|| {
+            DETECTOR_FACTS_FULL
+                .iter()
+                .copied()
+                .filter(|fact| {
+                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
+                })
+                .collect()
+        })
+        .as_slice()
+}
+
+fn fast_detect_keyword_facts_tiny() -> &'static [FastDetectKeywordFact] {
+    static FACTS: OnceLock<Vec<FastDetectKeywordFact>> = OnceLock::new();
+    FACTS
+        .get_or_init(|| {
+            FAST_DETECT_KEYWORDS_FULL
+                .iter()
+                .copied()
+                .filter(|fact| {
+                    diagram_type_supported_in_profile(BaselineRegistryProfile::Tiny, fact.id)
+                })
+                .collect()
+        })
+        .as_slice()
+}
+
+pub(crate) fn diagram_type_supported_in_profile(
     profile: BaselineRegistryProfile,
-    diagram_type: &'static str,
+    diagram_type: &str,
 ) -> bool {
     match profile {
         BaselineRegistryProfile::Full => true,
@@ -269,6 +339,12 @@ pub(crate) fn render_model_kind_supports_diagram_type(
     RENDER_PARSER_FACTS
         .iter()
         .any(|fact| fact.model_kind == model_kind && fact.id == diagram_type)
+}
+
+pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
+    RENDER_PARSER_FACTS
+        .iter()
+        .find_map(|fact| (fact.id == diagram_type).then_some(fact.model_kind))
 }
 
 pub(crate) fn permits_json_render_fallback(
@@ -436,145 +512,10 @@ const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
     },
 ];
 
-const DETECTOR_FACTS_TINY: &[DetectorFact] = &[
-    DetectorFact {
-        id: "error",
-        detector: crate::detect::detector_error,
-    },
-    DetectorFact {
-        id: "---",
-        detector: crate::detect::detector_frontmatter_unparsed,
-    },
-    DetectorFact {
-        id: "zenuml",
-        detector: crate::detect::detector_zenuml,
-    },
-    DetectorFact {
-        id: "c4",
-        detector: crate::detect::detector_c4,
-    },
-    DetectorFact {
-        id: "kanban",
-        detector: crate::detect::detector_kanban,
-    },
-    DetectorFact {
-        id: "classDiagram",
-        detector: crate::detect::detector_class_v2,
-    },
-    DetectorFact {
-        id: "class",
-        detector: crate::detect::detector_class_dagre_d3,
-    },
-    DetectorFact {
-        id: "er",
-        detector: crate::detect::detector_er,
-    },
-    DetectorFact {
-        id: "gantt",
-        detector: crate::detect::detector_gantt,
-    },
-    DetectorFact {
-        id: "info",
-        detector: crate::detect::detector_info,
-    },
-    DetectorFact {
-        id: "pie",
-        detector: crate::detect::detector_pie,
-    },
-    DetectorFact {
-        id: "requirement",
-        detector: crate::detect::detector_requirement,
-    },
-    DetectorFact {
-        id: "sequence",
-        detector: crate::detect::detector_sequence,
-    },
-    DetectorFact {
-        id: "flowchart-v2",
-        detector: crate::detect::detector_flowchart_v2,
-    },
-    DetectorFact {
-        id: "flowchart",
-        detector: crate::detect::detector_flowchart_dagre_d3_graph,
-    },
-    DetectorFact {
-        id: "timeline",
-        detector: crate::detect::detector_timeline,
-    },
-    DetectorFact {
-        id: "gitGraph",
-        detector: crate::detect::detector_git_graph,
-    },
-    DetectorFact {
-        id: "stateDiagram",
-        detector: crate::detect::detector_state_v2,
-    },
-    DetectorFact {
-        id: "state",
-        detector: crate::detect::detector_state_dagre_d3,
-    },
-    DetectorFact {
-        id: "journey",
-        detector: crate::detect::detector_journey,
-    },
-    DetectorFact {
-        id: "quadrantChart",
-        detector: crate::detect::detector_quadrant,
-    },
-    DetectorFact {
-        id: "sankey",
-        detector: crate::detect::detector_sankey,
-    },
-    DetectorFact {
-        id: "packet",
-        detector: crate::detect::detector_packet,
-    },
-    DetectorFact {
-        id: "xychart",
-        detector: crate::detect::detector_xychart,
-    },
-    DetectorFact {
-        id: "block",
-        detector: crate::detect::detector_block,
-    },
-    DetectorFact {
-        id: "treeView",
-        detector: crate::detect::detector_tree_view,
-    },
-    DetectorFact {
-        id: "ishikawa",
-        detector: crate::detect::detector_ishikawa,
-    },
-    DetectorFact {
-        id: "eventmodeling",
-        detector: crate::detect::detector_eventmodeling,
-    },
-    DetectorFact {
-        id: "radar",
-        detector: crate::detect::detector_radar,
-    },
-    DetectorFact {
-        id: "treemap",
-        detector: crate::detect::detector_treemap,
-    },
-    DetectorFact {
-        id: "venn",
-        detector: crate::detect::detector_venn,
-    },
-];
-
 const FAST_DETECT_KEYWORDS_FULL: &[FastDetectKeywordFact] = &[
     FastDetectKeywordFact {
         keyword: "sequenceDiagram",
         id: "sequence",
-    },
-    FastDetectKeywordFact {
-        keyword: "classDiagram",
-        id: "classDiagram",
-    },
-    FastDetectKeywordFact {
-        keyword: "stateDiagram",
-        id: "stateDiagram",
     },
     FastDetectKeywordFact {
         keyword: "mindmap",
@@ -583,69 +524,6 @@ const FAST_DETECT_KEYWORDS_FULL: &[FastDetectKeywordFact] = &[
     FastDetectKeywordFact {
         keyword: "architecture",
         id: "architecture",
-    },
-    FastDetectKeywordFact {
-        keyword: "erDiagram",
-        id: "er",
-    },
-    FastDetectKeywordFact {
-        keyword: "gantt",
-        id: "gantt",
-    },
-    FastDetectKeywordFact {
-        keyword: "timeline",
-        id: "timeline",
-    },
-    FastDetectKeywordFact {
-        keyword: "journey",
-        id: "journey",
-    },
-    FastDetectKeywordFact {
-        keyword: "gitGraph",
-        id: "gitGraph",
-    },
-    FastDetectKeywordFact {
-        keyword: "quadrantChart",
-        id: "quadrantChart",
-    },
-    FastDetectKeywordFact {
-        keyword: "packet-beta",
-        id: "packet",
-    },
-    FastDetectKeywordFact {
-        keyword: "xychart-beta",
-        id: "xychart",
-    },
-    FastDetectKeywordFact {
-        keyword: "treeView-beta",
-        id: "treeView",
-    },
-    FastDetectKeywordFact {
-        keyword: "ishikawa-beta",
-        id: "ishikawa",
-    },
-    FastDetectKeywordFact {
-        keyword: "ishikawa",
-        id: "ishikawa",
-    },
-    FastDetectKeywordFact {
-        keyword: "eventmodeling",
-        id: "eventmodeling",
-    },
-];
-
-const FAST_DETECT_KEYWORDS_TINY: &[FastDetectKeywordFact] = &[
-    FastDetectKeywordFact {
-        keyword: "sequenceDiagram",
-        id: "sequence",
-    },
-    FastDetectKeywordFact {
-        keyword: "classDiagram",
-        id: "classDiagram",
-    },
-    FastDetectKeywordFact {
-        keyword: "stateDiagram",
-        id: "stateDiagram",
     },
     FastDetectKeywordFact {
         keyword: "erDiagram",
@@ -1212,4 +1090,229 @@ const SUPPORTED_DIAGRAM_METADATA_IDS: &[&str] = &[
     "venn",
     "xychart",
     "zenuml",
+];
+
+const DIAGRAM_HEADER_FACTS: &[DiagramHeaderFact] = &[
+    DiagramHeaderFact {
+        diagram_type: "flowchart-v2",
+        label: "flowchart TD",
+        detail: "flowchart header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "flowchart-v2",
+        label: "graph TD",
+        detail: "flowchart alias",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "sequence",
+        label: "sequenceDiagram",
+        detail: "sequence header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "classDiagram",
+        label: "classDiagram",
+        detail: "class header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "classDiagram",
+        label: "classDiagram-v2",
+        detail: "class header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "stateDiagram",
+        label: "stateDiagram-v2",
+        detail: "state header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "stateDiagram",
+        label: "stateDiagram",
+        detail: "legacy state header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "er",
+        label: "erDiagram",
+        detail: "er header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "gantt",
+        label: "gantt",
+        detail: "gantt header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "mindmap",
+        label: "mindmap",
+        detail: "mindmap header",
+        full_only: true,
+    },
+    DiagramHeaderFact {
+        diagram_type: "info",
+        label: "info",
+        detail: "info header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "journey",
+        label: "journey",
+        detail: "journey header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "timeline",
+        label: "timeline",
+        detail: "timeline header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "pie",
+        label: "pie",
+        detail: "pie header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "requirement",
+        label: "requirementDiagram",
+        detail: "requirement header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "sankey",
+        label: "sankey",
+        detail: "sankey header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "packet",
+        label: "packet",
+        detail: "packet header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "packet",
+        label: "packet-beta",
+        detail: "packet beta header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "xychart",
+        label: "xychart",
+        detail: "xychart header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "xychart",
+        label: "xychart-beta",
+        detail: "xychart beta header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "treeView",
+        label: "treeView-beta",
+        detail: "tree view header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "ishikawa",
+        label: "ishikawa-beta",
+        detail: "ishikawa header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "eventmodeling",
+        label: "eventmodeling",
+        detail: "event modeling header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "quadrantChart",
+        label: "quadrantChart",
+        detail: "quadrant chart header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "venn",
+        label: "venn-beta",
+        detail: "venn header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "zenuml",
+        label: "zenuml",
+        detail: "zenuml header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "c4",
+        label: "C4Context",
+        detail: "c4 context header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "c4",
+        label: "C4Container",
+        detail: "c4 container header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "c4",
+        label: "C4Component",
+        detail: "c4 component header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "c4",
+        label: "C4Dynamic",
+        detail: "c4 dynamic header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "c4",
+        label: "C4Deployment",
+        detail: "c4 deployment header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "kanban",
+        label: "kanban",
+        detail: "kanban header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "architecture",
+        label: "architecture-beta",
+        detail: "architecture header",
+        full_only: true,
+    },
+    DiagramHeaderFact {
+        diagram_type: "block",
+        label: "block-beta",
+        detail: "block header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "radar",
+        label: "radar-beta",
+        detail: "radar header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "treemap",
+        label: "treemap-beta",
+        detail: "treemap header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "flowchart-elk",
+        label: "flowchart-elk TD",
+        detail: "elk flowchart header",
+        full_only: true,
+    },
 ];

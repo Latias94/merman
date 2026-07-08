@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Git ref to validate"
+        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to validate"
         required: true
         default: "main"
         type: string
@@ -20,13 +20,62 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  validate-inputs:
+    name: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate release inputs
+        id: release
+        shell: bash
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          tag_re="^v${semver_re#^}"
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          VERSION="$DISPATCH_VERSION"
+          RELEASE_TAG="v$VERSION"
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
+
+          [[ "$VERSION" =~ $semver_re ]] || fail "version must match X.Y.Z or X.Y.Z-alpha.N/beta.N/rc.N."
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          validated_source_ref="$SOURCE_REF"
+          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            source_tag="${SOURCE_REF#refs/tags/}"
+            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match version."
+            validated_source_ref="refs/tags/$source_tag"
+          else
+            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
+          fi
+
+          {
+            printf 'source_ref=%s\n' "$validated_source_ref"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
   versions-and-packages:
+    needs: validate-inputs
     name: versions-and-packages
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -35,7 +84,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Verify release versions
-        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release-version.py check --version "$VERSION"
+
+      - name: Verify release crate order docs
+        run: python3 scripts/verify-release-crate-order.py
 
       - name: Verify FFI publish surface
         run: python3 scripts/verify-ffi-publish-surface.py
@@ -47,26 +101,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/package-lists
-          crates=(
-            roughr-merman
-            dugong-graphlib
-            dugong
-            manatee
-            merman-core
-            merman-elk-layered
-            merman-layout-elk
-            merman-render
-            merman-ascii
-            merman
-            merman-rustdoc
-            merman-bindings-core
-            merman-ffi
-            merman-uniffi
-            merman-cli
-          )
-          for crate in "${crates[@]}"; do
+          python3 tools/publish.py --list-crates-io-packages > target/package-lists/crates.txt
+          while IFS= read -r crate; do
             cargo package -p "$crate" --list > "target/package-lists/$crate.txt"
-          done
+          done < target/package-lists/crates.txt
 
       - name: Verify registry-independent crate dry-runs
         run: |
@@ -120,6 +158,7 @@ jobs:
           path: target/package-lists/*.txt
 
   python-wheel:
+    needs: validate-inputs
     name: python-wheel (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -135,7 +174,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -143,7 +183,9 @@ jobs:
           python-version: "3.12"
 
       - name: Verify release versions
-        run: python scripts/release-version.py check --version "${{ inputs.version }}"
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -178,15 +220,19 @@ jobs:
           path: target/python-wheels/merman-*.whl
 
   android-aar:
+    needs: validate-inputs
     name: android-aar
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
       - name: Verify release versions
-        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Setup JDK
         uses: actions/setup-java@v5
@@ -228,15 +274,19 @@ jobs:
         run: gradle -p platforms/android publishReleasePublicationToLocalStagingRepository --stacktrace
 
   apple-xcframework:
+    needs: validate-inputs
     name: apple-xcframework
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
       - name: Verify release versions
-        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -258,15 +308,19 @@ jobs:
           swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 
   web-npm-dry-run:
+    needs: validate-inputs
     name: web-npm-dry-run
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
       - name: Verify release versions
-        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -297,20 +351,152 @@ jobs:
       - name: Verify web package
         run: npm run prepack --prefix platforms/web
 
+      - name: Smoke web package
+        run: npm run smoke --prefix platforms/web
+
       - name: Pack npm package dry-run
         working-directory: platforms/web
         run: npm pack --dry-run
 
+  vscode-extension-dry-run:
+    needs: validate-inputs
+    name: vscode-extension-dry-run (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: macos-15
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
+          - os: windows-2025-vs2026
+            target: win32-x64
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify release versions
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python scripts/release-version.py check --version "$VERSION"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/vscode-extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: tools/vscode-extension
+        run: npm ci
+
+      - name: Build release runtime binaries
+        run: cargo build --release --locked -p merman-lsp -p merman-cli
+
+      - name: Typecheck extension
+        working-directory: tools/vscode-extension
+        run: npm run check
+
+      - name: Test extension
+        working-directory: tools/vscode-extension
+        run: npm test
+
+      - name: Stage runtime binaries
+        working-directory: tools/vscode-extension
+        run: npm run prepare:binaries
+
+      - name: Smoke extension host
+        if: runner.os == 'Linux'
+        working-directory: tools/vscode-extension
+        run: xvfb-run -a npm run test:extension-host
+
+      - name: Smoke extension host
+        if: runner.os != 'Linux'
+        working-directory: tools/vscode-extension
+        run: npm run test:extension-host
+
+      - name: Derive VSIX release metadata
+        id: vsix
+        env:
+          RELEASE_VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          manifest_version="$(python scripts/release-version.py vscode --version "$RELEASE_VERSION")"
+          {
+            printf 'release_version=%s\n' "$RELEASE_VERSION"
+            printf 'manifest_version=%s\n' "$manifest_version"
+          } >> "$GITHUB_OUTPUT"
+          echo "VSIX release_version=${RELEASE_VERSION} manifest_version=${manifest_version}"
+
+      - name: Package VSIX
+        working-directory: tools/vscode-extension
+        env:
+          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+        run: npm run package -- --target "${{ matrix.target }}" --out "merman-vscode-${{ matrix.target }}.vsix"
+
+      - name: Verify VSIX contents
+        working-directory: tools/vscode-extension
+        env:
+          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+        run: npm run verify:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix" --platform "${{ matrix.target }}" --target "${{ matrix.target }}"
+
+      - name: Smoke packaged VSIX
+        if: runner.os == 'Linux'
+        working-directory: tools/vscode-extension
+        run: xvfb-run -a npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
+
+      - name: Smoke packaged VSIX
+        if: runner.os != 'Linux'
+        working-directory: tools/vscode-extension
+        run: npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: preflight-vscode-extension-${{ matrix.target }}
+          path: tools/vscode-extension/merman-vscode-${{ matrix.target }}.vsix
+          if-no-files-found: error
+
   flutter-dry-run:
+    needs: validate-inputs
     name: flutter-dry-run
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
       - name: Verify release versions
-        run: python3 scripts/release-version.py check --version "${{ inputs.version }}"
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0

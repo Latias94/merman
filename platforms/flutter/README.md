@@ -9,10 +9,10 @@ JSON, compute layout JSON, and render SVG through a headless Rust engine. See th
 [diagram coverage status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 for the main library contract.
 
-The package exposes a small Dart API for SVG, ASCII text, semantic JSON, layout JSON, validation,
-and metadata. On Flutter targets, the plugin also carries the native `merman-ffi` library, so
-application code normally opens the engine with `Merman.open()` and does not pass a dynamic library
-path.
+The package exposes a small Dart API for SVG, ASCII text, semantic JSON, layout JSON, diagnostics
+analysis, validation, and metadata. On Flutter targets, the plugin also carries the native
+`merman-ffi` library, so application code normally opens the engine with `Merman.open()` and does
+not pass a dynamic library path.
 
 ## Compatibility And Release Notes
 
@@ -49,9 +49,19 @@ final svg = merman.renderSvg(
 );
 final semantic = merman.parseJson(source);
 final layout = merman.layoutJson(source);
+final analysis = merman.analyzeJson(source);
+final documentAnalysis = merman.analyzeDocumentJson(
+  '```mermaid\n$source\n```',
+  uri: 'file:///tmp/example.md',
+);
+final documentFacts = merman.analyzeDocumentFactsJson(
+  '```mermaid\n$source\n```',
+  uri: 'file:///tmp/example.md',
+);
 final ascii = merman.renderAscii(source);
 final validation = merman.validate(source);
 final diagrams = merman.supportedDiagrams();
+final lintRules = merman.lintRuleCatalog();
 final themes = merman.supportedThemes();
 final hostThemePresets = merman.supportedHostThemePresets();
 
@@ -64,6 +74,8 @@ try {
 
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
+Use `lintRuleCatalog()` to discover analyzer rule ids, evidence references, default severities,
+profiles, origins, configurability, and fixability for editor settings or LSP integrations.
 
 ## Rendering SVG In Flutter
 
@@ -110,6 +122,9 @@ fallbacks for labels, and `resvg-safe` for stricter SVG consumers or raster/PDF 
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
 vendored metrics for that request.
+The document-analysis APIs are available both on `Merman` and `MermanReusableEngine` as raw JSON
+and decoded map helpers. Pass the full Markdown/MDX-like document source and a document URI; the URI
+selects the same document parsing behavior used by the C ABI and the other platform wrappers.
 
 For accurate preview geometry, measure with the same surface that will display the SVG: a WebView
 DOM/canvas cache for `webview_flutter`, or Flutter paragraph/text layout APIs for Flutter-native
@@ -119,6 +134,11 @@ render, and close it on the same isolate. See
 For HTML-like labels, cache the natural no-wrap width first and only apply `maxWidth` when wrapping
 is actually needed. If a WebView or platform text API cannot answer synchronously from the current
 isolate, return `null` for that request and let merman's vendored metrics handle it.
+Do not call back into the same `MermanReusableEngine` from a measurer; the wrapper reports
+`DART_ENGINE_REENTERED`. Calling `close()` during an active native call defers native handle and
+callback disposal until the call returns, and any later reusable-engine call reports
+`DART_ENGINE_CLOSED`. If the measurer throws, that request falls back instead of poisoning the native
+engine, but the host should still log the exception.
 
 ## Local Dart Smoke
 

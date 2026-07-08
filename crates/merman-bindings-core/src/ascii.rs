@@ -33,6 +33,7 @@ fn build_ascii_renderer(
     options: &crate::common::BindingOptions,
 ) -> Result<merman::ascii::HeadlessAsciiRenderer, BindingError> {
     let parse = if options
+        .analysis
         .parse
         .as_ref()
         .and_then(|parse| parse.suppress_errors)
@@ -182,11 +183,15 @@ fn ascii_charset(value: &str) -> Result<merman::ascii::AsciiCharset, BindingErro
 
 fn ascii_direction(value: &str) -> Result<merman::ascii::AsciiDirection, BindingError> {
     match option_key(value).as_str() {
-        "lr" | "left-right" | "left_right" => Ok(merman::ascii::AsciiDirection::LeftRight),
-        "td" | "tb" | "top-down" | "top_down" => Ok(merman::ascii::AsciiDirection::TopDown),
+        "lr" | "leftright" | "left-right" | "left_right" => {
+            Ok(merman::ascii::AsciiDirection::LeftRight)
+        }
+        "td" | "tb" | "topdown" | "top-down" | "top_down" => {
+            Ok(merman::ascii::AsciiDirection::TopDown)
+        }
         _ => Err(invalid_ascii_option(
             "ascii.default_direction",
-            "expected `lr`, `left-right`, `td`, or `top-down`",
+            "expected `lr`, `leftRight`, `left-right`, `td`, `topDown`, or `top-down`",
         )),
     }
 }
@@ -262,6 +267,21 @@ mod tests {
     }
 
     #[test]
+    fn shared_parse_options_are_stored_under_analysis_options() {
+        let options =
+            crate::common::parse_options(br#"{ "parse": { "suppress_errors": true } }"#).unwrap();
+
+        assert_eq!(
+            options
+                .analysis
+                .parse
+                .as_ref()
+                .and_then(|parse| parse.suppress_errors),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn render_ascii_accepts_ascii_options_block() {
         let text = String::from_utf8(
             render_ascii(
@@ -292,6 +312,21 @@ mod tests {
             text.contains("┌─┴─┐     ┌─┴─┐"),
             "expected mirrored bottom participant boxes:\n{text}"
         );
+    }
+
+    #[test]
+    fn render_ascii_accepts_camel_case_default_direction_values() {
+        let text = String::from_utf8(
+            render_ascii(
+                b"flowchart\nA[Hello] --> B[World]",
+                br#"{ "ascii": { "defaultDirection": "topDown" } }"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(text.contains("Hello"));
+        assert!(text.contains("World"));
     }
 
     #[test]

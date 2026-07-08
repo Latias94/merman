@@ -463,6 +463,7 @@ mod tests {
                 nodes: vec!["A".to_string()],
             }],
             tooltips: Default::default(),
+            warning_facts: Vec::new(),
         };
 
         let complexity = FlowchartComplexity::from_model(&model);

@@ -1,4 +1,5 @@
 import type { DiagramFont } from "@/src/lib/diagram-font";
+import { assertSafeSvgForDom } from "@mermanjs/web";
 import {
   ensureMermaidExternalDiagrams,
   isExternalDiagramLoadError,
@@ -67,6 +68,7 @@ export async function renderMermaidSvg(
       preparedSource,
       zenumlSource
     );
+    assertSafeSvgForDom(result.svg);
     return {
       svg: result.svg,
       error: null,

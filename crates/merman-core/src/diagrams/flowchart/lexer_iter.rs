@@ -72,7 +72,7 @@ impl<'input> Iterator for Lexer<'input> {
         }
         if self.starts_with_kw("subgraph") {
             self.pos += "subgraph".len();
-            if let Some(header) = self.lex_subgraph_header_after_keyword() {
+            if let Some(header) = self.lex_subgraph_header_after_keyword(start) {
                 self.pending.push_back(header);
             }
             return Some(Ok((start, Tok::KwSubgraph, self.pos)));
@@ -113,8 +113,9 @@ impl<'input> Iterator for Lexer<'input> {
 
         // Skip unknown single byte to avoid infinite loops.
         let _ = self.bump();
-        Some(Err(LexError {
-            message: format!("Unexpected character at {start}"),
-        }))
+        Some(Err(LexError::with_span(
+            format!("Unexpected character at {start}"),
+            crate::SourceSpan::new(start, start + 1),
+        )))
     }
 }

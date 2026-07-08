@@ -14,6 +14,7 @@
 /repo-ref/*
 /tools/mermaid-cli/node_modules
 /tools/mermaid-cli/.cache
+/tools/vscode-extension/.vscode-test/
 /dist/
 
 # Local npm tarballs used for upstream layout source inspection (do not commit)

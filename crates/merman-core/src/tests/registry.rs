@@ -22,6 +22,33 @@ fn detector_registries_follow_family_fact_order() {
 }
 
 #[test]
+fn tiny_detector_projection_is_derived_from_full_detector_facts() {
+    let full_only = ["architecture", "flowchart-elk", "mindmap"];
+    let full_expected: Vec<_> = crate::family::detector_facts(BaselineRegistryProfile::Full)
+        .iter()
+        .filter_map(|fact| (!full_only.contains(&fact.id)).then_some(fact.id))
+        .collect();
+    let tiny_actual: Vec<_> = crate::family::detector_facts(BaselineRegistryProfile::Tiny)
+        .iter()
+        .map(|fact| fact.id)
+        .collect();
+
+    assert_eq!(tiny_actual, full_expected);
+    for id in full_only {
+        assert!(
+            crate::family::detector_facts(BaselineRegistryProfile::Full)
+                .iter()
+                .any(|fact| fact.id == id),
+            "{id} should stay registered in the full detector profile",
+        );
+        assert!(
+            !tiny_actual.contains(&id),
+            "{id} should stay excluded from the tiny detector profile",
+        );
+    }
+}
+
+#[test]
 fn fast_detector_respects_family_feature_profile() {
     let mut config = MermaidConfig::empty_object();
     let full = DetectorRegistry::pinned_mermaid_baseline_full();
@@ -38,6 +65,38 @@ fn fast_detector_respects_family_feature_profile() {
     assert!(
         err.to_string()
             .contains("No diagram type detected matching given configuration")
+    );
+}
+
+#[test]
+fn fast_detector_keywords_respect_family_feature_profile() {
+    assert_eq!(
+        crate::family::fast_detect_by_leading_keyword(
+            "sequenceDiagram\nA->>B: hi",
+            BaselineRegistryProfile::Full,
+        ),
+        Some("sequence")
+    );
+    assert_eq!(
+        crate::family::fast_detect_by_leading_keyword(
+            "sequenceDiagram\nA->>B: hi",
+            BaselineRegistryProfile::Tiny,
+        ),
+        Some("sequence")
+    );
+    assert_eq!(
+        crate::family::fast_detect_by_leading_keyword(
+            "mindmap\nroot",
+            BaselineRegistryProfile::Full,
+        ),
+        Some("mindmap")
+    );
+    assert_eq!(
+        crate::family::fast_detect_by_leading_keyword(
+            "mindmap\nroot",
+            BaselineRegistryProfile::Tiny,
+        ),
+        None
     );
 }
 
@@ -90,6 +149,110 @@ fn selected_supported_diagrams_follow_feature_profile() {
     assert_eq!(
         crate::supported_diagrams(),
         crate::supported_diagrams_for_profile(BaselineRegistryProfile::Tiny)
+    );
+}
+
+#[test]
+fn diagram_header_facts_follow_feature_profile() {
+    let full_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Full)
+        .iter()
+        .map(|fact| fact.label)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        full_labels,
+        vec![
+            "flowchart TD",
+            "graph TD",
+            "sequenceDiagram",
+            "classDiagram",
+            "classDiagram-v2",
+            "stateDiagram-v2",
+            "stateDiagram",
+            "erDiagram",
+            "gantt",
+            "mindmap",
+            "info",
+            "journey",
+            "timeline",
+            "pie",
+            "requirementDiagram",
+            "sankey",
+            "packet",
+            "packet-beta",
+            "xychart",
+            "xychart-beta",
+            "treeView-beta",
+            "ishikawa-beta",
+            "eventmodeling",
+            "quadrantChart",
+            "venn-beta",
+            "zenuml",
+            "C4Context",
+            "C4Container",
+            "C4Component",
+            "C4Dynamic",
+            "C4Deployment",
+            "kanban",
+            "architecture-beta",
+            "block-beta",
+            "radar-beta",
+            "treemap-beta",
+            "flowchart-elk TD",
+        ]
+    );
+
+    let full_only_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Full)
+        .iter()
+        .filter(|fact| fact.full_only)
+        .map(|fact| fact.label)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        full_only_labels,
+        vec!["mindmap", "architecture-beta", "flowchart-elk TD"]
+    );
+
+    let tiny_labels = crate::diagram_header_facts_for_profile(BaselineRegistryProfile::Tiny)
+        .iter()
+        .map(|fact| fact.label)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        tiny_labels,
+        vec![
+            "flowchart TD",
+            "graph TD",
+            "sequenceDiagram",
+            "classDiagram",
+            "classDiagram-v2",
+            "stateDiagram-v2",
+            "stateDiagram",
+            "erDiagram",
+            "gantt",
+            "info",
+            "journey",
+            "timeline",
+            "pie",
+            "requirementDiagram",
+            "sankey",
+            "packet",
+            "packet-beta",
+            "xychart",
+            "xychart-beta",
+            "treeView-beta",
+            "ishikawa-beta",
+            "eventmodeling",
+            "quadrantChart",
+            "venn-beta",
+            "zenuml",
+            "C4Context",
+            "C4Container",
+            "C4Component",
+            "C4Dynamic",
+            "C4Deployment",
+            "kanban",
+            "block-beta",
+            "radar-beta",
+            "treemap-beta",
+        ]
     );
 }
 
@@ -200,6 +363,27 @@ fn diagram_family_capabilities_follow_parser_fact_projection() {
 }
 
 #[test]
+fn diagram_type_family_kind_maps_parser_ids_to_shared_family_kind() {
+    assert_eq!(
+        crate::diagram_type_family_kind("flowchart-v2"),
+        Some("flowchart")
+    );
+    assert_eq!(
+        crate::diagram_type_family_kind("flowchart"),
+        Some("flowchart")
+    );
+    assert_eq!(
+        crate::diagram_type_family_kind("flowchart-elk"),
+        Some("flowchart")
+    );
+    assert_eq!(
+        crate::diagram_type_family_kind("classDiagram"),
+        Some("class")
+    );
+    assert_eq!(crate::diagram_type_family_kind("unknown"), None);
+}
+
+#[test]
 fn tiny_parser_projection_excludes_full_only_large_features() {
     let tiny_semantic = DiagramRegistry::pinned_mermaid_baseline_tiny();
     assert!(tiny_semantic.get("mindmap").is_none());
@@ -246,6 +430,18 @@ fn tiny_engine_rejects_full_only_known_type_parsers() {
             .unwrap_err();
         let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
             panic!("unexpected render error for {expected_type}: {err}");
+        };
+        assert_eq!(diagram_type, expected_type);
+
+        let err = engine
+            .parse_editor_semantic_facts_with_type_sync(
+                expected_type,
+                source,
+                crate::ParseOptions::strict(),
+            )
+            .unwrap_err();
+        let crate::Error::UnsupportedDiagram { diagram_type } = &err else {
+            panic!("unexpected editor facts error for {expected_type}: {err}");
         };
         assert_eq!(diagram_type, expected_type);
     }

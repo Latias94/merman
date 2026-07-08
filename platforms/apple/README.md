@@ -36,9 +36,19 @@ let svg = try engine.renderSvg(
 )
 let semanticJson = try engine.parseJsonRaw(source)
 let layoutJson = try engine.layoutJsonRaw(source)
+let analysisJson = try engine.analyzeJsonRaw(source)
+let documentAnalysisJson = try engine.analyzeDocumentJsonRaw(
+    "```mermaid\n\(source)\n```",
+    uri: "file:///tmp/example.md"
+)
+let documentFactsJson = try engine.analyzeDocumentFactsJsonRaw(
+    "```mermaid\n\(source)\n```",
+    uri: "file:///tmp/example.md"
+)
 let ascii = try engine.renderAscii(source)
 let validation = try engine.validate(source)
 let diagrams = try engine.supportedDiagrams()
+let lintRules = try engine.lintRuleCatalog()
 let themes = try engine.supportedThemes()
 let hostThemePresets = try engine.supportedHostThemePresets()
 
@@ -53,10 +63,16 @@ do {
 version is read from the linked native library.
 `optionsJson` follows the shared schema in
 [`docs/bindings/OPTIONS_JSON.md`](../../docs/bindings/OPTIONS_JSON.md).
+Use `lintRuleCatalog()` to discover analyzer rule ids, evidence references, default severities,
+profiles, origins, configurability, and fixability without hard-coding the rule table in Swift
+hosts.
 
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall
 back to merman's vendored metrics for that request.
+Raw document-analysis helpers are available on both `MermanEngine` and `MermanReusableEngine`:
+`analyzeDocumentJsonRaw(source, uri:)` and `analyzeDocumentFactsJsonRaw(source, uri:)`. Pass the
+full Markdown/MDX-like document text and URI to match the C ABI and other platform wrappers.
 
 For accurate Apple preview geometry, measure with the same text stack that will display the SVG.
 Use Core Text for native previews, or a prepared WKWebView DOM/canvas measurement cache when the SVG

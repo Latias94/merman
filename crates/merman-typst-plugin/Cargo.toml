@@ -31,3 +31,4 @@ serde_json = { workspace = true, optional = true }
 wasm-minimal-protocol.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true

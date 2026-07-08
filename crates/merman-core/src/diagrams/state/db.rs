@@ -457,10 +457,7 @@ impl StateDb {
             &meta.effective_config,
             &look,
         )
-        .map_err(|message| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message,
-        })?;
+        .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
 
         let links_json: serde_json::Map<String, Value> = self
             .links
@@ -522,10 +519,7 @@ impl StateDb {
             &self.style_classes,
             &meta.effective_config,
         )
-        .map_err(|message| Error::DiagramParse {
-            diagram_type: meta.diagram_type.clone(),
-            message,
-        })?;
+        .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
 
         let states: HashMap<String, StateDiagramRenderState> = self
             .state_order

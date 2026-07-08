@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
+import { surfaces } from "./surface-manifest.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = path.join(root, "..", "..");
@@ -15,7 +16,17 @@ const required = [
   generatedPackageJson,
   presetManifest,
   path.join(root, "pkg", "merman_wasm.js"),
+  path.join(root, "pkg", "merman_wasm.d.ts"),
   wasmBinary,
+  ...surfaces.flatMap((surface) => [
+    path.join(root, "dist", "surfaces", `${surface.entry}.js`),
+    path.join(root, "dist", "surfaces", `${surface.entry}.d.ts`),
+    path.join(root, "pkg", surface.entry, "package.json"),
+    path.join(root, "pkg", surface.entry, "merman_wasm.js"),
+    path.join(root, "pkg", surface.entry, "merman_wasm.d.ts"),
+    path.join(root, "pkg", surface.entry, "merman_wasm_bg.wasm"),
+    path.join(root, "pkg", surface.entry, "merman_wasm_preset.json"),
+  ]),
 ];
 
 const missing = required.filter((file) => {
@@ -71,6 +82,10 @@ try {
   process.exit(1);
 }
 
+for (const surface of surfaces) {
+  checkSurfaceManifest(surface);
+}
+
 function loadDefaultBrowserFullWasmBudget() {
   let budgets;
   try {
@@ -91,6 +106,28 @@ function loadDefaultBrowserFullWasmBudget() {
     gzip: budget.max_gzip_bytes,
     brotli: budget.max_brotli_bytes,
   };
+}
+
+function checkSurfaceManifest(surface) {
+  const entry = surface.entry;
+  const manifestPath = path.join(root, "pkg", entry, "merman_wasm_preset.json");
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch (error) {
+    console.error(`prepack: failed to read pkg/${entry}/merman_wasm_preset.json: ${error.message}`);
+    process.exit(1);
+  }
+
+  if (manifest.preset !== surface.preset) {
+    console.error(
+      [
+        `prepack: generated WASM preset for ./${entry} is '${manifest.preset}', expected '${surface.preset}'.`,
+        "Run `npm run build --prefix platforms/web` before pack/publish.",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
 }
 
 function checkDefaultBrowserFullWasmBudget(defaultBrowserFullWasmBudget) {

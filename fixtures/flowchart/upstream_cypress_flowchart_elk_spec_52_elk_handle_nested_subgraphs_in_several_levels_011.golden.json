@@ -118,6 +118,25 @@
         "link": null,
         "linkTarget": null,
         "haveCallback": false
+      },
+      {
+        "id": "O",
+        "label": "O",
+        "labelType": "text",
+        "shape": null,
+        "layoutShape": "squareRect",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "styles": [],
+        "classes": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
       }
     ],
     "edges": [

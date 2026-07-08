@@ -18,7 +18,8 @@ package page can point directly to the binding docs, issues, and changelog.
 `MermanReusableEngine` exposes the reusable render path, and `MermanTextMeasurer` lets Python
 hosts provide a callback when they need host-owned text measurement. `ascii_capabilities()` reports
 ASCII support grades and summary fallback metadata; `diagram_family_capabilities()` reports
-parser/render family availability.
+parser/render family availability. `analyze_document_json()` and
+`analyze_document_facts_json()` expose Markdown/MDX-aware diagnostics and facts.
 
 For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -37,6 +38,12 @@ ascii_text = engine.render_ascii(source, None)
 semantic_json = engine.parse_json(source, None)
 layout_json = engine.layout_json(source, None)
 validation = engine.validate(source, None)
+document_json = engine.analyze_document_json("```mermaid\n" + source + "\n```", None, "file:///tmp/example.md")
+document_facts_json = engine.analyze_document_facts_json(
+    "```mermaid\n" + source + "\n```",
+    None,
+    "file:///tmp/example.md",
+)
 diagrams = engine.supported_diagrams()
 ascii_capabilities = engine.ascii_capabilities()
 themes = engine.supported_themes()
@@ -55,6 +62,10 @@ reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
 assert "Hello" in reusable.render_svg(source)
 
 reusable = engine.reusable_engine(None)
+document_json = reusable.analyze_document_json(
+    "```mermaid\n" + source + "\n```",
+    "file:///tmp/example.md",
+)
 reusable.set_text_measurer(Measurer())
 assert "Hello" in reusable.render_svg(source)
 reusable.clear_text_measurer()
@@ -79,7 +90,9 @@ If a Python GUI, browser automation host, or WebView application needs geometry 
 own font stack, create a `MermanReusableEngine` with `reusable_engine_with_text_measurer(...)` or
 call `set_text_measurer(...)` on an existing reusable engine. Call `clear_text_measurer()` to
 restore the engine's original built-in measurer. Return `None` from the callback when a request is
-not handled so merman can fall back to its vendored metrics for that request. See
+not handled so merman can fall back to its vendored metrics for that request. Raise `MermanError`
+or another callback exception only for host failures that should make reusable `render_svg` or
+`layout_json` fail instead of silently returning fallback geometry. See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
 
 ## Generate Locally

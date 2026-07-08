@@ -24,6 +24,12 @@
     "direction": "LR",
     "accTitle": "This is a title",
     "accDescr": "This is a description\nusing multiple lines",
+    "warningFacts": [
+      {
+        "ruleId": "merman.git_graph.duplicate_commit_id",
+        "message": "Commit ID working on MDR already exists"
+      }
+    ],
     "warnings": [
       "Commit ID working on MDR already exists"
     ]

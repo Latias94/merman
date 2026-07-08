@@ -67,6 +67,12 @@ pub(crate) struct LexError {
     pub message: String,
 }
 
+impl crate::error::ParseErrorSourceSpan for LexError {
+    fn source_span(&self) -> Option<crate::SourceSpan> {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Default,
@@ -95,6 +101,10 @@ impl<'input> Lexer<'input> {
             force_actor_id: false,
             after_signal_type: false,
         }
+    }
+
+    pub(super) fn position(&self) -> usize {
+        self.pos
     }
 
     fn peek(&self) -> Option<u8> {

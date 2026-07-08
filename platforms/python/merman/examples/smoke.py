@@ -64,6 +64,32 @@ def main() -> None:
         raise RuntimeError("host theme presets smoke failed")
     if not any(item.diagram_type == "flowchart" for item in engine.diagram_family_capabilities()):
         raise RuntimeError("diagram family capabilities smoke failed")
+    if not hasattr(merman, "MermanLintRuleCatalogEntry"):
+        raise RuntimeError("lint rule catalog entry export smoke failed")
+    lint_rules = engine.lint_rule_catalog()
+    if not lint_rules or not all(
+        isinstance(rule, merman.MermanLintRuleCatalogEntry) for rule in lint_rules
+    ):
+        raise RuntimeError("lint rule catalog type smoke failed")
+    if not any(
+        rule.id == "merman.authoring.flowchart.explicit_direction"
+        and rule.origin == "merman_authoring"
+        for rule in lint_rules
+    ):
+        raise RuntimeError("lint rule catalog content smoke failed")
+    configurable_rules = engine.configurable_lint_rule_catalog()
+    if not configurable_rules or not all(
+        isinstance(rule, merman.MermanLintRuleCatalogEntry) for rule in configurable_rules
+    ):
+        raise RuntimeError("configurable lint rule catalog type smoke failed")
+    if not any(
+        rule.id == "merman.authoring.flowchart.explicit_direction"
+        and rule.configurable
+        for rule in configurable_rules
+    ):
+        raise RuntimeError("configurable lint rule catalog content smoke failed")
+    if not all(rule.configurable for rule in configurable_rules):
+        raise RuntimeError("configurable lint rule catalog smoke failed")
 
     @dataclass
     class Measurer(merman.MermanTextMeasurer):
@@ -97,6 +123,24 @@ def main() -> None:
         raise RuntimeError("clear text measurer smoke failed")
     if setter_measurer.calls != calls_after_set:
         raise RuntimeError("clear text measurer did not reset callback")
+
+    class FailingMeasurer(merman.MermanTextMeasurer):
+        def measure(self, request):
+            raise RuntimeError("host measurer failed")
+
+    failing = engine.reusable_engine_with_text_measurer(None, FailingMeasurer())
+    try:
+        failing.render_svg(source)
+    except merman.MermanError.Binding as error:
+        if "host measurer failed" not in error.message:
+            raise RuntimeError(
+                f"unexpected callback error message: {error.message}"
+            ) from error
+    else:
+        raise RuntimeError("failing text measurer did not surface callback error")
+    failing.set_text_measurer(Measurer())
+    if "Hello" not in failing.render_svg(source):
+        raise RuntimeError("text measurer recovery smoke failed")
 
     print("merman Python UniFFI smoke passed")
 

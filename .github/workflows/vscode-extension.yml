@@ -1,0 +1,199 @@
+name: VS Code Extension
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/vscode-extension.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/**"
+      - "platforms/web/src/svg-safety-policy.ts"
+      - "scripts/check-svg-safety-policy.mjs"
+      - "scripts/generate-svg-safety-policy.mjs"
+      - "scripts/svg-safety-policy.mjs"
+      - "tools/vscode-extension/**"
+  pull_request:
+    paths:
+      - ".github/workflows/vscode-extension.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/**"
+      - "platforms/web/src/svg-safety-policy.ts"
+      - "scripts/check-svg-safety-policy.mjs"
+      - "scripts/generate-svg-safety-policy.mjs"
+      - "scripts/svg-safety-policy.mjs"
+      - "tools/vscode-extension/**"
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Protected branch (main), version tag, or refs/tags/<version-tag> to package from"
+        required: true
+        default: "main"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vscode-extension-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-inputs:
+    name: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_ref: ${{ steps.source.outputs.source_ref }}
+    steps:
+      - name: Validate package source ref
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          tag_re="^v${semver_re#^}"
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
+            printf 'source_ref=%s\n' "$GIT_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          validated_source_ref="$SOURCE_REF"
+          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            :
+            validated_source_ref="refs/tags/${SOURCE_REF#refs/tags/}"
+          else
+            fail "source_ref must be main, refs/heads/main, a version tag, or refs/tags/<release-tag>."
+          fi
+
+          printf 'source_ref=%s\n' "$validated_source_ref" >> "$GITHUB_OUTPUT"
+
+  package:
+    needs: validate-inputs
+    name: package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: macos-15
+            target: darwin-arm64
+          - os: macos-15-intel
+            target: darwin-x64
+          - os: windows-2025-vs2026
+            target: win32-x64
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/vscode-extension/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: tools/vscode-extension
+        run: npm ci
+
+      - name: Build release runtime binaries
+        run: cargo build --release --locked -p merman-lsp -p merman-cli
+
+      - name: Typecheck extension
+        working-directory: tools/vscode-extension
+        run: npm run check
+
+      - name: Test extension
+        working-directory: tools/vscode-extension
+        run: npm test
+
+      - name: Stage runtime binaries
+        working-directory: tools/vscode-extension
+        run: npm run prepare:binaries
+
+      - name: Smoke extension host
+        if: runner.os == 'Linux'
+        working-directory: tools/vscode-extension
+        run: xvfb-run -a npm run test:extension-host
+
+      - name: Smoke extension host
+        if: runner.os != 'Linux'
+        working-directory: tools/vscode-extension
+        run: npm run test:extension-host
+
+      - name: Derive VSIX release metadata
+        id: vsix
+        run: |
+          release_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          manifest_version="${release_version%%-*}"
+          {
+            echo "release_version=${release_version}"
+            echo "manifest_version=${manifest_version}"
+          } >> "$GITHUB_OUTPUT"
+          echo "VSIX release_version=${release_version} manifest_version=${manifest_version}"
+
+      - name: Package VSIX
+        working-directory: tools/vscode-extension
+        env:
+          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+        run: npm run package -- --target "${{ matrix.target }}" --out "merman-vscode-${{ matrix.target }}.vsix"
+
+      - name: Verify VSIX contents
+        working-directory: tools/vscode-extension
+        env:
+          MERMAN_RELEASE_VERSION: ${{ steps.vsix.outputs.release_version }}
+        run: npm run verify:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix" --platform "${{ matrix.target }}" --target "${{ matrix.target }}"
+
+      - name: Smoke packaged VSIX
+        if: runner.os == 'Linux'
+        working-directory: tools/vscode-extension
+        run: xvfb-run -a npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
+
+      - name: Smoke packaged VSIX
+        if: runner.os != 'Linux'
+        working-directory: tools/vscode-extension
+        run: npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-vscode-${{ matrix.target }}
+          path: tools/vscode-extension/merman-vscode-${{ matrix.target }}.vsix
+          if-no-files-found: error

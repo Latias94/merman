@@ -20,6 +20,26 @@ fn run_with_stdin(args: &[&str], input: &str) -> Output {
     run_with_stdin_in_dir(args, input, None)
 }
 
+fn run_with_stdin_input(args: &[&str], stdin: &[u8]) -> Output {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let mut command = Command::new(exe);
+    command
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().expect("spawn cli");
+
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(stdin)
+        .expect("write stdin");
+
+    child.wait_with_output().expect("wait cli")
+}
+
 fn run_with_stdin_in_dir(args: &[&str], input: &str, cwd: Option<&Path>) -> Output {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let mut command = Command::new(exe);
@@ -314,6 +334,421 @@ fn cli_rejects_invalid_fixed_time_options() {
             "unexpected stderr for {flag} {value}:\n{stderr}"
         );
     }
+}
+
+#[test]
+fn cli_lint_valid_mermaid_returns_zero_and_json_payload() {
+    let output = run_with_stdin(
+        &["lint", "--format", "json", "-"],
+        "flowchart TD\nA[Hello] --> B[World]\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["version"], 1);
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["errors"], 0);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_lint_rules_lists_rule_catalog_json() {
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .args(["lint-rules", "--format", "json"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let catalog: Value =
+        serde_json::from_slice(&output.stdout).expect("lint-rules stdout should be JSON");
+    assert_eq!(catalog["version"], 1);
+    let rules = catalog["rules"]
+        .as_array()
+        .expect("rule catalog response should include a rules array");
+    let authoring = rules
+        .iter()
+        .find(|rule| rule["id"] == "merman.authoring.flowchart.explicit_direction")
+        .expect("authoring flowchart rule");
+
+    assert_eq!(authoring["origin"], "merman_authoring");
+    assert_eq!(authoring["default_profile"], "recommended");
+    assert_eq!(authoring["default_severity"], "hint");
+    assert_eq!(authoring["fixable"], true);
+    assert!(
+        authoring["evidence"]
+            .as_array()
+            .expect("evidence array")
+            .iter()
+            .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+    );
+    let frontmatter = rules
+        .iter()
+        .find(|rule| rule["id"] == "merman.authoring.config.prefer_frontmatter_config")
+        .expect("frontmatter config authoring rule");
+    assert_eq!(frontmatter["origin"], "merman_authoring");
+    assert_eq!(frontmatter["default_profile"], "recommended");
+    assert_eq!(frontmatter["default_severity"], "hint");
+    assert_eq!(frontmatter["fixable"], true);
+    assert!(
+        frontmatter["evidence"]
+            .as_array()
+            .expect("evidence array")
+            .iter()
+            .any(|value| value == "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md")
+    );
+    let external_loading = rules
+        .iter()
+        .find(|rule| {
+            rule["id"] == "merman.compatibility.config.deprecated_external_diagram_loading"
+        })
+        .expect("deprecated external diagram loading rule");
+    assert_eq!(external_loading["origin"], "mermaid_compatibility");
+    assert_eq!(external_loading["default_profile"], "core");
+    assert_eq!(external_loading["default_severity"], "warning");
+    assert_eq!(external_loading["fixable"], false);
+    assert!(
+        external_loading["evidence"]
+            .as_array()
+            .expect("evidence array")
+            .iter()
+            .any(|value| value == "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts")
+    );
+    let flowchart_html_labels = rules
+        .iter()
+        .find(|rule| rule["id"] == "merman.compatibility.config.deprecated_flowchart_html_labels")
+        .expect("deprecated flowchart htmlLabels rule");
+    assert_eq!(flowchart_html_labels["fixable"], false);
+}
+
+#[test]
+fn cli_lint_rules_configurable_filter_excludes_internal_and_resource_rules() {
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .args(["lint-rules", "--format", "json", "--configurable"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let catalog: Value =
+        serde_json::from_slice(&output.stdout).expect("lint-rules stdout should be JSON");
+    assert_eq!(catalog["version"], 1);
+    let rules = catalog["rules"]
+        .as_array()
+        .expect("rule catalog response should include a rules array");
+
+    assert!(rules.iter().all(|rule| rule["category"] != "internal"
+        && rule["category"] != "resource"
+        && rule["configurable"] == true));
+    assert!(
+        rules
+            .iter()
+            .all(|rule| rule["id"] != "merman.resource.source_bytes_exceeded")
+    );
+}
+
+#[test]
+fn cli_lint_can_disable_rule_diagnostics() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--lint-profile",
+            "recommended",
+            "--disable-rule",
+            "merman.authoring.config.prefer_init_directive",
+            "--disable-rule",
+            "merman.authoring.config.prefer_frontmatter_config",
+            "-",
+        ],
+        "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 0);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_lint_can_enable_authoring_rule_diagnostics() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--enable-rule",
+            "merman.authoring.config.prefer_init_directive",
+            "-",
+        ],
+        "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 1);
+    assert_eq!(
+        payload["diagnostics"][0]["id"].as_str(),
+        Some("merman.authoring.config.prefer_init_directive")
+    );
+}
+
+#[test]
+fn cli_lint_can_disable_no_diagram_rule() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--disable-rule",
+            "merman.parse.no_diagram",
+            "-",
+        ],
+        "",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["errors"], 0);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_lint_can_override_rule_severity() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--lint-profile",
+            "recommended",
+            "--rule-severity",
+            "merman.authoring.config.prefer_init_directive=warning",
+            "--disable-rule",
+            "merman.authoring.config.prefer_frontmatter_config",
+            "-",
+        ],
+        "%%{ initialize: {\"theme\":\"dark\"} }%%\nflowchart TD\nA-->B\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 0);
+    assert_eq!(payload["summary"]["warnings"], 1);
+    assert_eq!(
+        payload["diagnostics"][0]["id"].as_str(),
+        Some("merman.authoring.config.prefer_init_directive")
+    );
+    assert_eq!(
+        payload["diagnostics"][0]["severity"].as_str(),
+        Some("warning")
+    );
+}
+
+#[test]
+fn cli_lint_rejects_unknown_rule_ids() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+
+    for (args, expected) in [
+        (
+            vec![
+                "lint",
+                "--format",
+                "json",
+                "--disable-rule",
+                "merman.unknown.rule",
+                "-",
+            ],
+            "unknown or non-configurable lint rule id `merman.unknown.rule`",
+        ),
+        (
+            vec![
+                "lint",
+                "--format",
+                "json",
+                "--rule-severity",
+                "merman.internal.panic=warning",
+                "-",
+            ],
+            "unknown or non-configurable lint rule id `merman.internal.panic`",
+        ),
+    ] {
+        let output = Command::new(&exe)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn cli")
+            .wait_with_output()
+            .expect("wait cli");
+
+        assert!(
+            !output.status.success(),
+            "expected lint args to be rejected"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(stderr.contains(expected), "unexpected stderr:\n{stderr}");
+    }
+}
+
+#[test]
+fn cli_lint_rejects_resource_limit_rule_configuration() {
+    for args in [
+        vec![
+            "lint",
+            "--format",
+            "json",
+            "--max-source-bytes",
+            "8",
+            "--disable-rule",
+            "merman.resource.source_bytes_exceeded",
+            "-",
+        ],
+        vec![
+            "lint",
+            "--format",
+            "json",
+            "--max-source-bytes",
+            "8",
+            "--rule-severity",
+            "merman.resource.source_bytes_exceeded=hint",
+            "-",
+        ],
+    ] {
+        let output = run_with_stdin(&args, "flowchart TD\nA-->B\n");
+
+        assert!(
+            !output.status.success(),
+            "expected resource rule config to be rejected"
+        );
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+        assert!(
+            stderr.contains(
+                "unknown or non-configurable lint rule id `merman.resource.source_bytes_exceeded`"
+            ),
+            "unexpected stderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn cli_lint_can_disable_block_warning_rules() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--disable-rule",
+            "merman.block.width_exceeds_columns",
+            "-",
+        ],
+        "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert!(payload["diagnostics"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn cli_lint_can_override_block_warning_severity() {
+    let output = run_with_stdin(
+        &[
+            "lint",
+            "--format",
+            "json",
+            "--rule-severity",
+            "merman.block.width_exceeds_columns=hint",
+            "-",
+        ],
+        "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], true);
+    assert_eq!(payload["summary"]["hints"], 2);
+    assert_eq!(
+        payload["diagnostics"][0]["id"].as_str(),
+        Some("merman.block.width_exceeds_columns")
+    );
+    assert_eq!(payload["diagnostics"][0]["severity"].as_str(), Some("hint"));
+}
+
+#[test]
+fn cli_lint_reports_markdown_fence_path_from_stdin_file_name() {
+    let output = run_with_stdin_input(
+        &[
+            "lint",
+            "--markdown",
+            "--stdin-file-name",
+            "notes.md",
+            "--format",
+            "text",
+            "-",
+        ],
+        b"before\n```mermaid\nflowchart TD\nA -->\n```\nafter\n",
+    );
+
+    assert!(
+        !output.status.success(),
+        "lint should fail on invalid markdown"
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains("notes.md:4:6"),
+        "unexpected lint output:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("merman.parse.diagram_parse"),
+        "unexpected lint output:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("1 error(s)"),
+        "unexpected lint summary:\n{stdout}"
+    );
+}
+
+#[test]
+fn cli_lint_reports_markdown_fence_failure_as_json_from_stdin_file_name() {
+    let output = run_with_stdin_input(
+        &[
+            "lint",
+            "--markdown",
+            "--stdin-file-name",
+            "notes.md",
+            "--format",
+            "json",
+            "-",
+        ],
+        b"before\n```mermaid\nflowchart TD\nA -->\n```\nafter\n",
+    );
+
+    assert!(
+        !output.status.success(),
+        "lint should fail on invalid markdown"
+    );
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("lint stdout should be JSON");
+    assert_eq!(payload["valid"], false);
+    assert_eq!(payload["source"]["path"], "notes.md");
+    assert_eq!(payload["summary"]["errors"], 1);
+    let diagnostic = &payload["diagnostics"][0];
+    assert_eq!(diagnostic["id"], "merman.parse.diagram_parse");
+    assert_eq!(diagnostic["span"]["line"], 4);
+    assert_eq!(diagnostic["span"]["column"], 6);
 }
 
 #[test]
@@ -631,6 +1066,39 @@ fn completion_stdout_broken_pipe_exits_success_without_panic() {
     assert!(
         output.status.success(),
         "completion broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
+        "broken pipe should not panic or print a diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
+fn lint_rules_stdout_broken_pipe_exits_success_without_panic() {
+    let output = run_with_closed_stdout(&["lint-rules"], None);
+    assert!(
+        output.status.success(),
+        "lint-rules broken stdout pipe should be treated as normal pipe termination: {:?}",
+        output.stderr
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        !stderr.contains("panicked") && !stderr.contains("Broken pipe"),
+        "broken pipe should not panic or print a diagnostic:\n{stderr}"
+    );
+}
+
+#[test]
+fn lint_text_stdout_broken_pipe_exits_success_without_panic() {
+    let output = run_with_closed_stdout(
+        &["lint", "--markdown", "--format", "text", "-"],
+        Some(b"before\n```mermaid\nflowchart TD\nA -->\n```\nafter\n"),
+    );
+    assert!(
+        output.status.success(),
+        "lint text broken stdout pipe should be treated as normal pipe termination: {:?}",
         output.stderr
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");

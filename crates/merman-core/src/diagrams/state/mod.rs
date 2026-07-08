@@ -11,7 +11,7 @@ pub use render_model::{
     StateDiagramRenderState, StateDiagramRenderStyleClass,
 };
 
-pub use parse::{parse_state, parse_state_model_for_render};
+pub use parse::{parse_state, parse_state_editor_facts, parse_state_model_for_render};
 
 pub(crate) use ast::{ClickStmt, Note, RelationStmt, StateStmt, Stmt};
 
@@ -69,6 +69,12 @@ pub(crate) struct LexError {
     pub message: String,
 }
 
+impl crate::error::ParseErrorSourceSpan for LexError {
+    fn source_span(&self) -> Option<crate::SourceSpan> {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Default,
@@ -94,6 +100,10 @@ impl<'input> Lexer<'input> {
             modes: vec![Mode::Default],
             emitted_eof_newline: false,
         }
+    }
+
+    fn position(&self) -> usize {
+        self.pos
     }
 
     fn normalize_note_block_text(raw: &'input str) -> String {
@@ -424,6 +434,7 @@ impl<'input> Lexer<'input> {
                 }
                 self.pos += 1;
             }
+            let id_end = self.pos;
             let id = self.input[id_start..self.pos].trim().to_string();
 
             self.skip_ws();
@@ -451,7 +462,7 @@ impl<'input> Lexer<'input> {
 
             self.pending.push_back((start, Tok::Note, kw_end));
             self.pending.push_back((pos_start, pos_tok, id_start));
-            self.pending.push_back((id_start, Tok::Id(id), text_start));
+            self.pending.push_back((id_start, Tok::Id(id), id_end));
             self.pending
                 .push_back((text_start, Tok::NoteText(text), self.pos));
             return self.pending.pop_front().map(Ok);
@@ -560,8 +571,8 @@ impl<'input> Lexer<'input> {
     fn lex_state_mode_token(
         &mut self,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        let start = self.pos;
         self.skip_ws();
+        let start = self.pos;
 
         self.peek()?;
 
@@ -573,10 +584,15 @@ impl<'input> Lexer<'input> {
                 }
                 self.pos += 1;
             }
-            let id = self.input[body_start..self.pos].trim().to_string();
+            let raw = &self.input[body_start..self.pos];
+            let leading = raw.len().saturating_sub(raw.trim_start().len());
+            let trailing = raw.trim_end().len();
+            let id_start = body_start + leading;
+            let id_end = body_start + trailing;
+            let id = self.input[id_start..id_end].to_string();
             self.pop_mode(); // StateId
             self.pop_mode(); // State
-            return Some(Ok((start, Tok::Id(id), self.pos)));
+            return Some(Ok((id_start, Tok::Id(id), id_end)));
         }
 
         if self.peek() == Some(b'"') {

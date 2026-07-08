@@ -1,9 +1,14 @@
 use jni::{
-    Env, EnvUnowned, JavaVM,
-    errors::{Result as JniResult, ThrowRuntimeExAndDefault},
-    objects::{Global, JClass, JObject, JString, JValue},
+    Env, EnvUnowned,
+    errors::{Error as JniError, Result as JniResult, ThrowRuntimeExAndDefault},
+    objects::{JClass, JObject, JString},
     strings::JNIString,
     sys::{jint, jlong, jstring},
+};
+#[cfg(feature = "render")]
+use jni::{
+    JavaVM,
+    objects::{Global, JValue},
 };
 #[cfg(feature = "render")]
 use merman_bindings_core::TextMeasurer;
@@ -12,8 +17,8 @@ use std::ptr;
 #[cfg(feature = "render")]
 use std::sync::Arc;
 
-#[cfg(feature = "render")]
 struct JniReusableEngine {
+    #[cfg(feature = "render")]
     base: merman_bindings_core::BindingEngine,
     inner: merman_bindings_core::BindingEngine,
 }
@@ -56,16 +61,34 @@ impl JniHostTextMeasurer {
                             (request: io.merman.MermanTextMeasureRequest) -> io.merman.MermanTextMeasureResult
                         ),
                         &[JValue::Object(&request)],
-                    )?
-                    .l()?;
+                    )
+                    .and_then(|value| value.l());
+                let Some(result) = recover_host_callback_result(env, result)? else {
+                    return Ok(None);
+                };
                 if result.is_null() {
                     return Ok(None);
                 }
 
                 let result: JObject<'_> = result;
-                let width = env.get_field(&result, jni::jni_str!("width"), jni::jni_sig!(f64))?.d()?;
-                let height = env.get_field(&result, jni::jni_str!("height"), jni::jni_sig!(f64))?.d()?;
-                let line_count = env.get_field(&result, jni::jni_str!("lineCount"), jni::jni_sig!(jlong))?.j()?;
+                let width = env
+                    .get_field(&result, jni::jni_str!("width"), jni::jni_sig!(f64))
+                    .and_then(|value| value.d());
+                let Some(width) = recover_host_callback_result(env, width)? else {
+                    return Ok(None);
+                };
+                let height = env
+                    .get_field(&result, jni::jni_str!("height"), jni::jni_sig!(f64))
+                    .and_then(|value| value.d());
+                let Some(height) = recover_host_callback_result(env, height)? else {
+                    return Ok(None);
+                };
+                let line_count = env
+                    .get_field(&result, jni::jni_str!("lineCount"), jni::jni_sig!(jlong))
+                    .and_then(|value| value.j());
+                let Some(line_count) = recover_host_callback_result(env, line_count)? else {
+                    return Ok(None);
+                };
                 if !width.is_finite()
                     || !height.is_finite()
                     || width < 0.0
@@ -98,6 +121,28 @@ impl JniHostTextMeasurer {
                     .measure_wrapped(text, style, max_width, wrap_mode)
             })
     }
+}
+
+#[cfg(feature = "render")]
+fn recover_host_callback_result<T>(
+    env: &mut Env<'_>,
+    result: JniResult<T>,
+) -> JniResult<Option<T>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(err) if is_pending_host_exception(env, &err) => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+#[cfg(feature = "render")]
+fn is_pending_host_exception(env: &mut Env<'_>, err: &JniError) -> bool {
+    let is_java_exception = matches!(err, JniError::JavaException);
+    if env.exception_check() {
+        env.exception_clear();
+        return true;
+    }
+    is_java_exception
 }
 
 #[cfg(feature = "render")]
@@ -201,6 +246,7 @@ pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeNew(
         match merman_bindings_core::BindingEngine::new(options_json.as_bytes()) {
             Ok(engine) => {
                 let handle = Box::new(JniReusableEngine {
+                    #[cfg(feature = "render")]
                     base: engine.clone(),
                     inner: engine,
                 });
@@ -332,6 +378,61 @@ pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeLayoutJson(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeAnalyzeJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    source: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_engine_binding(
+            env,
+            handle,
+            source,
+            merman_bindings_core::BindingEngine::analyze_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeAnalyzeDocumentJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    source: JString<'_>,
+    uri: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_engine_document_binding(
+            env,
+            handle,
+            source,
+            uri,
+            merman_bindings_core::BindingEngine::analyze_document_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeAnalyzeDocumentFactsJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    handle: jlong,
+    source: JString<'_>,
+    uri: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_engine_document_binding(
+            env,
+            handle,
+            source,
+            uri,
+            merman_bindings_core::BindingEngine::analyze_document_facts_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeValidateJson(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -417,6 +518,61 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeLayoutJson(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_binding(
+            env,
+            source,
+            options_json,
+            merman_bindings_core::analyze_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeDocumentJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+    uri: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_document_binding(
+            env,
+            source,
+            options_json,
+            uri,
+            merman_bindings_core::analyze_document_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeAnalyzeDocumentFactsJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+    uri: JString<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_document_binding(
+            env,
+            source,
+            options_json,
+            uri,
+            merman_bindings_core::analyze_document_facts_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_merman_MermanEngine_nativeValidateJson(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -473,6 +629,19 @@ pub extern "system" fn Java_io_merman_MermanEngine_nativeDiagramFamilyCapabiliti
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_io_merman_MermanEngine_nativeLintRuleCatalogJson(
+    mut unowned_env: EnvUnowned<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    with_env_resolved(&mut unowned_env, |env| {
+        Ok(call_metadata(
+            env,
+            merman_bindings_core::lint_rule_catalog_json,
+        ))
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_io_merman_MermanEngine_nativeSupportedThemesJson(
     mut unowned_env: EnvUnowned<'_>,
     _class: JClass<'_>,
@@ -518,6 +687,31 @@ where
     result_to_java_string(env, result)
 }
 
+fn call_document_binding<F>(
+    env: &mut Env<'_>,
+    source: JString<'_>,
+    options_json: JObject<'_>,
+    uri: JString<'_>,
+    f: F,
+) -> jstring
+where
+    F: FnOnce(&[u8], &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
+{
+    let Some(source) = required_java_string(env, source, "source") else {
+        return ptr::null_mut();
+    };
+    let Some(options_json) = optional_java_string(env, options_json, "optionsJson") else {
+        return ptr::null_mut();
+    };
+    let Some(uri) = required_java_string(env, uri, "uri") else {
+        return ptr::null_mut();
+    };
+
+    let result =
+        super::ffi_result(|| f(source.as_bytes(), options_json.as_bytes(), uri.as_bytes()));
+    result_to_java_string(env, result)
+}
+
 fn call_engine_binding<F>(env: &mut Env<'_>, handle: jlong, source: JString<'_>, f: F) -> jstring
 where
     F: FnOnce(&merman_bindings_core::BindingEngine, &[u8]) -> Result<Vec<u8>, BindingError>,
@@ -530,6 +724,30 @@ where
     };
 
     let result = super::ffi_result(|| f(&engine.inner, source.as_bytes()));
+    result_to_java_string(env, result)
+}
+
+fn call_engine_document_binding<F>(
+    env: &mut Env<'_>,
+    handle: jlong,
+    source: JString<'_>,
+    uri: JString<'_>,
+    f: F,
+) -> jstring
+where
+    F: FnOnce(&merman_bindings_core::BindingEngine, &[u8], &[u8]) -> Result<Vec<u8>, BindingError>,
+{
+    let Some(engine) = jni_engine_ref(env, handle) else {
+        return ptr::null_mut();
+    };
+    let Some(source) = required_java_string(env, source, "source") else {
+        return ptr::null_mut();
+    };
+    let Some(uri) = required_java_string(env, uri, "uri") else {
+        return ptr::null_mut();
+    };
+
+    let result = super::ffi_result(|| f(&engine.inner, source.as_bytes(), uri.as_bytes()));
     result_to_java_string(env, result)
 }
 
@@ -688,7 +906,9 @@ fn new_text_measure_request<'local>(
 
     env.new_object(
         jni::jni_str!("io/merman/MermanTextMeasureRequest"),
-        jni::jni_sig!((text: java.lang.String, fontFamily: java.lang.String, fontSize: f64, fontWeight: java.lang.String, fontStyle: java.lang.String, maxWidth: java.lang.Double, lineHeight: f64, letterSpacing: f64, wordSpacing: f64, wrapMode: jint, direction: jint, whiteSpace: jint) -> java.lang.Object),
+        jni::jni_sig!(
+            "(Ljava/lang/String;Ljava/lang/String;DLjava/lang/String;Ljava/lang/String;Ljava/lang/Double;DDDIII)V"
+        ),
         &[
             JValue::Object(&JObject::from(text)),
             JValue::Object(&JObject::from(font_family)),

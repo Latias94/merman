@@ -163,6 +163,28 @@
       }
     ],
     "classes": {},
+    "warningFacts": [
+      {
+        "ruleId": "merman.block.width_exceeds_columns",
+        "message": "Block B width 2 exceeds configured column width 1"
+      },
+      {
+        "ruleId": "merman.block.width_exceeds_columns",
+        "message": "Block C width 3 exceeds configured column width 1"
+      },
+      {
+        "ruleId": "merman.block.width_exceeds_columns",
+        "message": "Block D width 4 exceeds configured column width 1"
+      },
+      {
+        "ruleId": "merman.block.width_exceeds_columns",
+        "message": "Block E width 3 exceeds configured column width 1"
+      },
+      {
+        "ruleId": "merman.block.width_exceeds_columns",
+        "message": "Block F width 2 exceeds configured column width 1"
+      }
+    ],
     "warnings": [
       "Block B width 2 exceeds configured column width 1",
       "Block C width 3 exceeds configured column width 1",

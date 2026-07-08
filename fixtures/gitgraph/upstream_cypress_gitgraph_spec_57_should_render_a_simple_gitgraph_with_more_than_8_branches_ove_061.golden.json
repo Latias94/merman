@@ -49,6 +49,7 @@
     "direction": "BT",
     "accTitle": null,
     "accDescr": null,
+    "warningFacts": [],
     "warnings": []
   }
 }

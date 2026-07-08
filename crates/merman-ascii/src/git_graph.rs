@@ -42,10 +42,16 @@ pub fn render_git_graph_diagram(
         );
     }
 
-    if !model.warnings.is_empty() {
+    if !model.warning_facts.is_empty() {
         lines.push("warnings:".to_string());
-        for warning in &model.warnings {
-            push_wrapped_prefixed_line(&mut lines, "  - ", "    ", warning, SUMMARY_WRAP_WIDTH);
+        for warning in &model.warning_facts {
+            push_wrapped_prefixed_line(
+                &mut lines,
+                "  - ",
+                "    ",
+                &warning.message,
+                SUMMARY_WRAP_WIDTH,
+            );
         }
     }
 

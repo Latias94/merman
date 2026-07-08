@@ -9,6 +9,7 @@ import {
   type RefObject,
   type WheelEvent,
 } from "react";
+import { assertSafeSvgForDom } from "@mermanjs/web";
 import {
   normalizeSvgDimensions,
   parseSvgDimensions,
@@ -202,11 +203,31 @@ export function SvgViewport({
   contentClassName,
   empty,
 }: SvgViewportProps) {
+  const shadowHostRef = useRef<HTMLDivElement>(null);
   const displaySvg = useMemo(() => {
     if (!svg) return null;
 
-    return normalizeSvgDimensions(svg)?.svg ?? svg;
+    try {
+      assertSafeSvgForDom(svg);
+      const normalized = normalizeSvgDimensions(svg)?.svg ?? svg;
+      assertSafeSvgForDom(normalized);
+      return normalized;
+    } catch {
+      return null;
+    }
   }, [svg]);
+
+  useEffect(() => {
+    const host = shadowHostRef.current;
+    if (!host || !displaySvg) return;
+
+    const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    root.innerHTML = displaySvg;
+
+    return () => {
+      root.replaceChildren();
+    };
+  }, [displaySvg]);
 
   return (
     <div
@@ -223,7 +244,7 @@ export function SvgViewport({
       onPointerCancel={controller.handlePointerUp}
       onDragStart={(event) => event.preventDefault()}
     >
-      {svg ? (
+      {displaySvg ? (
         <div
           className="absolute left-1/2 top-1/2"
           style={{
@@ -244,8 +265,9 @@ export function SvgViewport({
                 "preview-container inline-flex bg-white rounded-lg shadow-sm p-4",
                 contentClassName
               )}
-              dangerouslySetInnerHTML={{ __html: displaySvg ?? svg }}
-            />
+            >
+              <div ref={shadowHostRef} className="inline-flex" />
+            </div>
           </div>
         </div>
       ) : (

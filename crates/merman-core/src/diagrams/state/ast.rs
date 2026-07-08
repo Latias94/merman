@@ -1,3 +1,5 @@
+use crate::SourceSpan;
+
 #[derive(Debug, Clone)]
 pub(crate) struct Note {
     pub position: Option<String>,
@@ -14,6 +16,7 @@ pub(crate) struct ClickStmt {
 #[derive(Debug, Clone)]
 pub(crate) struct StateStmt {
     pub id: String,
+    pub id_span: Option<SourceSpan>,
     pub ty: String,
     pub description: Option<String>,
     pub descriptions: Vec<String>,
@@ -29,6 +32,7 @@ impl StateStmt {
     pub(crate) fn new(id: String) -> Self {
         Self {
             id,
+            id_span: None,
             ty: "default".to_string(),
             description: None,
             descriptions: Vec::new(),

@@ -8,6 +8,9 @@ object MermanEngine {
         checkNativeAbi()
     }
 
+    @JvmStatic
+    internal fun ensureNativeReady() = Unit
+
     val packageVersion: String
         get() = nativePackageVersion()
 
@@ -21,6 +24,10 @@ object MermanEngine {
 
     private val diagramFamilyCapabilitiesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
         nativeDiagramFamilyCapabilitiesJson()
+    }
+
+    private val lintRuleCatalogJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        nativeLintRuleCatalogJson()
     }
 
     private val supportedThemesJsonCache: String by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -48,6 +55,18 @@ object MermanEngine {
         nativeLayoutJson(source, optionsJson)
 
     @JvmStatic
+    fun analyzeJson(source: String, optionsJson: String? = null): String =
+        nativeAnalyzeJson(source, optionsJson)
+
+    @JvmStatic
+    fun analyzeDocumentJson(source: String, uri: String, optionsJson: String? = null): String =
+        nativeAnalyzeDocumentJson(source, optionsJson, uri)
+
+    @JvmStatic
+    fun analyzeDocumentFactsJson(source: String, uri: String, optionsJson: String? = null): String =
+        nativeAnalyzeDocumentFactsJson(source, optionsJson, uri)
+
+    @JvmStatic
     fun validateJson(source: String, optionsJson: String? = null): String =
         nativeValidateJson(source, optionsJson)
 
@@ -62,6 +81,10 @@ object MermanEngine {
     @JvmStatic
     fun diagramFamilyCapabilitiesJson(): String =
         diagramFamilyCapabilitiesJsonCache
+
+    @JvmStatic
+    fun lintRuleCatalogJson(): String =
+        lintRuleCatalogJsonCache
 
     @JvmStatic
     fun supportedThemesJson(): String =
@@ -106,6 +129,23 @@ object MermanEngine {
     private external fun nativeLayoutJson(source: String, optionsJson: String?): String
 
     @JvmStatic
+    private external fun nativeAnalyzeJson(source: String, optionsJson: String?): String
+
+    @JvmStatic
+    private external fun nativeAnalyzeDocumentJson(
+        source: String,
+        optionsJson: String?,
+        uri: String,
+    ): String
+
+    @JvmStatic
+    private external fun nativeAnalyzeDocumentFactsJson(
+        source: String,
+        optionsJson: String?,
+        uri: String,
+    ): String
+
+    @JvmStatic
     private external fun nativeValidateJson(source: String, optionsJson: String?): String
 
     @JvmStatic
@@ -116,6 +156,9 @@ object MermanEngine {
 
     @JvmStatic
     private external fun nativeDiagramFamilyCapabilitiesJson(): String
+
+    @JvmStatic
+    private external fun nativeLintRuleCatalogJson(): String
 
     @JvmStatic
     private external fun nativeSupportedThemesJson(): String

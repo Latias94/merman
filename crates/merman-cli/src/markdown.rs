@@ -1,9 +1,8 @@
 use crate::cli::RenderFormat;
 use crate::error::CliError;
-use regex::Regex;
+use merman_analysis::{DocumentSource, source_descriptor_for_markdown_path};
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
-use std::sync::OnceLock;
 
 #[derive(Debug, Clone)]
 pub(crate) struct MarkdownChart {
@@ -20,23 +19,22 @@ pub(crate) struct MarkdownImage {
 }
 
 pub(crate) fn is_markdown_path(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|ext| ext.to_str()),
-        Some("md" | "markdown")
-    )
+    merman_analysis::markdown::is_markdown_path(path)
 }
 
 pub(crate) fn extract_charts(source: &str) -> Vec<MarkdownChart> {
-    chart_regex()
-        .captures_iter(source)
-        .filter_map(|captures| {
-            let whole = captures.get(0)?;
-            let definition = captures.get(2)?;
-            Some(MarkdownChart {
-                start: whole.start(),
-                end: whole.end(),
-                definition: definition.as_str().to_string(),
-            })
+    extract_charts_with_spans(source)
+}
+
+pub(crate) fn extract_charts_with_spans(source: &str) -> Vec<MarkdownChart> {
+    let document = DocumentSource::new(source, source_descriptor_for_markdown_path(None));
+    document
+        .diagrams()
+        .iter()
+        .map(|diagram| MarkdownChart {
+            start: diagram.start,
+            end: diagram.end,
+            definition: diagram.text.to_owned_text(),
         })
         .collect()
 }
@@ -102,14 +100,6 @@ fn markdown_image(image: &MarkdownImage) -> String {
         Some(title) => format!("![{}]({} \"{}\")", alt, image.url, escape_title(title)),
         None => format!("![{}]({})", alt, image.url),
     }
-}
-
-fn chart_regex() -> &'static Regex {
-    static REGEX: OnceLock<Regex> = OnceLock::new();
-    REGEX.get_or_init(|| {
-        Regex::new(r"(?ms)^[^\S\n]*[`:]{3}(?:mermaid)([^\S\n]*\r?\n(.*?))[`:]{3}[^\S\n]*$")
-            .expect("valid Mermaid Markdown chart regex")
-    })
 }
 
 fn escape_alt(value: &str) -> String {
@@ -184,7 +174,23 @@ fn normalized_components(path: &Path) -> Vec<OsString> {
 }
 
 fn path_to_markdown_url(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    percent_encode_markdown_url(&path.to_string_lossy().replace('\\', "/"))
+}
+
+fn percent_encode_markdown_url(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'.' | b'-' | b'_' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => {
+                use std::fmt::Write as _;
+                write!(&mut out, "%{byte:02X}").expect("writing to a String should not fail");
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -193,12 +199,13 @@ mod tests {
 
     #[test]
     fn extracts_backtick_and_colon_mermaid_blocks() {
-        let source = "before\n```mermaid\nflowchart LR\nA-->B\n```\n:::mermaid\nsequenceDiagram\nA->>B: Hi\n:::\nafter";
+        let source = "before\n```Mermaid title=Main\nflowchart LR\nA-->B\n```\n~~~ mermaid\nsequenceDiagram\nA->>B: Hi\n~~~\n:::MERMAID extra info\npie title Work\n:::\n```mermaidx\nignored\n```\nafter";
         let charts = extract_charts(source);
 
-        assert_eq!(charts.len(), 2);
+        assert_eq!(charts.len(), 3);
         assert!(charts[0].definition.contains("flowchart LR"));
         assert!(charts[1].definition.contains("sequenceDiagram"));
+        assert!(charts[2].definition.contains("pie title Work"));
     }
 
     #[test]
@@ -221,5 +228,21 @@ mod tests {
         let out = numbered_output_path(Path::new("docs/out.md"), 2, RenderFormat::Png, None);
 
         assert_eq!(out, PathBuf::from("docs/out-2.png"));
+    }
+
+    #[test]
+    fn markdown_urls_percent_encode_link_destination_delimiters() {
+        assert_eq!(
+            path_to_markdown_url(Path::new("images/out (final) \"copy\".svg")),
+            "images/out%20%28final%29%20%22copy%22.svg"
+        );
+        assert_eq!(
+            path_to_markdown_url(Path::new("images/100% ready #1?.svg")),
+            "images/100%25%20ready%20%231%3F.svg"
+        );
+        assert_eq!(
+            path_to_markdown_url(Path::new("images/流程.svg")),
+            "images/%E6%B5%81%E7%A8%8B.svg"
+        );
     }
 }

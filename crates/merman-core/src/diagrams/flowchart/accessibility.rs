@@ -17,7 +17,10 @@ pub(super) fn extract_flowchart_accessibility_statements(
             }
         }
 
-        if let Some(rest) = trimmed.strip_prefix("accDescr") {
+        if let Some(rest) = trimmed
+            .strip_prefix("accDescription")
+            .or_else(|| trimmed.strip_prefix("accDescr"))
+        {
             let rest = rest.trim_start();
             if let Some(after) = rest.strip_prefix(':') {
                 acc_descr = Some(after.trim().to_string());

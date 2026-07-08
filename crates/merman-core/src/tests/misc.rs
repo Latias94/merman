@@ -327,6 +327,44 @@ fn parse_metadata_with_type_sync_moves_init_config_without_detection() {
 }
 
 #[test]
+fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
+    let engine = Engine::new();
+
+    for (diagram_type, source, config_key) in [
+        ("classDiagram", "classDiagram\nclass A\n", "class"),
+        ("stateDiagram", "stateDiagram-v2\n[*] --> A\n", "state"),
+        ("erDiagram", "erDiagram\nA ||--|| B : owns\n", "er"),
+        (
+            "xychart",
+            "xychart-beta\nx-axis [a]\ny-axis \"Y\" 0 --> 1\nbar [1]\n",
+            "xyChart",
+        ),
+        ("flowchart-elk", "flowchart-elk TD\nA-->B\n", "flowchart"),
+    ] {
+        let input = format!("%%{{init: {{\"config\": {{\"enabled\": true}}}}}}%%\n{source}");
+
+        let meta = engine
+            .parse_metadata_with_type_sync(diagram_type, &input, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            meta.config
+                .as_value()
+                .pointer(&format!("/{config_key}/enabled")),
+            Some(&json!(true)),
+            "config key for {diagram_type}"
+        );
+        if diagram_type != config_key {
+            assert!(
+                meta.config.as_value().get(diagram_type).is_none(),
+                "raw diagram key should not survive for {diagram_type}"
+            );
+        }
+    }
+}
+
+#[test]
 fn parse_metadata_with_type_sync_preserves_flowchart_elk_layout_side_effect() {
     let engine = Engine::new();
     let input = "flowchart-elk TD\nA-->B;";
@@ -1650,6 +1688,111 @@ bar [1]"#,
 }
 
 #[test]
+fn parse_xychart_editor_facts_expose_parser_backed_spans() {
+    let engine = Engine::new();
+    let text = r#"
+xychart horizontal
+title "Typed XYChart"
+accTitle: XY accTitle
+accDescr: XY accDescription
+x-axis "X Axis" [Alpha, Beta]
+y-axis "Y Axis" 1 --> 5
+bar "Series 1" [1, 2]
+line "Series 2" [2, 3]
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Typed XYChart"
+                && symbol.kind == EditorSemanticKind::String)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "X Axis" && symbol.kind == EditorSemanticKind::String)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Series 1" && symbol.kind == EditorSemanticKind::String)
+    );
+
+    let title_start = text.find("Typed XYChart").unwrap();
+    let axis_start = text.find("X Axis").unwrap();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(title_start, title_start + "Typed XYChart".len())
+    }));
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(axis_start, axis_start + "X Axis".len())
+    }));
+}
+
+#[test]
+fn parse_quadrant_chart_editor_facts_expose_parser_backed_spans() {
+    let engine = Engine::new();
+    let text = r#"
+quadrantChart
+title "Typed Quadrant"
+accTitle: Quadrant accTitle
+accDescr: Quadrant accDescription
+x-axis Low --> High
+y-axis Low --> High
+quadrant-1 Expand
+quadrant-2 "Maintain"
+classDef class1 color: #109060, radius: 10
+Point A:::class1: [0.9, 0.0]
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "title"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+    assert!(facts.symbols.iter().any(
+        |symbol| symbol.name == "Typed Quadrant" && symbol.role == EditorSemanticRole::Payload
+    ));
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Low" && symbol.role == EditorSemanticRole::Outline)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "Expand" && symbol.role == EditorSemanticRole::Outline)
+    );
+    assert!(
+        facts
+            .symbols
+            .iter()
+            .any(|symbol| symbol.name == "class1" && symbol.kind == EditorSemanticKind::Class)
+    );
+
+    let title_start = text.find("Typed Quadrant").unwrap();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(title_start, title_start + "Typed Quadrant".len())
+    }));
+}
+
+#[test]
 fn parse_class_exposes_11_15_hierarchical_namespaces_default_and_override() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata("classDiagram\nclass A", ParseOptions::default()))
@@ -1668,6 +1811,171 @@ class A"#,
     .unwrap();
     let class = &configured.effective_config.as_value()["class"];
     assert_eq!(class["hierarchicalNamespaces"], json!(false));
+}
+
+#[test]
+fn parse_requirement_editor_facts_expose_parser_backed_spans() {
+    let engine = Engine::new();
+    let text = r#"
+requirementDiagram
+accTitle: Requirement accTitle
+accDescr: Requirement accDescription
+requirement test_req {
+  id: test_id
+  text: the test text.
+  risk: high
+  verifymethod: analysis
+}
+element test_el {
+  type: test_type
+  docref: test_ref
+}
+a - contains -> b
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accTitle"));
+    assert!(facts.directive_prefixes.iter().any(|p| p == "accDescr"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "test_req"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "test_el"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "a"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "contains"));
+
+    let id_start = text.find("test_id").unwrap();
+    assert!(facts.expected_syntax.iter().any(|expected| {
+        expected.kind == EditorExpectedSyntaxKind::Payload
+            && expected.span == SourceSpan::new(id_start, id_start + "test_id".len())
+    }));
+}
+
+#[test]
+fn parse_requirement_editor_facts_emit_multi_id_style_class_and_classdef_symbols() {
+    let engine = Engine::new();
+    let text = r#"
+requirementDiagram
+requirement req {
+  id: REQ-1
+  text: demo
+  risk: low
+  verifymethod: test
+}
+element elem {
+  type: service
+}
+classDef firstClass,secondClass fill:#f9f,stroke:#333
+class req,elem firstClass,secondClass
+style req,elem fill:#ffa,stroke:#000
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .unwrap()
+        .expect("requirement editor facts");
+
+    let symbol_at = |name: &str, detail: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.selection.start == start
+            })
+            .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail} at {start}"))
+    };
+
+    let class_def_start = text.find("classDef firstClass,secondClass").unwrap();
+    let first_class_def_start = class_def_start + "classDef ".len();
+    let second_class_def_start = first_class_def_start + "firstClass,".len();
+    assert_eq!(
+        symbol_at(
+            "firstClass",
+            "requirement class definition",
+            first_class_def_start,
+        )
+        .role,
+        EditorSemanticRole::Outline
+    );
+    assert_eq!(
+        symbol_at(
+            "secondClass",
+            "requirement class definition",
+            second_class_def_start,
+        )
+        .role,
+        EditorSemanticRole::Outline
+    );
+
+    let class_stmt_start = text.find("class req,elem").unwrap();
+    let req_class_target_start = class_stmt_start + "class ".len();
+    let elem_class_target_start = req_class_target_start + "req,".len();
+    assert_eq!(
+        symbol_at("req", "requirement class target", req_class_target_start).role,
+        EditorSemanticRole::Entity
+    );
+    assert_eq!(
+        symbol_at("elem", "requirement class target", elem_class_target_start).role,
+        EditorSemanticRole::Entity
+    );
+
+    let first_class_ref_start = class_stmt_start + "class req,elem ".len();
+    let second_class_ref_start = first_class_ref_start + "firstClass,".len();
+    assert_eq!(
+        symbol_at("firstClass", "requirement class", first_class_ref_start).role,
+        EditorSemanticRole::Payload
+    );
+    assert_eq!(
+        symbol_at("secondClass", "requirement class", second_class_ref_start).role,
+        EditorSemanticRole::Payload
+    );
+
+    let style_stmt_start = text.find("style req,elem").unwrap();
+    let req_style_target_start = style_stmt_start + "style ".len();
+    let elem_style_target_start = req_style_target_start + "req,".len();
+    assert_eq!(
+        symbol_at("req", "requirement style target", req_style_target_start).role,
+        EditorSemanticRole::Payload
+    );
+    assert_eq!(
+        symbol_at("elem", "requirement style target", elem_style_target_start).role,
+        EditorSemanticRole::Payload
+    );
+}
+
+#[test]
+fn parse_requirement_editor_facts_class_refs_use_class_list_spans_for_short_names() {
+    let engine = Engine::new();
+    let text = r#"
+requirementDiagram
+requirement req {
+}
+element elem {
+}
+class req,elem a,aa
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("requirement", text, ParseOptions::strict())
+        .unwrap()
+        .expect("requirement editor facts");
+
+    let class_stmt_start = text.find("class req,elem").unwrap();
+    let a_start = class_stmt_start + "class req,elem ".len();
+    let aa_start = a_start + "a,".len();
+
+    for (name, start) in [("a", a_start), ("aa", aa_start)] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some("requirement class")
+                    && symbol.selection.start == start
+            })
+            .unwrap_or_else(|| panic!("missing class ref {name} at {start}"));
+        assert_eq!(symbol.role, EditorSemanticRole::Payload);
+    }
 }
 
 #[test]

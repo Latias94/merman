@@ -5,17 +5,17 @@ status: active
 
 # Current State
 
-- Goal: 完成 merman 的 Flowchart ELK 适配：以 Mermaid 与 Eclipse ELK 源码为依据持续 port 到成熟可默认使用，补齐 source-backed layered/compound 语义、重构适配层边界、收敛 ELK fixture，并保持默认 render 路径稳定。
-- Branch: main
-- Last verified: 2026-06-18
-- Done: Flowchart ELK source-backed probes are green; compound parent-end external dummy net-flow semantics were ported closer to ELK source; inside-self-loop edges now route into the source node nested graph when ELK `insideSelfLoops.activate` is on; targeted compound/importer/layout tests pass.
-- In progress: continue source-backed semantic convergence around compound/self-loop boundary; assess whether any higher-level adapter boundary still needs source-backed rework.
-- Blocked: none
-- Next action: decide whether to port further ELK recursive/compound behavior or stage and continue with the next source-backed gap.
+- Stable focus: editor-language integration hardening spans SVG safety, platform binding lifecycle
+  contracts, editor snapshot memory use, and release-gate coverage.
+- Stable decisions: SVG text returned to browser-like surfaces must be validated before DOM
+  insertion, copy, export, or preview replay; platform wrappers must document document-analysis
+  facts and reusable-engine callback lifecycle; editor snapshots should share document text rather
+  than copy every Markdown fence body.
 
 # Citations
 
-- [compound.rs](../../../../crates/merman-elk-layered/src/compound.rs)
-- [importer.rs](../../../../crates/merman-elk-layered/src/importer.rs)
-- [pipeline.rs](../../../../crates/merman-elk-layered/src/pipeline.rs)
-- [layout.rs](../../../../crates/merman-layout-elk/src/lib.rs)
+- [PR20 post-review refactor plan](../../plans/2026-07-04-005-refactor-pr20-post-review-refactor-plan.md)
+- [LSP capability contract](../../lsp/CAPABILITIES.md)
+- [Android JNI binding contract](../../bindings/ANDROID_JNI.md)
+- [Flutter/Dart FFI binding contract](../../bindings/FLUTTER_DART_FFI.md)
+- [Release package surfaces](../../release/PACKAGE_SURFACES.md)

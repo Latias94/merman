@@ -1,5 +1,8 @@
 use super::*;
-use crate::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
+use crate::{
+    EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticRole, Engine, Error,
+    MermaidConfig, ParseDiagnosticSpanKind, ParseOptions, RenderSemanticModel, SourceSpan,
+};
 use chrono::NaiveDate;
 use futures::executor::block_on;
 use serde_json::json;
@@ -26,6 +29,327 @@ fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
         .and_hms_opt(h, min, s)
         .unwrap();
     crate::time::datetime_from_naive_local(naive).timestamp_millis()
+}
+
+#[test]
+fn gantt_editor_facts_preserve_parser_symbol_spans() {
+    let text = concat!(
+        "gantt\n",
+        "title Roadmap\n",
+        "accTitle: Roadmap chart\n",
+        "accDescr: Shows release tasks\n",
+        "accDescr {\n",
+        "  Shows release tasks\n",
+        "  across releases\n",
+        "}\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Demo\n",
+        "Task 1: id1,2014-01-01,1d\n",
+        "Task 2: id2,after id1,until id1\n",
+        "click id2 call open(userId) href \"https://example.com/\"\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "dateFormat")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "section")
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "click")
+    );
+
+    let title_start = text.find("Roadmap").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Roadmap"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt title")
+            && symbol.selection.start == title_start
+            && symbol.selection.end == title_start + "Roadmap".len()
+    }));
+
+    let date_format_start = text.find("YYYY-MM-DD").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "YYYY-MM-DD"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt date format")
+            && symbol.selection.start == date_format_start
+            && symbol.selection.end == date_format_start + "YYYY-MM-DD".len()
+    }));
+
+    let acc_title_start = text.find("Roadmap chart").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Roadmap chart"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt accessibility title")
+            && symbol.selection.start == acc_title_start
+            && symbol.selection.end == acc_title_start + "Roadmap chart".len()
+    }));
+
+    let acc_descr_start = text.find("Shows release tasks").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Shows release tasks"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt accessibility description")
+            && symbol.selection.start == acc_descr_start
+            && symbol.selection.end == acc_descr_start + "Shows release tasks".len()
+    }));
+
+    let multiline_acc_descr_start = text.rfind("Shows release tasks").unwrap();
+    let multiline_acc_descr_end = text.find("across releases").unwrap() + "across releases".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Shows release tasks\n  across releases"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt accessibility description")
+            && symbol.selection.start == multiline_acc_descr_start
+            && symbol.selection.end == multiline_acc_descr_end
+    }));
+
+    let section_start = text.find("Demo").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Demo"
+            && symbol.role == EditorSemanticRole::Outline
+            && symbol.detail.as_deref() == Some("gantt section")
+            && symbol.selection.start == section_start
+            && symbol.selection.end == section_start + "Demo".len()
+    }));
+
+    let id1_def_start = text.find("id1,2014").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id1"
+            && symbol.detail.as_deref() == Some("gantt task")
+            && symbol.selection.start == id1_def_start
+            && symbol.selection.end == id1_def_start + "id1".len()
+    }));
+
+    let id1_after_start = text.find("after id1").unwrap() + "after ".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id1"
+            && symbol.detail.as_deref() == Some("gantt dependency")
+            && symbol.selection.start == id1_after_start
+            && symbol.selection.end == id1_after_start + "id1".len()
+    }));
+
+    let id1_until_start = text.find("until id1").unwrap() + "until ".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id1"
+            && symbol.detail.as_deref() == Some("gantt dependency")
+            && symbol.selection.start == id1_until_start
+            && symbol.selection.end == id1_until_start + "id1".len()
+    }));
+
+    let id2_def_start = text.find("id2,after").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id2"
+            && symbol.detail.as_deref() == Some("gantt task")
+            && symbol.selection.start == id2_def_start
+            && symbol.selection.end == id2_def_start + "id2".len()
+    }));
+
+    let id2_click_start = text.find("click id2").unwrap() + "click ".len();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "id2"
+            && symbol.detail.as_deref() == Some("gantt click target")
+            && symbol.selection.start == id2_click_start
+            && symbol.selection.end == id2_click_start + "id2".len()
+    }));
+
+    for (label, start) in [
+        ("id1", id1_def_start),
+        ("id1", id1_after_start),
+        ("id1", id1_until_start),
+        ("id2", id2_def_start),
+        ("id2", id2_click_start),
+    ] {
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                    && expected.span.start <= start
+                    && expected.span.end >= start + label.len()
+            }),
+            "missing gantt node-id expected syntax for {label:?} at {start}"
+        );
+    }
+
+    let callback_start = text.find("open(userId)").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "open"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt click callback")
+            && symbol.selection.start == callback_start
+            && symbol.selection.end == callback_start + "open".len()
+    }));
+
+    let callback_args_start = text.find("userId").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "userId"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt click callback args")
+            && symbol.selection.start == callback_args_start
+            && symbol.selection.end == callback_args_start + "userId".len()
+    }));
+
+    let href_start = text.find("https://example.com/").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "https://example.com/"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt click href")
+            && symbol.selection.start == href_start
+            && symbol.selection.end == href_start + "https://example.com/".len()
+    }));
+
+    for payload in [
+        "Roadmap",
+        "YYYY-MM-DD",
+        "open",
+        "userId",
+        "https://example.com/",
+    ] {
+        let start = text.find(payload).unwrap();
+        assert!(
+            facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span.start <= start
+                    && expected.span.end >= start + payload.len()
+            }),
+            "missing gantt payload expected syntax for {payload:?}"
+        );
+    }
+}
+
+#[test]
+fn gantt_editor_facts_recovers_unclosed_multiline_acc_descr_payload() {
+    let text = concat!("gantt\n", "accDescr {\n", "  Draft release notes\n");
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(facts.diagnostics.len(), 1);
+    let diagnostic = &facts.diagnostics[0];
+    assert!(diagnostic.message.contains("unterminated accDescr block"));
+    let block_start = text.find("accDescr").unwrap();
+    assert_eq!(diagnostic.span.unwrap().start, block_start);
+
+    let note_start = text.find("Draft release notes").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "Draft release notes"
+            && symbol.role == EditorSemanticRole::Payload
+            && symbol.detail.as_deref() == Some("gantt accessibility description")
+            && symbol.selection.start == note_start
+            && symbol.selection.end == note_start + "Draft release notes".len()
+    }));
+}
+
+#[test]
+fn gantt_editor_facts_recovers_from_incomplete_input() {
+    let text = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "Task 1: id1,2014-01-01,1d\n",
+        "Task 2",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let task_start = text.find("Task 2").unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.message.contains("unrecognized statement")
+            && diagnostic.span == Some(SourceSpan::new(task_start, text.len()))
+    }));
+    assert!(
+        facts.symbols.iter().any(|symbol| {
+            symbol.name == "id1" && symbol.detail.as_deref() == Some("gantt task")
+        })
+    );
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "dateFormat")
+    );
+}
+
+#[test]
+fn gantt_editor_facts_skip_leading_mermaid_directives() {
+    let text = concat!(
+        "%%{init: {\"theme\": \"dark\"}}%%\n",
+        "gantt\n",
+        "Task 1: id1,2014-01-01,1d\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "init")
+    );
+    assert!(
+        facts.symbols.iter().any(|symbol| {
+            symbol.name == "id1" && symbol.detail.as_deref() == Some("gantt task")
+        })
+    );
+}
+
+#[test]
+fn gantt_editor_facts_reports_invalid_weekday_diagnostic() {
+    let text = "gantt\nweekday foo\n";
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    let value_start = text.find("foo").unwrap();
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.message.contains("invalid weekday")
+            && diagnostic.span == Some(SourceSpan::new(value_start, value_start + "foo".len()))
+    }));
+}
+
+#[test]
+fn gantt_editor_facts_skip_frontmatter() {
+    let text = concat!(
+        "---\n",
+        "title: Roadmap\n",
+        "---\n",
+        "gantt\n",
+        "Task 1: id1,2014-01-01,1d\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .expect("gantt editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(
+        facts.symbols.iter().any(|symbol| {
+            symbol.name == "id1" && symbol.detail.as_deref() == Some("gantt task")
+        })
+    );
 }
 
 #[test]
@@ -632,6 +956,200 @@ click id1 call myFn2()
 }
 
 #[test]
+fn gantt_click_bare_callback_parses_like_mermaid() {
+    let model = parse_with_site_config(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+task2: id2, 2013-01-02, 1d
+click id1 myFn
+click id2 href "https://example.com/" myOtherFn
+"#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "loose"
+        }))),
+    );
+
+    let ev1 = &model["clickEvents"]["id1"];
+    assert_eq!(ev1["function_name"].as_str().unwrap(), "myFn");
+    assert_eq!(ev1["function_args"][0].as_str().unwrap(), "id1");
+
+    let ev2 = &model["clickEvents"]["id2"];
+    assert_eq!(ev2["function_name"].as_str().unwrap(), "myOtherFn");
+    assert_eq!(ev2["function_args"][0].as_str().unwrap(), "id2");
+    assert_eq!(
+        model["links"]["id2"].as_str().unwrap(),
+        "https://example.com/"
+    );
+}
+
+#[test]
+fn gantt_click_bare_callback_can_start_with_keyword_prefix() {
+    let model = parse_with_site_config(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+task2: id2, 2013-01-02, 1d
+click id1 hrefHandler
+click id2 callHandler
+"#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "loose"
+        }))),
+    );
+
+    let ev1 = &model["clickEvents"]["id1"];
+    assert_eq!(ev1["function_name"].as_str().unwrap(), "hrefHandler");
+    assert_eq!(ev1["function_args"][0].as_str().unwrap(), "id1");
+
+    let ev2 = &model["clickEvents"]["id2"];
+    assert_eq!(ev2["function_name"].as_str().unwrap(), "callHandler");
+    assert_eq!(ev2["function_args"][0].as_str().unwrap(), "id2");
+}
+
+#[test]
+fn gantt_click_href_sanitizes_unsafe_urls_for_new_callback_forms() {
+    let model = parse_with_site_config(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 href "javascript:alert(1)" myFn
+"#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "strict"
+        }))),
+    );
+
+    assert_eq!(model["links"]["id1"].as_str().unwrap(), "about:blank");
+    assert!(model["clickEvents"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn gantt_click_href_accepts_quoted_tooltip_without_callback() {
+    let model = parse_with_site_config(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 href "https://example.com/" "open details"
+"#,
+        Some(MermaidConfig::from_value(json!({
+            "securityLevel": "loose"
+        }))),
+    );
+
+    assert_eq!(
+        model["links"]["id1"].as_str().unwrap(),
+        "https://example.com/"
+    );
+    assert!(model["clickEvents"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn gantt_task_text_starting_with_click_is_not_a_click_statement() {
+    let model = parse(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+Clickable task: id1, 2026-01-01, 1d
+clickhouse migration: id2, 2026-01-02, 1d
+"#,
+    );
+
+    let tasks = model["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks[0]["task"].as_str().unwrap(), "Clickable task");
+    assert_eq!(tasks[1]["task"].as_str().unwrap(), "clickhouse migration");
+    assert!(model["clickEvents"].as_object().unwrap().is_empty());
+    assert!(model["links"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn gantt_click_rejects_missing_action() {
+    let source = r#"gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1
+"#;
+    let err = block_on(Engine::new().parse_diagram(source, ParseOptions::default())).unwrap_err();
+
+    assert!(
+        err.to_string().contains("invalid click statement"),
+        "unexpected error: {err}"
+    );
+
+    let Error::DiagramParse { diagnostic, .. } = err else {
+        panic!("expected gantt parse error");
+    };
+    let click_start = source.find("click id1").unwrap();
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(
+            click_start,
+            click_start + "click id1".len()
+        ))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+}
+
+#[test]
+fn gantt_click_rejects_duplicate_href_or_call() {
+    for source in [
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 href "https://example.com/1" href "https://example.com/2"
+"#,
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 call first() call second()
+"#,
+    ] {
+        let err =
+            block_on(Engine::new().parse_diagram(source, ParseOptions::default())).unwrap_err();
+
+        assert!(
+            err.to_string().contains("invalid click statement"),
+            "unexpected error: {err}"
+        );
+    }
+}
+
+#[test]
+fn gantt_click_rejects_unrecognized_tail() {
+    let err = block_on(Engine::new().parse_diagram(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section A
+task: id1, 2013-01-01, 1d
+click id1 href "https://example.com/" garbage tail
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("invalid click statement"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn gantt_common_db_sanitizes_title_and_accessibility_fields() {
     let model = parse(
         r#"
@@ -1166,15 +1684,19 @@ test: id1,2013-01-01,1d
 #[test]
 fn gantt_weekday_rejects_unknown_values() {
     let engine = Engine::new();
-    let err = block_on(engine.parse_diagram(
-        r#"
-gantt
-weekday foo
-"#,
-        ParseOptions::default(),
-    ))
-    .unwrap_err();
+    let text = "gantt\nweekday foo\n";
+    let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
     assert!(err.to_string().contains("invalid weekday"));
+
+    let Error::DiagramParse { diagnostic, .. } = err else {
+        panic!("expected gantt parse error");
+    };
+    let token_start = text.find("foo").unwrap();
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(token_start, token_start + "foo".len()))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
 
 #[test]

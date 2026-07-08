@@ -1,0 +1,453 @@
+use crate::document_store::DEFAULT_LSP_MAX_SOURCE_BYTES;
+use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
+pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
+use merman_editor_core::{
+    DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use tower_lsp::lsp_types::{Location, Position, Range, Url};
+
+pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
+pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
+pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
+pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceEditEncoding {
+    DocumentChanges,
+    Changes,
+}
+
+impl WorkspaceEditEncoding {
+    pub const fn from_document_changes_support(supported: bool) -> Self {
+        if supported {
+            Self::DocumentChanges
+        } else {
+            Self::Changes
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConfigSchemaResponse {
+    pub version: u32,
+    pub rule_catalog_method: String,
+    pub accepted_roots: Vec<String>,
+    pub profiles: Vec<String>,
+    pub severities: Vec<String>,
+    pub configurable_rule_ids: Vec<String>,
+    pub schema: Value,
+}
+
+impl ConfigSchemaResponse {
+    pub fn current() -> Self {
+        let profiles = lint_profiles();
+        let severities = lint_severities();
+        let configurable_rule_ids = configurable_rule_ids();
+        Self {
+            version: CONFIG_SCHEMA_RESPONSE_VERSION,
+            rule_catalog_method: RULE_CATALOG_METHOD.to_string(),
+            accepted_roots: vec![
+                "direct".to_string(),
+                "merman".to_string(),
+                "analysis".to_string(),
+            ],
+            schema: analysis_options_schema(&profiles, &severities, &configurable_rule_ids),
+            profiles,
+            severities,
+            configurable_rule_ids,
+        }
+    }
+}
+
+pub fn experimental_capabilities() -> serde_json::Value {
+    json!({
+        "merman": {
+            "schemaVersion": EXPERIMENTAL_SCHEMA_VERSION,
+            "requests": {
+                "ruleCatalog": RULE_CATALOG_METHOD,
+                "configSchema": CONFIG_SCHEMA_METHOD
+            }
+        }
+    })
+}
+
+pub fn core_position_from_lsp(position: Position) -> CorePosition {
+    CorePosition::new(position.line as usize, position.character as usize)
+}
+
+pub fn range_to_lsp(range: CoreRange) -> Range {
+    Range::new(
+        Position::new(range.start.line as u32, range.start.character as u32),
+        Position::new(range.end.line as u32, range.end.character as u32),
+    )
+}
+
+pub fn document_uri_to_lsp(uri: &DocumentUri, fallback_uri: &Url) -> Url {
+    Url::parse(uri.as_str()).unwrap_or_else(|_| fallback_uri.clone())
+}
+
+pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Url) -> Location {
+    let uri = document_uri_to_lsp(&location.uri, fallback_uri);
+    Location::new(uri, range_to_lsp(location.range))
+}
+
+fn profile_name(profile: AnalysisRuleProfile) -> &'static str {
+    profile.as_str()
+}
+
+fn severity_name(severity: DiagnosticSeverity) -> &'static str {
+    severity.as_str()
+}
+
+fn lint_profiles() -> Vec<String> {
+    [
+        AnalysisRuleProfile::Core,
+        AnalysisRuleProfile::Recommended,
+        AnalysisRuleProfile::Strict,
+    ]
+    .into_iter()
+    .map(profile_name)
+    .map(str::to_string)
+    .collect()
+}
+
+fn lint_severities() -> Vec<String> {
+    [
+        DiagnosticSeverity::Error,
+        DiagnosticSeverity::Warning,
+        DiagnosticSeverity::Info,
+        DiagnosticSeverity::Hint,
+    ]
+    .into_iter()
+    .map(severity_name)
+    .map(str::to_string)
+    .collect()
+}
+
+fn configurable_rule_ids() -> Vec<String> {
+    merman_analysis::configurable_rule_catalog()
+        .into_iter()
+        .map(|rule| rule.id.to_string())
+        .collect()
+}
+
+fn analysis_options_schema(
+    profiles: &[String],
+    severities: &[String],
+    configurable_rule_ids: &[String],
+) -> Value {
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "title": "Merman analysis options",
+        "description": "Options accepted by Merman LSP initializationOptions and workspace/didChangeConfiguration. Clients may pass these options directly, or under a merman or analysis object.",
+        "$defs": {
+            "ruleId": {
+                "type": "string",
+                "enum": configurable_rule_ids,
+                "description": "A configurable Merman analysis rule id."
+            },
+            "severity": {
+                "type": "string",
+                "enum": severities,
+                "description": "Diagnostic severity for an explicit rule override."
+            },
+            "analysisOptions": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                    "fixed_today": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "description": "Fixed local date used by time-sensitive analysis in YYYY-MM-DD format."
+                    },
+                    "fixed_local_offset_minutes": {
+                        "type": "integer",
+                        "minimum": -1439,
+                        "maximum": 1439,
+                        "description": "Fixed local UTC offset in minutes."
+                    },
+                    "site_config": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "description": "Mermaid site configuration forwarded to the shared parser/config layer."
+                    },
+                    "parse": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                            "suppress_errors": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "Parse leniently when true."
+                            }
+                        }
+                    },
+                    "resources": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                            "max_source_bytes": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "default": DEFAULT_LSP_MAX_SOURCE_BYTES,
+                                "description": "Maximum source bytes accepted by analysis before a resource diagnostic is emitted. Use 0 or omit the field to use the LSP default."
+                            }
+                        }
+                    },
+                    "lint": {
+                        "type": "object",
+                        "additionalProperties": true,
+                        "properties": {
+                            "profile": {
+                                "type": "string",
+                                "enum": profiles,
+                                "default": "core",
+                                "description": "Base lint profile. Recommended and strict may enable additional governed authoring rules."
+                            },
+                            "enable_rules": {
+                                "type": "array",
+                                "items": { "$ref": "#/$defs/ruleId" },
+                                "uniqueItems": true,
+                                "description": "Configurable rule ids to enable explicitly."
+                            },
+                            "disable_rules": {
+                                "type": "array",
+                                "items": { "$ref": "#/$defs/ruleId" },
+                                "uniqueItems": true,
+                                "description": "Configurable rule ids to disable explicitly."
+                            },
+                            "rule_severities": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["rule_id", "severity"],
+                                    "additionalProperties": true,
+                                    "properties": {
+                                        "rule_id": { "$ref": "#/$defs/ruleId" },
+                                        "severity": { "$ref": "#/$defs/severity" }
+                                    }
+                                },
+                                "description": "Per-rule diagnostic severity overrides."
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "allOf": [
+            { "$ref": "#/$defs/analysisOptions" },
+            {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                    "merman": { "$ref": "#/$defs/analysisOptions" },
+                    "analysis": { "$ref": "#/$defs/analysisOptions" }
+                }
+            }
+        ]
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rule_catalog_response_contains_governed_authoring_rule() {
+        let catalog = RuleCatalogResponse::current();
+
+        assert_eq!(catalog.version, RULE_CATALOG_RESPONSE_VERSION);
+        assert!(catalog.rules.iter().any(|rule| {
+            rule.id == "merman.authoring.flowchart.explicit_direction"
+                && rule.origin.as_str() == "merman_authoring"
+                && rule.default_profile.as_str() == "recommended"
+                && rule
+                    .evidence
+                    .contains(&"docs/adr/0072-lint-rule-governance.md")
+                && rule.configurable
+                && rule.fixable
+        }));
+        assert!(catalog.rules.iter().any(|rule| {
+            rule.id == "merman.authoring.config.prefer_frontmatter_config"
+                && rule.origin.as_str() == "merman_authoring"
+                && rule.default_profile.as_str() == "recommended"
+                && rule.default_severity.as_str() == "hint"
+                && rule.category.as_str() == "config"
+                && rule.evidence.contains(
+                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md",
+                )
+                && rule.configurable
+                && rule.fixable
+        }));
+        assert!(catalog.rules.iter().any(|rule| {
+            rule.id == "merman.compatibility.config.deprecated_flowchart_html_labels"
+                && rule.origin.as_str() == "mermaid_compatibility"
+                && rule.default_profile.as_str() == "core"
+                && rule.default_enabled
+                && rule.default_severity.as_str() == "warning"
+                && rule.category.as_str() == "config"
+                && rule.evidence.contains(
+                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/config/directives.md",
+                )
+                && rule.configurable
+                && !rule.fixable
+        }));
+        assert!(catalog.rules.iter().any(|rule| {
+            rule.id == "merman.compatibility.config.deprecated_external_diagram_loading"
+                && rule.origin.as_str() == "mermaid_compatibility"
+                && rule.default_profile.as_str() == "core"
+                && rule.default_enabled
+                && rule.default_severity.as_str() == "warning"
+                && rule.category.as_str() == "config"
+                && rule.evidence.contains(
+                    &"https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/config.ts",
+                )
+                && rule.configurable
+                && !rule.fixable
+        }));
+    }
+
+    #[test]
+    fn experimental_capability_advertises_rule_catalog_request() {
+        let capabilities = experimental_capabilities();
+
+        assert_eq!(
+            capabilities["merman"]["requests"]["ruleCatalog"],
+            RULE_CATALOG_METHOD
+        );
+        assert_eq!(
+            capabilities["merman"]["requests"]["configSchema"],
+            CONFIG_SCHEMA_METHOD
+        );
+        assert_eq!(
+            capabilities["merman"]["schemaVersion"],
+            EXPERIMENTAL_SCHEMA_VERSION
+        );
+    }
+
+    #[test]
+    fn config_schema_response_describes_lint_settings() {
+        let response = ConfigSchemaResponse::current();
+
+        assert_eq!(response.version, CONFIG_SCHEMA_RESPONSE_VERSION);
+        assert_eq!(response.rule_catalog_method, RULE_CATALOG_METHOD);
+        assert_eq!(response.profiles, ["core", "recommended", "strict"]);
+        assert_eq!(response.severities, ["error", "warning", "info", "hint"]);
+        assert!(
+            response
+                .configurable_rule_ids
+                .contains(&"merman.authoring.config.prefer_frontmatter_config".to_string())
+        );
+        assert!(
+            response
+                .configurable_rule_ids
+                .contains(&"merman.authoring.flowchart.explicit_direction".to_string())
+        );
+        assert!(
+            response.configurable_rule_ids.contains(
+                &"merman.compatibility.config.deprecated_flowchart_html_labels".to_string()
+            )
+        );
+        assert!(response.configurable_rule_ids.contains(
+            &"merman.compatibility.config.deprecated_external_diagram_loading".to_string()
+        ));
+        assert_eq!(
+            response.schema["$defs"]["analysisOptions"]["properties"]["lint"]["properties"]["profile"]
+                ["enum"],
+            json!(["core", "recommended", "strict"])
+        );
+        assert_eq!(
+            response.schema["$defs"]["ruleId"]["enum"],
+            json!(response.configurable_rule_ids)
+        );
+        assert_eq!(
+            response.schema["$defs"]["severity"]["enum"],
+            json!(["error", "warning", "info", "hint"])
+        );
+        assert_eq!(
+            response.schema["$defs"]["analysisOptions"]["properties"]["resources"]["properties"]["max_source_bytes"]
+                ["default"],
+            json!(DEFAULT_LSP_MAX_SOURCE_BYTES)
+        );
+        assert_eq!(
+            response.schema["allOf"][0],
+            json!({ "$ref": "#/$defs/analysisOptions" })
+        );
+        assert_eq!(
+            response.schema["allOf"][1]["properties"]["merman"],
+            json!({ "$ref": "#/$defs/analysisOptions" })
+        );
+        assert_eq!(
+            response.schema["allOf"][1]["properties"]["analysis"],
+            json!({ "$ref": "#/$defs/analysisOptions" })
+        );
+    }
+
+    #[test]
+    fn vscode_analysis_settings_match_lsp_config_schema_keys() {
+        let response = ConfigSchemaResponse::current();
+        let mut schema_keys = std::collections::BTreeSet::new();
+        collect_analysis_schema_leaf_keys(
+            &response.schema["$defs"]["analysisOptions"],
+            "",
+            &mut schema_keys,
+        );
+
+        let package_json_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tools/vscode-extension/package.json");
+        let package_json: Value = serde_json::from_str(
+            &std::fs::read_to_string(package_json_path)
+                .expect("expected VS Code package.json to be readable"),
+        )
+        .expect("expected VS Code package.json to parse as JSON");
+        let mut vscode_keys = std::collections::BTreeSet::new();
+        collect_vscode_analysis_setting_keys(&package_json, &mut vscode_keys);
+
+        assert_eq!(vscode_keys, schema_keys);
+    }
+
+    fn collect_analysis_schema_leaf_keys(
+        schema: &Value,
+        prefix: &str,
+        keys: &mut std::collections::BTreeSet<String>,
+    ) {
+        let Some(properties) = schema["properties"].as_object() else {
+            return;
+        };
+
+        for (key, value) in properties {
+            let full_key = if prefix.is_empty() {
+                key.to_string()
+            } else {
+                format!("{prefix}.{key}")
+            };
+            if value["properties"].is_object() {
+                collect_analysis_schema_leaf_keys(value, &full_key, keys);
+            } else {
+                keys.insert(full_key);
+            }
+        }
+    }
+
+    fn collect_vscode_analysis_setting_keys(
+        package_json: &Value,
+        keys: &mut std::collections::BTreeSet<String>,
+    ) {
+        let Some(configuration) = package_json["contributes"]["configuration"].as_array() else {
+            return;
+        };
+
+        for section in configuration {
+            let Some(properties) = section["properties"].as_object() else {
+                continue;
+            };
+            for key in properties.keys() {
+                if let Some(analysis_key) = key.strip_prefix("merman.analysis.") {
+                    keys.insert(analysis_key.to_string());
+                }
+            }
+        }
+    }
+}

@@ -111,6 +111,7 @@ export function BenchDialog() {
     }
   }, [
     code,
+    diagramFont,
     diagramTheme,
     mermaidConfig,
     disabledReason,

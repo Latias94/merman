@@ -176,6 +176,7 @@ fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartV2Mo
         edges: Vec::new(),
         subgraphs: Vec::new(),
         tooltips: Default::default(),
+        warning_facts: Vec::new(),
     }
 }
 
@@ -810,6 +811,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             nodes: vec!["A".to_string(), "B".to_string()],
         }],
         tooltips: Default::default(),
+        warning_facts: Vec::new(),
     };
     let rendered = render_model(
         &merman_core::RenderSemanticModel::Flowchart(model),

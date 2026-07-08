@@ -84,6 +84,22 @@ numeric values return binding errors instead of panicking.
     "max_flowchart_subgraphs": 2000,
     "max_label_bytes": 2097152
   },
+  "lint": {
+    "profile": "recommended",
+    "enable_rules": [
+      "merman.authoring.flowchart.explicit_direction"
+    ],
+    "disable_rules": [
+      "merman.authoring.config.prefer_init_directive",
+      "merman.git_graph.duplicate_commit_id"
+    ],
+    "rule_severities": [
+      {
+        "rule_id": "merman.block.width_exceeds_columns",
+        "severity": "hint"
+      }
+    ]
+  },
   "svg": {
     "diagram_id": "my-diagram",
     "pipeline": "parity",
@@ -110,6 +126,7 @@ Every field is optional.
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
 | `layout` | object | defaults | Layout and text measurement behavior. |
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
+| `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
 
 ## Fixed Time Options
@@ -118,6 +135,55 @@ Every field is optional.
 whose semantics depend on local time. Gantt uses them for date parsing, relative fallback dates,
 and render-model generation. They apply to parse JSON, layout JSON, SVG rendering, validation, and
 ASCII render entry points that parse Mermaid source through the shared engine.
+
+## Lint Options
+
+`lint` controls shared analysis rule configuration for diagnostics-first consumers. It uses stable
+rule ids from `merman-analysis`.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `lint.profile` | string | `core` | Built-in rule profile: `core`, `recommended`, or `strict`. `core` is conservative and does not enable Merman authoring recommendations. |
+| `lint.enable_rules` | array of strings | none | Rule ids to enable even when their profile is not active. Entries must name configurable analysis rules. |
+| `lint.disable_rules` | array of strings | none | Rule ids to disable. Entries must name configurable analysis rules. Unknown or internal ids return `MERMAN_INVALID_ARGUMENT`. |
+| `lint.rule_severities` | array of objects | none | Per-rule severity overrides as `{ "rule_id": "...", "severity": "error|warning|info|hint" }`. `rule_id` must name a configurable analysis rule. |
+
+`profile`, `enable_rules`, `disable_rules`, and `rule_severities` apply to source lint rules and
+semantic warnings alike. They are validated against the public analysis rule registry and can be
+used by FFI, UniFFI, WASM, CLI lint, and future editor adapters. `disable_rules` has the highest
+precedence. Severity overrides do not enable a rule whose profile is inactive; use
+`lint.profile = "recommended"` or `enable_rules` for Merman authoring recommendations.
+Bindings expose the same rule registry through their lint-rule catalog metadata surfaces; hosts
+should read that catalog when building settings UI instead of duplicating rule ids, evidence
+references, and origins.
+
+Only Merman rule ids from the lint-rule catalog are accepted here. External linter ids such as
+markdownlint, remark, textlint, or `mermaid-lint` rules must stay in the host tool's own
+configuration. For example, `mermaid-lint` rules such as `require-direction`, `duplicate-ids`, or
+`no-empty-labels` should not be passed through `lint.enable_rules`, `lint.disable_rules`, or
+`lint.rule_severities`. Adapters can convert Merman diagnostics outward into an external report
+format, but they should not translate external rule ids into `lint.*` options unless Merman exposes
+a distinct source-backed `merman.*` rule.
+
+`analyzeDocument(source, options, uri)` uses this same options contract. The URI determines whether
+the payload source is a standalone Mermaid diagram, Markdown, or MDX document; Markdown and MDX
+diagnostics, related locations, and fixes are remapped to host-document coordinates. Use
+`analyze()` for a single Mermaid diagram body and `analyzeDocument()` for lint integrations that
+scan files or Markdown fences.
+
+Rule governance is intentionally conservative because Merman is not the Mermaid project:
+
+| Origin | Meaning | Default profile |
+| --- | --- | --- |
+| `mermaid_syntax` | Syntax or config behavior backed by Mermaid source/docs/fixtures. | `core` |
+| `mermaid_compatibility` | Compatibility warnings backed by Mermaid source/docs/fixtures. | `core` |
+| `merman_authoring` | Merman recommendations and safe editor assists, not official Mermaid standards. | `recommended` |
+| `merman_resource_policy` | Host/runtime budget diagnostics. | `core` |
+| `merman_internal` | Contract gaps and internal safety diagnostics. | not configurable |
+
+Current authoring rule ids are `merman.authoring.config.prefer_init_directive`,
+`merman.authoring.config.prefer_frontmatter_config`, and
+`merman.authoring.flowchart.explicit_direction`.
 
 `fixed_today` must be a `YYYY-MM-DD` date. `fixed_local_offset_minutes` must be an integer offset
 accepted by the fixed-offset timezone model, currently `-1439` through `1439`. Invalid values return
@@ -209,6 +275,22 @@ directives. Explicit `svg.*` options override profile output options.
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `parse.suppress_errors` | boolean | `false` | Enables lenient parsing when true. |
+
+## Analysis Consumers
+
+Diagnostics-first analysis, validation projection, CLI linting, Markdown/MDX scanning, and future
+LSP adapters use the same `options_json` envelope. Analysis consumers should honor options that
+affect parsing, deterministic time, Mermaid site config, and resource limits:
+
+- `fixed_today` and `fixed_local_offset_minutes` for time-dependent diagram semantics;
+- `site_config` and diagram directives for Mermaid-compatible parse/config behavior;
+- `parse.*` for parser strictness;
+- `resources.*` for source and model budgets.
+
+Render-only options such as `layout.*`, `svg.*`, and host text-measurement settings should not be
+required for the default analyzer. Layout-backed or render-backed diagnostics may opt into those
+fields later, but they must be profile-controlled and reported through the same diagnostic payload
+defined by ADR 0070.
 
 ## ASCII Options
 

@@ -13,6 +13,7 @@ pub mod config;
 pub mod detect;
 pub mod diagram;
 pub mod diagrams;
+pub mod editor;
 pub mod entities;
 pub mod error;
 mod family;
@@ -33,11 +34,20 @@ mod yaml_config;
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    DiagramRegistry, DiagramSemanticParser, ParsedDiagram, ParsedDiagramRender,
-    RenderDiagramRegistry, RenderSemanticModel, RenderSemanticParser,
+    BLOCK_WIDTH_WARNING_RULE_ID, DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
+    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
+    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
+    ParsedDiagramWithEditorFacts, ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
+    RenderSemanticParser,
 };
-pub use error::{Error, Result};
-pub use family::DiagramFamilyCapability;
+pub use editor::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
+    EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, EditorSpanCoordinateSpace,
+    SourceSpan,
+};
+pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
+pub use family::{DiagramFamilyCapability, DiagramHeaderFact, diagram_type_family_kind};
 pub use preprocess::{PreprocessResult, preprocess_diagram, preprocess_diagram_with_known_type};
 
 /// Maximum nested diagram/include depth accepted by recursive parsers.
@@ -72,6 +82,18 @@ pub fn diagram_family_capabilities_for_profile(
     family::diagram_family_capabilities(profile)
 }
 
+/// Returns header completion facts for Mermaid diagram starters in the selected profile.
+pub fn diagram_header_facts() -> &'static [DiagramHeaderFact] {
+    diagram_header_facts_for_profile(selected_baseline_registry_profile())
+}
+
+/// Returns header completion facts for Mermaid diagram starters in an explicit registry profile.
+pub fn diagram_header_facts_for_profile(
+    profile: baseline::BaselineRegistryProfile,
+) -> &'static [DiagramHeaderFact] {
+    family::diagram_header_facts(profile)
+}
+
 /// Returns the Mermaid registry profile selected by this crate's enabled feature set.
 pub fn selected_baseline_registry_profile() -> baseline::BaselineRegistryProfile {
     family::selected_registry_profile()
@@ -92,7 +114,7 @@ fn generated_default_effective_config() -> MermaidConfig {
 }
 
 /// Parser behavior switches shared by metadata, semantic JSON, and typed render-model parsing.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ParseOptions {
     /// Return an `error` diagram model instead of an error when diagram parsing fails.
     pub suppress_errors: bool,
@@ -307,6 +329,19 @@ impl Engine {
         parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options).metadata()
     }
 
+    /// Parses editor-facing semantic facts when a family has a parser-backed implementation.
+    ///
+    /// Returned spans are byte offsets in the `text` supplied to this method.
+    pub fn parse_editor_semantic_facts_with_type_sync(
+        &self,
+        diagram_type: &str,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<EditorSemanticFacts>> {
+        parse_pipeline::ParsePipeline::known_type(self, diagram_type, text, options)
+            .parse_editor_semantic_facts()
+    }
+
     /// Async facade for [`Engine::parse_metadata_sync`].
     ///
     /// The work is CPU-bound and executes synchronously; this method exists for callers that
@@ -342,6 +377,22 @@ impl Engine {
     ) -> Result<Option<ParsedDiagram>> {
         parse_pipeline::ParsePipeline::detect(self, text, options)
             .parse_json(parse_pipeline::ParseTiming::Json)
+    }
+
+    /// Parses semantic JSON and parser-backed editor facts from one preprocessing/detection pass.
+    ///
+    /// This is intended for editor integrations that need both diagnostics/facts and the
+    /// Mermaid-compatible model. On parse errors it returns the same error as
+    /// [`Engine::parse_diagram_sync`]; callers that want recovery facts for invalid input should
+    /// use [`Engine::parse_editor_semantic_facts_with_type_sync`] after projecting the parse
+    /// diagnostic's diagram type.
+    pub fn parse_diagram_with_editor_facts_sync(
+        &self,
+        text: &str,
+        options: ParseOptions,
+    ) -> Result<Option<ParsedDiagramWithEditorFacts>> {
+        parse_pipeline::ParsePipeline::detect(self, text, options)
+            .parse_json_with_editor_facts(parse_pipeline::ParseTiming::Json)
     }
 
     /// Async facade for [`Engine::parse_diagram_sync`].

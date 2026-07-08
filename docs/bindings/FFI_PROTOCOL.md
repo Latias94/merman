@@ -1,7 +1,7 @@
 # Merman FFI Protocol
 
 Status: Draft
-Last updated: 2026-06-04
+Last updated: 2026-07-07
 
 This document defines the first C ABI protocol for `merman-ffi`.
 
@@ -12,6 +12,7 @@ Authoritative code:
 - `crates/merman-ffi/include/merman.h`
 - `crates/merman-ffi/src/lib.rs`
 - `docs/adr/0066-ffi-binding-strategy.md`
+- `docs/adr/0070-diagnostics-first-analysis-contract.md`
 - `docs/workstreams/ffi-api/DESIGN.md`
 
 ## Build And Link
@@ -33,11 +34,17 @@ cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
 
-The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, binding
-metadata, and optional host text measurement for reusable engines. Raster byte outputs are not part
-of this protocol version even though the Rust crate has a reserved `raster` feature gate. All
-source-processing functions accept the shared `options_json` contract documented in
-`docs/bindings/OPTIONS_JSON.md`.
+The current C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON,
+diagnostics-first analysis JSON, binding metadata, and optional host text measurement for reusable
+engines. Raster byte outputs are not part of this protocol version even though the Rust crate has a
+reserved `raster` feature gate. All source-processing functions accept the shared `options_json`
+contract documented in `docs/bindings/OPTIONS_JSON.md`.
+
+That shared options contract now also carries a `lint` section for rule profiles, explicit
+enable/disable, and severity overrides. Hosts that consume analysis or validation diagnostics
+should treat those rule ids as the stable shared contract, not as transport-local behavior. Merman
+authoring rules are opt-in through the `recommended` profile or explicit rule enablement; they are
+not Mermaid-official standards.
 
 ## Stability
 
@@ -48,6 +55,7 @@ first FFI release candidate:
 - tolerate missing optional fields
 - do not assume JSON field ordering
 - release every non-empty result buffer exactly once
+- prefer the diagnostics-first analysis payload exposed by a given binding package
 
 ## Types
 
@@ -223,6 +231,25 @@ MermanResult merman_engine_layout_json(
     const uint8_t* source,
     size_t source_len
 );
+MermanResult merman_engine_analyze_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+MermanResult merman_engine_analyze_document_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+MermanResult merman_engine_analyze_document_facts_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
 MermanResult merman_engine_validate_json(
     const MermanEngine* engine,
     const uint8_t* source,
@@ -230,8 +257,13 @@ MermanResult merman_engine_validate_json(
 );
 ```
 
-Passing `engine == NULL` returns `MERMAN_INVALID_ARGUMENT`. Engines may be shared across render
-calls, but callers must not free an engine while another thread is using it.
+Passing `engine == NULL` returns `MERMAN_INVALID_ARGUMENT`. Engines may be shared across render,
+parse, layout, analysis, or validation calls when the host treats the handle as borrowed for the
+duration of each call. `merman_engine_free` consumes the handle immediately from the host's
+perspective; if release is requested while a call is active, merman defers the actual drop until
+active calls return, and the host must not use the pointer again. Mutating host text measurement
+with `merman_engine_set_text_measure_callback` while any call or callback is active returns
+`MERMAN_INVALID_ARGUMENT`.
 
 ### Host Text Measurement
 
@@ -255,8 +287,8 @@ the callback. The callback must not store them. `max_width` is meaningful only w
 `MERMAN_*` constants. `line_height`, `letter_spacing`, and `word_spacing` are CSS-pixel values.
 
 Return `handled=0` for measurement requests the host does not support. `merman` then falls back
-to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently,
-the callback and `user_data` must be thread-safe.
+to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently for
+render/layout calls, the callback and `user_data` must be thread-safe.
 
 The callback is synchronous and runs on the render/layout call path. Do not block it on UI-thread
 work, font loading, WebView JavaScript, platform channels, or another isolate. If the host cannot
@@ -375,6 +407,121 @@ On success, `data` contains UTF-8 layout JSON using the same `LayoutedDiagram` s
 `merman-cli layout`. If the native library is built without the `render` feature, this function
 returns `MERMAN_UNSUPPORTED_FORMAT`.
 
+## Diagnostics-First Analysis JSON
+
+ADR 0070 defines analysis JSON as the canonical diagnostics payload for validation, lint, Markdown
+scanning, and LSP adapters. These symbols are part of the active ABI:
+
+```c
+MermanResult merman_analyze_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len
+);
+
+MermanResult merman_engine_analyze_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len
+);
+
+MermanResult merman_analyze_document_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+
+MermanResult merman_analyze_document_facts_json(
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* options_json,
+    size_t options_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+
+MermanResult merman_engine_analyze_document_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+
+MermanResult merman_engine_analyze_document_facts_json(
+    const MermanEngine* engine,
+    const uint8_t* source,
+    size_t source_len,
+    const uint8_t* uri,
+    size_t uri_len
+);
+```
+
+These functions return `MERMAN_OK` when the analysis payload was produced. Diagram errors are
+represented inside `data` as diagnostics. Transport errors such as invalid pointers, invalid UTF-8,
+invalid options JSON, panics, and internal serialization failures remain non-zero
+`MermanResult.code` values.
+
+The default analyzer is expected to be render-free. Optional layout or render checks may be added
+later behind feature/profile controls, but must use the same payload shape and report disabled
+checks as diagnostics or profile metadata rather than changing the top-level transport contract.
+
+Initial payload shape:
+
+```json
+{
+  "version": 1,
+  "valid": false,
+  "summary": {
+    "errors": 1,
+    "warnings": 0,
+    "infos": 0,
+    "hints": 0
+  },
+  "source": {
+    "kind": "diagram",
+    "path": null,
+    "diagram_index": null,
+    "language": "mermaid"
+  },
+  "diagnostics": [
+    {
+      "id": "merman.parse.no_diagram",
+      "severity": "error",
+      "category": "parse",
+      "message": "no Mermaid diagram detected",
+      "code": 4,
+      "code_name": "MERMAN_NO_DIAGRAM",
+      "diagram_type": null,
+      "span": {
+        "byte_start": 0,
+        "byte_end": 0,
+        "line": 1,
+        "column": 1,
+        "end_line": 1,
+        "end_column": 1,
+        "lsp_range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 }
+        }
+      },
+      "related": [],
+      "help": null
+    }
+  ]
+}
+```
+
+`span` is optional. When present, `byte_start` and `byte_end` are canonical UTF-8 byte offsets in
+the source slice passed to the analyzer. Line/column fields are 1-based for CLI output.
+`lsp_range` is 0-based and UTF-16-oriented for language-server adapters. Markdown and MDX scanning
+should map fence-local spans back to host-document ranges before returning diagnostics to callers
+that asked for document analysis.
+
 ## Validation JSON
 
 ```c
@@ -386,7 +533,7 @@ MermanResult merman_validate_json(
 );
 ```
 
-This function returns `MERMAN_OK` when the validation payload was produced. Invalid source is
+This ABI v2 function returns `MERMAN_OK` when the validation payload was produced. Invalid source is
 reported in `data`:
 
 ```json
@@ -398,8 +545,13 @@ reported in `data`:
 }
 ```
 
-If the native library is built without the `render` feature, this function still returns
-`MERMAN_OK`, with `MERMAN_UNSUPPORTED_FORMAT` represented inside the validation payload.
+Validation is a legacy compatibility projection over render-free diagnostics analysis. It does not
+require the native library to be built with the `render` feature. The payload shape is kept for older
+consumers: `valid` is derived from the diagnostics summary, and the top-level `error`, `message`,
+`code`, and `code_name` fields mirror the first error diagnostic when present.
+Bindings may add optional fields such as `version`, `summary`, or `diagnostics` while preserving the
+legacy top-level fields. New integrations should prefer analysis JSON after the active package
+exports it.
 
 ## Metadata JSON
 
@@ -407,6 +559,7 @@ If the native library is built without the `render` feature, this function still
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_capabilities_json(void);
 MermanResult merman_diagram_family_capabilities_json(void);
+MermanResult merman_lint_rule_catalog_json(void);
 MermanResult merman_supported_themes_json(void);
 MermanResult merman_supported_host_theme_presets_json(void);
 ```
@@ -454,11 +607,49 @@ Hosts should use `support_level` and `summary_fallback` to label ASCII rendering
 ]
 ```
 
+`merman_lint_rule_catalog_json` returns a UTF-8 JSON response object from the shared
+`merman-analysis` rule catalog. The top-level `version` tracks the JSON response envelope; `rules`
+contains the catalog entries:
+
+```json
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "merman.authoring.flowchart.explicit_direction",
+      "description": "Recommend explicit flowchart header directions and offer an insertion quickfix.",
+      "evidence": [
+        "https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid/src/docs/syntax/flowchart.md",
+        "docs/adr/0072-lint-rule-governance.md"
+      ],
+      "default_severity": "hint",
+      "category": "semantic",
+      "default_enabled": false,
+      "default_profile": "recommended",
+      "origin": "merman_authoring",
+      "configurable": true,
+      "fixable": true
+    }
+  ]
+}
+```
+
+Hosts should use this catalog for rule-selection UI, config completion, and documenting whether a
+rule is Mermaid-backed compatibility or a Merman authoring recommendation. `evidence` contains
+public Mermaid source links, public Mermaid fixture links, or repo ADR references that justify the
+rule classification. It does not expose local `repo-ref/` checkout paths.
+
 This is diagnostic metadata for profile-aware hosts. `diagram_type` is the Mermaid parser/detector
 id and may include aliases such as `flowchart-v2`; `metadata_id` is the public supported-diagram
 id when the family contributes one.
 
 ## Threading
 
-The first ABI is stateless. Calls may be made concurrently as long as callers obey buffer ownership
-rules.
+One-shot ABI calls are stateless. They may be made concurrently as long as callers obey buffer
+ownership rules.
+
+Reusable-engine calls borrow the engine handle for the duration of each call. Hosts may issue
+concurrent read-style calls through the same handle only when any installed text-measure callback and
+its `user_data` are thread-safe. `merman_engine_free` consumes the handle and may defer the actual
+drop until active calls return. `merman_engine_set_text_measure_callback` is an exclusive mutation
+and returns `MERMAN_INVALID_ARGUMENT` while another call or host text-measure callback is active.

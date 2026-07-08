@@ -1,4 +1,7 @@
-use crate::{Error, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
 
@@ -127,6 +130,745 @@ impl VennParserState {
 enum TextIdKind {
     IdentifierOrString,
     Numeric,
+}
+
+#[derive(Debug, Clone)]
+struct VennFieldSpan {
+    text: String,
+    span: SourceSpan,
+    selection: SourceSpan,
+}
+
+#[derive(Debug, Default)]
+struct VennEditorState {
+    known_sets: HashSet<String>,
+    current_sets: Option<Vec<String>>,
+    indent_mode: bool,
+}
+
+struct VennCursor<'a> {
+    input: &'a str,
+    line_start: usize,
+    pos: usize,
+}
+
+impl<'a> VennCursor<'a> {
+    fn new(input: &'a str, line_start: usize) -> Self {
+        Self {
+            input,
+            line_start,
+            pos: 0,
+        }
+    }
+
+    fn remaining(&self) -> &'a str {
+        &self.input[self.pos..]
+    }
+
+    fn skip_ws(&mut self) {
+        self.pos += self
+            .remaining()
+            .chars()
+            .take_while(|ch| matches!(ch, ' ' | '\t'))
+            .map(char::len_utf8)
+            .sum::<usize>();
+    }
+
+    fn abs_start(&self) -> usize {
+        self.line_start + self.pos
+    }
+
+    fn take_identifier_like(&mut self, meta: &ParseMetadata) -> Result<VennFieldSpan> {
+        self.skip_ws();
+        let token_start = self.abs_start();
+        let rest = self.remaining();
+
+        if let Some((value, after)) = parse_string_token(rest) {
+            let consumed = rest.len() - after.len();
+            self.pos += consumed;
+            return Ok(VennFieldSpan {
+                text: normalize_text(&value),
+                span: SourceSpan::new(token_start, token_start + consumed),
+                selection: SourceSpan::new(token_start + 1, token_start + consumed - 1),
+            });
+        }
+
+        let bytes = rest.as_bytes();
+        let Some(&first) = bytes.first() else {
+            return Err(parse_error(meta, "expected identifier"));
+        };
+        if !(first.is_ascii_alphabetic() || first == b'_') {
+            return Err(parse_error(meta, "expected identifier"));
+        }
+
+        let mut end = 1usize;
+        while end < bytes.len() {
+            let b = bytes[end];
+            if b.is_ascii_alphanumeric() || b == b'_' || b == b'-' {
+                end += 1;
+            } else {
+                break;
+            }
+        }
+
+        self.pos += end;
+        Ok(VennFieldSpan {
+            text: rest[..end].to_string(),
+            span: SourceSpan::new(token_start, token_start + end),
+            selection: SourceSpan::new(token_start, token_start + end),
+        })
+    }
+
+    fn take_text_id(&mut self, meta: &ParseMetadata) -> Result<(VennFieldSpan, TextIdKind)> {
+        self.skip_ws();
+        let token_start = self.abs_start();
+        let rest = self.remaining();
+
+        if let Some((value, after)) = parse_string_token(rest) {
+            let consumed = rest.len() - after.len();
+            self.pos += consumed;
+            return Ok((
+                VennFieldSpan {
+                    text: normalize_text(&value),
+                    span: SourceSpan::new(token_start, token_start + consumed),
+                    selection: SourceSpan::new(token_start + 1, token_start + consumed - 1),
+                },
+                TextIdKind::IdentifierOrString,
+            ));
+        }
+
+        if let Some((value, after)) = parse_numeric_token(rest) {
+            let consumed = rest.len() - after.len();
+            self.pos += consumed;
+            return Ok((
+                VennFieldSpan {
+                    text: value,
+                    span: SourceSpan::new(token_start, token_start + consumed),
+                    selection: SourceSpan::new(token_start, token_start + consumed),
+                },
+                TextIdKind::Numeric,
+            ));
+        }
+
+        let token = self.take_identifier_like(meta)?;
+        Ok((token, TextIdKind::IdentifierOrString))
+    }
+
+    fn take_optional_bracket_label(
+        &mut self,
+        meta: &ParseMetadata,
+    ) -> Result<Option<VennFieldSpan>> {
+        self.skip_ws();
+        let Some(rest) = self.remaining().strip_prefix('[') else {
+            return Ok(None);
+        };
+
+        let token_start = self.abs_start();
+        if let Some(rest) = rest.strip_prefix('"') {
+            let Some(end) = rest.find("\"]") else {
+                return Err(parse_error(meta, "unterminated bracket label"));
+            };
+            let text = rest[..end].to_string();
+            let consumed = end + 4;
+            self.pos += consumed;
+            if text.is_empty() {
+                return Ok(None);
+            }
+            return Ok(Some(VennFieldSpan {
+                text,
+                span: SourceSpan::new(token_start, token_start + consumed),
+                selection: SourceSpan::new(token_start + 2, token_start + 2 + end),
+            }));
+        }
+
+        let Some(end) = rest.find(']') else {
+            return Err(parse_error(meta, "unterminated bracket label"));
+        };
+        if rest[..end].contains('"') {
+            return Err(parse_error(meta, "invalid bracket label"));
+        }
+        let raw = &rest[..end];
+        let text = raw.trim().to_string();
+        let consumed = end + 2;
+        self.pos += consumed;
+        if text.is_empty() {
+            return Ok(None);
+        }
+        let leading = raw.len() - raw.trim_start().len();
+        let trailing = raw.len() - raw.trim_end().len();
+        Ok(Some(VennFieldSpan {
+            text,
+            span: SourceSpan::new(token_start, token_start + consumed),
+            selection: SourceSpan::new(
+                token_start + 1 + leading,
+                token_start + 1 + raw.len() - trailing,
+            ),
+        }))
+    }
+
+    fn take_optional_size(&mut self, meta: &ParseMetadata) -> Result<Option<VennFieldSpan>> {
+        self.skip_ws();
+        let Some(_) = self.remaining().strip_prefix(':') else {
+            return Ok(None);
+        };
+
+        self.pos += 1;
+        self.skip_ws();
+        let token_start = self.abs_start();
+        let rest = self.remaining();
+        let Some((value, after)) = parse_numeric_token(rest) else {
+            return Err(parse_error(meta, "expected numeric"));
+        };
+        let consumed = rest.len() - after.len();
+        self.pos += consumed;
+        Ok(Some(VennFieldSpan {
+            text: value,
+            span: SourceSpan::new(token_start, token_start + consumed),
+            selection: SourceSpan::new(token_start, token_start + consumed),
+        }))
+    }
+
+    fn take_remaining_payload(&mut self) -> Option<VennFieldSpan> {
+        self.skip_ws();
+        let rest = self.remaining();
+        let trimmed = rest.trim_end();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let leading = rest.len() - rest.trim_start().len();
+        let trailing = rest.len() - trimmed.len();
+        let span_start = self.abs_start() + leading;
+        let span_end = self.abs_start() + rest.len() - trailing;
+        self.pos = self.input.len();
+
+        let selection = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"')
+        {
+            SourceSpan::new(span_start + 1, span_end - 1)
+        } else {
+            SourceSpan::new(span_start, span_end)
+        };
+
+        Some(VennFieldSpan {
+            text: normalize_text(trimmed),
+            span: SourceSpan::new(span_start, span_end),
+            selection,
+        })
+    }
+
+    fn take_style_value(&mut self, meta: &ParseMetadata) -> Result<VennFieldSpan> {
+        self.skip_ws();
+        let token_start = self.abs_start();
+        let rest = self.remaining();
+        let (raw, _after_raw) = take_style_value_segment(rest);
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Err(parse_error(meta, "expected style value"));
+        }
+
+        let leading = raw.len() - raw.trim_start().len();
+        let span_start = token_start + leading;
+        let span_end = span_start + trimmed.len();
+        self.pos += raw.len();
+        let text = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
+            normalize_text(trimmed)
+        } else {
+            style_value_tokens(trimmed, meta)?.join(" ")
+        };
+
+        let selection = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"')
+        {
+            SourceSpan::new(span_start + 1, span_end - 1)
+        } else {
+            SourceSpan::new(span_start, span_end)
+        };
+
+        Ok(VennFieldSpan {
+            text,
+            span: SourceSpan::new(span_start, span_end),
+            selection,
+        })
+    }
+
+    fn expect_end(&self, meta: &ParseMetadata) -> Result<()> {
+        if self.remaining().trim().is_empty() {
+            Ok(())
+        } else {
+            Err(parse_error(
+                meta,
+                format!(
+                    "unexpected trailing venn tokens: {}",
+                    self.remaining().trim()
+                ),
+            ))
+        }
+    }
+}
+
+pub fn parse_venn_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut state = VennEditorState::default();
+    let mut saw_header = false;
+    let mut offset = 0usize;
+
+    for segment in code.split_inclusive('\n') {
+        let line_start = offset;
+        offset += segment.len();
+        let line = segment.trim_end_matches(['\n', '\r']);
+        let stripped = strip_inline_comment_aware(line);
+        if stripped.trim().is_empty() {
+            continue;
+        }
+
+        if !saw_header {
+            let indent = leading_indent_len(stripped);
+            let statement = &stripped[indent..];
+            let statement_start = line_start + indent;
+            let Some(rest) = strip_keyword_ci(statement, "venn-beta") else {
+                facts.mark_recovered_with_diagnostic(
+                    "expected venn-beta header",
+                    Some(SourceSpan::new(
+                        statement_start,
+                        statement_start + statement.trim_end().len(),
+                    )),
+                );
+                return facts;
+            };
+
+            saw_header = true;
+            let header_span = SourceSpan::new(statement_start, statement_start + "venn-beta".len());
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                header_span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                "venn-beta".to_string(),
+                Some("venn header".to_string()),
+                EditorSemanticKind::String,
+                header_span,
+                header_span,
+            ));
+
+            if !rest.trim().is_empty()
+                && let Err(err) = parse_venn_statement_facts(
+                    rest,
+                    statement_start + "venn-beta".len(),
+                    &mut state,
+                    &mut facts,
+                    meta,
+                )
+            {
+                facts.mark_recovered_with_diagnostic(
+                    format!("venn parser recovered after parse error: {err}"),
+                    Some(SourceSpan::new(
+                        statement_start,
+                        statement_start + statement.trim_end().len(),
+                    )),
+                );
+                return facts;
+            }
+            continue;
+        }
+
+        if let Err(err) =
+            parse_venn_statement_facts(stripped, line_start, &mut state, &mut facts, meta)
+        {
+            facts.mark_recovered_with_diagnostic(
+                format!("venn parser recovered after parse error: {err}"),
+                Some(SourceSpan::new(
+                    line_start,
+                    line_start + stripped.trim_end().len(),
+                )),
+            );
+            return facts;
+        }
+    }
+
+    facts
+}
+
+fn parse_venn_statement_facts(
+    line: &str,
+    line_start: usize,
+    state: &mut VennEditorState,
+    facts: &mut EditorSemanticFacts,
+    meta: &ParseMetadata,
+) -> Result<()> {
+    let indent = leading_indent_len(line);
+    let statement = &line[indent..];
+    if statement.trim().is_empty() {
+        return Ok(());
+    }
+
+    let statement_start = line_start + indent;
+    if indent > 0 && state.indent_mode && starts_with_keyword_ci(statement, "text") {
+        let rest = strip_keyword_ci(statement, "text")
+            .expect("starts_with_keyword_ci and strip_keyword_ci agree");
+        return parse_venn_text_statement_facts(
+            rest,
+            statement_start + "text".len(),
+            state,
+            facts,
+            meta,
+            true,
+        );
+    }
+
+    if indent == 0 {
+        state.indent_mode = false;
+    }
+
+    if let Some(rest) = strip_keyword_ci(statement, "title") {
+        facts.push_directive_prefix("title");
+        let mut cursor = VennCursor::new(rest, statement_start + "title".len());
+        if let Some(payload) = cursor.take_remaining_payload() {
+            push_venn_payload_fact(facts, &payload, "venn title", EditorSemanticKind::String);
+        }
+        return Ok(());
+    }
+
+    if let Some(rest) = strip_keyword_ci(statement, "set") {
+        facts.push_directive_prefix("set");
+        return parse_venn_set_statement_facts(
+            rest,
+            statement_start + "set".len(),
+            state,
+            facts,
+            meta,
+        );
+    }
+
+    if let Some(rest) = strip_keyword_ci(statement, "union") {
+        facts.push_directive_prefix("union");
+        return parse_venn_union_statement_facts(
+            rest,
+            statement_start + "union".len(),
+            state,
+            facts,
+            meta,
+        );
+    }
+
+    if let Some(rest) = strip_keyword_ci(statement, "text") {
+        facts.push_directive_prefix("text");
+        return parse_venn_text_statement_facts(
+            rest,
+            statement_start + "text".len(),
+            state,
+            facts,
+            meta,
+            false,
+        );
+    }
+
+    if let Some(rest) = strip_keyword_ci(statement, "style") {
+        facts.push_directive_prefix("style");
+        return parse_venn_style_statement_facts(
+            rest,
+            statement_start + "style".len(),
+            state,
+            facts,
+            meta,
+        );
+    }
+
+    Err(parse_error(
+        meta,
+        format!("unexpected venn statement: {}", statement.trim()),
+    ))
+}
+
+fn parse_venn_set_statement_facts(
+    input: &str,
+    line_start: usize,
+    state: &mut VennEditorState,
+    facts: &mut EditorSemanticFacts,
+    meta: &ParseMetadata,
+) -> Result<()> {
+    let mut cursor = VennCursor::new(input, line_start);
+    let identifier = cursor.take_identifier_like(meta)?;
+    cursor.skip_ws();
+    if cursor.remaining().starts_with(',') {
+        return Err(parse_error(meta, "set requires single identifier"));
+    }
+
+    let label = cursor.take_optional_bracket_label(meta)?;
+    let size = cursor.take_optional_size(meta)?;
+    cursor.expect_end(meta)?;
+
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        identifier.span,
+    ));
+    push_venn_entity_fact(
+        facts,
+        &identifier,
+        "venn set",
+        EditorSemanticKind::Namespace,
+    );
+    if let Some(label) = label.as_ref() {
+        push_venn_payload_fact(facts, label, "venn set label", EditorSemanticKind::String);
+    }
+    if let Some(size) = size.as_ref() {
+        push_venn_payload_fact(facts, size, "venn size", EditorSemanticKind::String);
+    }
+
+    state.known_sets.insert(identifier.text.clone());
+    state.current_sets = Some(vec![identifier.text.clone()]);
+    state.indent_mode = true;
+    Ok(())
+}
+
+fn parse_venn_union_statement_facts(
+    input: &str,
+    line_start: usize,
+    state: &mut VennEditorState,
+    facts: &mut EditorSemanticFacts,
+    meta: &ParseMetadata,
+) -> Result<()> {
+    let mut cursor = VennCursor::new(input, line_start);
+    let identifiers = parse_venn_identifier_list(&mut cursor, meta)?;
+    if identifiers.len() < 2 {
+        return Err(parse_error(meta, "union requires multiple identifiers"));
+    }
+
+    let list_span = venn_list_span(&identifiers);
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::IdList,
+        list_span,
+    ));
+    for identifier in &identifiers {
+        push_venn_entity_fact(
+            facts,
+            identifier,
+            "venn union set",
+            EditorSemanticKind::Namespace,
+        );
+    }
+
+    let label = cursor.take_optional_bracket_label(meta)?;
+    let size = cursor.take_optional_size(meta)?;
+    cursor.expect_end(meta)?;
+
+    if let Some(label) = label.as_ref() {
+        push_venn_payload_fact(facts, label, "venn union label", EditorSemanticKind::String);
+    }
+    if let Some(size) = size.as_ref() {
+        push_venn_payload_fact(facts, size, "venn size", EditorSemanticKind::String);
+    }
+
+    let unknown = identifiers
+        .iter()
+        .filter(|identifier| !state.known_sets.contains(identifier.text.as_str()))
+        .map(|identifier| identifier.text.clone())
+        .collect::<Vec<_>>();
+    state.current_sets = Some(
+        identifiers
+            .iter()
+            .map(|identifier| identifier.text.clone())
+            .collect(),
+    );
+    if unknown.is_empty() {
+        state.indent_mode = true;
+        Ok(())
+    } else {
+        Err(parse_error(
+            meta,
+            format!("unknown set identifier: {}", unknown.join(", ")),
+        ))
+    }
+}
+
+fn parse_venn_text_statement_facts(
+    input: &str,
+    line_start: usize,
+    state: &mut VennEditorState,
+    facts: &mut EditorSemanticFacts,
+    meta: &ParseMetadata,
+    indented: bool,
+) -> Result<()> {
+    let mut cursor = VennCursor::new(input, line_start);
+    let explicit_sets = if indented {
+        state
+            .current_sets
+            .clone()
+            .ok_or_else(|| parse_error(meta, "text requires set"))?
+    } else {
+        let sets = parse_venn_identifier_list(&mut cursor, meta)?;
+        if sets.is_empty() {
+            return Err(parse_error(meta, "text requires set"));
+        }
+        let list_span = venn_list_span(&sets);
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::IdList,
+            list_span,
+        ));
+        for set in &sets {
+            push_venn_entity_fact(facts, set, "venn text set", EditorSemanticKind::Namespace);
+        }
+        sets.iter().map(|set| set.text.clone()).collect::<Vec<_>>()
+    };
+
+    let (identifier, kind) = cursor.take_text_id(meta)?;
+    let label = cursor.take_optional_bracket_label(meta)?;
+    if kind == TextIdKind::Numeric && label.is_some() {
+        return Err(parse_error(meta, "unexpected label after numeric text id"));
+    }
+    cursor.expect_end(meta)?;
+
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        identifier.span,
+    ));
+    push_venn_entity_fact(
+        facts,
+        &identifier,
+        "venn text node",
+        EditorSemanticKind::Namespace,
+    );
+    if let Some(label) = label.as_ref() {
+        push_venn_payload_fact(facts, label, "venn text label", EditorSemanticKind::String);
+    }
+
+    if indented && explicit_sets.is_empty() {
+        return Err(parse_error(meta, "text requires set"));
+    }
+
+    Ok(())
+}
+
+fn parse_venn_style_statement_facts(
+    input: &str,
+    line_start: usize,
+    state: &mut VennEditorState,
+    facts: &mut EditorSemanticFacts,
+    meta: &ParseMetadata,
+) -> Result<()> {
+    let mut cursor = VennCursor::new(input, line_start);
+    let targets = parse_venn_identifier_list(&mut cursor, meta)?;
+    if targets.is_empty() {
+        return Err(parse_error(meta, "expected identifier"));
+    }
+
+    let mut styles = Vec::new();
+    loop {
+        cursor.skip_ws();
+        let value = cursor.remaining();
+        if value.trim().is_empty() {
+            break;
+        }
+
+        let key = cursor.take_identifier_like(meta)?;
+        cursor.skip_ws();
+        let Some(_) = cursor.remaining().strip_prefix(':') else {
+            return Err(parse_error(meta, "expected ':' after style field"));
+        };
+        cursor.pos += 1;
+        let value = cursor.take_style_value(meta)?;
+        styles.push((key, value));
+
+        cursor.skip_ws();
+        if cursor.remaining().starts_with(',') {
+            cursor.pos += 1;
+            continue;
+        }
+        break;
+    }
+
+    cursor.expect_end(meta)?;
+    if styles.is_empty() {
+        return Err(parse_error(meta, "expected style field"));
+    }
+
+    let list_span = venn_list_span(&targets);
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::IdList,
+        list_span,
+    ));
+    for target in &targets {
+        push_venn_entity_fact(
+            facts,
+            target,
+            "venn style target",
+            EditorSemanticKind::Namespace,
+        );
+    }
+    for (_, value) in styles {
+        push_venn_payload_fact(
+            facts,
+            &value,
+            "venn style value",
+            EditorSemanticKind::String,
+        );
+    }
+
+    let _ = state;
+    Ok(())
+}
+
+fn parse_venn_identifier_list(
+    cursor: &mut VennCursor<'_>,
+    meta: &ParseMetadata,
+) -> Result<Vec<VennFieldSpan>> {
+    let first = cursor.take_identifier_like(meta)?;
+    let mut identifiers = vec![first];
+
+    loop {
+        cursor.skip_ws();
+        if !cursor.remaining().starts_with(',') {
+            break;
+        }
+        cursor.pos += 1;
+        identifiers.push(cursor.take_identifier_like(meta)?);
+    }
+
+    Ok(identifiers)
+}
+
+fn venn_list_span(items: &[VennFieldSpan]) -> SourceSpan {
+    let start = items.first().map(|item| item.span.start).unwrap_or(0);
+    let end = items.last().map(|item| item.span.end).unwrap_or(start);
+    SourceSpan::new(start, end)
+}
+
+fn push_venn_entity_fact(
+    facts: &mut EditorSemanticFacts,
+    field: &VennFieldSpan,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    if field.text.is_empty() {
+        return;
+    }
+    facts.push_symbol(EditorSemanticSymbol::new(
+        field.text.clone(),
+        Some(detail.to_string()),
+        kind,
+        field.span,
+        field.selection,
+    ));
+}
+
+fn push_venn_payload_fact(
+    facts: &mut EditorSemanticFacts,
+    field: &VennFieldSpan,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    if field.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        field.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        field.text.clone(),
+        Some(detail.to_string()),
+        kind,
+        field.span,
+        field.selection,
+    ));
 }
 
 pub fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
@@ -676,16 +1418,16 @@ fn strip_inline_comment_aware(line: &str) -> &str {
 }
 
 fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
-    Error::DiagramParse {
-        diagram_type: meta.diagram_type.clone(),
-        message: message.into(),
-    }
+    Error::diagram_parse_fallback(meta.diagram_type.clone(), message.into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, MermaidConfig, ParseMetadata, ParseOptions, RenderSemanticModel};
+    use crate::{
+        EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig, ParseMetadata,
+        ParseOptions, RenderSemanticModel,
+    };
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -900,6 +1642,107 @@ text A,B 42
 
         assert_eq!(model.subsets[0].sets, ["Foo Bar"]);
         assert_eq!(model.subsets[2].sets, ["Buz", "Foo Bar"]);
+    }
+
+    #[test]
+    fn parse_venn_editor_facts_expose_parser_backed_spans() {
+        let engine = Engine::new();
+        let text = r##"venn-beta
+title Product Surface
+set A["Core"]:20
+set B["Editor"]:14
+union A,B["Shared"]:4
+  text A1["Nested note"]
+  text A1["Nested note"]
+text A alpha["Alpha note"]
+style A fill:#ff6b6b, color:#101010
+style A,B fill:#00ffcc, color:#003333
+"##;
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("venn", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+        for prefix in ["title", "set", "union", "text", "style"] {
+            assert!(
+                facts.directive_prefixes.iter().any(|value| value == prefix),
+                "missing directive prefix {prefix}"
+            );
+        }
+
+        let symbol_at = |name: &str, detail: &str, start: usize| {
+            facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == name
+                        && symbol.detail.as_deref() == Some(detail)
+                        && symbol.selection.start == start
+                })
+                .unwrap_or_else(|| panic!("missing symbol {name} with detail {detail} at {start}"))
+        };
+
+        let title_start = text.find("Product Surface").unwrap();
+        let title = symbol_at("Product Surface", "venn title", title_start);
+        assert_eq!(title.role, EditorSemanticRole::Payload);
+        assert_eq!(title.kind, EditorSemanticKind::String);
+        assert_eq!(title.selection.end, title_start + "Product Surface".len());
+
+        let set_a_start = text.find("A[\"Core\"]").unwrap();
+        let set_a = symbol_at("A", "venn set", set_a_start);
+        assert_eq!(set_a.role, EditorSemanticRole::Entity);
+        assert_eq!(set_a.kind, EditorSemanticKind::Namespace);
+        assert_eq!(set_a.selection.end, set_a_start + "A".len());
+
+        let set_label_start = text.find("Core").unwrap();
+        let set_label = symbol_at("Core", "venn set label", set_label_start);
+        assert_eq!(set_label.role, EditorSemanticRole::Payload);
+        assert_eq!(set_label.kind, EditorSemanticKind::String);
+        assert_eq!(set_label.selection.start, set_label_start);
+        assert_eq!(set_label.selection.end, set_label_start + "Core".len());
+
+        let union_a_start = text.find("union A,B").unwrap() + "union ".len();
+        let union_a = symbol_at("A", "venn union set", union_a_start);
+        assert_eq!(union_a.role, EditorSemanticRole::Entity);
+        assert_eq!(union_a.kind, EditorSemanticKind::Namespace);
+
+        let text_id_start = text.find("alpha").unwrap();
+        let text_id = symbol_at("alpha", "venn text node", text_id_start);
+        assert_eq!(text_id.role, EditorSemanticRole::Entity);
+        assert_eq!(text_id.kind, EditorSemanticKind::Namespace);
+        assert_eq!(text_id.selection.end, text_id_start + "alpha".len());
+
+        let text_note_start = text.find("Alpha note").unwrap();
+        let text_note = symbol_at("Alpha note", "venn text label", text_note_start);
+        assert_eq!(text_note.role, EditorSemanticRole::Payload);
+
+        let style_target_start = text.find("style A fill").unwrap() + "style ".len();
+        let style_target = symbol_at("A", "venn style target", style_target_start);
+        assert_eq!(style_target.role, EditorSemanticRole::Entity);
+        assert_eq!(style_target.kind, EditorSemanticKind::Namespace);
+
+        let fill_start = text.find("#ff6b6b").unwrap();
+        let fill = symbol_at("#ff6b6b", "venn style value", fill_start);
+        assert_eq!(fill.role, EditorSemanticRole::Payload);
+        assert_eq!(fill.kind, EditorSemanticKind::String);
+        assert_eq!(fill.selection.start, fill_start);
+
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                && expected.span == SourceSpan::new(set_a_start, set_a_start + "A".len())
+        }));
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::IdList
+                && expected.span.start <= union_a_start
+                && expected.span.end >= union_a_start + "A".len()
+        }));
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span.start <= title_start
+                && expected.span.end >= title_start + "Product Surface".len()
+        }));
     }
 
     #[test]

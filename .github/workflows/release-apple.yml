@@ -8,41 +8,95 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Git ref to build from"
+        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to build from"
         required: true
         default: "main"
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-release:
+  validate-inputs:
+    name: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate release inputs
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          tag_re="^v${semver_re#^}"
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
+
+          [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          validated_source_ref="$SOURCE_REF"
+          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            source_tag="${SOURCE_REF#refs/tags/}"
+            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
+            validated_source_ref="refs/tags/$source_tag"
+          else
+            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
+          fi
+
+          VERSION="${RELEASE_TAG#v}"
+          [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
+
+          {
+            printf 'source_ref=%s\n' "$validated_source_ref"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: validate-inputs
     runs-on: macos-15
-    environment: github-release
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
-      - name: Read version from tag
+      - name: Use validated release metadata
         id: version
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
-          RELEASE_TAG="${{ inputs.release_tag }}"
-          if [[ "$RELEASE_TAG" != v* ]]; then
-            echo "::error::Release tag '$RELEASE_TAG' must start with v."
-            exit 1
-          fi
-          VERSION="${RELEASE_TAG#v}"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          {
+            printf 'tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
       - name: Verify Cargo workspace version matches tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d ' ')
-          if [ "$CARGO_VERSION" != "${{ steps.version.outputs.version }}" ]; then
-            echo "::error::Cargo workspace version '$CARGO_VERSION' does not match tag ${{ steps.version.outputs.version }}"
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "::error::Cargo workspace version '$CARGO_VERSION' does not match tag $VERSION"
             exit 1
           fi
 
@@ -88,13 +142,27 @@ jobs:
             platforms/apple/Merman.xcframework-*.zip
             platforms/apple/Merman.xcframework-*.zip.checksum
 
+  upload-release:
+    needs: [validate-inputs, build]
+    runs-on: ubuntu-24.04
+    environment: github-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download XCFramework artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: merman-apple-xcframework
+          path: platforms/apple
+
       - name: Upload XCFramework to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" platforms/apple/Merman.xcframework-*.zip platforms/apple/Merman.xcframework-*.zip.checksum --clobber
           else
-            echo "::warning::GitHub Release $RELEASE_TAG does not exist yet; XCFramework artifact was uploaded for manual attachment."
+            echo "::error::GitHub Release $RELEASE_TAG does not exist; create it before uploading XCFramework assets."
+            exit 1
           fi

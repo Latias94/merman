@@ -125,7 +125,13 @@ const PRESETS: &[WasmPreset] = &[
         package: "merman-wasm",
         artifact_name: "merman_wasm.wasm",
         no_default_features: true,
-        features: &["core-full", "core-host", "render", "ascii"],
+        features: &[
+            "core-full",
+            "core-host",
+            "render",
+            "ascii",
+            "editor-language",
+        ],
     },
     WasmPreset {
         name: "browser-ratex-math",

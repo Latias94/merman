@@ -10,13 +10,24 @@ use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
+use std::{cell::RefCell, sync::Arc};
+
+#[cfg(feature = "editor-language")]
+mod editor_language;
+
+#[cfg(feature = "editor-language")]
+pub use editor_language::{
+    editor_code_actions, editor_completions, editor_definition, editor_diagnostics,
+    editor_document_symbols, editor_hover, editor_prepare_rename, editor_references, editor_rename,
+    editor_semantic_token_legend, editor_semantic_tokens, editor_workspace_symbols,
+};
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
 use merman_bindings_core::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 use serde::Deserialize;
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
-use std::{cell::RefCell, sync::Arc};
 
-const WASM_ABI_VERSION: u32 = 1;
+const WASM_ABI_VERSION: u32 = 2;
 
 #[derive(Debug, Serialize)]
 struct WasmErrorPayload<'a> {
@@ -62,7 +73,7 @@ pub fn render_svg_with_text_measurer(
             merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
                 .map_err(binding_error_to_js)?;
         let engine = engine.with_text_measurer(Arc::new(WasmHostTextMeasurer::default()));
-        string_result(engine.render_svg(source.as_bytes()))
+        host_text_measure_result(string_result(engine.render_svg(source.as_bytes())))
     })
 }
 
@@ -78,7 +89,7 @@ pub fn layout_json_with_text_measurer(
             merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
                 .map_err(binding_error_to_js)?;
         let engine = engine.with_text_measurer(Arc::new(WasmHostTextMeasurer::default()));
-        string_result(engine.layout_json(source.as_bytes()))
+        host_text_measure_result(string_result(engine.layout_json(source.as_bytes())))
     })
 }
 
@@ -103,6 +114,55 @@ pub fn render_ascii(source: &str, options_json: Option<String>) -> Result<String
     string_result(merman_bindings_core::render_ascii(
         source.as_bytes(),
         options_bytes(options_json.as_deref()),
+    ))
+}
+
+#[wasm_bindgen]
+pub fn analyze(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    json_value_result(merman_bindings_core::analyze_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+    ))
+}
+
+#[wasm_bindgen(js_name = analyzeJson)]
+pub fn analyze_json(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    analyze(source, options_json)
+}
+
+#[wasm_bindgen(js_name = analysisFacts)]
+pub fn analysis_facts(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    json_value_result(merman_bindings_core::analysis_facts_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+    ))
+}
+
+#[wasm_bindgen(js_name = analyzeDocument)]
+pub fn analyze_document(
+    source: &str,
+    options_json: Option<String>,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let uri = document_uri(uri);
+    json_value_result(merman_bindings_core::analyze_document_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        uri.as_bytes(),
+    ))
+}
+
+#[wasm_bindgen(js_name = analyzeDocumentFacts)]
+pub fn analyze_document_facts(
+    source: &str,
+    options_json: Option<String>,
+    uri: Option<String>,
+) -> Result<JsValue, JsValue> {
+    let uri = document_uri(uri);
+    json_value_result(merman_bindings_core::analyze_document_facts_json(
+        source.as_bytes(),
+        options_bytes(options_json.as_deref()),
+        uri.as_bytes(),
     ))
 }
 
@@ -137,6 +197,11 @@ pub fn diagram_family_capabilities() -> Result<JsValue, JsValue> {
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
+#[wasm_bindgen(js_name = lintRuleCatalog)]
+pub fn lint_rule_catalog() -> Result<JsValue, JsValue> {
+    json_value_result(merman_bindings_core::lint_rule_catalog_json())
+}
+
 #[wasm_bindgen(js_name = supportedThemes)]
 pub fn supported_themes() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(merman_bindings_core::supported_themes())
@@ -165,6 +230,11 @@ fn options_bytes(options_json: Option<&str>) -> &[u8] {
     options_json.unwrap_or_default().as_bytes()
 }
 
+pub(crate) fn document_uri(uri: Option<String>) -> String {
+    uri.filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "file:///merman/document.mmd".to_string())
+}
+
 fn string_result(result: Result<Vec<u8>, BindingError>) -> Result<String, JsValue> {
     let bytes = result.map_err(binding_error_to_js)?;
     String::from_utf8(bytes).map_err(|err| JsValue::from_str(&err.to_string()))
@@ -179,7 +249,7 @@ fn json_value_result(result: Result<Vec<u8>, BindingError>) -> Result<JsValue, J
         .map_err(|err| JsValue::from_str(&err.to_string()))
 }
 
-fn binding_error_to_js(err: BindingError) -> JsValue {
+pub(crate) fn binding_error_to_js(err: BindingError) -> JsValue {
     let payload = wasm_error_payload(&err);
     payload
         .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
@@ -201,6 +271,7 @@ fn wasm_error_payload(err: &BindingError) -> WasmErrorPayload<'_> {
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 thread_local! {
     static HOST_TEXT_MEASURE_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
+    static HOST_TEXT_MEASURE_ERROR: RefCell<Option<JsValue>> = const { RefCell::new(None) };
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
@@ -264,23 +335,43 @@ impl WasmHostTextMeasurer {
 
         HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
             let callback = slot.borrow().clone()?;
-            let value = callback.call1(&JsValue::NULL, &request).ok()?;
+            let value = match callback.call1(&JsValue::NULL, &request) {
+                Ok(value) => value,
+                Err(err) => {
+                    record_host_text_measure_error(err);
+                    return None;
+                }
+            };
             if value.is_null() || value.is_undefined() {
                 return None;
             }
 
-            let result: WasmHostTextMeasureResult = serde_wasm_bindgen::from_value(value).ok()?;
+            let result: WasmHostTextMeasureResult = match serde_wasm_bindgen::from_value(value) {
+                Ok(result) => result,
+                Err(err) => {
+                    record_host_text_measure_error(JsValue::from_str(&err.to_string()));
+                    return None;
+                }
+            };
             if result.handled == Some(false)
                 || !result.width.is_finite()
                 || !result.height.is_finite()
                 || result.width < 0.0
                 || result.height < 0.0
             {
+                if result.handled != Some(false) {
+                    record_host_text_measure_error(JsValue::from_str(
+                        "host text measurer returned invalid metrics",
+                    ));
+                }
                 return None;
             }
 
             let line_count = result.line_count.unwrap_or(1);
             if line_count == 0 {
+                record_host_text_measure_error(JsValue::from_str(
+                    "host text measurer returned zero line_count",
+                ));
                 return None;
             }
 
@@ -357,22 +448,55 @@ impl TextMeasurer for WasmHostTextMeasurer {
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
-struct HostTextMeasureCallbackGuard(Option<js_sys::Function>);
+struct HostTextMeasureCallbackGuard {
+    previous_callback: Option<js_sys::Function>,
+    previous_error: Option<JsValue>,
+}
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 impl Drop for HostTextMeasureCallbackGuard {
     fn drop(&mut self) {
         HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
-            slot.replace(self.0.take());
+            slot.replace(self.previous_callback.take());
+        });
+        HOST_TEXT_MEASURE_ERROR.with(|slot| {
+            slot.replace(self.previous_error.take());
         });
     }
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 fn with_host_text_measure_callback<R>(callback: js_sys::Function, f: impl FnOnce() -> R) -> R {
-    let previous = HOST_TEXT_MEASURE_CALLBACK.with(|slot| slot.replace(Some(callback)));
-    let _guard = HostTextMeasureCallbackGuard(previous);
+    let previous_callback = HOST_TEXT_MEASURE_CALLBACK.with(|slot| slot.replace(Some(callback)));
+    let previous_error = HOST_TEXT_MEASURE_ERROR.with(|slot| slot.replace(None));
+    let _guard = HostTextMeasureCallbackGuard {
+        previous_callback,
+        previous_error,
+    };
     f()
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn record_host_text_measure_error(err: JsValue) {
+    HOST_TEXT_MEASURE_ERROR.with(|slot| {
+        if slot.borrow().is_none() {
+            slot.replace(Some(err));
+        }
+    });
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn take_host_text_measure_error() -> Option<JsValue> {
+    HOST_TEXT_MEASURE_ERROR.with(|slot| slot.replace(None))
+}
+
+#[cfg(all(feature = "render", target_arch = "wasm32"))]
+fn host_text_measure_result<T>(result: Result<T, JsValue>) -> Result<T, JsValue> {
+    if let Some(err) = take_host_text_measure_error() {
+        Err(err)
+    } else {
+        result
+    }
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
@@ -436,17 +560,158 @@ mod tests {
                 .unwrap();
 
         assert_eq!(json["valid"], false);
-        if cfg!(feature = "render") {
-            assert_eq!(json["code_name"], "MERMAN_NO_DIAGRAM");
-            assert!(
-                json["error"]
-                    .as_str()
-                    .unwrap()
-                    .contains("no Mermaid diagram")
-            );
-        } else {
-            assert_eq!(json["code_name"], "MERMAN_UNSUPPORTED_FORMAT");
-        }
+        assert_eq!(json["code_name"], "MERMAN_NO_DIAGRAM");
+        assert!(
+            json["error"]
+                .as_str()
+                .unwrap()
+                .contains("no Mermaid diagram")
+        );
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn analyze_json_exposes_diagnostics_payload() {
+        let value: Value = serde_wasm_bindgen::from_value(analyze_json("", None).unwrap()).unwrap();
+        assert_no_diagram_analysis_payload(&value);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn analyze_json_exposes_diagnostics_payload() {
+        let value: Value =
+            serde_json::from_slice(&merman_bindings_core::analyze_json(b"", b"").unwrap()).unwrap();
+        assert_no_diagram_analysis_payload(&value);
+    }
+
+    fn assert_no_diagram_analysis_payload(value: &Value) {
+        assert_eq!(value["version"], 1);
+        assert_eq!(value["valid"], false);
+        assert_eq!(value["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn analysis_facts_exposes_parser_backed_syntax_payload() {
+        let value: Value =
+            serde_wasm_bindgen::from_value(analysis_facts("flowchart TD\nA-->B\n", None).unwrap())
+                .unwrap();
+        assert_parser_backed_analysis_facts_payload(&value);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn analysis_facts_exposes_parser_backed_syntax_payload() {
+        let value: Value = serde_json::from_slice(
+            &merman_bindings_core::analysis_facts_json(b"flowchart TD\nA-->B\n", b"").unwrap(),
+        )
+        .unwrap();
+        assert_parser_backed_analysis_facts_payload(&value);
+    }
+
+    fn assert_parser_backed_analysis_facts_payload(value: &Value) {
+        assert_eq!(value["valid"], true);
+        assert_eq!(
+            value["diagrams"][0]["syntax"]["fact_source"],
+            "parser_complete"
+        );
+        assert_eq!(value["diagrams"][0]["syntax"]["source_mapped_spans"], true);
+        assert!(
+            value["diagrams"][0]["syntax"]["semantic_items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["name"] == "A" && item["span"]["document"].is_object())
+        );
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn analyze_document_exposes_markdown_diagnostics_payload() {
+        let value: Value = serde_wasm_bindgen::from_value(
+            analyze_document(
+                "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+                None,
+                Some("file:///tmp/example.md".to_string()),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_markdown_document_analysis_payload(&value);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn analyze_document_exposes_markdown_diagnostics_payload() {
+        let value: Value = serde_json::from_slice(
+            &merman_bindings_core::analyze_document_json(
+                b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+                b"",
+                b"file:///tmp/example.md",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_markdown_document_analysis_payload(&value);
+    }
+
+    fn assert_markdown_document_analysis_payload(value: &Value) {
+        assert_eq!(value["valid"], false);
+        assert_eq!(value["source"]["kind"], "markdown");
+        assert_eq!(value["diagnostics"][0]["span"]["line"], 4);
+        assert!(
+            value["diagnostics"][0]["related"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|related| related["message"] == "Mermaid fence 1")
+        );
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn analyze_document_facts_exposes_markdown_syntax_payload() {
+        let value: Value = serde_wasm_bindgen::from_value(
+            analyze_document_facts(
+                "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+                None,
+                Some("file:///tmp/example.md".to_string()),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_markdown_document_analysis_facts_payload(&value);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn analyze_document_facts_exposes_markdown_syntax_payload() {
+        let value: Value = serde_json::from_slice(
+            &merman_bindings_core::analyze_document_facts_json(
+                b"before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+                b"",
+                b"file:///tmp/example.md",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_markdown_document_analysis_facts_payload(&value);
+    }
+
+    fn assert_markdown_document_analysis_facts_payload(value: &Value) {
+        assert_eq!(value["valid"], false);
+        assert_eq!(value["source"]["kind"], "markdown");
+        assert_eq!(value["diagrams"][0]["source_id"], "mermaid-fence-1");
+        assert_eq!(value["diagrams"][0]["syntax"]["parser_backed"], true);
+        assert!(
+            value["diagrams"][0]["syntax"]["expected_syntax"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|expected| {
+                    expected["kind"] == "shape" && expected["span"]["document"].is_object()
+                })
+        );
     }
 
     #[test]
@@ -480,6 +745,10 @@ mod tests {
         );
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
+        assert_eq!(
+            capabilities.editor_language,
+            cfg!(feature = "editor-language")
+        );
     }
 
     #[test]

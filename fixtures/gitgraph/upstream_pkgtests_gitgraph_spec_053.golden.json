@@ -22,6 +22,7 @@
     "direction": "LR",
     "accTitle": "This is a title",
     "accDescr": "This is a description\nusing multiple lines",
+    "warningFacts": [],
     "warnings": []
   }
 }

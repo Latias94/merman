@@ -1,4 +1,3 @@
-#[cfg(any(feature = "render", feature = "ascii"))]
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -73,15 +72,6 @@ struct ErrorPayload<'a> {
 }
 
 #[derive(Debug, Serialize)]
-struct ValidationPayload<'a> {
-    valid: bool,
-    error: Option<String>,
-    message: Option<String>,
-    code: i32,
-    code_name: &'a str,
-}
-
-#[derive(Debug, Serialize)]
 struct RenderPayload<'a> {
     version: u32,
     ok: bool,
@@ -91,31 +81,20 @@ struct RenderPayload<'a> {
     svg: Option<&'a str>,
 }
 
-#[cfg(any(feature = "render", feature = "ascii"))]
 #[derive(Debug, Default, Deserialize)]
 pub(crate) struct BindingOptions {
     #[allow(dead_code)]
     pub(crate) version: Option<u32>,
-    pub(crate) fixed_today: Option<String>,
-    pub(crate) fixed_local_offset_minutes: Option<i32>,
+    #[serde(flatten)]
+    pub(crate) analysis: merman_analysis::AnalysisOptionsJson,
     #[cfg(feature = "render")]
     pub(crate) host_theme: Option<HostThemeOptionsJson>,
-    pub(crate) site_config: Option<serde_json::Value>,
-    pub(crate) parse: Option<ParseOptionsJson>,
     #[cfg(feature = "ascii")]
     pub(crate) ascii: Option<AsciiOptionsJson>,
     #[cfg(feature = "render")]
     pub(crate) layout: Option<LayoutOptionsJson>,
     #[cfg(feature = "render")]
-    pub(crate) resources: Option<ResourceOptionsJson>,
-    #[cfg(feature = "render")]
     pub(crate) svg: Option<SvgOptionsJson>,
-}
-
-#[cfg(any(feature = "render", feature = "ascii"))]
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct ParseOptionsJson {
-    pub(crate) suppress_errors: Option<bool>,
 }
 
 #[cfg(feature = "ascii")]
@@ -163,21 +142,6 @@ pub(crate) struct LayoutOptionsJson {
     pub(crate) text_measurer: Option<String>,
     pub(crate) math_renderer: Option<String>,
     pub(crate) flowchart_elk_backend: Option<String>,
-}
-
-#[cfg(feature = "render")]
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct ResourceOptionsJson {
-    pub(crate) profile: Option<String>,
-    pub(crate) max_source_bytes: Option<usize>,
-    pub(crate) max_svg_bytes: Option<usize>,
-    pub(crate) max_flowchart_nodes: Option<usize>,
-    pub(crate) max_flowchart_edges: Option<usize>,
-    pub(crate) max_flowchart_subgraphs: Option<usize>,
-    pub(crate) max_class_nodes: Option<usize>,
-    pub(crate) max_class_edges: Option<usize>,
-    pub(crate) max_class_namespaces: Option<usize>,
-    pub(crate) max_label_bytes: Option<usize>,
 }
 
 #[cfg(feature = "render")]
@@ -282,29 +246,56 @@ pub fn render_payload_json_bytes(
     })
 }
 
-pub(crate) fn validation_payload_json(
-    result: Result<(), BindingError>,
+pub(crate) fn validation_payload_json_from_analysis(
+    payload: &merman_analysis::AnalysisPayload,
 ) -> Result<Vec<u8>, BindingError> {
-    let payload = match result {
-        Ok(()) => ValidationPayload {
-            valid: true,
-            error: None,
-            message: None,
-            code: BindingStatus::Ok.code(),
-            code_name: BindingStatus::Ok.code_name(),
-        },
-        Err(error) => ValidationPayload {
-            valid: false,
-            error: Some(error.message().to_string()),
-            message: Some(error.message().to_string()),
-            code: error.status().code(),
-            code_name: error.status().code_name(),
-        },
+    #[derive(Serialize)]
+    struct LegacyValidationPayload<'a> {
+        valid: bool,
+        error: Option<&'a str>,
+        message: Option<&'a str>,
+        code: i32,
+        code_name: &'a str,
+    }
+
+    let first_error = payload.diagnostics.iter().find(|diagnostic| {
+        matches!(
+            diagnostic.severity,
+            merman_analysis::DiagnosticSeverity::Error
+        )
+    });
+    let fallback_status = first_error
+        .map(legacy_validation_fallback_status)
+        .unwrap_or(BindingStatus::Ok);
+    let legacy = LegacyValidationPayload {
+        valid: payload.valid,
+        error: first_error.map(|diagnostic| diagnostic.message.as_str()),
+        message: first_error.map(|diagnostic| diagnostic.message.as_str()),
+        code: first_error
+            .and_then(|diagnostic| diagnostic.code)
+            .unwrap_or(fallback_status.code()),
+        code_name: first_error
+            .and_then(|diagnostic| diagnostic.code_name.as_deref())
+            .unwrap_or(fallback_status.code_name()),
     };
-    serde_json::to_vec(&payload).map_err(internal_json_error)
+    serde_json::to_vec(&legacy).map_err(internal_json_error)
 }
 
-#[cfg(any(feature = "render", feature = "ascii"))]
+fn legacy_validation_fallback_status(
+    diagnostic: &merman_analysis::AnalysisDiagnostic,
+) -> BindingStatus {
+    match diagnostic.category {
+        merman_analysis::DiagnosticCategory::Resource => BindingStatus::ResourceLimitExceeded,
+        merman_analysis::DiagnosticCategory::Render => BindingStatus::RenderError,
+        merman_analysis::DiagnosticCategory::Internal => BindingStatus::InternalError,
+        merman_analysis::DiagnosticCategory::Parse
+        | merman_analysis::DiagnosticCategory::Semantic
+        | merman_analysis::DiagnosticCategory::Config
+        | merman_analysis::DiagnosticCategory::Compatibility
+        | merman_analysis::DiagnosticCategory::Layout => BindingStatus::ParseError,
+    }
+}
+
 pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError> {
     if bytes.is_empty() {
         return Ok(BindingOptions::default());
@@ -315,22 +306,45 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
             format!("invalid options_json UTF-8: {err}"),
         )
     })?;
-    serde_json::from_str(text).map_err(|err| {
+    let value: serde_json::Value = serde_json::from_str(text).map_err(|err| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
             format!("invalid options_json: {err}"),
         )
-    })
+    })?;
+    let mut options: BindingOptions = serde_json::from_value(value.clone()).map_err(|err| {
+        BindingError::new(
+            BindingStatus::OptionsJsonError,
+            format!("invalid options_json: {err}"),
+        )
+    })?;
+    options.analysis =
+        merman_analysis::analysis_options_json_from_json_value(&value).map_err(|err| {
+            BindingError::new(
+                BindingStatus::OptionsJsonError,
+                format!("invalid options_json: {err}"),
+            )
+        })?;
+    Ok(options)
 }
 
-#[cfg(any(feature = "render", feature = "ascii"))]
-pub(crate) fn source_text(bytes: &[u8]) -> Result<&str, BindingError> {
+pub(crate) fn source_text_utf8(bytes: &[u8]) -> Result<&str, BindingError> {
     let source = std::str::from_utf8(bytes).map_err(|err| {
         BindingError::new(
             BindingStatus::Utf8Error,
             format!("invalid source UTF-8: {err}"),
         )
     })?;
+    Ok(source)
+}
+
+pub(crate) fn source_descriptor_for_uri(uri: &str) -> merman_analysis::SourceDescriptor {
+    merman_analysis::source_descriptor_for_uri(uri)
+}
+
+#[cfg(any(feature = "render", feature = "ascii"))]
+pub(crate) fn source_text(bytes: &[u8]) -> Result<&str, BindingError> {
+    let source = source_text_utf8(bytes)?;
     if source.trim().is_empty() {
         return Err(no_diagram_error());
     }
@@ -341,7 +355,7 @@ pub(crate) fn source_text(bytes: &[u8]) -> Result<&str, BindingError> {
 pub(crate) fn binding_site_config(
     options: &BindingOptions,
 ) -> Result<Option<merman::MermaidConfig>, BindingError> {
-    let Some(site_config) = options.site_config.as_ref() else {
+    let Some(site_config) = options.analysis.site_config.as_ref() else {
         return Ok(None);
     };
     if !site_config.is_object() {
@@ -357,7 +371,7 @@ pub(crate) fn binding_site_config(
 pub(crate) fn binding_fixed_today(
     options: &BindingOptions,
 ) -> Result<Option<chrono::NaiveDate>, BindingError> {
-    let Some(today) = options.fixed_today.as_deref() else {
+    let Some(today) = options.analysis.fixed_today.as_deref() else {
         return Ok(None);
     };
     chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d")
@@ -374,7 +388,7 @@ pub(crate) fn binding_fixed_today(
 pub(crate) fn binding_fixed_local_offset_minutes(
     options: &BindingOptions,
 ) -> Result<Option<i32>, BindingError> {
-    let Some(offset_minutes) = options.fixed_local_offset_minutes else {
+    let Some(offset_minutes) = options.analysis.fixed_local_offset_minutes else {
         return Ok(None);
     };
     let valid = offset_minutes
@@ -388,6 +402,21 @@ pub(crate) fn binding_fixed_local_offset_minutes(
         ));
     }
     Ok(Some(offset_minutes))
+}
+
+pub(crate) fn analysis_options(
+    options: &BindingOptions,
+) -> Result<merman_analysis::AnalysisOptions, BindingError> {
+    options
+        .analysis
+        .to_analysis_options()
+        .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))
+}
+
+impl From<merman_analysis::AnalysisOptionsJsonError> for BindingError {
+    fn from(error: merman_analysis::AnalysisOptionsJsonError) -> Self {
+        BindingError::new(BindingStatus::InvalidArgument, error.to_string())
+    }
 }
 
 #[cfg(any(feature = "render", feature = "ascii"))]
@@ -490,17 +519,83 @@ mod tests {
     }
 
     #[test]
-    fn validation_payload_includes_message_alias() {
-        let payload = validation_payload_json(Err(BindingError::new(
-            BindingStatus::ParseError,
-            "parse failed",
-        )))
+    fn parse_options_accepts_analysis_wrapper_without_dropping_binding_options() {
+        let options = parse_options(
+            br#"{
+                "analysis": {
+                    "parse": { "suppress_errors": true },
+                    "resources": { "max_source_bytes": 4 }
+                },
+                "version": 1,
+                "svg": { "pipeline": "resvg-safe" }
+            }"#,
+        )
         .unwrap();
-        let json: Value = serde_json::from_slice(&payload).unwrap();
 
-        assert_eq!(json["valid"], false);
-        assert_eq!(json["error"], "parse failed");
-        assert_eq!(json["message"], "parse failed");
-        assert_eq!(json["code_name"], BindingStatus::ParseError.code_name());
+        assert_eq!(options.version, Some(1));
+        assert_eq!(
+            options
+                .analysis
+                .parse
+                .as_ref()
+                .and_then(|parse| parse.suppress_errors),
+            Some(true)
+        );
+        assert_eq!(
+            options
+                .analysis
+                .resources
+                .as_ref()
+                .and_then(|resources| resources.max_source_bytes),
+            Some(4)
+        );
+        #[cfg(feature = "render")]
+        assert_eq!(
+            options.svg.as_ref().and_then(|svg| svg.pipeline.as_deref()),
+            Some("resvg-safe")
+        );
+    }
+
+    #[test]
+    fn parse_options_accepts_merman_wrapper() {
+        let options = parse_options(
+            br#"{
+                "merman": {
+                    "lint": {
+                        "profile": "recommended"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            options
+                .analysis
+                .lint
+                .as_ref()
+                .and_then(|lint| lint.profile.as_deref()),
+            Some("recommended")
+        );
+    }
+
+    #[test]
+    fn parse_options_rejects_mixed_direct_and_wrapped_analysis_options() {
+        let err = parse_options(
+            br#"{
+                "resources": { "max_source_bytes": 4 },
+                "analysis": {
+                    "lint": { "profile": "recommended" }
+                }
+            }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            err.message()
+                .contains("must not mix top-level analysis options"),
+            "{err:?}"
+        );
     }
 }

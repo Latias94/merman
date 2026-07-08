@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Git ref to build from"
+        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to build from"
         required: true
         default: "main"
         type: string
@@ -20,31 +20,139 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  publish:
+  validate-inputs:
+    name: validate-inputs
     runs-on: ubuntu-24.04
-    environment: npm
+    outputs:
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+      npm_dist_tag: ${{ steps.release.outputs.npm_dist_tag }}
+    steps:
+      - name: Validate release inputs
+        id: release
+        shell: bash
+        env:
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          is_uint() {
+            local value="$1"
+            [[ -n "$value" ]] || return 1
+            case "$value" in
+              *[!0-9]*) return 1 ;;
+              *) return 0 ;;
+            esac
+          }
+
+          is_release_version() {
+            local version="$1"
+            local core="$version"
+            local prerelease=""
+            local has_prerelease=0
+            if [[ "$version" == *-* ]]; then
+              core="${version%%-*}"
+              prerelease="${version#*-}"
+              has_prerelease=1
+            fi
+
+            local major minor patch extra
+            IFS=. read -r major minor patch extra <<< "$core"
+            [[ -z "${extra:-}" ]] || return 1
+            is_uint "$major" && is_uint "$minor" && is_uint "$patch" || return 1
+
+            if [[ -z "$prerelease" ]]; then
+              [[ "$has_prerelease" -eq 0 ]] || return 1
+              return 0
+            fi
+
+            local channel number prerelease_extra
+            IFS=. read -r channel number prerelease_extra <<< "$prerelease"
+            [[ -z "${prerelease_extra:-}" ]] || return 1
+            case "$channel" in
+              alpha | beta | rc) ;;
+              *) return 1 ;;
+            esac
+            is_uint "$number"
+          }
+
+          is_release_tag() {
+            local tag="$1"
+            [[ "$tag" == v* ]] || return 1
+            is_release_version "${tag#v}"
+          }
+
+          is_release_tag_ref() {
+            local ref="$1"
+            [[ "$ref" == refs/tags/v* ]] || return 1
+            is_release_tag "${ref#refs/tags/}"
+          }
+
+          RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+          SOURCE_REF="$DISPATCH_SOURCE_REF"
+
+          is_release_tag "$RELEASE_TAG" || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          validated_source_ref="$SOURCE_REF"
+          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif is_release_tag "$SOURCE_REF" || is_release_tag_ref "$SOURCE_REF"; then
+            source_tag="${SOURCE_REF#refs/tags/}"
+            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
+            validated_source_ref="refs/tags/$source_tag"
+          else
+            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
+          fi
+
+          VERSION="${RELEASE_TAG#v}"
+          is_release_version "$VERSION" || fail "release_tag contains an unsupported SemVer version."
+          npm_dist_tag="latest"
+          if [[ "$VERSION" == *-* ]]; then
+            npm_dist_tag="${VERSION#*-}"
+            npm_dist_tag="${npm_dist_tag%%.*}"
+          fi
+
+          {
+            printf 'source_ref=%s\n' "$validated_source_ref"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+            printf 'npm_dist_tag=%s\n' "$npm_dist_tag"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
-      - name: Read version from tag
+      - name: Use validated release metadata
         id: version
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
-          RELEASE_TAG="${{ inputs.release_tag }}"
-          if [[ "$RELEASE_TAG" != v* ]]; then
-            echo "::error::Release tag '$RELEASE_TAG' must start with v."
-            exit 1
-          fi
-          VERSION="${RELEASE_TAG#v}"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          {
+            printf 'tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
       - name: Verify web package version matches tag
@@ -95,14 +203,56 @@ jobs:
       - name: Verify web package
         run: npm run prepack --prefix platforms/web
 
-      - name: Pack dry-run
+      - name: Smoke web package
+        run: npm run smoke --prefix platforms/web
+
+      - name: Pack web package
+        id: pack
         working-directory: platforms/web
-        run: npm pack --dry-run
+        run: |
+          set -euo pipefail
+          package_dir="$RUNNER_TEMP/npm-package"
+          mkdir -p "$package_dir"
+          npm pack --json --pack-destination "$package_dir" | tee "$RUNNER_TEMP/npm-pack.json"
+          package_file="$(node -e '
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const pack = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          if (!Array.isArray(pack) || pack.length !== 1) {
+            throw new Error("expected one packed npm tarball");
+          }
+          process.stdout.write(path.resolve(process.argv[2], pack[0].filename));
+          ' "$RUNNER_TEMP/npm-pack.json" "$package_dir")"
+          test -f "$package_file"
+          printf 'package_file=%s\n' "$package_file" >> "$GITHUB_OUTPUT"
+
+      - name: Upload web package artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: merman-web-npm-package
+          path: ${{ steps.pack.outputs.package_file }}
+
+  npm_version:
+    needs:
+      - validate-inputs
+      - build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      exists: ${{ steps.npm.outputs.exists }}
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
       - name: Check npm version
         id: npm
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           if npm view "@mermanjs/web@$VERSION" version >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
@@ -112,20 +262,51 @@ jobs:
             echo "@mermanjs/web $VERSION is not published yet"
           fi
 
-      - name: Publish to npm
-        if: ${{ inputs.publish_to_npm && steps.npm.outputs.exists != 'true' }}
-        working-directory: platforms/web
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if [[ "$VERSION" == *-* ]]; then
-            prerelease="${VERSION#*-}"
-            npm_tag="${prerelease%%.*}"
-            npm publish --access public --tag "$npm_tag"
-          else
-            npm publish --access public
-          fi
+  publish:
+    needs:
+      - validate-inputs
+      - build
+      - npm_version
+    if: ${{ inputs.publish_to_npm && needs.npm_version.outputs.exists != 'true' }}
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
+      - name: Download web package artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: merman-web-npm-package
+          path: target/npm-package
+
+      - name: Publish to npm
+        env:
+          NPM_DIST_TAG: ${{ needs.validate-inputs.outputs.npm_dist_tag }}
+        run: |
+          set -euo pipefail
+          package_file="$(find target/npm-package -maxdepth 1 -type f -name '*.tgz' -print -quit)"
+          test -n "$package_file"
+          npm publish "$package_file" --ignore-scripts --access public --tag "$NPM_DIST_TAG"
+
+  skip_existing:
+    needs:
+      - validate-inputs
+      - build
+      - npm_version
+    if: ${{ inputs.publish_to_npm && needs.npm_version.outputs.exists == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
       - name: Skip existing npm version
-        if: ${{ inputs.publish_to_npm && steps.npm.outputs.exists == 'true' }}
-        run: echo "@mermanjs/web ${{ steps.version.outputs.version }} is already published on npm; skipping."
+        env:
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: echo "@mermanjs/web $VERSION is already published on npm; skipping."

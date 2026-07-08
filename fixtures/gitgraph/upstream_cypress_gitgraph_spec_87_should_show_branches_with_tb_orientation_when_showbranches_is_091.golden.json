@@ -69,6 +69,7 @@
     "direction": "TB",
     "accTitle": null,
     "accDescr": null,
+    "warningFacts": [],
     "warnings": []
   }
 }

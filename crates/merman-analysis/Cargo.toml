@@ -1,0 +1,28 @@
+[package]
+name = "merman-analysis"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Diagnostics-first analysis contracts and source mapping for Merman."
+documentation = "https://docs.rs/merman-analysis"
+readme = "README.md"
+keywords = ["mermaid", "diagnostics", "lint", "lsp", "parser"]
+categories = ["parser-implementations", "development-tools"]
+
+[features]
+default = ["core-full", "core-host"]
+core-full = ["merman-core/full"]
+core-host = ["merman-core/host"]
+
+[dependencies]
+chrono.workspace = true
+json5.workspace = true
+merman-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true

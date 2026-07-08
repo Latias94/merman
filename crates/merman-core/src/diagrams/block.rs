@@ -1,5 +1,9 @@
+use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
 use crate::sanitize::sanitize_text;
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, hash_map::Entry};
 
@@ -9,6 +13,12 @@ pub struct BlockDiagramRenderModel {
     pub blocks_flat: Vec<BlockNodeRenderModel>,
     #[serde(default)]
     pub edges: Vec<BlockEdgeRenderModel>,
+    #[serde(
+        default,
+        rename = "warningFacts",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub warning_facts: Vec<DiagramWarningFact>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -147,7 +157,7 @@ struct BlockDb {
     edges: Vec<Block>,
     edge_count: HashMap<String, i64>,
     classes: HashMap<String, ClassDef>,
-    warnings: Vec<String>,
+    warning_facts: Vec<DiagramWarningFact>,
 }
 
 impl BlockDb {
@@ -159,7 +169,7 @@ impl BlockDb {
         self.edges.clear();
         self.edge_count.clear();
         self.classes.clear();
-        self.warnings.clear();
+        self.warning_facts.clear();
 
         let root = Block {
             id: self.root_id.clone(),
@@ -299,11 +309,14 @@ impl BlockDb {
                 && block.block_type != "column-setting"
                 && block.width_in_columns.is_some_and(|w| w > col)
             {
-                self.warnings.push(format!(
-                    "Block {} width {} exceeds configured column width {}",
-                    block.id,
-                    block.width_in_columns.unwrap_or(1),
-                    col
+                self.warning_facts.push(DiagramWarningFact::new(
+                    BLOCK_WIDTH_WARNING_RULE_ID,
+                    format!(
+                        "Block {} width {} exceeds configured column width {}",
+                        block.id,
+                        block.width_in_columns.unwrap_or(1),
+                        col
+                    ),
                 ));
             }
 
@@ -600,6 +613,7 @@ fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
             .map(block_to_render_node)
             .collect(),
         edges: db.edges.iter().map(block_to_render_edge).collect(),
+        warning_facts: db.warning_facts.clone(),
     }
 }
 
@@ -745,6 +759,732 @@ fn is_valid_dotted_link(rest: &str) -> bool {
     false
 }
 
+#[derive(Debug, Clone)]
+struct BlockSpannedText {
+    text: String,
+    span: SourceSpan,
+}
+
+fn push_block_entity(
+    facts: &mut EditorSemanticFacts,
+    text: BlockSpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::NodeIdentifier,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::new(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn push_block_outline(
+    facts: &mut EditorSemanticFacts,
+    text: BlockSpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_symbol(EditorSemanticSymbol::outline(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn push_block_payload(
+    facts: &mut EditorSemanticFacts,
+    text: BlockSpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if text.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        text.span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.text,
+        Some(detail.to_string()),
+        kind,
+        text.span,
+        text.span,
+    ));
+}
+
+fn push_block_id_list(
+    facts: &mut EditorSemanticFacts,
+    ids: BlockSpannedText,
+    detail: &str,
+    kind: EditorSemanticKind,
+) {
+    if ids.text.is_empty() {
+        return;
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::IdList,
+        ids.span,
+    ));
+
+    let mut cursor = 0usize;
+    while cursor <= ids.text.len() {
+        let next_comma = ids.text[cursor..]
+            .find(',')
+            .map(|offset| cursor + offset)
+            .unwrap_or(ids.text.len());
+        let raw = &ids.text[cursor..next_comma];
+        let leading = raw.len().saturating_sub(raw.trim_start().len());
+        let trailing = raw.trim_end().len();
+        if leading < trailing {
+            push_block_entity(
+                facts,
+                BlockSpannedText {
+                    text: ids.text[cursor + leading..cursor + trailing].to_string(),
+                    span: SourceSpan::new(
+                        ids.span.start + cursor + leading,
+                        ids.span.start + cursor + trailing,
+                    ),
+                },
+                detail,
+                kind,
+            );
+        }
+
+        if next_comma == ids.text.len() {
+            break;
+        }
+        cursor = next_comma + 1;
+    }
+}
+
+struct BlockFactParser<'a> {
+    input: &'a str,
+    pos: usize,
+}
+
+impl<'a> BlockFactParser<'a> {
+    fn new(input: &'a str) -> Self {
+        Self { input, pos: 0 }
+    }
+
+    fn is_eof(&self) -> bool {
+        self.pos >= self.input.len()
+    }
+
+    fn peek_char(&self) -> Option<char> {
+        self.input[self.pos..].chars().next()
+    }
+
+    fn starts_with(&self, value: &str) -> bool {
+        self.input[self.pos..].starts_with(value)
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        let ch = self.peek_char()?;
+        self.pos += ch.len_utf8();
+        Some(ch)
+    }
+
+    fn skip_ws_and_comments(&mut self) {
+        loop {
+            while self.peek_char().is_some_and(|ch| ch.is_whitespace()) {
+                self.bump();
+            }
+
+            if self.starts_with("%%") {
+                while let Some(ch) = self.bump() {
+                    if ch == '\n' {
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            break;
+        }
+    }
+
+    fn skip_line_ws(&mut self) {
+        while self.peek_char().is_some_and(|ch| ch == ' ' || ch == '\t') {
+            self.bump();
+        }
+    }
+
+    fn peek_keyword(&mut self, kw: &str) -> bool {
+        self.skip_ws_and_comments();
+        if !self.starts_with(kw) {
+            return false;
+        }
+        if kw.ends_with(':') {
+            return true;
+        }
+        let after = &self.input[self.pos + kw.len()..];
+        after
+            .chars()
+            .next()
+            .is_none_or(|ch| ch.is_whitespace() || ch == ':')
+    }
+
+    fn consume_keyword(&mut self, kw: &str) -> bool {
+        if !self.peek_keyword(kw) {
+            return false;
+        }
+        self.pos += kw.len();
+        true
+    }
+
+    fn consume_keyword_same_line(&mut self, kw: &str) -> bool {
+        self.skip_line_ws();
+        if self.starts_with("%%") || !self.starts_with(kw) {
+            return false;
+        }
+        if kw.ends_with(':') {
+            self.pos += kw.len();
+            return true;
+        }
+        let after = &self.input[self.pos + kw.len()..];
+        if after
+            .chars()
+            .next()
+            .is_none_or(|ch| ch.is_whitespace() || ch == ':')
+        {
+            self.pos += kw.len();
+            return true;
+        }
+        false
+    }
+
+    fn consume_exact(&mut self, value: &str) -> bool {
+        self.skip_ws_and_comments();
+        if !self.starts_with(value) {
+            return false;
+        }
+        self.pos += value.len();
+        true
+    }
+
+    fn parse_header(&mut self) -> std::result::Result<(), ()> {
+        self.skip_ws_and_comments();
+        if self.consume_keyword("block-beta") || self.consume_keyword("block") {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    fn parse_document(&mut self, facts: &mut EditorSemanticFacts) {
+        let mut depth = 0usize;
+        while !self.is_eof() {
+            self.skip_ws_and_comments();
+            if self.is_eof() {
+                break;
+            }
+
+            let start = self.pos;
+            if self.parse_statement(facts, &mut depth).is_err() {
+                facts.mark_recovered();
+                self.recover_to_next_statement(start);
+            }
+        }
+        if depth > 0 {
+            facts.mark_recovered();
+        }
+    }
+
+    fn parse_statement(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        depth: &mut usize,
+    ) -> std::result::Result<(), ()> {
+        if *depth > 0 && self.peek_keyword("end") {
+            self.consume_keyword("end");
+            *depth = depth.saturating_sub(1);
+            return Ok(());
+        }
+
+        if self.peek_keyword("block:") {
+            self.consume_keyword("block:");
+            self.parse_node_statement(facts, "block composite", EditorSemanticKind::Namespace)?;
+            *depth += 1;
+            return Ok(());
+        }
+
+        if self.peek_keyword("block-beta") || self.peek_keyword("block") {
+            if !(self.consume_keyword("block-beta") || self.consume_keyword("block")) {
+                return Err(());
+            }
+            *depth += 1;
+            return Ok(());
+        }
+
+        if self.peek_keyword("columns") {
+            self.consume_keyword("columns");
+            self.skip_ws_and_comments();
+            if self.consume_keyword("auto") {
+                return Ok(());
+            }
+            self.parse_int_payload(facts, "block columns")?;
+            return Ok(());
+        }
+
+        if self.peek_keyword("space") {
+            self.consume_keyword("space");
+            self.skip_ws_and_comments();
+            if self.consume_exact(":") {
+                self.parse_int_payload(facts, "block space width")?;
+            }
+            return Ok(());
+        }
+
+        if self.peek_keyword("classDef") {
+            self.parse_classdef_statement(facts)?;
+            return Ok(());
+        }
+
+        if self.peek_keyword("class") {
+            self.parse_apply_class_statement(facts)?;
+            return Ok(());
+        }
+
+        if self.peek_keyword("style") {
+            self.parse_style_statement(facts)?;
+            return Ok(());
+        }
+
+        self.parse_node_statement(facts, "block node", EditorSemanticKind::Object)
+    }
+
+    fn recover_to_next_statement(&mut self, fallback_start: usize) {
+        if self.pos <= fallback_start {
+            self.pos = fallback_start;
+            self.bump();
+        }
+        while let Some(ch) = self.peek_char() {
+            self.bump();
+            if ch == '\n' || ch == '\r' {
+                break;
+            }
+        }
+    }
+
+    fn parse_classdef_statement(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+    ) -> std::result::Result<(), ()> {
+        if !self.consume_keyword("classDef") {
+            return Err(());
+        }
+        facts.push_directive_prefix("classDef");
+        let id = self.parse_identifier_like()?;
+        push_block_outline(
+            facts,
+            id,
+            "block class definition",
+            EditorSemanticKind::Class,
+        );
+        if let Some(css) = self.take_rest_of_line_trimmed_span() {
+            push_block_payload(facts, css, "block class style", EditorSemanticKind::String);
+        }
+        Ok(())
+    }
+
+    fn parse_apply_class_statement(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+    ) -> std::result::Result<(), ()> {
+        if !self.consume_keyword("class") {
+            return Err(());
+        }
+        facts.push_directive_prefix("class");
+        let ids = self.parse_identifier_like()?;
+        push_block_id_list(facts, ids, "block class target", EditorSemanticKind::Object);
+        if let Some(style_class) = self.take_rest_of_line_trimmed_span() {
+            push_block_payload(
+                facts,
+                style_class,
+                "block class name",
+                EditorSemanticKind::Class,
+            );
+        }
+        Ok(())
+    }
+
+    fn parse_style_statement(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+    ) -> std::result::Result<(), ()> {
+        if !self.consume_keyword("style") {
+            return Err(());
+        }
+        facts.push_directive_prefix("style");
+        let ids = self.parse_identifier_like()?;
+        push_block_id_list(facts, ids, "block style target", EditorSemanticKind::Object);
+        if let Some(styles) = self.take_rest_of_line_trimmed_span() {
+            push_block_payload(facts, styles, "block style", EditorSemanticKind::String);
+        }
+        Ok(())
+    }
+
+    fn parse_node_statement(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        detail: &str,
+        kind: EditorSemanticKind,
+    ) -> std::result::Result<(), ()> {
+        self.parse_node(facts, detail, kind)?;
+
+        if self.consume_keyword_same_line("space") {
+            self.skip_line_ws();
+            if self.peek_char() == Some(':') {
+                self.bump();
+                self.skip_line_ws();
+                self.parse_int_payload(facts, "block space width")?;
+            }
+            self.skip_line_ws();
+            if self.starts_with("%%") || matches!(self.peek_char(), None | Some('\n' | '\r')) {
+                return Ok(());
+            }
+            self.parse_node(facts, "block node", EditorSemanticKind::Object)?;
+            return Ok(());
+        }
+
+        self.skip_ws_and_comments();
+        if self.parse_link(facts)?.is_some() {
+            self.parse_node(facts, "block edge endpoint", EditorSemanticKind::Object)?;
+            return Ok(());
+        }
+
+        self.skip_ws_and_comments();
+        if self.consume_exact(":") {
+            self.parse_int_payload(facts, "block width")?;
+        }
+
+        Ok(())
+    }
+
+    fn parse_link(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+    ) -> std::result::Result<Option<String>, ()> {
+        self.skip_ws_and_comments();
+        if self.is_eof() {
+            return Ok(None);
+        }
+
+        let snapshot = self.pos;
+        if self.try_read_link_start_marker().is_some() {
+            self.skip_ws_and_comments();
+            if self.peek_char() == Some('"') {
+                let label = self.parse_string_literal()?;
+                self.skip_ws_and_comments();
+                if let Some(edge_marker) = self.try_read_link_full_marker() {
+                    push_block_payload(
+                        facts,
+                        label,
+                        "block edge label",
+                        EditorSemanticKind::String,
+                    );
+                    return Ok(Some(edge_marker));
+                }
+                self.pos = snapshot;
+                return Ok(None);
+            }
+            self.pos = snapshot;
+        }
+
+        Ok(self.try_read_link_full_marker())
+    }
+
+    fn try_read_link_start_marker(&mut self) -> Option<String> {
+        self.skip_ws_and_comments();
+        let start = self.pos;
+        if self
+            .peek_char()
+            .is_some_and(|ch| matches!(ch, 'x' | 'o' | '<'))
+        {
+            self.bump()?;
+        }
+        if self.starts_with("--") || self.starts_with("==") || self.starts_with("-.") {
+            self.bump()?;
+            self.bump()?;
+            return Some(self.input[start..self.pos].to_string());
+        }
+        self.pos = start;
+        None
+    }
+
+    fn try_read_link_full_marker(&mut self) -> Option<String> {
+        self.skip_ws_and_comments();
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch.is_whitespace() {
+                break;
+            }
+            if !matches!(ch, '-' | '=' | '.' | 'x' | 'o' | '<' | '>' | '~') {
+                break;
+            }
+            self.bump();
+        }
+        if self.pos == start {
+            return None;
+        }
+        let token = &self.input[start..self.pos];
+        if !is_valid_link_token(token) {
+            self.pos = start;
+            return None;
+        }
+        Some(token.to_string())
+    }
+
+    fn parse_node(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        detail: &str,
+        kind: EditorSemanticKind,
+    ) -> std::result::Result<BlockSpannedText, ()> {
+        self.skip_ws_and_comments();
+        let id = self.parse_node_id()?;
+        push_block_entity(facts, id.clone(), detail, kind);
+
+        self.skip_ws_and_comments();
+        if self.starts_with("<[") {
+            self.pos += 2;
+            let label = self.parse_string_literal()?;
+            push_block_payload(
+                facts,
+                label,
+                "block arrow label",
+                EditorSemanticKind::String,
+            );
+            if !self.consume_exact("]>") || !self.consume_exact("(") {
+                return Err(());
+            }
+            self.parse_direction_list(facts)?;
+            if !self.consume_exact(")") {
+                return Err(());
+            }
+            return Ok(id);
+        }
+
+        if let Some(delims) = node_delims_at_start(&self.input[self.pos..]) {
+            self.pos += delims.start.len();
+            let label = self.parse_string_literal_or_md()?;
+            push_block_payload(facts, label, "block label", EditorSemanticKind::String);
+            for end in delims.ends {
+                if self.consume_exact(end) {
+                    return Ok(id);
+                }
+            }
+            return Err(());
+        }
+
+        Ok(id)
+    }
+
+    fn parse_direction_list(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+    ) -> std::result::Result<(), ()> {
+        loop {
+            let direction = self.parse_direction()?;
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::DirectionValue,
+                direction.span,
+            ));
+            push_block_payload(
+                facts,
+                direction,
+                "block arrow direction",
+                EditorSemanticKind::Property,
+            );
+            self.skip_ws_and_comments();
+            if self.consume_exact(",") {
+                continue;
+            }
+            break;
+        }
+        Ok(())
+    }
+
+    fn parse_direction(&mut self) -> std::result::Result<BlockSpannedText, ()> {
+        self.skip_ws_and_comments();
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch.is_whitespace() || ch == ',' || ch == ')' {
+                break;
+            }
+            self.bump();
+        }
+        if self.pos == start {
+            return Err(());
+        }
+        let text = self.input[start..self.pos].trim().to_string();
+        match text.as_str() {
+            "right" | "left" | "x" | "y" | "up" | "down" => Ok(BlockSpannedText {
+                text,
+                span: SourceSpan::new(start, self.pos),
+            }),
+            _ => Err(()),
+        }
+    }
+
+    fn parse_node_id(&mut self) -> std::result::Result<BlockSpannedText, ()> {
+        self.skip_ws_and_comments();
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch.is_whitespace()
+                || matches!(
+                    ch,
+                    '(' | '[' | '\n' | '-' | ')' | '{' | '}' | '<' | '>' | ':'
+                )
+            {
+                break;
+            }
+            self.bump();
+        }
+        if self.pos == start {
+            return Err(());
+        }
+        Ok(BlockSpannedText {
+            text: self.input[start..self.pos].to_string(),
+            span: SourceSpan::new(start, self.pos),
+        })
+    }
+
+    fn parse_identifier_like(&mut self) -> std::result::Result<BlockSpannedText, ()> {
+        self.skip_ws_and_comments();
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch.is_whitespace() || ch == '\n' || ch == '\r' {
+                break;
+            }
+            self.bump();
+        }
+        if self.pos == start {
+            return Err(());
+        }
+        Ok(BlockSpannedText {
+            text: self.input[start..self.pos].trim().to_string(),
+            span: SourceSpan::new(start, self.pos),
+        })
+    }
+
+    fn parse_int_payload(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+        detail: &str,
+    ) -> std::result::Result<(), ()> {
+        self.skip_ws_and_comments();
+        let start = self.pos;
+        while self.peek_char().is_some_and(|ch| ch.is_ascii_digit()) {
+            self.bump();
+        }
+        if self.pos == start {
+            return Err(());
+        }
+        push_block_payload(
+            facts,
+            BlockSpannedText {
+                text: self.input[start..self.pos].to_string(),
+                span: SourceSpan::new(start, self.pos),
+            },
+            detail,
+            EditorSemanticKind::Property,
+        );
+        Ok(())
+    }
+
+    fn parse_string_literal_or_md(&mut self) -> std::result::Result<BlockSpannedText, ()> {
+        self.skip_ws_and_comments();
+        if self.starts_with("\"`") {
+            self.pos += 2;
+            let start = self.pos;
+            while self.pos < self.input.len() && !self.input[self.pos..].starts_with("`\"") {
+                self.bump();
+            }
+            if self.pos >= self.input.len() {
+                return Err(());
+            }
+            let end = self.pos;
+            self.pos += 2;
+            return Ok(BlockSpannedText {
+                text: self.input[start..end].to_string(),
+                span: SourceSpan::new(start, end),
+            });
+        }
+        self.parse_string_literal()
+    }
+
+    fn parse_string_literal(&mut self) -> std::result::Result<BlockSpannedText, ()> {
+        self.skip_ws_and_comments();
+        if self.peek_char() != Some('"') {
+            return Err(());
+        }
+        self.bump();
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch == '"' {
+                break;
+            }
+            self.bump();
+        }
+        if self.peek_char() != Some('"') {
+            return Err(());
+        }
+        let end = self.pos;
+        self.bump();
+        Ok(BlockSpannedText {
+            text: self.input[start..end].to_string(),
+            span: SourceSpan::new(start, end),
+        })
+    }
+
+    fn take_rest_of_line_trimmed_span(&mut self) -> Option<BlockSpannedText> {
+        let start = self.pos;
+        while let Some(ch) = self.peek_char() {
+            if ch == '\n' || ch == '\r' {
+                break;
+            }
+            self.bump();
+        }
+        let raw = &self.input[start..self.pos];
+        let leading = raw.len().saturating_sub(raw.trim_start().len());
+        let trailing = raw.trim_end().len();
+        if leading >= trailing {
+            return None;
+        }
+        Some(BlockSpannedText {
+            text: raw[leading..trailing].to_string(),
+            span: SourceSpan::new(start + leading, start + trailing),
+        })
+    }
+}
+
+pub fn parse_block_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    let mut facts = EditorSemanticFacts::new();
+    let mut parser = BlockFactParser::new(code);
+    if parser.parse_header().is_err() {
+        return facts;
+    }
+    parser.parse_document(&mut facts);
+    facts
+}
+
 struct NodeDelims {
     start: &'static str,
     ends: &'static [&'static str],
@@ -880,10 +1620,10 @@ impl DocumentFrame {
 }
 
 fn block_document_frame_error() -> Error {
-    Error::DiagramParse {
-        diagram_type: "block".to_string(),
-        message: "internal block document frame stack is empty".to_string(),
-    }
+    Error::diagram_parse_fallback(
+        "block".to_string(),
+        "internal block document frame stack is empty".to_string(),
+    )
 }
 
 fn current_document_frame_mut(frames: &mut [DocumentFrame]) -> Result<&mut DocumentFrame> {
@@ -1022,10 +1762,10 @@ impl<'a> Parser<'a> {
         if self.consume_keyword("block") {
             return Ok(());
         }
-        Err(Error::DiagramParse {
-            diagram_type: "block".to_string(),
-            message: "expected block header".to_string(),
-        })
+        Err(Error::diagram_parse_fallback(
+            "block".to_string(),
+            "expected block header".to_string(),
+        ))
     }
 
     fn parse_document(&mut self, stop_on_end: bool) -> Result<Vec<Block>> {
@@ -1060,10 +1800,10 @@ impl<'a> Parser<'a> {
 
             if self.peek_keyword("block-beta") || self.peek_keyword("block") {
                 if !(self.consume_keyword("block-beta") || self.consume_keyword("block")) {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "block".to_string(),
-                        message: "expected block".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "block".to_string(),
+                        "expected block".to_string(),
+                    ));
                 }
                 frames.push(DocumentFrame::anonymous_block());
                 continue;
@@ -1123,10 +1863,10 @@ impl<'a> Parser<'a> {
     fn parse_columns_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("columns") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected columns".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected columns".to_string(),
+            ));
         }
         self.skip_ws_and_comments();
         let value = if self.consume_keyword("auto") {
@@ -1147,10 +1887,10 @@ impl<'a> Parser<'a> {
     fn parse_space_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("space") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected space".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected space".to_string(),
+            ));
         }
         let mut width = 1;
         self.skip_ws_and_comments();
@@ -1167,10 +1907,10 @@ impl<'a> Parser<'a> {
     fn parse_classdef_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("classDef") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected classDef".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected classDef".to_string(),
+            ));
         }
         self.skip_ws_and_comments();
         let id = self.parse_identifier_like()?;
@@ -1184,10 +1924,10 @@ impl<'a> Parser<'a> {
     fn parse_apply_class_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("class") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected class".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected class".to_string(),
+            ));
         }
         self.skip_ws_and_comments();
         let ids = self.parse_identifier_like()?;
@@ -1201,10 +1941,10 @@ impl<'a> Parser<'a> {
     fn parse_style_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
         if !self.consume_keyword("style") {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected style".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected style".to_string(),
+            ));
         }
         self.skip_ws_and_comments();
         let ids = self.parse_identifier_like()?;
@@ -1243,10 +1983,10 @@ impl<'a> Parser<'a> {
                     self.bump();
                 }
                 if self.pos == start {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "block".to_string(),
-                        message: "expected integer width after space:".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "block".to_string(),
+                        "expected integer width after space:".to_string(),
+                    ));
                 }
                 width = self.input[start..self.pos].parse::<i64>().unwrap_or(1);
             }
@@ -1392,24 +2132,24 @@ impl<'a> Parser<'a> {
             let label = self.parse_string_literal()?;
             self.skip_ws_and_comments();
             if !self.consume_exact("]>") {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "expected ]> in block arrow".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "expected ]> in block arrow".to_string(),
+                ));
             }
             self.skip_ws_and_comments();
             if !self.consume_exact("(") {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "expected '(' in block arrow".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "expected '(' in block arrow".to_string(),
+                ));
             }
             let dirs = self.parse_direction_list()?;
             if !self.consume_exact(")") {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "expected ')' in block arrow".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "expected ')' in block arrow".to_string(),
+                ));
             }
 
             b.label = Some(label);
@@ -1435,17 +2175,17 @@ impl<'a> Parser<'a> {
             let end_delim = match matched_end {
                 Some(e) => e,
                 None => {
-                    return Err(Error::DiagramParse {
-                        diagram_type: "block".to_string(),
-                        message: "unterminated node delimiter".to_string(),
-                    });
+                    return Err(Error::diagram_parse_fallback(
+                        "block".to_string(),
+                        "unterminated node delimiter".to_string(),
+                    ));
                 }
             };
             if end_delim.is_empty() {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "unterminated node delimiter".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "unterminated node delimiter".to_string(),
+                ));
             }
 
             let type_str = format!("{start_delim}{end_delim}");
@@ -1483,18 +2223,18 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected direction".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected direction".to_string(),
+            ));
         }
         let dir = self.input[start..self.pos].trim().to_string();
         match dir.as_str() {
             "right" | "left" | "x" | "y" | "up" | "down" => Ok(dir),
-            _ => Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: format!("invalid direction: {dir}"),
-            }),
+            _ => Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                format!("invalid direction: {dir}"),
+            )),
         }
     }
 
@@ -1513,10 +2253,10 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected node id".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected node id".to_string(),
+            ));
         }
         Ok(self.input[start..self.pos].to_string())
     }
@@ -1531,10 +2271,10 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected identifier".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected identifier".to_string(),
+            ));
         }
         Ok(self.input[start..self.pos].trim().to_string())
     }
@@ -1546,17 +2286,14 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.pos == start {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected integer".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected integer".to_string(),
+            ));
         }
         self.input[start..self.pos]
             .parse::<i64>()
-            .map_err(|e| Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: e.to_string(),
-            })
+            .map_err(|e| Error::diagram_parse_fallback("block".to_string(), e.to_string()))
     }
 
     fn parse_string_literal_or_md(&mut self) -> Result<String> {
@@ -1568,10 +2305,10 @@ impl<'a> Parser<'a> {
                 self.bump();
             }
             if self.pos >= self.input.len() {
-                return Err(Error::DiagramParse {
-                    diagram_type: "block".to_string(),
-                    message: "unterminated markdown string".to_string(),
-                });
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "unterminated markdown string".to_string(),
+                ));
             }
             let inner = self.input[start..self.pos].to_string();
             self.pos += 2;
@@ -1583,10 +2320,10 @@ impl<'a> Parser<'a> {
     fn parse_string_literal(&mut self) -> Result<String> {
         self.skip_ws_and_comments();
         if self.peek_char() != Some('"') {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "expected string literal".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected string literal".to_string(),
+            ));
         }
         self.bump();
         let start = self.pos;
@@ -1597,10 +2334,10 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.peek_char() != Some('"') {
-            return Err(Error::DiagramParse {
-                diagram_type: "block".to_string(),
-                message: "unterminated string literal".to_string(),
-            });
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "unterminated string literal".to_string(),
+            ));
         }
         let inner = self.input[start..self.pos].to_string();
         self.bump();
@@ -1610,6 +2347,7 @@ impl<'a> Parser<'a> {
 
 pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let db = parse_block_db(code, meta)?;
+    let warnings = legacy_warning_messages(&db.warning_facts);
 
     let blocks = db.blocks.iter().map(block_to_value).collect::<Vec<_>>();
     let edges = db.edges.iter().map(block_to_value).collect::<Vec<_>>();
@@ -1619,22 +2357,20 @@ pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
         .map(block_to_value)
         .collect::<Vec<_>>();
     let classes = class_def_map_to_value(&db.classes);
-    let warnings = db.warnings.into_iter().map(Value::String).collect();
-
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("blocks".to_string(), Value::Array(blocks));
     out.insert("edges".to_string(), Value::Array(edges));
     out.insert("blocksFlat".to_string(), Value::Array(blocks_flat));
     out.insert("classes".to_string(), classes);
-    out.insert("warnings".to_string(), Value::Array(warnings));
+    out.insert("warningFacts".to_string(), json!(db.warning_facts));
+    out.insert("warnings".to_string(), json!(warnings));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     Ok(Value::Object(out))
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2008,13 +2744,14 @@ mod tests {
     #[test]
     fn warns_when_block_width_exceeds_column_width() {
         let model = parse("block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n");
-        let warnings: Vec<&str> = model["warnings"]
+        let warnings: Vec<&str> = model["warningFacts"]
             .as_array()
             .unwrap()
             .iter()
-            .filter_map(|v| v.as_str())
+            .filter_map(|v| v.get("message").and_then(|message| message.as_str()))
             .collect();
         assert!(warnings.contains(&"Block B width 2 exceeds configured column width 1"));
+        assert_eq!(model["warnings"], json!(warnings));
     }
 
     #[test]

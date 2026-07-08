@@ -187,6 +187,7 @@ merman-cli render path/to/diagram.mmd --out out.svg
 merman-cli render --format png --out out.png path/to/diagram.mmd
 merman-cli render --format jpg --out out.jpg path/to/diagram.mmd
 merman-cli render --format pdf --out out.pdf path/to/diagram.mmd
+merman-cli lint-rules --format json --pretty
 merman-cli completion bash
 ```
 
@@ -194,6 +195,43 @@ merman-cli completion bash
 
 `render` writes SVG to stdout by default. Use `--out` for files, `--format ascii|unicode` for
 terminal text, and `--format png|jpg|pdf` for raster or PDF export.
+
+### Lint
+
+`lint` analyzes Mermaid source and emits canonical diagnostics JSON by default:
+
+```sh
+merman-cli lint path/to/diagram.mmd
+merman-cli lint --markdown path/to/README.md
+printf "flowchart TD\nA -->\n" | merman-cli lint --format text -
+printf "```mermaid\nflowchart TD\nA -->\n```" | \
+  merman-cli lint --markdown --stdin-file-name notes.md --format text -
+```
+
+Use `--format text` for a compact human-readable summary or `--format json` for machine
+consumers. Markdown and MDX input files are scanned for Mermaid fences, and `--stdin-file-name`
+provides a stable display path when linting from stdin.
+
+The default lint profile is `core`, which reports syntax, compatibility, resource, and internal
+diagnostics without enabling Merman authoring recommendations. Use `--lint-profile recommended` or
+`--enable-rule <RULE_ID>` to opt into authoring hints such as
+`merman.authoring.config.prefer_init_directive`,
+`merman.authoring.config.prefer_frontmatter_config`, and
+`merman.authoring.flowchart.explicit_direction`.
+
+`lint-rules` lists the governed rule catalog used by the analyzer:
+
+```sh
+merman-cli lint-rules
+merman-cli lint-rules --format json --pretty
+merman-cli lint-rules --configurable --format json
+```
+
+JSON output is a versioned response object with `{ "version": 1, "rules": [...] }`. Each rule
+exposes its id, evidence references, default severity, profile, origin, configurability, and
+fixability so CLI, editor, and LSP integrations can present the same rule facts. The `origin` field
+is intentional: Mermaid syntax and compatibility rules are separated from Merman authoring
+recommendations, and the default `core` profile does not enable Merman authoring rules.
 
 ## Common Options
 

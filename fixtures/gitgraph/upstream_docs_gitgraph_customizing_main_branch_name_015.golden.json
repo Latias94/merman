@@ -188,6 +188,12 @@
     "direction": "LR",
     "accTitle": null,
     "accDescr": null,
+    "warningFacts": [
+      {
+        "ruleId": "merman.git_graph.duplicate_commit_id",
+        "message": "Commit ID Boston already exists"
+      }
+    ],
     "warnings": [
       "Commit ID Boston already exists"
     ]

@@ -1,0 +1,4 @@
+{
+  "merman.languageIntelligence.enabled": true,
+  "merman.server.path": "/definitely-missing-merman-lsp-for-extension-host-smoke"
+}

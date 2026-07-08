@@ -100,6 +100,12 @@
       }
     ],
     "classes": {},
+    "warningFacts": [
+      {
+        "ruleId": "merman.block.width_exceeds_columns",
+        "message": "Block overflow width 3 exceeds configured column width 2"
+      }
+    ],
     "warnings": [
       "Block overflow width 3 exceeds configured column width 2"
     ]

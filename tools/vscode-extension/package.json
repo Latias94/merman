@@ -1,0 +1,591 @@
+{
+  "name": "merman-vscode",
+  "displayName": "Merman",
+  "description": "Local Mermaid authoring, diagnostics, preview, and export powered by Merman.",
+  "version": "0.8.0",
+  "publisher": "latias94",
+  "preview": true,
+  "license": "MIT OR Apache-2.0",
+  "homepage": "https://github.com/Latias94/merman#readme",
+  "bugs": {
+    "url": "https://github.com/Latias94/merman/issues"
+  },
+  "qna": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Latias94/merman.git"
+  },
+  "engines": {
+    "vscode": "^1.121.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "mermaid",
+    "diagram",
+    "preview",
+    "lsp",
+    "diagnostics",
+    "export",
+    "markdown",
+    "mdx"
+  ],
+  "galleryBanner": {
+    "color": "#0B3D3A",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onLanguage:mermaid",
+    "onLanguage:markdown",
+    "onLanguage:mdx",
+    "onCommand:merman.restartLanguageServer",
+    "onCommand:merman.openPreview",
+    "onCommand:merman.togglePreviewLock",
+    "onCommand:merman.refreshPreview",
+    "onCommand:merman.showPreviewSource",
+    "onCommand:merman.export",
+    "onCommand:merman.exportSvg",
+    "onCommand:merman.exportPng",
+    "onCommand:merman.copySvg",
+    "onCommand:merman.copyPng",
+    "onCommand:merman.showRuleCatalog",
+    "onCommand:merman.showConfigSchema",
+    "workspaceContains:**/*.mmd",
+    "workspaceContains:**/*.mermaid"
+  ],
+  "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Preview, export, and packaged language intelligence are available in Restricted Mode. Custom executable paths, custom launch arguments, and Cargo-run development settings require Workspace Trust."
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "mermaid",
+        "aliases": [
+          "Mermaid",
+          "mermaid"
+        ],
+        "extensions": [
+          ".mmd",
+          ".mermaid"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "mermaid",
+        "path": "./snippets/mermaid.json"
+      }
+    ],
+    "configuration": [
+      {
+        "title": "Merman: Runtime",
+        "properties": {
+          "merman.server.path": {
+            "type": "string",
+            "default": "",
+            "restricted": true,
+            "markdownDescription": "Optional absolute path to a prebuilt `merman-lsp` executable. Leave empty to use the packaged binary. Configured executables require workspace trust.",
+            "scope": "machine-overridable",
+            "order": 10
+          },
+          "merman.server.args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "restricted": true,
+            "markdownDescription": "Additional arguments appended when launching `merman-lsp` directly. Requires Workspace Trust because this is a restricted setting.",
+            "scope": "machine-overridable",
+            "order": 20
+          },
+          "merman.cli.path": {
+            "type": "string",
+            "default": "",
+            "restricted": true,
+            "markdownDescription": "Optional absolute path to a prebuilt `merman-cli` executable used for local preview and export. Leave empty to use the packaged binary. Configured executables require workspace trust.",
+            "scope": "machine-overridable",
+            "order": 30
+          }
+        }
+      },
+      {
+        "title": "Merman: Language Intelligence",
+        "properties": {
+          "merman.languageIntelligence.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Start the local `merman-lsp` language server for completion, hover, symbols, references, rename, semantic tokens, diagnostics, and quick fixes. Disable this when using the extension only for preview and export.",
+            "scope": "resource",
+            "order": 10
+          },
+          "merman.diagnostics.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Publish Merman diagnostics to VS Code Problems. Disable this when another Mermaid or Markdown linter owns diagnostics; Merman completion, hover, symbols, references, rename, semantic tokens, preview, and export remain available.",
+            "scope": "resource",
+            "order": 20
+          },
+          "merman.trace.server": {
+            "type": "string",
+            "enum": [
+              "off",
+              "messages",
+              "verbose"
+            ],
+            "default": "off",
+            "markdownDescription": "LSP trace level forwarded to the VS Code language client.",
+            "scope": "window",
+            "enumDescriptions": [
+              "Disable LSP tracing.",
+              "Trace LSP protocol messages.",
+              "Trace LSP protocol messages with verbose payload detail."
+            ],
+            "order": 30
+          }
+        }
+      },
+      {
+        "title": "Merman: Analysis",
+        "properties": {
+          "merman.analysis.fixed_today": {
+            "type": "string",
+            "default": "",
+            "pattern": "^$|^\\d{4}-\\d{2}-\\d{2}$",
+            "markdownDescription": "Optional deterministic local date forwarded to `merman-lsp` analysis options in `YYYY-MM-DD` format.",
+            "scope": "resource",
+            "order": 10
+          },
+          "merman.analysis.fixed_local_offset_minutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null,
+            "minimum": -1439,
+            "maximum": 1439,
+            "markdownDescription": "Optional deterministic local UTC offset in minutes forwarded to `merman-lsp` analysis options.",
+            "scope": "resource",
+            "order": 20
+          },
+          "merman.analysis.site_config": {
+            "type": "object",
+            "default": {},
+            "markdownDescription": "Optional Mermaid site configuration object forwarded to `merman-lsp` analysis options.",
+            "scope": "resource",
+            "order": 30
+          },
+          "merman.analysis.parse.suppress_errors": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Forward lenient parse mode to `merman-lsp`.",
+            "scope": "resource",
+            "order": 40
+          },
+          "merman.analysis.resources.max_source_bytes": {
+            "type": "integer",
+            "default": 0,
+            "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `0` uses the server default.",
+            "scope": "resource",
+            "minimum": 0,
+            "order": 50
+          },
+          "merman.analysis.lint.profile": {
+            "type": "string",
+            "enum": [
+              "",
+              "core",
+              "recommended",
+              "strict"
+            ],
+            "default": "core",
+            "markdownDescription": "Lint profile forwarded to `merman-lsp`.",
+            "scope": "resource",
+            "enumDescriptions": [
+              "Unset the profile and rely only on explicit rule configuration.",
+              "Core diagnostics only.",
+              "Opt-in recommended authoring diagnostics.",
+              "Strict authoring diagnostics."
+            ],
+            "order": 60
+          },
+          "merman.analysis.lint.enable_rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "markdownDescription": "Additional lint rules enabled in `merman-lsp`.",
+            "scope": "resource",
+            "order": 70
+          },
+          "merman.analysis.lint.disable_rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "markdownDescription": "Lint rules disabled in `merman-lsp`.",
+            "scope": "resource",
+            "order": 80
+          },
+          "merman.analysis.lint.rule_severities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "rule_id",
+                "severity"
+              ],
+              "properties": {
+                "rule_id": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "error",
+                    "warning",
+                    "info",
+                    "hint"
+                  ]
+                }
+              }
+            },
+            "default": [],
+            "markdownDescription": "Per-rule severity overrides forwarded to `merman-lsp`.",
+            "scope": "resource",
+            "order": 90
+          }
+        }
+      },
+      {
+        "title": "Merman: Preview and Export",
+        "properties": {
+          "merman.sourceActions.enabled": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Show Merman source-scoped CodeLens actions above `.mmd` files and Markdown/MDX Mermaid fences. Disable this when another preview/export extension owns those editor actions.",
+            "scope": "resource",
+            "order": 10
+          },
+          "merman.preview.diagramTheme": {
+            "type": "string",
+            "enum": [
+              "source",
+              "default",
+              "dark",
+              "forest",
+              "neutral",
+              "base"
+            ],
+            "enumDescriptions": [
+              "Use the Mermaid source or default render theme selected by Merman.",
+              "Use Mermaid default theme.",
+              "Use Mermaid dark theme.",
+              "Use Mermaid forest theme.",
+              "Use Mermaid neutral theme.",
+              "Use Mermaid base theme."
+            ],
+            "default": "source",
+            "scope": "resource",
+            "order": 20,
+            "markdownDescription": "Default diagram theme for new Merman preview panels. The preview toolbar can override this for the current panel session."
+          },
+          "merman.preview.displayMode": {
+            "type": "string",
+            "enum": [
+              "svg",
+              "ascii",
+              "unicode"
+            ],
+            "enumDescriptions": [
+              "Render SVG preview output.",
+              "Render ASCII text preview output.",
+              "Render Unicode text preview output."
+            ],
+            "default": "svg",
+            "scope": "resource",
+            "order": 30,
+            "markdownDescription": "Default display mode for new Merman preview panels. The preview toolbar can override this for the current panel session."
+          },
+          "merman.preview.background": {
+            "type": "string",
+            "enum": [
+              "paper",
+              "transparent",
+              "dark"
+            ],
+            "enumDescriptions": [
+              "Use the default paper preview background.",
+              "Use a transparent preview background.",
+              "Use a dark preview background."
+            ],
+            "default": "paper",
+            "scope": "resource",
+            "order": 40,
+            "markdownDescription": "Default background for new Merman preview panels and exported preview renders. The preview toolbar can override this for the current panel session."
+          }
+        }
+      },
+      {
+        "title": "Merman: Development",
+        "properties": {
+          "merman.server.useCargoRun": {
+            "type": "boolean",
+            "default": false,
+            "restricted": true,
+            "markdownDescription": "Development only: launch `merman-lsp` through `cargo run -p merman-lsp --` instead of the packaged binary. Requires workspace trust.",
+            "scope": "machine-overridable",
+            "order": 10
+          },
+          "merman.server.cargoArgs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "restricted": true,
+            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-lsp` through Cargo. Requires Workspace Trust because this is a restricted setting.",
+            "scope": "machine-overridable",
+            "order": 20
+          },
+          "merman.cli.useCargoRun": {
+            "type": "boolean",
+            "default": false,
+            "restricted": true,
+            "markdownDescription": "Development only: launch `merman-cli` through `cargo run -p merman-cli --` instead of the packaged binary. Requires workspace trust.",
+            "scope": "machine-overridable",
+            "order": 30
+          },
+          "merman.cli.cargoArgs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "restricted": true,
+            "markdownDescription": "Development only: extra Cargo arguments inserted before `--` when launching `merman-cli` through Cargo. Requires Workspace Trust because this is a restricted setting.",
+            "scope": "machine-overridable",
+            "order": 40
+          }
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "merman.restartLanguageServer",
+        "title": "Merman: Restart Language Server"
+      },
+      {
+        "command": "merman.openPreview",
+        "title": "Merman: Open Preview",
+        "category": "Merman",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "merman.togglePreviewLock",
+        "title": "Merman: Toggle Preview Lock",
+        "category": "Merman",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "merman.refreshPreview",
+        "title": "Merman: Refresh Preview",
+        "category": "Merman",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "merman.showPreviewSource",
+        "title": "Merman: Show Preview Source",
+        "category": "Merman",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "merman.export",
+        "title": "Merman: Export...",
+        "category": "Merman",
+        "icon": "$(export)"
+      },
+      {
+        "command": "merman.exportSvg",
+        "title": "Merman: Export SVG",
+        "category": "Merman",
+        "icon": "$(export)"
+      },
+      {
+        "command": "merman.exportPng",
+        "title": "Merman: Export PNG",
+        "category": "Merman",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "merman.copySvg",
+        "title": "Merman: Copy SVG",
+        "category": "Merman",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "merman.copyPng",
+        "title": "Merman: Copy PNG",
+        "category": "Merman",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "merman.showRuleCatalog",
+        "title": "Merman: Show Rule Catalog",
+        "category": "Merman"
+      },
+      {
+        "command": "merman.showConfigSchema",
+        "title": "Merman: Show Config Schema",
+        "category": "Merman"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "merman.openPreview",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@10"
+        },
+        {
+          "command": "merman.export",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@11"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@12"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "merman.openPreview",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@10"
+        },
+        {
+          "command": "merman.export",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@11"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@12"
+        },
+        {
+          "command": "merman.exportPng",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@13"
+        },
+        {
+          "command": "merman.copySvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx",
+          "group": "navigation@14"
+        },
+        {
+          "command": "merman.copyPng",
+          "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable",
+          "group": "navigation@15"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "merman.openPreview",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
+          "group": "navigation@10"
+        },
+        {
+          "command": "merman.export",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
+          "group": "navigation@11"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
+          "group": "navigation@12"
+        },
+        {
+          "command": "merman.exportPng",
+          "when": "resourceExtname == .mmd || resourceExtname == .mermaid || resourceExtname == .md || resourceExtname == .markdown || resourceExtname == .mdx",
+          "group": "navigation@13"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "merman.openPreview",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.refreshPreview"
+        },
+        {
+          "command": "merman.showPreviewSource"
+        },
+        {
+          "command": "merman.export",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.exportSvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.exportPng",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.copySvg",
+          "when": "resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx"
+        },
+        {
+          "command": "merman.copyPng",
+          "when": "(resourceLangId == mermaid || resourceLangId == markdown || resourceLangId == mdx) && merman.pngClipboardAvailable"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "npm run clean && npm run compile && npm run bundle",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "compile": "tsc -p .",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node22 --external:vscode --outfile=dist/extension.js --sourcemap --sources-content=false",
+    "check": "tsc -p . --noEmit",
+    "test": "npm run build && node --test --test-concurrency=1 dist/test/**/*.test.js scripts/*.test.mjs",
+    "test:extension-host": "npm run build && node scripts/run-extension-host-smoke.mjs",
+    "prepare:binaries": "node scripts/prepare-binaries.mjs",
+    "package": "npm run build && node scripts/package-vsix.mjs",
+    "verify:vsix": "node scripts/verify-vsix.mjs",
+    "smoke:vsix": "node scripts/smoke-vsix.mjs"
+  },
+  "dependencies": {
+    "vscode-languageclient": "10.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.0.1",
+    "@types/vscode": "1.120.0",
+    "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "3.9.2",
+    "esbuild": "0.28.1",
+    "typescript": "6.0.3"
+  },
+  "allowScripts": {
+    "@vscode/vsce-sign@2.0.9": true,
+    "esbuild@0.28.1": true,
+    "keytar@7.9.0": true
+  }
+}

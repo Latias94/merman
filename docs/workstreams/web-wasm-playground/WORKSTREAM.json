@@ -2,8 +2,8 @@
   "schema_version": 1,
   "slug": "web-wasm-playground",
   "title": "Web WASM Playground",
-  "status": "active",
-  "updated": "2026-06-01",
+  "status": "closed",
+  "updated": "2026-06-29",
   "scope_kind": "execution",
   "problem": "Merman has native bindings and a reference playground, but no first-class browser WASM/TypeScript surface or GitHub Pages live editor.",
   "authoritative_docs": [
@@ -33,8 +33,13 @@
     "cargo check -p merman-wasm --target wasm32-unknown-unknown",
     "wasm-pack build crates/merman-wasm --target web --out-dir ../../target/merman-wasm-pkg",
     "npm run build --prefix platforms/web",
+    "npm run smoke --prefix platforms/web",
+    "npm run prepack --prefix platforms/web",
     "npm run build --prefix playground",
-    "npm run verify:dist --prefix playground"
+    "npm run verify:dist --prefix playground",
+    "cargo test --no-run -p merman-editor-core -p merman-analysis -p merman-lsp -p merman-wasm",
+    "cargo fmt --all --check",
+    "git diff --check"
   ],
   "evidence": [
     "docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md"
@@ -55,7 +60,8 @@
   ],
   "lane_slug": null,
   "continue_policy": {
-    "default_action": "continue",
-    "notes": "Continue from the smallest WASM proof through the TypeScript package and playground only while the binding contract remains JSON-based and browser-only."
+    "default_action": "closed",
+    "next_task": null,
+    "notes": "Lane closed after the browser WASM crate, TypeScript package, playground integration, Pages workflow, and editor-core browser API surface landed. Split npm publishing, raster/PDF export, and broader browser QA into follow-on workstreams when they become concrete."
   }
 }

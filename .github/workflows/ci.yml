@@ -7,11 +7,51 @@ on:
       - master
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  hygiene:
+    name: hygiene
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+
+      - name: Verify release crate order docs
+        run: python3 scripts/verify-release-crate-order.py
+
+      - name: Test release and workflow hygiene scripts
+        run: python3 -m unittest scripts/test_verify_release_crate_order.py scripts/test_workflow_path_filters.py scripts/test_release_workflow_security.py scripts/test_ci_workflow_android_emulator.py scripts/test_verify_platform_bindings.py scripts/test_publish.py
+
+      - name: Check whitespace (pull request)
+        if: github.event_name == 'pull_request'
+        run: git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.sha }}"
+
+      - name: Check whitespace (push)
+        if: github.event_name != 'pull_request'
+        run: |
+          base="${{ github.event.before }}"
+          if [[ "$base" =~ ^0+$ ]]; then
+            git show --check --format= --no-renames HEAD
+          else
+            git diff --check "$base...${{ github.sha }}"
+          fi
+
   build-test:
     name: build-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -32,6 +72,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -65,6 +107,16 @@ jobs:
         if: matrix.parity
         run: cargo nextest run -p merman --features render --cargo-quiet
 
+      - name: Test C FFI no-render validation smoke
+        if: matrix.parity
+        run: cargo nextest run -p merman-ffi --no-default-features --features core-full,core-host --test c_consumer_smoke --cargo-quiet
+
+      - name: Check UniFFI no-render feature sets
+        if: matrix.parity
+        run: |
+          cargo check -p merman-uniffi --no-default-features
+          cargo check -p merman-uniffi --no-default-features --features ascii
+
       - name: Build (release)
         run: cargo build --release --locked -p merman-cli
 
@@ -91,6 +143,8 @@ jobs:
       TYPST_CLI_VERSION: "0.15.0"
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -154,6 +208,8 @@ jobs:
       TYPST_COMPAT_CLI_VERSION: "0.15.0"
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -209,6 +265,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Check Python platform scripts
         run: |
@@ -235,6 +293,8 @@ jobs:
       KOTLIN_VERSION: "1.9.24"
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -279,11 +339,82 @@ jobs:
       - name: Verify platform bindings
         run: python3 scripts/verify-platform-bindings.py
 
+  android-instrumentation:
+    name: android-instrumentation
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      ANDROID_NDK_VERSION: "26.3.11579264"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: Setup JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;${ANDROID_NDK_VERSION}" "platforms;android-35"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Enable KVM access
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "::error::/dev/kvm is unavailable; Android emulator instrumentation requires hardware acceleration on Linux."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
+      - name: Run Android instrumentation smoke
+        uses: reactivecircus/android-emulator-runner@v2.37.0
+        with:
+          # The JNI smoke only needs minSdk coverage; the default image boots faster and flakes less.
+          api-level: 29
+          arch: x86_64
+          target: default
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          disable-linux-hw-accel: false
+          script: python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path gradle
+
   python-uniffi-wheel:
     name: python-uniffi-wheel
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -307,6 +438,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -331,6 +464,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -363,6 +498,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0

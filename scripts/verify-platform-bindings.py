@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import platform
 import shutil
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 
@@ -17,6 +19,16 @@ FLUTTER_ROOT = REPO_ROOT / "platforms" / "flutter"
 ANDROID_ROOT = REPO_ROOT / "platforms" / "android"
 APPLE_ROOT = REPO_ROOT / "platforms" / "apple"
 ANDROID_JAR_OUT = REPO_ROOT / "target" / "platforms" / "android" / "merman-android.jar"
+ANDROID_RELEASE_AAR = ANDROID_ROOT / "build" / "outputs" / "aar" / "merman-android-release.aar"
+ANDROID_TEST_RESULTS_ROOT = ANDROID_ROOT / "build" / "outputs" / "androidTest-results"
+ANDROID_WRAPPER_CLASSES = [
+    "io/merman/MermanEngine.class",
+    "io/merman/MermanReusableEngine.class",
+    "io/merman/MermanException.class",
+    "io/merman/MermanTextMeasureRequest.class",
+    "io/merman/MermanTextMeasureResult.class",
+    "io/merman/MermanTextMeasurer.class",
+]
 FLUTTER_JAR_OUT = REPO_ROOT / "target" / "platforms" / "flutter" / "merman-flutter-android-plugin.jar"
 
 
@@ -25,6 +37,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-android-slices", action="store_true")
     parser.add_argument("--run-flutter-android-smoke", action="store_true")
     parser.add_argument("--run-android-gradle-build", action="store_true")
+    parser.add_argument("--run-android-instrumentation-smoke", action="store_true")
+    parser.add_argument(
+        "--only-android-instrumentation-smoke",
+        action="store_true",
+        help="Build missing Android native slices and run only the Android instrumentation smoke.",
+    )
     parser.add_argument("--gradle-path", default=os.environ.get("MERMAN_GRADLE"))
     parser.add_argument(
         "--build-apple-xcframework",
@@ -69,6 +87,9 @@ def bash_path(path: Path) -> str:
 
 def resolve_gradle_command(path: str | None) -> str:
     if path:
+        command = shutil.which(path)
+        if command:
+            return command
         resolved = Path(path).expanduser().resolve()
         if resolved.is_dir():
             gradle_bat = resolved / "gradle.bat"
@@ -86,6 +107,78 @@ def resolve_gradle_command(path: str | None) -> str:
     if not gradle:
         raise RuntimeError("gradle not found. Pass --gradle-path or set MERMAN_GRADLE.")
     return gradle
+
+
+def android_jni_libs_ready() -> bool:
+    return all(
+        path.exists()
+        for path in [
+            ANDROID_ROOT / "src" / "main" / "jniLibs" / "arm64-v8a" / "libmerman_ffi.so",
+            ANDROID_ROOT / "src" / "main" / "jniLibs" / "x86_64" / "libmerman_ffi.so",
+        ]
+    )
+
+
+def ensure_android_native_slices() -> None:
+    if android_jni_libs_ready():
+        return
+    step("Android native slices")
+    run(
+        [
+            sys.executable,
+            str(ANDROID_ROOT / "build-android.py"),
+            "--targets",
+            "aarch64-linux-android",
+            "x86_64-linux-android",
+            "--profile",
+            "release",
+        ]
+    )
+
+
+def run_android_instrumentation_smoke(gradle_path: str | None) -> None:
+    ensure_android_native_slices()
+    gradle = resolve_gradle_command(gradle_path)
+    run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
+    assert_android_aar_contains_kotlin_wrappers()
+    run([gradle, "-p", str(ANDROID_ROOT), "connectedAndroidTest", "--stacktrace"])
+    assert_android_instrumentation_smoke_report()
+
+
+def assert_android_aar_contains_kotlin_wrappers(aar_path: Path = ANDROID_RELEASE_AAR) -> None:
+    if not aar_path.exists():
+        raise RuntimeError(f"Android release AAR not found: {aar_path}")
+
+    with zipfile.ZipFile(aar_path) as aar:
+        try:
+            classes_jar = aar.read("classes.jar")
+        except KeyError as error:
+            raise RuntimeError(f"Android release AAR is missing classes.jar: {aar_path}") from error
+
+    with zipfile.ZipFile(io.BytesIO(classes_jar)) as jar:
+        names = set(jar.namelist())
+
+    missing = [class_name for class_name in ANDROID_WRAPPER_CLASSES if class_name not in names]
+    if missing:
+        raise RuntimeError(
+            "Android release AAR is missing Kotlin wrapper classes: " + ", ".join(missing)
+        )
+
+
+def assert_android_instrumentation_smoke_report(
+    results_root: Path = ANDROID_TEST_RESULTS_ROOT,
+) -> None:
+    reports = list(results_root.rglob("*.xml")) if results_root.exists() else []
+    for report in reports:
+        text = report.read_text(encoding="utf-8", errors="ignore")
+        if (
+            "MermanInstrumentedSmokeTest" in text
+            and "runsPublicSmokeIncludingThrowingTextMeasurerFallback" in text
+        ):
+            return
+    raise RuntimeError(
+        "Android instrumentation output did not include MermanInstrumentedSmokeTest results."
+    )
 
 
 def host_dynamic_library() -> Path:
@@ -128,6 +221,13 @@ def main() -> int:
     args = parse_args()
 
     try:
+        if args.only_android_instrumentation_smoke:
+            step("Android instrumentation smoke")
+            run_android_instrumentation_smoke(args.gradle_path)
+            print()
+            print("Android instrumentation smoke completed.")
+            return 0
+
         step("Rust FFI host tests")
         run(["cargo", "nextest", "run", "-p", "merman-ffi"])
 
@@ -161,6 +261,7 @@ def main() -> int:
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanTextMeasurer.kt"),
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanEngine.kt"),
                 str(ANDROID_ROOT / "src" / "main" / "kotlin" / "io" / "merman" / "MermanReusableEngine.kt"),
+                str(ANDROID_ROOT / "examples" / "MermanSmoke.kt"),
                 "-d",
                 str(ANDROID_JAR_OUT),
             ]
@@ -185,7 +286,8 @@ def main() -> int:
         dart = require_command("dart")
         run([flutter, "pub", "get"], cwd=FLUTTER_ROOT)
         run([flutter, "analyze"], cwd=FLUTTER_ROOT)
-        run([dart, "format", "--set-exit-if-changed", "lib", "example"], cwd=FLUTTER_ROOT)
+        run([dart, "format", "--set-exit-if-changed", "lib", "example", "tool"], cwd=FLUTTER_ROOT)
+        run([dart, "run", "tool/callback_transaction_test.dart"], cwd=FLUTTER_ROOT)
 
         step("Flutter Android plugin Kotlin compile")
         flutter_jar = flutter_android_embedding_jar()
@@ -235,25 +337,16 @@ def main() -> int:
         run([dart, "run", "example/smoke.dart", str(host_dynamic_library())], cwd=FLUTTER_ROOT)
 
         if args.run_android_gradle_build:
-            arm64_lib = ANDROID_ROOT / "src" / "main" / "jniLibs" / "arm64-v8a" / "libmerman_ffi.so"
-            x64_lib = ANDROID_ROOT / "src" / "main" / "jniLibs" / "x86_64" / "libmerman_ffi.so"
-            if not arm64_lib.exists() or not x64_lib.exists():
-                step("Android native slices for Gradle")
-                run(
-                    [
-                        sys.executable,
-                        str(ANDROID_ROOT / "build-android.py"),
-                        "--targets",
-                        "aarch64-linux-android",
-                        "x86_64-linux-android",
-                        "--profile",
-                        "release",
-                    ]
-                )
+            ensure_android_native_slices()
 
             step("Android Gradle library assemble")
             gradle = resolve_gradle_command(args.gradle_path)
             run([gradle, "-p", str(ANDROID_ROOT), "assembleRelease", "--stacktrace"])
+            assert_android_aar_contains_kotlin_wrappers()
+
+        if args.run_android_instrumentation_smoke:
+            step("Android instrumentation smoke")
+            run_android_instrumentation_smoke(args.gradle_path)
 
         step("Apple Swift package scaffold checks")
         for path in [

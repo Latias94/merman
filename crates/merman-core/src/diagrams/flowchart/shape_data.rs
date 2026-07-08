@@ -173,6 +173,17 @@ fn is_valid_shape_11_12_2(shape: &str) -> bool {
     MERMAID_SHAPES_11_12_2.binary_search(&shape).is_ok()
 }
 
+pub(super) fn public_shape_names_11_12_2() -> impl Iterator<Item = &'static str> {
+    MERMAID_SHAPES_11_12_2
+        .iter()
+        .copied()
+        .filter(|shape| is_public_shape_name(shape))
+}
+
+fn is_public_shape_name(shape: &str) -> bool {
+    shape == shape.to_lowercase() && !shape.contains('_')
+}
+
 pub(super) fn value_to_string(v: &Value) -> Option<String> {
     crate::inline_config::value_to_string(v)
 }
@@ -226,6 +237,8 @@ pub(super) fn apply_shape_data_to_node(
                 if let Some(label) = value_to_string(v) {
                     provided_label = Some(label.clone());
                     node.label = Some(label);
+                    node.label_span = None;
+                    node.label_selection = None;
                 }
             }
             "labelType" => {
@@ -285,6 +298,8 @@ pub(super) fn apply_shape_data_to_node(
         if current_text == node.id {
             node.label = Some(String::new());
             node.label_type = TitleKind::Text;
+            node.label_span = None;
+            node.label_selection = None;
         }
     }
 

@@ -1,45 +1,9 @@
-use crate::MermaidConfig;
+use crate::{MermaidConfig, SourceSpan};
 
 use super::{
     NODE_TYPE_BANG, NODE_TYPE_CIRCLE, NODE_TYPE_CLOUD, NODE_TYPE_DEFAULT, NODE_TYPE_HEXAGON,
     NODE_TYPE_RECT, NODE_TYPE_ROUNDED_RECT,
 };
-
-pub(super) fn starts_with_case_insensitive(haystack: &str, needle: &str) -> bool {
-    if haystack.len() < needle.len() {
-        return false;
-    }
-    haystack
-        .as_bytes()
-        .iter()
-        .take(needle.len())
-        .copied()
-        .map(|b| b.to_ascii_lowercase())
-        .eq(needle
-            .as_bytes()
-            .iter()
-            .copied()
-            .map(|b| b.to_ascii_lowercase()))
-}
-
-pub(super) fn split_indent(line: &str) -> (usize, &str) {
-    let mut indent_chars = 0usize;
-    let mut byte_idx = line.len();
-    for (idx, ch) in line.char_indices() {
-        if ch.is_whitespace() {
-            indent_chars += 1;
-            continue;
-        }
-        byte_idx = idx;
-        break;
-    }
-    if indent_chars == 0 {
-        byte_idx = 0;
-    } else if byte_idx == line.len() {
-        byte_idx = line.len();
-    }
-    (indent_chars, &line[byte_idx..])
-}
 
 pub(super) fn strip_inline_comment(line: &str) -> &str {
     let mut in_quote = false;
@@ -80,9 +44,16 @@ pub(super) fn strip_inline_comment(line: &str) -> &str {
     line
 }
 
-pub(super) fn parse_node_spec(
-    input: &str,
-) -> std::result::Result<(String, String, i32, bool), String> {
+pub(super) struct NodeSpec {
+    pub id_raw: String,
+    pub descr_raw: String,
+    pub ty: i32,
+    pub descr_is_markdown: bool,
+    pub id_span: SourceSpan,
+    pub payload_span: Option<SourceSpan>,
+}
+
+pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, String> {
     let input = input.trim_end();
     if input.is_empty() {
         return Err("expected node".to_string());
@@ -95,14 +66,28 @@ pub(super) fn parse_node_spec(
         }
         let (descr, descr_is_markdown) = unquote_node_descr(inner);
         let ty = node_type_for(start, end);
-        return Ok((descr.clone(), descr, ty, descr_is_markdown));
+        return Ok(NodeSpec {
+            id_raw: descr.clone(),
+            descr_raw: descr,
+            ty,
+            descr_is_markdown,
+            id_span: SourceSpan::new(start.len(), input.len().saturating_sub(end.len())),
+            payload_span: None,
+        });
     }
 
     let (id_raw, rest) = split_node_id(input);
     let id_raw = id_raw.to_string();
     let rest = rest.trim_end();
     if rest.is_empty() {
-        return Ok((id_raw.clone(), id_raw, NODE_TYPE_DEFAULT, false));
+        return Ok(NodeSpec {
+            id_raw: id_raw.clone(),
+            descr_raw: id_raw,
+            ty: NODE_TYPE_DEFAULT,
+            descr_is_markdown: false,
+            id_span: SourceSpan::new(0, input.len()),
+            payload_span: None,
+        });
     }
 
     let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
@@ -116,7 +101,17 @@ pub(super) fn parse_node_spec(
 
     let (descr, descr_is_markdown) = unquote_node_descr(inner);
     let ty = node_type_for(start, end);
-    Ok((id_raw, descr, ty, descr_is_markdown))
+    let id_end = id_raw.len();
+    let payload_start = id_end + start.len();
+    let payload_end = input.len().saturating_sub(end.len());
+    Ok(NodeSpec {
+        id_raw,
+        descr_raw: descr,
+        ty,
+        descr_is_markdown,
+        id_span: SourceSpan::new(0, id_end),
+        payload_span: Some(SourceSpan::new(payload_start, payload_end)),
+    })
 }
 
 fn split_node_id(input: &str) -> (&str, &str) {

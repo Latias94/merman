@@ -10,22 +10,30 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
+      - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
       - "playground/**"
+      - "scripts/check-svg-safety-policy.mjs"
+      - "scripts/generate-svg-safety-policy.mjs"
+      - "scripts/svg-safety-policy.mjs"
+      - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
   pull_request:
     paths:
       - ".github/workflows/pages.yml"
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
+      - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
       - "playground/**"
+      - "scripts/check-svg-safety-policy.mjs"
+      - "scripts/generate-svg-safety-policy.mjs"
+      - "scripts/svg-safety-policy.mjs"
+      - "tools/vscode-extension/src/preview-svg-safety-policy.ts"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages-${{ github.ref }}
@@ -35,8 +43,12 @@ jobs:
   build:
     name: Build playground
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -69,8 +81,14 @@ jobs:
       - name: Verify web package
         run: npm run prepack --prefix platforms/web
 
+      - name: Smoke web package
+        run: npm run smoke --prefix platforms/web
+
       - name: Install playground dependencies
         run: npm ci --prefix playground
+
+      - name: Test playground
+        run: npm test --prefix playground
 
       - name: Build playground
         run: npm run build --prefix playground
@@ -93,6 +111,10 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

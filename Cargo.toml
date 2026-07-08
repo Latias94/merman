@@ -2,10 +2,13 @@
 resolver = "2"
 members = [
     "crates/merman",
+    "crates/merman-analysis",
+    "crates/merman-editor-core",
     "crates/merman-core",
     "crates/merman-ascii",
     "crates/merman-bindings-core",
     "crates/merman-cli",
+    "crates/merman-lsp",
     "crates/merman-ffi",
     "crates/merman-elk-layered",
     "crates/merman-layout-elk",
@@ -58,6 +61,8 @@ ryu-js = "1.0.2"
 roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.1", default-features = false }
 serde = { version = "1.0.217", features = ["derive", "rc"] }
 serde_json = { version = "1.0.150", features = ["preserve_order"] }
+serde_yaml = "0.9.34"
+tokio = { version = "1.52.3", features = ["full"] }
 granit-parser = "0.0.6"
 serde-saphyr = "0.0.28"
 toml = "1.1.2"
@@ -65,6 +70,7 @@ json5 = "1.3.1"
 js-sys = "0.3"
 thiserror = "2.0.11"
 tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["fmt", "env-filter"] }
 uniffi = "0.32.0"
 futures = "0.3.31"
 hashbrown = "0.17.1"
@@ -91,13 +97,17 @@ wasm-bindgen = "0.2"
 web-time = "1.1.0"
 wasm-minimal-protocol = "0.2.0"
 wasmi = { version = "1.0.9", default-features = false, features = ["simd"] }
+lsp-types = "0.94.1"
+tower-lsp = "0.20.0"
 
 # Workspace crates (publishable). Keeping versions explicit makes `cargo publish` work without
 # duplicating version requirements across crates.
 merman = { path = "crates/merman", version = "0.8.0-alpha.2", default-features = false }
+merman-analysis = { path = "crates/merman-analysis", version = "0.8.0-alpha.2", default-features = false }
 merman-ascii = { path = "crates/merman-ascii", version = "0.8.0-alpha.2" }
 merman-bindings-core = { path = "crates/merman-bindings-core", version = "0.8.0-alpha.2", default-features = false }
 merman-core = { path = "crates/merman-core", version = "0.8.0-alpha.2", default-features = false }
+merman-editor-core = { path = "crates/merman-editor-core", version = "0.8.0-alpha.2", default-features = false }
 merman-elk-layered = { path = "crates/merman-elk-layered", version = "0.8.0-alpha.2", default-features = false }
 merman-layout-elk = { path = "crates/merman-layout-elk", version = "0.8.0-alpha.2", default-features = false }
 merman-ffi = { path = "crates/merman-ffi", version = "0.8.0-alpha.2" }

@@ -1,5 +1,5 @@
 use crate::{DetectorRegistry, Error, MermaidConfig, Result};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
@@ -7,6 +7,21 @@ pub struct PreprocessResult {
     pub code: String,
     pub title: Option<String>,
     pub config: MermaidConfig,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrontmatterByteSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct FrontmatterBlock<'a> {
+    pub full: FrontmatterByteSpan,
+    pub body: FrontmatterByteSpan,
+    pub indent: &'a str,
+    pub dedented_body: Cow<'a, str>,
+    pub stripped: &'a str,
 }
 
 #[cfg(feature = "full-config")]
@@ -35,10 +50,11 @@ const FRONTMATTER_DIAGRAM_CONFIG_KEYS: &[&str] = &[
     "xyChart",
 ];
 
-#[cfg(feature = "full-config")]
 const FRONTMATTER_DIAGRAM_CONFIG_ALIASES: &[(&str, &str)] = &[
     ("classDiagram", "class"),
     ("erDiagram", "er"),
+    ("flowchart-v2", "flowchart"),
+    ("flowchart-elk", "flowchart"),
     ("stateDiagram", "state"),
     ("xychart", "xyChart"),
 ];
@@ -368,6 +384,10 @@ fn process_frontmatter(input: &str) -> Result<(&str, Option<String>, MermaidConf
 }
 
 fn split_frontmatter(input: &str) -> Option<(Cow<'_, str>, &str)> {
+    split_frontmatter_block(input).map(|block| (block.dedented_body, block.stripped))
+}
+
+pub fn split_frontmatter_block(input: &str) -> Option<FrontmatterBlock<'_>> {
     let open_line_end = input.find('\n')?;
     let open_line = input[..open_line_end].trim_end_matches('\r');
     let indent_end = frontmatter_indent_end(open_line);
@@ -386,12 +406,53 @@ fn split_frontmatter(input: &str) -> Option<(Cow<'_, str>, &str)> {
         if is_frontmatter_closing_line(without_newline, indent) {
             let body = rest[..offset].strip_suffix('\n').unwrap_or(&rest[..offset]);
             let stripped = &rest[offset + line.len()..];
-            return Some((dedent_frontmatter_body(body, indent), stripped));
+            return Some(FrontmatterBlock {
+                full: FrontmatterByteSpan {
+                    start: 0,
+                    end: body_start + offset + line.len(),
+                },
+                body: FrontmatterByteSpan {
+                    start: body_start,
+                    end: body_start + body.len(),
+                },
+                indent,
+                dedented_body: dedent_frontmatter_body(body, indent),
+                stripped,
+            });
         }
         offset += line.len();
     }
 
     None
+}
+
+pub fn parse_frontmatter_yaml_fields(
+    input: &str,
+) -> std::result::Result<Map<String, Value>, String> {
+    #[cfg(feature = "full-config")]
+    {
+        let parsed = crate::yaml_config::parse_yaml_value(input, MAX_CONFIG_NESTING_DEPTH)?;
+        return match parsed {
+            Value::Object(map) => Ok(map),
+            other => {
+                crate::config::drop_value_nonrecursive(other);
+                Ok(Map::new())
+            }
+        };
+    }
+
+    #[cfg(not(feature = "full-config"))]
+    {
+        let _ = input;
+        Ok(Map::new())
+    }
+}
+
+pub fn diagram_config_key_for_type(diagram_type: &str) -> &str {
+    FRONTMATTER_DIAGRAM_CONFIG_ALIASES
+        .iter()
+        .find_map(|(source_key, target_key)| (*source_key == diagram_type).then_some(*target_key))
+        .unwrap_or(diagram_type)
 }
 
 fn frontmatter_indent_end(line: &str) -> usize {
@@ -523,12 +584,10 @@ fn detect_init(
                     .map(ToString::to_string)
             });
 
-            if let Some(mut ty) = detected {
-                if ty == "flowchart-v2" {
-                    ty = "flowchart".to_string();
-                }
+            if let Some(ty) = detected {
+                let key = diagram_config_key_for_type(&ty).to_string();
                 if let Value::Object(obj) = &mut args {
-                    if let Some(old) = obj.insert(ty, diagram_specific) {
+                    if let Some(old) = obj.insert(key, diagram_specific) {
                         crate::config::drop_value_nonrecursive(old);
                     }
                     if let Some(old) = obj.remove("config") {

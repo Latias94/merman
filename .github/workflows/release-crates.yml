@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       source_ref:
-        description: "Git ref to publish from"
+        description: "Protected branch (main), matching release tag, or refs/tags/<release-tag> to publish from"
         required: true
         default: "main"
         type: string
@@ -23,36 +23,104 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  publish:
+  validate-inputs:
+    name: validate-inputs
     runs-on: ubuntu-24.04
-    environment: crates.io
+    outputs:
+      source_ref: ${{ steps.release.outputs.source_ref }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate release inputs
+        id: release
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_RELEASE_TAG: ${{ inputs.release_tag }}
+          DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
+          GIT_REF: ${{ github.ref }}
+          GIT_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$'
+          tag_re="^v${semver_re#^}"
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            RELEASE_TAG="$DISPATCH_RELEASE_TAG"
+            SOURCE_REF="$DISPATCH_SOURCE_REF"
+          else
+            RELEASE_TAG="$GIT_REF_NAME"
+            SOURCE_REF="$GIT_REF"
+          fi
+
+          [[ "$RELEASE_TAG" =~ $tag_re ]] || fail "release_tag must match vX.Y.Z or vX.Y.Z-alpha.N/beta.N/rc.N."
+          [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
+          validated_source_ref="$SOURCE_REF"
+          if [[ "$SOURCE_REF" == "main" || "$SOURCE_REF" == "refs/heads/main" ]]; then
+            :
+          elif [[ "$SOURCE_REF" =~ $tag_re || "$SOURCE_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            source_tag="${SOURCE_REF#refs/tags/}"
+            [[ "$source_tag" == "$RELEASE_TAG" ]] || fail "source_ref tag must match release_tag."
+            validated_source_ref="refs/tags/$source_tag"
+          else
+            fail "source_ref must be main, refs/heads/main, a matching release tag, or refs/tags/<release-tag>."
+          fi
+
+          VERSION="${RELEASE_TAG#v}"
+          [[ "$VERSION" =~ $semver_re ]] || fail "release_tag contains an unsupported SemVer version."
+
+          {
+            printf 'source_ref=%s\n' "$validated_source_ref"
+            printf 'release_tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+  preflight:
+    needs: validate-inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      crate_versions: ${{ steps.crates.outputs.crate_versions }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref }}
+          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          persist-credentials: false
 
-      - name: Read version from tag
-        id: version
+      - name: Resolve verified source commit
+        id: source
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            RELEASE_TAG="${{ inputs.release_tag }}"
-          else
-            RELEASE_TAG="${GITHUB_REF_NAME}"
-          fi
-          if [[ "$RELEASE_TAG" != v* ]]; then
-            echo "::error::Release tag '$RELEASE_TAG' must start with v."
-            exit 1
-          fi
-          VERSION="${RELEASE_TAG#v}"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          source_sha="$(git rev-parse HEAD)"
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          echo "Verified source commit: $source_sha"
+
+      - name: Use validated release metadata
+        id: version
+        env:
+          RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'tag=%s\n' "$RELEASE_TAG"
+            printf 'version=%s\n' "$VERSION"
+          } >> "$GITHUB_OUTPUT"
           echo "Tag version: $VERSION"
 
       - name: Verify Cargo workspace version matches tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/' | tr -d ' ')
-          if [ "$CARGO_VERSION" != "${{ steps.version.outputs.version }}" ]; then
-            echo "::error::Cargo workspace version '$CARGO_VERSION' does not match tag ${{ steps.version.outputs.version }}"
+          if [ "$CARGO_VERSION" != "$VERSION" ]; then
+            echo "::error::Cargo workspace version '$CARGO_VERSION' does not match tag $VERSION"
             exit 1
           fi
 
@@ -65,12 +133,95 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Publish crates in dependency order
+      - name: Verify release crate publish order
+        run: python3 scripts/verify-release-crate-order.py
+
+      - name: Preflight crates in dependency order
+        id: crates
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          version="${{ steps.version.outputs.version }}"
+
+          workspace_crate_version() {
+            local crate="$1"
+
+            cargo pkgid -p "$crate" | sed 's/.*@//'
+          }
+
+          crates=(
+            dugong-graphlib
+            manatee
+            merman-core
+            merman-elk-layered
+            roughr-merman
+            dugong
+            merman-analysis
+            merman-ascii
+            merman-layout-elk
+            merman-editor-core
+            merman-render
+            merman
+            merman-lsp
+            merman-bindings-core
+            merman-cli
+            merman-rustdoc
+            merman-ffi
+            merman-typst-plugin
+            merman-uniffi
+            merman-wasm
+          )
+
+          crate_versions=()
+          for crate in "${crates[@]}"; do
+            crate_version="$(workspace_crate_version "$crate")"
+            crate_versions+=("${crate}=${crate_version}")
+          done
+
+          {
+            echo 'crate_versions<<EOF'
+            printf '%s\n' "${crate_versions[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: [validate-inputs, preflight]
+    runs-on: ubuntu-24.04
+    environment: crates.io
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Verify pinned source commit
+        env:
+          SOURCE_SHA: ${{ needs.preflight.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid preflight source SHA: $SOURCE_SHA"
+            exit 1
+          fi
+
+          current_sha="$(git rev-parse HEAD)"
+          if [ "$current_sha" != "$SOURCE_SHA" ]; then
+            echo "::error::Publish checkout $current_sha does not match preflight source $SOURCE_SHA"
+            exit 1
+          fi
+
+          echo "Publishing verified source commit: $current_sha"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Upload crates to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CRATE_VERSIONS: ${{ needs.preflight.outputs.crate_versions }}
+        run: |
+          set -euo pipefail
 
           crate_version_available() {
             local crate="$1"
@@ -102,23 +253,37 @@ jobs:
             done
           }
 
+          validate_crate_version_line() {
+            local crate="$1"
+            local version="$2"
+
+            if [[ ! "$crate" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+              echo "::error::Invalid crate name in preflight output: $crate"
+              return 1
+            fi
+
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+              echo "::error::Invalid crate version in preflight output for $crate: $version"
+              return 1
+            fi
+          }
+
           workspace_crate_version() {
             local crate="$1"
 
             cargo pkgid -p "$crate" | sed 's/.*@//'
           }
 
-          dry_run_crate_version() {
+          verify_workspace_crate_version() {
             local crate="$1"
-            local crate_version="$2"
+            local expected_version="$2"
+            local actual_version
 
-            if crate_version_available "$crate" "$crate_version"; then
-              echo "Skipping dry-run for $crate $crate_version because it is already published"
-              return 0
+            actual_version="$(workspace_crate_version "$crate")"
+            if [ "$actual_version" != "$expected_version" ]; then
+              echo "::error::$crate version $actual_version in publish checkout does not match preflight version $expected_version"
+              return 1
             fi
-
-            echo "Dry-running $crate $crate_version"
-            cargo publish -p "$crate" --locked --dry-run --registry crates-io
           }
 
           publish_crate_version() {
@@ -130,16 +295,17 @@ jobs:
               return 0
             fi
 
-            dry_run_crate_version "$crate" "$crate_version"
+            echo "Dry-running $crate $crate_version"
+            env -u CARGO_REGISTRY_TOKEN cargo publish -p "$crate" --locked --dry-run --registry crates-io
 
             echo "Publishing $crate $crate_version"
             for attempt in 1 2 3; do
-              if cargo publish -p "$crate" --locked --registry crates-io --token "$CARGO_REGISTRY_TOKEN"; then
+              if cargo publish -p "$crate" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"; then
                 wait_for_crate_version "$crate" "$crate_version"
-                return 0
+                return $?
               fi
 
-              if crate_version_available "$crate" "$crate_version"; then
+              if wait_for_crate_version "$crate" "$crate_version"; then
                 echo "$crate $crate_version became visible after a failed publish attempt; continuing"
                 return 0
               fi
@@ -151,31 +317,11 @@ jobs:
             done
           }
 
-          independent_crates=(
-            roughr-merman
-          )
-
-          for crate in "${independent_crates[@]}"; do
-            publish_crate_version "$crate" "$(workspace_crate_version "$crate")"
-          done
-
-          crates=(
-            dugong-graphlib
-            dugong
-            manatee
-            merman-core
-            merman-elk-layered
-            merman-layout-elk
-            merman-render
-            merman-ascii
-            merman
-            merman-rustdoc
-            merman-bindings-core
-            merman-ffi
-            merman-uniffi
-            merman-cli
-          )
-
-          for crate in "${crates[@]}"; do
-            publish_crate_version "$crate" "$version"
-          done
+          while IFS='=' read -r crate crate_version; do
+            if [ -z "$crate" ]; then
+              continue
+            fi
+            validate_crate_version_line "$crate" "$crate_version"
+            verify_workspace_crate_version "$crate" "$crate_version"
+            publish_crate_version "$crate" "$crate_version"
+          done <<< "$CRATE_VERSIONS"

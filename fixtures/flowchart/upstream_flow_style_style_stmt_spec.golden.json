@@ -127,6 +127,28 @@
         "animation": null
       }
     ],
-    "subgraphs": []
+    "subgraphs": [],
+    "warningFacts": [
+      {
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "message": "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
+        "span": {
+          "start": 23,
+          "end": 24
+        }
+      },
+      {
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "message": "Style applied to unknown node \"R\". This may indicate a typo. The node will be created automatically.",
+        "span": {
+          "start": 48,
+          "end": 49
+        }
+      }
+    ],
+    "warnings": [
+      "Style applied to unknown node \"Q\". This may indicate a typo. The node will be created automatically.",
+      "Style applied to unknown node \"R\". This may indicate a typo. The node will be created automatically."
+    ]
   }
 }

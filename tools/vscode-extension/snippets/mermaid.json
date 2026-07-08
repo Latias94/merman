@@ -1,0 +1,163 @@
+{
+  "Flowchart": {
+    "prefix": "flow",
+    "body": [
+      "flowchart ${1|TD,TB,BT,LR,RL|}",
+      "  ${2:A}[${3:Start}] --> ${4:B}[${5:Next}]"
+    ],
+    "description": "Flowchart skeleton"
+  },
+  "Sequence Diagram": {
+    "prefix": "seq",
+    "body": [
+      "sequenceDiagram",
+      "  participant ${1:A} as ${2:Alice}",
+      "  participant ${3:B} as ${4:Bob}",
+      "  ${1:A}->>${3:B}: ${5:Message}",
+      "  ${3:B}-->>${1:A}: ${6:Response}"
+    ],
+    "description": "Sequence diagram skeleton"
+  },
+  "Class Diagram": {
+    "prefix": "class",
+    "body": [
+      "classDiagram",
+      "  class ${1:ClassName} {",
+      "    +${2:field}",
+      "    +${3:method}()",
+      "  }"
+    ],
+    "description": "Class diagram skeleton"
+  },
+  "State Diagram": {
+    "prefix": "state",
+    "body": [
+      "stateDiagram-v2",
+      "  [*] --> ${1:Idle}",
+      "  ${1:Idle} --> ${2:Active}: ${3:event}",
+      "  ${2:Active} --> [*]"
+    ],
+    "description": "State diagram skeleton"
+  },
+  "Entity Relationship Diagram": {
+    "prefix": "er",
+    "body": [
+      "erDiagram",
+      "  ${1:CUSTOMER} ||--o{ ${2:ORDER} : ${3:places}",
+      "  ${1:CUSTOMER} {",
+      "    string ${4:name}",
+      "  }"
+    ],
+    "description": "Entity relationship diagram skeleton"
+  },
+  "Gantt": {
+    "prefix": "gantt",
+    "body": [
+      "gantt",
+      "  title ${1:Project timeline}",
+      "  dateFormat YYYY-MM-DD",
+      "  section ${2:Phase}",
+      "  ${3:Task} :${4:task_id}, ${5:2026-01-01}, ${6:3d}"
+    ],
+    "description": "Gantt chart skeleton"
+  },
+  "Pie Chart": {
+    "prefix": "pie",
+    "body": [
+      "pie title ${1:Breakdown}",
+      "  \"${2:Category A}\" : ${3:40}",
+      "  \"${4:Category B}\" : ${5:60}"
+    ],
+    "description": "Pie chart skeleton"
+  },
+  "Journey": {
+    "prefix": "journey",
+    "body": [
+      "journey",
+      "  title ${1:User journey}",
+      "  section ${2:Stage}",
+      "    ${3:Step}: ${4:5}: ${5:Actor}"
+    ],
+    "description": "Journey diagram skeleton"
+  },
+  "Mindmap": {
+    "prefix": "mind",
+    "body": [
+      "mindmap",
+      "  root((${1:Root}))",
+      "    ${2:Branch}",
+      "      ${3:Leaf}"
+    ],
+    "description": "Mindmap skeleton"
+  },
+  "Subgraph": {
+    "prefix": "sub",
+    "body": [
+      "subgraph ${1:id}[${2:Title}]",
+      "  ${3:A}[${4:Node}] --> ${5:B}[${6:Next}]",
+      "end"
+    ],
+    "description": "Flowchart subgraph"
+  },
+  "Edge": {
+    "prefix": "edge",
+    "body": "${1:A} ${2|-->,---,-- text -->,-.->,==>|} ${3:B}",
+    "description": "Flowchart edge"
+  },
+  "Class Definition": {
+    "prefix": "classdef",
+    "body": "classDef ${1:name} fill:${2:#eef},stroke:${3:#447},stroke-width:${4:1px}",
+    "description": "Flowchart class definition"
+  },
+  "Styled Node": {
+    "prefix": "styled",
+    "body": [
+      "${1:A}[${2:Label}]",
+      "style ${1:A} fill:${3:#eef},stroke:${4:#447},stroke-width:${5:1px}"
+    ],
+    "description": "Node plus style"
+  },
+  "Click Action": {
+    "prefix": "click",
+    "body": "click ${1:A} \"${2:https://example.com}\" \"${3:Tooltip}\"",
+    "description": "Flowchart click action"
+  },
+  "Icon Node": {
+    "prefix": "icon",
+    "body": "${1:A}@{ icon: \"${2:logos:github-icon}\", form: \"${3|square,rounded,circle|}\", label: \"${4:Label}\" }",
+    "description": "Flowchart icon node"
+  },
+  "Accessibility Title": {
+    "prefix": "acc",
+    "body": [
+      "accTitle: ${1:Diagram title}",
+      "accDescr: ${2:Diagram description}"
+    ],
+    "description": "Accessibility title and description"
+  },
+  "Frontmatter Config": {
+    "prefix": "front",
+    "body": [
+      "---",
+      "config:",
+      "  theme: ${1|default,dark,forest,neutral,base|}",
+      "---",
+      "${2:flowchart TD}",
+      "  ${3:A} --> ${4:B}"
+    ],
+    "description": "Mermaid frontmatter config"
+  },
+  "Theme CSS": {
+    "prefix": "themecss",
+    "body": [
+      "---",
+      "config:",
+      "  themeCSS: |",
+      "    ${1:.node rect { filter: drop-shadow(1px 1px 1px #999); }}",
+      "---",
+      "${2:flowchart TD}",
+      "  ${3:A} --> ${4:B}"
+    ],
+    "description": "Mermaid themeCSS frontmatter"
+  }
+}

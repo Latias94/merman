@@ -3,6 +3,7 @@
 grammar;
 
 use crate::diagrams::state::{ClickStmt, Note, RelationStmt, StateStmt, Stmt, Tok};
+use crate::SourceSpan;
 
 extern {
   type Location = usize;
@@ -101,8 +102,9 @@ Statement: Stmt = {
   // `state <id>` without a `{ ... }` is effectively a no-op in Mermaid's parser.
   <_id:CompositState> => Stmt::Noop,
 
-  <id:CompositState> <doc:Block> => Stmt::State(StateStmt {
+  <l:@L> <id:CompositState> <r:@R> <doc:Block> => Stmt::State(StateStmt {
     id,
+    id_span: Some(SourceSpan::new(l, r)),
     ty: "default".to_string(),
     description: None,
     descriptions: Vec::new(),
@@ -114,14 +116,16 @@ Statement: Stmt = {
     start: None,
   }),
 
-  <descr:StateDescr> "as" <id:Id> <doc:OptBlock> => {
+  <descr:StateDescr> "as" <l:@L> <id:Id> <doc:OptBlock> => {
     let trimmed = descr.trim().to_string();
     let mut state_id = id;
+    let mut id_span = Some(SourceSpan::new(l, l + state_id.len()));
     let description = trimmed;
     let mut descriptions: Vec<String> = Vec::new();
     if let Some((a, b)) = state_id
       .split_once(':')
       .map(|(a, b)| (a.to_string(), b.to_string())) {
+      id_span = Some(SourceSpan::new(l, l + a.len()));
       state_id = a;
       let extra = b.trim();
       if !extra.is_empty() {
@@ -130,6 +134,7 @@ Statement: Stmt = {
     }
     Stmt::State(StateStmt {
       id: state_id,
+      id_span,
       ty: "default".to_string(),
       description: Some(description),
       descriptions,
@@ -142,15 +147,28 @@ Statement: Stmt = {
     })
   },
 
-  <id:Fork> => Stmt::State(StateStmt::new_typed(id, "fork")),
-  <id:Join> => Stmt::State(StateStmt::new_typed(id, "join")),
-  <id:Choice> => Stmt::State(StateStmt::new_typed(id, "choice")),
+  <l:@L> <id:Fork> => {
+    let mut state = StateStmt::new_typed(id, "fork");
+    state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
+    Stmt::State(state)
+  },
+  <l:@L> <id:Join> => {
+    let mut state = StateStmt::new_typed(id, "join");
+    state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
+    Stmt::State(state)
+  },
+  <l:@L> <id:Choice> => {
+    let mut state = StateStmt::new_typed(id, "choice");
+    state.id_span = Some(SourceSpan::new(l, l + state.id.len()));
+    Stmt::State(state)
+  },
   Concurrent => Stmt::State(StateStmt::new_typed("__divider__".to_string(), "divider")),
 };
 
 NoteStatement: Stmt = {
-  Note <pos:NotePosition> <id:Id> <text:NoteTextTok> => Stmt::State(StateStmt {
+  Note <pos:NotePosition> <l:@L> <id:Id> <r:@R> <text:NoteTextTok> => Stmt::State(StateStmt {
     id,
+    id_span: Some(SourceSpan::new(l, r)),
     ty: "default".to_string(),
     description: None,
     descriptions: Vec::new(),
@@ -224,11 +242,20 @@ ClickStatement: Stmt = {
 };
 
 IdStatement: StateStmt = {
-  <id:Id> => StateStmt::new(id),
-  EdgeState => StateStmt::new("[*]".to_string()),
-  <pair:StyledId> => {
+  <l:@L> <id:Id> <r:@R> => {
+    let mut state = StateStmt::new(id);
+    state.id_span = Some(SourceSpan::new(l, r));
+    state
+  },
+  <l:@L> EdgeState <r:@R> => {
+    let mut state = StateStmt::new("[*]".to_string());
+    state.id_span = Some(SourceSpan::new(l, r));
+    state
+  },
+  <l:@L> <pair:StyledId> => {
     let (id, class_id) = pair;
     let mut s = StateStmt::new(id);
+    s.id_span = Some(SourceSpan::new(l, l + s.id.len()));
     s.classes.push(class_id);
     s
   }

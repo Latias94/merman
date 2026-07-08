@@ -4,8 +4,9 @@ WebAssembly bindings for Merman browser use.
 
 `merman-wasm` is the Rust `wasm-bindgen` transport crate behind the public
 [`@mermanjs/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme) package. It
-exposes SVG rendering, semantic JSON, layout JSON, ASCII/Unicode rendering, validation, and metadata
-helpers with the same options JSON contract used by the native bindings.
+exposes SVG rendering, semantic JSON, layout JSON, ASCII/Unicode rendering, validation, metadata
+helpers, and an optional editor-language surface with the same options JSON contract used by the
+native bindings.
 Metadata helpers include Mermaid core themes and separate host/editor theme presets for
 `host_theme.preset`.
 
@@ -53,11 +54,23 @@ npm run build:wasm:full --prefix platforms/web
 npm run build:wasm:ratex-math --prefix platforms/web
 ```
 
-The generated module exports `bindingCapabilities()`, `selectedRegistryProfile()`, and
-`diagramFamilyCapabilities()` so JavaScript callers can detect whether the current artifact includes
-`render`, `ascii`, `core_full`, `core_host`, or `ratex_math` support and which diagram parser/render
-facts are registered. The ASCII preset still carries the full core registry because it depends on
-the browser ASCII implementation, but render entry points remain disabled.
+The generated module exports `bindingCapabilities()`, `selectedRegistryProfile()`,
+`diagramFamilyCapabilities()`, and `lintRuleCatalog()` so JavaScript callers can detect whether the
+current artifact includes `render`, `ascii`, `core_full`, `core_host`, `ratex_math`, or
+`editor_language` support, which diagram parser/render facts are registered, and which lint rules
+are configurable or authoring-only. Lint rule entries include evidence references so browser hosts
+can explain why a rule is classified as Mermaid-backed compatibility or Merman authoring guidance.
+The ASCII preset still carries the full core registry because it depends on the browser ASCII
+implementation. Render entry points stay present on the JavaScript surface for shape stability, but
+artifacts built without render support return `MERMAN_UNSUPPORTED_FORMAT`; callers should use
+`bindingCapabilities().render` rather than function presence for capability checks. Optional
+surfaces such as editor-language and host text-measurement remain feature/preset gated when their
+features are not compiled into the artifact.
+
+The Rust feature boundary for the browser editor APIs is `editor-language`. Slim browser presets
+leave that feature off so they do not compile `merman-editor-core` into render-only or ASCII-only
+artifacts. The current published npm default remains `browser-full`, so editor-language stays
+enabled in the public package unless a future release decision changes that default.
 
 For feature-preset size measurements, use:
 

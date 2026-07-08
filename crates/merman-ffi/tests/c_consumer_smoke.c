@@ -27,21 +27,73 @@ typedef struct MermanApi {
     );
     MermanEngineCall engine_render_svg;
     MermanEngineCall engine_render_ascii;
+    MermanEngineCall engine_analyze_json;
+    MermanEngineDocumentCall engine_analyze_document_json;
+    MermanEngineDocumentCall engine_analyze_document_facts_json;
     MermanEngineCall engine_parse_json;
     MermanEngineCall engine_layout_json;
     MermanEngineCall engine_validate_json;
     MermanCall render_svg;
     MermanCall render_ascii;
+    MermanCall analyze_json;
+    MermanDocumentCall analyze_document_json;
+    MermanDocumentCall analyze_document_facts_json;
     MermanCall parse_json;
     MermanCall layout_json;
     MermanCall validate_json;
     MermanResult (*supported_diagrams_json)(void);
     MermanResult (*ascii_capabilities_json)(void);
     MermanResult (*diagram_family_capabilities_json)(void);
+    MermanResult (*lint_rule_catalog_json)(void);
     MermanResult (*supported_themes_json)(void);
     MermanResult (*supported_host_theme_presets_json)(void);
     MermanFree buffer_free;
 } MermanApi;
+
+typedef struct MermanMeasureProbe {
+    size_t calls;
+    size_t handled;
+    size_t html_like;
+    size_t break_spaces;
+    size_t reset_calls;
+} MermanMeasureProbe;
+
+static MermanHostTextMeasureResult smoke_measure_text(
+    MermanHostTextMeasureRequest request,
+    void* user_data
+) {
+    if (user_data == NULL) {
+        MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
+        return fallback;
+    }
+
+    MermanMeasureProbe* probe = (MermanMeasureProbe*)user_data;
+    probe->calls += 1;
+    if (request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE) {
+        probe->html_like += 1;
+    }
+    if (request.white_space == MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES) {
+        probe->break_spaces += 1;
+    }
+    if (request.text != NULL && request.text_len > 0) {
+        probe->handled += 1;
+        double natural_width = (double)request.text_len * 8.0;
+        double width = natural_width;
+        if (request.has_max_width && request.max_width > 0.0 && natural_width > request.max_width) {
+            width = request.max_width;
+        }
+        MermanHostTextMeasureResult measured = {
+            1,
+            width,
+            request.line_height > 0.0 ? request.line_height : request.font_size,
+            1
+        };
+        return measured;
+    }
+
+    MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
+    return fallback;
+}
 
 static int buffer_contains(MermanBuffer buffer, const char* needle) {
     size_t needle_len = strlen(needle);
@@ -71,6 +123,20 @@ static int expect_ok_with(MermanResult result, MermanFree free_buffer, const cha
         return 20;
     }
     free_buffer(result.data);
+    return 0;
+}
+
+static int expect_empty_ok(MermanResult result, MermanFree free_buffer) {
+    if (result.code != MERMAN_OK) {
+        if (result.data.data != NULL || result.data.len != 0) {
+            free_buffer(result.data);
+        }
+        return 60 + result.code;
+    }
+    if (result.data.data != NULL || result.data.len != 0) {
+        free_buffer(result.data);
+        return 70;
+    }
     return 0;
 }
 
@@ -116,17 +182,24 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.engine_set_text_measure_callback == NULL ||
         api.engine_render_svg == NULL ||
         api.engine_render_ascii == NULL ||
+        api.engine_analyze_json == NULL ||
+        api.engine_analyze_document_json == NULL ||
+        api.engine_analyze_document_facts_json == NULL ||
         api.engine_parse_json == NULL ||
         api.engine_layout_json == NULL ||
         api.engine_validate_json == NULL ||
         api.render_svg == NULL ||
         api.render_ascii == NULL ||
+        api.analyze_json == NULL ||
+        api.analyze_document_json == NULL ||
+        api.analyze_document_facts_json == NULL ||
         api.parse_json == NULL ||
         api.layout_json == NULL ||
         api.validate_json == NULL ||
         api.supported_diagrams_json == NULL ||
         api.ascii_capabilities_json == NULL ||
         api.diagram_family_capabilities_json == NULL ||
+        api.lint_rule_catalog_json == NULL ||
         api.supported_themes_json == NULL ||
         api.supported_host_theme_presets_json == NULL ||
         api.buffer_free == NULL
@@ -204,6 +277,51 @@ int merman_c_consumer_smoke(MermanApi api) {
         return rc;
     }
 
+    rc = expect_ok_with(
+        api.analyze_json(source, sizeof(source) - 1, NULL, 0),
+        api.buffer_free,
+        "\"version\":1"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    static const uint8_t markdown_source[] =
+        "# Example\n\n```mermaid\nflowchart TD\nA[Hello] --> B[World]\n```\n";
+    static const uint8_t markdown_uri[] = "file:///tmp/example.md";
+
+    rc = expect_ok_with(
+        api.analyze_document_json(
+            markdown_source,
+            sizeof(markdown_source) - 1,
+            NULL,
+            0,
+            markdown_uri,
+            sizeof(markdown_uri) - 1
+        ),
+        api.buffer_free,
+        "\"kind\":\"markdown\""
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.analyze_document_facts_json(
+            markdown_source,
+            sizeof(markdown_source) - 1,
+            NULL,
+            0,
+            markdown_uri,
+            sizeof(markdown_uri) - 1
+        ),
+        api.buffer_free,
+        "\"kind\":\"markdown\""
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
     rc = api.render_enabled
         ? expect_ok_with(
             api.layout_json(source, sizeof(source) - 1, NULL, 0),
@@ -223,7 +341,16 @@ int merman_c_consumer_smoke(MermanApi api) {
     rc = expect_ok_with(
         api.validate_json(source, sizeof(source) - 1, NULL, 0),
         api.buffer_free,
-        api.render_enabled ? "\"valid\":true" : "MERMAN_UNSUPPORTED_FORMAT"
+        "\"valid\":true"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.validate_json(NULL, 0, NULL, 0),
+        api.buffer_free,
+        "MERMAN_NO_DIAGRAM"
     );
     if (rc != 0) {
         return rc;
@@ -247,6 +374,24 @@ int merman_c_consumer_smoke(MermanApi api) {
         api.diagram_family_capabilities_json(),
         api.buffer_free,
         "\"diagram_type\":\"flowchart\""
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.lint_rule_catalog_json(),
+        api.buffer_free,
+        "merman.authoring.flowchart.explicit_direction"
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.lint_rule_catalog_json(),
+        api.buffer_free,
+        "docs/adr/0072-lint-rule-governance.md"
     );
     if (rc != 0) {
         return rc;
@@ -291,6 +436,109 @@ int merman_c_consumer_smoke(MermanApi api) {
         return rc;
     }
 
+    if (api.render_enabled) {
+        MermanMeasureProbe probe = {0, 0, 0, 0, 0};
+        rc = expect_empty_ok(
+            api.engine_set_text_measure_callback(engine.engine, smoke_measure_text, &probe),
+            api.buffer_free
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+
+        rc = expect_ok_with(
+            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
+            api.buffer_free,
+            "<svg"
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+        if (probe.calls == 0 || probe.handled == 0 || probe.html_like == 0) {
+            api.engine_free(engine.engine);
+            return 80;
+        }
+
+        rc = expect_empty_ok(
+            api.engine_set_text_measure_callback(engine.engine, NULL, NULL),
+            api.buffer_free
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+        probe.reset_calls = probe.calls;
+
+        rc = expect_ok_with(
+            api.engine_render_svg(engine.engine, source, sizeof(source) - 1),
+            api.buffer_free,
+            "<svg"
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+        if (probe.calls != probe.reset_calls) {
+            api.engine_free(engine.engine);
+            return 81;
+        }
+    } else {
+        rc = expect_error_with(
+            api.engine_set_text_measure_callback(engine.engine, smoke_measure_text, NULL),
+            api.buffer_free,
+            MERMAN_UNSUPPORTED_FORMAT,
+            "MERMAN_UNSUPPORTED_FORMAT"
+        );
+        if (rc != 0) {
+            api.engine_free(engine.engine);
+            return rc;
+        }
+    }
+
+    rc = expect_ok_with(
+        api.engine_analyze_json(engine.engine, source, sizeof(source) - 1),
+        api.buffer_free,
+        "\"version\":1"
+    );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.engine_analyze_document_json(
+            engine.engine,
+            markdown_source,
+            sizeof(markdown_source) - 1,
+            markdown_uri,
+            sizeof(markdown_uri) - 1
+        ),
+        api.buffer_free,
+        "\"kind\":\"markdown\""
+    );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.engine_analyze_document_facts_json(
+            engine.engine,
+            markdown_source,
+            sizeof(markdown_source) - 1,
+            markdown_uri,
+            sizeof(markdown_uri) - 1
+        ),
+        api.buffer_free,
+        "\"kind\":\"markdown\""
+    );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
     rc = api.ascii_enabled
         ? expect_ok_with(
             api.engine_render_ascii(engine.engine, source, sizeof(source) - 1),
@@ -311,7 +559,17 @@ int merman_c_consumer_smoke(MermanApi api) {
     rc = expect_ok_with(
         api.engine_validate_json(engine.engine, source, sizeof(source) - 1),
         api.buffer_free,
-        api.render_enabled ? "\"valid\":true" : "MERMAN_UNSUPPORTED_FORMAT"
+        "\"valid\":true"
+    );
+    if (rc != 0) {
+        api.engine_free(engine.engine);
+        return rc;
+    }
+
+    rc = expect_ok_with(
+        api.engine_validate_json(engine.engine, NULL, 0),
+        api.buffer_free,
+        "MERMAN_NO_DIAGRAM"
     );
     if (rc != 0) {
         api.engine_free(engine.engine);

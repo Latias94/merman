@@ -1,3 +1,4 @@
+use crate::{DiagramWarningFact, SourceSpan};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,12 @@ pub struct FlowchartV2Model {
     pub subgraphs: Vec<FlowSubgraph>,
     #[serde(default)]
     pub tooltips: FxHashMap<String, String>,
+    #[serde(
+        default,
+        rename = "warningFacts",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub warning_facts: Vec<DiagramWarningFact>,
 }
 
 impl FlowchartV2Model {
@@ -115,8 +122,11 @@ pub struct FlowSubgraph {
 #[derive(Debug, Clone)]
 pub(crate) struct Node {
     pub id: String,
+    pub id_span: Option<SourceSpan>,
     pub label: Option<String>,
     pub label_type: TitleKind,
+    pub label_span: Option<SourceSpan>,
+    pub label_selection: Option<SourceSpan>,
     pub shape: Option<String>,
     pub shape_data: Option<String>,
     pub icon: Option<String>,
@@ -141,6 +151,8 @@ pub(crate) struct Edge {
     pub link: LinkToken,
     pub label: Option<String>,
     pub label_type: TitleKind,
+    pub label_span: Option<SourceSpan>,
+    pub label_selection: Option<SourceSpan>,
     pub style: Vec<String>,
     pub classes: Vec<String>,
     pub interpolate: Option<String>,
@@ -174,11 +186,15 @@ pub(crate) enum TitleKind {
 pub(crate) struct LabeledText {
     pub text: String,
     pub kind: TitleKind,
+    pub span: Option<SourceSpan>,
+    pub selection: Option<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SubgraphHeader {
     pub raw_id: String,
+    pub header_span: Option<SourceSpan>,
+    pub raw_id_span: Option<SourceSpan>,
     pub raw_title: String,
     pub title_kind: TitleKind,
     pub id_equals_title: bool,
@@ -188,6 +204,8 @@ impl Default for SubgraphHeader {
     fn default() -> Self {
         Self {
             raw_id: String::new(),
+            header_span: None,
+            raw_id_span: None,
             raw_title: String::new(),
             title_kind: TitleKind::Text,
             id_equals_title: true,

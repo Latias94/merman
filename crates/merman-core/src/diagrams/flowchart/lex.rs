@@ -2,6 +2,7 @@ use super::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LabeledText, LexError, LinkStylePos,
     LinkStyleStmt, StyleStmt, TitleKind,
 };
+use crate::SourceSpan;
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
     let trimmed = raw.trim();
@@ -23,11 +24,9 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
                 || text.contains('{')
                 || text.contains('}')
             {
-                return Err(LexError {
-                    message:
-                        "Invalid text label: contains structural characters; quote it to use them"
-                            .to_string(),
-                });
+                return Err(LexError::new(
+                    "Invalid text label: contains structural characters; quote it to use them",
+                ));
             }
         }
         TitleKind::String => {
@@ -55,32 +54,39 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
                     }
                 }
                 if has_unescaped {
-                    return Err(LexError {
-                        message: "Invalid string label: contains nested quotes".to_string(),
-                    });
+                    return Err(LexError::new(
+                        "Invalid string label: contains nested quotes".to_string(),
+                    ));
                 }
             }
         }
         TitleKind::Markdown => {}
     }
 
-    Ok(LabeledText { text, kind })
+    Ok(LabeledText {
+        text,
+        kind,
+        span: None,
+        selection: None,
+    })
 }
 
-pub(super) fn parse_rect_border_label(raw: &str) -> (&'static str, &str) {
+pub(super) fn parse_rect_border_label(raw: &str) -> (&'static str, &str, usize) {
     // Mermaid supports a special "rect" variant via `[|borders:...|Label]`.
     // We only need the shape name and the actual label payload here.
+    let leading = raw.len().saturating_sub(raw.trim_start().len());
     let trimmed = raw.trim();
     let Some(rest) = trimmed.strip_prefix('|') else {
-        return ("square", trimmed);
+        return ("square", trimmed, leading);
     };
     let Some((prefix, label)) = rest.split_once('|') else {
-        return ("square", trimmed);
+        return ("square", trimmed, leading);
     };
     if prefix.trim_start().starts_with("borders:") {
-        return ("rect", label);
+        let offset = leading + 1 + prefix.len() + 1;
+        return ("rect", label, offset);
     }
-    ("square", trimmed)
+    ("square", trimmed, leading)
 }
 
 pub(super) fn find_unquoted_delim(input: &str, start: usize, delim: &str) -> Option<usize> {
@@ -160,22 +166,21 @@ fn parse_linkstyle_styles_list(s: &str) -> Vec<String> {
 
 pub(super) fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, LexError> {
     let Some((target, styles_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid style statement".to_string(),
-        });
+        return Err(LexError::new("Invalid style statement".to_string()));
     };
     let styles = parse_styles_list(styles_raw);
     Ok(StyleStmt {
         target: target.trim().to_string(),
+        target_span: None,
         styles,
+        styles_text: None,
+        styles_span: None,
     })
 }
 
 pub(super) fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStmt, LexError> {
     let Some((ids_raw, styles_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid classDef statement".to_string(),
-        });
+        return Err(LexError::new("Invalid classDef statement".to_string()));
     };
     let ids = ids_raw
         .split(',')
@@ -183,16 +188,20 @@ pub(super) fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStm
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>();
     let styles = parse_styles_list(styles_raw);
-    Ok(ClassDefStmt { ids, styles })
+    Ok(ClassDefStmt {
+        ids,
+        id_spans: Vec::new(),
+        styles,
+        styles_text: None,
+        styles_span: None,
+    })
 }
 
 pub(super) fn parse_class_assign_stmt(
     rest: &str,
 ) -> std::result::Result<ClassAssignStmt, LexError> {
     let Some((targets_raw, class_raw)) = split_first_word(rest) else {
-        return Err(LexError {
-            message: "Invalid class statement".to_string(),
-        });
+        return Err(LexError::new("Invalid class statement".to_string()));
     };
     let targets = targets_raw
         .split(',')
@@ -201,14 +210,123 @@ pub(super) fn parse_class_assign_stmt(
         .collect::<Vec<_>>();
     let class_name = class_raw.trim().to_string();
     if class_name.is_empty() {
-        return Err(LexError {
-            message: "Invalid class statement".to_string(),
-        });
+        return Err(LexError::new("Invalid class statement".to_string()));
     }
     Ok(ClassAssignStmt {
         targets,
+        target_spans: Vec::new(),
         class_name,
+        class_name_span: None,
     })
+}
+
+pub(super) fn attach_style_stmt_spans(stmt: &mut StyleStmt, rest: &str, rest_start: usize) {
+    let Some((target, styles)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.target_span = Some(target.span);
+    if let Some(styles) = trim_spanned_slice(styles) {
+        stmt.styles_text = Some(styles.text.to_string());
+        stmt.styles_span = Some(styles.span);
+    }
+}
+
+pub(super) fn attach_classdef_stmt_spans(stmt: &mut ClassDefStmt, rest: &str, rest_start: usize) {
+    let Some((ids, styles)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.id_spans = split_comma_value_spans(ids.text, ids.span.start);
+    if let Some(styles) = trim_spanned_slice(styles) {
+        stmt.styles_text = Some(styles.text.to_string());
+        stmt.styles_span = Some(styles.span);
+    }
+}
+
+pub(super) fn attach_class_assign_stmt_spans(
+    stmt: &mut ClassAssignStmt,
+    rest: &str,
+    rest_start: usize,
+) {
+    let Some((targets, class_name)) = split_first_word_with_span(rest, rest_start) else {
+        return;
+    };
+    stmt.target_spans = split_comma_value_spans(targets.text, targets.span.start);
+    stmt.class_name_span = trim_spanned_slice(class_name).map(|class_name| class_name.span);
+}
+
+#[derive(Clone, Copy)]
+struct SpannedSlice<'a> {
+    text: &'a str,
+    span: SourceSpan,
+}
+
+fn split_first_word_with_span(
+    rest: &str,
+    rest_start: usize,
+) -> Option<(SpannedSlice<'_>, SpannedSlice<'_>)> {
+    let leading = rest.len().saturating_sub(rest.trim_start().len());
+    let trimmed = &rest[leading..];
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let mut first_len = 0usize;
+    while first_len < trimmed.len() && !trimmed.as_bytes()[first_len].is_ascii_whitespace() {
+        first_len += 1;
+    }
+
+    let first_start = rest_start + leading;
+    let rest_after_first_start = first_start + first_len;
+    Some((
+        SpannedSlice {
+            text: &trimmed[..first_len],
+            span: SourceSpan::new(first_start, rest_after_first_start),
+        },
+        SpannedSlice {
+            text: &trimmed[first_len..],
+            span: SourceSpan::new(rest_after_first_start, rest_start + rest.len()),
+        },
+    ))
+}
+
+fn trim_spanned_slice(slice: SpannedSlice<'_>) -> Option<SpannedSlice<'_>> {
+    let leading = slice
+        .text
+        .len()
+        .saturating_sub(slice.text.trim_start().len());
+    let text = &slice.text[leading..];
+    let trimmed_len = text.trim_end().len();
+    if trimmed_len == 0 {
+        return None;
+    }
+    let start = slice.span.start + leading;
+    Some(SpannedSlice {
+        text: &text[..trimmed_len],
+        span: SourceSpan::new(start, start + trimmed_len),
+    })
+}
+
+fn split_comma_value_spans(text: &str, text_start: usize) -> Vec<SourceSpan> {
+    let mut out = Vec::new();
+    let mut value_start = 0usize;
+    let bytes = text.as_bytes();
+
+    for idx in 0..=bytes.len() {
+        if idx != bytes.len() && bytes[idx] != b',' {
+            continue;
+        }
+
+        let value = &text[value_start..idx];
+        if let Some(value) = trim_spanned_slice(SpannedSlice {
+            text: value,
+            span: SourceSpan::new(text_start + value_start, text_start + idx),
+        }) {
+            out.push(value.span);
+        }
+        value_start = idx.saturating_add(1);
+    }
+
+    out
 }
 
 #[derive(Clone)]
@@ -269,9 +387,7 @@ impl<'a> ClickParse<'a> {
 pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, LexError> {
     let mut p = ClickParse::new(rest);
     let Some(id) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid click statement".to_string(),
-        });
+        return Err(LexError::new("Invalid click statement".to_string()));
     };
     let ids = vec![id];
 
@@ -287,9 +403,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
     {
         let _ = p.take_word();
         let Some(link) = p.take_quoted() else {
-            return Err(LexError {
-                message: "Invalid click statement".to_string(),
-            });
+            return Err(LexError::new("Invalid click statement".to_string()));
         };
         let maybe_tt = p.take_quoted();
         let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
@@ -322,9 +436,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
             p.i += 1;
         }
         if p.i == start {
-            return Err(LexError {
-                message: "Invalid click statement".to_string(),
-            });
+            return Err(LexError::new("Invalid click statement".to_string()));
         }
         p.skip_ws();
         if p.peek() == Some(b'(') {
@@ -362,9 +474,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
     }
 
     let Some(_function_name) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid click statement".to_string(),
-        });
+        return Err(LexError::new("Invalid click statement".to_string()));
     };
     tooltip = p.take_quoted();
     action = ClickAction::Callback;
@@ -378,9 +488,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
 pub(super) fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyleStmt, LexError> {
     let mut p = ClickParse::new(rest);
     let Some(pos_raw) = p.take_word() else {
-        return Err(LexError {
-            message: "Invalid linkStyle statement".to_string(),
-        });
+        return Err(LexError::new("Invalid linkStyle statement".to_string()));
     };
 
     let positions = if pos_raw == "default" {
@@ -389,9 +497,10 @@ pub(super) fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyle
         pos_raw
             .split(',')
             .map(|s| {
-                let idx = s.trim().parse::<usize>().map_err(|_| LexError {
-                    message: "Invalid linkStyle statement".to_string(),
-                })?;
+                let idx = s
+                    .trim()
+                    .parse::<usize>()
+                    .map_err(|_| LexError::new("Invalid linkStyle statement".to_string()))?;
                 Ok(LinkStylePos::Index(idx))
             })
             .collect::<std::result::Result<Vec<_>, LexError>>()?

@@ -1,7 +1,7 @@
 # Web WASM Playground - TODO
 
-Status: Active
-Last updated: 2026-06-01
+Status: Closed
+Last updated: 2026-06-29
 
 ## M0 - Scope And Evidence Freeze
 
@@ -55,13 +55,14 @@ Last updated: 2026-06-01
 
 ## M5 - Closeout
 
-- [ ] WWP-060 [owner=planner] [deps=WWP-050] [scope=docs/workstreams/web-wasm-playground,docs/release]
+- [x] WWP-060 [owner=planner] [deps=WWP-050] [scope=docs/workstreams/web-wasm-playground,docs/release]
   Goal: Close the lane or split npm publishing/raster/browser QA follow-ons.
   Validation: verify-rust-workstream records fresh final gate evidence.
   Review: review-workstream has no blocking findings.
   Evidence: docs/workstreams/web-wasm-playground/EVIDENCE_AND_GATES.md
   Context: docs/workstreams/web-wasm-playground/CONTEXT.jsonl
-  Handoff: Summarize residual risks in HANDOFF.md.
+  Handoff: DONE. Lane closed; residual npm publishing, raster/PDF export, and broader browser QA
+  are split to follow-on workstreams when needed.
 
 ## Follow-ons
 

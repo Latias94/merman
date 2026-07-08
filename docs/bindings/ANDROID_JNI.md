@@ -26,18 +26,39 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 - `MermanEngine.renderAscii(source, optionsJson = null)`
 - `MermanEngine.parseJson(source, optionsJson = null)`
 - `MermanEngine.layoutJson(source, optionsJson = null)`
+- `MermanEngine.analyzeJson(source, optionsJson = null)`
+- `MermanEngine.analyzeDocumentJson(source, uri, optionsJson = null)`
+- `MermanEngine.analyzeDocumentFactsJson(source, uri, optionsJson = null)`
 - `MermanEngine.validateJson(source, optionsJson = null)`
 - `MermanEngine.supportedDiagramsJson()`
 - `MermanEngine.asciiCapabilitiesJson()`
 - `MermanEngine.diagramFamilyCapabilitiesJson()`
+- `MermanEngine.lintRuleCatalogJson()`
 - `MermanEngine.supportedThemesJson()`
 - `MermanEngine.supportedHostThemePresetsJson()`
 - `MermanEngine.packageVersion`
 - `MermanException`
 
 The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` during object
-initialization. `MermanReusableEngine` exposes repeated render/parse/layout/validation calls and a
-`MermanTextMeasurer` callback for hosts that need font-aware text measurement.
+initialization. `MermanReusableEngine` exposes repeated render/parse/layout/analysis/validation
+calls, including `MermanReusableEngine.analyzeJson(source)`,
+`MermanReusableEngine.analyzeDocumentJson(source, uri)`, and
+`MermanReusableEngine.analyzeDocumentFactsJson(source, uri)`. The document analysis APIs use the
+same source/options/URI contract as the C ABI and other platform wrappers. Use
+`analyzeDocumentJson` for diagnostics-oriented document analysis and `analyzeDocumentFactsJson` when
+the host needs editor facts for Mermaid fences in Markdown-like documents.
+
+`MermanReusableEngine` also exposes a `MermanTextMeasurer` callback for hosts that need font-aware
+text measurement.
+Reusable engine calls are serialized around the native handle. Text-measurement callbacks should not
+re-enter the same `MermanReusableEngine`; `close()` is allowed from a callback and defers release
+until the current native call finishes. If the Kotlin callback throws, the JNI bridge clears the
+pending Java exception, treats only that measurement request as unhandled, and lets merman fall back
+for the request. The next JNI call remains usable; host code should still log callback failures
+because repeated fallback can change geometry.
+`MermanEngine.lintRuleCatalogJson()` exposes the shared analyzer rule catalog as a versioned JSON
+response object with `{ "version": 1, "rules": [...] }`, including evidence references, so Android
+hosts can build settings or LSP-related UI from the same rule metadata as CLI and other bindings.
 
 ## Text Measurement Guidance
 
@@ -48,9 +69,9 @@ measurement cache from that WebView when practical, because the synchronous JNI 
 block an arbitrary render thread on WebView UI work.
 
 Return `null` for requests the host cannot measure faithfully; merman falls back per request. Keep
-the measurer thread-safe if the reusable engine is rendered concurrently. Measure natural HTML-like
-label width before constraining to `maxWidth`; otherwise short labels can be overestimated and make
-the diagram wider than the final Android/WebView surface. See
+the measurer thread-safe if it is shared across host threads or multiple reusable engines. Measure
+natural HTML-like label width before constraining to `maxWidth`; otherwise short labels can be
+overestimated and make the diagram wider than the final Android/WebView surface. See
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md#android-jni) for the full platform checklist.
 
 ## Example
@@ -64,6 +85,7 @@ semantic JSON, layout JSON, validation JSON, and metadata from Android/Kotlin.
 kotlinc platforms/android/src/main/kotlin/io/merman/*.kt -d target/platforms/android/merman-android.jar
 rustup target add aarch64-linux-android
 cargo check -p merman-ffi --target aarch64-linux-android
+cargo check -p merman-ffi --target aarch64-linux-android --no-default-features
 cargo clippy -p merman-ffi --target aarch64-linux-android -- -D warnings
 python3 platforms/android/build-android.py --targets aarch64-linux-android
 ```
@@ -72,6 +94,12 @@ Combined platform gate:
 
 ```bash
 python3 scripts/verify-platform-bindings.py --build-android-slices
+```
+
+Runtime smoke for JNI callback exception cleanup requires an Android device or emulator:
+
+```bash
+python3 scripts/verify-platform-bindings.py --only-android-instrumentation-smoke --gradle-path "<gradle-install-dir>/bin/gradle"
 ```
 
 To verify the standalone Android library module with native slices and Gradle 9.x:
@@ -95,4 +123,5 @@ PowerShell scripts if that is more convenient.
 
 - Build every supported Android ABI in CI.
 - Add AAR publishing metadata once the release repository target is chosen.
-- Add emulator/device smoke once an Android CI target is available.
+- Keep the emulator smoke enabled in CI and expand device coverage when the Android release matrix
+  grows.

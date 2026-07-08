@@ -22,6 +22,7 @@
     "direction": "LR",
     "accTitle": null,
     "accDescr": "Detailed description\nacross multiple lines",
+    "warningFacts": [],
     "warnings": []
   }
 }

@@ -63,6 +63,12 @@ pub(crate) struct LexError {
     pub message: String,
 }
 
+impl crate::error::ParseErrorSourceSpan for LexError {
+    fn source_span(&self) -> Option<crate::SourceSpan> {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
     Default,
@@ -91,6 +97,10 @@ impl<'input> Lexer<'input> {
             pending: VecDeque::new(),
             mode: Mode::Default,
         }
+    }
+
+    pub(super) fn position(&self) -> usize {
+        self.pos
     }
 
     fn peek(&self) -> Option<u8> {
@@ -324,8 +334,8 @@ impl<'input> Lexer<'input> {
         if self.mode != Mode::ClickNeedCallbackName {
             return None;
         }
-        let start = self.pos;
         self.skip_ws();
+        let start = self.pos;
         let bytes = self.input.as_bytes();
         let mut end = self.pos;
         while end < self.input.len() {

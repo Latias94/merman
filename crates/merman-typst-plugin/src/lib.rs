@@ -55,9 +55,24 @@ pub fn package_version() -> Vec<u8> {
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn capabilities_json() -> Vec<u8> {
-    merman_bindings_core::binding_capabilities_json().unwrap_or_else(|_| {
-        br#"{"render":false,"ascii":false,"core_full":false,"core_host":false,"ratex_math":false,"text_measurement":{"vendored":false,"deterministic":false,"host_callback":false,"font_assets":false}}"#.to_vec()
-    })
+    typst_capabilities_json().unwrap_or_else(fallback_capabilities_json)
+}
+
+#[cfg(feature = "render")]
+fn typst_capabilities_json() -> Option<Vec<u8>> {
+    let mut capabilities = merman_bindings_core::binding_capabilities();
+    capabilities.text_measurement.host_callback = false;
+    capabilities.text_measurement.font_assets = false;
+    serde_json::to_vec(&capabilities).ok()
+}
+
+#[cfg(not(feature = "render"))]
+fn typst_capabilities_json() -> Option<Vec<u8>> {
+    merman_bindings_core::binding_capabilities_json().ok()
+}
+
+fn fallback_capabilities_json() -> Vec<u8> {
+    br#"{"render":false,"ascii":false,"core_full":false,"core_host":false,"ratex_math":false,"editor_language":false,"text_measurement":{"vendored":false,"deterministic":false,"host_callback":false,"font_assets":false}}"#.to_vec()
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
@@ -149,6 +164,7 @@ mod tests {
         assert_eq!(payload["text_measurement"]["font_assets"], false);
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn render_svg_json_returns_success_payload() {
         let payload: Value = serde_json::from_slice(&render_svg_json(
@@ -165,6 +181,7 @@ mod tests {
         assert!(payload["svg"].as_str().unwrap().contains("Hello"));
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn render_svg_json_renders_flowchart_elk_from_default_artifact() {
         let payload: Value = serde_json::from_slice(&render_svg_json(
@@ -178,6 +195,7 @@ mod tests {
         assert!(payload["svg"].as_str().unwrap().contains("Hello"));
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn render_svg_json_uses_typst_resource_profile_by_default() {
         let source = format!("flowchart TD\nA[{}]", "x".repeat(1024 * 1024));
@@ -192,6 +210,7 @@ mod tests {
             .contains("max_source_bytes"));
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn render_svg_json_returns_error_payload() {
         let payload: Value =

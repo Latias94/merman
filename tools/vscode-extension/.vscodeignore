@@ -1,0 +1,15 @@
+src/**
+dist/**
+node_modules/**
+tsconfig.json
+.vscode/**
+.gitignore
+package-lock.json
+scripts/**
+*.vsix
+!dist/extension.js
+!dist/extension.js.map
+!language-configuration.json
+!snippets/**
+!media/**
+!bin/**

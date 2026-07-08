@@ -65,6 +65,40 @@ class Class1
 }
 
 #[test]
+fn class_diagram_detection_respects_non_default_renderer() {
+    let engine = Engine::new().with_site_config({
+        let mut cfg = MermaidConfig::empty_object();
+        cfg.set_value("class.defaultRenderer", json!("dagre-d3"));
+        cfg
+    });
+
+    let text = r#"classDiagram
+class Class1
+"#;
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.diagram_type, "class");
+}
+
+#[test]
+fn state_diagram_detection_respects_non_default_renderer() {
+    let engine = Engine::new().with_site_config({
+        let mut cfg = MermaidConfig::empty_object();
+        cfg.set_value("state.defaultRenderer", json!("dagre-d3"));
+        cfg
+    });
+
+    let text = r#"stateDiagram
+[*] --> Still
+"#;
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.diagram_type, "state");
+}
+
+#[test]
 fn detects_tree_view_beta_as_tree_view() {
     let engine = Engine::new();
     let res = block_on(engine.parse_metadata("treeView-beta\n\"Root\"", ParseOptions::default()))
