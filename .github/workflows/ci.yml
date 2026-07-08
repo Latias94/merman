@@ -109,7 +109,7 @@ jobs:
 
       - name: Test C FFI no-render validation smoke
         if: matrix.parity
-        run: cargo nextest run -p merman-ffi --no-default-features --features core-full,core-host --test c_consumer_smoke --cargo-quiet
+        run: cargo nextest run -p merman-ffi --no-default-features --features core-full,core-host,analysis --test c_consumer_smoke --cargo-quiet
 
       - name: Check UniFFI no-render feature sets
         if: matrix.parity

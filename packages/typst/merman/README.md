@@ -283,14 +283,14 @@ cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst /path/to/typ
 
 Smoke outputs are written under `target/typst-package-smoke/out` with nested paths preserved, for example `tests/api/test.pdf` and `tests/visual/test.pdf`.
 
-The default package build is the publish profile and enables `render`, `core-full`, and `elk-layout`.
+The default package build is the publish profile and enables `render`, `analysis`, `core-full`, and `elk-layout`.
 Build the no-ELK full-config artifact with:
 
 ```sh
 cargo run -p xtask -- build-typst-package --profile full
 ```
 
-Build the protocol-only transport with:
+Build the minimal render and validation artifact without the full registry or ELK with:
 
 ```sh
 cargo run -p xtask -- build-typst-package --profile minimal

@@ -603,17 +603,17 @@ fn build_wasm(profile: TypstBuildProfile, wasm_path: &Path) -> Result<(), XtaskE
         TypstBuildProfile::Minimal => {
             command
                 .arg("--no-default-features")
-                .args(["--features", "render"]);
+                .args(["--features", "render,analysis"]);
         }
         TypstBuildProfile::Full => {
             command
                 .arg("--no-default-features")
-                .args(["--features", "render,core-full"]);
+                .args(["--features", "render,analysis,core-full"]);
         }
         TypstBuildProfile::FullElk => {
             command
                 .arg("--no-default-features")
-                .args(["--features", "render,core-full,elk-layout"]);
+                .args(["--features", "render,analysis,core-full,elk-layout"]);
         }
     }
 
