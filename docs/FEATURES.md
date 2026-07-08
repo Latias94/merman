@@ -85,6 +85,8 @@ The binding crates keep `analysis` separate from `render` and `ascii`. Defaults 
 diagnostics and validation surface for existing native, browser, and Typst users, while slim builds
 such as `merman-wasm --no-default-features --features ascii` can omit `merman-analysis`, JSON5/YAML
 lint support, and editor-language dependencies.
+For browser package users, `@mermanjs/web/render` keeps analysis for compatibility and
+`@mermanjs/web/render-only` is the render/parse/layout artifact that omits analysis.
 
 ## Host Profiles
 

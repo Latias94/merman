@@ -61,7 +61,8 @@ configured per surface before the corresponding workflow can publish.
 
 WFS-090 decision, updated by PR20 hardening: keep `@mermanjs/web` as one npm package. The default
 entry point uses the `browser-full` preset. The package also publishes opt-in subpaths for
-`browser-core`, `browser-render`, `browser-ascii`, and explicit `browser-full` artifacts. Source,
+`browser-core`, `browser-render`, `browser-render-only`, `browser-ascii`, and explicit
+`browser-full` artifacts. Source,
 CI, and local package builds can still choose a different browser preset through
 `platforms/web/scripts/build-wasm.mjs`; the TypeScript wrapper exposes `bindingCapabilities()` so
 callers can discover the active artifact's compiled capabilities after initialization, including
@@ -78,6 +79,7 @@ subpaths instead of being exported as throwing stubs.
 | --- | ---: | --- | --- |
 | `browser-core` | no | `analysis` | Browser wasm-bindgen transport plus metadata, analysis, facts, and validation. Render, parse, layout, ASCII, and editor-language entry points are unavailable. |
 | `browser-render` | no | `render`, `analysis` | SVG/parse/layout artifact with metadata, analysis, facts, and validation over the minimal core profile. Editor-language entry points are unavailable. |
+| `browser-render-only` | no | `render` | SVG/parse/layout artifact with metadata only. Analysis, validation, lint catalog, ASCII, and editor-language entry points are unavailable. |
 | `browser-ascii` | no | `ascii` | ASCII/Unicode artifact with metadata only. Analysis, validation, lint catalog, render, parse, layout, and editor-language entry points are unavailable. |
 | `browser-full` | yes | none | Default npm artifact: full core profile, browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
 | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
@@ -114,8 +116,9 @@ Current release semantics are intentionally explicit:
   parser metadata. Native ABI version 2 remains valid for this release line because ABI v2 had not
   been externally released before the structured diagnostic change.
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full` there. Slim
-  browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`, and
-  `@mermanjs/web/ascii`; these slim subpaths omit unsupported runtime wrapper exports.
+  browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`,
+  `@mermanjs/web/render-only`, and `@mermanjs/web/ascii`; these slim subpaths omit unsupported
+  runtime wrapper exports.
   `@mermanjs/web/full` is the explicit full-preset subpath.
 - Browser WASM ABI 2 is the first ABI that requires the metadata exports used by the 0.8 wrapper.
   `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
@@ -141,7 +144,7 @@ Current release semantics are intentionally explicit:
 | --- | --- |
 | Browser npm package | `npm run check:contracts --prefix platforms/web`; `npm run build --prefix platforms/web`; `npm run smoke --prefix platforms/web`; `npm run prepack --prefix platforms/web` |
 | VS Code extension | `cargo build --release --locked -p merman-lsp -p merman-cli`; `npm run test --prefix tools/vscode-extension`; `npm run prepare:binaries --prefix tools/vscode-extension`; `npm run package --prefix tools/vscode-extension -- --target <target> --out <file>`; `npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>` |
-| Browser preset evidence | `npm run build:wasm:core --prefix platforms/web`; `npm run build:wasm:render --prefix platforms/web`; `npm run build:wasm:ascii --prefix platforms/web`; `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web` |
+| Browser preset evidence | `npm run build:wasm:core --prefix platforms/web`; `npm run build:wasm:render --prefix platforms/web`; `npm run build:wasm:render-only --prefix platforms/web`; `npm run build:wasm:ascii --prefix platforms/web`; `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1 npm run prepack --prefix platforms/web` |
 | Browser/Typst size evidence | `cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json` |
 | Typst transport | `cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown`; `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; `cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm`; PR CI compiles Typst package examples and a preview import smoke with Typst 0.15.0, and push CI additionally runs `wasm-size-matrix` plus `typst-package-smoke --skip-wasm-build --tests-only` on Typst 0.15.0. |
 
@@ -161,14 +164,15 @@ budget file is intentionally a regression guard with headroom, not a product tar
 browser/wasm-bindgen and Typst/wasm-minimal-protocol measurements separate so package changes do
 not accidentally compare unlike surfaces.
 
-The generated `@mermanjs/web` package also builds through the workspace `wasm-size` profile. Current
-package artifacts measured on 2026-07-03 are:
+The generated `@mermanjs/web` package also builds through the workspace `wasm-size` profile. Recent
+package artifacts measured during local release checks are:
 
 | Package artifact | Preset | Raw bytes | gzip bytes | brotli bytes | Budget source |
 | --- | --- | ---: | ---: | ---: | --- |
 | `platforms/web/pkg/merman_wasm_bg.wasm` | `browser-full` | 6,936,158 | 2,649,766 | 1,958,841 | `docs/release/WASM_SIZE_BUDGETS.json` |
 | `platforms/web/pkg/core/merman_wasm_bg.wasm` | `browser-core` | 1,974,289 | 741,530 | 565,420 | measured |
 | `platforms/web/pkg/render/merman_wasm_bg.wasm` | `browser-render` | 4,914,321 | 1,813,940 | 1,340,229 | measured |
+| `platforms/web/pkg/render-only/merman_wasm_bg.wasm` | `browser-render-only` | 4,486,446 | 1,653,761 | 1,220,562 | measured |
 | `platforms/web/pkg/ascii/merman_wasm_bg.wasm` | `browser-ascii` | 2,974,716 | 1,213,252 | 931,113 | measured |
 | `platforms/web/pkg/full/merman_wasm_bg.wasm` | `browser-full` | 6,936,158 | 2,649,766 | 1,958,841 | measured |
 
@@ -180,18 +184,20 @@ cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm targ
 cargo run -p xtask -- typst-plugin-smoke --wasm target/wasm32-unknown-unknown/wasm-size/merman_typst_plugin.wasm
 ```
 
-Observed on 2026-06-22:
+Recent observed matrix values:
 
 | Surface | Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
 | Browser | `browser-core` | no | `analysis` | 2,314,537 | 1,607,616 | 488,344 | 371,239 |
 | Browser | `browser-render` | no | `render`, `analysis` | 7,142,939 | 5,323,303 | 1,567,143 | 1,135,983 |
+| Browser | `browser-render-only` | no | `render` | 7,364,323 | 5,475,747 | 1,614,544 | 1,168,221 |
 | Browser | `browser-ascii` | no | `ascii` | 4,053,135 | 2,972,267 | 1,000,885 | 745,996 |
 | Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 9,139,597 | 6,824,157 | 2,136,333 | 1,536,058 |
 | Browser | `browser-full` | yes | none | 10,115,464 | 7,502,959 | 2,335,802 | 1,666,379 |
 | Browser | `browser-ratex-math` | yes | `ratex-math` | 13,398,073 | 10,231,577 | 3,277,885 | 2,349,234 |
 | Typst | `typst-bridge` | no | none | 48,359 | 34,296 | 13,553 | 11,482 |
-| Typst | `typst-render-no-elk` | no | `render`, `analysis` | 6,541,087 | 5,056,278 | 1,508,214 | 1,093,218 |
+| Typst | `typst-render-only-no-elk` | no | `render` | 6,751,372 | 5,201,760 | 1,554,893 | 1,122,068 |
+| Typst | `typst-render-analysis-no-elk` | no | `render`, `analysis` | 6,541,087 | 5,056,278 | 1,508,214 | 1,093,218 |
 | Typst | `typst-core-full-no-elk` | no | `render`, `analysis`, `core-full` | 8,164,316 | 6,307,341 | 1,989,926 | 1,434,971 |
 | Typst | `typst-full-elk` | yes | none | 7,514,778 | 5,735,845 | 1,707,876 | 1,227,566 |
 | Typst | `typst-ratex-math` | yes | `ratex-math` | 11,228,422 | 8,620,566 | 2,684,627 | 1,928,257 |

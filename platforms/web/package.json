@@ -34,6 +34,10 @@
       "import": "./dist/surfaces/render.js",
       "types": "./dist/surfaces/render.d.ts"
     },
+    "./render-only": {
+      "import": "./dist/surfaces/render-only.js",
+      "types": "./dist/surfaces/render-only.d.ts"
+    },
     "./ascii": {
       "import": "./dist/surfaces/ascii.js",
       "types": "./dist/surfaces/ascii.d.ts"
@@ -57,6 +61,11 @@
       "types": "./pkg/render/merman_wasm.d.ts"
     },
     "./pkg/render/merman_wasm_bg.wasm": "./pkg/render/merman_wasm_bg.wasm",
+    "./pkg/render-only/merman_wasm.js": {
+      "import": "./pkg/render-only/merman_wasm.js",
+      "types": "./pkg/render-only/merman_wasm.d.ts"
+    },
+    "./pkg/render-only/merman_wasm_bg.wasm": "./pkg/render-only/merman_wasm_bg.wasm",
     "./pkg/ascii/merman_wasm.js": {
       "import": "./pkg/ascii/merman_wasm.js",
       "types": "./pkg/ascii/merman_wasm.d.ts"
@@ -75,6 +84,7 @@
     "build:surfaces": "node scripts/build-surface-packages.mjs",
     "build:wasm:core": "node scripts/build-wasm.mjs --preset browser-core",
     "build:wasm:render": "node scripts/build-wasm.mjs --preset browser-render",
+    "build:wasm:render-only": "node scripts/build-wasm.mjs --preset browser-render-only",
     "build:wasm:ascii": "node scripts/build-wasm.mjs --preset browser-ascii",
     "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
     "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",

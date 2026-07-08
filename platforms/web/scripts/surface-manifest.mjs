@@ -96,6 +96,12 @@ const renderSurfaceRuntimeExportNames = [
   ...renderRuntimeExportNames,
 ];
 
+const renderOnlySurfaceRuntimeExportNames = [
+  ...lifecycleRuntimeExportNames,
+  ...metadataRuntimeExportNames,
+  ...renderRuntimeExportNames,
+];
+
 const asciiSurfaceRuntimeExportNames = [
   ...lifecycleRuntimeExportNames,
   ...metadataRuntimeExportNames,
@@ -123,6 +129,17 @@ export const surfaces = [
     pkgDirRel: "pkg/render",
     defaultBindingCapabilitiesExportName: "RENDER_BINDING_CAPABILITIES",
     runtimeExportNames: renderSurfaceRuntimeExportNames,
+    valueExportNames: [
+      ...surfaceStableValueExportNames,
+      ...surfaceRenderValueExportNames,
+    ],
+  },
+  {
+    entry: "render-only",
+    preset: "browser-render-only",
+    pkgDirRel: "pkg/render-only",
+    defaultBindingCapabilitiesExportName: "RENDER_ONLY_BINDING_CAPABILITIES",
+    runtimeExportNames: renderOnlySurfaceRuntimeExportNames,
     valueExportNames: [
       ...surfaceStableValueExportNames,
       ...surfaceRenderValueExportNames,

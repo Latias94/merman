@@ -43,6 +43,21 @@ const presets = {
       editor_language: false,
     },
   },
+  "browser-render-only": {
+    surface: "browser",
+    defaultFeatures: false,
+    features: ["render"],
+    capabilities: {
+      render: true,
+      analysis: false,
+      ascii: false,
+      core_full: false,
+      core_host: false,
+      elk_layout: false,
+      ratex_math: false,
+      editor_language: false,
+    },
+  },
   "browser-ascii": {
     surface: "browser",
     defaultFeatures: false,

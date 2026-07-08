@@ -104,6 +104,14 @@ const PRESETS: &[WasmPreset] = &[
         features: &["render", "analysis"],
     },
     WasmPreset {
+        name: "browser-render-only",
+        surface: Surface::Browser,
+        package: "merman-wasm",
+        artifact_name: "merman_wasm.wasm",
+        no_default_features: true,
+        features: &["render"],
+    },
+    WasmPreset {
         name: "browser-ascii",
         surface: Surface::Browser,
         package: "merman-wasm",
@@ -151,7 +159,15 @@ const PRESETS: &[WasmPreset] = &[
         features: &[],
     },
     WasmPreset {
-        name: "typst-render-no-elk",
+        name: "typst-render-only-no-elk",
+        surface: Surface::Typst,
+        package: "merman-typst-plugin",
+        artifact_name: "merman_typst_plugin.wasm",
+        no_default_features: true,
+        features: &["render"],
+    },
+    WasmPreset {
+        name: "typst-render-analysis-no-elk",
         surface: Surface::Typst,
         package: "merman-typst-plugin",
         artifact_name: "merman_typst_plugin.wasm",
@@ -610,15 +626,15 @@ mod tests {
     fn preset_filter_selects_one_named_preset() {
         let options = Options {
             surface: None,
-            preset: Some("browser-render".to_string()),
+            preset: Some("browser-render-only".to_string()),
             no_strip: false,
             budget_file: None,
         };
         let presets = selected_presets(&options).unwrap();
 
         assert_eq!(presets.len(), 1);
-        assert_eq!(presets[0].name, "browser-render");
-        assert_eq!(presets[0].features, &["render", "analysis"]);
+        assert_eq!(presets[0].name, "browser-render-only");
+        assert_eq!(presets[0].features, &["render"]);
         assert!(presets[0].no_default_features);
     }
 
