@@ -906,7 +906,9 @@ fn new_text_measure_request<'local>(
 
     env.new_object(
         jni::jni_str!("io/merman/MermanTextMeasureRequest"),
-        jni::jni_sig!((text: java.lang.String, fontFamily: java.lang.String, fontSize: f64, fontWeight: java.lang.String, fontStyle: java.lang.String, maxWidth: java.lang.Double, lineHeight: f64, letterSpacing: f64, wordSpacing: f64, wrapMode: jint, direction: jint, whiteSpace: jint) -> java.lang.Object),
+        jni::jni_sig!(
+            "(Ljava/lang/String;Ljava/lang/String;DLjava/lang/String;Ljava/lang/String;Ljava/lang/Double;DDDIII)V"
+        ),
         &[
             JValue::Object(&JObject::from(text)),
             JValue::Object(&JObject::from(font_family)),
