@@ -529,6 +529,7 @@ fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "analysis")]
     use serde_json::Value;
 
     #[test]
@@ -553,6 +554,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn validation_error_uses_binding_status() {
         let json: Value =
@@ -569,14 +571,25 @@ mod tests {
         );
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(not(feature = "analysis"))]
+    #[test]
+    fn analysis_entry_points_report_missing_analysis_feature() {
+        let err = merman_bindings_core::validate_json(b"flowchart TD\nA", b"").unwrap_err();
+        assert_eq!(
+            err.status(),
+            merman_bindings_core::BindingStatus::UnsupportedFormat
+        );
+        assert!(err.message().contains("analysis feature"));
+    }
+
+    #[cfg(all(target_arch = "wasm32", feature = "analysis"))]
     #[test]
     fn analyze_json_exposes_diagnostics_payload() {
         let value: Value = serde_wasm_bindgen::from_value(analyze_json("", None).unwrap()).unwrap();
         assert_no_diagram_analysis_payload(&value);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "analysis"))]
     #[test]
     fn analyze_json_exposes_diagnostics_payload() {
         let value: Value =
@@ -584,13 +597,14 @@ mod tests {
         assert_no_diagram_analysis_payload(&value);
     }
 
+    #[cfg(feature = "analysis")]
     fn assert_no_diagram_analysis_payload(value: &Value) {
         assert_eq!(value["version"], 1);
         assert_eq!(value["valid"], false);
         assert_eq!(value["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "analysis"))]
     #[test]
     fn analysis_facts_exposes_parser_backed_syntax_payload() {
         let value: Value =
@@ -599,7 +613,7 @@ mod tests {
         assert_parser_backed_analysis_facts_payload(&value);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "analysis"))]
     #[test]
     fn analysis_facts_exposes_parser_backed_syntax_payload() {
         let value: Value = serde_json::from_slice(
@@ -609,6 +623,7 @@ mod tests {
         assert_parser_backed_analysis_facts_payload(&value);
     }
 
+    #[cfg(feature = "analysis")]
     fn assert_parser_backed_analysis_facts_payload(value: &Value) {
         assert_eq!(value["valid"], true);
         assert_eq!(
@@ -625,7 +640,7 @@ mod tests {
         );
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "analysis"))]
     #[test]
     fn analyze_document_exposes_markdown_diagnostics_payload() {
         let value: Value = serde_wasm_bindgen::from_value(
@@ -640,7 +655,7 @@ mod tests {
         assert_markdown_document_analysis_payload(&value);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "analysis"))]
     #[test]
     fn analyze_document_exposes_markdown_diagnostics_payload() {
         let value: Value = serde_json::from_slice(
@@ -655,6 +670,7 @@ mod tests {
         assert_markdown_document_analysis_payload(&value);
     }
 
+    #[cfg(feature = "analysis")]
     fn assert_markdown_document_analysis_payload(value: &Value) {
         assert_eq!(value["valid"], false);
         assert_eq!(value["source"]["kind"], "markdown");
@@ -668,7 +684,7 @@ mod tests {
         );
     }
 
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(all(target_arch = "wasm32", feature = "analysis"))]
     #[test]
     fn analyze_document_facts_exposes_markdown_syntax_payload() {
         let value: Value = serde_wasm_bindgen::from_value(
@@ -683,7 +699,7 @@ mod tests {
         assert_markdown_document_analysis_facts_payload(&value);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "analysis"))]
     #[test]
     fn analyze_document_facts_exposes_markdown_syntax_payload() {
         let value: Value = serde_json::from_slice(
@@ -698,6 +714,7 @@ mod tests {
         assert_markdown_document_analysis_facts_payload(&value);
     }
 
+    #[cfg(feature = "analysis")]
     fn assert_markdown_document_analysis_facts_payload(value: &Value) {
         assert_eq!(value["valid"], false);
         assert_eq!(value["source"]["kind"], "markdown");
@@ -734,15 +751,10 @@ mod tests {
         let capabilities = merman_bindings_core::binding_capabilities();
 
         assert_eq!(capabilities.render, cfg!(feature = "render"));
+        assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
         assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
-        assert_eq!(
-            capabilities.core_full,
-            cfg!(feature = "core-full") || cfg!(feature = "ascii")
-        );
-        assert_eq!(
-            capabilities.core_host,
-            cfg!(feature = "core-host") || cfg!(feature = "ascii")
-        );
+        assert_eq!(capabilities.core_full, cfg!(feature = "core-full"));
+        assert_eq!(capabilities.core_host, cfg!(feature = "core-host"));
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
         assert_eq!(
@@ -753,7 +765,7 @@ mod tests {
 
     #[test]
     fn registry_profile_and_family_capabilities_are_exposed() {
-        let expected_profile = if cfg!(feature = "core-full") || cfg!(feature = "ascii") {
+        let expected_profile = if cfg!(feature = "core-full") {
             "full"
         } else {
             "tiny"
@@ -772,7 +784,7 @@ mod tests {
             capabilities
                 .iter()
                 .any(|capability| capability.diagram_type == "mindmap"),
-            expected_profile == "full"
+            cfg!(feature = "core-full")
         );
     }
 

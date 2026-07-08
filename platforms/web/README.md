@@ -23,9 +23,9 @@ wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
 
 | Preset | Command | Capability |
 | --- | --- | --- |
-| `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport plus metadata, analysis, and validation. Render, parse, layout, ASCII, and editor-language calls are unavailable. |
-| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, metadata, analysis, and validation over the minimal core profile. Editor-language calls are unavailable. |
-| `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering only. This preset still carries the full core registry because the browser ASCII crate depends on the full core/host profile, but editor-language calls remain unavailable. |
+| `browser-core` | `npm run build:wasm:core --prefix platforms/web` | Browser wasm-bindgen transport plus metadata, analysis, facts, and validation. Render, parse, layout, ASCII, and editor-language calls are unavailable. |
+| `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, metadata, analysis, facts, and validation over the minimal core profile. Editor-language calls are unavailable. |
+| `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering and metadata without diagnostics analysis or editor-language dependencies. |
 | `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/analysis/validate, ASCII, editor-language APIs, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
 | `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
 | `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. Keeps editor-language enabled. |
@@ -43,6 +43,10 @@ Call `bindingCapabilities()` after `initMerman()` when you need to branch on opt
 Slim subpaths do not export wrappers for capabilities they intentionally omit. For example,
 `@mermanjs/web/core` has no `renderSvg()`, `renderAscii()`, or editor-language exports, and
 `@mermanjs/web/render` has no ASCII or editor-language exports.
+`@mermanjs/web/ascii` has no analysis, validation, lint catalog, render, parse, layout, or
+editor-language exports.
+`bindingCapabilities().analysis` is the supported runtime contract for whether the loaded artifact
+exposes `analyze()`, `analysisFacts()`, document analysis, validation, and `lintRuleCatalog()`.
 `bindingCapabilities().editor_language` is the supported runtime contract for whether the loaded
 artifact exposes `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`,
 `editorHover()`, `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
@@ -58,7 +62,7 @@ The package publishes one default full artifact plus opt-in subpath entry points
 | `@mermanjs/web` | `browser-full` | Default playground/editor package with render, layout, parse, ASCII, analysis, validation, editor APIs, and ELK. |
 | `@mermanjs/web/core` | `browser-core` | Smallest browser artifact for metadata, analysis, facts, and validation. Render, layout, parse JSON, ASCII, and editor API wrappers are not exported. |
 | `@mermanjs/web/render` | `browser-render` | SVG/layout/parse plus metadata, analysis, facts, and validation over the minimal core registry. ASCII and editor API wrappers are not exported. |
-| `@mermanjs/web/ascii` | `browser-ascii` | ASCII/Unicode rendering plus metadata, analysis, facts, and validation. SVG/layout/parse and editor API wrappers are not exported. |
+| `@mermanjs/web/ascii` | `browser-ascii` | ASCII/Unicode rendering plus metadata. Analysis, validation, lint catalog, SVG/layout/parse, and editor API wrappers are not exported. |
 | `@mermanjs/web/full` | `browser-full` | Explicit full preset import; equivalent capabilities to the default package. |
 
 There is no separate `@mermanjs/web/analysis` entry point. `@mermanjs/web/core` is already the
@@ -204,16 +208,17 @@ rendering in the browser. Treat it as a feature module, not as first-paint UI co
 
 The package publishes subpaths for the core, render, ASCII, and full browser artifacts. Call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
-`core_full`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language` capabilities.
+`analysis`, `core_full`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language`
+capabilities.
 The slim subpaths are capability-specific entry points, not full API aliases. They type-re-export
 the shared public option/result types and stable helper values, then export only the runtime
 wrappers that make sense for that surface. Use `@mermanjs/web/full` or the default import when you
 want one module namespace with render, ASCII, and editor-language wrappers together.
-`selectedRegistryProfile()` reports the active Mermaid registry profile,
+`selectedRegistryProfile()` reports the active Mermaid registry profile and
 `diagramFamilyCapabilities()` reports the diagram parser/render facts registered in the current
-artifact, and `lintRuleCatalog()` reports analyzer rule ids, evidence references, default profiles,
-origins, configurability, and fixability. The ASCII preset currently preserves the full core
-registry for compatibility with the browser ASCII implementation.
+artifact. Artifacts with `bindingCapabilities().analysis === true` also expose `lintRuleCatalog()`
+for analyzer rule ids, evidence references, default profiles, origins, configurability, and
+fixability.
 
 Each published subpath has its own runtime state. Initializing `@mermanjs/web/core` in the same
 process as `@mermanjs/web/full` does not reuse or contaminate the default full module's capability
@@ -295,8 +300,8 @@ The default `@mermanjs/web` entry point and `@mermanjs/web/full` expose the full
 metadata, shared types, stable constants, type guards, and `encodeOptions()`.
 `@mermanjs/web/render` adds the SVG, parse, layout, DOM SVG, and browser text-measurement helpers.
 `@mermanjs/web/ascii` adds `renderAscii()`, `asciiSupportedDiagrams()`, and
-`asciiCapabilities()`. Unsupported wrappers are absent from slim entry points rather than exported
-as throwing stubs.
+`asciiCapabilities()` without the diagnostics analysis wrappers. Unsupported wrappers are absent
+from slim entry points rather than exported as throwing stubs.
 
 All render, parse, layout, analysis, validation, editor, and metadata functions require
 `initMerman()` first. The editor functions are stateless document queries backed by
@@ -305,11 +310,12 @@ same completion, diagnostics, hover, symbol, code-action, rename, and semantic-t
 Editor query results expose semantic fact provenance where applicable, matching the
 `ParserComplete`, `ParserRecovered`, and `TextScan` boundary used by `merman-editor-core`.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
-`supportedHostThemePresets()`, and `lintRuleCatalog()` return typed metadata and fail fast if the
-generated WebAssembly metadata drifts from the TypeScript surface. ASCII support is typed
-separately from SVG diagram metadata because some terminal-friendly renderers, such as `treeView`,
-can be exposed through `asciiSupportedDiagrams()` even when they are not part of the public SVG
-`supportedDiagrams()` list.
+`supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
+metadata drifts from the TypeScript surface. `lintRuleCatalog()` is available only on
+analysis-capable artifacts. ASCII support is typed separately from SVG diagram metadata because
+some terminal-friendly renderers, such as `treeView`, can be exposed through
+`asciiSupportedDiagrams()` even when they are not part of the public SVG `supportedDiagrams()`
+list.
 
 ## Benchmarking against Mermaid JS
 

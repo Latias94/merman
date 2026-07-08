@@ -784,6 +784,7 @@ function assertHostThemePresetName(preset: string): HostThemePresetName {
 function normalizeBindingCapabilities(capabilities: BindingCapabilities): BindingCapabilities {
   return {
     render: Boolean(capabilities.render),
+    analysis: Boolean(capabilities.analysis),
     ascii: Boolean(capabilities.ascii),
     core_full: Boolean(capabilities.core_full),
     core_host: Boolean(capabilities.core_host),

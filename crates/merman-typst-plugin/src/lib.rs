@@ -72,7 +72,7 @@ fn typst_capabilities_json() -> Option<Vec<u8>> {
 }
 
 fn fallback_capabilities_json() -> Vec<u8> {
-    br#"{"render":false,"ascii":false,"core_full":false,"core_host":false,"ratex_math":false,"editor_language":false,"text_measurement":{"vendored":false,"deterministic":false,"host_callback":false,"font_assets":false}}"#.to_vec()
+    br#"{"render":false,"analysis":false,"ascii":false,"core_full":false,"core_host":false,"ratex_math":false,"editor_language":false,"text_measurement":{"vendored":false,"deterministic":false,"host_callback":false,"font_assets":false}}"#.to_vec()
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
@@ -152,6 +152,7 @@ mod tests {
         let payload: Value = serde_json::from_slice(&capabilities_json()).expect("valid JSON");
 
         assert_eq!(payload["render"], cfg!(feature = "render"));
+        assert_eq!(payload["analysis"], cfg!(feature = "analysis"));
         assert_eq!(
             payload["text_measurement"]["vendored"],
             cfg!(feature = "render")

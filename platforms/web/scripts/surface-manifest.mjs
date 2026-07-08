@@ -18,10 +18,13 @@ const metadataRuntimeExportNames = [
   "selectedRegistryProfile",
   "supportedDiagrams",
   "diagramFamilyCapabilities",
-  "lintRuleCatalog",
   "supportedThemes",
   "abiVersion",
   "packageVersion",
+];
+
+const analysisMetadataRuntimeExportNames = [
+  "lintRuleCatalog",
 ];
 
 const renderRuntimeExportNames = [
@@ -85,6 +88,7 @@ const coreRuntimeExportNames = [
   ...lifecycleRuntimeExportNames,
   ...analysisRuntimeExportNames,
   ...metadataRuntimeExportNames,
+  ...analysisMetadataRuntimeExportNames,
 ];
 
 const renderSurfaceRuntimeExportNames = [
@@ -93,7 +97,8 @@ const renderSurfaceRuntimeExportNames = [
 ];
 
 const asciiSurfaceRuntimeExportNames = [
-  ...coreRuntimeExportNames,
+  ...lifecycleRuntimeExportNames,
+  ...metadataRuntimeExportNames,
   ...asciiRuntimeExportNames,
 ];
 

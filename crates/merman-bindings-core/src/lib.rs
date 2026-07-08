@@ -21,17 +21,17 @@ pub use common::{
 pub use engine::BindingEngine;
 pub use metadata::{
     BindingAsciiCapability, BindingAsciiCapabilityEvidence, BindingCapabilities,
-    BindingDiagramFamilyCapability, TextMeasurementCapabilities, ascii_capabilities,
-    ascii_capabilities_json, ascii_supported_diagrams, ascii_supported_diagrams_json,
-    binding_capabilities, binding_capabilities_json, configurable_lint_rule_catalog,
-    configurable_lint_rule_catalog_json, diagram_family_capabilities,
-    diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
-    selected_registry_profile, supported_diagrams, supported_diagrams_json,
+    BindingDiagramFamilyCapability, RuleCatalogEntry, TextMeasurementCapabilities,
+    ascii_capabilities, ascii_capabilities_json, ascii_supported_diagrams,
+    ascii_supported_diagrams_json, binding_capabilities, binding_capabilities_json,
+    configurable_lint_rule_catalog, configurable_lint_rule_catalog_json,
+    diagram_family_capabilities, diagram_family_capabilities_json, lint_rule_catalog,
+    lint_rule_catalog_json, selected_registry_profile, supported_diagrams, supported_diagrams_json,
     supported_host_theme_presets, supported_host_theme_presets_json, supported_themes,
     supported_themes_json,
 };
 
-pub use merman_analysis::RuleCatalogEntry;
+#[cfg(feature = "analysis")]
 use merman_analysis::{AnalysisFactsPayload, AnalysisPayload, Analyzer};
 
 #[cfg(feature = "ascii")]
@@ -49,16 +49,31 @@ pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
     Err(common::feature_required_error("ASCII rendering", "ascii"))
 }
 
+#[cfg(feature = "analysis")]
 pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     analysis_payload(source, options_json)
         .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
 }
 
+#[cfg(not(feature = "analysis"))]
+pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let _ = (source, options_json);
+    Err(common::feature_required_error("analysis", "analysis"))
+}
+
+#[cfg(feature = "analysis")]
 pub fn analysis_facts_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     analysis_facts_payload(source, options_json)
         .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
 }
 
+#[cfg(not(feature = "analysis"))]
+pub fn analysis_facts_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let _ = (source, options_json);
+    Err(common::feature_required_error("analysis facts", "analysis"))
+}
+
+#[cfg(feature = "analysis")]
 pub fn analyze_document_json(
     source: &[u8],
     options_json: &[u8],
@@ -68,6 +83,20 @@ pub fn analyze_document_json(
         .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
 }
 
+#[cfg(not(feature = "analysis"))]
+pub fn analyze_document_json(
+    source: &[u8],
+    options_json: &[u8],
+    uri: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    let _ = (source, options_json, uri);
+    Err(common::feature_required_error(
+        "document analysis",
+        "analysis",
+    ))
+}
+
+#[cfg(feature = "analysis")]
 pub fn analyze_document_facts_json(
     source: &[u8],
     options_json: &[u8],
@@ -77,8 +106,28 @@ pub fn analyze_document_facts_json(
         .and_then(|payload| payload.to_json_bytes().map_err(common::internal_json_error))
 }
 
+#[cfg(not(feature = "analysis"))]
+pub fn analyze_document_facts_json(
+    source: &[u8],
+    options_json: &[u8],
+    uri: &[u8],
+) -> Result<Vec<u8>, BindingError> {
+    let _ = (source, options_json, uri);
+    Err(common::feature_required_error(
+        "document analysis facts",
+        "analysis",
+    ))
+}
+
+#[cfg(feature = "analysis")]
 pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
     common::validation_payload_json_from_analysis(&analysis_payload(source, options_json)?)
+}
+
+#[cfg(not(feature = "analysis"))]
+pub fn validate_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    let _ = (source, options_json);
+    Err(common::feature_required_error("validation", "analysis"))
 }
 
 #[cfg(not(feature = "render"))]
@@ -99,12 +148,14 @@ pub fn layout_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindin
     Err(common::feature_required_error("layout_json", "render"))
 }
 
+#[cfg(feature = "analysis")]
 fn analysis_payload(source: &[u8], options_json: &[u8]) -> Result<AnalysisPayload, BindingError> {
     let source = common::source_text_utf8(source)?;
     let options = common::parse_options(options_json)?;
     Ok(Analyzer::with_options(common::analysis_options(&options)?).analyze(source))
 }
 
+#[cfg(feature = "analysis")]
 fn analysis_facts_payload(
     source: &[u8],
     options_json: &[u8],
@@ -114,6 +165,7 @@ fn analysis_facts_payload(
     Ok(Analyzer::with_options(common::analysis_options(&options)?).analyze_facts(source))
 }
 
+#[cfg(feature = "analysis")]
 fn document_analysis_payload(
     source: &[u8],
     options_json: &[u8],
@@ -130,6 +182,7 @@ fn document_analysis_payload(
     ))
 }
 
+#[cfg(feature = "analysis")]
 fn document_analysis_facts_payload(
     source: &[u8],
     options_json: &[u8],
@@ -146,9 +199,17 @@ fn document_analysis_facts_payload(
     ))
 }
 
-#[cfg(all(test, any(not(feature = "render"), not(feature = "ascii"))))]
+#[cfg(all(
+    test,
+    any(
+        not(feature = "render"),
+        not(feature = "ascii"),
+        not(feature = "analysis")
+    )
+))]
 mod tests {
     use super::*;
+    #[cfg(feature = "analysis")]
     use serde_json::Value;
 
     #[cfg(not(feature = "render"))]
@@ -173,6 +234,29 @@ mod tests {
         assert!(err.message().contains("ascii feature"));
     }
 
+    #[cfg(not(feature = "analysis"))]
+    #[test]
+    fn analysis_entry_points_report_missing_analysis_feature() {
+        let err = analyze_json(b"flowchart TD\nA", b"").unwrap_err();
+        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+        assert!(err.message().contains("analysis feature"));
+
+        let err = analysis_facts_json(b"flowchart TD\nA", b"").unwrap_err();
+        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+
+        let err =
+            analyze_document_json(b"flowchart TD\nA", b"", b"file:///tmp/example.mmd").unwrap_err();
+        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+
+        let err = analyze_document_facts_json(b"flowchart TD\nA", b"", b"file:///tmp/example.mmd")
+            .unwrap_err();
+        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+
+        let err = validate_json(b"flowchart TD\nA", b"").unwrap_err();
+        assert_eq!(err.status(), BindingStatus::UnsupportedFormat);
+    }
+
+    #[cfg(feature = "analysis")]
     #[test]
     fn analyze_json_reports_payload_for_empty_source() {
         let json: Value = serde_json::from_slice(&analyze_json(b"", b"").unwrap()).unwrap();
@@ -181,6 +265,7 @@ mod tests {
         assert_eq!(json["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn analysis_facts_json_reports_parser_backed_syntax_facts() {
         let json: Value =
@@ -209,6 +294,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn analyze_document_json_reports_markdown_source_and_host_ranges() {
         let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
@@ -230,6 +316,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn analyze_document_json_reports_mdx_source_with_uri_fragment() {
         let source = b"before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n";
@@ -248,6 +335,7 @@ mod tests {
         assert_eq!(json["diagnostics"][0]["span"]["line"], 4);
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn analyze_document_facts_json_reports_markdown_fence_facts_with_host_ranges() {
         let source = b"before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n";
@@ -271,6 +359,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn validate_json_reports_legacy_projection_for_empty_source() {
         let json: Value = serde_json::from_slice(&validate_json(b"", b"").unwrap()).unwrap();
@@ -279,6 +368,7 @@ mod tests {
         assert_eq!(json["error"], "no Mermaid diagram detected");
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn validate_json_reports_non_ok_status_for_lint_errors_without_public_codes() {
         let json: Value = serde_json::from_slice(
@@ -302,6 +392,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn analyze_json_honors_lint_rule_configuration() {
         let payload: Value = serde_json::from_slice(
@@ -317,6 +408,7 @@ mod tests {
         assert!(payload["diagnostics"].as_array().unwrap().is_empty());
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn analyze_json_honors_lint_severity_overrides() {
         let payload: Value = serde_json::from_slice(
@@ -337,6 +429,7 @@ mod tests {
         assert_eq!(payload["diagnostics"][0]["severity"].as_str(), Some("hint"));
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn analyze_json_rejects_unknown_lint_rule_ids() {
         let err = analyze_json(

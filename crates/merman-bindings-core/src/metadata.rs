@@ -9,12 +9,15 @@ static SUPPORTED_THEMES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static SUPPORTED_HOST_THEME_PRESETS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static DIAGRAM_FAMILY_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static BINDING_CAPABILITIES_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+#[cfg(feature = "analysis")]
 static LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
+#[cfg(feature = "analysis")]
 static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BindingCapabilities {
     pub render: bool,
+    pub analysis: bool,
     pub ascii: bool,
     pub core_full: bool,
     pub core_host: bool,
@@ -58,12 +61,27 @@ pub struct BindingAsciiCapabilityEvidence {
     pub note: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct RuleCatalogEntry {
+    pub id: &'static str,
+    pub description: &'static str,
+    pub evidence: &'static [&'static str],
+    pub default_severity: &'static str,
+    pub category: &'static str,
+    pub default_enabled: bool,
+    pub default_profile: &'static str,
+    pub origin: &'static str,
+    pub configurable: bool,
+    pub fixable: bool,
+}
+
 pub const fn binding_capabilities() -> BindingCapabilities {
     BindingCapabilities {
         render: cfg!(feature = "render"),
+        analysis: cfg!(feature = "analysis"),
         ascii: cfg!(feature = "ascii"),
-        core_full: cfg!(feature = "core-full") || cfg!(feature = "ascii"),
-        core_host: cfg!(feature = "core-host") || cfg!(feature = "ascii"),
+        core_full: cfg!(feature = "core-full"),
+        core_host: cfg!(feature = "core-host"),
         elk_layout: cfg!(feature = "elk-layout"),
         ratex_math: cfg!(feature = "ratex-math"),
         editor_language: cfg!(feature = "editor-language"),
@@ -191,33 +209,76 @@ pub fn supported_host_theme_presets_json() -> Result<Vec<u8>, BindingError> {
     )
 }
 
-pub fn lint_rule_catalog() -> Vec<merman_analysis::RuleCatalogEntry> {
-    merman_analysis::rule_catalog()
+pub fn lint_rule_catalog() -> Vec<RuleCatalogEntry> {
+    #[cfg(feature = "analysis")]
+    {
+        merman_analysis::rule_catalog()
+            .into_iter()
+            .map(rule_catalog_entry)
+            .collect()
+    }
+    #[cfg(not(feature = "analysis"))]
+    {
+        Vec::new()
+    }
 }
 
-pub fn configurable_lint_rule_catalog() -> Vec<merman_analysis::RuleCatalogEntry> {
-    merman_analysis::configurable_rule_catalog()
+pub fn configurable_lint_rule_catalog() -> Vec<RuleCatalogEntry> {
+    #[cfg(feature = "analysis")]
+    {
+        merman_analysis::configurable_rule_catalog()
+            .into_iter()
+            .map(rule_catalog_entry)
+            .collect()
+    }
+    #[cfg(not(feature = "analysis"))]
+    {
+        Vec::new()
+    }
 }
 
 pub fn lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
-    if let Some(bytes) = LINT_RULE_CATALOG_JSON.get() {
-        return Ok(bytes.clone());
+    #[cfg(not(feature = "analysis"))]
+    {
+        return Err(crate::common::feature_required_error(
+            "lint rule catalog",
+            "analysis",
+        ));
     }
 
-    let bytes = merman_analysis::rule_catalog_response_json_bytes().map_err(internal_json_error)?;
-    let _ = LINT_RULE_CATALOG_JSON.set(bytes.clone());
-    Ok(bytes)
+    #[cfg(feature = "analysis")]
+    {
+        if let Some(bytes) = LINT_RULE_CATALOG_JSON.get() {
+            return Ok(bytes.clone());
+        }
+
+        let bytes =
+            merman_analysis::rule_catalog_response_json_bytes().map_err(internal_json_error)?;
+        let _ = LINT_RULE_CATALOG_JSON.set(bytes.clone());
+        Ok(bytes)
+    }
 }
 
 pub fn configurable_lint_rule_catalog_json() -> Result<Vec<u8>, BindingError> {
-    if let Some(bytes) = CONFIGURABLE_LINT_RULE_CATALOG_JSON.get() {
-        return Ok(bytes.clone());
+    #[cfg(not(feature = "analysis"))]
+    {
+        return Err(crate::common::feature_required_error(
+            "configurable lint rule catalog",
+            "analysis",
+        ));
     }
 
-    let bytes = merman_analysis::configurable_rule_catalog_response_json_bytes()
-        .map_err(internal_json_error)?;
-    let _ = CONFIGURABLE_LINT_RULE_CATALOG_JSON.set(bytes.clone());
-    Ok(bytes)
+    #[cfg(feature = "analysis")]
+    {
+        if let Some(bytes) = CONFIGURABLE_LINT_RULE_CATALOG_JSON.get() {
+            return Ok(bytes.clone());
+        }
+
+        let bytes = merman_analysis::configurable_rule_catalog_response_json_bytes()
+            .map_err(internal_json_error)?;
+        let _ = CONFIGURABLE_LINT_RULE_CATALOG_JSON.set(bytes.clone());
+        Ok(bytes)
+    }
 }
 
 pub fn diagram_family_capabilities_json() -> Result<Vec<u8>, BindingError> {
@@ -243,9 +304,26 @@ fn cached_json(
     Ok(bytes)
 }
 
+#[cfg(feature = "analysis")]
+fn rule_catalog_entry(rule: merman_analysis::RuleCatalogEntry) -> RuleCatalogEntry {
+    RuleCatalogEntry {
+        id: rule.id,
+        description: rule.description,
+        evidence: rule.evidence,
+        default_severity: rule.default_severity.as_str(),
+        category: rule.category.as_str(),
+        default_enabled: rule.default_enabled,
+        default_profile: rule.default_profile.as_str(),
+        origin: rule.origin.as_str(),
+        configurable: rule.configurable,
+        fixable: rule.fixable,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BindingStatus;
     use serde_json::Value;
 
     #[test]
@@ -273,15 +351,10 @@ mod tests {
         let capabilities = binding_capabilities();
 
         assert_eq!(capabilities.render, cfg!(feature = "render"));
+        assert_eq!(capabilities.analysis, cfg!(feature = "analysis"));
         assert_eq!(capabilities.ascii, cfg!(feature = "ascii"));
-        assert_eq!(
-            capabilities.core_full,
-            cfg!(feature = "core-full") || cfg!(feature = "ascii")
-        );
-        assert_eq!(
-            capabilities.core_host,
-            cfg!(feature = "core-host") || cfg!(feature = "ascii")
-        );
+        assert_eq!(capabilities.core_full, cfg!(feature = "core-full"));
+        assert_eq!(capabilities.core_host, cfg!(feature = "core-host"));
         assert_eq!(capabilities.elk_layout, cfg!(feature = "elk-layout"));
         assert_eq!(capabilities.ratex_math, cfg!(feature = "ratex-math"));
         assert_eq!(
@@ -309,6 +382,7 @@ mod tests {
             serde_json::from_slice(&binding_capabilities_json().unwrap()).unwrap();
 
         assert_eq!(capabilities["render"], cfg!(feature = "render"));
+        assert_eq!(capabilities["analysis"], cfg!(feature = "analysis"));
         assert_eq!(
             capabilities["text_measurement"]["vendored"],
             cfg!(feature = "render")
@@ -336,7 +410,7 @@ mod tests {
         );
         assert_eq!(
             selected_registry_profile(),
-            if cfg!(feature = "core-full") || cfg!(feature = "ascii") {
+            if cfg!(feature = "core-full") {
                 "full"
             } else {
                 "tiny"
@@ -371,7 +445,7 @@ mod tests {
         let has_mindmap = capabilities
             .iter()
             .any(|capability| capability.diagram_type == "mindmap");
-        assert_eq!(has_mindmap, selected_registry_profile() == "full");
+        assert_eq!(has_mindmap, cfg!(feature = "core-full"));
     }
 
     #[test]
@@ -497,10 +571,6 @@ mod tests {
             serde_json::from_slice(&supported_host_theme_presets_json().unwrap()).unwrap();
         let family_capabilities: Value =
             serde_json::from_slice(&diagram_family_capabilities_json().unwrap()).unwrap();
-        let lint_rules: Value = serde_json::from_slice(&lint_rule_catalog_json().unwrap()).unwrap();
-        let configurable_lint_rules: Value =
-            serde_json::from_slice(&configurable_lint_rule_catalog_json().unwrap()).unwrap();
-
         assert!(
             diagrams
                 .as_array()
@@ -547,31 +617,41 @@ mod tests {
                 .iter()
                 .any(|capability| capability["diagram_type"] == "flowchart")
         );
-        assert_eq!(
-            lint_rules["version"],
-            merman_analysis::RULE_CATALOG_RESPONSE_VERSION
-        );
-        let lint_rules = lint_rules["rules"].as_array().unwrap();
-        assert!(lint_rules.iter().any(|rule| {
-            rule["id"] == "merman.authoring.flowchart.explicit_direction"
-                && rule["origin"] == "merman_authoring"
-                && rule["evidence"]
+        if cfg!(feature = "analysis") {
+            let lint_rules: Value =
+                serde_json::from_slice(&lint_rule_catalog_json().unwrap()).unwrap();
+            let configurable_lint_rules: Value =
+                serde_json::from_slice(&configurable_lint_rule_catalog_json().unwrap()).unwrap();
+
+            assert_eq!(lint_rules["version"], 1);
+            let lint_rules = lint_rules["rules"].as_array().unwrap();
+            assert!(lint_rules.iter().any(|rule| {
+                rule["id"] == "merman.authoring.flowchart.explicit_direction"
+                    && rule["origin"] == "merman_authoring"
+                    && rule["evidence"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+            }));
+            assert_eq!(configurable_lint_rules["version"], 1);
+            assert!(
+                configurable_lint_rules["rules"]
                     .as_array()
                     .unwrap()
                     .iter()
-                    .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
-        }));
-        assert_eq!(
-            configurable_lint_rules["version"],
-            merman_analysis::RULE_CATALOG_RESPONSE_VERSION
-        );
-        assert!(
-            configurable_lint_rules["rules"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|rule| rule["category"] != "internal")
-        );
+                    .all(|rule| rule["category"] != "internal")
+            );
+        } else {
+            assert_eq!(
+                lint_rule_catalog_json().unwrap_err().status(),
+                BindingStatus::UnsupportedFormat
+            );
+            assert_eq!(
+                configurable_lint_rule_catalog_json().unwrap_err().status(),
+                BindingStatus::UnsupportedFormat
+            );
+        }
     }
 
     fn ascii_capability<'a>(

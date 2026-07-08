@@ -1,10 +1,12 @@
 use crate::{BindingError, common};
+#[cfg(feature = "analysis")]
 use merman_analysis::Analyzer;
 #[cfg(feature = "render")]
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct BindingEngine {
+    #[cfg(feature = "analysis")]
     analyzer: Analyzer,
     #[cfg(feature = "render")]
     render: crate::render::CachedRenderEngine,
@@ -14,14 +16,24 @@ pub struct BindingEngine {
 
 impl BindingEngine {
     pub fn new(options_json: &[u8]) -> Result<Self, BindingError> {
-        let options = common::parse_options(options_json)?;
-        Ok(Self {
-            analyzer: Analyzer::with_options(common::analysis_options(&options)?),
-            #[cfg(feature = "render")]
-            render: crate::render::CachedRenderEngine::new(&options)?,
-            #[cfg(feature = "ascii")]
-            ascii: crate::ascii::CachedAsciiEngine::new(&options)?,
-        })
+        #[cfg(not(any(feature = "analysis", feature = "render", feature = "ascii")))]
+        {
+            let _ = options_json;
+            Ok(Self {})
+        }
+
+        #[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]
+        {
+            let options = common::parse_options(options_json)?;
+            Ok(Self {
+                #[cfg(feature = "analysis")]
+                analyzer: Analyzer::with_options(common::analysis_options(&options)?),
+                #[cfg(feature = "render")]
+                render: crate::render::CachedRenderEngine::new(&options)?,
+                #[cfg(feature = "ascii")]
+                ascii: crate::ascii::CachedAsciiEngine::new(&options)?,
+            })
+        }
     }
 
     pub fn render_svg(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -40,6 +52,7 @@ impl BindingEngine {
     #[cfg(feature = "render")]
     pub fn with_text_measurer(&self, measurer: Arc<dyn crate::TextMeasurer + Send + Sync>) -> Self {
         Self {
+            #[cfg(feature = "analysis")]
             analyzer: self.analyzer.clone(),
             render: self.render.with_text_measurer(measurer),
             #[cfg(feature = "ascii")]
@@ -87,17 +100,33 @@ impl BindingEngine {
     }
 
     pub fn analyze_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = common::source_text_utf8(source)?;
-        self.analyzer
-            .analyze_json(source)
-            .map_err(common::internal_json_error)
+        #[cfg(feature = "analysis")]
+        {
+            let source = common::source_text_utf8(source)?;
+            self.analyzer
+                .analyze_json(source)
+                .map_err(common::internal_json_error)
+        }
+        #[cfg(not(feature = "analysis"))]
+        {
+            let _ = source;
+            Err(common::feature_required_error("analysis", "analysis"))
+        }
     }
 
     pub fn analysis_facts_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        let source = common::source_text_utf8(source)?;
-        self.analyzer
-            .analyze_facts_json(source)
-            .map_err(common::internal_json_error)
+        #[cfg(feature = "analysis")]
+        {
+            let source = common::source_text_utf8(source)?;
+            self.analyzer
+                .analyze_facts_json(source)
+                .map_err(common::internal_json_error)
+        }
+        #[cfg(not(feature = "analysis"))]
+        {
+            let _ = source;
+            Err(common::feature_required_error("analysis facts", "analysis"))
+        }
     }
 
     pub fn analyze_document_json(
@@ -105,12 +134,23 @@ impl BindingEngine {
         source: &[u8],
         uri: &[u8],
     ) -> Result<Vec<u8>, BindingError> {
-        let source = common::source_text_utf8(source)?;
-        let uri = common::source_text_utf8(uri)?;
-        let descriptor = common::source_descriptor_for_uri(uri);
-        merman_analysis::analyze_document(source, &self.analyzer, descriptor)
-            .to_json_bytes()
-            .map_err(common::internal_json_error)
+        #[cfg(feature = "analysis")]
+        {
+            let source = common::source_text_utf8(source)?;
+            let uri = common::source_text_utf8(uri)?;
+            let descriptor = common::source_descriptor_for_uri(uri);
+            merman_analysis::analyze_document(source, &self.analyzer, descriptor)
+                .to_json_bytes()
+                .map_err(common::internal_json_error)
+        }
+        #[cfg(not(feature = "analysis"))]
+        {
+            let _ = (source, uri);
+            Err(common::feature_required_error(
+                "document analysis",
+                "analysis",
+            ))
+        }
     }
 
     pub fn analyze_document_facts_json(
@@ -118,18 +158,38 @@ impl BindingEngine {
         source: &[u8],
         uri: &[u8],
     ) -> Result<Vec<u8>, BindingError> {
-        let source = common::source_text_utf8(source)?;
-        let uri = common::source_text_utf8(uri)?;
-        let descriptor = common::source_descriptor_for_uri(uri);
-        merman_analysis::analyze_document_facts(source, &self.analyzer, descriptor)
-            .to_json_bytes()
-            .map_err(common::internal_json_error)
+        #[cfg(feature = "analysis")]
+        {
+            let source = common::source_text_utf8(source)?;
+            let uri = common::source_text_utf8(uri)?;
+            let descriptor = common::source_descriptor_for_uri(uri);
+            merman_analysis::analyze_document_facts(source, &self.analyzer, descriptor)
+                .to_json_bytes()
+                .map_err(common::internal_json_error)
+        }
+        #[cfg(not(feature = "analysis"))]
+        {
+            let _ = (source, uri);
+            Err(common::feature_required_error(
+                "document analysis facts",
+                "analysis",
+            ))
+        }
     }
 
     pub fn validate_json(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
-        common::validation_payload_json_from_analysis(&self.analyze_payload(source)?)
+        #[cfg(feature = "analysis")]
+        {
+            common::validation_payload_json_from_analysis(&self.analyze_payload(source)?)
+        }
+        #[cfg(not(feature = "analysis"))]
+        {
+            let _ = source;
+            Err(common::feature_required_error("validation", "analysis"))
+        }
     }
 
+    #[cfg(feature = "analysis")]
     fn analyze_payload(
         &self,
         source: &[u8],
@@ -142,6 +202,7 @@ impl BindingEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "analysis")]
     use serde_json::Value;
     use std::sync::Arc;
 
@@ -168,6 +229,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn engine_validates_with_cached_renderer() {
         let engine = BindingEngine::new(b"").unwrap();
@@ -178,6 +240,7 @@ mod tests {
         assert_eq!(validation["code_name"], "MERMAN_NO_DIAGRAM");
     }
 
+    #[cfg(feature = "analysis")]
     #[test]
     fn engine_analyzes_markdown_documents() {
         let engine = BindingEngine::new(b"").unwrap();
@@ -199,6 +262,21 @@ mod tests {
                 .iter()
                 .any(|related| related["message"] == "Mermaid fence 1")
         );
+    }
+
+    #[cfg(not(feature = "analysis"))]
+    #[test]
+    fn engine_reports_missing_analysis_feature() {
+        let engine = BindingEngine::new(b"").unwrap();
+
+        let err = engine.validate_json(b"flowchart TD\nA").unwrap_err();
+        assert_eq!(err.status(), crate::BindingStatus::UnsupportedFormat);
+        assert!(err.message().contains("analysis feature"));
+
+        let err = engine
+            .analyze_document_json(b"flowchart TD\nA", b"file:///tmp/example.mmd")
+            .unwrap_err();
+        assert_eq!(err.status(), crate::BindingStatus::UnsupportedFormat);
     }
 
     #[test]

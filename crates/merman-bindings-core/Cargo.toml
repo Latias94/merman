@@ -14,12 +14,13 @@ keywords = ["mermaid", "diagrams", "bindings", "svg", "headless"]
 categories = ["api-bindings", "visualization"]
 
 [features]
-default = ["core-full", "core-host", "render"]
-core-full = ["merman/core-full"]
-core-host = ["merman/core-host"]
+default = ["core-full", "core-host", "render", "analysis"]
+core-full = ["merman/core-full", "merman-analysis?/core-full"]
+core-host = ["merman/core-host", "merman-analysis?/core-host"]
+analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
 render = ["merman/render"]
-editor-language = []
+editor-language = ["analysis"]
 cytoscape-layout = ["merman/cytoscape-layout"]
 elk-layout = ["merman/elk-layout"]
 ratex-math = ["render", "dep:merman-render", "merman-render/ratex-math"]
@@ -27,7 +28,7 @@ raster = ["merman/raster"]
 
 [dependencies]
 chrono.workspace = true
-merman-analysis.workspace = true
+merman-analysis = { workspace = true, optional = true }
 merman = { path = "../merman", version = "0.8.0-alpha.2", default-features = false }
 merman-render = { path = "../merman-render", version = "0.8.0-alpha.2", optional = true, default-features = false }
 serde.workspace = true

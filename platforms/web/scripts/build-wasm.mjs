@@ -16,9 +16,10 @@ const presets = {
   "browser-core": {
     surface: "browser",
     defaultFeatures: false,
-    features: [],
+    features: ["analysis"],
     capabilities: {
       render: false,
+      analysis: true,
       ascii: false,
       core_full: false,
       core_host: false,
@@ -30,9 +31,10 @@ const presets = {
   "browser-render": {
     surface: "browser",
     defaultFeatures: false,
-    features: ["render"],
+    features: ["render", "analysis"],
     capabilities: {
       render: true,
+      analysis: true,
       ascii: false,
       core_full: false,
       core_host: false,
@@ -47,9 +49,10 @@ const presets = {
     features: ["ascii"],
     capabilities: {
       render: false,
+      analysis: false,
       ascii: true,
-      core_full: true,
-      core_host: true,
+      core_full: false,
+      core_host: false,
       elk_layout: false,
       ratex_math: false,
       editor_language: false,
@@ -61,6 +64,7 @@ const presets = {
     features: [],
     capabilities: {
       render: true,
+      analysis: true,
       ascii: true,
       core_full: true,
       core_host: true,
@@ -72,9 +76,10 @@ const presets = {
   "browser-full-no-elk": {
     surface: "browser",
     defaultFeatures: false,
-    features: ["core-full", "core-host", "render", "ascii", "editor-language"],
+    features: ["core-full", "core-host", "render", "analysis", "ascii", "editor-language"],
     capabilities: {
       render: true,
+      analysis: true,
       ascii: true,
       core_full: true,
       core_host: true,
@@ -89,6 +94,7 @@ const presets = {
     features: ["ratex-math"],
     capabilities: {
       render: true,
+      analysis: true,
       ascii: true,
       core_full: true,
       core_host: true,

@@ -102,6 +102,7 @@ export interface BindingErrorPayload {
 
 export interface BindingCapabilities {
   render: boolean;
+  analysis: boolean;
   ascii: boolean;
   core_full: boolean;
   core_host: boolean;
@@ -120,6 +121,7 @@ export interface TextMeasurementCapabilities {
 
 interface BindingCapabilityFlags {
   render: boolean;
+  analysis: boolean;
   ascii: boolean;
   core_full: boolean;
   core_host: boolean;
@@ -216,6 +218,7 @@ export interface AsciiCapability {
 
 export const CORE_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
   render: false,
+  analysis: true,
   ascii: false,
   core_full: false,
   core_host: false,
@@ -226,6 +229,7 @@ export const CORE_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilitie
 
 export const RENDER_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
   render: true,
+  analysis: true,
   ascii: false,
   core_full: false,
   core_host: false,
@@ -236,9 +240,10 @@ export const RENDER_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilit
 
 export const ASCII_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
   render: false,
+  analysis: false,
   ascii: true,
-  core_full: true,
-  core_host: true,
+  core_full: false,
+  core_host: false,
   elk_layout: false,
   ratex_math: false,
   editor_language: false,
@@ -246,6 +251,7 @@ export const ASCII_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabiliti
 
 export const FULL_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
   render: true,
+  analysis: true,
   ascii: true,
   core_full: true,
   core_host: true,

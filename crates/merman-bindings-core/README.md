@@ -16,6 +16,8 @@ Most applications should use one of the public packages instead:
 ## Features
 
 - `render` enables SVG rendering through the main Merman facade.
+- `analysis` enables diagnostics analysis, validation JSON, document facts, and lint rule catalog
+  helpers.
 - `ascii` enables ASCII/Unicode text rendering.
 - `raster` enables PNG/JPG/PDF conversion through the main facade.
 - `ratex-math` enables the RaTeX math label backend.
@@ -46,6 +48,8 @@ reports the active Mermaid registry profile (`"full"` or `"tiny"`), and
 `diagram_family_capabilities()` exposes the diagram parser/render facts selected by that profile.
 Use this diagnostic surface when a host needs to reason about slim WASM/native artifacts without
 assuming capabilities from a package name.
+The `analysis` capability bit is independent from `render` and `ascii`; slim artifacts can expose
+ASCII or render output without compiling diagnostics and lint catalog support.
 
 For product scope, diagram coverage, and compatibility policy, see the
 [project README](https://github.com/Latias94/merman#readme) and

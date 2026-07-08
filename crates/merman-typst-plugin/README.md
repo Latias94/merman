@@ -4,7 +4,7 @@
 `merman`.
 
 The crate exports Typst-compatible `wasm-minimal-protocol` functions and delegates
-rendering to `merman-bindings-core`.
+rendering and validation to `merman-bindings-core`.
 
 Current exported functions:
 
@@ -47,6 +47,12 @@ Build the bridge-only protocol artifact with:
 
 ```bash
 cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown --no-default-features
+```
+
+Build a pure render artifact without validation analysis with:
+
+```bash
+cargo build -p merman-typst-plugin --profile wasm-size --target wasm32-unknown-unknown --no-default-features --features render
 ```
 
 Build the larger full-config/full-sanitization no-host artifact with:

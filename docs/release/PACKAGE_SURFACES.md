@@ -76,11 +76,11 @@ subpaths instead of being exported as throwing stubs.
 
 | Preset | Default features | Extra features | Intended use |
 | --- | ---: | --- | --- |
-| `browser-core` | no | none | Browser wasm-bindgen transport plus metadata, analysis, and validation. Render, parse, layout, ASCII, and editor-language entry points are unavailable. |
-| `browser-render` | no | `render` | SVG/parse/layout artifact with metadata, analysis, and validation over the minimal core profile. Editor-language entry points are unavailable. |
-| `browser-ascii` | no | `ascii` | ASCII/Unicode artifact. It still carries the full core registry because the browser ASCII crate depends on the full core/host profile, but editor-language entry points are unavailable. |
+| `browser-core` | no | `analysis` | Browser wasm-bindgen transport plus metadata, analysis, facts, and validation. Render, parse, layout, ASCII, and editor-language entry points are unavailable. |
+| `browser-render` | no | `render`, `analysis` | SVG/parse/layout artifact with metadata, analysis, facts, and validation over the minimal core profile. Editor-language entry points are unavailable. |
+| `browser-ascii` | no | `ascii` | ASCII/Unicode artifact with metadata only. Analysis, validation, lint catalog, render, parse, layout, and editor-language entry points are unavailable. |
 | `browser-full` | yes | none | Default npm artifact: full core profile, browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
-| `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
+| `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
 | `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
 
 `npm run check:contracts --prefix platforms/web` compares the wasm-bindgen full declarations with
@@ -119,18 +119,19 @@ Current release semantics are intentionally explicit:
   `@mermanjs/web/full` is the explicit full-preset subpath.
 - Browser WASM ABI 2 is the first ABI that requires the metadata exports used by the 0.8 wrapper.
   `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
-  whether `editor_language` is available. `selectedRegistryProfile()` and
+  whether `analysis` and `editor_language` are available. `selectedRegistryProfile()` and
   `diagramFamilyCapabilities()` report the selected diagram registry profile and registered
-  parser/render family facts. `lintRuleCatalog()` reports analyzer rule ids, evidence references,
-  default profiles, origins, configurability, and fixability. Consumers that load custom artifacts
-  must keep the generated wasm-bindgen artifact and TypeScript wrapper from the same package
+  parser/render family facts. `lintRuleCatalog()` is available on analysis-capable artifacts and
+  reports analyzer rule ids, evidence references, default profiles, origins, configurability, and
+  fixability. Consumers that load custom artifacts must keep the generated wasm-bindgen artifact and
+  TypeScript wrapper from the same package
   version/ABI; the 0.8 wrapper does not provide compatibility fallback for pre-ABI-2 browser
   artifacts that lack these metadata exports.
 - `merman-wasm` is the browser/wasm-bindgen crate. It should not be used as evidence that an
   artifact is Typst-compatible or pure-WASM compatible.
-- `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render
-  and ELK. `--no-default-features` builds the protocol bridge only. The Typst plugin injects the
-  `typst-package` resource profile when callers omit `resources`.
+- `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render,
+  validation analysis, and ELK. `--no-default-features` builds the protocol bridge only. The Typst
+  plugin injects the `typst-package` resource profile when callers omit `resources`.
 - A future public browser package, additional npm export path, or changed default artifact needs a
   new migration note and release decision.
 
@@ -183,14 +184,14 @@ Observed on 2026-06-22:
 
 | Surface | Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| Browser | `browser-core` | no | none | 2,314,537 | 1,607,616 | 488,344 | 371,239 |
-| Browser | `browser-render` | no | `render` | 7,142,939 | 5,323,303 | 1,567,143 | 1,135,983 |
+| Browser | `browser-core` | no | `analysis` | 2,314,537 | 1,607,616 | 488,344 | 371,239 |
+| Browser | `browser-render` | no | `render`, `analysis` | 7,142,939 | 5,323,303 | 1,567,143 | 1,135,983 |
 | Browser | `browser-ascii` | no | `ascii` | 4,053,135 | 2,972,267 | 1,000,885 | 745,996 |
-| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `ascii`, `editor-language` | 9,139,597 | 6,824,157 | 2,136,333 | 1,536,058 |
+| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 9,139,597 | 6,824,157 | 2,136,333 | 1,536,058 |
 | Browser | `browser-full` | yes | none | 10,115,464 | 7,502,959 | 2,335,802 | 1,666,379 |
 | Browser | `browser-ratex-math` | yes | `ratex-math` | 13,398,073 | 10,231,577 | 3,277,885 | 2,349,234 |
 | Typst | `typst-bridge` | no | none | 48,359 | 34,296 | 13,553 | 11,482 |
-| Typst | `typst-render-no-elk` | no | `render` | 6,541,087 | 5,056,278 | 1,508,214 | 1,093,218 |
-| Typst | `typst-core-full-no-elk` | no | `render`, `core-full` | 8,164,316 | 6,307,341 | 1,989,926 | 1,434,971 |
+| Typst | `typst-render-no-elk` | no | `render`, `analysis` | 6,541,087 | 5,056,278 | 1,508,214 | 1,093,218 |
+| Typst | `typst-core-full-no-elk` | no | `render`, `analysis`, `core-full` | 8,164,316 | 6,307,341 | 1,989,926 | 1,434,971 |
 | Typst | `typst-full-elk` | yes | none | 7,514,778 | 5,735,845 | 1,707,876 | 1,227,566 |
 | Typst | `typst-ratex-math` | yes | `ratex-math` | 11,228,422 | 8,620,566 | 2,684,627 | 1,928,257 |

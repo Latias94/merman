@@ -93,7 +93,7 @@ const PRESETS: &[WasmPreset] = &[
         package: "merman-wasm",
         artifact_name: "merman_wasm.wasm",
         no_default_features: true,
-        features: &[],
+        features: &["analysis"],
     },
     WasmPreset {
         name: "browser-render",
@@ -101,7 +101,7 @@ const PRESETS: &[WasmPreset] = &[
         package: "merman-wasm",
         artifact_name: "merman_wasm.wasm",
         no_default_features: true,
-        features: &["render"],
+        features: &["render", "analysis"],
     },
     WasmPreset {
         name: "browser-ascii",
@@ -129,6 +129,7 @@ const PRESETS: &[WasmPreset] = &[
             "core-full",
             "core-host",
             "render",
+            "analysis",
             "ascii",
             "editor-language",
         ],
@@ -155,7 +156,7 @@ const PRESETS: &[WasmPreset] = &[
         package: "merman-typst-plugin",
         artifact_name: "merman_typst_plugin.wasm",
         no_default_features: true,
-        features: &["render"],
+        features: &["render", "analysis"],
     },
     WasmPreset {
         name: "typst-core-full-no-elk",
@@ -163,7 +164,7 @@ const PRESETS: &[WasmPreset] = &[
         package: "merman-typst-plugin",
         artifact_name: "merman_typst_plugin.wasm",
         no_default_features: true,
-        features: &["render", "core-full"],
+        features: &["render", "analysis", "core-full"],
     },
     WasmPreset {
         name: "typst-full-elk",
@@ -617,7 +618,7 @@ mod tests {
 
         assert_eq!(presets.len(), 1);
         assert_eq!(presets[0].name, "browser-render");
-        assert_eq!(presets[0].features, &["render"]);
+        assert_eq!(presets[0].features, &["render", "analysis"]);
         assert!(presets[0].no_default_features);
     }
 

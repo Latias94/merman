@@ -1,5 +1,5 @@
 use crate::common::{
-    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson,
+    BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, ResourceOptionsJson,
     binding_fixed_local_offset_minutes, binding_fixed_today, binding_site_config,
     css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
     normalize_option,
@@ -466,7 +466,7 @@ fn binding_host_theme(
 }
 
 fn binding_resource_limits(
-    resources: &merman_analysis::ResourceOptionsJson,
+    resources: &ResourceOptionsJson,
 ) -> Result<merman::render::RenderResourceLimits, BindingError> {
     let mut limits = match resources.profile.as_deref() {
         None => merman::render::RenderResourceLimits::interactive(),

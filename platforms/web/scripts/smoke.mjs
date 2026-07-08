@@ -169,6 +169,7 @@ if (surfaceContract.render) {
 const capabilities = api.bindingCapabilities();
 const defaultCapabilities = api.DEFAULT_BINDING_CAPABILITIES;
 assert.equal(typeof capabilities.render, "boolean");
+assert.equal(typeof capabilities.analysis, "boolean");
 assert.equal(typeof capabilities.ascii, "boolean");
 assert.equal(typeof capabilities.core_full, "boolean");
 assert.equal(typeof capabilities.core_host, "boolean");
@@ -180,11 +181,14 @@ assert.equal(typeof capabilities.text_measurement.deterministic, "boolean");
 assert.equal(typeof capabilities.text_measurement.host_callback, "boolean");
 assert.equal(typeof capabilities.text_measurement.font_assets, "boolean");
 assert.equal(capabilities.render, surfaceContract.render);
+assert.equal(capabilities.analysis, surfaceContract.analysis);
 assert.equal(capabilities.ascii, surfaceContract.ascii);
 assert.equal(capabilities.editor_language, surfaceContract.editor);
 assert.equal(capabilities.text_measurement.host_callback, capabilities.render);
 assert.equal(capabilities.editor_language, presetManifest.capabilities.editor_language);
+assert.equal(capabilities.analysis, presetManifest.capabilities.analysis);
 assert.equal(defaultCapabilities.render, surfaceContract.render);
+assert.equal(defaultCapabilities.analysis, surfaceContract.analysis);
 assert.equal(defaultCapabilities.ascii, surfaceContract.ascii);
 assert.equal(defaultCapabilities.editor_language, surfaceContract.editor);
 assert.equal(defaultCapabilities.text_measurement.host_callback, defaultCapabilities.render);
@@ -206,122 +210,132 @@ assert.equal(
   true
 );
 
-const lintRules = api.lintRuleCatalog();
-assert.equal(Array.isArray(lintRules), true);
-const rawLintRuleCatalog = exportedWasmModule.lintRuleCatalog();
-assert.equal(rawLintRuleCatalog.version, 1);
-assert.equal(Array.isArray(rawLintRuleCatalog.rules), true);
-assert.equal(rawLintRuleCatalog.rules.length, lintRules.length);
-assert.equal(
-  lintRules.some(
-    (rule) =>
-      rule.id === "merman.authoring.flowchart.explicit_direction" &&
-      rule.default_severity === "hint" &&
-      rule.origin === "merman_authoring" &&
-      rule.evidence.includes("docs/adr/0072-lint-rule-governance.md") &&
-      rule.configurable &&
-      rule.fixable
-  ),
-  true
-);
+if (capabilities.analysis) {
+  const lintRules = api.lintRuleCatalog();
+  assert.equal(Array.isArray(lintRules), true);
+  const rawLintRuleCatalog = exportedWasmModule.lintRuleCatalog();
+  assert.equal(rawLintRuleCatalog.version, 1);
+  assert.equal(Array.isArray(rawLintRuleCatalog.rules), true);
+  assert.equal(rawLintRuleCatalog.rules.length, lintRules.length);
+  assert.equal(
+    lintRules.some(
+      (rule) =>
+        rule.id === "merman.authoring.flowchart.explicit_direction" &&
+        rule.default_severity === "hint" &&
+        rule.origin === "merman_authoring" &&
+        rule.evidence.includes("docs/adr/0072-lint-rule-governance.md") &&
+        rule.configurable &&
+        rule.fixable
+    ),
+    true
+  );
 
-const markdownAnalysis = api.analyzeDocument(
-  "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
-  deterministicTime,
-  "file:///tmp/example.md"
-);
-assert.equal(markdownAnalysis.valid, false);
-assert.equal(markdownAnalysis.source.kind, "markdown");
-assert.equal(markdownAnalysis.diagnostics[0].span.line, 4);
-assert.equal(
-  markdownAnalysis.diagnostics[0].related.some(
-    (related) => related.message === "Mermaid fence 1"
-  ),
-  true
-);
+  const markdownAnalysis = api.analyzeDocument(
+    "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+    deterministicTime,
+    "file:///tmp/example.md"
+  );
+  assert.equal(markdownAnalysis.valid, false);
+  assert.equal(markdownAnalysis.source.kind, "markdown");
+  assert.equal(markdownAnalysis.diagnostics[0].span.line, 4);
+  assert.equal(
+    markdownAnalysis.diagnostics[0].related.some(
+      (related) => related.message === "Mermaid fence 1"
+    ),
+    true
+  );
 
-const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicTime);
-assert.equal(flowchartFacts.valid, true);
-assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
-assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
-assert.equal(
-  flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
-  true
-);
-assert.equal(
-  flowchartFacts.diagrams[0].syntax.flowchart.edges.some(
-    (edge) => edge.from === "A" && edge.to === "B"
-  ),
-  true
-);
-assert.equal(
-  flowchartFacts.diagrams[0].syntax.semantic_items.some(
-    (item) => item.name === "A" && item.span.document
-  ),
-  true
-);
+  const flowchartFacts = api.analysisFacts("flowchart TD\nA-->B\n", deterministicTime);
+  assert.equal(flowchartFacts.valid, true);
+  assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
+  assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
+  assert.equal(
+    flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
+    true
+  );
+  assert.equal(
+    flowchartFacts.diagrams[0].syntax.flowchart.edges.some(
+      (edge) => edge.from === "A" && edge.to === "B"
+    ),
+    true
+  );
+  assert.equal(
+    flowchartFacts.diagrams[0].syntax.semantic_items.some(
+      (item) => item.name === "A" && item.span.document
+    ),
+    true
+  );
 
-const degradedSequenceFacts = api.analysisFacts(
-  [
-    "---",
-    "title: quoted",
-    "---",
-    "sequenceDiagram",
-    "participant Alice",
-    "Alice->>Bob: #quot;",
-    "",
-  ].join("\n"),
-  deterministicTime
-);
-assert.equal(degradedSequenceFacts.valid, true);
-assert.equal(
-  degradedSequenceFacts.diagrams[0].syntax.fact_source,
-  "parser_complete_degraded_spans"
-);
-assert.equal(degradedSequenceFacts.diagrams[0].syntax.source_mapped_spans, false);
+  const degradedSequenceFacts = api.analysisFacts(
+    [
+      "---",
+      "title: quoted",
+      "---",
+      "sequenceDiagram",
+      "participant Alice",
+      "Alice->>Bob: #quot;",
+      "",
+    ].join("\n"),
+    deterministicTime
+  );
+  assert.equal(degradedSequenceFacts.valid, true);
+  assert.equal(
+    degradedSequenceFacts.diagrams[0].syntax.fact_source,
+    "parser_complete_degraded_spans"
+  );
+  assert.equal(degradedSequenceFacts.diagrams[0].syntax.source_mapped_spans, false);
 
-const markdownFacts = api.analyzeDocumentFacts(
-  "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
-  deterministicTime,
-  "file:///tmp/example.md"
-);
-assert.equal(markdownFacts.valid, false);
-assert.equal(markdownFacts.source.kind, "markdown");
-assert.equal(markdownFacts.diagrams[0].source_id, "mermaid-fence-1");
-assert.equal(markdownFacts.diagrams[0].syntax.parser_backed, true);
-assert.equal(
-  markdownFacts.diagrams[0].syntax.expected_syntax.some(
-    (expected) => expected.kind === "shape" && expected.span.document
-  ),
-  true
-);
+  const markdownFacts = api.analyzeDocumentFacts(
+    "before\n```mermaid\nflowchart TD\nA@{\n  shape: rou\n}\n```\nafter\n",
+    deterministicTime,
+    "file:///tmp/example.md"
+  );
+  assert.equal(markdownFacts.valid, false);
+  assert.equal(markdownFacts.source.kind, "markdown");
+  assert.equal(markdownFacts.diagrams[0].source_id, "mermaid-fence-1");
+  assert.equal(markdownFacts.diagrams[0].syntax.parser_backed, true);
+  assert.equal(
+    markdownFacts.diagrams[0].syntax.expected_syntax.some(
+      (expected) => expected.kind === "shape" && expected.span.document
+    ),
+    true
+  );
 
-const mdxAnalysis = api.analyzeDocument(
-  "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
-  deterministicTime,
-  "file:///tmp/example.mdx?rev=1#fence"
-);
-assert.equal(mdxAnalysis.valid, false);
-assert.equal(mdxAnalysis.source.kind, "mdx");
-assert.equal(mdxAnalysis.source.language, "mdx");
-assert.equal(mdxAnalysis.source.path, "file:///tmp/example.mdx?rev=1#fence");
-assert.equal(mdxAnalysis.diagnostics[0].span.line, 4);
+  const mdxAnalysis = api.analyzeDocument(
+    "before\n```mermaid\nflowchart TD\nA-->\n```\nafter\n",
+    deterministicTime,
+    "file:///tmp/example.mdx?rev=1#fence"
+  );
+  assert.equal(mdxAnalysis.valid, false);
+  assert.equal(mdxAnalysis.source.kind, "mdx");
+  assert.equal(mdxAnalysis.source.language, "mdx");
+  assert.equal(mdxAnalysis.source.path, "file:///tmp/example.mdx?rev=1#fence");
+  assert.equal(mdxAnalysis.diagnostics[0].span.line, 4);
 
-const markdownFixAnalysis = api.analyzeDocument(
-  '```mermaid\n%%{ initialize: {"theme":"dark"} }%%\nflowchart TD\nA-->B\n```\n',
-  {
-    ...deterministicTime,
-    lint: { profile: "recommended" },
-  },
-  "file:///tmp/example.md"
-);
-const configFixDiagnostic = markdownFixAnalysis.diagnostics.find(
-  (diagnostic) =>
-    diagnostic.category === "config" &&
-    (diagnostic.fixes ?? []).some((fix) => fix.edits.length > 0)
-);
-assert.ok(configFixDiagnostic);
-assert.equal(configFixDiagnostic.fixes[0].edits[0].span.line, 2);
+  const markdownFixAnalysis = api.analyzeDocument(
+    '```mermaid\n%%{ initialize: {"theme":"dark"} }%%\nflowchart TD\nA-->B\n```\n',
+    {
+      ...deterministicTime,
+      lint: { profile: "recommended" },
+    },
+    "file:///tmp/example.md"
+  );
+  const configFixDiagnostic = markdownFixAnalysis.diagnostics.find(
+    (diagnostic) =>
+      diagnostic.category === "config" &&
+      (diagnostic.fixes ?? []).some((fix) => fix.edits.length > 0)
+  );
+  assert.ok(configFixDiagnostic);
+  assert.equal(configFixDiagnostic.fixes[0].edits[0].span.line, 2);
+} else {
+  assert.equal(typeof api.analyze, "undefined");
+  assert.equal(typeof api.analyzeJson, "undefined");
+  assert.equal(typeof api.analysisFacts, "undefined");
+  assert.equal(typeof api.analyzeDocument, "undefined");
+  assert.equal(typeof api.analyzeDocumentFacts, "undefined");
+  assert.equal(typeof api.validate, "undefined");
+  assert.equal(typeof api.lintRuleCatalog, "undefined");
+}
 
 assertEditorLanguageSurface(capabilities.editor_language);
 
@@ -418,17 +432,21 @@ User Testing    :c2, after c1, 5d`;
   assert.equal(typeof api.parseObject(source, deterministicTime), "object");
   assert.equal(typeof api.layoutObject(source, options), "object");
 
-  const valid = api.validate(source, deterministicTime);
-  assert.equal(valid.valid, true);
-  assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
+  if (capabilities.analysis) {
+    const valid = api.validate(source, deterministicTime);
+    assert.equal(valid.valid, true);
+    assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
 
-  const invalid = api.validate("not a diagram", deterministicTime);
-  assert.equal(invalid.valid, false);
-  assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
+    const invalid = api.validate("not a diagram", deterministicTime);
+    assert.equal(invalid.valid, false);
+    assert.equal(api.isBindingStatusCodeName(invalid.code_name), true);
+  }
 } else {
-  const valid = api.validate(source, deterministicTime);
-  assert.equal(valid.valid, true);
-  assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
+  if (capabilities.analysis) {
+    const valid = api.validate(source, deterministicTime);
+    assert.equal(valid.valid, true);
+    assert.equal(api.isBindingStatusCodeName(valid.code_name), true);
+  }
 
   assert.equal(typeof api.renderSvg, "undefined");
   assert.equal(typeof api.renderSvgWithTextMeasurer, "undefined");
@@ -584,6 +602,7 @@ console.log(
     `entry=${entrySubpath}`,
     `diagrams=${api.supportedDiagrams().length}`,
     `render=${capabilities.render}`,
+    `analysis=${capabilities.analysis}`,
     `ascii=${capabilities.ascii}`,
     `core_full=${capabilities.core_full}`,
     `ratex_math=${capabilities.ratex_math}`,
@@ -792,6 +811,7 @@ function buildSurfaceContract(surface) {
   return {
     ...surface,
     render: surface.runtimeExportNames.includes("renderSvg"),
+    analysis: surface.runtimeExportNames.includes("analyze"),
     ascii: surface.runtimeExportNames.includes("renderAscii"),
     editor: surface.runtimeExportNames.includes("editorDiagnostics"),
   };

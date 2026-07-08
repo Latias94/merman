@@ -483,11 +483,11 @@ fn uniffi_lint_rule(rule: merman_bindings_core::RuleCatalogEntry) -> MermanLintR
             .iter()
             .map(|evidence| evidence.to_string())
             .collect(),
-        default_severity: rule.default_severity.as_str().to_string(),
-        category: rule.category.as_str().to_string(),
+        default_severity: rule.default_severity.to_string(),
+        category: rule.category.to_string(),
         default_enabled: rule.default_enabled,
-        default_profile: rule.default_profile.as_str().to_string(),
-        origin: rule.origin.as_str().to_string(),
+        default_profile: rule.default_profile.to_string(),
+        origin: rule.origin.to_string(),
         configurable: rule.configurable,
         fixable: rule.fixable,
     }
