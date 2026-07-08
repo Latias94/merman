@@ -14,6 +14,7 @@ import {
   type PreviewDisplayMode,
   type PreviewSnapshot,
   type PreviewSourceKey,
+  previewSourceKeyId,
   samePreviewSourceKey,
 } from "./preview-model.js";
 import {
@@ -57,6 +58,7 @@ export class PreviewInstance implements vscode.Disposable {
   private readonly session: PreviewSession;
   private readonly webviewClient: PreviewWebviewClient;
   private readonly panelDisposables: vscode.Disposable[] = [];
+  private readonly activeRenderedExports = new Set<string>();
   private disposed = false;
   private renderedOutputStale = false;
   private openGeneration = 0;
@@ -547,20 +549,29 @@ export class PreviewInstance implements vscode.Disposable {
     if (!snapshot) {
       return;
     }
+    const exportKey = `${format}\u0000${previewSourceKeyId(renderedSourceKey)}`;
+    if (this.activeRenderedExports.has(exportKey)) {
+      return;
+    }
 
     const documentUri = vscode.Uri.parse(snapshot.documentUri);
-    await exportRenderedDiagram({
-      context: this.context,
-      outputChannel: this.outputChannel,
-      sourceUri: documentUri,
-      exportBaseName: snapshot.input.exportBaseName,
-      source: snapshot.input.source,
-      format,
-      theme: snapshot.diagramTheme,
-      background: previewCliBackground(snapshot.background),
-      signalLabel: `preview-export-${format}`,
-      failureMessagePrefix: "Merman preview export failed",
-    });
+    this.activeRenderedExports.add(exportKey);
+    try {
+      await exportRenderedDiagram({
+        context: this.context,
+        outputChannel: this.outputChannel,
+        sourceUri: documentUri,
+        exportBaseName: snapshot.input.exportBaseName,
+        source: snapshot.input.source,
+        format,
+        theme: snapshot.diagramTheme,
+        background: previewCliBackground(snapshot.background),
+        signalLabel: `preview-export-${format}`,
+        failureMessagePrefix: "Merman preview export failed",
+      });
+    } finally {
+      this.activeRenderedExports.delete(exportKey);
+    }
   }
 
   private currentRenderedOutputSnapshot(renderedSourceKey: PreviewSourceKey): PreviewSnapshot | undefined {

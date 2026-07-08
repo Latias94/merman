@@ -758,6 +758,38 @@ describe("preview manager", () => {
     ]);
   });
 
+  it("deduplicates concurrent exports for the same rendered source and format", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+
+    registerPreview({
+      extensionUri: uri("file:///extension"),
+      subscriptions: host.subscriptions,
+    } as unknown as vscode.ExtensionContext);
+
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    await host.panels[0]?.receive({ type: "ready" });
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSourceKey(host.panels[0]);
+    const panel = host.panels[0];
+    assert.ok(panel, "Expected preview panel");
+    host.renderCalls.splice(0);
+
+    const release = host.deferNextRender();
+    const firstExport = panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+    await waitUntil(() => host.renderCalls.length === 1);
+
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+    assert.equal(host.renderCalls.length, 1);
+
+    release();
+    await firstExport;
+    await flushPreviewWork();
+
+    assert.equal(host.renderCalls.length, 1);
+    assert.deepEqual(host.informationMessages.slice(-1), ["Exported export-one.svg."]);
+  });
+
   it("refuses to export when the webview rendered source key is stale", async () => {
     const host = new FakePreviewHost();
     const { registerPreview } = loadPreviewModule(host);

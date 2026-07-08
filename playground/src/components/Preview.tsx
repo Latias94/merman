@@ -141,9 +141,10 @@ export function Preview({ className }: PreviewProps) {
   const [copiedAsciiKey, setCopiedAsciiKey] = useState<string | null>(null);
   const [copiedDiagnostic, setCopiedDiagnostic] = useState<DiagnosticKey | null>(null);
   const [copiedSvgKey, setCopiedSvgKey] = useState<string | null>(null);
-  const [exportingSvgKeys, setExportingSvgKeys] = useState<Set<string>>(
+  const [exportingPngEngines, setExportingPngEngines] = useState<Set<EngineKey>>(
     () => new Set()
   );
+  const exportingPngEnginesRef = useRef<Set<EngineKey>>(new Set());
   const [diagnosticTab, setDiagnosticTab] = useState<DiagnosticKey>("parse");
   const [diagnostics, setDiagnostics] =
     useState<Record<DiagnosticKey, DiagnosticArtifact>>(EMPTY_DIAGNOSTICS);
@@ -541,10 +542,13 @@ export function Preview({ className }: PreviewProps) {
   const handleExportPng = useCallback(async (
     engine: EngineKey,
     artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string,
-    actionKey: string
+    expectedRenderKey: string
   ) => {
-    setExportingSvgKeys((keys) => new Set(keys).add(actionKey));
+    if (exportingPngEnginesRef.current.has(engine)) {
+      return;
+    }
+    exportingPngEnginesRef.current.add(engine);
+    setExportingPngEngines(new Set(exportingPngEnginesRef.current));
     try {
       const safeValue = requireFreshSvgArtifact(artifact, expectedRenderKey);
       let exportSvg = safeValue;
@@ -564,11 +568,8 @@ export function Preview({ className }: PreviewProps) {
     } catch {
       toast.error(t("export.failed"));
     } finally {
-      setExportingSvgKeys((keys) => {
-        const next = new Set(keys);
-        next.delete(actionKey);
-        return next;
-      });
+      exportingPngEnginesRef.current.delete(engine);
+      setExportingPngEngines(new Set(exportingPngEnginesRef.current));
     }
   }, [code, diagramTheme, mermaidConfig, render, renderOptions, t]);
 
@@ -797,7 +798,7 @@ export function Preview({ className }: PreviewProps) {
             mermanController={mermanCompareViewport}
             mermaidController={mermaidCompareViewport}
             copiedSvgKey={copiedSvgKey}
-            exportingSvgKeys={exportingSvgKeys}
+            exportingPngEngines={exportingPngEngines}
             isDarkMode={isDarkMode}
             onCopySvg={handleCopySvg}
             onExportSvg={handleExportSvg}
@@ -1136,7 +1137,7 @@ function CompareView({
   mermanController,
   mermaidController,
   copiedSvgKey,
-  exportingSvgKeys,
+  exportingPngEngines,
   isDarkMode,
   onCopySvg,
   onExportSvg,
@@ -1148,7 +1149,7 @@ function CompareView({
   mermanController: SvgViewportController;
   mermaidController: SvgViewportController;
   copiedSvgKey: string | null;
-  exportingSvgKeys: ReadonlySet<string>;
+  exportingPngEngines: ReadonlySet<EngineKey>;
   isDarkMode: boolean;
   onCopySvg(
     artifact: SvgRenderArtifact | null,
@@ -1163,8 +1164,7 @@ function CompareView({
   onExportPng(
     engine: EngineKey,
     artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string,
-    actionKey: string
+    expectedRenderKey: string
   ): void;
   t: (key: string) => string;
 }) {
@@ -1175,7 +1175,7 @@ function CompareView({
           artifact={mermanArtifact}
           controller={mermanController}
           copied={copiedSvgKey === mermanArtifact.artifactKey}
-          exporting={exportingSvgKeys.has(mermanArtifact.artifactKey)}
+          exporting={exportingPngEngines.has(mermanArtifact.key)}
           isDarkMode={isDarkMode}
           onCopySvg={onCopySvg}
           onExportSvg={onExportSvg}
@@ -1186,7 +1186,7 @@ function CompareView({
           artifact={mermaidArtifact}
           controller={mermaidController}
           copied={copiedSvgKey === mermaidArtifact.artifactKey}
-          exporting={exportingSvgKeys.has(mermaidArtifact.artifactKey)}
+          exporting={exportingPngEngines.has(mermaidArtifact.key)}
           isDarkMode={isDarkMode}
           onCopySvg={onCopySvg}
           onExportSvg={onExportSvg}
@@ -1227,8 +1227,7 @@ function ComparePane({
   onExportPng(
     engine: EngineKey,
     artifact: SvgRenderArtifact | null,
-    expectedRenderKey: string,
-    actionKey: string
+    expectedRenderKey: string
   ): void;
   t: (key: string) => string;
 }) {
@@ -1322,8 +1321,7 @@ function ComparePane({
                 onExportPng(
                   artifact.key,
                   artifact.renderArtifact,
-                  artifact.renderKey,
-                  artifact.artifactKey
+                  artifact.renderKey
                 )
               }
               disabled={actionsDisabled || exporting}

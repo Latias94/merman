@@ -82,6 +82,55 @@ describe("render process lifecycle", () => {
     });
 
     assert.equal(spawnOptions?.windowsHide, true);
+    assert.equal(spawnOptions?.detached, process.platform !== "win32");
+  });
+
+  it("uses the process-tree terminator for graceful and forced termination", async () => {
+    const abortController = new AbortController();
+    const signals: NodeJS.Signals[] = [];
+    const child = new EventEmitter() as EventEmitter & {
+      stdin: Writable;
+      stdout: Readable;
+      stderr: Readable;
+      exitCode: number | null;
+      signalCode: NodeJS.Signals | null;
+      pid: number;
+      kill: () => boolean;
+    };
+    child.stdin = new Writable({
+      write(_chunk, _encoding, callback) {
+        callback();
+      },
+    });
+    child.stdout = new Readable({ read() {} });
+    child.stderr = new Readable({ read() {} });
+    child.exitCode = null;
+    child.signalCode = null;
+    child.pid = 12345;
+    child.kill = () => true;
+
+    const render = runRenderProcess({
+      invocation: {
+        command: "merman-cli",
+        args: [],
+        source: "explicit",
+        label: "test cli",
+      },
+      source: "flowchart TD\nA --> B\n",
+      signal: abortController.signal,
+      killGraceMs: 1,
+      spawnProcess: () =>
+        child as unknown as import("node:child_process").ChildProcessWithoutNullStreams,
+      terminateProcessTree: (_child, signal) => {
+        signals.push(signal);
+      },
+    });
+    abortController.abort();
+    await waitUntil(() => signals.length === 2);
+    child.emit("close", null, "SIGKILL");
+
+    await assert.rejects(render, /superseded/);
+    assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
   });
 
   it("terminates an in-flight render when the abort signal fires", async () => {

@@ -11,6 +11,7 @@ export interface RenderProcessRequest {
   maxStdoutBytes?: number;
   maxStderrBytes?: number;
   spawnProcess?: RenderProcessSpawner;
+  terminateProcessTree?: RenderProcessTerminator;
 }
 
 export interface RenderProcessResult {
@@ -27,6 +28,11 @@ export type RenderProcessSpawner = (
   args: readonly string[],
   options: cp.SpawnOptionsWithoutStdio,
 ) => cp.ChildProcessWithoutNullStreams;
+
+export type RenderProcessTerminator = (
+  child: cp.ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+) => void;
 
 export function runRenderProcess(request: RenderProcessRequest): Promise<RenderProcessResult> {
   if (request.signal?.aborted) {
@@ -51,9 +57,11 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
         cwd: request.invocation.cwd,
         env: process.env,
         stdio: "pipe",
+        detached: process.platform !== "win32",
         windowsHide: true,
       },
     );
+    const terminateProcess = request.terminateProcessTree ?? terminateRenderProcessTree;
     const clearTimers = (): void => {
       if (timeoutTimer) {
         clearTimeout(timeoutTimer);
@@ -85,10 +93,10 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
         return;
       }
       terminationReason = reason;
-      child.kill("SIGTERM");
+      terminateProcess(child, "SIGTERM");
       killTimer = setTimeout(() => {
         if (!settled && child.exitCode === null && child.signalCode === null) {
-          child.kill("SIGKILL");
+          terminateProcess(child, "SIGKILL");
         }
       }, request.killGraceMs ?? 1000);
     };
@@ -169,4 +177,35 @@ function spawnRenderProcess(
   options: cp.SpawnOptionsWithoutStdio,
 ): cp.ChildProcessWithoutNullStreams {
   return cp.spawn(command, [...args], options);
+}
+
+function terminateRenderProcessTree(
+  child: cp.ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): void {
+  if (child.pid === undefined) {
+    child.kill(signal);
+    return;
+  }
+
+  if (process.platform === "win32") {
+    const args = ["/PID", String(child.pid), "/T"];
+    if (signal === "SIGKILL") {
+      args.push("/F");
+    }
+    const killer = cp.spawn("taskkill", args, {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    killer.on("error", () => {
+      child.kill(signal);
+    });
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, signal);
+  } catch {
+    child.kill(signal);
+  }
 }
