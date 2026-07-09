@@ -213,7 +213,7 @@ jobs:
           set -euo pipefail
           package_dir="$RUNNER_TEMP/npm-package"
           mkdir -p "$package_dir"
-          npm pack --json --pack-destination "$package_dir" | tee "$RUNNER_TEMP/npm-pack.json"
+          npm pack --ignore-scripts --json --pack-destination "$package_dir" | tee "$RUNNER_TEMP/npm-pack.json"
           package_file="$(node -e '
           const fs = require("node:fs");
           const path = require("node:path");
