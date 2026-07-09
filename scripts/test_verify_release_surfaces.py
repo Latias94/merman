@@ -77,6 +77,12 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             write(root, "package.json", json.dumps({"name": "internal-root"}))
+            write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "tools/mermaid-cli/package.json",
+                json.dumps({"name": "mermaid-cli", "private": True}),
+            )
             write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
             write(root, "unknown/package.json", json.dumps({"name": "unknown"}))
             contract = {
@@ -96,6 +102,56 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 verify_release_surfaces.CheckFailure,
                 "unknown/package.json",
+            ):
+                verify_release_surfaces.check_package_inventory(root, contract)
+
+    def test_package_inventory_allows_missing_optional_root_package_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "tools/mermaid-cli/package.json",
+                json.dumps({"name": "mermaid-cli", "private": True}),
+            )
+            write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
+            contract = {
+                "surfaces": [
+                    {
+                        "packages": [
+                            {
+                                "kind": "npm",
+                                "name": "@mermanjs/web",
+                                "manifest": "platforms/web/package.json",
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            verify_release_surfaces.check_package_inventory(root, contract)
+
+    def test_package_inventory_requires_tracked_non_surface_package_jsons(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
+            contract = {
+                "surfaces": [
+                    {
+                        "packages": [
+                            {
+                                "kind": "npm",
+                                "name": "@mermanjs/web",
+                                "manifest": "platforms/web/package.json",
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            with self.assertRaisesRegex(
+                verify_release_surfaces.CheckFailure,
+                "allowlisted non-surface package manifest is missing",
             ):
                 verify_release_surfaces.check_package_inventory(root, contract)
 

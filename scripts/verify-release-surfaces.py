@@ -16,11 +16,14 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SURFACES_PATH = ROOT / "docs" / "release" / "SURFACES.json"
-NON_SURFACE_PACKAGE_MANIFESTS = {
-    "package.json",
+REQUIRED_NON_SURFACE_PACKAGE_MANIFESTS = {
     "playground/package.json",
     "tools/mermaid-cli/package.json",
 }
+OPTIONAL_NON_SURFACE_PACKAGE_MANIFESTS = {
+    "package.json",
+}
+NON_SURFACE_PACKAGE_MANIFESTS = REQUIRED_NON_SURFACE_PACKAGE_MANIFESTS | OPTIONAL_NON_SURFACE_PACKAGE_MANIFESTS
 WEB_GENERATED_PACKAGE_MANIFESTS = {
     "platforms/web/pkg/package.json",
     "platforms/web/pkg/core/package.json",
@@ -187,11 +190,14 @@ def check_package_inventory(root: Path, contract: dict[str, Any]) -> None:
             + ", ".join(undeclared),
         )
 
-    for rel_path in sorted(NON_SURFACE_PACKAGE_MANIFESTS):
+    for rel_path in sorted(REQUIRED_NON_SURFACE_PACKAGE_MANIFESTS):
         manifest = root / rel_path
         if not manifest.exists():
             fail(rel_path, "allowlisted non-surface package manifest is missing")
-        if rel_path != "package.json":
+
+    for rel_path in sorted(NON_SURFACE_PACKAGE_MANIFESTS):
+        manifest = root / rel_path
+        if manifest.exists() and rel_path != "package.json":
             data = json.loads(manifest.read_text(encoding="utf-8"))
             if data.get("private") is not True:
                 fail(rel_path, "non-surface package manifest must set private: true")
