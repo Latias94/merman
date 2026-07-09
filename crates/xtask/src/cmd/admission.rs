@@ -507,19 +507,19 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     ),
     not_admitted!(
         "railroad",
-        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+        "present in pinned Mermaid 11.16 source; railroad-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
     not_admitted!(
         "railroadEbnf",
-        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+        "present in pinned Mermaid 11.16 source; railroad-ebnf-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
     not_admitted!(
         "railroadAbnf",
-        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+        "present in pinned Mermaid 11.16 source; railroad-abnf-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
     not_admitted!(
         "railroadPeg",
-        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+        "present in pinned Mermaid 11.16 source; railroad-peg-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
     not_admitted!(
         "wardley",
@@ -784,13 +784,7 @@ mod tests {
             }
         }
 
-        for diagram in [
-            "railroad",
-            "railroadEbnf",
-            "railroadAbnf",
-            "railroadPeg",
-            "wardley",
-        ] {
+        for diagram in ["wardley"] {
             let record = record(diagram);
             let capability = core_family_capability(core_capabilities, diagram)
                 .unwrap_or_else(|| panic!("{diagram} should exist in core detector facts"));
@@ -812,5 +806,21 @@ mod tests {
         assert_eq!(cynefin.admission, AdmissionStatus::NotAdmitted);
         assert!(cynefin_capability.has_semantic_parser);
         assert!(!cynefin_capability.has_render_parser);
+
+        let railroad = record("railroad");
+        let railroad_capability = core_family_capability(core_capabilities, "railroad")
+            .expect("railroad should exist in core detector/parser facts");
+        assert_eq!(railroad.admission, AdmissionStatus::NotAdmitted);
+        assert!(railroad_capability.has_semantic_parser);
+        assert!(!railroad_capability.has_render_parser);
+
+        for diagram in ["railroadEbnf", "railroadAbnf", "railroadPeg"] {
+            let record = record(diagram);
+            let capability = core_family_capability(core_capabilities, diagram)
+                .unwrap_or_else(|| panic!("{diagram} should exist in core detector/parser facts"));
+            assert_eq!(record.admission, AdmissionStatus::NotAdmitted);
+            assert!(capability.has_semantic_parser);
+            assert!(!capability.has_render_parser);
+        }
     }
 }

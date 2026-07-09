@@ -458,6 +458,26 @@ mod tests {
         assert!(cynefin.has_semantic_parser);
         assert!(!cynefin.has_render_parser);
 
+        let railroad = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "railroad")
+            .expect("parser-only 11.16 railroad capability should be present");
+        assert_eq!(railroad.metadata_id, None);
+        assert!(railroad.has_semantic_parser);
+        assert!(!railroad.has_render_parser);
+
+        for diagram_type in ["railroadEbnf", "railroadAbnf", "railroadPeg"] {
+            let railroad_variant = capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == diagram_type)
+                .unwrap_or_else(|| {
+                    panic!("parser-only 11.16 {diagram_type} capability should be present")
+                });
+            assert_eq!(railroad_variant.metadata_id, None);
+            assert!(railroad_variant.has_semantic_parser);
+            assert!(!railroad_variant.has_render_parser);
+        }
+
         let has_mindmap = capabilities
             .iter()
             .any(|capability| capability.diagram_type == "mindmap");

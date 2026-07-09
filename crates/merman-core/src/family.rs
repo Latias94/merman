@@ -682,6 +682,22 @@ const SEMANTIC_PARSER_FACTS: &[SemanticParserFact] = &[
         parser: crate::diagrams::cynefin::parse_cynefin,
     },
     SemanticParserFact {
+        id: "railroad",
+        parser: crate::diagrams::railroad::parse_railroad,
+    },
+    SemanticParserFact {
+        id: "railroadEbnf",
+        parser: crate::diagrams::railroad::parse_railroad_ebnf,
+    },
+    SemanticParserFact {
+        id: "railroadAbnf",
+        parser: crate::diagrams::railroad::parse_railroad_abnf,
+    },
+    SemanticParserFact {
+        id: "railroadPeg",
+        parser: crate::diagrams::railroad::parse_railroad_peg,
+    },
+    SemanticParserFact {
         id: "zenuml",
         parser: crate::diagrams::zenuml::parse_zenuml,
     },

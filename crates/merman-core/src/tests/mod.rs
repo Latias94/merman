@@ -6,6 +6,7 @@ mod flowchart;
 mod info;
 mod misc;
 mod pie;
+mod railroad;
 mod registry;
 mod sequence;
 mod state;

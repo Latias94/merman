@@ -12,6 +12,9 @@ type: Engineering Log
 - Completed the Mermaid 11.16 `cynefin` semantic parser/editor-facts slice: `cynefin-beta` now
   parses source-backed domains, items, transitions, title/accessibility fields, duplicate-domain
   replacement, and self-loop filtering while render admission remains deferred.
+- Completed the Mermaid 11.16 railroad semantic parser/editor-facts slice: IR, EBNF, ABNF, and PEG
+  variants now parse into the shared AST JSON and remain render-unadmitted until layout/render
+  admission is ported.
 
 ## 2026-07-04
 

@@ -18,6 +18,7 @@ pub mod packet;
 pub mod pie;
 pub mod quadrant_chart;
 pub mod radar;
+pub mod railroad;
 pub mod requirement;
 pub mod sankey;
 pub(crate) mod scan;

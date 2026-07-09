@@ -375,10 +375,17 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     assert!(swimlane.has_semantic_parser);
     assert!(!swimlane.has_render_parser);
 
-    let railroad_ebnf = family_capability(full, "railroadEbnf");
-    assert_eq!(railroad_ebnf.metadata_id, None);
-    assert!(!railroad_ebnf.has_semantic_parser);
-    assert!(!railroad_ebnf.has_render_parser);
+    let railroad = family_capability(full, "railroad");
+    assert_eq!(railroad.metadata_id, None);
+    assert!(railroad.has_semantic_parser);
+    assert!(!railroad.has_render_parser);
+
+    for diagram_type in ["railroadEbnf", "railroadAbnf", "railroadPeg"] {
+        let capability = family_capability(full, diagram_type);
+        assert_eq!(capability.metadata_id, None);
+        assert!(capability.has_semantic_parser);
+        assert!(!capability.has_render_parser);
+    }
 
     let cynefin = family_capability(full, "cynefin");
     assert_eq!(cynefin.metadata_id, None);
@@ -397,6 +404,10 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     assert!(!tiny.iter().any(|fact| fact.diagram_type == "flowchart-elk"));
     assert!(tiny.iter().any(|fact| fact.diagram_type == "swimlane"));
     assert!(tiny.iter().any(|fact| fact.diagram_type == "cynefin"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroad"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadEbnf"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadAbnf"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadPeg"));
 }
 
 #[test]
@@ -512,7 +523,16 @@ fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static 
 }
 
 fn permits_parser_only_semantic_fact(id: &str) -> bool {
-    matches!(id, "error" | "swimlane" | "cynefin")
+    matches!(
+        id,
+        "error"
+            | "swimlane"
+            | "cynefin"
+            | "railroad"
+            | "railroadEbnf"
+            | "railroadAbnf"
+            | "railroadPeg"
+    )
 }
 
 fn family_capability(

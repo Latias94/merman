@@ -622,6 +622,18 @@ impl<'a> ParsePipeline<'a> {
                 editor_input,
                 &meta,
             ),
+            "railroad" => {
+                crate::diagrams::railroad::parse_railroad_editor_facts(editor_input, &meta)
+            }
+            "railroadEbnf" => {
+                crate::diagrams::railroad::parse_railroad_ebnf_editor_facts(editor_input, &meta)
+            }
+            "railroadAbnf" => {
+                crate::diagrams::railroad::parse_railroad_abnf_editor_facts(editor_input, &meta)
+            }
+            "railroadPeg" => {
+                crate::diagrams::railroad::parse_railroad_peg_editor_facts(editor_input, &meta)
+            }
             "radar" => crate::diagrams::radar::parse_radar_editor_facts(editor_input, &meta),
             "treemap" => crate::diagrams::treemap::parse_treemap_editor_facts(editor_input, &meta),
             "requirement" => {
