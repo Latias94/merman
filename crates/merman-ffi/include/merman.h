@@ -276,12 +276,25 @@ MermanResult merman_render_ascii(
     const uint8_t* options_json,
     size_t options_len
 );
+/*
+ * Analyze Mermaid source to diagnostics JSON.
+ *
+ * Success and error ownership rules are identical to merman_render_svg.
+ * If the library was built without analysis support, this returns MERMAN_UNSUPPORTED_FORMAT.
+ */
 MermanResult merman_analyze_json(
     const uint8_t* source,
     size_t source_len,
     const uint8_t* options_json,
     size_t options_len
 );
+
+/*
+ * Analyze a host document to diagnostics JSON.
+ *
+ * Success and error ownership rules are identical to merman_render_svg.
+ * If the library was built without analysis support, this returns MERMAN_UNSUPPORTED_FORMAT.
+ */
 MermanResult merman_analyze_document_json(
     const uint8_t* source,
     size_t source_len,
@@ -290,6 +303,13 @@ MermanResult merman_analyze_document_json(
     const uint8_t* uri,
     size_t uri_len
 );
+
+/*
+ * Analyze a host document to syntax/facts JSON.
+ *
+ * Success and error ownership rules are identical to merman_render_svg.
+ * If the library was built without analysis support, this returns MERMAN_UNSUPPORTED_FORMAT.
+ */
 MermanResult merman_analyze_document_facts_json(
     const uint8_t* source,
     size_t source_len,
@@ -333,7 +353,8 @@ MermanResult merman_layout_json(
  *   {"valid":false,"error":"...","code":5,"code_name":"MERMAN_PARSE_ERROR"}
  *
  * Validation is produced from render-free diagnostics analysis. It does not require render
- * support.
+ * support, but it does require analysis support. If the library was built without analysis
+ * support, this returns MERMAN_UNSUPPORTED_FORMAT.
  */
 MermanResult merman_validate_json(
     const uint8_t* source,
@@ -350,6 +371,10 @@ MermanResult merman_validate_json(
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_capabilities_json(void);
 MermanResult merman_diagram_family_capabilities_json(void);
+
+/*
+ * If the library was built without analysis support, this returns MERMAN_UNSUPPORTED_FORMAT.
+ */
 MermanResult merman_lint_rule_catalog_json(void);
 MermanResult merman_supported_themes_json(void);
 MermanResult merman_supported_host_theme_presets_json(void);

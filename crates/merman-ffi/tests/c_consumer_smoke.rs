@@ -8,6 +8,7 @@ use std::process::Command;
 struct MermanApi {
     render_enabled: i32,
     ascii_enabled: i32,
+    analysis_enabled: i32,
     abi_version: extern "C" fn() -> u32,
     package_version: extern "C" fn() -> *const c_char,
     buffer_struct_size: extern "C" fn() -> usize,
@@ -85,6 +86,7 @@ fn c_consumer_smoke() {
         let rc = smoke(MermanApi {
             render_enabled: i32::from(cfg!(feature = "render")),
             ascii_enabled: i32::from(cfg!(feature = "ascii")),
+            analysis_enabled: i32::from(cfg!(feature = "analysis")),
             abi_version: merman_ffi::merman_abi_version,
             package_version: merman_ffi::merman_package_version,
             buffer_struct_size: merman_ffi::merman_buffer_struct_size,

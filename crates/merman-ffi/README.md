@@ -44,9 +44,21 @@ from C or C-compatible hosts.
 Optional features:
 
 ```sh
+cargo build -p merman-ffi --release --no-default-features --features analysis
+cargo build -p merman-ffi --release --no-default-features --features render
+cargo build -p merman-ffi --release --no-default-features --features ascii
+cargo build -p merman-ffi --release --features elk-layout
 cargo build -p merman-ffi --release --features ratex-math
 cargo build -p merman-ffi --release --features raster,ratex-math
 ```
+
+Default builds enable `core-full`, `core-host`, `render`, `analysis`, and `ascii`.
+`analysis` powers diagnostics, validation, document analysis, and the lint rule catalog; `render`
+powers SVG, parse, layout, host theme presets, and host text measurement; `ascii` powers text
+rendering and ASCII capability metadata. `elk-layout` opts native artifacts into the optional ELK
+layout engine. `raster` forwards the shared binding capability, but the C ABI does not expose native
+raster byte output functions yet. Entry points stay exported across feature sets and return
+`MERMAN_UNSUPPORTED_FORMAT` when the required capability is not compiled in.
 
 The C ABI exposes SVG, ASCII text, semantic JSON, layout JSON, validation JSON, single-diagram and
 document-level analysis JSON, binding metadata, and an optional host text-measurement callback for

@@ -1,6 +1,6 @@
 # Feature Surfaces
 
-Merman uses Cargo features for three separate concerns:
+Merman uses Cargo features for four separate concerns:
 
 - core profile features, such as `full` and `host`;
 - output capability features, such as `render`, `ascii`, `raster`, and `ratex-math`;
@@ -48,17 +48,32 @@ crate.
 | `merman` | `raster` | Enables PNG/JPG/PDF conversion support. |
 | `merman` | `ratex-math` | Enables the pure-Rust RaTeX math backend for supported labels. |
 | `merman` | `cytoscape-layout` | Enables the Cytoscape-style Architecture and Mindmap layout seam through `merman-render`. Enabled by `core-full`. |
+| `merman` | `elk-layout` | Enables the optional ELK layout engine integration through `merman-layout-elk`; not implied by `render`. |
 | `merman` | `core-full` | Forwards to `merman-core/full`; enabled by default. |
 | `merman` | `core-host` | Forwards to `merman-core/host`; enabled by default. |
 | `merman-ascii` | `core-full` | Forwards to `merman-core/full`; enabled by default for direct `merman-ascii` users. |
 | `merman-ascii` | `core-host` | Forwards to `merman-core/host`; enabled by default for direct `merman-ascii` users. |
 | `merman-bindings-core` | `analysis` | Enables diagnostics analysis, validation projection, document facts, and lint rule catalog helpers; enabled by default for native binding users. |
+| `merman-bindings-core` | `render` / `ascii` | Enables shared binding SVG/layout/parse helpers or ASCII/Unicode helpers. |
+| `merman-bindings-core` | `core-full` / `core-host` | Forward the native full and host core profiles; enabled by default for compatibility. |
+| `merman-bindings-core` | `cytoscape-layout` / `elk-layout` | Forward optional layout integrations to the public Rust facade. `elk-layout` is the feature that pulls the ELK integration. |
+| `merman-bindings-core` | `ratex-math` / `raster` | Forward optional math rendering and raster conversion support for binding crates. |
+| `merman-ffi` | `analysis` | Enables C ABI diagnostics, validation, document facts, and lint rule catalog entry points; enabled by default, with exported functions returning unsupported when disabled. |
+| `merman-ffi` | `render` | Enables C ABI SVG render, parse, layout, host theme preset, and host text-measurement entry points; enabled by default. |
+| `merman-ffi` | `ascii` | Enables C ABI ASCII/Unicode rendering and capability metadata; enabled by default. |
+| `merman-ffi` | `core-full` / `core-host` | Forward the native full and host core profiles; enabled by default for compatibility. |
+| `merman-ffi` | `elk-layout` | Enables ELK-backed layouts for native C ABI artifacts that opt into the EPL-backed integration. |
+| `merman-ffi` | `ratex-math` / `raster` | Enables optional math rendering or raster conversion support for C ABI artifacts. |
+| `merman-uniffi` | `analysis` / `render` / `ascii` | Mirrors the native binding capability split above for generated UniFFI consumers; enabled by default for compatibility. |
+| `merman-uniffi` | `core-full` / `core-host` | Forward the native full and host core profiles; enabled by default for compatibility. |
+| `merman-uniffi` | `ratex-math` / `raster` | Enables optional math rendering or raster conversion support for generated UniFFI consumers. |
 | `merman-wasm` | `analysis` | Browser wasm-bindgen diagnostics, validation, document facts, and lint rule catalog surface for `@mermanjs/web/core` and render/full presets. |
 | `merman-wasm` | `render` | Browser wasm-bindgen rendering surface for `@mermanjs/web`. |
 | `merman-wasm` | `ascii` | Browser wasm-bindgen ASCII/Unicode surface for `@mermanjs/web`; pair with `core-full`/`core-host` only when the artifact needs those core profiles. |
 | `merman-wasm` | `core-full` | Browser package full core profile; enabled by default. |
 | `merman-wasm` | `core-host` | Browser package host capability profile; enabled by default. |
 | `merman-wasm` | `cytoscape-layout` | Browser opt-in for Architecture and Mindmap Cytoscape-style layout when building non-full presets. Enabled by `core-full`. |
+| `merman-wasm` | `elk-layout` | Browser opt-in for ELK-backed layouts; enabled by default for the published full artifact. |
 | `merman-wasm` | `editor-language` | Browser editor-language APIs; implies `analysis` and adds `merman-editor-core`. |
 | `merman-wasm` | `ratex-math` | Browser package RaTeX math rendering support; implies `render`. |
 | `merman-typst-plugin` | `render` | Typst wasm-minimal-protocol SVG render surface; enabled by default. |
@@ -66,6 +81,7 @@ crate.
 | `merman-typst-plugin` | `core-full` | Typst no-host artifact with full config and sanitization support. |
 | `merman-typst-plugin` | `core-host` | Opt-in host capability profile; do not enable for Typst package builds. |
 | `merman-typst-plugin` | `cytoscape-layout` | Typst opt-in for Architecture and Mindmap Cytoscape-style layout. Enabled by `core-full`. |
+| `merman-typst-plugin` | `elk-layout` | Typst opt-in for ELK-backed layouts; enabled by default for the package artifact. |
 | `merman-typst-plugin` | `ratex-math` | Typst plugin artifact plus RaTeX math rendering support; implies `render`. |
 
 The current `merman-wasm` crate is a browser/JavaScript WebAssembly package. It is not the

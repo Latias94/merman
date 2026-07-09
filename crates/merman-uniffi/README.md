@@ -29,8 +29,12 @@ Most applications should start with one of these package-level entry points:
 
 ## Features
 
+- Defaults enable `core-full`, `core-host`, `render`, `analysis`, and `ascii` for compatibility.
+- `analysis` enables diagnostics, validation, document analysis, and lint metadata.
 - `render` enables SVG rendering.
 - `ascii` enables ASCII/Unicode text rendering.
+- `core-full` enables Mermaid's full config/frontmatter behavior and full sanitizer parity.
+- `core-host` enables host clock, randomness, and timing support.
 - `raster` enables PNG/JPG/PDF conversion.
 - `ratex-math` enables the RaTeX math label backend.
 - `bindgen-smoke` enables the local UniFFI binding generation smoke example.

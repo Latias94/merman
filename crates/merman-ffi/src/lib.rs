@@ -76,6 +76,7 @@ struct FfiEngineCallGuard {
     engine: NonNull<MermanEngine>,
 }
 
+#[cfg(feature = "render")]
 struct FfiEngineMutationGuard {
     engine: NonNull<MermanEngine>,
 }
@@ -88,6 +89,7 @@ impl Drop for FfiEngineCallGuard {
     }
 }
 
+#[cfg(feature = "render")]
 impl Drop for FfiEngineMutationGuard {
     fn drop(&mut self) {
         unsafe {
@@ -938,6 +940,7 @@ unsafe fn begin_engine_call(
     Ok(FfiEngineCallGuard { engine: ptr })
 }
 
+#[cfg(feature = "render")]
 unsafe fn begin_engine_mutation(
     engine: *mut MermanEngine,
 ) -> Result<FfiEngineMutationGuard, BindingError> {
@@ -976,6 +979,7 @@ unsafe fn release_engine_call(engine: NonNull<MermanEngine>) {
     }
 }
 
+#[cfg(feature = "render")]
 unsafe fn release_engine_mutation(engine: NonNull<MermanEngine>) {
     let should_free = unsafe { release_engine_lifecycle(engine, false) };
     if should_free {
@@ -1383,6 +1387,21 @@ mod tests {
         );
     }
 
+    fn expect_analysis_feature_error(result: MermanResult) {
+        assert_eq!(result.code, BindingStatus::UnsupportedFormat.code());
+        let error = take_error(result);
+        assert_eq!(
+            error["code_name"],
+            BindingStatus::UnsupportedFormat.code_name()
+        );
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("analysis feature")
+        );
+    }
+
     #[test]
     fn abi_introspection_reports_contract_values() {
         assert_eq!(merman_abi_version(), MERMAN_ABI_VERSION);
@@ -1495,33 +1514,49 @@ mod tests {
     #[test]
     fn validate_json_returns_status_payload() {
         let valid = call_validate(b"flowchart TD\nA[Hello]", b"");
-        assert_eq!(valid.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
-        assert_eq!(json["valid"], true);
-        assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
+        if cfg!(feature = "analysis") {
+            assert_eq!(valid.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
+            assert_eq!(json["valid"], true);
+            assert_eq!(json["code_name"], BindingStatus::Ok.code_name());
+        } else {
+            expect_analysis_feature_error(valid);
+        }
 
         let invalid = call_validate(b"", b"");
-        assert_eq!(invalid.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
-        assert_eq!(json["valid"], false);
-        assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
+        if cfg!(feature = "analysis") {
+            assert_eq!(invalid.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
+            assert_eq!(json["valid"], false);
+            assert_eq!(json["code_name"], BindingStatus::NoDiagram.code_name());
+        } else {
+            expect_analysis_feature_error(invalid);
+        }
     }
 
     #[test]
     fn analyze_json_returns_diagnostics_payload() {
         let valid = call_analyze(b"flowchart TD\nA[Hello]", b"");
-        assert_eq!(valid.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
-        assert_eq!(json["version"], 1);
-        assert_eq!(json["valid"], true);
-        assert_eq!(json["summary"]["errors"], 0);
+        if cfg!(feature = "analysis") {
+            assert_eq!(valid.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(valid.data)).unwrap();
+            assert_eq!(json["version"], 1);
+            assert_eq!(json["valid"], true);
+            assert_eq!(json["summary"]["errors"], 0);
+        } else {
+            expect_analysis_feature_error(valid);
+        }
 
         let invalid = call_analyze(b"", b"");
-        assert_eq!(invalid.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
-        assert_eq!(json["version"], 1);
-        assert_eq!(json["valid"], false);
-        assert_eq!(json["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
+        if cfg!(feature = "analysis") {
+            assert_eq!(invalid.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(invalid.data)).unwrap();
+            assert_eq!(json["version"], 1);
+            assert_eq!(json["valid"], false);
+            assert_eq!(json["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
+        } else {
+            expect_analysis_feature_error(invalid);
+        }
     }
 
     #[test]
@@ -1529,11 +1564,15 @@ mod tests {
         let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
         let result = call_analyze_document(source, b"", b"file:///tmp/example.md");
 
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-        assert_eq!(json["version"], 1);
-        assert_eq!(json["source"]["kind"], "markdown");
-        assert_eq!(json["valid"], true);
+        if cfg!(feature = "analysis") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+            assert_eq!(json["version"], 1);
+            assert_eq!(json["source"]["kind"], "markdown");
+            assert_eq!(json["valid"], true);
+        } else {
+            expect_analysis_feature_error(result);
+        }
     }
 
     #[test]
@@ -1541,11 +1580,15 @@ mod tests {
         let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
         let result = call_analyze_document_facts(source, b"", b"file:///tmp/example.md");
 
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-        assert_eq!(json["version"], 1);
-        assert_eq!(json["source"]["kind"], "markdown");
-        assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
+        if cfg!(feature = "analysis") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+            assert_eq!(json["version"], 1);
+            assert_eq!(json["source"]["kind"], "markdown");
+            assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
+        } else {
+            expect_analysis_feature_error(result);
+        }
     }
 
     #[test]
@@ -1560,7 +1603,13 @@ mod tests {
         assert_eq!(diagrams.code, BindingStatus::Ok.code());
         assert_eq!(ascii_capabilities.code, BindingStatus::Ok.code());
         assert_eq!(family_capabilities.code, BindingStatus::Ok.code());
-        assert_eq!(lint_rules.code, BindingStatus::Ok.code());
+        let lint_rules_json = if cfg!(feature = "analysis") {
+            assert_eq!(lint_rules.code, BindingStatus::Ok.code());
+            Some(take_text(lint_rules.data))
+        } else {
+            expect_analysis_feature_error(lint_rules);
+            None
+        };
         assert_eq!(themes.code, BindingStatus::Ok.code());
         assert_eq!(host_theme_presets.code, BindingStatus::Ok.code());
 
@@ -1569,7 +1618,6 @@ mod tests {
             serde_json::from_str(&take_text(ascii_capabilities.data)).unwrap();
         let family_capabilities: Value =
             serde_json::from_str(&take_text(family_capabilities.data)).unwrap();
-        let lint_rules: Value = serde_json::from_str(&take_text(lint_rules.data)).unwrap();
         let themes: Value = serde_json::from_str(&take_text(themes.data)).unwrap();
         let host_theme_presets: Value =
             serde_json::from_str(&take_text(host_theme_presets.data)).unwrap();
@@ -1608,17 +1656,20 @@ mod tests {
                 && capability["has_semantic_parser"] == true
                 && capability["has_render_parser"] == true
         ));
-        assert_eq!(lint_rules["version"], 1);
-        let lint_rules = lint_rules["rules"].as_array().unwrap();
-        assert!(lint_rules.iter().any(|rule| {
-            rule["id"] == "merman.authoring.config.prefer_init_directive"
-                && rule["origin"] == "merman_authoring"
-                && rule["evidence"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
-        }));
+        if let Some(lint_rules_json) = lint_rules_json {
+            let lint_rules: Value = serde_json::from_str(&lint_rules_json).unwrap();
+            assert_eq!(lint_rules["version"], 1);
+            let lint_rules = lint_rules["rules"].as_array().unwrap();
+            assert!(lint_rules.iter().any(|rule| {
+                rule["id"] == "merman.authoring.config.prefer_init_directive"
+                    && rule["origin"] == "merman_authoring"
+                    && rule["evidence"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|value| value == "docs/adr/0072-lint-rule-governance.md")
+            }));
+        }
         assert!(
             themes
                 .as_array()
@@ -1815,6 +1866,7 @@ mod tests {
         assert_eq!(output, source);
     }
 
+    #[cfg(feature = "render")]
     #[test]
     fn ffi_engine_source_call_rejects_active_mutation() {
         let base = BindingEngine::new(b"").unwrap();
@@ -1906,9 +1958,13 @@ mod tests {
         let source = b"# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
         let result = call_engine_analyze_document(engine.engine, source, b"file:///tmp/example.md");
 
-        assert_eq!(result.code, BindingStatus::Ok.code());
-        let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-        assert_eq!(json["source"]["kind"], "markdown");
+        if cfg!(feature = "analysis") {
+            assert_eq!(result.code, BindingStatus::Ok.code());
+            let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
+            assert_eq!(json["source"]["kind"], "markdown");
+        } else {
+            expect_analysis_feature_error(result);
+        }
 
         unsafe { merman_engine_free(engine.engine) };
     }
@@ -2131,7 +2187,11 @@ mod tests {
     fn reusable_engine_reports_invalid_options_json() {
         let engine = call_engine(b"{");
 
-        if cfg!(any(feature = "render", feature = "ascii")) {
+        if cfg!(any(
+            feature = "analysis",
+            feature = "render",
+            feature = "ascii"
+        )) {
             assert_eq!(engine.code, BindingStatus::OptionsJsonError.code());
             assert!(engine.engine.is_null());
             let error: Value = serde_json::from_str(&take_text(engine.data)).unwrap();

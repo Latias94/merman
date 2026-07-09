@@ -49,6 +49,7 @@ presets for local variant builds:
 ```sh
 npm run build:wasm:core --prefix platforms/web
 npm run build:wasm:render --prefix platforms/web
+npm run build:wasm:render-only --prefix platforms/web
 npm run build:wasm:ascii --prefix platforms/web
 npm run build:wasm:full --prefix platforms/web
 npm run build:wasm:ratex-math --prefix platforms/web
@@ -56,10 +57,11 @@ npm run build:wasm:ratex-math --prefix platforms/web
 
 The generated module exports `bindingCapabilities()`, `selectedRegistryProfile()`,
 `diagramFamilyCapabilities()`, and `lintRuleCatalog()` so JavaScript callers can detect whether the
-current artifact includes `render`, `analysis`, `ascii`, `core_full`, `core_host`, `ratex_math`, or
-`editor_language` support, which diagram parser/render facts are registered, and which lint rules
-are configurable or authoring-only. Lint rule entries include evidence references so browser hosts
-can explain why a rule is classified as Mermaid-backed compatibility or Merman authoring guidance.
+current artifact includes `render`, `analysis`, `ascii`, `core_full`, `core_host`, `elk_layout`,
+`ratex_math`, or `editor_language` support, which diagram parser/render facts are registered, and
+which lint rules are configurable or authoring-only. Lint rule entries include evidence references
+so browser hosts can explain why a rule is classified as Mermaid-backed compatibility or Merman
+authoring guidance.
 The ASCII preset can stay on the slim core profile when built without `core-full`/`core-host`.
 Render entry points stay present on the JavaScript surface for shape stability, but artifacts built
 without render support return `MERMAN_UNSUPPORTED_FORMAT`; callers should use
