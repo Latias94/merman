@@ -372,7 +372,7 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
 
     let swimlane = family_capability(full, "swimlane");
     assert_eq!(swimlane.metadata_id, None);
-    assert!(!swimlane.has_semantic_parser);
+    assert!(swimlane.has_semantic_parser);
     assert!(!swimlane.has_render_parser);
 
     let railroad_ebnf = family_capability(full, "railroadEbnf");
@@ -494,7 +494,7 @@ fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
         );
 
         for fact in crate::family::semantic_parser_facts(profile) {
-            if fact.id == "error" {
+            if permits_parser_only_semantic_fact(fact.id) {
                 continue;
             }
 
@@ -509,6 +509,10 @@ fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
 
 fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {
     ids.into_iter().collect()
+}
+
+fn permits_parser_only_semantic_fact(id: &str) -> bool {
+    matches!(id, "error" | "swimlane")
 }
 
 fn family_capability(

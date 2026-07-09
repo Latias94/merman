@@ -445,9 +445,9 @@ mod tests {
         let swimlane = capabilities
             .iter()
             .find(|capability| capability.diagram_type == "swimlane")
-            .expect("detector-only 11.16 swimlane capability should be present");
+            .expect("parser-only 11.16 swimlane capability should be present");
         assert_eq!(swimlane.metadata_id, None);
-        assert!(!swimlane.has_semantic_parser);
+        assert!(swimlane.has_semantic_parser);
         assert!(!swimlane.has_render_parser);
 
         let has_mindmap = capabilities

@@ -4,6 +4,12 @@ type: Engineering Log
 
 # Log
 
+## 2026-07-09
+
+- Completed the Mermaid 11.16 `swimlane` semantic parser/editor-facts slice: `swimlane-beta`
+  reuses Flowchart grammar and LSP facts, defaults layout to `swimlane`, and remains render-unadmitted
+  until a typed render parser/layout port exists.
+
 ## 2026-07-04
 
 - Consolidated editor-language hardening around SVG DOM safety, VS Code preview refresh

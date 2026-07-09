@@ -16,6 +16,7 @@ extern {
     "graph" => Tok::KwGraph,
     "flowchart" => Tok::KwFlowchart,
     "flowchart-elk" => Tok::KwFlowchartElk,
+    "swimlane-beta" => Tok::KwSwimlane,
     "subgraph" => Tok::KwSubgraph,
     "end" => Tok::KwEnd,
 
@@ -53,6 +54,7 @@ Header: (String, Option<String>, SourceSpan) = {
   <l:@L> "graph" <d:Direction?> <r:@R> => ("graph".to_string(), d, SourceSpan::new(l, r)),
   <l:@L> "flowchart" <d:Direction?> <r:@R> => ("flowchart".to_string(), d, SourceSpan::new(l, r)),
   <l:@L> "flowchart-elk" <d:Direction?> <r:@R> => ("flowchart-elk".to_string(), d, SourceSpan::new(l, r)),
+  <l:@L> "swimlane-beta" <d:Direction?> <r:@R> => ("swimlane-beta".to_string(), d, SourceSpan::new(l, r)),
 };
 
 Statements: Vec<Stmt> = {

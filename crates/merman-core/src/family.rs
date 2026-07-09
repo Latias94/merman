@@ -396,6 +396,16 @@ pub(crate) fn apply_known_type_detector_side_effects(
     }
 }
 
+pub(crate) fn apply_diagram_type_config_defaults(
+    diagram_type: &str,
+    user_config: &MermaidConfig,
+    effective_config: &mut MermaidConfig,
+) {
+    if diagram_type == "swimlane" && user_config.get_str("layout").is_none() {
+        effective_config.set_value("layout", Value::String("swimlane".to_string()));
+    }
+}
+
 const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
     DetectorFact {
         id: "error",
@@ -662,6 +672,10 @@ const SEMANTIC_PARSER_FACTS: &[SemanticParserFact] = &[
     SemanticParserFact {
         id: "sequence",
         parser: crate::diagrams::sequence::parse_sequence,
+    },
+    SemanticParserFact {
+        id: "swimlane",
+        parser: crate::diagrams::flowchart::parse_flowchart,
     },
     SemanticParserFact {
         id: "zenuml",

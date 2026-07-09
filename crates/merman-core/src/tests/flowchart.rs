@@ -35,6 +35,103 @@ fn parse_diagram_flowchart_basic_graph() {
 }
 
 #[test]
+fn parse_swimlane_reuses_flowchart_semantics_and_editor_facts() {
+    let engine = Engine::new();
+    let text = "swimlane-beta LR\nA[Start] --> B[Done]\n";
+    let parsed = engine
+        .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+        .unwrap()
+        .expect("swimlane parses through flowchart semantics");
+
+    assert_eq!(parsed.diagram.meta.diagram_type, "swimlane");
+    assert_eq!(
+        parsed.diagram.meta.effective_config.get_str("layout"),
+        Some("swimlane")
+    );
+    assert_eq!(parsed.diagram.model["type"], json!("swimlane"));
+    assert_eq!(parsed.diagram.model["keyword"], json!("swimlane-beta"));
+    assert_eq!(parsed.diagram.model["direction"], json!("LR"));
+    assert_eq!(parsed.diagram.model["nodes"][0]["id"], json!("A"));
+    assert_eq!(parsed.diagram.model["edges"][0]["from"], json!("A"));
+
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        panic!("swimlane should reuse flowchart editor facts");
+    };
+    let a_start = text.find("A[").expect("A node");
+    let a = facts
+        .symbols
+        .iter()
+        .find(|symbol| symbol.name == "A")
+        .expect("A editor symbol");
+    assert_eq!(a.selection.start, a_start);
+    assert_eq!(a.selection.end, a_start + "A".len());
+}
+
+#[test]
+fn parse_swimlane_layout_default_respects_user_config_precedence() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "layout": "dagre"
+    })));
+
+    let site_default = engine
+        .parse_metadata_sync("swimlane-beta LR\nA-->B\n", ParseOptions::strict())
+        .unwrap()
+        .expect("swimlane metadata");
+    assert_eq!(
+        site_default.effective_config.get_str("layout"),
+        Some("swimlane")
+    );
+
+    let user_override = engine
+        .parse_metadata_sync(
+            "%%{init: {\"layout\": \"elk\"}}%%\nswimlane-beta LR\nA-->B\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("swimlane metadata with user layout");
+    assert_eq!(user_override.config.get_str("layout"), Some("elk"));
+    assert_eq!(
+        user_override.effective_config.get_str("layout"),
+        Some("elk")
+    );
+
+    let known_type = engine
+        .parse_metadata_with_type_sync(
+            "swimlane",
+            "swimlane-beta LR\nA-->B\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("known-type swimlane metadata");
+    assert_eq!(
+        known_type.effective_config.get_str("layout"),
+        Some("swimlane")
+    );
+}
+
+#[test]
+fn parse_swimlane_render_model_stays_unadmitted_until_layout_exists() {
+    let engine = Engine::new();
+    let err = engine
+        .parse_diagram_for_render_model_sync("swimlane-beta LR\nA-->B\n", ParseOptions::strict())
+        .unwrap_err();
+
+    let Error::DiagramParse {
+        diagram_type,
+        diagnostic,
+    } = err
+    else {
+        panic!("unexpected swimlane render error: {err}");
+    };
+    assert_eq!(diagram_type, "swimlane");
+    assert!(
+        diagnostic
+            .message()
+            .contains("missing a typed render parser")
+    );
+}
+
+#[test]
 fn parse_diagram_flowchart_accepts_acc_description_alias() {
     let engine = Engine::new();
     let text = "flowchart TD\naccTitle: Flow title\naccDescription: Flow description\nA-->B\n";

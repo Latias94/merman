@@ -5,6 +5,9 @@ status: active
 
 # Current State
 
+- Active Mermaid parity focus: the repository is pinned to Mermaid 11.16.0, new 11.16 families are
+  detector-visible, and `swimlane` now has Flowchart-backed semantic parsing/editor facts while
+  render admission remains deferred until its typed layout/render path is ported.
 - Stable focus: editor-language integration hardening spans SVG safety, platform binding lifecycle
   contracts, editor snapshot memory use, and release-gate coverage.
 - Stable decisions: SVG text returned to browser-like surfaces must be validated before DOM

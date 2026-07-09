@@ -418,7 +418,7 @@ impl<'a> ParsePipeline<'a> {
 
         let parse_start = runtime::timing_start(timing_enabled);
         let parsed = match meta.diagram_type.as_str() {
-            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
+            "flowchart-v2" | "flowchart" | "flowchart-elk" | "swimlane" => {
                 let parse_res = self.with_fixed_time(|| {
                     crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts(
                         editor_input,
@@ -575,7 +575,7 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let facts = match meta.diagram_type.as_str() {
-            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
+            "flowchart-v2" | "flowchart" | "flowchart-elk" | "swimlane" => {
                 crate::diagrams::flowchart::parse_flowchart_editor_facts(editor_input, &meta)?
             }
             "sequence" => {
@@ -822,6 +822,11 @@ impl<'a> ParsePipeline<'a> {
                 return Err(err);
             }
         };
+        family::apply_diagram_type_config_defaults(
+            &diagram_type,
+            &pre.config,
+            &mut effective_config,
+        );
         if has_config_overrides {
             theme::apply_theme_defaults(&mut effective_config);
         } else if cached_effective_config
@@ -863,6 +868,11 @@ impl<'a> ParsePipeline<'a> {
         let mut effective_config = self.effective_config_before_detect(&pre.config);
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
         family::apply_known_type_detector_side_effects(diagram_type, &mut effective_config);
+        family::apply_diagram_type_config_defaults(
+            diagram_type,
+            &pre.config,
+            &mut effective_config,
+        );
         if has_config_overrides {
             theme::apply_theme_defaults(&mut effective_config);
         } else if cached_effective_config

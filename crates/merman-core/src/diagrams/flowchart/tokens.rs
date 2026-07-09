@@ -9,6 +9,7 @@ pub(crate) enum Tok {
     KwGraph,
     KwFlowchart,
     KwFlowchartElk,
+    KwSwimlane,
     KwSubgraph,
     KwEnd,
 

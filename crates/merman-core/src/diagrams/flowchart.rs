@@ -607,6 +607,7 @@ fn collect_editor_fact_from_token(
         Tok::KwGraph
         | Tok::KwFlowchart
         | Tok::KwFlowchartElk
+        | Tok::KwSwimlane
         | Tok::KwSubgraph
         | Tok::KwEnd
         | Tok::Sep

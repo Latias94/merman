@@ -503,7 +503,7 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     ),
     not_admitted!(
         "swimlane",
-        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+        "present in pinned Mermaid 11.16 source; Flowchart parser/editor reuse exists, while layout/render admission is tracked by the 11.16 parity plan"
     ),
     not_admitted!(
         "railroad",
@@ -785,7 +785,6 @@ mod tests {
         }
 
         for diagram in [
-            "swimlane",
             "railroad",
             "railroadEbnf",
             "railroadAbnf",
@@ -800,5 +799,12 @@ mod tests {
             assert!(!capability.has_semantic_parser);
             assert!(!capability.has_render_parser);
         }
+
+        let swimlane = record("swimlane");
+        let swimlane_capability = core_family_capability(core_capabilities, "swimlane")
+            .expect("swimlane should exist in core detector/parser facts");
+        assert_eq!(swimlane.admission, AdmissionStatus::NotAdmitted);
+        assert!(swimlane_capability.has_semantic_parser);
+        assert!(!swimlane_capability.has_render_parser);
     }
 }
