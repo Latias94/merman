@@ -382,7 +382,7 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
 
     let cynefin = family_capability(full, "cynefin");
     assert_eq!(cynefin.metadata_id, None);
-    assert!(!cynefin.has_semantic_parser);
+    assert!(cynefin.has_semantic_parser);
     assert!(!cynefin.has_render_parser);
 
     let wardley = family_capability(full, "wardley");
@@ -512,7 +512,7 @@ fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static 
 }
 
 fn permits_parser_only_semantic_fact(id: &str) -> bool {
-    matches!(id, "error" | "swimlane")
+    matches!(id, "error" | "swimlane" | "cynefin")
 }
 
 fn family_capability(

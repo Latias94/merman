@@ -450,6 +450,14 @@ mod tests {
         assert!(swimlane.has_semantic_parser);
         assert!(!swimlane.has_render_parser);
 
+        let cynefin = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "cynefin")
+            .expect("parser-only 11.16 cynefin capability should be present");
+        assert_eq!(cynefin.metadata_id, None);
+        assert!(cynefin.has_semantic_parser);
+        assert!(!cynefin.has_render_parser);
+
         let has_mindmap = capabilities
             .iter()
             .any(|capability| capability.diagram_type == "mindmap");

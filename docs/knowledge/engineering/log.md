@@ -9,6 +9,9 @@ type: Engineering Log
 - Completed the Mermaid 11.16 `swimlane` semantic parser/editor-facts slice: `swimlane-beta`
   reuses Flowchart grammar and LSP facts, defaults layout to `swimlane`, and remains render-unadmitted
   until a typed render parser/layout port exists.
+- Completed the Mermaid 11.16 `cynefin` semantic parser/editor-facts slice: `cynefin-beta` now
+  parses source-backed domains, items, transitions, title/accessibility fields, duplicate-domain
+  replacement, and self-loop filtering while render admission remains deferred.
 
 ## 2026-07-04
 

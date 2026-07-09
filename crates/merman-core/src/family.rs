@@ -678,6 +678,10 @@ const SEMANTIC_PARSER_FACTS: &[SemanticParserFact] = &[
         parser: crate::diagrams::flowchart::parse_flowchart,
     },
     SemanticParserFact {
+        id: "cynefin",
+        parser: crate::diagrams::cynefin::parse_cynefin,
+    },
+    SemanticParserFact {
         id: "zenuml",
         parser: crate::diagrams::zenuml::parse_zenuml,
     },

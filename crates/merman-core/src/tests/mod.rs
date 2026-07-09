@@ -1,4 +1,5 @@
 mod class;
+mod cynefin;
 mod detect;
 mod er;
 mod flowchart;

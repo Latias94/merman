@@ -595,6 +595,7 @@ impl<'a> ParsePipeline<'a> {
             }
             "block" => crate::diagrams::block::parse_block_editor_facts(editor_input, &meta),
             "c4" => crate::diagrams::c4::parse_c4_editor_facts(editor_input, &meta),
+            "cynefin" => crate::diagrams::cynefin::parse_cynefin_editor_facts(editor_input, &meta),
             "gitGraph" => {
                 crate::diagrams::git_graph::parse_git_graph_editor_facts(editor_input, &meta)
             }

@@ -527,7 +527,7 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     ),
     not_admitted!(
         "cynefin",
-        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+        "present in pinned Mermaid 11.16 source; parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
 ];
 
@@ -790,7 +790,6 @@ mod tests {
             "railroadAbnf",
             "railroadPeg",
             "wardley",
-            "cynefin",
         ] {
             let record = record(diagram);
             let capability = core_family_capability(core_capabilities, diagram)
@@ -806,5 +805,12 @@ mod tests {
         assert_eq!(swimlane.admission, AdmissionStatus::NotAdmitted);
         assert!(swimlane_capability.has_semantic_parser);
         assert!(!swimlane_capability.has_render_parser);
+
+        let cynefin = record("cynefin");
+        let cynefin_capability = core_family_capability(core_capabilities, "cynefin")
+            .expect("cynefin should exist in core detector/parser facts");
+        assert_eq!(cynefin.admission, AdmissionStatus::NotAdmitted);
+        assert!(cynefin_capability.has_semantic_parser);
+        assert!(!cynefin_capability.has_render_parser);
     }
 }

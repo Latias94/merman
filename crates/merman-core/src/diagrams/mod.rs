@@ -2,6 +2,7 @@ pub mod architecture;
 pub mod block;
 pub mod c4;
 pub mod class;
+pub mod cynefin;
 pub mod er;
 pub mod error_diagram;
 pub mod eventmodeling;
