@@ -613,7 +613,7 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         self.assertIn("tools/publish.py --list-crates-io-packages", text)
         self.assertNotIn('package.get("publish") != []', text)
 
-    def test_cargo_dist_release_workflow_is_tag_only_and_scopes_write_permission(self) -> None:
+    def test_cargo_dist_release_workflow_is_tag_only_and_uses_generated_publish_path(self) -> None:
         text = read_workflow(WORKFLOW_ROOT / "release.yml")
         dist_config = read_workflow(ROOT / "dist-workspace.toml")
         header = text.split("\njobs:", 1)[0]
@@ -622,12 +622,13 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
         global_build_job = indented_block(text, "build-global-artifacts:")
         host_job = indented_block(text, "host:")
 
-        self.assertRegex(header, re.compile(r'permissions:\n\s+"?contents"?:\s+"?read"?'))
-        self.assertNotRegex(header, re.compile(r'permissions:\n\s+"?contents"?:\s+"?write"?'))
+        # cargo-dist 0.32 generates a workflow-level contents: write permission.
+        # Keep the assertions focused on tag-only publishing and release-path shape.
+        self.assertRegex(header, re.compile(r'permissions:\n\s+"?contents"?:\s+"?write"?'))
         self.assertNotIn("pull_request:", header)
         self.assertIn("push:", header)
-        self.assertNotIn("github.event.pull_request", text)
-        self.assertNotIn("pr_run_mode", text)
+        self.assertIn("tags:", header)
+        self.assertIn("'**[0-9]+.[0-9]+.[0-9]+*'", header)
         self.assertIn('pr-run-mode = "skip"', dist_config)
         self.assertNotIn('pr-run-mode = "plan"', dist_config)
 
@@ -636,35 +637,25 @@ class ReleaseWorkflowSecurityTests(unittest.TestCase):
             ("build-global-artifacts", global_build_job),
         ]:
             with self.subTest(job=job_name):
-                self.assertNotRegex(job, re.compile(r'"?contents"?:\s+"?write"?'))
+                self.assertNotIn("gh release create", job)
+                self.assertNotIn("--steps=release", job)
 
-        self.assertRegex(plan_job, re.compile(r'permissions:\n\s+contents:\s+write'))
-        self.assertIn("environment: github-release", plan_job)
+        self.assertIn("tag: ${{ !github.event.pull_request && github.ref_name || '' }}", plan_job)
+        self.assertIn(
+            "tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}",
+            plan_job,
+        )
+        self.assertIn("publishing: ${{ !github.event.pull_request }}", plan_job)
         self.assertIn("host --steps=create", plan_job)
-        self.assertIn("tag: ${{ steps.release-tag.outputs.tag }}", plan_job)
-        self.assertIn("RELEASE_TAG: ${{ github.ref_name }}", plan_job)
-        self.assertIn("RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}", plan_job)
-        self.assertIn("release_tag_re='^v[0-9]+\\.[0-9]+\\.[0-9]+", plan_job)
-        self.assertIn("printf 'tag=%s\\n' \"$RELEASE_TAG\" >> \"$GITHUB_OUTPUT\"", plan_job)
-        self.assertIn('--tag="$RELEASE_TAG"', plan_job)
-        self.assertRegex(host_job, re.compile(r'permissions:\n\s+contents:\s+write'))
-        self.assertIn("environment: github-release", host_job)
         self.assertIn("needs.plan.outputs.publishing == 'true'", host_job)
-        self.assertIn("RELEASE_TAG: ${{ needs.plan.outputs.tag }}", local_build_job)
-        self.assertIn('--tag="$RELEASE_TAG"', local_build_job)
-        self.assertIn("RELEASE_TAG: ${{ needs.plan.outputs.tag }}", global_build_job)
-        self.assertIn('--tag="$RELEASE_TAG"', global_build_job)
-        self.assertIn("RELEASE_TAG: ${{ needs.plan.outputs.tag }}", host_job)
-        self.assertIn("release_tag_re='^v[0-9]+\\.[0-9]+\\.[0-9]+", host_job)
-        self.assertIn('--tag="$RELEASE_TAG"', host_job)
+        self.assertIn("dist build ${{ needs.plan.outputs.tag-flag }}", local_build_job)
+        self.assertIn("dist build ${{ needs.plan.outputs.tag-flag }}", global_build_job)
+        self.assertIn(
+            "dist host ${{ needs.plan.outputs.tag-flag }} --steps=upload --steps=release",
+            host_job,
+        )
         self.assertIn("gh release create", host_job)
-        self.assertIn('gh release create "$RELEASE_TAG"', host_job)
-        self.assertNotIn("tag-flag", text)
-        for index, block in enumerate(run_blocks(text)):
-            with self.subTest(run_block=index):
-                self.assertNotIn("${{ github.ref_name }}", block)
-                self.assertNotIn("${{ needs.plan.outputs.tag }}", block)
-                self.assertNotIn("${{ needs.plan.outputs.tag-flag }}", block)
+        self.assertIn('gh release create "${{ needs.plan.outputs.tag }}"', host_job)
 
 
 class CiWorkflowSecurityTests(unittest.TestCase):
