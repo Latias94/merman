@@ -1,0 +1,499 @@
+{
+  "schema_version": 1,
+  "states": [
+    "published",
+    "artifact-only",
+    "credential-blocked",
+    "registry-blocked",
+    "manual-registry",
+    "not-built",
+    "not-applicable"
+  ],
+  "release_kinds": ["stable", "prerelease"],
+  "feature_contract": {
+    "docs": ["docs/FEATURES.md", "docs/release/PACKAGE_SURFACES.md", "platforms/web/README.md"],
+    "public_names": [
+      "full",
+      "full-config",
+      "full-sanitization",
+      "host",
+      "host-clock",
+      "host-random",
+      "host-timing",
+      "render",
+      "ascii",
+      "raster",
+      "analysis",
+      "editor-language",
+      "core-full",
+      "core-host",
+      "cytoscape-layout",
+      "elk-layout",
+      "ratex-math",
+      "browser-core",
+      "browser-render",
+      "browser-render-only",
+      "browser-ascii",
+      "browser-full",
+      "browser-full-no-elk",
+      "browser-ratex-math"
+    ],
+    "browser_presets": [
+      "browser-core",
+      "browser-render",
+      "browser-render-only",
+      "browser-ascii",
+      "browser-full",
+      "browser-full-no-elk",
+      "browser-ratex-math"
+    ],
+    "web_subpaths": [".", "./core", "./render", "./render-only", "./ascii", "./full"],
+    "analysis_subpath": null
+  },
+  "surfaces": [
+    {
+      "id": "rust-core",
+      "name": "Rust core crate",
+      "audience": "Rust users who need parsing, metadata, semantic JSON, and typed render models without renderer dependencies.",
+      "public": true,
+      "entry_point": "merman-core",
+      "install": "cargo add merman-core@{version}",
+      "support_level": "published",
+      "dependency_weight": "low",
+      "capabilities": ["parse", "metadata", "semantic-json", "typed-render-models"],
+      "docs": ["README.md", "docs/FEATURES.md"],
+      "packages": [
+        { "kind": "crate", "name": "merman-core", "manifest": "crates/merman-core/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "crates.io",
+          "kind": "crates.io",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-crates.yml",
+          "credential": "CARGO_REGISTRY_TOKEN"
+        }
+      ],
+      "gates": ["python scripts/verify-release-crate-order.py"]
+    },
+    {
+      "id": "rust-analysis",
+      "name": "Rust analysis crate",
+      "audience": "Rust and tool authors who need diagnostics, lint metadata, Markdown/MDX scanning, and source ranges without SVG rendering.",
+      "public": true,
+      "entry_point": "merman-analysis",
+      "install": "cargo add merman-analysis@{version}",
+      "support_level": "published",
+      "dependency_weight": "low",
+      "capabilities": ["analysis", "validation-projection", "lint-catalog", "document-facts"],
+      "docs": ["README.md", "docs/FEATURES.md", "docs/adr/0072-lint-rule-governance.md"],
+      "packages": [
+        { "kind": "crate", "name": "merman-analysis", "manifest": "crates/merman-analysis/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "crates.io",
+          "kind": "crates.io",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-crates.yml",
+          "credential": "CARGO_REGISTRY_TOKEN"
+        }
+      ],
+      "gates": ["python scripts/verify-release-crate-order.py"]
+    },
+    {
+      "id": "rust-render",
+      "name": "Rust render facade",
+      "audience": "Rust applications that want the convenience facade for parsing, layout, SVG, ASCII, raster, and optional ELK.",
+      "public": true,
+      "entry_point": "merman",
+      "install": "cargo add merman@{version}",
+      "support_level": "published",
+      "dependency_weight": "medium-to-high",
+      "capabilities": ["parse", "render-svg", "layout-json", "ascii", "raster", "optional-elk"],
+      "docs": ["README.md", "docs/FEATURES.md", "docs/rendering/SVG_OUTPUT_PIPELINE.md"],
+      "packages": [
+        { "kind": "crate", "name": "merman", "manifest": "crates/merman/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "crates.io",
+          "kind": "crates.io",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-crates.yml",
+          "credential": "CARGO_REGISTRY_TOKEN"
+        }
+      ],
+      "gates": ["cargo nextest run --cargo-quiet"]
+    },
+    {
+      "id": "rust-editor-lsp",
+      "name": "Rust editor and LSP crates",
+      "audience": "Editor integrations that need protocol-neutral language intelligence or a ready-to-run LSP server.",
+      "public": true,
+      "entry_point": "merman-lsp",
+      "install": "cargo install merman-lsp --version {version}",
+      "support_level": "published",
+      "dependency_weight": "medium",
+      "capabilities": ["lsp", "diagnostics", "completion", "hover", "symbols", "references", "rename", "semantic-tokens"],
+      "docs": ["README.md", "docs/lsp/README.md", "docs/FEATURES.md"],
+      "packages": [
+        { "kind": "crate", "name": "merman-editor-core", "manifest": "crates/merman-editor-core/Cargo.toml" },
+        { "kind": "crate", "name": "merman-lsp", "manifest": "crates/merman-lsp/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "crates.io",
+          "kind": "crates.io",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-crates.yml",
+          "credential": "CARGO_REGISTRY_TOKEN"
+        }
+      ],
+      "gates": ["cargo build --release --locked -p merman-lsp"]
+    },
+    {
+      "id": "rustdoc",
+      "name": "Rustdoc integration",
+      "audience": "Rust library authors who want Mermaid fences rendered into API docs without compiling the renderer during ordinary builds.",
+      "public": true,
+      "entry_point": "merman-rustdoc",
+      "install": "cargo add merman-rustdoc@{version} --optional",
+      "support_level": "published",
+      "dependency_weight": "doc-build-only",
+      "capabilities": ["rustdoc-proc-macro", "inline-svg", "rustdoc-theme"],
+      "docs": ["README.md", "crates/merman-rustdoc/README.md"],
+      "packages": [
+        { "kind": "crate", "name": "merman-rustdoc", "manifest": "crates/merman-rustdoc/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "crates.io",
+          "kind": "crates.io",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-crates.yml",
+          "credential": "CARGO_REGISTRY_TOKEN"
+        }
+      ],
+      "gates": ["cargo nextest run -p merman-rustdoc --cargo-quiet"]
+    },
+    {
+      "id": "cli",
+      "name": "Command line interface",
+      "audience": "CLI users who want render, lint, validation, export, and batch workflows.",
+      "public": true,
+      "entry_point": "merman-cli",
+      "install": "Download from GitHub Release assets or install through cargo.",
+      "support_level": "published",
+      "dependency_weight": "binary",
+      "capabilities": ["cli", "render-svg", "render-raster", "lint", "validate", "ascii"],
+      "docs": ["README.md", "docs/release/RELEASING.md"],
+      "packages": [
+        { "kind": "crate", "name": "merman-cli", "manifest": "crates/merman-cli/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "github-release",
+          "kind": "github-release-assets",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release.yml",
+          "credential": "GITHUB_TOKEN"
+        },
+        {
+          "id": "crates.io",
+          "kind": "crates.io",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-crates.yml",
+          "credential": "CARGO_REGISTRY_TOKEN"
+        }
+      ],
+      "gates": ["cargo build --release --locked -p merman-cli"]
+    },
+    {
+      "id": "homebrew",
+      "name": "Homebrew CLI formula",
+      "audience": "macOS and Linux users installing the stable CLI from Homebrew/core.",
+      "public": true,
+      "entry_point": "merman-cli",
+      "install": "brew install merman-cli",
+      "support_level": "stable-only",
+      "dependency_weight": "binary",
+      "capabilities": ["cli", "homebrew-install", "stable-release-only"],
+      "docs": ["README.md", "docs/release/RELEASING.md", "docs/release/PACKAGE_SURFACES.md"],
+      "packages": [],
+      "channels": [
+        {
+          "id": "homebrew-core",
+          "kind": "homebrew",
+          "declared_state": "published",
+          "release_kinds": ["stable"],
+          "workflow": ".github/workflows/homebrew.yml",
+          "credential": null,
+          "not_applicable_reason": "Homebrew/core ignores prerelease tags."
+        }
+      ],
+      "gates": ["gh workflow run homebrew.yml"]
+    },
+    {
+      "id": "web-wasm",
+      "name": "Browser WebAssembly package",
+      "audience": "Browser and TypeScript applications that need WASM-backed Mermaid parsing, analysis, rendering, ASCII, or editor language helpers.",
+      "public": true,
+      "entry_point": "@mermanjs/web",
+      "install": "npm install @mermanjs/web@{version}",
+      "support_level": "published",
+      "dependency_weight": "preset-dependent",
+      "capabilities": ["browser-wasm", "analysis", "render-svg", "ascii", "editor-language", "optional-ratex"],
+      "docs": ["README.md", "platforms/web/README.md", "docs/release/PACKAGE_SURFACES.md"],
+      "packages": [
+        { "kind": "npm", "name": "@mermanjs/web", "manifest": "platforms/web/package.json" },
+        { "kind": "crate", "name": "merman-wasm", "manifest": "crates/merman-wasm/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "npm",
+          "kind": "npm",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-web.yml",
+          "credential": "npm Trusted Publishing"
+        }
+      ],
+      "gates": [
+        "npm run check:contracts --prefix platforms/web",
+        "npm run build --prefix platforms/web",
+        "npm run prepack --prefix platforms/web"
+      ]
+    },
+    {
+      "id": "vscode",
+      "name": "VS Code extension",
+      "audience": "VS Code users who want local Mermaid preview, diagnostics, language features, export, and copy actions.",
+      "public": true,
+      "entry_point": "merman-vscode",
+      "install": "Download verified VSIX artifacts from GitHub Actions; Marketplace publishing is a credential-blocked channel.",
+      "support_level": "artifact-only",
+      "dependency_weight": "extension-plus-binaries",
+      "capabilities": ["vscode-extension", "preview", "diagnostics", "lsp", "export", "webview-safety"],
+      "docs": ["README.md", "tools/vscode-extension/README.md"],
+      "packages": [
+        { "kind": "vscode", "name": "merman-vscode", "manifest": "tools/vscode-extension/package.json" }
+      ],
+      "channels": [
+        {
+          "id": "github-actions-vsix",
+          "kind": "github-actions-artifact",
+          "declared_state": "artifact-only",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/vscode-extension.yml",
+          "credential": "GITHUB_TOKEN"
+        },
+        {
+          "id": "vs-marketplace",
+          "kind": "vs-marketplace",
+          "declared_state": "credential-blocked",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/vscode-extension.yml",
+          "credential": "VSCE_PAT",
+          "blocker": "Marketplace publishing is credential-blocked on a VSCE publisher secret and a dedicated publish job."
+        }
+      ],
+      "gates": [
+        "npm run test --prefix tools/vscode-extension",
+        "npm run verify:vsix --prefix tools/vscode-extension -- --vsix <file> --platform <target> --target <target>"
+      ]
+    },
+    {
+      "id": "c-abi",
+      "name": "Native C ABI",
+      "audience": "Native hosts and bindings that need C-compatible rendering, analysis, ASCII, and host text measurement.",
+      "public": true,
+      "entry_point": "merman-ffi",
+      "install": "Build or consume the platform library and `crates/merman-ffi/include/merman.h`.",
+      "support_level": "published",
+      "dependency_weight": "native-library",
+      "capabilities": ["c-abi", "render-svg", "analysis", "ascii", "host-text-measurement"],
+      "docs": ["README.md", "docs/bindings/FFI_PROTOCOL.md", "docs/bindings/HOST_TEXT_MEASUREMENT.md"],
+      "packages": [
+        { "kind": "crate", "name": "merman-ffi", "manifest": "crates/merman-ffi/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "crates.io",
+          "kind": "crates.io",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-crates.yml",
+          "credential": "CARGO_REGISTRY_TOKEN"
+        }
+      ],
+      "gates": ["python scripts/verify-ffi-publish-surface.py", "cargo nextest run -p merman-ffi --cargo-quiet"]
+    },
+    {
+      "id": "python",
+      "name": "Python UniFFI package",
+      "audience": "Python hosts that need headless Mermaid rendering, analysis, ASCII, and Python-owned text measurement callbacks.",
+      "public": true,
+      "entry_point": "merman",
+      "install": "pip install merman=={python_version}",
+      "support_level": "published",
+      "dependency_weight": "native-wheel",
+      "capabilities": ["python", "uniffi", "render-svg", "analysis", "ascii", "host-text-measurement"],
+      "docs": ["README.md", "platforms/python/merman/README.md", "docs/bindings/PYTHON_UNIFFI.md"],
+      "packages": [
+        { "kind": "python", "name": "merman", "manifest": "platforms/python/merman/pyproject.toml" },
+        { "kind": "crate", "name": "merman-uniffi", "manifest": "crates/merman-uniffi/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "pypi",
+          "kind": "pypi",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-python.yml",
+          "credential": "PyPI Trusted Publishing"
+        },
+        {
+          "id": "github-release-wheels",
+          "kind": "github-release-assets",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-python.yml",
+          "credential": "GITHUB_TOKEN"
+        }
+      ],
+      "gates": ["python scripts/build-python-uniffi-wheel.py --run-smoke", "python scripts/verify-ffi-publish-surface.py"]
+    },
+    {
+      "id": "flutter",
+      "name": "Flutter and Dart FFI package",
+      "audience": "Flutter applications that want packaged native artifacts and Dart FFI APIs.",
+      "public": true,
+      "entry_point": "merman",
+      "install": "flutter pub add merman",
+      "support_level": "published",
+      "dependency_weight": "native-artifacts",
+      "capabilities": ["flutter", "dart-ffi", "render-svg", "analysis", "ascii", "host-text-measurement"],
+      "docs": ["README.md", "platforms/flutter/README.md", "docs/bindings/FLUTTER_DART_FFI.md"],
+      "packages": [
+        { "kind": "flutter", "name": "merman", "manifest": "platforms/flutter/pubspec.yaml" }
+      ],
+      "channels": [
+        {
+          "id": "pub.dev",
+          "kind": "pub.dev",
+          "declared_state": "published",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-flutter.yml",
+          "credential": "pub.dev Trusted Publishing"
+        }
+      ],
+      "gates": ["flutter analyze", "dart pub publish --dry-run"]
+    },
+    {
+      "id": "android",
+      "name": "Android JNI package",
+      "audience": "Android hosts that want an AAR, Kotlin wrapper, JNI library, and Android text measurement seam.",
+      "public": true,
+      "entry_point": "io.merman:merman-android",
+      "install": "Download the release AAR until Maven Central publishing is enabled.",
+      "support_level": "artifact-only",
+      "dependency_weight": "native-aar",
+      "capabilities": ["android", "jni", "render-svg", "analysis", "ascii", "host-text-measurement"],
+      "docs": ["README.md", "platforms/android/README.md", "docs/bindings/ANDROID_JNI.md"],
+      "packages": [
+        { "kind": "android", "name": "io.merman:merman-android", "manifest": "platforms/android/build.gradle.kts" }
+      ],
+      "channels": [
+        {
+          "id": "github-release-aar",
+          "kind": "github-release-assets",
+          "declared_state": "artifact-only",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-android.yml",
+          "credential": "GITHUB_TOKEN"
+        },
+        {
+          "id": "maven-central",
+          "kind": "maven-central",
+          "declared_state": "credential-blocked",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-android.yml",
+          "credential": "Central Portal credentials and signing secrets",
+          "blocker": "Maven Central publishing is credential-blocked on Central Portal credentials, signing setup, and a dedicated publish job."
+        }
+      ],
+      "gates": ["python scripts/verify-platform-bindings.py --run-android-gradle-build"]
+    },
+    {
+      "id": "apple",
+      "name": "Apple Swift package and XCFramework",
+      "audience": "Apple platform hosts that need Swift wrappers and an XCFramework for iOS and macOS.",
+      "public": true,
+      "entry_point": "Merman",
+      "install": "Download `Merman.xcframework` release assets or use a local SwiftPM package path.",
+      "support_level": "artifact-only",
+      "dependency_weight": "native-xcframework",
+      "capabilities": ["swift", "xcframework", "render-svg", "analysis", "ascii", "host-text-measurement"],
+      "docs": ["README.md", "platforms/apple/README.md", "docs/bindings/APPLE_SWIFT.md"],
+      "packages": [
+        { "kind": "swiftpm", "name": "Merman", "manifest": "Package.swift" }
+      ],
+      "channels": [
+        {
+          "id": "github-release-xcframework",
+          "kind": "github-release-assets",
+          "declared_state": "artifact-only",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-apple.yml",
+          "credential": "GITHUB_TOKEN"
+        },
+        {
+          "id": "swiftpm-remote-binary",
+          "kind": "swiftpm",
+          "declared_state": "registry-blocked",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/release-apple.yml",
+          "credential": null,
+          "blocker": "Remote `.binaryTarget(url:checksum:)` support needs a release-manifest strategy committed before tagging."
+        }
+      ],
+      "gates": ["bash scripts/build-apple-xcframework.sh", "swift package describe"]
+    },
+    {
+      "id": "typst",
+      "name": "Typst package and WASM plugin",
+      "audience": "Typst users who want Mermaid diagrams rendered through the wasm-minimal-protocol plugin package.",
+      "public": true,
+      "entry_point": "packages/typst/merman",
+      "install": "Use the local package artifact or follow Typst registry submission once the package PR is accepted.",
+      "support_level": "manual-registry",
+      "dependency_weight": "typst-wasm",
+      "capabilities": ["typst", "wasm-minimal-protocol", "render-svg", "analysis", "elk-layout"],
+      "docs": ["README.md", "docs/release/PACKAGE_SURFACES.md", "packages/typst/merman/typst.toml"],
+      "packages": [
+        { "kind": "typst", "name": "merman", "manifest": "packages/typst/merman/typst.toml" },
+        { "kind": "crate", "name": "merman-typst-plugin", "manifest": "crates/merman-typst-plugin/Cargo.toml" }
+      ],
+      "channels": [
+        {
+          "id": "typst-registry",
+          "kind": "typst-registry",
+          "declared_state": "manual-registry",
+          "release_kinds": ["stable", "prerelease"],
+          "workflow": ".github/workflows/ci.yml",
+          "credential": "Typst packages repository PR access",
+          "blocker": "Registry publication is a manual `typst/packages` PR."
+        }
+      ],
+      "gates": ["cargo run -p xtask -- build-typst-package", "cargo run -p xtask -- typst-package-smoke"]
+    }
+  ]
+}

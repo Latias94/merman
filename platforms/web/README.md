@@ -118,6 +118,10 @@ renderSvgToElement(document.querySelector("#preview")!, "sequenceDiagram\nA->>B:
 Framework integrations can use `renderSvg()` and mount the returned SVG string with their normal
 HTML/SVG insertion path.
 
+When inserting raw SVG into a browser DOM, keep `assertSafeSvgForDom()` in the path or use the
+wrapper helpers that call it. The shared DOM insertion policy is documented in
+[`docs/security/RENDERING_SECURITY.md`](https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md).
+
 ## Browser text measurement
 
 Headless rendering cannot know the exact browser font fallback that will display the final SVG.

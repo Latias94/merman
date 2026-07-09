@@ -145,6 +145,28 @@ host text API needs owned strings.
 - Return `handled=0` when a request cannot be measured faithfully. A bad "handled" value is worse
   than falling back.
 
+## Python UniFFI
+
+Use the `MermanTextMeasurer` protocol with a reusable engine:
+
+```python
+from merman import MermanTextMeasurer, reusable_engine_with_text_measurer
+
+
+class PreviewMeasurer(MermanTextMeasurer):
+    def measure_text(self, request):
+        return None
+
+
+engine = reusable_engine_with_text_measurer(PreviewMeasurer())
+```
+
+For long-lived preview surfaces, call `set_text_measurer()` when the host text stack becomes
+available and `clear_text_measurer()` before destroying the host-side measurement state. Returning
+`None` from `measure_text()` leaves that single request on Merman's vendored fallback metrics.
+Use `diagram_family_capabilities()` to decide whether a diagram family can render through the
+current Python binding before installing host-specific measurement logic.
+
 ## Android JNI
 
 Use `MermanReusableEngine` with `MermanTextMeasurer`:

@@ -140,6 +140,8 @@ def check_python_package_metadata() -> None:
         "UniFFI ABI compatibility note",
     )
     for rel_path in [
+        "README.md",
+        "docs/bindings/HOST_TEXT_MEASUREMENT.md",
         "platforms/python/merman/README.md",
         "platforms/python/merman/examples/smoke.py",
         "docs/bindings/PYTHON_UNIFFI.md",
@@ -169,6 +171,8 @@ def check_python_package_metadata() -> None:
             "diagram_family_capabilities",
             "Python UniFFI family capabilities entry point",
         )
+    if "does not expose host text-measurement callbacks yet" in read_text("README.md"):
+        raise CheckFailure("README.md: stale Python host text-measurement limitation")
     require_contains(
         "platforms/python/merman/src/merman/__init__.py",
         "MermanTextMeasurer",

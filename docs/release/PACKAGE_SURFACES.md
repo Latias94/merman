@@ -1,7 +1,7 @@
 # Package Surfaces
 
 Status: draft release planning notes.
-Last updated: 2026-07-07
+Last updated: 2026-07-09
 
 This document records merman package surfaces, current readiness, and the CI gates that should
 protect them before any registry publication is enabled.
@@ -17,9 +17,9 @@ protect them before any registry publication is enabled.
 | Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. Real pub.dev publication must run from a pushed `v*` tag; manual runs are validation-only. |
 | Android | `io.merman:merman-android` Android library module | `release-android.yml` | GitHub Release AAR | Maven publication metadata is declared; Maven Central publishing still needs Central Portal credentials and signing secrets. |
-| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Browser/JS WASM package built through wasm-bindgen. The default entry point is full and ELK-bearing; `./core`, `./render`, `./ascii`, and `./full` are opt-in package subpaths. This is not the Typst/pure-wasm surface. |
-| VS Code | `merman-vscode` platform VSIX | `vscode-extension.yml` + `release-preflight.yml` | GitHub Actions artifact; Marketplace publish not enabled | The VS Code manifest version is stable SemVer, for example `0.8.0`; workspace prereleases are packaged with the VSIX pre-release marker. |
-| Typst WASM | `merman` Typst package backed by `merman-typst-plugin` | manual `typst/packages` PR | Typst package registry | Uses wasm-minimal-protocol and must stay separate from wasm-bindgen browser glue. The publishable package wasm is artifact-owned and ELK-bearing because Typst users import the wasm rather than enabling Cargo features. |
+| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Browser/JS WASM package built through wasm-bindgen. The default entry point is full and ELK-bearing; `./core`, `./render`, `./render-only`, `./ascii`, and `./full` are opt-in package subpaths. This is not the Typst/pure-wasm surface. |
+| VS Code | `merman-vscode` platform VSIX | `vscode-extension.yml` + `release-preflight.yml` | GitHub Actions artifact; Marketplace is `credential-blocked` | The VS Code manifest version is stable SemVer, for example `0.8.0`; workspace prereleases are packaged with the VSIX pre-release marker. |
+| Typst WASM | `packages/typst/merman` Typst package backed by `merman-typst-plugin` | manual `typst/packages` PR | Typst package registry | Uses wasm-minimal-protocol and must stay separate from wasm-bindgen browser glue. The publishable package wasm is artifact-owned and ELK-bearing because Typst users import the wasm rather than enabling Cargo features. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
 | JVM | none | none | none | Add only if a JVM-specific wrapper is built. |
 
@@ -37,10 +37,44 @@ The first release set is:
 8. Platform VSIX artifacts for VS Code through `vscode-extension.yml`; Marketplace publishing needs
    an explicit release decision and credentials before it is enabled.
 
+## Release Status States
+
+`docs/release/SURFACES.json` is the machine-readable source of truth for public package surfaces and
+release channels. The status terms are intentionally user-facing:
+
+| State | Meaning |
+| --- | --- |
+| `published` | The registry or install channel is expected to publish for the selected release kind. |
+| `artifact-only` | CI produces or uploads an artifact, but no registry package is published from this repo yet. |
+| `credential-blocked` | The registry path is designed but blocked on credentials, signing, or marketplace setup. |
+| `registry-blocked` | The registry package contract needs more release-manifest design before publication. |
+| `manual-registry` | Publication happens through a manual registry PR or external review flow. |
+| `not-built` | The surface is documented but not produced by current automation. |
+| `not-applicable` | The channel does not apply to the selected release kind, such as Homebrew for prereleases. |
+
+For a user-facing package-choice table:
+
+```bash
+python scripts/release-status.py --view public
+```
+
+For maintainer readiness against a candidate version:
+
+```bash
+VERSION="<version>"
+python scripts/release-status.py --version "$VERSION" --view maintainer
+python scripts/release-status.py --version "$VERSION" --probe --format json
+```
+
+`--probe` is best-effort and should be used after publication when network and registry tools are
+available. It reports observed status separately from the declared release state.
+
 ## CI Gates
 
 Merman CI keeps publication separate from validation:
 
+- `python scripts/verify-release-surfaces.py` checks this document, `SURFACES.json`, package
+  manifests, Web source subpaths, feature/preset names, and release workflow paths.
 - `platform-script-syntax` checks Python, Apple, and Flutter shell entry points.
 - `python-uniffi-wheel` builds and imports a local Python UniFFI wheel.
 - `flutter-package-check` runs `flutter pub get`, `flutter analyze`, and Dart formatting.

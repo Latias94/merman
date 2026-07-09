@@ -1,7 +1,7 @@
 # Releasing
 
 Status: draft release operator guide.
-Last updated: 2026-07-07
+Last updated: 2026-07-09
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
@@ -41,12 +41,18 @@ become visible in crates.io.
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
 | npm | Trusted Publishing / OIDC configured for `@mermanjs/web`, this repository, `release-web.yml`, and the `npm` environment after the package exists |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
+| VS Code Marketplace | Not configured. Marketplace publishing would need `VSCE_PAT`, an explicit publish job, and VSIX provenance verification before enabling. |
 
 Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, `npm`, and `github-release`).
 Configure required reviewers on those environments if publication should require explicit approval.
 
-Android Maven Central publishing is intentionally not enabled yet. Android now declares Maven
-publication metadata, but Central Portal credentials and signing secrets still need to be configured.
+Android Maven Central publishing is credential-blocked. Android now declares Maven publication
+metadata, but Central Portal credentials, signing secrets, and a dedicated publish job still need to
+be configured.
+
+VS Code Marketplace publishing is credential-blocked. `.github/workflows/vscode-extension.yml`
+packages and verifies platform VSIX artifacts only; Marketplace publication needs a dedicated
+publish job, `VSCE_PAT`, and artifact provenance verification before it is enabled.
 
 The PyPI project `merman` exists. Keep PyPI Trusted Publishing configured for owner `Latias94`,
 repository `merman`, workflow `release-python.yml`, and environment `pypi`. A PyPI Pending
@@ -74,6 +80,21 @@ Use `homebrew.yml` or `brew livecheck merman-cli` to verify formula freshness an
 against the installed Homebrew package. Pre-release tags are intentionally ignored by that workflow
 because Homebrew/core tracks stable versions.
 
+## Release Surface Status
+
+Before tagging, check the declared release surface contract:
+
+```bash
+VERSION="<version>"
+python3 scripts/verify-release-surfaces.py
+python3 scripts/release-status.py --version "$VERSION" --view maintainer
+python3 scripts/release-status.py --version "$VERSION" --view public
+```
+
+After publication, add `--probe --format json` when network access and registry tools are available.
+The JSON output keeps declared release state separate from observed registry status, so a
+credential-blocked or artifact-only channel is not confused with a missing publish.
+
 ## Version Checklist
 
 Before tagging, verify these versions match the intended release:
@@ -96,7 +117,8 @@ For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
 Before tagging or publishing, run:
 
 ```bash
-gh workflow run release-preflight.yml -f version=0.8.0-alpha.3 -f source_ref=main
+VERSION="<version>"
+gh workflow run release-preflight.yml -f version="$VERSION" -f source_ref=main
 ```
 
 The preflight workflow verifies release versions, package file lists, registry-independent Rust
@@ -110,10 +132,13 @@ For local spot checks, run the normal Rust and platform gates:
 cargo nextest run --cargo-quiet
 cargo build --release --locked -p merman-cli
 python3 -m py_compile \
+  scripts/release-status.py \
+  scripts/verify-release-surfaces.py \
   scripts/verify-platform-bindings.py \
   scripts/build-python-uniffi-wheel.py \
   platforms/android/build-android.py \
   platforms/flutter/tool/android-smoke.py
+python3 scripts/verify-release-surfaces.py
 bash -n scripts/build-apple-xcframework.sh platforms/ios/build-ios.sh platforms/flutter/build-ios.sh platforms/flutter/build-desktop.sh
 python3 scripts/build-python-uniffi-wheel.py --run-smoke
 ```
@@ -156,7 +181,7 @@ Publishing is configured for `@mermanjs/web`. If npm Trusted Publishing is unava
 maintainer must publish locally, derive the same dist-tag as the workflow and pass it explicitly:
 
 ```bash
-RELEASE_TAG="v0.8.0-alpha.3"
+RELEASE_TAG="v<version>"
 VERSION="${RELEASE_TAG#v}"
 case "$VERSION" in
   *-alpha.*) NPM_DIST_TAG="alpha" ;;
@@ -204,15 +229,17 @@ The web package build uses `wasm-pack --profile wasm-size`, so CI and local rele
 default `browser-full` wasm against `docs/release/WASM_SIZE_BUDGETS.json`.
 
 `@mermanjs/web` publishes the `browser-full` artifact under the default import path and exposes
-public subpaths for `@mermanjs/web/core`, `@mermanjs/web/render`, `@mermanjs/web/ascii`, and
-`@mermanjs/web/full`. `merman-typst-plugin` is the Typst-compatible transport and must remain
-separate from browser/wasm-bindgen artifacts.
+public subpaths for `@mermanjs/web/core`, `@mermanjs/web/render`,
+`@mermanjs/web/render-only`, `@mermanjs/web/ascii`, and `@mermanjs/web/full`.
+`merman-typst-plugin` is the Typst-compatible transport and must remain separate from
+browser/wasm-bindgen artifacts.
 
 ## Tag And Push
 
 ```bash
-git tag v0.8.0-alpha.3
-git push origin v0.8.0-alpha.3
+VERSION="<version>"
+git tag "v${VERSION}"
+git push origin "v${VERSION}"
 ```
 
 Do not move or force-update release tags after publication. Release tags are the immutable source
@@ -225,11 +252,12 @@ Actions artifacts for manual attachment.
 After the primary release exists, run platform publish workflows manually:
 
 ```bash
-gh workflow run release-python.yml -f release_tag=v0.8.0-alpha.3 -f source_ref=v0.8.0-alpha.3 -f publish_to_pypi=true
-gh workflow run release-android.yml -f release_tag=v0.8.0-alpha.3 -f source_ref=v0.8.0-alpha.3
-gh workflow run release-apple.yml -f release_tag=v0.8.0-alpha.3 -f source_ref=v0.8.0-alpha.3
-gh workflow run release-web.yml -f release_tag=v0.8.0-alpha.3 -f source_ref=v0.8.0-alpha.3 -f publish_to_npm=true
-gh workflow run vscode-extension.yml -f source_ref=v0.8.0-alpha.3
+RELEASE_TAG="v<version>"
+gh workflow run release-python.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" -f publish_to_pypi=true
+gh workflow run release-android.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG"
+gh workflow run release-apple.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG"
+gh workflow run release-web.yml -f release_tag="$RELEASE_TAG" -f source_ref="$RELEASE_TAG" -f publish_to_npm=true
+gh workflow run vscode-extension.yml -f source_ref="$RELEASE_TAG"
 gh workflow run homebrew.yml
 ```
 

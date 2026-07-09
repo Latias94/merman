@@ -88,6 +88,10 @@ external Mermaid preview extensions, and project lint tools. Use Merman for sema
 `.mmd` files, optional fence-aware diagnostics, local preview inspection, and export; it does not
 replace VS Code's Markdown preview renderer or repository lint policy.
 
+Preview SVG uses the same generated DOM safety policy as `@mermanjs/web`; see
+[`docs/security/RENDERING_SECURITY.md`](https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md)
+for host responsibilities when SVG is inserted into a browser or editor webview.
+
 The packaged extension is a local capability surface over `merman-lsp` and `merman-cli`, not a
 claim that every project should adopt an LSP-first Mermaid workflow. Users can keep preview/export
 only, language intelligence without diagnostics, or the full local authoring stack.

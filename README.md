@@ -41,7 +41,7 @@ Mermaid license and provenance notes.
 | Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) / [Homebrew](https://formulae.brew.sh/formula/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
 | Lint Mermaid without rendering | [`merman-analysis`](https://crates.io/crates/merman-analysis) / `merman-cli lint` | Diagnostics, lint metadata, Markdown/MDX fence handling, and source ranges without pulling in SVG rendering. |
 | Add Mermaid language features to an editor | [`merman-lsp`](https://crates.io/crates/merman-lsp) | LSP server for diagnostics, completions, hover, symbols, references, rename, folding, semantic tokens, and quick fixes. |
-| Try the VS Code extension preview | [`tools/vscode-extension`](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) | Local preview, diagnostics, language features, SVG/PNG export, and copy actions. Release CI builds platform VSIX artifacts; Marketplace publishing is not enabled yet. |
+| Try the VS Code extension preview | [`tools/vscode-extension`](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) | Local preview, diagnostics, language features, SVG/PNG export, and copy actions. Release CI builds platform VSIX artifacts; Marketplace publishing is tracked as a credential-blocked channel in the release surface contract. |
 | Render diagrams in Rust API docs | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rustdoc that turns Mermaid fences into inline headless SVG. |
 | Embed in a browser or TypeScript app | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, diagnostics-first analysis, metadata, and DOM rendering. Validation JSON remains a compatibility projection during alpha. Source: [`platforms/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme). |
 | Build a Typst plugin/package | [`merman-typst-plugin`](https://github.com/Latias94/merman/tree/main/crates/merman-typst-plugin#readme) | Experimental wasm-minimal-protocol transport for Typst-compatible WASM hosts. |
@@ -417,7 +417,7 @@ Start with the surface that matches your host:
 | Host | Package or source | Notes |
 | --- | --- | --- |
 | C / C++ / other native FFI | [`merman-ffi`](https://crates.io/crates/merman-ffi), [`crates/merman-ffi`](https://github.com/Latias94/merman/tree/main/crates/merman-ffi), [`merman.h`](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/include/merman.h) | Stable C ABI used by the higher-level wrappers. |
-| Python | [`merman` on PyPI](https://pypi.org/project/merman/), [`platforms/python/merman`](https://github.com/Latias94/merman/tree/main/platforms/python/merman) | Experimental UniFFI wheels. This surface does not expose host text-measurement callbacks yet; use the C ABI when a Python host needs its own font stack. |
+| Python | [`merman` on PyPI](https://pypi.org/project/merman/), [`platforms/python/merman`](https://github.com/Latias94/merman/tree/main/platforms/python/merman) | Experimental UniFFI wheels with `diagram_family_capabilities()` and reusable-engine host text measurement through `MermanTextMeasurer`, `reusable_engine_with_text_measurer`, `set_text_measurer`, and `clear_text_measurer`. |
 | Flutter / Dart | [`merman` on pub.dev](https://pub.dev/packages/merman), [`platforms/flutter`](https://github.com/Latias94/merman/tree/main/platforms/flutter) | Flutter package backed by Dart FFI and bundled native libraries. |
 | Android / Kotlin | [`platforms/android`](https://github.com/Latias94/merman/tree/main/platforms/android) | AAR/JNI package source for Android hosts. |
 | Apple / SwiftPM | [`Package.swift`](https://github.com/Latias94/merman/blob/main/Package.swift), [`platforms/apple`](https://github.com/Latias94/merman/tree/main/platforms/apple) | Swift wrapper and binary XCFramework package layout. |
@@ -804,7 +804,10 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 - Text measurement is inherently host-sensitive. Merman uses vendored compatibility metrics by
   default and keeps Flowchart HTML labels non-clipping, but browser and native font fallback,
   shaping, hinting, and subpixel rounding can still differ. Hosts that need exact geometry should
-  provide a `TextMeasurer` in Rust or the C FFI text-measurement callback.
+  provide a `TextMeasurer` in Rust, the C FFI text-measurement callback, or Python UniFFI's
+  `MermanTextMeasurer`.
+- Browser and editor hosts that insert SVG into a DOM should follow the shared rendering security
+  policy in [`docs/security/RENDERING_SECURITY.md`](https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md).
 - PNG/JPG export is constrained by a default pixmap budget. This protects headless hosts from
   oversized allocations, but it also means extremely large diagrams are downscaled unless callers
   choose a target fit box or explicitly opt into unbounded raster output.
@@ -835,9 +838,21 @@ These core profiles are separate from output features:
 `merman-core --no-default-features` or `merman --no-default-features` and avoid `core-full`,
 `core-host`, JS, and WASI imports unless the host explicitly permits them.
 
-`@mermanjs/web` publishes the full browser artifact by default. The source tree also has browser
-source-build presets for core, render, ASCII, full, and RaTeX math artifacts, but those presets are
-not separate npm entry points. Browser callers can inspect the active artifact with
+`@mermanjs/web` publishes the full browser artifact by default and also exposes package subpaths for
+users who want less code loaded in browser bundles:
+
+| Entry point | WASM preset | Dependency posture |
+| --- | --- | --- |
+| `@mermanjs/web` | `browser-full` | Default browser package with render, layout, parse, analysis, validation, ASCII, editor-language APIs, and ELK. |
+| `@mermanjs/web/core` | `browser-core` | Smallest analysis-capable browser artifact; no render, layout, parse JSON, ASCII, or editor-language wrappers. |
+| `@mermanjs/web/render` | `browser-render` | SVG/layout/parse plus analysis and validation; no ASCII or editor-language wrappers. |
+| `@mermanjs/web/render-only` | `browser-render-only` | SVG/layout/parse and metadata only; no analysis, validation, lint catalog, ASCII, or editor-language wrappers. |
+| `@mermanjs/web/ascii` | `browser-ascii` | ASCII/Unicode rendering and metadata only; no analysis, SVG/layout/parse, or editor-language wrappers. |
+| `@mermanjs/web/full` | `browser-full` | Explicit full-preset import, equivalent to the default package. |
+
+There is no `@mermanjs/web/analysis` subpath because `@mermanjs/web/core` is already the smallest
+analysis-capable browser artifact. Source and CI builds can still use custom presets such as
+`browser-full-no-elk` and `browser-ratex-math`; browser callers can inspect the active artifact with
 `bindingCapabilities()`.
 
 Typst-compatible WASM uses `merman-typst-plugin`, not `merman-wasm`. The plugin crate exports
