@@ -461,21 +461,19 @@ mod tests {
         let railroad = capabilities
             .iter()
             .find(|capability| capability.diagram_type == "railroad")
-            .expect("parser-only 11.16 railroad capability should be present");
-        assert_eq!(railroad.metadata_id, None);
+            .expect("11.16 railroad capability should be present");
+        assert_eq!(railroad.metadata_id, Some("railroad"));
         assert!(railroad.has_semantic_parser);
-        assert!(!railroad.has_render_parser);
+        assert!(railroad.has_render_parser);
 
         for diagram_type in ["railroadEbnf", "railroadAbnf", "railroadPeg"] {
             let railroad_variant = capabilities
                 .iter()
                 .find(|capability| capability.diagram_type == diagram_type)
-                .unwrap_or_else(|| {
-                    panic!("parser-only 11.16 {diagram_type} capability should be present")
-                });
-            assert_eq!(railroad_variant.metadata_id, None);
+                .unwrap_or_else(|| panic!("11.16 {diagram_type} capability should be present"));
+            assert_eq!(railroad_variant.metadata_id, Some(diagram_type));
             assert!(railroad_variant.has_semantic_parser);
-            assert!(!railroad_variant.has_render_parser);
+            assert!(railroad_variant.has_render_parser);
         }
 
         let has_mindmap = capabilities

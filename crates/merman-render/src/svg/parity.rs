@@ -5,9 +5,9 @@ use crate::model::{
     CynefinDiagramLayout, ErDiagramLayout, ErrorDiagramLayout, EventModelingDiagramLayout,
     FlowchartV2Layout, InfoDiagramLayout, IshikawaDiagramLayout, LayoutCluster, LayoutNode,
     MindmapDiagramLayout, PacketDiagramLayout, PieDiagramLayout, QuadrantChartDiagramLayout,
-    RadarDiagramLayout, RequirementDiagramLayout, SankeyDiagramLayout, SequenceDiagramLayout,
-    StateDiagramV2Layout, TimelineDiagramLayout, TreeViewDiagramLayout, VennDiagramLayout,
-    XyChartDiagramLayout,
+    RadarDiagramLayout, RailroadDiagramLayout, RequirementDiagramLayout, SankeyDiagramLayout,
+    SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout, TreeViewDiagramLayout,
+    VennDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -42,6 +42,7 @@ mod path_bounds;
 mod pie;
 mod quadrantchart;
 mod radar;
+mod railroad;
 mod requirement;
 mod root_svg;
 mod roughjs_common;
@@ -241,6 +242,9 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::CynefinDiagram(layout) => {
             render_cynefin_diagram_svg(layout, semantic, effective_config, options)
         }
+        LayoutDiagram::RailroadDiagram(layout) => {
+            render_railroad_diagram_svg(layout, semantic, effective_config, options)
+        }
         LayoutDiagram::StateDiagramV2(layout) => render_state_diagram_v2_svg(
             layout,
             semantic,
@@ -407,6 +411,9 @@ fn render_layout_svg_parts_with_config_raw(
         ),
         LayoutDiagram::CynefinDiagram(layout) => {
             render_cynefin_diagram_svg(layout, semantic, effective_config_value, options)
+        }
+        LayoutDiagram::RailroadDiagram(layout) => {
+            render_railroad_diagram_svg(layout, semantic, effective_config_value, options)
         }
         LayoutDiagram::StateDiagramV2(layout) => render_state_diagram_v2_svg(
             layout,
@@ -593,6 +600,14 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
         }
         (LayoutDiagram::CynefinDiagram(layout), RenderSemanticModel::Cynefin(model)) => {
             cynefin::render_cynefin_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
+                options,
+            )
+        }
+        (LayoutDiagram::RailroadDiagram(layout), RenderSemanticModel::Railroad(model)) => {
+            railroad::render_railroad_diagram_svg_model(
                 layout,
                 model,
                 effective_config.as_value(),
@@ -909,6 +924,15 @@ pub fn render_cynefin_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     cynefin::render_cynefin_diagram_svg(layout, semantic, effective_config, options)
+}
+
+pub fn render_railroad_diagram_svg(
+    layout: &RailroadDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    railroad::render_railroad_diagram_svg(layout, semantic, effective_config, options)
 }
 
 pub fn render_requirement_diagram_svg(

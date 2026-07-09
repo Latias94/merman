@@ -292,6 +292,10 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "pie",
             "quadrantchart",
             "radar",
+            "railroad",
+            "railroadAbnf",
+            "railroadEbnf",
+            "railroadPeg",
             "requirement",
             "sankey",
             "sequence",
@@ -322,6 +326,10 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "pie",
             "quadrantchart",
             "radar",
+            "railroad",
+            "railroadAbnf",
+            "railroadEbnf",
+            "railroadPeg",
             "requirement",
             "sankey",
             "sequence",
@@ -378,15 +386,19 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     assert!(!swimlane.has_render_parser);
 
     let railroad = family_capability(full, "railroad");
-    assert_eq!(railroad.metadata_id, None);
+    assert_eq!(railroad.metadata_id, Some("railroad"));
     assert!(railroad.has_semantic_parser);
-    assert!(!railroad.has_render_parser);
+    assert!(railroad.has_render_parser);
 
-    for diagram_type in ["railroadEbnf", "railroadAbnf", "railroadPeg"] {
+    for (diagram_type, metadata_id) in [
+        ("railroadEbnf", "railroadEbnf"),
+        ("railroadAbnf", "railroadAbnf"),
+        ("railroadPeg", "railroadPeg"),
+    ] {
         let capability = family_capability(full, diagram_type);
-        assert_eq!(capability.metadata_id, None);
+        assert_eq!(capability.metadata_id, Some(metadata_id));
         assert!(capability.has_semantic_parser);
-        assert!(!capability.has_render_parser);
+        assert!(capability.has_render_parser);
     }
 
     let cynefin = family_capability(full, "cynefin");

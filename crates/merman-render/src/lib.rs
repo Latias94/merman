@@ -41,6 +41,7 @@ pub mod packet;
 pub mod pie;
 pub mod quadrantchart;
 pub mod radar;
+pub mod railroad;
 pub mod requirement;
 pub mod resources;
 pub mod sankey;
@@ -283,6 +284,13 @@ pub fn layout_parsed_render_layout_only(
         ))),
         RenderSemanticModel::Cynefin(model) => Ok(LayoutDiagram::CynefinDiagram(Box::new(
             cynefin::layout_cynefin_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
+        RenderSemanticModel::Railroad(model) => Ok(LayoutDiagram::RailroadDiagram(Box::new(
+            railroad::layout_railroad_diagram_typed(
                 model,
                 effective_config,
                 options.text_measurer.as_ref(),
@@ -742,6 +750,13 @@ fn layout_json_by_type(
                 options.text_measurer.as_ref(),
             )?,
         ))),
+        "railroad" | "railroadEbnf" | "railroadAbnf" | "railroadPeg" => Ok(
+            LayoutDiagram::RailroadDiagram(Box::new(railroad::layout_railroad_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?)),
+        ),
         "journey" => Ok(LayoutDiagram::JourneyDiagram(Box::new(
             journey::layout_journey_diagram(
                 semantic,
@@ -1391,6 +1406,48 @@ Animal <|-- Duck
         assert!(svg.contains("Pattern emerges"));
         assert!(svg.contains(r#"<title id="chart-title-cynefin-test">Cynefin map</title>"#));
         assert!(svg.contains(r#"<desc id="chart-desc-cynefin-test">Practice movement</desc>"#));
+    }
+
+    #[test]
+    fn render_model_dispatch_renders_railroad_svg() {
+        let source = r#"railroad-beta
+accTitle: Railroad grammar
+accDescr: Expression grammar
+expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(terminal("+"))) ;
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let layout_options = LayoutOptions::default();
+        let layout = layout_parsed_render_layout_only(&parsed, &layout_options).unwrap();
+        let svg = crate::svg::render_layout_svg_parts_for_render_model_with_metadata(
+            &layout,
+            &parsed.model,
+            &parsed.meta.effective_config,
+            &parsed.meta.diagram_type,
+            parsed.meta.title.as_deref(),
+            layout_options.text_measurer.as_ref(),
+            &crate::svg::SvgRenderOptions {
+                diagram_id: Some("railroad-test".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"aria-roledescription="railroad""#));
+        assert!(svg.contains(r#"class="railroad-diagram""#));
+        assert!(svg.contains(r#"class="railroad-rule""#));
+        assert!(svg.contains(r#"class="railroad-rule-name""#));
+        assert!(svg.contains(r#"class="railroad-nonterminal""#));
+        assert!(svg.contains(r#"class="railroad-special""#));
+        assert!(svg.contains(r#"class="railroad-terminal""#));
+        assert!(svg.contains(r#"class="railroad-line""#));
+        assert!(svg.contains("term"));
+        assert!(svg.contains("? guard ?"));
+        assert!(svg.contains("+"));
+        assert!(svg.contains(r#"<title id="chart-title-railroad-test">Railroad grammar</title>"#));
+        assert!(svg.contains(r#"<desc id="chart-desc-railroad-test">Expression grammar</desc>"#));
     }
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]

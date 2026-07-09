@@ -172,6 +172,7 @@ pub enum RenderSemanticModel {
     Class(crate::models::class_diagram::ClassDiagram),
     C4(crate::diagrams::c4::C4DiagramRenderModel),
     Cynefin(crate::diagrams::cynefin::CynefinDiagramRenderModel),
+    Railroad(crate::diagrams::railroad::RailroadDiagramRenderModel),
     Kanban(crate::diagrams::kanban::KanbanDiagramRenderModel),
     Gantt(crate::diagrams::gantt::GanttDiagramRenderModel),
     Pie(crate::diagrams::pie::PieDiagramRenderModel),
@@ -207,6 +208,7 @@ impl RenderSemanticModel {
             Self::Class(v) => v.sanitize_common_db_fields(config),
             Self::C4(v) => v.sanitize_common_db_fields(config),
             Self::Cynefin(v) => v.sanitize_common_db_fields(config),
+            Self::Railroad(v) => v.sanitize_common_db_fields(config),
             Self::Kanban(_) => {}
             Self::Gantt(v) => v.sanitize_common_db_fields(config),
             Self::Pie(v) => v.sanitize_common_db_fields(config),
@@ -281,6 +283,7 @@ impl RenderSemanticModel {
             Self::Class(_) => "class",
             Self::C4(_) => "c4",
             Self::Cynefin(_) => "cynefin",
+            Self::Railroad(_) => "railroad",
             Self::Kanban(_) => "kanban",
             Self::Gantt(_) => "gantt",
             Self::Pie(_) => "pie",

@@ -171,7 +171,7 @@ rule <- &"a" !"b" . other? ;
 }
 
 #[test]
-fn parse_railroad_variants_render_model_stays_unadmitted_until_renderer_exists() {
+fn parse_railroad_variants_expose_typed_render_models() {
     let engine = Engine::new();
     for (diagram_type, source) in [
         ("railroad", "railroad-beta\nrule = terminal(\"a\") ;\n"),
@@ -179,24 +179,17 @@ fn parse_railroad_variants_render_model_stays_unadmitted_until_renderer_exists()
         ("railroadAbnf", "railroad-abnf-beta\nrule = \"a\" ;\n"),
         ("railroadPeg", "railroad-peg-beta\nrule <- \"a\" ;\n"),
     ] {
-        let err = engine
+        let parsed = engine
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap_err();
+            .unwrap()
+            .unwrap();
 
-        let Error::DiagramParse {
-            diagram_type: actual,
-            diagnostic,
-        } = err
-        else {
-            panic!("unexpected railroad render error for {diagram_type}: {err}");
+        assert_eq!(parsed.meta.diagram_type, diagram_type);
+        assert!(parsed.model.supports_diagram_type(diagram_type));
+        let RenderSemanticModel::Railroad(model) = parsed.model else {
+            panic!("expected railroad render model for {diagram_type}");
         };
-        assert_eq!(actual, diagram_type);
-        assert!(
-            diagnostic
-                .message()
-                .contains("missing a typed render parser"),
-            "{diagram_type}: {}",
-            diagnostic.message()
-        );
+        assert_eq!(model.rules.len(), 1);
+        assert_eq!(model.rules[0].name, "rule");
     }
 }

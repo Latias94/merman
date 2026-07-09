@@ -848,6 +848,26 @@ render_parser!(
     RenderSemanticModel::Cynefin
 );
 render_parser!(
+    render_railroad,
+    crate::diagrams::railroad::parse_railroad_model_for_render,
+    RenderSemanticModel::Railroad
+);
+render_parser!(
+    render_railroad_ebnf,
+    crate::diagrams::railroad::parse_railroad_ebnf_model_for_render,
+    RenderSemanticModel::Railroad
+);
+render_parser!(
+    render_railroad_abnf,
+    crate::diagrams::railroad::parse_railroad_abnf_model_for_render,
+    RenderSemanticModel::Railroad
+);
+render_parser!(
+    render_railroad_peg,
+    crate::diagrams::railroad::parse_railroad_peg_model_for_render,
+    RenderSemanticModel::Railroad
+);
+render_parser!(
     render_architecture,
     crate::diagrams::architecture::parse_architecture_model_for_render,
     RenderSemanticModel::Architecture
@@ -1027,6 +1047,30 @@ const RENDER_PARSER_FACTS: &[RenderParserFact] = &[
         parser: render_cynefin,
     },
     RenderParserFact {
+        id: "railroad",
+        metadata_id: Some("railroad"),
+        model_kind: "railroad",
+        parser: render_railroad,
+    },
+    RenderParserFact {
+        id: "railroadEbnf",
+        metadata_id: Some("railroadEbnf"),
+        model_kind: "railroad",
+        parser: render_railroad_ebnf,
+    },
+    RenderParserFact {
+        id: "railroadAbnf",
+        metadata_id: Some("railroadAbnf"),
+        model_kind: "railroad",
+        parser: render_railroad_abnf,
+    },
+    RenderParserFact {
+        id: "railroadPeg",
+        metadata_id: Some("railroadPeg"),
+        model_kind: "railroad",
+        parser: render_railroad_peg,
+    },
+    RenderParserFact {
         id: "architecture",
         metadata_id: Some("architecture"),
         model_kind: "architecture",
@@ -1178,6 +1222,10 @@ const SUPPORTED_DIAGRAM_METADATA_IDS: &[&str] = &[
     "pie",
     "quadrantchart",
     "radar",
+    "railroad",
+    "railroadAbnf",
+    "railroadEbnf",
+    "railroadPeg",
     "requirement",
     "sankey",
     "sequence",

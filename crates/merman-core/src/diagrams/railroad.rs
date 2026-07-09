@@ -3,7 +3,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +43,7 @@ impl RailroadDialect {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RailroadDiagramModel {
     #[serde(default, rename = "accTitle")]
     pub acc_title: Option<String>,
@@ -60,6 +60,8 @@ pub struct RailroadDiagramModel {
     #[serde(skip_serializing)]
     acc_descr_span: Option<SourceSpan>,
 }
+
+pub type RailroadDiagramRenderModel = RailroadDiagramModel;
 
 impl RailroadDiagramModel {
     fn new() -> Self {
@@ -85,49 +87,49 @@ impl RailroadDiagramModel {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RailroadRuleModel {
     pub name: String,
     pub definition: RailroadAstNode,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing, default = "zero_span")]
     name_span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum RailroadAstNode {
     #[serde(rename = "terminal")]
     Terminal {
         value: String,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         span: SourceSpan,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         selection: SourceSpan,
     },
     #[serde(rename = "nonterminal")]
     NonTerminal {
         name: String,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         span: SourceSpan,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         selection: SourceSpan,
     },
     #[serde(rename = "sequence")]
     Sequence {
         elements: Vec<RailroadAstNode>,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         span: SourceSpan,
     },
     #[serde(rename = "choice")]
     Choice {
         alternatives: Vec<RailroadAstNode>,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         span: SourceSpan,
     },
     #[serde(rename = "optional")]
     Optional {
         element: Box<RailroadAstNode>,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         span: SourceSpan,
     },
     #[serde(rename = "repetition")]
@@ -137,17 +139,21 @@ pub enum RailroadAstNode {
         max: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<Box<RailroadAstNode>>,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         span: SourceSpan,
     },
     #[serde(rename = "special")]
     Special {
         text: String,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         span: SourceSpan,
-        #[serde(skip_serializing)]
+        #[serde(skip_serializing, default = "zero_span")]
         selection: SourceSpan,
     },
+}
+
+fn zero_span() -> SourceSpan {
+    SourceSpan::new(0, 0)
 }
 
 impl RailroadAstNode {
@@ -220,6 +226,34 @@ pub fn parse_railroad_peg(code: &str, meta: &ParseMetadata) -> Result<Value> {
     parse_railroad_for_dialect(code, meta, RailroadDialect::Peg)
 }
 
+pub fn parse_railroad_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<RailroadDiagramRenderModel> {
+    parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Ir)
+}
+
+pub fn parse_railroad_ebnf_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<RailroadDiagramRenderModel> {
+    parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Ebnf)
+}
+
+pub fn parse_railroad_abnf_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<RailroadDiagramRenderModel> {
+    parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Abnf)
+}
+
+pub fn parse_railroad_peg_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<RailroadDiagramRenderModel> {
+    parse_railroad_model_for_render_dialect(code, meta, RailroadDialect::Peg)
+}
+
 pub fn parse_railroad_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
     parse_railroad_editor_facts_for_dialect(code, meta, RailroadDialect::Ir)
 }
@@ -251,6 +285,16 @@ fn parse_railroad_for_dialect(
         "accDescr": model.acc_descr,
         "rules": model.rules,
     }))
+}
+
+fn parse_railroad_model_for_render_dialect(
+    code: &str,
+    meta: &ParseMetadata,
+    dialect: RailroadDialect,
+) -> Result<RailroadDiagramRenderModel> {
+    let mut model = parse_railroad_model(code, meta, dialect)?;
+    model.sanitize_common_db_fields(&meta.effective_config);
+    Ok(model)
 }
 
 fn parse_railroad_editor_facts_for_dialect(

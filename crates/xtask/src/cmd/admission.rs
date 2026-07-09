@@ -526,30 +526,70 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
         "present in pinned Mermaid 11.16 source; Flowchart parser/editor reuse exists, while layout/render admission is tracked by the 11.16 parity plan"
     ),
-    parse_only!(
-        "railroad",
-        "railroad",
-        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        "present in pinned Mermaid 11.16 source; railroad-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
-    ),
-    parse_only!(
-        "railroadEbnf",
-        "railroadEbnf",
-        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        "present in pinned Mermaid 11.16 source; railroad-ebnf-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
-    ),
-    parse_only!(
-        "railroadAbnf",
-        "railroadAbnf",
-        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        "present in pinned Mermaid 11.16 source; railroad-abnf-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
-    ),
-    parse_only!(
-        "railroadPeg",
-        "railroadPeg",
-        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        "present in pinned Mermaid 11.16 source; railroad-peg-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
-    ),
+    DiagramAdmissionRecord {
+        diagram: "railroad",
+        admission: AdmissionStatus::CompatibilityOnly,
+        fixtures: FixtureCorpusStatus::Normalized,
+        normalized_fixture_dir: Some("railroad"),
+        deferred_fixture_dir: None,
+        semantic: CoverageStatus::Covered,
+        layout: CoverageStatus::Covered,
+        svg: CoverageStatus::Deferred,
+        root_viewport: CoverageStatus::NotApplicable,
+        compare_command: None,
+        owner_doc: "docs/alignment/RAILROAD_MINIMUM.md",
+        defer_reason: Some(
+            "local 11.16 railroad-beta semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
+        ),
+    },
+    DiagramAdmissionRecord {
+        diagram: "railroadEbnf",
+        admission: AdmissionStatus::CompatibilityOnly,
+        fixtures: FixtureCorpusStatus::Normalized,
+        normalized_fixture_dir: Some("railroadEbnf"),
+        deferred_fixture_dir: None,
+        semantic: CoverageStatus::Covered,
+        layout: CoverageStatus::Covered,
+        svg: CoverageStatus::Deferred,
+        root_viewport: CoverageStatus::NotApplicable,
+        compare_command: None,
+        owner_doc: "docs/alignment/RAILROAD_MINIMUM.md",
+        defer_reason: Some(
+            "local 11.16 railroad-ebnf-beta semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
+        ),
+    },
+    DiagramAdmissionRecord {
+        diagram: "railroadAbnf",
+        admission: AdmissionStatus::CompatibilityOnly,
+        fixtures: FixtureCorpusStatus::Normalized,
+        normalized_fixture_dir: Some("railroadAbnf"),
+        deferred_fixture_dir: None,
+        semantic: CoverageStatus::Covered,
+        layout: CoverageStatus::Covered,
+        svg: CoverageStatus::Deferred,
+        root_viewport: CoverageStatus::NotApplicable,
+        compare_command: None,
+        owner_doc: "docs/alignment/RAILROAD_MINIMUM.md",
+        defer_reason: Some(
+            "local 11.16 railroad-abnf-beta semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
+        ),
+    },
+    DiagramAdmissionRecord {
+        diagram: "railroadPeg",
+        admission: AdmissionStatus::CompatibilityOnly,
+        fixtures: FixtureCorpusStatus::Normalized,
+        normalized_fixture_dir: Some("railroadPeg"),
+        deferred_fixture_dir: None,
+        semantic: CoverageStatus::Covered,
+        layout: CoverageStatus::Covered,
+        svg: CoverageStatus::Deferred,
+        root_viewport: CoverageStatus::NotApplicable,
+        compare_command: None,
+        owner_doc: "docs/alignment/RAILROAD_MINIMUM.md",
+        defer_reason: Some(
+            "local 11.16 railroad-peg-beta semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
+        ),
+    },
     not_admitted!(
         "wardley",
         "large family lane deferred behind smaller source-backed work"
@@ -853,17 +893,17 @@ mod tests {
         let railroad = record("railroad");
         let railroad_capability = core_family_capability(core_capabilities, "railroad")
             .expect("railroad should exist in core detector/parser facts");
-        assert_eq!(railroad.admission, AdmissionStatus::ParseOnly);
+        assert_eq!(railroad.admission, AdmissionStatus::CompatibilityOnly);
         assert!(railroad_capability.has_semantic_parser);
-        assert!(!railroad_capability.has_render_parser);
+        assert!(railroad_capability.has_render_parser);
 
         for diagram in ["railroadEbnf", "railroadAbnf", "railroadPeg"] {
             let record = record(diagram);
             let capability = core_family_capability(core_capabilities, diagram)
                 .unwrap_or_else(|| panic!("{diagram} should exist in core detector/parser facts"));
-            assert_eq!(record.admission, AdmissionStatus::ParseOnly);
+            assert_eq!(record.admission, AdmissionStatus::CompatibilityOnly);
             assert!(capability.has_semantic_parser);
-            assert!(!capability.has_render_parser);
+            assert!(capability.has_render_parser);
         }
     }
 }
