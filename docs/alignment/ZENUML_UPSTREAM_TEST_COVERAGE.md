@@ -1,4 +1,4 @@
-# ZenUML Upstream Coverage (Mermaid@11.15.0)
+# ZenUML Upstream Coverage (Mermaid@11.16.0)
 
 This document tracks which upstream ZenUML examples/tests are covered in `merman`.
 
@@ -8,7 +8,7 @@ does **not** maintain upstream SVG baselines for ZenUML. Coverage is snapshot-on
 - semantic snapshots under `fixtures/zenuml/*.golden.json`
 - layout snapshots under `fixtures/zenuml/*.layout.golden.json`
 
-Pinned baseline version: Mermaid `@11.15.0` (see `tools/upstreams/REPOS.lock.json`).
+Pinned baseline version: Mermaid `@11.16.0` (see `tools/upstreams/REPOS.lock.json`).
 
 Pinned ZenUML implementation reference: `repo-ref/zenuml-core` (see `tools/upstreams/REPOS.lock.json`).
 

@@ -6,7 +6,7 @@ resulting node/edge coordinates.
 
 Current pinned package evidence:
 
-- Mermaid baseline: `mermaid@11.15.0` (see `tools/upstreams/REPOS.lock.json`)
+- Mermaid baseline: `mermaid@11.16.0` (see `tools/upstreams/REPOS.lock.json`)
 - Dagre integration package: `dagre-d3-es@7.0.14`
 
 It is used by `xtask` to debug `dugong` parity drift at the **layout output** level (nodes/edges),

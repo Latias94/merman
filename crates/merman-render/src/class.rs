@@ -225,12 +225,12 @@ fn prepare_graph(
         });
     }
 
-    // Mermaid 11.15's default Class renderer uses the shared Dagre rendering-util path. Its
+    // Mermaid's default Class renderer uses the shared Dagre rendering-util path. Its
     // graphlib pre-pass extracts clusters *without* external connections into their own subgraphs,
     // toggles their rankdir (TB <-> LR), and renders them recursively to obtain concrete cluster
     // geometry before laying out the parent graph.
     //
-    // Reference: Mermaid@11.15.0 `rendering-util/layout-algorithms/dagre`:
+    // Reference: pinned Mermaid `rendering-util/layout-algorithms/dagre`:
     // - eligible cluster: has children, and no edge crosses its descendant boundary
     // - extracted subgraph gets `rankdir = parent.rankdir === 'TB' ? 'LR' : 'TB'`
     // - `copy(...)` walks child clusters first and copies a non-root cluster node after its

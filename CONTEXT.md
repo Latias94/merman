@@ -27,7 +27,7 @@ Primary capability areas:
 
 ## Baseline
 
-Current pinned upstream baseline: `mermaid@11.15.0`.
+Current pinned upstream baseline: `mermaid@11.16.0`.
 
 Authoritative baseline sources:
 
@@ -36,8 +36,8 @@ Authoritative baseline sources:
 - `crates/merman-core/src/baseline.rs`
 
 Generated override filenames and some historical comments may still carry
-`11_12_2` or `11.12.x` suffixes. Treat those names as legacy provenance unless a
-current-facing document explicitly says otherwise. New code should prefer
+`11_12_2`, `11_15_0`, or `11.12.x`/`11.15.x` suffixes. Treat those names as
+legacy provenance unless a current-facing document explicitly says otherwise. New code should prefer
 `for_pinned_mermaid_baseline`, `pinned_mermaid_baseline_*`, and constants from
 `merman_core::baseline` over versioned constructor names.
 

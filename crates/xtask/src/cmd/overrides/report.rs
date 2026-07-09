@@ -965,11 +965,11 @@ pub fn lookup_c4_text_width_px(
         fs::create_dir_all(&lock_dir).expect("lock dir");
         fs::write(
             lock_dir.join("REPOS.lock.json"),
-            r#"{"repos":{"mermaid":{"ref":"mermaid@11.15.0"}}}"#,
+            r#"{"repos":{"mermaid":{"ref":"mermaid@11.16.0"}}}"#,
         )
         .expect("lockfile");
 
-        assert_eq!(pinned_mermaid_baseline_label(&dir), "@11.15.0");
+        assert_eq!(pinned_mermaid_baseline_label(&dir), "@11.16.0");
 
         fs::remove_dir_all(&dir).expect("cleanup");
     }

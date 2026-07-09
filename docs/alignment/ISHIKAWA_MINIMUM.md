@@ -1,4 +1,4 @@
-# Ishikawa Minimum (Mermaid@11.15.0)
+# Ishikawa Minimum (Mermaid@11.16.0)
 
 This document tracks the first local support slice for Mermaid `ishikawa`.
 

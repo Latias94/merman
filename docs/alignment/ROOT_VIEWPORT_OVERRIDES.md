@@ -16,10 +16,11 @@ even after layout/renderer parity improvements.
 To keep regression checks deterministic for the pinned upstream baselines, we keep **version-scoped,
 fixture-scoped** overrides.
 
-Baseline version in this repository: Mermaid `@11.15.0`.
+Baseline version in this repository: Mermaid `@11.16.0`.
 
-Note: the generated override module filenames still use `*_11_12_2.rs` for historical reasons, but
-their contents are maintained to match the pinned baseline.
+Note: the generated override module filenames still use historical suffixes such as
+`*_11_12_2.rs` and `*_11_15_0.rs`. The suffixes are provenance labels; their contents are
+maintained to match the pinned baseline until each family is regenerated and renamed.
 
 ## Override Files
 

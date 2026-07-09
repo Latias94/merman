@@ -44,7 +44,7 @@ Use `render_svg_with_pipeline_sync(...)` only when a call needs to override that
 
 The profile compiles into normal Mermaid and SVG output settings:
 
-1. Mermaid defaults from the pinned 11.15.0 baseline.
+1. Mermaid defaults from the pinned 11.16.0 baseline.
 2. `HostThemeProfile` derived config.
 3. Explicit profile `theme_variables` and `site_config` overrides.
 4. Explicit caller `site_config` or diagram init/frontmatter config.

@@ -15,7 +15,7 @@
 `flowchart TD; A-->B;` into diagrams for Markdown, docs, and web apps.
 
 Merman is a parity-focused, headless Rust implementation of Mermaid.js for parsing, layout, and
-browserless rendering. It targets `mermaid@11.15.0`, produces semantic JSON, layout JSON, SVG,
+browserless rendering. It targets `mermaid@11.16.0`, produces semantic JSON, layout JSON, SVG,
 raster formats, and ASCII/Unicode output, and does not launch a browser or JavaScript runtime to
 render diagrams.
 
@@ -79,10 +79,11 @@ These images were rendered headlessly by `merman-cli` from Mermaid fixtures. See
 ## Performance
 
 `merman` includes a corpus-driven benchmark harness for comparing native `merman`,
-`mermaid-rs-renderer`, and upstream Mermaid JS v11.15.0. In a local warm-render `standard` suite
-run on Apple M4, `merman` measured all 34 requested fixtures and used about 1.8% to 23.0% of
-Mermaid JS render time across successful Mermaid JS cases, roughly 4.3x to 56.4x faster, with a
-median speedup around 15.8x.
+`mermaid-rs-renderer`, and upstream Mermaid JS. The published warm-render `standard` suite numbers
+below were measured against Mermaid JS v11.15.0 on Apple M4 and remain historical until the
+benchmark corpus is refreshed for the active v11.16.0 parity baseline: `merman` measured all 34
+requested fixtures and used about 1.8% to 23.0% of Mermaid JS render time across successful Mermaid
+JS cases, roughly 4.3x to 56.4x faster, with a median speedup around 15.8x.
 
 The goal is not to replace Mermaid.js in the browser. This is mostly for native apps, text
 editors, CI pipelines, preview tools, and doc generators where embedding a JS engine just to draw
@@ -743,7 +744,7 @@ gantt
 
 ## Parity and coverage
 
-- Baseline: Mermaid `@11.15.0`.
+- Baseline: Mermaid `@11.16.0`.
 - Merman treats Mermaid as the specification, not just inspiration: surprising upstream behavior is
   matched and documented instead of being replaced with a Rust-specific interpretation.
 - Parsing and semantic output are locked with `fixtures/**/*.golden.json`; layout geometry is locked

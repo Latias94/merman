@@ -1,9 +1,9 @@
 // This module contains generated and fixture-derived Mermaid parity data.
 //
-// Note: several generated filenames still carry the historical `11_12_2` suffix.
-// That suffix is a storage-era artifact, not the active upstream contract. These
-// modules now back the repository's pinned Mermaid baseline (currently 11.15.0)
-// until each family is regenerated and renamed in a controlled migration.
+// Note: several generated filenames still carry historical `11_12_2` or `11_15_0`
+// suffixes. Those suffixes are storage-era provenance labels, not the active upstream
+// contract. The repository's active Mermaid baseline is 11.16.0; existing modules
+// stay in place until each family is regenerated and renamed in a controlled migration.
 
 #[cfg(feature = "cytoscape-layout")]
 pub mod architecture_root_overrides_11_12_2;

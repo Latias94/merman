@@ -1,6 +1,6 @@
-# Gap Backlog (Mermaid@11.15.0)
+# Gap Backlog (Mermaid@11.16.0)
 
-Baseline: Mermaid `@11.15.0` (see `tools/upstreams/REPOS.lock.json`).
+Baseline: Mermaid `@11.16.0` (see `tools/upstreams/REPOS.lock.json`).
 
 This document tracks **known gaps vs “perfect” Mermaid parity** and a plan to systematically
 eliminate them without regressing the global parity gates.

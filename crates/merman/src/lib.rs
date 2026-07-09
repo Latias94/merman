@@ -7,7 +7,7 @@
 //! render models, then adds optional convenience modules for SVG, raster, and
 //! terminal text output.
 //!
-//! The compatibility target is Mermaid `@11.15.0`. Upstream Mermaid behavior is
+//! The compatibility target is Mermaid `@11.16.0`. Upstream Mermaid behavior is
 //! treated as the specification, including cases where the browser implementation
 //! is surprising. The root README and `docs/alignment/STATUS.md` document the
 //! current parity matrix, deferred residuals, and release gates.

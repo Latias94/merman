@@ -393,7 +393,7 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
 }
 
 pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    // Mirrors Mermaid@11.15.0 ER unified renderer stylesheet ordering (see `diagrams/er/styles.ts`
+    // Mirrors pinned Mermaid ER unified renderer stylesheet ordering (see `diagrams/er/styles.ts`
     // and shared base stylesheet).
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);

@@ -1015,7 +1015,7 @@ fn flowchart_various_edge_styles_do_not_break_layout() {
 
 #[test]
 fn flowchart_node_shape_dimensions_follow_mermaid_rules() {
-    // Verify key flowchart shapes follow Mermaid `@11.15.0` sizing rules (headless approximation).
+    // Verify key flowchart shapes follow pinned Mermaid sizing rules (headless approximation).
     // This mainly protects us from regressions when refactoring shape sizing.
     let text = r#"flowchart TB
 A[Label]

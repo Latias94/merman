@@ -3,7 +3,7 @@
 This document describes how to generate **upstream Mermaid SVG outputs** that act as baselines for
 1:1 parity work.
 
-Baseline version: Mermaid `@11.15.0`.
+Baseline version: Mermaid `@11.16.0`.
 
 Historical fixture notes may still mention the baseline version that introduced a fixture or
 normalization rule. The current authoritative baseline is ADR-0001 plus
@@ -49,7 +49,7 @@ collapsed into a single "supported" claim.
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
 The CLI version and Mermaid version do not always match 1:1, so we use `npm overrides`
-to force Mermaid `11.15.0`.
+to force Mermaid `11.16.0`.
 
 Install:
 
@@ -224,7 +224,7 @@ Convention:
 ## Normalized Fixtures (CLI-Compatible)
 
 Some upstream suites (notably Cypress) include inputs that are accepted by the browser bundle but
-rejected by the pinned Mermaid CLI (currently `@11.15.0`), often due to shorthand syntax.
+rejected by the pinned Mermaid CLI (currently `@11.16.0`), often due to shorthand syntax.
 
 To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
 comparisons, we add `*_normalized` variants that rewrite the input into the pinned Mermaid grammar.
@@ -258,7 +258,8 @@ Notes:
 - Mermaid derives C4 type-line `textLength` values from browser font metrics
   (`calculateTextWidth` + `getBBox`). To make DOM parity reproducible in a headless Rust context,
   `merman-render` now owns the observed `textLength` values for built-in C4 shape types directly
-  in `crates/merman-render/src/svg/parity/c4.rs` at Mermaid `11.15.0`.
+  in `crates/merman-render/src/svg/parity/c4.rs`. The current source baseline is Mermaid `11.16.0`;
+  existing measured constants should be refreshed when the C4 SVG corpus is regenerated.
 
 ## Generate (All supported diagrams)
 
@@ -398,7 +399,8 @@ output (DOM signature comparison):
 
 Notes:
 
-- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.15.0).
+- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure first
+  recorded at 11.15.0; re-check before admitting under newer baselines).
 - `fixtures/class/upstream_parser_class_spec.mmd` is excluded from Class DOM and canonical-XML
   compares because the upstream SVG contains prototype-key rendering artifacts (nested `g.root` /
   `translate(NaN, ...)` and missing prototype-key nodes), while `merman` renders deterministically.
@@ -463,7 +465,7 @@ Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B 
   Mermaid when not explicitly specified. Baseline verification uses a structure-level DOM signature
   by default.
 
-## Known Upstream Rendering Failures / Anomalies (as of Mermaid 11.15.0)
+## Known Upstream Rendering Failures / Anomalies
 
 - `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree; excluded from `gen-upstream-svgs` / `check-upstream-svgs`).

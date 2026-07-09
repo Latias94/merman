@@ -1,10 +1,10 @@
 # merman-cli Official CLI Compatibility
 
 **Status**: Complete for the documented CLI surface, with registered divergences
-**Baseline**: `@mermaid-js/mermaid-cli` `11.15.0`
+**Baseline**: `@mermaid-js/mermaid-cli` `11.16.0`
 **Reference source**: `tools/mermaid-cli/node_modules/@mermaid-js/mermaid-cli/src/index.js`
 **Created**: 2026-06-04
-**Last updated**: 2026-06-06
+**Last updated**: 2026-07-10
 
 This document is the source of truth for making `merman-cli` behave like the official Mermaid CLI
 where a pure-Rust implementation can reasonably do so. It tracks both the public command surface and
@@ -84,7 +84,7 @@ costs, makes Rust renderers irrelevant for CLI output.
 
 | Metric | Target | Measurement |
 |---|---:|---|
-| Official option coverage | Every `mmdc@11.15.0` public flag is implemented or explicitly documented as an unsupported/divergent behavior | `cargo nextest run -p merman-cli` + matrix review |
+| Official option coverage | Every `mmdc@11.16.0` public flag is implemented or explicitly documented as an unsupported/divergent behavior | `cargo nextest run -p merman-cli` + matrix review |
 | Core single-diagram behavior | `-i`, `-o`, `-o -`, format inference, config/css/theme covered | CLI integration tests |
 | Markdown behavior | `.md`/`.markdown` extraction, numbered artefacts, output Markdown rewrite covered | CLI integration tests |
 | Unsupported/divergent behavior | Every divergence documented in this file | Status matrix review |
@@ -149,7 +149,7 @@ costs, makes Rust renderers irrelevant for CLI output.
 
 | Area | Divergence | Rationale | Follow-up |
 |---|---|---|---|
-| JPG output | Local supports `jpg`/`jpeg`; upstream `11.15.0` only supports `svg`, `png`, `pdf`. | Existing Rust CLI shipped JPG support and tests. | Keep as Rust extension; document as non-official. |
+| JPG output | Local supports `jpg`/`jpeg`; upstream `11.16.0` only supports `svg`, `png`, `pdf`. | Existing Rust CLI shipped JPG support and tests. | Keep as Rust extension; document as non-official. |
 | ASCII/Unicode output | Local supports text output; upstream does not. | Valuable Rust-native CLI capability. | Keep enabled by default for `merman-cli`; `--no-default-features` can still exclude it. |
 | RaTeX math | Local CLI enables `ratex-math` by default; upstream uses browser Mermaid/KaTeX behavior. | Rust CLI should render math without extra feature friction. | Keep `--math-renderer none|ratex`; no-default build still rejects. |
 | Puppeteer config | No browser runtime in local CLI. | Browserless architecture. | Validate file for compatibility, treat runtime config as accepted no-op. |
@@ -158,7 +158,7 @@ costs, makes Rust renderers irrelevant for CLI output.
 
 ## Execution Model / Concurrency
 
-Official `mmdc@11.15.0` uses `p-limit(jobs)` for Markdown files: every Mermaid code block becomes
+Official `mmdc@11.16.0` uses `p-limit(jobs)` for Markdown files: every Mermaid code block becomes
 an independent render task, at most `jobs` tasks run at once, and `Promise.all(...)` returns images
 in source order for the final Markdown rewrite.
 

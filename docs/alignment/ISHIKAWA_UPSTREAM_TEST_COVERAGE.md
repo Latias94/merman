@@ -1,4 +1,4 @@
-# Ishikawa Upstream Test Coverage (Mermaid@11.15.0)
+# Ishikawa Upstream Test Coverage (Mermaid@11.16.0)
 
 Scope: locked Mermaid commit `41646dfd43ac83f001b03c70605feb036afae46d`.
 

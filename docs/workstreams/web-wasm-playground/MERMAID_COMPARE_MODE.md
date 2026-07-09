@@ -96,7 +96,7 @@ const mermaid = await import("mermaid");
 
 Initialization should happen once per page session. Use the same effective theme and security
 configuration as the upstream parity tools where possible. The package version should be pinned to
-the same Mermaid baseline used by the repository, currently `mermaid@11.15.0`.
+the same Mermaid baseline used by the repository, currently `mermaid@11.16.0`.
 
 The first time the user opens `Compare`, show a loading state:
 

@@ -1,4 +1,4 @@
-// Fixture-derived root viewport overrides for Mermaid@11.15.0 EventModeling diagrams.
+// Fixture-derived root viewport overrides for pinned Mermaid EventModeling diagrams.
 //
 // These values are taken from upstream SVG baselines under
 // `fixtures/upstream-svgs/eventmodeling/*.svg` and are keyed by `diagram_id` (fixture stem).

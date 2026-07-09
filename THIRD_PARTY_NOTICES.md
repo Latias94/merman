@@ -10,7 +10,7 @@ rendering behavior. It is not affiliated with or endorsed by the Mermaid project
 
 - Upstream project: <https://github.com/mermaid-js/mermaid>
 - Upstream license: MIT, see <https://github.com/mermaid-js/mermaid/blob/develop/LICENSE>
-- Current compatibility baseline: `mermaid@11.15.0`
+- Current compatibility baseline: `mermaid@11.16.0`
 
 Mermaid's MIT license is compatible with merman's `MIT OR Apache-2.0` licensing model, but any
 Mermaid-derived source, test fixture, expected output, documentation excerpt, or mechanically
