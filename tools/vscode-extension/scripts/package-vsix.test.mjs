@@ -11,7 +11,7 @@ describe("VSIX package wrapper", () => {
   it("packages prerelease source versions with a stable manifest version and prerelease metadata", () => {
     const result = buildVscePackageArgs({
       manifestVersion: "0.8.0",
-      releaseVersion: "0.8.0-alpha.2",
+      releaseVersion: "0.8.0-alpha.3",
       userArgs: ["--target", "linux-x64", "--out", "merman.vsix"],
       env: {},
     });
@@ -24,7 +24,7 @@ describe("VSIX package wrapper", () => {
       "--out",
       "merman.vsix",
     ]);
-    assert.match(result.message ?? "", /0\.8\.0-alpha\.2/);
+    assert.match(result.message ?? "", /0\.8\.0-alpha\.3/);
   });
 
   it("packages stable source versions without prerelease metadata", () => {
@@ -49,8 +49,8 @@ describe("VSIX package wrapper", () => {
     assert.throws(
       () =>
         buildVscePackageArgs({
-          manifestVersion: "0.8.0-alpha.2",
-          releaseVersion: "0.8.0-alpha.2",
+          manifestVersion: "0.8.0-alpha.3",
+          releaseVersion: "0.8.0-alpha.3",
           userArgs: [],
           env: {},
         }),

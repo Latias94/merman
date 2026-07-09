@@ -1,5 +1,5 @@
 group = 'io.merman.flutter'
-version = '0.8.0-alpha.2'
+version = '0.8.0-alpha.3'
 
 buildscript {
     ext.kotlin_version = '1.9.24'

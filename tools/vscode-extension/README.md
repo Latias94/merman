@@ -181,7 +181,7 @@ npm run package -- --target "$target" --out "merman-vscode-${target}.vsix"
 and the `--target` argument should match that platform key. Use this wrapper instead of invoking
 `vsce package` directly: `package.json` keeps the Marketplace-compatible manifest version such as
 `0.8.0`, while the wrapper reads the workspace release version and passes `--pre-release` when that
-release version is a SemVer prerelease such as `0.8.0-alpha.2`.
+release version is a SemVer prerelease such as `0.8.0-alpha.3`.
 The development-only Cargo fallbacks are disabled by default so a packaged VSIX does not silently
 depend on a Rust workspace.
 

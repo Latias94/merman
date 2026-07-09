@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/web",
-  "version": "0.8.0-alpha.2",
+  "version": "0.8.0-alpha.3",
   "description": "Merman browser integration: WebAssembly renderer and TypeScript helpers.",
   "type": "module",
   "main": "./dist/index.js",

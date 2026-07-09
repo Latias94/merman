@@ -6,78 +6,45 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
-This update adds local Mermaid authoring on top of the renderer. Users can lint standalone diagrams
-or Markdown fences, try the VS Code extension, and reuse the same parser-backed diagnostics in CLI,
-browser, native, and LSP integrations.
+## [0.8.0-alpha.3] - 2026-07-09
 
-### Breaking Changes
+0.8.0-alpha.3 turns Merman into a local Mermaid authoring tool, not only a renderer. You can lint from the CLI, talk to editors through LSP, call analysis APIs from browsers, and try the whole path in the new VS Code extension. ASCII output also covers more diagrams for terminals, docs, and text-only previews.
 
-- `merman-cli` now loads icon packs from the network only when `--allow-network` is set. Local
-  `node_modules`, local JSON files, and `file://` icon packs still work by default.
-- `merman-cli` now reserves stdout for requested output bytes. Progress messages and non-error
-  diagnostics move to stderr.
-- `merman-cli` now returns more specific failure codes: 2 for invalid input/config/output, 3 for
-  direct I/O failures, and 1 for render/runtime failures. Broken stdout pipes now exit successfully.
-- `merman-core::Error::DiagramParse` now carries `diagnostic: ParseDiagnostic` instead of a
-  top-level `message` field. Rust callers should use `diagnostic.message()` for display text and
-  `diagnostic.span()` / `diagnostic.span_kind()` when they can preserve source locations. `Display`
-  output remains message-compatible.
-- `@mermanjs/web` slim subpaths now omit unsupported runtime wrappers instead of exporting throwing
-  stubs. Use the default entry point or `@mermanjs/web/full` when one namespace needs render, ASCII,
-  and editor-language wrappers together.
-- Removed the optional `merman` `egui-example` feature and desktop GUI example.
+### Highlights
 
-### Added
+- You can now lint and edit Mermaid locally. The new analysis and LSP stack covers diagnostics, completions, hover, symbols, references, rename, folding, semantic tokens, and quick fixes. #20
+- The new VS Code extension includes preview, diagnostics, source actions, snippets, SVG/PNG export, copy actions, and bundled `merman-lsp` / `merman-cli` binaries per platform. #20
+- ASCII output is much more useful: state diagrams, sequence boxes and notes, class/ER relations, relation summaries, XYChart legends, extra Flowchart shapes, capability grades, and tighter dense layout fallbacks. #13 #17
+- Web users can pick smaller package surfaces. `@mermanjs/web` now has capability-specific subpaths and metadata for render, ASCII, ELK, analysis, and editor-language builds. #20
 
-- Added `merman-analysis`, a diagnostics-first analysis engine for standalone Mermaid files,
-  Markdown, and MDX Mermaid fences.
-- Added `merman-cli lint` and `merman-cli lint-rules` for CI, editor adapters, and local checks.
-  Output can be JSON or text, and lint profiles/rules can be configured from the command line.
-- Added `merman-lsp` for diagnostics, completion, hover, symbols, references, rename, selection and
-  folding ranges, semantic tokens, quick fixes, and rule/config metadata.
-- Added a VS Code extension with local diagnostics, language features, preview, SVG/PNG export,
-  copy actions, snippets, and packaged per-platform `merman-lsp` / `merman-cli` runtimes.
-- Added browser APIs for analysis and editor integrations, including `analyzeDocument`,
-  `analyzeDocumentFacts`, editor diagnostics, completions, hover, symbols, navigation, rename, and
-  semantic tokens.
-- Added parser-backed syntax facts and source ranges across more diagram families so diagnostics,
-  completions, symbols, rename, and navigation can work from Mermaid semantics instead of regex-only
-  scans.
-- Added Python UniFFI ABI 2 with reusable engines, diagram-family capability discovery, and host
-  text-measurement callbacks. ABI version 2 remains the current prerelease ABI; it had not been
-  externally released before this alpha branch's structured parse-diagnostic work.
-- Added `merman-cli --svg-pipeline parity|readable|resvg-safe` so users can request export-safe SVG
-  bytes directly without choosing a raster format.
+### New crates
 
-### Changed
+- `merman-analysis` is the render-free analysis layer. Use it when you want diagnostics, lint metadata, Markdown/MDX fence handling, or source ranges without pulling in SVG rendering. #20
+- `merman-editor-core` contains editor behavior that is not tied to any protocol: completions, hover data, symbols, rename/navigation helpers, and semantic token inputs. #20
+- `merman-lsp` packages the editor stack as a language server for VS Code and other LSP clients. #20
 
-- VS Code users can enable preview/export, diagnostics, source actions, and language intelligence
-  independently, making Merman easier to run beside other Mermaid preview or lint extensions.
-- Browser packages now expose build presets, capability metadata, and capability-specific subpath
-  exports so hosts can check whether render, ASCII, ELK, analysis, or editor-language APIs are
-  available in the loaded WASM artifact.
-- Refreshed workspace dependencies, including `toml` 1.1 and UniFFI 0.32, and pruned unused GUI
-  dependencies from the lockfile.
-- Improved Python, Flutter, and package metadata so package pages expose changelog, documentation,
-  issue tracker, and discovery links.
+### Breaking changes
 
-### Fixed
+- `merman-cli` only loads icon packs from the network with `--allow-network`. Local `node_modules`, local JSON files, and `file://` icon packs still work by default. #19
+- `merman-cli` keeps stdout for requested output bytes. Progress and non-error diagnostics go to stderr. #19
+- `merman-cli` now uses exit code 2 for invalid input/config/output, 3 for direct I/O failures, and 1 for render/runtime failures. Broken stdout pipes exit successfully. #19
+- `merman-core::Error::DiagramParse` now stores `diagnostic: ParseDiagnostic` instead of a top-level `message`. Rust callers should use `diagnostic.message()` for display text and `diagnostic.span()` / `diagnostic.span_kind()` when they need source locations. #20
+- Slim `@mermanjs/web` subpaths now leave out unsupported runtime wrappers instead of exporting stubs that throw. Use the default entry point or `@mermanjs/web/full` when one import needs render, ASCII, and editor-language APIs together. #20
+- The optional `merman` `egui-example` feature and desktop GUI example are gone. #19
 
-- Fixed VS Code preview lifecycle issues around multi-fence Markdown documents, source switching,
-  stale renders, diagnostic overlays, zoom state, and copy/export source targeting.
-- Fixed LSP currentness handling so stale diagnostics and semantic-token results are not republished
-  after newer document changes arrive.
-- Fixed `resvg-safe` SVG output options so hosts can remove duplicate native/fallback labels after
-  raster-safe fallback generation.
-- Cleared the `quick-xml` RustSec audit failures by removing the stale optional GUI example
-  dependency path that pulled in the vulnerable Wayland scanner build dependency.
+### New and changed
 
-### Packaging and CI
+- VS Code preview, diagnostics, source actions, and language intelligence can be turned on independently, so it is easier to run Merman next to other Mermaid tools. #20
+- Python UniFFI ABI 2 adds reusable engines, diagram-family capability discovery, and host text-measurement callbacks. #20
+- `merman-cli --svg-pipeline parity|readable|resvg-safe` lets CLI users ask for export-safe SVG bytes directly. #19
 
-- Added CI coverage for VS Code extension builds, package smoke checks, and platform-specific VSIX
-  artifacts.
-- Added release preflight checks for C ABI, Python UniFFI ABI, package metadata, and publish-facing
-  surfaces.
+### Fixes and polish
+
+- VS Code preview keeps the right source more reliably when Markdown files have multiple Mermaid fences, previews are locked, renders go stale, or users copy/export output. #20
+- LSP diagnostics and semantic tokens no longer publish stale results after newer document edits. #20
+- ASCII routing and fallback output are cleaner for nested subgraphs, relation labels, wide terminal cells, tight grids, and playground examples. #13 #15 #16 #17
+- `resvg-safe` SVG output can remove duplicate native/fallback labels after raster-safe fallback generation. #19
+- The `quick-xml` RustSec audit failure is gone after removing the stale GUI dependency path. #11
 
 ## [0.8.0-alpha.2] - 2026-06-23
 

@@ -21,7 +21,7 @@ compatibility expectations. Size-sensitive hosts can disable defaults and supply
 `merman-core` typed models instead:
 
 ```toml
-merman-ascii = { version = "0.8.0-alpha.2", default-features = false }
+merman-ascii = { version = "0.8.0-alpha.3", default-features = false }
 ```
 
 When using the public `merman` facade, `merman --no-default-features --features ascii` keeps the

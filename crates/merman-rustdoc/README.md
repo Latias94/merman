@@ -15,25 +15,17 @@ itself: no browser Mermaid runtime, no CDN dependency, offline-friendly docs, an
 failures. If you only need the smallest possible macro and are comfortable with browser-side
 Mermaid rendering, a JavaScript-based rustdoc integration may be a lighter fit.
 
-## Install
+## Dependency weight
 
-Use a normal dependency for the simplest setup:
+`merman-rustdoc` renders diagrams during rustdoc macro expansion. To do that, it depends on Merman's
+renderer stack with `core-full`, `core-host`, and `render` enabled. That is the right tradeoff for
+build-time SVG output, but many crates do not want that stack compiled during every normal build.
 
-```toml
-[dependencies]
-merman-rustdoc = "=0.8.0-alpha.2"
-```
-
-This works for local `cargo doc` and for docs.rs because the examples below use `cfg_attr(doc, ...)`.
-The macro only expands during rustdoc builds, but Cargo will still compile the dependency during
-ordinary builds.
-
-If you want ordinary builds to avoid compiling `merman-rustdoc`, make it optional behind a
-documentation feature:
+For libraries and applications, prefer an optional documentation feature:
 
 ```toml
 [dependencies]
-merman-rustdoc = { version = "=0.8.0-alpha.2", optional = true }
+merman-rustdoc = { version = "=0.8.0-alpha.3", optional = true }
 
 [features]
 doc-diagrams = ["dep:merman-rustdoc"]
@@ -42,17 +34,42 @@ doc-diagrams = ["dep:merman-rustdoc"]
 features = ["doc-diagrams"]
 ```
 
-With this optional setup, build docs locally with:
+Then gate the attribute with the same feature:
+
+````rust
+#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]
+/// ```mermaid
+/// flowchart TD
+///   Source --> Rustdoc
+/// ```
+pub fn documented() {}
+````
+
+With this setup, ordinary `cargo build` and `cargo test` do not compile `merman-rustdoc` or the
+Merman renderer stack. Documentation builds opt in explicitly:
 
 ```sh
 cargo doc --features doc-diagrams
 ```
 
-docs.rs will also enable `doc-diagrams` because of the `package.metadata.docs.rs` section.
+docs.rs also enables `doc-diagrams` because of the `package.metadata.docs.rs` section.
+
+## Install
+
+If you are fine compiling the rustdoc integration in ordinary builds, use a normal dependency:
+
+```toml
+[dependencies]
+merman-rustdoc = "=0.8.0-alpha.3"
+```
+
+This works for local `cargo doc` and docs.rs with the simple `cfg_attr(doc, ...)` examples below.
 
 ## Quickstart
 
 Put `#[cfg_attr(doc, merman_rustdoc::merman)]` on any item whose docs contain a Mermaid fence.
+If you use the optional `doc-diagrams` setup above, use
+`#[cfg_attr(all(doc, feature = "doc-diagrams"), merman_rustdoc::merman)]` instead.
 
 ````rust
 #[cfg_attr(doc, merman_rustdoc::merman)]

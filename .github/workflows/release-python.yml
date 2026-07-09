@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to upload wheels to, for example v0.8.0-alpha.2"
+        description: "Release tag to upload wheels to, for example v0.8.0-alpha.3"
         required: true
         type: string
       source_ref:

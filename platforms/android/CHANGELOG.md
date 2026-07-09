@@ -6,9 +6,15 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [Unreleased]
 
+## [0.8.0-alpha.3] - 2026-07-09
+
 ### Added
 
 - Documented Android host text-measurement guidance for `MermanReusableEngine` callbacks.
+
+### Changed
+
+- Updated package metadata for the merman workspace `0.8.0-alpha.3` release.
 
 ## [0.8.0-alpha.2] - 2026-06-13
 

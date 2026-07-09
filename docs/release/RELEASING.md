@@ -82,11 +82,11 @@ Before tagging, verify these versions match the intended release:
 - `platforms/flutter/pubspec.yaml` `version`
 - `platforms/web/package.json` `version`
 - `tools/vscode-extension/package.json` `version`; VS Marketplace requires stable SemVer in the
-  extension manifest, so use `0.8.0` for workspace release `0.8.0-alpha.2`. The VSIX package step
+  extension manifest, so use `0.8.0` for workspace release `0.8.0-alpha.3`. The VSIX package step
   reads the workspace release version and adds the pre-release marker when needed.
 - `platforms/android/build.gradle.kts` `version`
 - `platforms/python/merman/pyproject.toml` `project.version`; pre-releases should use the PEP 440
-  spelling, for example `0.8.0a2` for workspace release `0.8.0-alpha.2`, while final releases use
+  spelling, for example `0.8.0a3` for workspace release `0.8.0-alpha.3`, while final releases use
   the SemVer spelling, for example `0.7.0`
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
@@ -96,7 +96,7 @@ For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
 Before tagging or publishing, run:
 
 ```bash
-gh workflow run release-preflight.yml -f version=0.8.0-alpha.2 -f source_ref=main
+gh workflow run release-preflight.yml -f version=0.8.0-alpha.3 -f source_ref=main
 ```
 
 The preflight workflow verifies release versions, package file lists, registry-independent Rust
@@ -156,7 +156,7 @@ Publishing is configured for `@mermanjs/web`. If npm Trusted Publishing is unava
 maintainer must publish locally, derive the same dist-tag as the workflow and pass it explicitly:
 
 ```bash
-RELEASE_TAG="v0.8.0-alpha.2"
+RELEASE_TAG="v0.8.0-alpha.3"
 VERSION="${RELEASE_TAG#v}"
 case "$VERSION" in
   *-alpha.*) NPM_DIST_TAG="alpha" ;;
@@ -211,8 +211,8 @@ separate from browser/wasm-bindgen artifacts.
 ## Tag And Push
 
 ```bash
-git tag v0.8.0-alpha.2
-git push origin v0.8.0-alpha.2
+git tag v0.8.0-alpha.3
+git push origin v0.8.0-alpha.3
 ```
 
 Do not move or force-update release tags after publication. Release tags are the immutable source
@@ -225,13 +225,16 @@ Actions artifacts for manual attachment.
 After the primary release exists, run platform publish workflows manually:
 
 ```bash
-gh workflow run release-python.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2 -f publish_to_pypi=true
-gh workflow run release-android.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2
-gh workflow run release-apple.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2
-gh workflow run release-web.yml -f release_tag=v0.8.0-alpha.2 -f source_ref=v0.8.0-alpha.2 -f publish_to_npm=true
-gh workflow run vscode-extension.yml -f source_ref=v0.8.0-alpha.2
+gh workflow run release-python.yml -f release_tag=v0.8.0-alpha.3 -f source_ref=v0.8.0-alpha.3 -f publish_to_pypi=true
+gh workflow run release-android.yml -f release_tag=v0.8.0-alpha.3 -f source_ref=v0.8.0-alpha.3
+gh workflow run release-apple.yml -f release_tag=v0.8.0-alpha.3 -f source_ref=v0.8.0-alpha.3
+gh workflow run release-web.yml -f release_tag=v0.8.0-alpha.3 -f source_ref=v0.8.0-alpha.3 -f publish_to_npm=true
+gh workflow run vscode-extension.yml -f source_ref=v0.8.0-alpha.3
 gh workflow run homebrew.yml
 ```
+
+The VS Code workflow currently packages and verifies platform VSIX artifacts only; Marketplace or
+Open VSX publishing requires a separate credential-backed release workflow.
 
 Do not rely on a manual `release-flutter.yml` run for pub.dev publication. A manual run still builds,
 injects native artifacts, analyzes, formats, and performs `dart pub publish --dry-run`, but the real

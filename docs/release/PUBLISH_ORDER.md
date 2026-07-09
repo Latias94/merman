@@ -1,11 +1,11 @@
 # Publish Order
 
 Status: draft for next workspace release.
-Last updated: 2026-07-03
+Last updated: 2026-07-09
 
 ## Version Decision
 
-Next release target: `0.8.0-alpha.2`.
+Next release target: `0.8.0-alpha.3`.
 
 Rationale:
 
@@ -15,8 +15,8 @@ Rationale:
 - The platform packages should stay aligned with the workspace release so downstream editor, web,
   FFI, and documentation integrations test one coherent version graph.
 
-Manifests are aligned to `0.8.0-alpha.2` for this release. Python package metadata uses the PEP 440
-spelling `0.8.0a2`.
+Manifests are aligned to `0.8.0-alpha.3` for this release. Python package metadata uses the PEP 440
+spelling `0.8.0a3`.
 
 ## Publish Order
 

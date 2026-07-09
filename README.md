@@ -39,6 +39,9 @@ Mermaid license and provenance notes.
 | Try or share Mermaid diagrams in the browser | [Merman Playground](https://frankorz.com/merman/) | Static live editor powered by the wasm web package. |
 | Render Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Enable `render` for SVG, `ascii` for terminal text, `raster` for PNG/JPG/PDF. |
 | Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) / [Homebrew](https://formulae.brew.sh/formula/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
+| Lint Mermaid without rendering | [`merman-analysis`](https://crates.io/crates/merman-analysis) / `merman-cli lint` | Diagnostics, lint metadata, Markdown/MDX fence handling, and source ranges without pulling in SVG rendering. |
+| Add Mermaid language features to an editor | [`merman-lsp`](https://crates.io/crates/merman-lsp) | LSP server for diagnostics, completions, hover, symbols, references, rename, folding, semantic tokens, and quick fixes. |
+| Try the VS Code extension preview | [`tools/vscode-extension`](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme) | Local preview, diagnostics, language features, SVG/PNG export, and copy actions. Release CI builds platform VSIX artifacts; Marketplace publishing is not enabled yet. |
 | Render diagrams in Rust API docs | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rustdoc that turns Mermaid fences into inline headless SVG. |
 | Embed in a browser or TypeScript app | [`@mermanjs/web`](https://www.npmjs.com/package/@mermanjs/web) | wasm-bindgen output plus TypeScript helpers for SVG, JSON, validation, diagnostics-first analysis, metadata, and DOM rendering. Validation JSON remains a compatibility projection during alpha. Source: [`platforms/web`](https://github.com/Latias94/merman/tree/main/platforms/web#readme). |
 | Build a Typst plugin/package | [`merman-typst-plugin`](https://github.com/Latias94/merman/tree/main/crates/merman-typst-plugin#readme) | Experimental wasm-minimal-protocol transport for Typst-compatible WASM hosts. |
@@ -96,22 +99,28 @@ for methodology and commands.
 
 ```sh
 # Command-line tool (Cargo)
-cargo install merman-cli --version 0.8.0-alpha.2
+cargo install merman-cli --version 0.8.0-alpha.3
 
 # Command-line tool (Homebrew, macOS and Linux)
 brew install merman-cli
 
 # Rust library: SVG rendering
-cargo add merman@0.8.0-alpha.2 --features render
+cargo add merman@0.8.0-alpha.3 --features render
 
 # Rust library: ASCII/Unicode text output
-cargo add merman@0.8.0-alpha.2 --features ascii
+cargo add merman@0.8.0-alpha.3 --features ascii
 
 # Rust library: SVG + PNG/JPG/PDF
-cargo add merman@0.8.0-alpha.2 --features raster
+cargo add merman@0.8.0-alpha.3 --features raster
+
+# Rust library: diagnostics and lint metadata without rendering
+cargo add merman-analysis@0.8.0-alpha.3
+
+# Mermaid language server for editors
+cargo install merman-lsp --version 0.8.0-alpha.3
 
 # Rustdoc integration
-cargo add merman-rustdoc@0.8.0-alpha.2 --optional
+cargo add merman-rustdoc@0.8.0-alpha.3 --optional
 
 # Browser / TypeScript package
 npm install @mermanjs/web
@@ -468,8 +477,10 @@ Detailed platform notes:
 
 The FFI and wasm packages carry the full parser, layout, and headless renderer stack. Treat them as
 application/runtime dependencies rather than tiny scripting shims: current release artifacts are
-roughly 9-17 MB per native dynamic-library slice before app-store or package compression, while the
-browser wasm artifact is about 9.8 MB uncompressed and 3.6 MB with gzip. Universal Apple
+roughly 9-17 MB per native dynamic-library slice before app-store or package compression, while
+browser and Typst WASM artifacts are tracked by
+[`docs/release/WASM_SIZE_BUDGETS.json`](docs/release/WASM_SIZE_BUDGETS.json) and summarized in
+[`docs/release/PACKAGE_SURFACES.md`](docs/release/PACKAGE_SURFACES.md). Universal Apple
 XCFrameworks and static archives can be larger because they bundle multiple architectures. Use
 normal platform controls such as release builds, stripping/LTO, package compression, lazy loading,
 and long-lived caching for versioned artifacts.
@@ -803,10 +814,26 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 ## Feature surfaces
 
 Cargo feature meanings and host profile expectations are documented in
-[`docs/FEATURES.md`](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md). In short:
+[`docs/FEATURES.md`](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md). In short,
+public facade crates such as `merman`, `merman-ffi`, `merman-wasm`, and `merman-typst-plugin` use
+`core-full` for Mermaid's full config/sanitization profile and `core-host` for local clock,
+randomness, and timing support. The lower-level `merman-core` crate names the same profiles `full`
+and `host`.
+
+These core profiles are separate from output features:
+
+| Feature | Meaning |
+| --- | --- |
+| `render` | Layout, SVG, parse JSON, and layout JSON surfaces. |
+| `ascii` | ASCII/Unicode text rendering surfaces. |
+| `raster` | PNG/JPG/PDF conversion on top of SVG rendering. |
+| `analysis` | Diagnostics, validation projection, document analysis, and lint metadata in binding crates. |
+| `core-full` | Full Mermaid config/frontmatter behavior and full sanitizer parity; larger dependency set. |
+| `core-host` | Ambient host capabilities such as local time, randomness, and parse timing; disable for deterministic sandboxed builds. |
+
 `merman-wasm` is the browser/wasm-bindgen package, while pure-WASM and Typst-style hosts start from
-`merman-core --no-default-features` or `merman --no-default-features` and must avoid full core
-config/sanitization, host-clock, host-random, host-timing, JS, and WASI imports.
+`merman-core --no-default-features` or `merman --no-default-features` and avoid `core-full`,
+`core-host`, JS, and WASI imports unless the host explicitly permits them.
 
 `@mermanjs/web` publishes the full browser artifact by default. The source tree also has browser
 source-build presets for core, render, ASCII, full, and RaTeX math artifacts, but those presets are
@@ -830,9 +857,9 @@ parsing, YAML/JSON5 parsing, or DOMPurify-like sanitizer dependencies. In those 
 Enable `render` when you need layout and SVG output. Add `raster` only when you also need PNG/JPG/PDF
 conversion. Add `ascii` only for terminal text output. Enable `core-full` when you need Mermaid's
 full config/frontmatter behavior or full sanitizer parity; leave it off for size-oriented Typst-like
-rendering where inputs and options are already controlled. Enable `host` when local clock/randomness
-is a feature, such as live previews that should use today’s date; leave it off for deterministic
-WASM output.
+rendering where inputs and options are already controlled. Enable `core-host` when local
+clock/randomness is a feature, such as live previews that should use today’s date; leave it off for
+deterministic WASM output.
 
 The pure core profile keeps common inline metadata such as `@{ shape: rounded }`, but does not apply
 YAML frontmatter title/config and uses conservative HTML escaping instead of DOMPurify-like
