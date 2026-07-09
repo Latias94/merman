@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+const HISTORICAL_ROOT_OVERRIDE_SUFFIXES: &[&str] = &["11_15_0"];
+
 #[derive(Debug, Clone)]
 struct RootOverrideTable {
     family: String,
@@ -265,10 +267,15 @@ fn collect_root_override_tables(
 }
 
 fn root_override_family_from_file_name(file_name: &str) -> Option<String> {
-    for suffix in [
+    let baseline_suffixes = [
         PINNED_MERMAID_BASELINE_VERSION_SUFFIX,
         LEGACY_GENERATED_BASELINE_SUFFIX,
-    ] {
+    ];
+    for suffix in baseline_suffixes
+        .iter()
+        .copied()
+        .chain(HISTORICAL_ROOT_OVERRIDE_SUFFIXES.iter().copied())
+    {
         if let Some(family) = file_name
             .strip_suffix(&format!("_root_overrides_{suffix}.rs"))
             .map(str::to_owned)
