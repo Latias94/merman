@@ -111,6 +111,51 @@ __proto__ --> [*]"#,
 }
 
 #[test]
+fn parse_diagram_state_rejects_same_line_multi_word_composite_state_name() {
+    let engine = Engine::new();
+    let text = r#"stateDiagram-v2
+state Invalid Name {
+  Idle
+}
+"#;
+    let Error::DiagramParse { diagnostic, .. } =
+        block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err()
+    else {
+        panic!("expected state parse error");
+    };
+    let offset = text.find("Name").unwrap();
+
+    assert!(
+        diagnostic
+            .message()
+            .contains("State name must be a single word")
+    );
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(offset, offset + "Name".len()))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+}
+
+#[test]
+fn parse_diagram_state_keeps_newline_composite_block_compatibility() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_diagram(
+        r#"stateDiagram-v2
+state Valid
+{
+  Idle
+}
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(res.model["states"]["Valid"]["doc"][0]["id"], json!("Idle"));
+}
+
+#[test]
 fn parse_diagram_state_v2_classdef_class_and_shorthand() {
     let engine = Engine::new();
 

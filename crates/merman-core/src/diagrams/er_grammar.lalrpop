@@ -31,6 +31,7 @@ extern {
     StyleSeparator => Tok::StyleSeparator,
     Colon => Tok::Colon,
     Comma => Tok::Comma,
+    Question => Tok::Question,
 
     "style" => Tok::StyleKw,
     "classDef" => Tok::ClassDefKw,
@@ -208,10 +209,15 @@ Attributes: Vec<Attribute> = {
 };
 
 Attribute: Attribute = {
-  <ty:AttrWord> <name:AttrWord> => Attribute { ty, name, keys: Vec::new(), comment: String::new() },
-  <ty:AttrWord> <name:AttrWord> <keys:AttributeKeys> => Attribute { ty, name, keys, comment: String::new() },
-  <ty:AttrWord> <name:AttrWord> <c:Comment> => Attribute { ty, name, keys: Vec::new(), comment: c },
-  <ty:AttrWord> <name:AttrWord> <keys:AttributeKeys> <c:Comment> => Attribute { ty, name, keys, comment: c },
+  <ty:AttributeType> <name:AttrWord> => Attribute { ty, name, keys: Vec::new(), comment: String::new() },
+  <ty:AttributeType> <name:AttrWord> <keys:AttributeKeys> => Attribute { ty, name, keys, comment: String::new() },
+  <ty:AttributeType> <name:AttrWord> <c:Comment> => Attribute { ty, name, keys: Vec::new(), comment: c },
+  <ty:AttributeType> <name:AttrWord> <keys:AttributeKeys> <c:Comment> => Attribute { ty, name, keys, comment: c },
+};
+
+AttributeType: String = {
+  AttrWord => <>,
+  <w:AttrWord> Question => format!("{w}?"),
 };
 
 AttributeKeys: Vec<String> = {

@@ -1,4 +1,4 @@
-# ER Upstream Test Coverage (Mermaid@11.15.0)
+# ER Upstream Test Coverage (Mermaid@11.16.0)
 
 This document tracks which upstream Mermaid `erDiagram` tests are covered in `merman` via:
 
@@ -6,7 +6,7 @@ This document tracks which upstream Mermaid `erDiagram` tests are covered in `me
 - Rust unit tests under `crates/merman-core/src/lib.rs`
 - headless layout tests and debug SVG exports under `crates/merman-render`
 
-Scope: Mermaid tag `@11.15.0`.
+Scope: Mermaid tag `@11.16.0`.
 
 ## `parser/erDiagram.spec.js`
 
@@ -36,6 +36,9 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/er/parser/erDiagram.spec
   - `parse_diagram_er_allows_asterisk_at_start_of_attribute_name`
   - `parse_diagram_er_rejects_attribute_names_with_leading_numbers_dashes_or_brackets`
 - attribute types (generic `~T~`, arrays, `varchar(5)`): unit test `parse_diagram_er_supports_generic_and_array_and_limited_length_types`
+- Mermaid 11.16 attribute tokens (comma inside type, backtick-escaped type/name, and nullable
+  `?` type suffix): unit test `parse_diagram_er_supports_mermaid_11_16_attribute_tokens`
+  and editor span test `parse_er_editor_facts_preserve_mermaid_11_16_attribute_spans`
 - constraints + comments: `fixtures/er/upstream_attributes_styles_classes.mmd` and unit tests
   - `parse_diagram_er_parses_many_constraints_and_comments`
   - `parse_diagram_er_supports_empty_attribute_blocks_and_multiple_blocks`
