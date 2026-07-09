@@ -24,6 +24,7 @@ flowchart TD
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
+| `0.1.0` | `0.8.0-alpha.3` | `1` | Refreshes the embedded renderer from the 0.8 alpha line while keeping the Typst wrapper API stable. |
 | `0.1.0` | `0.8.0-alpha.2` | `1` | Initial Typst package built from the 0.8 alpha line; Typst package versions advance independently. |
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable.
