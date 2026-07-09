@@ -9,21 +9,25 @@
       "id": 0,
       "level": -1,
       "name": "/",
+      "nodeType": "directory",
       "children": [
         {
           "id": 1,
           "level": 4,
           "name": "packages",
+          "nodeType": "file",
           "children": [
             {
               "id": 2,
               "level": 8,
               "name": "mermaid",
+              "nodeType": "file",
               "children": [
                 {
                   "id": 3,
                   "level": 12,
                   "name": "src",
+                  "nodeType": "file",
                   "children": []
                 }
               ]
@@ -32,6 +36,7 @@
               "id": 4,
               "level": 8,
               "name": "parser",
+              "nodeType": "file",
               "children": []
             }
           ]
@@ -42,27 +47,32 @@
       {
         "id": 0,
         "level": -1,
-        "name": "/"
+        "name": "/",
+        "nodeType": "directory"
       },
       {
         "id": 1,
         "level": 4,
-        "name": "packages"
+        "name": "packages",
+        "nodeType": "file"
       },
       {
         "id": 2,
         "level": 8,
-        "name": "mermaid"
+        "name": "mermaid",
+        "nodeType": "file"
       },
       {
         "id": 3,
         "level": 12,
-        "name": "src"
+        "name": "src",
+        "nodeType": "file"
       },
       {
         "id": 4,
         "level": 8,
-        "name": "parser"
+        "name": "parser",
+        "nodeType": "file"
       }
     ]
   }

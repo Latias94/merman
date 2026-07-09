@@ -9,22 +9,26 @@
       "id": 0,
       "level": -1,
       "name": "/",
+      "nodeType": "directory",
       "children": [
         {
           "id": 1,
           "level": 6,
           "name": "folder1",
+          "nodeType": "file",
           "children": [
             {
               "id": 2,
               "level": 10,
               "name": "file1.js",
+              "nodeType": "file",
               "children": []
             },
             {
               "id": 3,
               "level": 10,
               "name": "file2.ts",
+              "nodeType": "file",
               "children": []
             }
           ]
@@ -33,39 +37,46 @@
           "id": 4,
           "level": 6,
           "name": "folder2",
+          "nodeType": "file",
           "children": [
             {
               "id": 5,
               "level": 10,
               "name": "file3.spec.ts",
+              "nodeType": "file",
               "children": []
             },
             {
               "id": 6,
               "level": 10,
               "name": "folder3",
+              "nodeType": "file",
               "children": [
                 {
                   "id": 7,
                   "level": 14,
                   "name": "file4.ts",
+                  "nodeType": "file",
                   "children": []
                 },
                 {
                   "id": 8,
                   "level": 14,
                   "name": "file5.ts",
+                  "nodeType": "file",
                   "children": []
                 },
                 {
                   "id": 9,
                   "level": 14,
                   "name": "folder4",
+                  "nodeType": "file",
                   "children": [
                     {
                       "id": 10,
                       "level": 18,
                       "name": "file6.ts",
+                      "nodeType": "file",
                       "children": []
                     }
                   ]
@@ -78,6 +89,7 @@
           "id": 11,
           "level": 6,
           "name": "file7.ts",
+          "nodeType": "file",
           "children": []
         }
       ]
@@ -86,62 +98,74 @@
       {
         "id": 0,
         "level": -1,
-        "name": "/"
+        "name": "/",
+        "nodeType": "directory"
       },
       {
         "id": 1,
         "level": 6,
-        "name": "folder1"
+        "name": "folder1",
+        "nodeType": "file"
       },
       {
         "id": 2,
         "level": 10,
-        "name": "file1.js"
+        "name": "file1.js",
+        "nodeType": "file"
       },
       {
         "id": 3,
         "level": 10,
-        "name": "file2.ts"
+        "name": "file2.ts",
+        "nodeType": "file"
       },
       {
         "id": 4,
         "level": 6,
-        "name": "folder2"
+        "name": "folder2",
+        "nodeType": "file"
       },
       {
         "id": 5,
         "level": 10,
-        "name": "file3.spec.ts"
+        "name": "file3.spec.ts",
+        "nodeType": "file"
       },
       {
         "id": 6,
         "level": 10,
-        "name": "folder3"
+        "name": "folder3",
+        "nodeType": "file"
       },
       {
         "id": 7,
         "level": 14,
-        "name": "file4.ts"
+        "name": "file4.ts",
+        "nodeType": "file"
       },
       {
         "id": 8,
         "level": 14,
-        "name": "file5.ts"
+        "name": "file5.ts",
+        "nodeType": "file"
       },
       {
         "id": 9,
         "level": 14,
-        "name": "folder4"
+        "name": "folder4",
+        "nodeType": "file"
       },
       {
         "id": 10,
         "level": 18,
-        "name": "file6.ts"
+        "name": "file6.ts",
+        "nodeType": "file"
       },
       {
         "id": 11,
         "level": 6,
-        "name": "file7.ts"
+        "name": "file7.ts",
+        "nodeType": "file"
       }
     ]
   }

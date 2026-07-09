@@ -38,6 +38,7 @@ fn tree_node(
         level,
         name: name.to_string(),
         children,
+        ..Default::default()
     }
 }
 

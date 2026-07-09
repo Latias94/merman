@@ -71,7 +71,7 @@ accDescr: Accessible TreeView Description
     "Child"
 "##;
 
-    let parsed = Engine::new()
+    let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
@@ -97,6 +97,55 @@ accDescr: Accessible TreeView Description
     assert!(svg.contains(
         r#"<title id="chart-title-tree-view-a11y-test">Accessible TreeView Title</title><desc id="chart-desc-tree-view-a11y-test">Accessible TreeView Description</desc><style>"#
     ));
+}
+
+#[test]
+fn tree_view_mermaid_11_16_annotations_render_svg_dom() {
+    let input = r##"---
+config:
+  treeView:
+    showIcons: true
+    defaultIconPack: logos
+    extensionIcons:
+      ".tsx": react
+---
+treeView-beta
+src/ :::highlight icon(folder) ## source directory
+    App.tsx ## main component
+    package.json icon(none)
+"##;
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let svg = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        LayoutOptions::default().text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("tree-view-11-16-test".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert!(svg.contains(r#"class="treeView-node-label treeView-node-dir highlight""#));
+    assert!(svg.contains(r#"class="treeView-highlight-bg""#));
+    assert!(svg.contains(r#"class="treeView-node-description""#));
+    assert!(svg.contains("source directory"));
+    assert!(svg.contains("main component"));
+    assert!(
+        svg.contains(r##"xlink:href="#tv-icon-tree-view-11-16-test-mermaid-treeview-folder""##)
+    );
+    assert!(svg.contains(r##"xlink:href="#tv-icon-tree-view-11-16-test-logos-react""##));
+    assert!(!svg.contains("package.json icon"));
+    assert!(svg.contains(".treeView-node-icon"));
+    assert!(svg.contains(".treeView-node-description"));
+    assert!(svg.contains(".treeView-highlight-bg"));
 }
 
 #[test]
@@ -145,6 +194,7 @@ fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
         level: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
         name: "leaf".to_string(),
         children: Vec::new(),
+        ..Default::default()
     };
     for depth in (0..=MAX_DIAGRAM_NESTING_DEPTH).rev() {
         child = TreeViewNodeRenderModel {
@@ -152,6 +202,7 @@ fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
             level: depth as i64,
             name: format!("n{depth}"),
             children: vec![child],
+            ..Default::default()
         };
     }
 

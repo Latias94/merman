@@ -422,15 +422,19 @@ mod tests {
                             level: 1,
                             name: "Child1".to_string(),
                             children: Vec::new(),
+                            ..Default::default()
                         },
                         TreeViewNodeRenderModel {
                             id: 3,
                             level: 1,
                             name: "Child2".to_string(),
                             children: Vec::new(),
+                            ..Default::default()
                         },
                     ],
+                    ..Default::default()
                 }],
+                ..Default::default()
             },
         }
     }

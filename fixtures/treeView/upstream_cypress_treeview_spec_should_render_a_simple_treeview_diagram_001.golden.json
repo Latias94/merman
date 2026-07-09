@@ -9,11 +9,13 @@
       "id": 0,
       "level": -1,
       "name": "/",
+      "nodeType": "directory",
       "children": [
         {
           "id": 1,
           "level": 12,
           "name": "file1.ts",
+          "nodeType": "file",
           "children": []
         }
       ]
@@ -22,12 +24,14 @@
       {
         "id": 0,
         "level": -1,
-        "name": "/"
+        "name": "/",
+        "nodeType": "directory"
       },
       {
         "id": 1,
         "level": 12,
-        "name": "file1.ts"
+        "name": "file1.ts",
+        "nodeType": "file"
       }
     ]
   }

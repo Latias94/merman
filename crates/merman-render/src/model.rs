@@ -992,6 +992,16 @@ pub struct TreeViewNodeLayout {
     pub id: i64,
     pub level: i64,
     pub name: String,
+    #[serde(rename = "nodeType")]
+    pub node_type: String,
+    #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+    pub css_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub depth: usize,
     pub x: f64,
     pub y: f64,
@@ -1001,6 +1011,10 @@ pub struct TreeViewNodeLayout {
     pub label_y: f64,
     pub label_width: f64,
     pub label_height: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_x: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_width: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

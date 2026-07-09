@@ -12,6 +12,13 @@ mod config;
 
 use config::{TreeViewConfigView, TreeViewLayoutSettings};
 
+const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
+const TREE_VIEW_FILE_NODE_TYPE: &str = "file";
+const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
+const TREE_VIEW_ICON_SIZE: f64 = 14.0;
+const TREE_VIEW_ICON_GAP: f64 = 4.0;
+const TREE_VIEW_DESCRIPTION_GAP: f64 = 16.0;
+
 pub fn layout_tree_view_diagram(
     semantic: &Value,
     effective_config: &Value,
@@ -45,6 +52,7 @@ pub fn layout_tree_view_diagram_typed(
     layout_tree(&mut ctx, &model.root);
 
     let min_x = -ctx.cfg.line_thickness / 2.0;
+    align_tree_view_descriptions(&mut ctx);
     let total_width = ctx.total_width.max(1.0);
     let total_height = ctx.total_height.max(1.0);
     Ok(TreeViewDiagramLayout {
@@ -137,10 +145,16 @@ fn layout_tree(ctx: &mut LayoutCtx<'_>, root: &TreeViewNode) {
 
 fn push_node_layout(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) -> usize {
     let indent = depth as f64 * (ctx.cfg.row_indent + ctx.cfg.padding_x);
+    let resolved_icon = resolve_tree_view_node_icon(node, &ctx.cfg);
+    let icon_offset = if resolved_icon.is_some() {
+        TREE_VIEW_ICON_SIZE + TREE_VIEW_ICON_GAP
+    } else {
+        0.0
+    };
     let label_width = tree_view_label_bbox_width_px(ctx.measurer, &node.name, &ctx.style);
     let label_height = tree_view_label_bbox_height_px(ctx.cfg.label_font_size);
     let height = label_height + ctx.cfg.padding_y * 2.0;
-    let width = label_width + ctx.cfg.padding_x * 2.0;
+    let width = label_width + ctx.cfg.padding_x * 2.0 + icon_offset;
     let y = ctx.total_height;
     let idx = ctx.nodes.len();
 
@@ -148,15 +162,22 @@ fn push_node_layout(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) 
         id: node.id,
         level: node.level,
         name: node.name.clone(),
+        node_type: node.node_type.clone(),
+        css_class: node.css_class.clone(),
+        icon: node.icon.clone(),
+        resolved_icon,
+        description: node.description.clone(),
         depth,
         x: indent,
         y,
         width,
         height,
-        label_x: indent + ctx.cfg.padding_x,
+        label_x: indent + ctx.cfg.padding_x + icon_offset,
         label_y: y + height / 2.0,
         label_width,
         label_height,
+        description_x: None,
+        description_width: None,
     });
     ctx.lines.push(TreeViewLineLayout {
         x1: indent - ctx.cfg.row_indent,
@@ -171,6 +192,30 @@ fn push_node_layout(ctx: &mut LayoutCtx<'_>, node: &TreeViewNode, depth: usize) 
     ctx.total_height += height;
 
     idx
+}
+
+fn align_tree_view_descriptions(ctx: &mut LayoutCtx<'_>) {
+    if !ctx.nodes.iter().any(|node| node.description.is_some()) {
+        return;
+    }
+    let max_label_right = ctx
+        .nodes
+        .iter()
+        .map(|node| node.label_x + node.label_width)
+        .fold(0.0, f64::max);
+    let description_x = max_label_right + TREE_VIEW_DESCRIPTION_GAP;
+    for node in &mut ctx.nodes {
+        let Some(description) = &node.description else {
+            continue;
+        };
+        let description_width =
+            tree_view_label_bbox_width_px(ctx.measurer, description, &ctx.style);
+        node.description_x = Some(description_x);
+        node.description_width = Some(description_width);
+        ctx.total_width = ctx
+            .total_width
+            .max(description_x + description_width + ctx.cfg.padding_x);
+    }
 }
 
 fn push_vertical_line(ctx: &mut LayoutCtx<'_>, node_index: usize, last_child_idx: usize) {
@@ -212,4 +257,59 @@ fn tree_view_label_bbox_width_px(
             .measure_svg_raw_text_bbox_width_px(label, style)
             .max(0.0)
     }
+}
+
+fn resolve_tree_view_node_icon(
+    node: &TreeViewNode,
+    cfg: &TreeViewLayoutSettings,
+) -> Option<String> {
+    if node.icon.as_deref() == Some("none") {
+        return None;
+    }
+    if let Some(icon) = node.icon.as_deref().filter(|icon| !icon.is_empty()) {
+        return Some(qualify_tree_view_icon(icon, &cfg.default_icon_pack));
+    }
+    if !cfg.show_icons {
+        return None;
+    }
+    if node.node_type == TREE_VIEW_FILE_NODE_TYPE
+        && let Some(icon) = detect_tree_view_file_icon(&node.name, cfg)
+    {
+        if icon == "none" {
+            return None;
+        }
+        return Some(qualify_tree_view_icon(&icon, &cfg.default_icon_pack));
+    }
+    let fallback = if node.node_type == TREE_VIEW_DIRECTORY_NODE_TYPE {
+        "folder"
+    } else {
+        "file"
+    };
+    Some(format!("{TREE_VIEW_ICON_PREFIX}:{fallback}"))
+}
+
+fn detect_tree_view_file_icon(name: &str, cfg: &TreeViewLayoutSettings) -> Option<String> {
+    if let Some(icon) = cfg.filename_icons.get(name).filter(|icon| !icon.is_empty()) {
+        return Some(icon.clone());
+    }
+    let dot_idx = name.rfind('.')?;
+    if dot_idx == 0 {
+        return None;
+    }
+    let ext = name[dot_idx..].to_ascii_lowercase();
+    cfg.extension_icons
+        .get(&ext)
+        .or_else(|| cfg.extension_icons.get(&ext[1..]))
+        .filter(|icon| !icon.is_empty())
+        .cloned()
+}
+
+fn qualify_tree_view_icon(icon: &str, default_icon_pack: &str) -> String {
+    if icon.contains(':') {
+        return icon.to_string();
+    }
+    if matches!(icon, "file" | "folder") || default_icon_pack.is_empty() {
+        return format!("{TREE_VIEW_ICON_PREFIX}:{icon}");
+    }
+    format!("{default_icon_pack}:{icon}")
 }

@@ -21,6 +21,11 @@ type: Engineering Log
 - Completed the first U4 existing-family semantic delta: Pie now consumes Mermaid 11.16
   `highlightSlice` in SVG classes/CSS, and Pie active coverage docs/tests no longer describe that
   behavior as an unsupported 11.15 residual.
+- Completed U4 TreeView 11.16 parser/render/LSP alignment: bare and quoted labels, directory
+  `nodeType`, class/icon/description annotations, box-drawing input, original-source editor spans,
+  icon config priority, and basic icon/description/highlight SVG DOM are covered locally.
+- Recorded Mermaid issue #7954 as a pinned 11.16 upstream-known Flowchart layout regression for
+  golden refresh triage; do not hide it with local comparator normalization or layout magic numbers.
 
 ## 2026-07-04
 
