@@ -18,6 +18,9 @@ type: Engineering Log
 - Completed the U3 frontmatter/config semantics slice: detector and preprocess frontmatter
   handling now require matching delimiter indentation, and top-level diagram namespace compatibility
   includes the 11.16 config namespaces covered by the generated defaults.
+- Completed the first U4 existing-family semantic delta: Pie now consumes Mermaid 11.16
+  `highlightSlice` in SVG classes/CSS, and Pie active coverage docs/tests no longer describe that
+  behavior as an unsupported 11.15 residual.
 
 ## 2026-07-04
 

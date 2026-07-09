@@ -120,8 +120,15 @@ fn pie_polar_xy(radius: f64, angle: f64) -> (f64, f64) {
 }
 
 fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String {
-    let _ = (effective_config, label);
-    "pieCircle".to_string()
+    let highlight = crate::config::config_string(effective_config, &["pie", "highlightSlice"])
+        .unwrap_or_default();
+    let mut class_name = "pieCircle".to_string();
+    if highlight == "hover" {
+        class_name.push_str(" highlightedOnHover");
+    } else if highlight == label {
+        class_name.push_str(" highlighted");
+    }
+    class_name
 }
 
 fn apply_empty_pie_root_viewport(

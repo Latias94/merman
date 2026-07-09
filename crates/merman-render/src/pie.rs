@@ -276,7 +276,7 @@ pub fn layout_pie_diagram_typed(
         model.acc_descr.as_deref(),
     );
 
-    // Mermaid@11.15 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
+    // Mermaid@11.16 `packages/mermaid/src/diagrams/pie/pieRenderer.ts` constants.
     let margin: f64 = 40.0;
     let legend_rect_size = PIE_LEGEND_RECT_SIZE_PX;
     let legend_spacing = PIE_LEGEND_SPACING_PX;
@@ -310,7 +310,7 @@ pub fn layout_pie_diagram_typed(
 
     let mut slices: Vec<PieSliceLayout> = Vec::new();
     if total.is_finite() && total > 0.0 {
-        // Mermaid@11.15 `packages/mermaid/src/diagrams/pie/pieRenderer.ts`:
+        // Mermaid@11.16 `packages/mermaid/src/diagrams/pie/pieRenderer.ts`:
         //
         // - filter out values < 1% (based on the original total)
         // - preserve input order before D3 pie() computes angles (`sort(null)`)
@@ -402,7 +402,7 @@ pub fn layout_pie_diagram_typed(
             sec.label.clone()
         };
         let trimmed = label.trim_end();
-        // Mermaid 11.15 measures pie legend text via a single SVG `<text>` node's
+        // Mermaid 11.16 measures pie legend text via a single SVG `<text>` node's
         // `getBoundingClientRect().width`. In headless mode we cannot reproduce that browser value
         // exactly, but the single-run/simple-text SVG width path is closer than the generic
         // multi-run bbox approximation used by Mermaid's wrapped `<tspan>` labels.

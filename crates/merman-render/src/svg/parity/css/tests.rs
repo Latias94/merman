@@ -131,7 +131,7 @@ fn sankey_css_honors_mermaid_11_15_theme_options() {
 }
 
 #[test]
-fn pie_css_honors_mermaid_11_15_theme_options() {
+fn pie_css_honors_mermaid_11_16_theme_options() {
     let cfg = serde_json::json!({
         "themeVariables": {
             "fontFamily": "\"ibm plex sans\", arial, sans-serif",
@@ -154,6 +154,10 @@ fn pie_css_honors_mermaid_11_15_theme_options() {
     let css = pie_css("pie", &cfg);
 
     assert!(css.contains(r#"#pie .pieCircle{stroke:#333333;stroke-width:4px;opacity:0.9;}"#));
+    assert!(css.contains(r#"#pie .pieCircle.highlighted{scale:1.05;opacity:1;}"#));
+    assert!(css.contains(
+        r#"#pie .pieCircle.highlightedOnHover:hover{transition-duration:250ms;scale:1.05;opacity:1;}"#
+    ));
     assert!(css.contains(r#"#pie .pieOuterCircle{stroke:#444444;stroke-width:5px;fill:none;}"#));
     assert!(css.contains(r#"#pie .pieTitleText{text-anchor:middle;font-size:26px;fill:#555555;font-family:"ibm plex sans",arial,sans-serif;}"#));
     assert!(css.contains(

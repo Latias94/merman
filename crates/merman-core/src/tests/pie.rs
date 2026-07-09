@@ -46,7 +46,7 @@ fn parse_diagram_pie_rejects_negative_slice_values_like_upstream() {
 }
 
 #[test]
-fn parse_pie_exposes_11_15_config_defaults_and_overrides() {
+fn parse_pie_exposes_11_16_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata("pie\n\"A\": 1", ParseOptions::default()))
         .unwrap()
