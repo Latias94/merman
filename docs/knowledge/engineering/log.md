@@ -34,6 +34,9 @@ type: Engineering Log
   fixture goldens while layout/SVG admission remains staged.
 - Added the U5 Cynefin compatibility renderer slice: typed render parser, headless layout, SVG
   renderer, semantic/layout fixture admission, and explicit upstream SVG compare residual.
+- Completed State 11.16 SVG DOM/layout alignment: scoped DOM ids, raw `data-id`/`data-look`, merged
+  rendered self-loop DOM ids, 11.16 `fixCorners`, current label/style/defs surface, State upstream
+  SVG refresh, and State layout golden refresh.
 
 ## 2026-07-04
 

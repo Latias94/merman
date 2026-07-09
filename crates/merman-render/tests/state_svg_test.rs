@@ -36,6 +36,7 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
 
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
     let init = serde_json::json!({
+        "look": "handDrawn",
         "handDrawnSeed": seed,
         "themeVariables": {
             "stateBkg": "#101827",
@@ -88,7 +89,7 @@ fn state_debug_svg_includes_cluster_positioning_metadata() {
 }
 
 #[test]
-fn state_svg_honors_mermaid_11_15_theme_css_options() {
+fn state_svg_honors_mermaid_11_16_theme_css_options() {
     let svg = render_state_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
         r##"%%{init: {"themeVariables": {"transitionColor": "#202020", "lineColor": "#303030", "nodeBorder": "#404040", "stateLabelColor": "#505050", "mainBkg": "#606060", "background": "#707070", "altBackground": "#808080", "strokeWidth": 4, "noteBorderColor": "#909090", "noteBkgColor": "#a0a0a0", "noteTextColor": "#b0b0b0", "labelBackgroundColor": "#c0c0c0", "edgeLabelBackground": "#d0d0d0", "transitionLabelColor": "#e0e0e0", "specialStateColor": "#f0f0f0", "innerEndBackground": "#010101", "compositeBackground": "#020202", "stateBkg": "#030303", "stateBorder": "#040404", "compositeTitleBackground": "#050505"}}}%%
@@ -104,6 +105,10 @@ Active --> [*]: done"##,
     assert!(
         svg.contains(r#"defs [id$="-barbEnd"]{fill:#202020;stroke:#202020;}"#),
         "expected State barbEnd marker CSS to follow transitionColor and the prefixed marker id: {svg}"
+    );
+    assert!(
+        svg.contains(r##"[id$="-dependencyStart"],#merman [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:1;}"##),
+        "expected State dependency marker CSS to use Mermaid 11.16 suffix selectors: {svg}"
     );
     assert!(
         svg.contains(r#".transition{stroke:#202020;stroke-width:4;fill:none;}"#),
@@ -122,12 +127,18 @@ Active --> [*]: done"##,
         "expected State node CSS to follow stateBkg/stateBorder/strokeWidth: {svg}"
     );
     assert!(
-        !svg.contains(r#"id="merman-gradient""#) && !svg.contains(r#"id="merman-drop-shadow""#),
-        "classic state SVG should not emit neo-only theme resources: {svg}"
+        !svg.contains(r#"id="merman-gradient""#) && svg.contains(r#"id="merman-drop-shadow""#),
+        "classic state SVG should emit 11.16 drop-shadow defs but not gradient defs unless useGradient is set: {svg}"
     );
     assert!(
         !svg.contains(r#"markerUnits="strokeWidth""#),
         "classic state SVG should keep Mermaid's classic barb marker units: {svg}"
+    );
+    assert!(
+        svg.contains(r#"id="merman-edge0""#)
+            && svg.contains(r#"data-look="classic""#)
+            && svg.contains(r#"id="merman-state-Active-1""#),
+        "classic state DOM should use Mermaid 11.16 scoped ids and explicit data-look: {svg}"
     );
 }
 
@@ -227,7 +238,7 @@ A --> B: owns
     );
     assert!(
         root_true.contains("<foreignObject")
-            && root_true.contains(r#"class="nodeLabel""#)
+            && root_true.contains(r#"class="nodeLabel markdown-node-label""#)
             && root_true.contains(r#"class="edgeLabel""#),
         "root htmlLabels=true should override deprecated flowchart.htmlLabels=false and keep HTML label DOM: {root_true}"
     );
@@ -334,11 +345,15 @@ A --> A: again
     );
 
     assert!(
-        svg.contains("cyclic-special-mid")
+        svg.contains(r#"data-id="edge0""#)
             && svg.contains(
                 r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">again</tspan>"#
             ),
-        "root htmlLabels=false should render State self-loop edge labels as SVG text: {svg}"
+        "root htmlLabels=false should render State self-loop labels on the original edge id as SVG text: {svg}"
+    );
+    assert!(
+        !svg.contains("cyclic-special"),
+        "Mermaid 11.16 keeps cyclic-special helpers out of the public self-loop edge label DOM: {svg}"
     );
     assert_eq!(
         svg.matches("<foreignObject").count(),
@@ -398,20 +413,16 @@ note right of Idle : themed note"##,
     );
 
     assert!(
-        svg.contains(r##"fill="#101827""##),
-        "ordinary State rough paths should consume stateBkg, not the default fill: {svg}"
-    );
-    assert!(
-        svg.contains(r##"stroke="#38bdf8" stroke-width="4""##),
-        "ordinary State rough paths should consume stateBorder/strokeWidth: {svg}"
+        svg.contains(r##".node rect{fill:#101827;stroke:#38bdf8;stroke-width:4px;}"##),
+        "classic ordinary State rects should consume stateBkg/stateBorder/strokeWidth through CSS: {svg}"
     );
     assert!(
         svg.contains(r##"fill="#0f172a""##),
         "choice rough paths should consume mainBkg like Mermaid's State polygon rule: {svg}"
     );
     assert!(
-        svg.contains(r##"fill="#f97316""##) && svg.contains(r##"stroke="#f97316""##),
-        "fork/join rough paths should consume specialStateColor: {svg}"
+        svg.contains(r##".node circle.state-start{fill:#f97316;stroke:#f97316;}"##),
+        "start-state styling should consume specialStateColor: {svg}"
     );
     assert!(
         svg.contains(r##"fill="#22c55e""##) && svg.contains(r##"stroke="#020617""##),

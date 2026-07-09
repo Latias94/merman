@@ -1210,37 +1210,10 @@ fn build_state_diagram_v2_dagre_input(
                     .as_ref()
                     .map(|v| v.join("\n"))
                     .unwrap_or_default();
-                // Mermaid's `rectWithTitle` nodes render two HTML `<span>` labels with
-                // `display:inline-block; padding-right:1px; white-space:nowrap;` and no explicit
-                // `line-height`. Empirically, their measured height matches SVG `getBBox()` height
-                // (1.1875em at 16px -> 19px), not the 1.5em HTML `<p>` line-height used by most
-                // other state labels.
                 let (title_w, title_h) =
-                    title_label_metrics(&label_text, measurer, &text_style, WrapMode::SvgLike);
+                    title_label_metrics(&label_text, measurer, &text_style, WrapMode::HtmlLike);
                 let (desc_w, desc_h) =
-                    title_label_metrics(&desc, measurer, &text_style, WrapMode::SvgLike);
-
-                // Mirror `padding-right: 1px` in upstream HTML.
-                let title_w = state_text_overrides::rect_with_title_span_effective_width_px(
-                    text_style.font_size,
-                    label_text.trim(),
-                    title_w,
-                );
-                let desc_w = state_text_overrides::rect_with_title_span_effective_width_px(
-                    text_style.font_size,
-                    desc.trim(),
-                    desc_w,
-                );
-                let title_h = state_text_overrides::rect_with_title_span_effective_height_px(
-                    text_style.font_size,
-                    label_text.trim(),
-                    title_h,
-                );
-                let desc_h = state_text_overrides::rect_with_title_span_effective_height_px(
-                    text_style.font_size,
-                    desc.trim(),
-                    desc_h,
-                );
+                    title_label_metrics(&desc, measurer, &text_style, WrapMode::HtmlLike);
 
                 let inner_w = title_w.max(desc_w);
                 let top_pad = state_text_overrides::state_rect_with_title_top_pad_px(padding);

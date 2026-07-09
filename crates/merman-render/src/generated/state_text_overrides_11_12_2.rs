@@ -4,58 +4,6 @@
 // Mermaid@11.12.2 upstream baselines reflect browser layout quirks that are difficult
 // to model purely from font metrics (especially for SVG `<foreignObject>` HTML spans).
 
-pub fn lookup_rect_with_title_span_width_px(font_size_px: f64, text: &str) -> Option<f64> {
-    if (font_size_px - 16.0).abs() > 0.01 {
-        return None;
-    }
-
-    match text {
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_spec.svg
-        "this is a string with - in it" => Some(182.328125),
-        _ => None,
-    }
-}
-
-pub fn lookup_rect_with_title_span_height_px(font_size_px: f64, text: &str) -> Option<f64> {
-    if (font_size_px - 16.0).abs() > 0.01 {
-        return None;
-    }
-
-    match text {
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_state_definition_with_quotes_spec.svg
-        // fixtures/upstream-svgs/state/upstream_stateDiagram_v2_state_definition_with_quotes_spec.svg
-        "Accumulate Enough Data\nLong State Name" => Some(38.0),
-        _ => None,
-    }
-}
-
-pub fn rect_with_title_span_effective_width_px(
-    font_size_px: f64,
-    text: &str,
-    svg_like_width_px: f64,
-) -> f64 {
-    lookup_rect_with_title_span_width_px(font_size_px, text).unwrap_or_else(|| {
-        (svg_like_width_px.max(0.0) + state_html_inline_span_padding_right_px()).max(0.0)
-    })
-}
-
-pub fn rect_with_title_span_effective_height_px(
-    font_size_px: f64,
-    text: &str,
-    svg_like_height_px: f64,
-) -> f64 {
-    lookup_rect_with_title_span_height_px(font_size_px, text)
-        .unwrap_or_else(|| svg_like_height_px.max(0.0))
-}
-
-pub fn state_html_inline_span_padding_right_px() -> f64 {
-    1.0
-}
-
-pub fn state_rect_with_title_span_padding_right_px() -> f64 {
-    state_html_inline_span_padding_right_px()
-}
-
 pub fn state_rect_with_title_top_pad_px(padding_px: f64) -> f64 {
     ((padding_px / 2.0).max(0.0) - 1.0).max(0.0)
 }

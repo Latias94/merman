@@ -6,6 +6,24 @@ pub(super) fn state_is_hidden(ctx: &StateRenderCtx<'_>, id: &str) -> bool {
         .any(|p| id == p || id.starts_with(&format!("{p}----")))
 }
 
+pub(super) fn state_data_look<'a>(ctx: &'a StateRenderCtx<'_>) -> &'a str {
+    let look = ctx.diagram_look.trim();
+    if look.is_empty() { "classic" } else { look }
+}
+
+pub(super) fn state_scoped_dom_id(ctx: &StateRenderCtx<'_>, id: &str) -> String {
+    format!("{}-{id}", ctx.diagram_id)
+}
+
+pub(super) fn state_node_scoped_dom_id(ctx: &StateRenderCtx<'_>, node_id: &str) -> String {
+    ctx.nodes_by_id
+        .get(node_id)
+        .map(|node| node.dom_id.trim())
+        .filter(|dom_id| !dom_id.is_empty())
+        .map(|dom_id| state_scoped_dom_id(ctx, dom_id))
+        .unwrap_or_else(|| state_scoped_dom_id(ctx, node_id))
+}
+
 fn state_leaf_context_impl<'a>(
     ctx: &'a StateRenderCtx<'_>,
     id: &str,

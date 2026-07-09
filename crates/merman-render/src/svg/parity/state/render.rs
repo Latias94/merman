@@ -1,5 +1,4 @@
 use super::*;
-use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 
 pub(super) fn render_state_diagram_v2_svg_impl(
     layout: &StateDiagramV2Layout,
@@ -440,6 +439,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         );
 
         out.push_str("</g>");
+        state_root_defs(&mut out, diagram_id, effective_config);
         out.push_str(&title_svg);
         out.push_str("</svg>\n");
         drop(_g_render_svg);
@@ -554,6 +554,7 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
+    state_root_defs(&mut out, diagram_id, effective_config);
     out.push_str(TITLE_PLACEHOLDER_COMMENT);
     out.push_str("</svg>\n");
 
@@ -807,10 +808,11 @@ fn render_state_root(
         let top = cluster.y - cluster.height / 2.0;
         let x = left - origin_x;
         let y = top - origin_y;
+        let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
         let _ = write!(
             out,
             r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
-            escape_xml_display(cluster_id),
+            escape_xml_display(&dom_id),
             fmt_display(x),
             fmt_display(y),
             fmt_display(cluster.width.max(1.0)),
@@ -1001,12 +1003,7 @@ fn render_state_cluster(
         return;
     };
 
-    let data_look = ctx.diagram_look.trim();
-    let data_look = if data_look.is_empty() {
-        "classic"
-    } else {
-        data_look
-    };
+    let data_look = state_data_look(ctx);
 
     let shape = ctx
         .nodes_by_id
@@ -1027,13 +1024,14 @@ fn render_state_cluster(
     let top = cluster.y - cluster.height / 2.0;
     let x = left - origin_x;
     let y = top - origin_y;
+    let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
 
     if shape == "divider" {
         let _ = write!(
             out,
             r#"<g class="{}" id="{}" data-look="{}"><g><rect class="divider" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g></g>"#,
             escape_attr(class),
-            escape_attr(cluster_id),
+            escape_attr(&dom_id),
             escape_attr(data_look),
             fmt(x),
             fmt(y),
@@ -1051,48 +1049,12 @@ fn render_state_cluster(
         .map(state_node_label_text)
         .unwrap_or_else(|| cluster_id.to_string());
 
-    let mut link_open = String::new();
-    let mut link_close = String::new();
-    if let Some(links) = ctx.links.get(cluster_id) {
-        let mut push_link = |link: &StateSvgLink| {
-            let url = link.url.trim();
-            let tooltip = link.tooltip.trim();
-            let title_attr = if tooltip.is_empty() {
-                String::new()
-            } else {
-                format!(r#" title="{}""#, escape_attr(tooltip))
-            };
-
-            if !url.is_empty() && (ctx.security_level_loose || state_link_href_allowed(url)) {
-                link_open.push_str(&format!(
-                    r#"<a xlink:href="{}"{}>"#,
-                    escape_attr(url),
-                    title_attr
-                ));
-                link_close.push_str("</a>");
-                return;
-            }
-
-            link_open.push_str(&format!(r#"<a{}>"#, title_attr));
-            link_close.push_str("</a>");
-        };
-
-        match links {
-            StateSvgLinks::One(link) => push_link(link),
-            StateSvgLinks::Many(list) => {
-                for link in list {
-                    push_link(link);
-                }
-            }
-        }
-    }
-
     if ctx.html_labels {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g>{}<g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="19"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="nodeLabel">{}</span></div></foreignObject></g>{}<rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})"><foreignObject width="{}" height="24"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="nodeLabel"><p>{}</p></span></div></foreignObject></g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
-            escape_attr(cluster_id),
+            escape_attr(&dom_id),
             escape_attr(cluster_id),
             escape_attr(data_look),
             fmt(x),
@@ -1100,25 +1062,22 @@ fn render_state_cluster(
             fmt(cluster.width.max(1.0)),
             fmt(cluster.height.max(1.0)),
             escape_attr(data_look),
-            link_open,
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
             fmt(cluster.title_label.width.max(0.0)),
-            fmt_display(state_text_overrides::state_html_inline_span_padding_right_px()),
             escape_xml(&title),
-            link_close,
             fmt(x),
-            fmt(y + 21.0),
+            fmt(y + 26.0),
             fmt(cluster.width.max(1.0)),
-            fmt((cluster.height - 29.0).max(1.0))
+            fmt((cluster.height - 30.0).max(1.0))
         );
     } else {
         let title_dom = state_svg_text_label(&title, false, None);
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g>{}<g class="cluster-label" transform="translate({}, {})">{}</g>{}<rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
+            r#"<g class="{}" id="{}" data-id="{}" data-look="{}"><g><rect class="outer" x="{}" y="{}" width="{}" height="{}" data-look="{}"/></g><g class="cluster-label" transform="translate({}, {})">{}</g><rect class="inner" x="{}" y="{}" width="{}" height="{}"/></g>"#,
             escape_attr(class),
-            escape_attr(cluster_id),
+            escape_attr(&dom_id),
             escape_attr(cluster_id),
             escape_attr(data_look),
             fmt(x),
@@ -1126,11 +1085,9 @@ fn render_state_cluster(
             fmt(cluster.width.max(1.0)),
             fmt(cluster.height.max(1.0)),
             escape_attr(data_look),
-            link_open,
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
             title_dom,
-            link_close,
             fmt(x),
             fmt(y + 21.0),
             fmt(cluster.width.max(1.0)),
