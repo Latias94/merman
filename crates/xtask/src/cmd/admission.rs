@@ -523,7 +523,7 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     parse_only!(
         "swimlane",
         "swimlane",
-        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
+        "docs/alignment/SWIMLANE_MINIMUM.md",
         "present in pinned Mermaid 11.16 source; Flowchart parser/editor reuse exists, while layout/render admission is tracked by the 11.16 parity plan"
     ),
     DiagramAdmissionRecord {
