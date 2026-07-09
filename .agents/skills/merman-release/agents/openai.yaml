@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merman Release"
+  short_description: "Prepare and recover Merman releases"
+  default_prompt: "Use $merman-release to prepare a new Merman version, write release notes, run preflight, tag, publish platform workflows, and verify registries."
