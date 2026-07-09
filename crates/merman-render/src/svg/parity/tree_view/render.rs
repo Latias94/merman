@@ -85,55 +85,14 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     push_tree_view_icon_defs(&mut out, layout, diagram_id);
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
-    for node in &layout.nodes {
-        let label_classes = tree_view_label_classes(node);
-        let _ = write!(&mut out, r#"<g>"#);
-        if node
-            .css_class
-            .as_deref()
-            .is_some_and(|class| class.split_whitespace().any(|part| part == "highlight"))
-        {
-            let rect_width = (layout.total_width - node.x + 8.0).max(0.0);
-            let _ = write!(
-                &mut out,
-                r#"<rect x="{}" y="{}" width="{}" height="{}" rx="3" class="treeView-highlight-bg"></rect>"#,
-                fmt(node.x),
-                fmt(node.y + 1.0),
-                fmt(rect_width),
-                fmt((node.height - 2.0).max(0.0))
-            );
-        }
-        if let Some(icon) = &node.resolved_icon {
-            let _ = write!(
-                &mut out,
-                r##"<use xlink:href="#{}" x="{}" y="{}" class="treeView-node-icon"></use>"##,
-                tree_view_icon_symbol_id(diagram_id, icon),
-                fmt(node.x + layout.padding_x),
-                fmt(node.y + layout.padding_y)
-            );
-        }
-        let _ = write!(
-            &mut out,
-            r#"<text dominant-baseline="middle" class="{}" x="{}" y="{}">{}</text>"#,
-            escape_xml(&label_classes),
-            fmt(node.label_x),
-            fmt(node.label_y),
-            escape_xml(&node.name)
-        );
-        if let (Some(description), Some(description_x)) =
-            (node.description.as_deref(), node.description_x)
-        {
-            let _ = write!(
-                &mut out,
-                r#"<text dominant-baseline="middle" class="treeView-node-description" x="{}" y="{}">{}</text>"#,
-                fmt(description_x),
-                fmt(node.label_y),
-                escape_xml(description)
-            );
-        }
-        out.push_str("</g>");
-    }
+    let mut next_node = 0usize;
     for line in &layout.lines {
+        if line.kind == "horizontal" {
+            if let Some(node) = layout.nodes.get(next_node) {
+                push_tree_view_node(&mut out, node, layout, diagram_id);
+                next_node += 1;
+            }
+        }
         let _ = write!(
             &mut out,
             r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
@@ -144,15 +103,70 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             fmt(line.stroke_width)
         );
     }
+    for node in layout.nodes.iter().skip(next_node) {
+        push_tree_view_node(&mut out, node, layout, diagram_id);
+    }
     out.push_str("</g></svg>\n");
     Ok(out)
+}
+
+fn push_tree_view_node(
+    out: &mut String,
+    node: &TreeViewNodeLayout,
+    layout: &TreeViewDiagramLayout,
+    diagram_id: &str,
+) {
+    let label_classes = tree_view_label_classes(node);
+    if node
+        .css_class
+        .as_deref()
+        .is_some_and(|class| class.split_whitespace().any(|part| part == "highlight"))
+    {
+        let rect_width = (layout.total_width - node.x + 8.0).max(0.0);
+        let _ = write!(
+            out,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" rx="3" class="treeView-highlight-bg"></rect>"#,
+            fmt(node.x),
+            fmt(node.y + 1.0),
+            fmt(rect_width),
+            fmt((node.height - 2.0).max(0.0))
+        );
+    }
+    if let Some(icon) = &node.resolved_icon {
+        let _ = write!(
+            out,
+            r##"<use xlink:href="#{}" x="{}" y="{}" class="treeView-node-icon"></use>"##,
+            tree_view_icon_symbol_id(diagram_id, icon),
+            fmt(node.x + layout.padding_x),
+            fmt(node.y + layout.padding_y)
+        );
+    }
+    let _ = write!(
+        out,
+        r#"<text dominant-baseline="middle" class="{}" x="{}" y="{}">{}</text>"#,
+        escape_xml(&label_classes),
+        fmt(node.label_x),
+        fmt(node.label_y),
+        escape_xml(&node.name)
+    );
+    if let (Some(description), Some(description_x)) =
+        (node.description.as_deref(), node.description_x)
+    {
+        let _ = write!(
+            out,
+            r#"<text dominant-baseline="middle" class="treeView-node-description" x="{}" y="{}">{}</text>"#,
+            fmt(description_x),
+            fmt(node.label_y),
+            escape_xml(description)
+        );
+    }
 }
 
 fn tree_view_css(effective_config: &serde_json::Value) -> String {
     let theme = PresentationTheme::new(effective_config).tree_view();
 
     format!(
-        ".treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} .treeView-node-dir {{ font-weight: bold; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-size: {}; fill: {}; font-style: italic; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
+        ".treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-size: {}; fill: {}; font-style: italic; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
         theme.label_font_size_css,
         theme.label_color,
         theme.line_color,
@@ -166,9 +180,6 @@ fn tree_view_css(effective_config: &serde_json::Value) -> String {
 
 fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
     let mut classes = vec!["treeView-node-label".to_string()];
-    if node.node_type == "directory" {
-        classes.push("treeView-node-dir".to_string());
-    }
     if let Some(css_class) = node.css_class.as_deref() {
         classes.extend(
             css_class

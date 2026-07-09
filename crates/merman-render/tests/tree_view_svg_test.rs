@@ -133,7 +133,8 @@ src/ :::highlight icon(folder) ## source directory
     )
     .unwrap();
 
-    assert!(svg.contains(r#"class="treeView-node-label treeView-node-dir highlight""#));
+    assert!(svg.contains(r#"class="treeView-node-label highlight""#));
+    assert!(!svg.contains("treeView-node-dir"));
     assert!(svg.contains(r#"class="treeView-highlight-bg""#));
     assert!(svg.contains(r#"class="treeView-node-description""#));
     assert!(svg.contains("source directory"));
