@@ -1,0 +1,44 @@
+{
+  "diagramType": "railroadEbnf",
+  "model": {
+    "type": "railroadEbnf",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "rule",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "a"
+            },
+            {
+              "type": "sequence",
+              "elements": [
+                {
+                  "type": "optional",
+                  "element": {
+                    "type": "nonterminal",
+                    "name": "other"
+                  }
+                },
+                {
+                  "type": "repetition",
+                  "element": {
+                    "type": "special",
+                    "text": "special"
+                  },
+                  "min": 0,
+                  "max": null
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

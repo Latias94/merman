@@ -6,9 +6,11 @@ status: active
 # Current State
 
 - Active Mermaid parity focus: the repository is pinned to Mermaid 11.16.0, new 11.16 families are
-  detector-visible, and `swimlane`, `cynefin`, plus all four railroad variants now have
-  source-backed semantic parsing/editor facts while render admission remains deferred until typed
-  layout/render paths are ported. Shared frontmatter/config parsing now follows the 11.16
+  detector-visible, `cynefin` now has a source-backed compatibility renderer slice with semantic
+  and layout fixture admission, and `swimlane` plus all four railroad variants have source-backed
+  semantic parsing/editor facts with parse-only fixture/golden admission. Primary SVG admission for
+  the new 11.16 families remains deferred until upstream SVG baselines and compare commands exist.
+  Shared frontmatter/config parsing now follows the 11.16
   same-indent delimiter rule and accepts 11.16 diagram namespaces in the local top-level
   frontmatter compatibility layer. Existing-family U4 deltas now include Pie highlight semantics,
   XYChart point labels/axis rotation, Architecture align layout hints, ER nullable/backtick/comma

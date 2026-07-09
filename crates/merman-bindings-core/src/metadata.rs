@@ -453,10 +453,10 @@ mod tests {
         let cynefin = capabilities
             .iter()
             .find(|capability| capability.diagram_type == "cynefin")
-            .expect("parser-only 11.16 cynefin capability should be present");
-        assert_eq!(cynefin.metadata_id, None);
+            .expect("11.16 cynefin capability should be present");
+        assert_eq!(cynefin.metadata_id, Some("cynefin"));
         assert!(cynefin.has_semantic_parser);
-        assert!(!cynefin.has_render_parser);
+        assert!(cynefin.has_render_parser);
 
         let railroad = capabilities
             .iter()

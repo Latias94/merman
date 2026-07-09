@@ -279,6 +279,7 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "block",
             "c4",
             "class",
+            "cynefin",
             "er",
             "flowchart",
             "gantt",
@@ -309,6 +310,7 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "block",
             "c4",
             "class",
+            "cynefin",
             "er",
             "flowchart",
             "gantt",
@@ -388,9 +390,9 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     }
 
     let cynefin = family_capability(full, "cynefin");
-    assert_eq!(cynefin.metadata_id, None);
+    assert_eq!(cynefin.metadata_id, Some("cynefin"));
     assert!(cynefin.has_semantic_parser);
-    assert!(!cynefin.has_render_parser);
+    assert!(cynefin.has_render_parser);
 
     let wardley = family_capability(full, "wardley");
     assert_eq!(wardley.metadata_id, None);

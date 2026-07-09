@@ -42,6 +42,8 @@ pub struct CynefinDiagramModel {
     pub transitions: Vec<CynefinTransitionModel>,
 }
 
+pub type CynefinDiagramRenderModel = CynefinDiagramModel;
+
 impl CynefinDiagramModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
@@ -89,6 +91,15 @@ pub fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "domains": model.domains,
         "transitions": model.transitions,
     }))
+}
+
+pub fn parse_cynefin_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<CynefinDiagramRenderModel> {
+    let mut model = parse_cynefin_model(code, meta)?;
+    model.sanitize_common_db_fields(&meta.effective_config);
+    Ok(model)
 }
 
 pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {

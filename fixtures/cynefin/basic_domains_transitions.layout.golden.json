@@ -1,0 +1,105 @@
+{
+  "diagramType": "cynefin",
+  "layout": {
+    "CynefinDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 880.0,
+        "max_y": 680.0
+      },
+      "width": 800.0,
+      "height": 600.0,
+      "padding": 40.0,
+      "total_width": 880.0,
+      "total_height": 680.0,
+      "use_max_width": true,
+      "show_domain_descriptions": true,
+      "boundary_amplitude": 8.0,
+      "domain_layouts": [
+        {
+          "name": "complex",
+          "cx": 200.0,
+          "cy": 150.0,
+          "x": 0.0,
+          "y": 0.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "complicated",
+          "cx": 600.0,
+          "cy": 150.0,
+          "x": 400.0,
+          "y": 0.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "chaotic",
+          "cx": 200.0,
+          "cy": 450.0,
+          "x": 0.0,
+          "y": 300.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "clear",
+          "cx": 600.0,
+          "cy": 450.0,
+          "x": 400.0,
+          "y": 300.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "confusion",
+          "cx": 400.0,
+          "cy": 300.0,
+          "x": 280.0,
+          "y": 210.0,
+          "width": 240.0,
+          "height": 180.0
+        }
+      ],
+      "items": [
+        {
+          "domain": "complex",
+          "label": "Retrospective",
+          "x": 144.5,
+          "y": 175.0,
+          "width": 111.0,
+          "height": 26.0,
+          "text_x": 55.5,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "clear",
+          "label": "Runbook",
+          "x": 565.5,
+          "y": 475.0,
+          "width": 69.0,
+          "height": 26.0,
+          "text_x": 34.5,
+          "text_y": 13.0,
+          "overflow": false
+        }
+      ],
+      "transitions": [
+        {
+          "from": "clear",
+          "to": "complex",
+          "label": "Probe",
+          "x1": 600.0,
+          "y1": 450.0,
+          "x2": 200.0,
+          "y2": 150.0,
+          "cpx": 445.0,
+          "cpy": 240.0
+        }
+      ]
+    }
+  }
+}

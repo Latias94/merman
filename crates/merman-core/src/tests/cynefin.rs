@@ -132,23 +132,18 @@ fn parse_cynefin_duplicate_domain_replaces_prior_items_like_upstream_map_set() {
 }
 
 #[test]
-fn parse_cynefin_render_model_stays_unadmitted_until_renderer_exists() {
+fn parse_cynefin_render_model_uses_typed_model() {
     let engine = Engine::new();
-    let err = engine
+    let parsed = engine
         .parse_diagram_for_render_model_sync("cynefin-beta\n  complex\n", ParseOptions::strict())
-        .unwrap_err();
+        .unwrap()
+        .expect("cynefin render model parses");
 
-    let Error::DiagramParse {
-        diagram_type,
-        diagnostic,
-    } = err
-    else {
-        panic!("unexpected cynefin render error: {err}");
+    assert_eq!(parsed.meta.diagram_type, "cynefin");
+    assert_eq!(parsed.model.kind(), "cynefin");
+    assert!(parsed.model.supports_diagram_type("cynefin"));
+    let RenderSemanticModel::Cynefin(model) = parsed.model else {
+        panic!("expected typed cynefin render model");
     };
-    assert_eq!(diagram_type, "cynefin");
-    assert!(
-        diagnostic
-            .message()
-            .contains("missing a typed render parser")
-    );
+    assert_eq!(model.domains[0].name, "complex");
 }

@@ -307,6 +307,25 @@ macro_rules! not_admitted {
     };
 }
 
+macro_rules! parse_only {
+    ($diagram:literal, $fixture_dir:literal, $owner:literal, $reason:literal) => {
+        DiagramAdmissionRecord {
+            diagram: $diagram,
+            admission: AdmissionStatus::ParseOnly,
+            fixtures: FixtureCorpusStatus::Normalized,
+            normalized_fixture_dir: Some($fixture_dir),
+            deferred_fixture_dir: None,
+            semantic: CoverageStatus::Covered,
+            layout: CoverageStatus::NotApplicable,
+            svg: CoverageStatus::Deferred,
+            root_viewport: CoverageStatus::NotApplicable,
+            compare_command: None,
+            owner_doc: $owner,
+            defer_reason: Some($reason),
+        }
+    };
+}
+
 const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     primary!(
         "er",
@@ -501,34 +520,56 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         "compare-venn-svgs",
         "docs/alignment/VENN_BETA_ADMISSION_PLAN.md"
     ),
-    not_admitted!(
+    parse_only!(
         "swimlane",
+        "swimlane",
+        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
         "present in pinned Mermaid 11.16 source; Flowchart parser/editor reuse exists, while layout/render admission is tracked by the 11.16 parity plan"
     ),
-    not_admitted!(
+    parse_only!(
         "railroad",
+        "railroad",
+        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
         "present in pinned Mermaid 11.16 source; railroad-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
-    not_admitted!(
+    parse_only!(
         "railroadEbnf",
+        "railroadEbnf",
+        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
         "present in pinned Mermaid 11.16 source; railroad-ebnf-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
-    not_admitted!(
+    parse_only!(
         "railroadAbnf",
+        "railroadAbnf",
+        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
         "present in pinned Mermaid 11.16 source; railroad-abnf-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
-    not_admitted!(
+    parse_only!(
         "railroadPeg",
+        "railroadPeg",
+        "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
         "present in pinned Mermaid 11.16 source; railroad-peg-beta parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
     ),
     not_admitted!(
         "wardley",
         "large family lane deferred behind smaller source-backed work"
     ),
-    not_admitted!(
-        "cynefin",
-        "present in pinned Mermaid 11.16 source; parser/editor facts exist, while layout/render admission is tracked by the 11.16 parity plan"
-    ),
+    DiagramAdmissionRecord {
+        diagram: "cynefin",
+        admission: AdmissionStatus::CompatibilityOnly,
+        fixtures: FixtureCorpusStatus::Normalized,
+        normalized_fixture_dir: Some("cynefin"),
+        deferred_fixture_dir: None,
+        semantic: CoverageStatus::Covered,
+        layout: CoverageStatus::Covered,
+        svg: CoverageStatus::Deferred,
+        root_viewport: CoverageStatus::NotApplicable,
+        compare_command: None,
+        owner_doc: "docs/alignment/CYNEFIN_MINIMUM.md",
+        defer_reason: Some(
+            "local 11.16 semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
+        ),
+    },
 ];
 
 #[cfg(test)]
@@ -711,10 +752,12 @@ mod tests {
         assert!(!not_admitted.layout_requires_golden());
         assert!(!not_admitted.svg_requires_upstream_baseline());
 
-        let detector_only = record("swimlane");
-        assert_eq!(detector_only.admission, AdmissionStatus::NotAdmitted);
-        assert!(detector_only.requires_defer_reason());
-        assert!(!detector_only.semantic_requires_golden());
+        let parse_only = record("swimlane");
+        assert_eq!(parse_only.admission, AdmissionStatus::ParseOnly);
+        assert!(!parse_only.requires_compare_command());
+        assert!(parse_only.semantic_requires_golden());
+        assert!(!parse_only.layout_requires_golden());
+        assert!(!parse_only.svg_requires_upstream_baseline());
     }
 
     #[test]
@@ -796,21 +839,21 @@ mod tests {
         let swimlane = record("swimlane");
         let swimlane_capability = core_family_capability(core_capabilities, "swimlane")
             .expect("swimlane should exist in core detector/parser facts");
-        assert_eq!(swimlane.admission, AdmissionStatus::NotAdmitted);
+        assert_eq!(swimlane.admission, AdmissionStatus::ParseOnly);
         assert!(swimlane_capability.has_semantic_parser);
         assert!(!swimlane_capability.has_render_parser);
 
         let cynefin = record("cynefin");
         let cynefin_capability = core_family_capability(core_capabilities, "cynefin")
             .expect("cynefin should exist in core detector/parser facts");
-        assert_eq!(cynefin.admission, AdmissionStatus::NotAdmitted);
+        assert_eq!(cynefin.admission, AdmissionStatus::CompatibilityOnly);
         assert!(cynefin_capability.has_semantic_parser);
-        assert!(!cynefin_capability.has_render_parser);
+        assert!(cynefin_capability.has_render_parser);
 
         let railroad = record("railroad");
         let railroad_capability = core_family_capability(core_capabilities, "railroad")
             .expect("railroad should exist in core detector/parser facts");
-        assert_eq!(railroad.admission, AdmissionStatus::NotAdmitted);
+        assert_eq!(railroad.admission, AdmissionStatus::ParseOnly);
         assert!(railroad_capability.has_semantic_parser);
         assert!(!railroad_capability.has_render_parser);
 
@@ -818,7 +861,7 @@ mod tests {
             let record = record(diagram);
             let capability = core_family_capability(core_capabilities, diagram)
                 .unwrap_or_else(|| panic!("{diagram} should exist in core detector/parser facts"));
-            assert_eq!(record.admission, AdmissionStatus::NotAdmitted);
+            assert_eq!(record.admission, AdmissionStatus::ParseOnly);
             assert!(capability.has_semantic_parser);
             assert!(!capability.has_render_parser);
         }

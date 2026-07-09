@@ -1,12 +1,13 @@
 use super::icon_registry::IconRegistry;
 use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
 use crate::model::{
-    ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramV2Layout, ErDiagramLayout,
-    ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartV2Layout, InfoDiagramLayout,
-    IshikawaDiagramLayout, LayoutCluster, LayoutNode, MindmapDiagramLayout, PacketDiagramLayout,
-    PieDiagramLayout, QuadrantChartDiagramLayout, RadarDiagramLayout, RequirementDiagramLayout,
-    SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout,
-    TreeViewDiagramLayout, VennDiagramLayout, XyChartDiagramLayout,
+    ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramV2Layout,
+    CynefinDiagramLayout, ErDiagramLayout, ErrorDiagramLayout, EventModelingDiagramLayout,
+    FlowchartV2Layout, InfoDiagramLayout, IshikawaDiagramLayout, LayoutCluster, LayoutNode,
+    MindmapDiagramLayout, PacketDiagramLayout, PieDiagramLayout, QuadrantChartDiagramLayout,
+    RadarDiagramLayout, RequirementDiagramLayout, SankeyDiagramLayout, SequenceDiagramLayout,
+    StateDiagramV2Layout, TimelineDiagramLayout, TreeViewDiagramLayout, VennDiagramLayout,
+    XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -21,6 +22,7 @@ mod c4;
 mod class;
 mod css;
 mod curve;
+mod cynefin;
 mod emitted_bounds;
 mod er;
 mod error;
@@ -236,6 +238,9 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::FlowchartV2(layout) => {
             render_flowchart_v2_svg(layout, semantic, effective_config, title, measurer, options)
         }
+        LayoutDiagram::CynefinDiagram(layout) => {
+            render_cynefin_diagram_svg(layout, semantic, effective_config, options)
+        }
         LayoutDiagram::StateDiagramV2(layout) => render_state_diagram_v2_svg(
             layout,
             semantic,
@@ -400,6 +405,9 @@ fn render_layout_svg_parts_with_config_raw(
             measurer,
             options,
         ),
+        LayoutDiagram::CynefinDiagram(layout) => {
+            render_cynefin_diagram_svg(layout, semantic, effective_config_value, options)
+        }
         LayoutDiagram::StateDiagramV2(layout) => render_state_diagram_v2_svg(
             layout,
             semantic,
@@ -580,6 +588,14 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 effective_config,
                 title,
                 measurer,
+                options,
+            )
+        }
+        (LayoutDiagram::CynefinDiagram(layout), RenderSemanticModel::Cynefin(model)) => {
+            cynefin::render_cynefin_diagram_svg_model(
+                layout,
+                model,
+                effective_config.as_value(),
                 options,
             )
         }
@@ -884,6 +900,15 @@ pub fn render_pie_diagram_svg(
     options: &SvgRenderOptions,
 ) -> Result<String> {
     pie::render_pie_diagram_svg(layout, semantic, _effective_config, options)
+}
+
+pub fn render_cynefin_diagram_svg(
+    layout: &CynefinDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    cynefin::render_cynefin_diagram_svg(layout, semantic, effective_config, options)
 }
 
 pub fn render_requirement_diagram_svg(

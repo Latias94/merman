@@ -17,6 +17,7 @@ pub mod c4;
 mod chart_palette;
 pub mod class;
 mod config;
+pub mod cynefin;
 mod entities;
 pub mod er;
 pub mod error;
@@ -278,6 +279,13 @@ pub fn layout_parsed_render_layout_only(
                 options.text_measurer.as_ref(),
                 options.viewport_width,
                 options.viewport_height,
+            )?,
+        ))),
+        RenderSemanticModel::Cynefin(model) => Ok(LayoutDiagram::CynefinDiagram(Box::new(
+            cynefin::layout_cynefin_diagram_typed(
+                model,
+                effective_config,
+                options.text_measurer.as_ref(),
             )?,
         ))),
         RenderSemanticModel::Kanban(model) => Ok(LayoutDiagram::KanbanDiagram(Box::new(
@@ -727,6 +735,13 @@ fn layout_json_by_type(
             options.viewport_width,
             options.viewport_height,
         )?))),
+        "cynefin" => Ok(LayoutDiagram::CynefinDiagram(Box::new(
+            cynefin::layout_cynefin_diagram(
+                semantic,
+                effective_config_value,
+                options.text_measurer.as_ref(),
+            )?,
+        ))),
         "journey" => Ok(LayoutDiagram::JourneyDiagram(Box::new(
             journey::layout_journey_diagram(
                 semantic,
@@ -1331,6 +1346,51 @@ Animal <|-- Duck
         let message = err.to_string();
         assert!(message.contains("sequence"));
         assert!(message.contains("flowchart-v2"));
+    }
+
+    #[test]
+    fn render_model_dispatch_renders_cynefin_svg() {
+        let source = r#"cynefin-beta
+  title Team Practices
+  accTitle: Cynefin map
+  accDescr: Practice movement
+  complex
+    "Pair programming"
+  complicated
+    "Architecture review"
+  complex --> complicated : "Pattern emerges"
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let layout_options = LayoutOptions::default();
+        let layout = layout_parsed_render_layout_only(&parsed, &layout_options).unwrap();
+        let svg = crate::svg::render_layout_svg_parts_for_render_model_with_metadata(
+            &layout,
+            &parsed.model,
+            &parsed.meta.effective_config,
+            &parsed.meta.diagram_type,
+            parsed.meta.title.as_deref(),
+            layout_options.text_measurer.as_ref(),
+            &crate::svg::SvgRenderOptions {
+                diagram_id: Some("cynefin-test".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"aria-roledescription="cynefin""#));
+        assert!(svg.contains(r#"<g class="cynefin-backgrounds">"#));
+        assert!(svg.contains(r#"class="cynefinDomain""#));
+        assert!(svg.contains(r#"class="cynefinBoundary""#));
+        assert!(svg.contains(r#"class="cynefinCliff""#));
+        assert!(svg.contains(r#"class="cynefinItem""#));
+        assert!(svg.contains("Pair programming"));
+        assert!(svg.contains(r#"class="cynefinArrowLine""#));
+        assert!(svg.contains("Pattern emerges"));
+        assert!(svg.contains(r#"<title id="chart-title-cynefin-test">Cynefin map</title>"#));
+        assert!(svg.contains(r#"<desc id="chart-desc-cynefin-test">Practice movement</desc>"#));
     }
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]

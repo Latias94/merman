@@ -843,6 +843,11 @@ render_parser!(
     RenderSemanticModel::C4
 );
 render_parser!(
+    render_cynefin,
+    crate::diagrams::cynefin::parse_cynefin_model_for_render,
+    RenderSemanticModel::Cynefin
+);
+render_parser!(
     render_architecture,
     crate::diagrams::architecture::parse_architecture_model_for_render,
     RenderSemanticModel::Architecture
@@ -1016,6 +1021,12 @@ const RENDER_PARSER_FACTS: &[RenderParserFact] = &[
         parser: render_c4,
     },
     RenderParserFact {
+        id: "cynefin",
+        metadata_id: Some("cynefin"),
+        model_kind: "cynefin",
+        parser: render_cynefin,
+    },
+    RenderParserFact {
         id: "architecture",
         metadata_id: Some("architecture"),
         model_kind: "architecture",
@@ -1154,6 +1165,7 @@ const SUPPORTED_DIAGRAM_METADATA_IDS: &[&str] = &[
     "block",
     "c4",
     "class",
+    "cynefin",
     "er",
     "flowchart",
     "gantt",

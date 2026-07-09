@@ -29,6 +29,11 @@ type: Engineering Log
 - Refreshed U4 semantic/layout goldens needed by the core snapshot gate: TreeView 11.16 model/layout
   fields, Architecture `layoutHints`, and Flowchart 11.16 semantic updates including subgraph
   `direction TD`.
+- Promoted U5 new-family parser work to explicit parse-only fixture admission: `swimlane`,
+  `cynefin`, `railroad`, `railroadEbnf`, `railroadAbnf`, and `railroadPeg` now have semantic
+  fixture goldens while layout/SVG admission remains staged.
+- Added the U5 Cynefin compatibility renderer slice: typed render parser, headless layout, SVG
+  renderer, semantic/layout fixture admission, and explicit upstream SVG compare residual.
 
 ## 2026-07-04
 
