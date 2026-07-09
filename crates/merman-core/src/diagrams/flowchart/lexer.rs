@@ -218,8 +218,6 @@ impl<'input> Lexer<'input> {
         let Some(dir) = dir else {
             return Some((start, Tok::DirectionStmt("".to_string()), self.pos));
         };
-        let dir = Self::normalize_direction_token(dir);
-
         while let Some(b) = self.peek() {
             if b == b'\n' || b == b';' {
                 break;

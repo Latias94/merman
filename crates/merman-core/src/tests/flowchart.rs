@@ -1876,7 +1876,7 @@ fn parse_diagram_flowchart_subgraph_title_with_spaces_uses_auto_id() {
 #[test]
 fn parse_diagram_flowchart_subgraph_direction_statement_sets_dir() {
     let engine = Engine::new();
-    let text = "graph LR;subgraph TOP;direction TB;A-->B;end;";
+    let text = "graph LR;subgraph TOP;direction TD;A-->B;end;";
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
         .unwrap();
@@ -1888,7 +1888,7 @@ fn parse_diagram_flowchart_subgraph_direction_statement_sets_dir() {
             "title": "TOP",
             "classes": [],
             "styles": [],
-            "dir": "TB",
+            "dir": "TD",
             "labelType": "text"
         }])
     );
