@@ -496,6 +496,7 @@
         "rhsGroup": null,
         "title": "cache"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

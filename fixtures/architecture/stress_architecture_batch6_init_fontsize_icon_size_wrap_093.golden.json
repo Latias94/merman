@@ -195,6 +195,7 @@
         "rhsGroup": null,
         "title": "backup daily snapshot at 0200"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

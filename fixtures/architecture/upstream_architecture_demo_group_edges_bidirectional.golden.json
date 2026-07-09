@@ -363,6 +363,7 @@
         "rhsGroup": true,
         "title": null
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

@@ -320,6 +320,7 @@
         "rhsGroup": null,
         "title": "back"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

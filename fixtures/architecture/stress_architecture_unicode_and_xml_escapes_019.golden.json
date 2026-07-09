@@ -319,6 +319,7 @@
         "rhsGroup": null,
         "title": "notify"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

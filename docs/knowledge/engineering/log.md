@@ -26,6 +26,9 @@ type: Engineering Log
   icon config priority, and basic icon/description/highlight SVG DOM are covered locally.
 - Recorded Mermaid issue #7954 as a pinned 11.16 upstream-known Flowchart layout regression for
   golden refresh triage; do not hide it with local comparator normalization or layout magic numbers.
+- Refreshed U4 semantic/layout goldens needed by the core snapshot gate: TreeView 11.16 model/layout
+  fields, Architecture `layoutHints`, and Flowchart 11.16 semantic updates including subgraph
+  `direction TD`.
 
 ## 2026-07-04
 

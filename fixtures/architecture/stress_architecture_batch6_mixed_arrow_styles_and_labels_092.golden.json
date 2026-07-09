@@ -367,6 +367,7 @@
         "rhsGroup": null,
         "title": "labeled"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

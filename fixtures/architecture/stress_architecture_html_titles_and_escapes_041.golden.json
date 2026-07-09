@@ -244,6 +244,7 @@
         "rhsGroup": null,
         "title": "PUSH"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

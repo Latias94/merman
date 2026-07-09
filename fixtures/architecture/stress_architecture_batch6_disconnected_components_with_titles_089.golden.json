@@ -215,6 +215,7 @@
         "rhsGroup": null,
         "title": "write"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

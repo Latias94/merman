@@ -312,6 +312,7 @@
         "rhsGroup": null,
         "title": "diag"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

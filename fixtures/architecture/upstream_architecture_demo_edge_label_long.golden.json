@@ -552,6 +552,7 @@
         "rhsGroup": null,
         "title": "Label that is Long"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

@@ -12,8 +12,8 @@
       ]
     },
     "tooltips": {
-      "B": "click test",
-      "A": "link test"
+      "A": "link test",
+      "B": "click test"
     },
     "edgeDefaults": {
       "style": [],

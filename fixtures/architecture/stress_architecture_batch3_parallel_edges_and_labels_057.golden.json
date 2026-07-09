@@ -257,6 +257,7 @@
         "rhsGroup": null,
         "title": "caches"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

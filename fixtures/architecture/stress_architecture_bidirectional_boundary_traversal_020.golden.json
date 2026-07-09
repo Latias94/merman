@@ -250,6 +250,7 @@
         "rhsGroup": true,
         "title": "y"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

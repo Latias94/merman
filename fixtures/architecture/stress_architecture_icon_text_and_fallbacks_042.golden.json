@@ -270,6 +270,7 @@
         "rhsGroup": null,
         "title": "fallback"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

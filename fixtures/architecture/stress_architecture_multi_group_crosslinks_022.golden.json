@@ -325,6 +325,7 @@
         "rhsGroup": true,
         "title": "x link"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

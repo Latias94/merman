@@ -325,6 +325,7 @@
         "rhsGroup": null,
         "title": "exit"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

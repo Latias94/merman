@@ -36,6 +36,7 @@
       }
     ],
     "junctions": [],
-    "edges": []
+    "edges": [],
+    "layoutHints": []
   }
 }
