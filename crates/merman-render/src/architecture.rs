@@ -13,7 +13,9 @@ use crate::model::{
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use indexmap::IndexMap;
-use merman_core::diagrams::architecture::ArchitectureDiagramRenderModel;
+use merman_core::diagrams::architecture::{
+    ArchitectureDiagramRenderModel, ArchitectureLayoutDirection,
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Deserialize;
 use serde_json::Value;
@@ -22,6 +24,7 @@ fn architecture_relative_placement_constraints<'a>(
     spatial_maps: &[IndexMap<&'a str, (i32, i32)>],
     node_index_by_id: &FxHashMap<&'a str, usize>,
     gap: f64,
+    declared_pairs: &FxHashSet<(usize, usize)>,
 ) -> Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> {
     let mut relative: Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> = Vec::new();
 
@@ -65,6 +68,11 @@ fn architecture_relative_placement_constraints<'a>(
                 let Some(&new_idx) = node_index_by_id.get(new_id) else {
                     continue;
                 };
+                if declared_pairs.contains(&(curr_idx, new_idx))
+                    || declared_pairs.contains(&(new_idx, curr_idx))
+                {
+                    continue;
+                }
 
                 // `ArchitectureDirectionName[dir] = newId`
                 // `ArchitectureDirectionName[getOppositeArchitectureDirection(dir)] = currId`
@@ -155,6 +163,15 @@ struct ArchitectureModel {
     groups: Vec<ArchitectureGroupModel>,
     #[serde(default)]
     edges: Vec<ArchitectureEdgeModel>,
+    #[serde(default, rename = "layoutHints")]
+    layout_hints: Vec<ArchitectureLayoutHintModel>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ArchitectureLayoutHintModel {
+    direction: String,
+    #[serde(default)]
+    members: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -412,10 +429,17 @@ struct ArchitectureEdgeView<'a> {
 }
 
 #[derive(Debug, Clone)]
+struct ArchitectureLayoutHintView<'a> {
+    direction: ArchitectureLayoutDirection,
+    members: Vec<&'a str>,
+}
+
+#[derive(Debug, Clone)]
 struct ArchitectureModelView<'a> {
     nodes: Vec<ArchitectureNodeView<'a>>,
     groups: Vec<ArchitectureGroupView<'a>>,
     edges: Vec<ArchitectureEdgeView<'a>>,
+    layout_hints: Vec<ArchitectureLayoutHintView<'a>>,
 }
 
 impl<'a> ArchitectureModelView<'a> {
@@ -456,10 +480,27 @@ impl<'a> ArchitectureModelView<'a> {
             })
             .collect();
 
+        let layout_hints = model
+            .layout_hints
+            .iter()
+            .filter_map(|hint| {
+                let direction = match hint.direction.as_str() {
+                    "row" => ArchitectureLayoutDirection::Row,
+                    "column" => ArchitectureLayoutDirection::Column,
+                    _ => return None,
+                };
+                Some(ArchitectureLayoutHintView {
+                    direction,
+                    members: hint.members.iter().map(String::as_str).collect(),
+                })
+            })
+            .collect();
+
         Self {
             nodes,
             groups,
             edges,
+            layout_hints,
         }
     }
 
@@ -503,10 +544,20 @@ impl<'a> ArchitectureModelView<'a> {
             })
             .collect();
 
+        let layout_hints = model
+            .layout_hints
+            .iter()
+            .map(|hint| ArchitectureLayoutHintView {
+                direction: hint.direction,
+                members: hint.members.iter().map(String::as_str).collect(),
+            })
+            .collect();
+
         Self {
             nodes,
             groups,
             edges,
+            layout_hints,
         }
     }
 }
@@ -838,14 +889,83 @@ fn build_architecture_fcose_input_plan<'a>(
         }
     }
 
+    let mut declared_members: FxHashSet<usize> = FxHashSet::default();
+    let mut declared_pairs: FxHashSet<(usize, usize)> = FxHashSet::default();
+    let mut declared_relative: Vec<manatee::algo::fcose::IndexedRelativePlacementConstraint> =
+        Vec::new();
+    let gap = ideal_edge_length_multiplier * icon_size;
+    let mut layout_hint_indices: Vec<(ArchitectureLayoutDirection, Vec<usize>)> = Vec::new();
+
+    for hint in &model.layout_hints {
+        if hint.members.len() < 2 {
+            continue;
+        }
+        let mut members = Vec::with_capacity(hint.members.len());
+        for member in &hint.members {
+            let Some(&idx) = node_index_by_id.get(*member) else {
+                return Err(Error::InvalidModel {
+                    message: format!("architecture layout hint member not found: {member}"),
+                });
+            };
+            declared_members.insert(idx);
+            members.push(idx);
+        }
+        for pair in members.windows(2) {
+            let a = pair[0];
+            let b = pair[1];
+            declared_pairs.insert((a, b));
+            declared_pairs.insert((b, a));
+            match hint.direction {
+                ArchitectureLayoutDirection::Row => {
+                    declared_relative.push(
+                        manatee::algo::fcose::IndexedRelativePlacementConstraint {
+                            left: Some(a),
+                            right: Some(b),
+                            top: None,
+                            bottom: None,
+                            gap,
+                        },
+                    );
+                }
+                ArchitectureLayoutDirection::Column => {
+                    declared_relative.push(
+                        manatee::algo::fcose::IndexedRelativePlacementConstraint {
+                            left: None,
+                            right: None,
+                            top: Some(a),
+                            bottom: Some(b),
+                            gap,
+                        },
+                    );
+                }
+            }
+        }
+        layout_hint_indices.push((hint.direction, members));
+    }
+
+    if !declared_members.is_empty() {
+        horizontal_all.retain(|group| !group.iter().any(|idx| declared_members.contains(idx)));
+        vertical_all.retain(|group| !group.iter().any(|idx| declared_members.contains(idx)));
+    }
+    for (direction, members) in &layout_hint_indices {
+        match direction {
+            ArchitectureLayoutDirection::Row => horizontal_all.push(members.clone()),
+            ArchitectureLayoutDirection::Column => vertical_all.push(members.clone()),
+        }
+    }
+
     // RelativePlacementConstraint (gap between borders).
     //
     // Upstream Mermaid derives these by BFS over immediate grid neighbors, starting from the
     // spatial origin `(0, 0)`. We mirror that behavior so constraints match Cytoscape's FCoSE
     // input even when the underlying spatial map discovery is approximate.
-    let gap = ideal_edge_length_multiplier * icon_size;
-    let relative =
-        architecture_relative_placement_constraints(&spatial_maps, &node_index_by_id, gap);
+    let mut relative = declared_relative;
+    relative.extend(architecture_relative_placement_constraints(
+        &spatial_maps,
+        &node_index_by_id,
+        gap,
+        &declared_pairs,
+    ));
 
     let mut edges: Vec<manatee::algo::fcose::IndexedEdge> = Vec::new();
     let mut default_edge_length_sum = 0.0f64;
@@ -1714,6 +1834,7 @@ mod tests {
                 rhs_dir: Some('L'),
                 title: Some("reads"),
             }],
+            layout_hints: Vec::new(),
         };
         let layout_nodes = vec![
             layout_node("api", 80.0, 80.0),
@@ -1745,6 +1866,86 @@ mod tests {
     }
 
     #[test]
+    fn architecture_fcose_input_plan_applies_layout_hints() {
+        let model = super::ArchitectureModelView {
+            nodes: vec![
+                super::ArchitectureNodeView {
+                    id: "db1",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("DB1"),
+                    in_group: None,
+                },
+                super::ArchitectureNodeView {
+                    id: "db2",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("DB2"),
+                    in_group: None,
+                },
+                super::ArchitectureNodeView {
+                    id: "db3",
+                    node_type: super::ArchitectureNodeType::Service,
+                    title: Some("DB3"),
+                    in_group: None,
+                },
+                super::ArchitectureNodeView {
+                    id: "join",
+                    node_type: super::ArchitectureNodeType::Junction,
+                    title: None,
+                    in_group: None,
+                },
+            ],
+            groups: Vec::new(),
+            edges: Vec::new(),
+            layout_hints: vec![
+                super::ArchitectureLayoutHintView {
+                    direction:
+                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Row,
+                    members: vec!["db1", "db2", "db3"],
+                },
+                super::ArchitectureLayoutHintView {
+                    direction:
+                        merman_core::diagrams::architecture::ArchitectureLayoutDirection::Column,
+                    members: vec!["db2", "join"],
+                },
+            ],
+        };
+        let layout_nodes = vec![
+            layout_node("db1", 80.0, 80.0),
+            layout_node("db2", 80.0, 80.0),
+            layout_node("db3", 80.0, 80.0),
+            layout_node("join", 40.0, 40.0),
+        ];
+        let node_bounds_extras = rustc_hash::FxHashMap::default();
+
+        let plan = build_test_plan(&model, &layout_nodes, &node_bounds_extras);
+        let alignment = plan
+            .options
+            .alignment_constraint
+            .as_ref()
+            .expect("alignment constraint");
+
+        assert!(
+            alignment.horizontal.iter().any(|group| group == &[0, 1, 2]),
+            "align row should become a horizontal alignment: {:?}",
+            alignment.horizontal
+        );
+        assert!(
+            alignment.vertical.iter().any(|group| group == &[1, 3]),
+            "align column should become a vertical alignment: {:?}",
+            alignment.vertical
+        );
+        assert!(plan.options.relative_placement_constraint.iter().any(|c| {
+            c.left == Some(0) && c.right == Some(1) && c.top.is_none() && c.bottom.is_none()
+        }));
+        assert!(plan.options.relative_placement_constraint.iter().any(|c| {
+            c.left == Some(1) && c.right == Some(2) && c.top.is_none() && c.bottom.is_none()
+        }));
+        assert!(plan.options.relative_placement_constraint.iter().any(|c| {
+            c.top == Some(1) && c.bottom == Some(3) && c.left.is_none() && c.right.is_none()
+        }));
+    }
+
+    #[test]
     fn architecture_fcose_input_plan_preserves_nested_compound_parents() {
         let model = super::ArchitectureModelView {
             nodes: vec![
@@ -1772,6 +1973,7 @@ mod tests {
                 },
             ],
             edges: Vec::new(),
+            layout_hints: Vec::new(),
         };
         let layout_nodes = vec![
             layout_node("api", 80.0, 80.0),
@@ -1800,6 +2002,7 @@ mod tests {
             }],
             groups: Vec::new(),
             edges: Vec::new(),
+            layout_hints: Vec::new(),
         };
         let layout_nodes = vec![layout_node("api", 96.0, 72.0)];
         let mut node_bounds_extras = rustc_hash::FxHashMap::default();
@@ -1858,6 +2061,7 @@ mod tests {
                     title: None,
                 },
             ],
+            layout_hints: Vec::new(),
         };
         let layout_nodes = vec![
             layout_node("api", 80.0, 80.0),
@@ -1894,6 +2098,7 @@ mod tests {
                 in_group: None,
             }],
             edges: Vec::new(),
+            layout_hints: Vec::new(),
         };
         let mut layout_nodes = vec![
             layout_node("api", 80.0, 80.0),
@@ -1975,6 +2180,7 @@ mod tests {
                 in_group: None,
             }],
             edges: Vec::new(),
+            layout_hints: Vec::new(),
         };
         let measurer = crate::text::DeterministicTextMeasurer::default();
 
@@ -2033,6 +2239,7 @@ mod tests {
             &[spatial_map],
             &node_index_by_id,
             120.0,
+            &rustc_hash::FxHashSet::default(),
         );
 
         assert_eq!(constraints.len(), 9);

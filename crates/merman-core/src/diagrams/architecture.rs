@@ -36,6 +36,19 @@ struct ArchitectureEdge {
     title: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ArchitectureLayoutDirection {
+    Row,
+    Column,
+}
+
+#[derive(Debug, Clone)]
+struct ArchitectureLayoutHint {
+    direction: ArchitectureLayoutDirection,
+    members: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArchitectureNodeType {
     Service,
@@ -79,6 +92,7 @@ struct ArchitectureDb {
     groups: HashMap<String, ArchitectureGroup>,
     group_order: Vec<String>,
     edges: Vec<ArchitectureEdge>,
+    layout_hints: Vec<ArchitectureLayoutHint>,
     registered_ids: HashMap<String, RegisteredIdType>,
 }
 
@@ -157,6 +171,7 @@ impl ArchitectureDb {
             nodes,
             groups,
             edges,
+            layout_hints: self.layout_hints_json_model(),
         }
     }
 
@@ -394,6 +409,56 @@ impl ArchitectureDb {
         Ok(())
     }
 
+    fn add_layout_hint(
+        &mut self,
+        direction: ArchitectureLayoutDirection,
+        members: Vec<ArchitectureIdentifier>,
+    ) -> Result<()> {
+        if members.len() < 2 {
+            return Err(Error::diagram_parse_fallback(
+                "architecture".to_string(),
+                format!(
+                    "An align directive requires at least two members; got {}",
+                    members.len()
+                ),
+            ));
+        }
+
+        let mut seen = std::collections::HashSet::new();
+        let mut member_texts = Vec::with_capacity(members.len());
+        for member in members {
+            if self.registered_ids.get(&member.text).copied() != Some(RegisteredIdType::Node) {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!(
+                        "align {} references [{}], which is not a service or junction",
+                        direction.as_str(),
+                        member.text
+                    ),
+                    member.span,
+                ));
+            }
+            if !seen.insert(member.text.clone()) {
+                return Err(Error::diagram_parse_exact(
+                    "architecture",
+                    format!(
+                        "align {} lists [{}] more than once",
+                        direction.as_str(),
+                        member.text
+                    ),
+                    member.span,
+                ));
+            }
+            member_texts.push(member.text);
+        }
+
+        self.layout_hints.push(ArchitectureLayoutHint {
+            direction,
+            members: member_texts,
+        });
+        Ok(())
+    }
+
     fn edges_json(&self) -> Vec<Value> {
         self.edges
             .iter()
@@ -483,10 +548,49 @@ impl ArchitectureDb {
             .filter(|n| n.get("type").and_then(|v| v.as_str()) == Some("junction"))
             .collect()
     }
+
+    fn layout_hints_json(&self) -> Vec<Value> {
+        self.layout_hints
+            .iter()
+            .map(|hint| {
+                json!({
+                    "direction": hint.direction.as_str(),
+                    "members": hint.members,
+                })
+            })
+            .collect()
+    }
+
+    fn layout_hints_json_model(&self) -> Vec<ArchitectureRenderLayoutHint> {
+        self.layout_hints
+            .iter()
+            .map(|hint| ArchitectureRenderLayoutHint {
+                direction: hint.direction,
+                members: hint.members.clone(),
+            })
+            .collect()
+    }
 }
 
 fn is_dir(c: char) -> bool {
     matches!(c, 'L' | 'R' | 'T' | 'B')
+}
+
+impl ArchitectureLayoutDirection {
+    fn as_str(self) -> &'static str {
+        match self {
+            ArchitectureLayoutDirection::Row => "row",
+            ArchitectureLayoutDirection::Column => "column",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "row" => Some(Self::Row),
+            "column" => Some(Self::Column),
+            _ => None,
+        }
+    }
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -1054,6 +1158,36 @@ fn parse_architecture_stmt_facts(
     }
 
     let mut parser = SpanParser::new(stmt, stmt_start);
+    if parser.consume_keyword("align") {
+        let Some(direction) = parser.parse_id() else {
+            return Err(());
+        };
+        if ArchitectureLayoutDirection::parse(&direction.text).is_none() {
+            return Err(());
+        }
+        push_architecture_payload(
+            facts,
+            direction,
+            "architecture alignment direction",
+            EditorSemanticKind::String,
+        );
+        let mut count = 0usize;
+        while !parser.is_eof() {
+            let Some(member) = parser.parse_id() else {
+                return Err(());
+            };
+            push_architecture_entity(
+                facts,
+                member,
+                "architecture alignment member",
+                EditorSemanticKind::Variable,
+            );
+            count += 1;
+        }
+        return (count >= 1).then_some(()).ok_or(());
+    }
+
+    let mut parser = SpanParser::new(stmt, stmt_start);
     let Some(lhs) = parser.parse_id() else {
         return Err(());
     };
@@ -1478,6 +1612,7 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Re
     if starts_with_kw(rest, "group")
         || starts_with_kw(rest, "service")
         || starts_with_kw(rest, "junction")
+        || starts_with_kw(rest, "align")
         || starts_with_kw(rest, "title")
         || starts_with_kw(rest, "accTitle")
         || starts_with_kw(rest, "accDescr")
@@ -1598,6 +1733,49 @@ fn parse_edge_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Re
     Ok(true)
 }
 
+fn parse_align_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
+    if !starts_with_kw(line, "align") {
+        return Ok(false);
+    }
+    let t = line.trim_start();
+    let mut rest = t["align".len()..].trim_start();
+    let Some((direction_text, tail)) = take_id_prefix(rest) else {
+        return Err(architecture_insertion_at_suffix(
+            "invalid align direction",
+            line,
+            line_start,
+            rest,
+        ));
+    };
+    let Some(direction) = ArchitectureLayoutDirection::parse(direction_text) else {
+        return Err(architecture_exact_token(
+            "invalid align direction",
+            line,
+            line_start,
+            rest,
+            direction_text.len(),
+        ));
+    };
+    rest = tail.trim_start();
+
+    let mut members = Vec::new();
+    while !rest.trim().is_empty() {
+        let Some((member, tail)) = take_id_prefix(rest) else {
+            return Err(architecture_insertion_at_suffix(
+                "invalid align member id",
+                line,
+                line_start,
+                rest,
+            ));
+        };
+        members.push(architecture_id_from_suffix(line, line_start, member, rest));
+        rest = tail.trim_start();
+    }
+
+    db.add_layout_hint(direction, members)?;
+    Ok(true)
+}
+
 pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut db = ArchitectureDb::default();
     db.clear();
@@ -1665,6 +1843,9 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
             if parse_junction_stmt(&mut db, trimmed, trimmed_start)? {
                 return Ok(());
             }
+            if parse_align_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
             if parse_edge_stmt(&mut db, trimmed, trimmed_start)? {
                 return Ok(());
             }
@@ -1695,6 +1876,7 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let services = db.services_json();
     let junctions = db.junctions_json();
     let edges = db.edges_json();
+    let layout_hints = db.layout_hints_json();
 
     let mut out = serde_json::Map::with_capacity(10);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
@@ -1727,6 +1909,7 @@ pub fn parse_architecture(code: &str, meta: &ParseMetadata) -> Result<Value> {
     out.insert("services".to_string(), Value::Array(services));
     out.insert("junctions".to_string(), Value::Array(junctions));
     out.insert("edges".to_string(), Value::Array(edges));
+    out.insert("layoutHints".to_string(), Value::Array(layout_hints));
     out.insert("config".to_string(), config);
     Ok(Value::Object(out))
 }
@@ -1745,6 +1928,8 @@ pub struct ArchitectureDiagramRenderModel {
     pub groups: Vec<ArchitectureRenderGroup>,
     #[serde(default)]
     pub edges: Vec<ArchitectureRenderEdge>,
+    #[serde(default, rename = "layoutHints")]
+    pub layout_hints: Vec<ArchitectureRenderLayoutHint>,
 }
 
 impl ArchitectureDiagramRenderModel {
@@ -1816,6 +2001,14 @@ pub struct ArchitectureRenderEdge {
     pub title: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchitectureRenderLayoutHint {
+    pub direction: ArchitectureLayoutDirection,
+    #[serde(default)]
+    pub members: Vec<String>,
+}
+
 pub fn parse_architecture_model_for_render(
     code: &str,
     meta: &ParseMetadata,
@@ -1884,6 +2077,9 @@ pub fn parse_architecture_model_for_render(
                 return Ok(());
             }
             if parse_junction_stmt(&mut db, trimmed, trimmed_start)? {
+                return Ok(());
+            }
+            if parse_align_stmt(&mut db, trimmed, trimmed_start)? {
                 return Ok(());
             }
             if parse_edge_stmt(&mut db, trimmed, trimmed_start)? {
@@ -2045,6 +2241,73 @@ mod tests {
         assert_eq!(edges[0]["title"].as_str().unwrap(), "Label");
         assert_eq!(edges[0]["lhsDir"].as_str().unwrap(), "L");
         assert_eq!(edges[0]["rhsDir"].as_str().unwrap(), "R");
+    }
+
+    #[test]
+    fn architecture_align_layout_hints_are_parsed() {
+        let model = parse(
+            "architecture-beta\n  group api(cloud)[API]\n  service db1(database)[DB1] in api\n  service db2(database)[DB2] in api\n  service db3(database)[DB3] in api\n  junction join\n  align row db1 db2 db3\n  align column db2 join\n",
+        );
+        assert_eq!(
+            model["layoutHints"],
+            serde_json::json!([
+                {"direction": "row", "members": ["db1", "db2", "db3"]},
+                {"direction": "column", "members": ["db2", "join"]}
+            ])
+        );
+    }
+
+    #[test]
+    fn architecture_align_editor_facts_preserve_spans() {
+        let text = "architecture-beta\n  service rowspan(server)[Rowspan]\n  service columnar(server)[Columnar]\n  align row rowspan columnar\n";
+        let facts = parse_architecture_editor_facts(text, &test_meta());
+
+        let row_start = text.find("align row").unwrap() + "align ".len();
+        assert_eq!(
+            payload_selection(&facts, "architecture alignment direction", "row"),
+            SourceSpan::new(row_start, row_start + "row".len())
+        );
+
+        for member in ["rowspan", "columnar"] {
+            let member_start = text.rfind(member).unwrap();
+            assert_eq!(
+                facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| {
+                        symbol.detail.as_deref() == Some("architecture alignment member")
+                            && symbol.name == member
+                    })
+                    .unwrap_or_else(|| panic!("missing alignment member symbol {member}"))
+                    .selection,
+                SourceSpan::new(member_start, member_start + member.len())
+            );
+        }
+    }
+
+    #[test]
+    fn architecture_align_rejects_unknown_member_with_exact_span() {
+        let text = "architecture-beta\n  service a(server)[A]\n  service b(server)[B]\n  align row a b ghost\n";
+        let diagnostic = parse_err(text);
+        let offset = text.find("ghost").unwrap();
+
+        assert!(diagnostic.message().contains("ghost"));
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(offset, offset + "ghost".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn architecture_align_rejects_duplicate_member_with_exact_span() {
+        let text = "architecture-beta\n  service a(server)[A]\n  align row a a\n";
+        let diagnostic = parse_err(text);
+        let offset = text.rfind("a").unwrap();
+
+        assert!(diagnostic.message().contains("more than once"));
+        assert_eq!(diagnostic.span(), Some(SourceSpan::new(offset, offset + 1)));
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
     }
 
     #[test]
