@@ -150,14 +150,21 @@
     "titleTopMargin": 25,
     "useMaxWidth": true
   },
+  "cynefin": {
+    "boundaryAmplitude": 8,
+    "height": 600,
+    "padding": 40,
+    "seed": 0,
+    "showDomainDescriptions": true,
+    "useMaxWidth": true,
+    "width": 800
+  },
   "darkMode": false,
   "deterministicIds": false,
   "elk": {
     "considerModelOrder": "NODES_AND_EDGES",
     "forceNodeModelOrder": false,
-    "keepEntryNodeOnTop": false,
     "mergeEdges": false,
-    "nodePlacementAlignment": "NONE",
     "nodePlacementStrategy": "BRANDES_KOEPF"
   },
   "er": {
@@ -351,6 +358,33 @@
     "useMaxWidth": true,
     "width": 600
   },
+  "railroad": {
+    "arcRadius": 10,
+    "commentFill": "#E8E8E8",
+    "commentStroke": "#888888",
+    "commentTextColor": "#666666",
+    "compactMode": false,
+    "fontFamily": "monospace",
+    "fontSize": 14,
+    "horizontalSeparation": 10,
+    "lineColor": "#000000",
+    "markerFill": "#000000",
+    "markerRadius": 5,
+    "nonTerminalFill": "#FFFFFF",
+    "nonTerminalStroke": "#000000",
+    "nonTerminalTextColor": "#000000",
+    "padding": 10,
+    "ruleNameColor": "#000066",
+    "showMarkers": true,
+    "specialFill": "#F0E0FF",
+    "specialStroke": "#8800CC",
+    "strokeWidth": 2,
+    "terminalFill": "#FFFFC0",
+    "terminalStroke": "#000000",
+    "terminalTextColor": "#000000",
+    "useMaxWidth": true,
+    "verticalSeparation": 8
+  },
   "requirement": {
     "fontSize": 14,
     "line_height": 20,
@@ -446,6 +480,13 @@
     "useMaxWidth": true
   },
   "suppressErrorRendering": false,
+  "swimlane": {
+    "automaticLaneOrdering": false,
+    "ignoreCrossLaneEdges": true,
+    "lineHops": "arc",
+    "optimizeRanksByCrossings": true,
+    "useMaxWidth": true
+  },
   "theme": "default",
   "timeline": {
     "activationWidth": 10,
@@ -489,10 +530,14 @@
     "width": 150
   },
   "treeView": {
+    "defaultIconPack": "",
+    "extensionIcons": {},
+    "filenameIcons": {},
     "lineThickness": 1,
     "paddingX": 5,
     "paddingY": 5,
     "rowIndent": 10,
+    "showIcons": false,
     "useMaxWidth": true
   },
   "venn": {

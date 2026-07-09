@@ -531,7 +531,7 @@ graph TD;A-->B;
 
 #[test]
 #[cfg(feature = "full")]
-fn parse_architecture_exposes_11_15_fcose_config_defaults_and_overrides() {
+fn parse_architecture_exposes_11_16_fcose_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata(
         "architecture-beta\n  service a(server)[A]\n",
@@ -568,7 +568,7 @@ architecture-beta
 }
 
 #[test]
-fn parse_metadata_exposes_admitted_11_15_family_config_defaults() {
+fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
     let engine = Engine::new();
     let meta = block_on(engine.parse_metadata("flowchart TD\nA-->B", ParseOptions::default()))
         .unwrap()
@@ -595,12 +595,26 @@ fn parse_metadata_exposes_admitted_11_15_family_config_defaults() {
     assert_eq!(venn["padding"], json!(8));
     assert_eq!(venn["useDebugLayout"], json!(false));
 
-    for unsupported_key in ["wardley-beta", "cynefin", "railroad"] {
-        assert!(
-            config.get(unsupported_key).is_none(),
-            "{unsupported_key} should stay outside generated defaults until admitted"
-        );
-    }
+    let cynefin = &config["cynefin"];
+    assert_eq!(cynefin["width"], json!(800));
+    assert_eq!(cynefin["height"], json!(600));
+    assert_eq!(cynefin["padding"], json!(40));
+    assert_eq!(cynefin["showDomainDescriptions"], json!(true));
+
+    let railroad = &config["railroad"];
+    assert_eq!(railroad["fontFamily"], json!("monospace"));
+    assert_eq!(railroad["fontSize"], json!(14));
+    assert_eq!(railroad["showMarkers"], json!(true));
+
+    let swimlane = &config["swimlane"];
+    assert_eq!(swimlane["lineHops"], json!("arc"));
+    assert_eq!(swimlane["ignoreCrossLaneEdges"], json!(true));
+    assert_eq!(swimlane["optimizeRanksByCrossings"], json!(true));
+
+    assert!(
+        config.get("wardley-beta").is_none(),
+        "wardley-beta should stay outside generated defaults until admitted"
+    );
 }
 
 #[test]
@@ -2289,7 +2303,7 @@ Target,Done,2.5
 }
 
 #[test]
-fn parse_sankey_exposes_11_15_config_defaults_and_overrides() {
+fn parse_sankey_exposes_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata("sankey\nA,B,1", ParseOptions::default()))
         .unwrap()

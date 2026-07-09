@@ -17,7 +17,7 @@ pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
     "redux-dark-color",
 ];
 
-// Generated from `repo-ref/mermaid/packages/mermaid/src/themes` for Mermaid 11.15.0.
+// Generated from `repo-ref/mermaid/packages/mermaid/src/themes` for Mermaid 11.16.0.
 static UPSTREAM_THEME_VARIABLES: OnceLock<Value> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy)]
@@ -320,7 +320,7 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
 fn upstream_theme_variables() -> &'static Map<String, Value> {
     UPSTREAM_THEME_VARIABLES
         .get_or_init(|| {
-            serde_json::from_str(include_str!("generated/theme_variables_11_15_0.json"))
+            serde_json::from_str(include_str!("generated/theme_variables_11_16_0.json"))
                 .expect("generated Mermaid theme variable snapshot JSON is valid")
         })
         .as_object()
@@ -2420,7 +2420,7 @@ mod tests {
     }
 
     #[test]
-    fn mermaid_11_15_extended_theme_names_use_their_snapshots() {
+    fn mermaid_11_16_extended_theme_names_use_their_snapshots() {
         let cases = [
             ("neo", "#cccccc", "#000000"),
             ("neo-dark", "#1f2020", "#ccc"),
