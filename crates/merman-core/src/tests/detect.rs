@@ -314,6 +314,38 @@ fn detector_registry_strips_deep_frontmatter_with_small_stack() {
 }
 
 #[test]
+fn detector_registry_requires_matching_frontmatter_indentation() {
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+
+    let mut config = MermaidConfig::empty_object();
+    let detected = registry
+        .detect_type(
+            "   ---\n   title: Flow\n   ---\n   sequenceDiagram\n   Alice->Bob: Hi\n",
+            &mut config,
+        )
+        .expect("matching indented frontmatter should be stripped before detection");
+    assert_eq!(detected, "sequence");
+
+    let mut config = MermaidConfig::empty_object();
+    let detected = registry
+        .detect_type(
+            "   ---\ntitle: Flow\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
+            &mut config,
+        )
+        .expect("mismatched frontmatter should remain visible to the pseudo detector");
+    assert_eq!(detected, "---");
+
+    let mut config = MermaidConfig::empty_object();
+    let detected = registry
+        .detect_type(
+            "---\ntitle: Flow\n   ---\nsequenceDiagram\nAlice->Bob: Hi\n",
+            &mut config,
+        )
+        .expect("indented closing delimiter must not close column-zero frontmatter");
+    assert_eq!(detected, "---");
+}
+
+#[test]
 fn auto_detect_common_headers_with_deep_config_small_stack() {
     const DEPTH: usize = 1_024;
     let mut value = Value::String("#778899".to_string());

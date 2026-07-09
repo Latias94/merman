@@ -8,7 +8,9 @@ status: active
 - Active Mermaid parity focus: the repository is pinned to Mermaid 11.16.0, new 11.16 families are
   detector-visible, and `swimlane`, `cynefin`, plus all four railroad variants now have
   source-backed semantic parsing/editor facts while render admission remains deferred until typed
-  layout/render paths are ported.
+  layout/render paths are ported. Shared frontmatter/config parsing now follows the 11.16
+  same-indent delimiter rule and accepts 11.16 diagram namespaces in the local top-level
+  frontmatter compatibility layer.
 - Stable focus: editor-language integration hardening spans SVG safety, platform binding lifecycle
   contracts, editor snapshot memory use, and release-gate coverage.
 - Stable decisions: SVG text returned to browser-like surfaces must be validated before DOM

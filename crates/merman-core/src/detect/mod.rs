@@ -144,31 +144,9 @@ impl DetectorRegistry {
 }
 
 fn remove_frontmatter(text: &str) -> Cow<'_, str> {
-    let leading_len = text.len() - text.trim_start().len();
-    let trimmed = &text[leading_len..];
-    let Some(after_marker) = trimmed.strip_prefix("---") else {
-        return Cow::Borrowed(text);
-    };
-    let Some(open_line_end) = after_marker.find('\n') else {
-        return Cow::Borrowed(text);
-    };
-    if !after_marker[..open_line_end].trim().is_empty() {
-        return Cow::Borrowed(text);
-    }
-
-    let body_start = leading_len + 3 + open_line_end + 1;
-    let rest = &text[body_start..];
-    let mut offset = 0usize;
-
-    for line in rest.split_inclusive('\n') {
-        let without_newline = line.trim_end_matches(['\r', '\n']);
-        if without_newline.trim() == "---" {
-            return Cow::Borrowed(&rest[offset + line.len()..]);
-        }
-        offset += line.len();
-    }
-
-    Cow::Borrowed(text)
+    crate::preprocess::split_frontmatter_block(text)
+        .map(|block| Cow::Borrowed(block.stripped))
+        .unwrap_or(Cow::Borrowed(text))
 }
 
 fn remove_directives(text: &str) -> Cow<'_, str> {

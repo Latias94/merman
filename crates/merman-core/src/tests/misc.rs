@@ -232,6 +232,18 @@ gantt:
   useWidth: 400
   topAxis: true
   numberSectionStyles: 2
+swimlane:
+  ignoreCrossLaneEdges: false
+cynefin:
+  width: 900
+railroad:
+  showMarkers: false
+treeView:
+  showIcons: false
+eventmodeling:
+  rowHeight: 36
+treemap:
+  padding: 12
 unknownDiagram:
   ignored: true
 ---
@@ -255,6 +267,24 @@ gantt
                 "useWidth": 400,
                 "topAxis": true,
                 "numberSectionStyles": 2
+            },
+            "swimlane": {
+                "ignoreCrossLaneEdges": false
+            },
+            "cynefin": {
+                "width": 900
+            },
+            "railroad": {
+                "showMarkers": false
+            },
+            "treeView": {
+                "showIcons": false
+            },
+            "eventmodeling": {
+                "rowHeight": 36
+            },
+            "treemap": {
+                "padding": 12
             }
         })
     );
@@ -1032,6 +1062,24 @@ fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
     let engine = Engine::new();
     let err = block_on(engine.parse_metadata(
         "---\ntitle: a malformed YAML front-matter\n",
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+    assert!(err.to_string().contains("Malformed YAML front-matter"));
+}
+
+#[test]
+fn parse_rejects_mismatched_indented_frontmatter_like_upstream() {
+    let engine = Engine::new();
+    let err = block_on(engine.parse_metadata(
+        "---\ntitle: mismatched YAML front-matter\n   ---\nsequenceDiagram\nAlice->Bob: Hi\n",
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+    assert!(err.to_string().contains("Malformed YAML front-matter"));
+
+    let err = block_on(engine.parse_metadata(
+        "   ---\ntitle: mismatched YAML front-matter\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
         ParseOptions::default(),
     ))
     .unwrap_err();

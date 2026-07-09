@@ -15,6 +15,9 @@ type: Engineering Log
 - Completed the Mermaid 11.16 railroad semantic parser/editor-facts slice: IR, EBNF, ABNF, and PEG
   variants now parse into the shared AST JSON and remain render-unadmitted until layout/render
   admission is ported.
+- Completed the U3 frontmatter/config semantics slice: detector and preprocess frontmatter
+  handling now require matching delimiter indentation, and top-level diagram namespace compatibility
+  includes the 11.16 config namespaces covered by the generated defaults.
 
 ## 2026-07-04
 
