@@ -427,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn diagram_family_capabilities_expose_parser_and_render_surface() {
+    fn diagram_family_capabilities_expose_detector_parser_and_render_surface() {
         let capabilities = diagram_family_capabilities();
         assert_eq!(
             capabilities.len(),
@@ -441,6 +441,14 @@ mod tests {
         assert_eq!(flowchart.metadata_id, Some("flowchart"));
         assert!(flowchart.has_semantic_parser);
         assert!(flowchart.has_render_parser);
+
+        let swimlane = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "swimlane")
+            .expect("detector-only 11.16 swimlane capability should be present");
+        assert_eq!(swimlane.metadata_id, None);
+        assert!(!swimlane.has_semantic_parser);
+        assert!(!swimlane.has_render_parser);
 
         let has_mindmap = capabilities
             .iter()

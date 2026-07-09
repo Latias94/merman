@@ -164,6 +164,7 @@ fn diagram_header_facts_follow_feature_profile() {
             "flowchart TD",
             "graph TD",
             "sequenceDiagram",
+            "swimlane-beta",
             "classDiagram",
             "classDiagram-v2",
             "stateDiagram-v2",
@@ -197,6 +198,12 @@ fn diagram_header_facts_follow_feature_profile() {
             "block-beta",
             "radar-beta",
             "treemap-beta",
+            "railroad-beta",
+            "railroad-ebnf-beta",
+            "railroad-abnf-beta",
+            "railroad-peg-beta",
+            "wardley-beta",
+            "cynefin-beta",
             "flowchart-elk TD",
         ]
     );
@@ -221,6 +228,7 @@ fn diagram_header_facts_follow_feature_profile() {
             "flowchart TD",
             "graph TD",
             "sequenceDiagram",
+            "swimlane-beta",
             "classDiagram",
             "classDiagram-v2",
             "stateDiagram-v2",
@@ -252,6 +260,12 @@ fn diagram_header_facts_follow_feature_profile() {
             "block-beta",
             "radar-beta",
             "treemap-beta",
+            "railroad-beta",
+            "railroad-ebnf-beta",
+            "railroad-abnf-beta",
+            "railroad-peg-beta",
+            "wardley-beta",
+            "cynefin-beta",
         ]
     );
 }
@@ -337,7 +351,7 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
 }
 
 #[test]
-fn diagram_family_capabilities_follow_parser_fact_projection() {
+fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     let full = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full);
     let tiny = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Tiny);
 
@@ -356,10 +370,33 @@ fn diagram_family_capabilities_follow_parser_fact_projection() {
     assert!(error.has_semantic_parser);
     assert!(!error.has_render_parser);
 
+    let swimlane = family_capability(full, "swimlane");
+    assert_eq!(swimlane.metadata_id, None);
+    assert!(!swimlane.has_semantic_parser);
+    assert!(!swimlane.has_render_parser);
+
+    let railroad_ebnf = family_capability(full, "railroadEbnf");
+    assert_eq!(railroad_ebnf.metadata_id, None);
+    assert!(!railroad_ebnf.has_semantic_parser);
+    assert!(!railroad_ebnf.has_render_parser);
+
+    let cynefin = family_capability(full, "cynefin");
+    assert_eq!(cynefin.metadata_id, None);
+    assert!(!cynefin.has_semantic_parser);
+    assert!(!cynefin.has_render_parser);
+
+    let wardley = family_capability(full, "wardley");
+    assert_eq!(wardley.metadata_id, None);
+    assert!(!wardley.has_semantic_parser);
+    assert!(!wardley.has_render_parser);
+
+    assert!(!full.iter().any(|fact| fact.diagram_type == "---"));
     assert!(full.iter().any(|fact| fact.diagram_type == "mindmap"));
     assert!(!tiny.iter().any(|fact| fact.diagram_type == "mindmap"));
     assert!(!tiny.iter().any(|fact| fact.diagram_type == "architecture"));
     assert!(!tiny.iter().any(|fact| fact.diagram_type == "flowchart-elk"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "swimlane"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "cynefin"));
 }
 
 #[test]

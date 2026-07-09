@@ -18,7 +18,7 @@ This is not a string-only version bump. Mermaid 11.16 adds new diagram families,
 
 ### Summary
 
-Merman is a Rust, headless Mermaid reimplementation. The current implemented matrix targets Mermaid `mermaid@11.15.0`. The upstream reference source in `repo-ref/mermaid` now has tag `mermaid@11.16.0` at commit `5e3c88ea6d937a89078a5e8f1b2a6fd0ea391a5c`; the previous pinned lock points at `mermaid@11.15.0` commit `41646dfd43ac83f001b03c70605feb036afae46d`.
+Merman is a Rust, headless Mermaid reimplementation. The current implemented matrix targets Mermaid `mermaid@11.15.0`. The upstream reference source in `repo-ref/mermaid` now has tag `mermaid@11.16.0`; the tag object is `5e3c88ea6d937a89078a5e8f1b2a6fd0ea391a5c` and the peeled source commit is `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`. The previous pinned lock points at `mermaid@11.15.0` commit `41646dfd43ac83f001b03c70605feb036afae46d`.
 
 Mermaid 11.16 adds first-class `cynefin-beta`, `swimlane-beta`, and railroad variants, expands config/schema defaults, and changes several existing families. Merman should update its baseline authority, parser/model/render matrix, upstream fixture corpus, comparison gates, and alignment documentation so users see one coherent 11.16 compatibility story.
 
@@ -80,7 +80,8 @@ If these layers are bumped independently, the repo can claim 11.16 while still g
 - R5.1 Treat `cynefin-beta` as an in-scope 11.16 family. Add detection, parser/model, render model, renderer, fixtures, admission metadata, and docs, unless implementation evidence proves a narrower staged admission is required.
 - R5.2 Treat railroad variants as in-scope 11.16 families: `railroad`, `railroadEbnf`, `railroadAbnf`, and `railroadPeg`, with their corresponding beta headers.
 - R5.3 Treat `swimlane-beta` as in-scope. Because upstream implements it through flowchart-compatible rendering and new swimlane layout utilities, prefer integrating it with the flowchart model/layout where source-backed.
-- R5.4 If a family cannot reach render parity in this workstream, it must still have a deliberate capability state, parser evidence, fixture evidence, and a documented residual reason. Do not leave it as an accidental detector miss.
+- R5.4 Parser implementations must preserve editor/LSP value: source spans, recoverable diagnostics, partial AST/facts, and completion-friendly node/context data are part of the contract, not afterthoughts.
+- R5.5 If a family cannot reach render parity in this workstream, it must still have a deliberate capability state, parser evidence, fixture evidence, and a documented residual reason. Do not leave it as an accidental detector miss.
 
 #### R6. Layout and Rendering Parity
 
@@ -142,6 +143,7 @@ Out of scope:
 - KTD5. Deterministic layout behavior belongs in model/layout code, not in comparator normalization.
 - KTD6. `BaselineRegistryProfile` remains the central registry profile abstraction; avoid scattered 11.16-specific conditionals.
 - KTD7. Current-facing docs should describe 11.16. Historical 11.15 docs may remain only when clearly labeled as historical workstream evidence.
+- KTD8. Grammar tooling is acceptable only if it fits the LSP/editor contract. A parser generator such as LALRPOP must provide precise spans, useful recovery, and incremental-friendly partial facts before it replaces the current hand-written or parser-combinator style.
 
 ### Architecture Shape
 
@@ -319,6 +321,8 @@ Work:
 - Implement `cynefin-beta` parser/model from `packages/mermaid/src/diagrams/cynefin` and `packages/parser/src/language/cynefin`.
 - Implement railroad parsers/models for the default, EBNF, ABNF, and PEG variants from upstream parser sources, preserving upstream ids separately from beta header text.
 - Implement `swimlane-beta` using source-backed flowchart/swimlane layout behavior.
+- For every new parser, design the editor facts path at the same time as the render model path: AST nodes carry `SourceSpan`, diagnostics are recoverable where upstream permits, and completions can reason about the current header/statement context.
+- Evaluate LALRPOP only for the railroad dialects after a spike proves span plumbing and error recovery are at least as good as the existing `SourceSpan`-centric parsers. Prefer hand-written or lightweight parser-combinator code for small line-oriented grammars such as cynefin and for swimlane flowchart reuse.
 - Add initial renderers that produce structurally comparable SVG for simple and representative examples.
 - Add parser-only or deferred states only when source complexity blocks robust rendering in this workstream; document why and keep capability explicit.
 
@@ -455,7 +459,7 @@ Documentation and consistency gates:
 ## Research Evidence
 
 - Local upstream diff: `git -C repo-ref/mermaid diff --name-status mermaid@11.15.0 mermaid@11.16.0 -- packages/mermaid/src packages/parser/src`.
-- The 11.16 tag resolves locally to `5e3c88ea6d937a89078a5e8f1b2a6fd0ea391a5c`.
+- The 11.16 tag object resolves locally to `5e3c88ea6d937a89078a5e8f1b2a6fd0ea391a5c`; the peeled source commit is `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
 - Major added upstream directories: `packages/mermaid/src/diagrams/cynefin`, `packages/mermaid/src/diagrams/railroad`, `packages/mermaid/src/diagrams/swimlanes`, and parser languages for cynefin and railroad variants.
 - Major changed upstream areas: `diagram-api`, `config.type.ts`, `defaultConfig.ts`, `schemas/config.schema.yaml`, architecture, flowchart, ER, state, xychart, treeView, pie, and shared layout/render utilities.
 - Local repository evidence: `baseline.rs`, `REPOS.lock.json`, `tools/mermaid-cli/package.json`, `family.rs`, `xtask` import/compare/admission commands, generated theme/config files, alignment docs, and existing fixture trees.

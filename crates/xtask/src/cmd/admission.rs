@@ -288,6 +288,25 @@ macro_rules! primary_root_deferred {
     };
 }
 
+macro_rules! not_admitted {
+    ($diagram:literal, $reason:literal) => {
+        DiagramAdmissionRecord {
+            diagram: $diagram,
+            admission: AdmissionStatus::NotAdmitted,
+            fixtures: FixtureCorpusStatus::None,
+            normalized_fixture_dir: None,
+            deferred_fixture_dir: None,
+            semantic: CoverageStatus::NotAdmitted,
+            layout: CoverageStatus::NotAdmitted,
+            svg: CoverageStatus::NotAdmitted,
+            root_viewport: CoverageStatus::NotApplicable,
+            compare_command: None,
+            owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
+            defer_reason: Some($reason),
+        }
+    };
+}
+
 const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     primary!(
         "er",
@@ -482,48 +501,34 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         "compare-venn-svgs",
         "docs/alignment/VENN_BETA_ADMISSION_PLAN.md"
     ),
-    DiagramAdmissionRecord {
-        diagram: "wardley",
-        admission: AdmissionStatus::NotAdmitted,
-        fixtures: FixtureCorpusStatus::None,
-        normalized_fixture_dir: None,
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::NotAdmitted,
-        layout: CoverageStatus::NotAdmitted,
-        svg: CoverageStatus::NotAdmitted,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        defer_reason: Some("large family lane deferred behind smaller source-backed work"),
-    },
-    DiagramAdmissionRecord {
-        diagram: "railroad",
-        admission: AdmissionStatus::NotInPinnedBaseline,
-        fixtures: FixtureCorpusStatus::None,
-        normalized_fixture_dir: None,
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::NotApplicable,
-        layout: CoverageStatus::NotApplicable,
-        svg: CoverageStatus::NotApplicable,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        defer_reason: Some("absent from pinned Mermaid 11.15 source"),
-    },
-    DiagramAdmissionRecord {
-        diagram: "cynefin",
-        admission: AdmissionStatus::NotInPinnedBaseline,
-        fixtures: FixtureCorpusStatus::None,
-        normalized_fixture_dir: None,
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::NotApplicable,
-        layout: CoverageStatus::NotApplicable,
-        svg: CoverageStatus::NotApplicable,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        defer_reason: Some("absent from pinned Mermaid 11.15 source"),
-    },
+    not_admitted!(
+        "swimlane",
+        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+    ),
+    not_admitted!(
+        "railroad",
+        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+    ),
+    not_admitted!(
+        "railroadEbnf",
+        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+    ),
+    not_admitted!(
+        "railroadAbnf",
+        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+    ),
+    not_admitted!(
+        "railroadPeg",
+        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+    ),
+    not_admitted!(
+        "wardley",
+        "large family lane deferred behind smaller source-backed work"
+    ),
+    not_admitted!(
+        "cynefin",
+        "present in pinned Mermaid 11.16 source; parser/layout/render admission is tracked by the 11.16 parity plan"
+    ),
 ];
 
 #[cfg(test)]
@@ -705,6 +710,11 @@ mod tests {
         assert!(!not_admitted.semantic_requires_golden());
         assert!(!not_admitted.layout_requires_golden());
         assert!(!not_admitted.svg_requires_upstream_baseline());
+
+        let detector_only = record("swimlane");
+        assert_eq!(detector_only.admission, AdmissionStatus::NotAdmitted);
+        assert!(detector_only.requires_defer_reason());
+        assert!(!detector_only.semantic_requires_golden());
     }
 
     #[test]
@@ -772,6 +782,23 @@ mod tests {
                     record.diagram
                 );
             }
+        }
+
+        for diagram in [
+            "swimlane",
+            "railroad",
+            "railroadEbnf",
+            "railroadAbnf",
+            "railroadPeg",
+            "wardley",
+            "cynefin",
+        ] {
+            let record = record(diagram);
+            let capability = core_family_capability(core_capabilities, diagram)
+                .unwrap_or_else(|| panic!("{diagram} should exist in core detector facts"));
+            assert_eq!(record.admission, AdmissionStatus::NotAdmitted);
+            assert!(!capability.has_semantic_parser);
+            assert!(!capability.has_render_parser);
         }
     }
 }

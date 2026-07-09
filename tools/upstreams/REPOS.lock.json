@@ -5,7 +5,7 @@
       "path": "repo-ref/mermaid",
       "url": "https://github.com/mermaid-js/mermaid.git",
       "ref": "mermaid@11.16.0",
-      "commit": "5e3c88ea6d937a89078a5e8f1b2a6fd0ea391a5c"
+      "commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014"
     },
     "mermaid-ascii": {
       "path": "repo-ref/mermaid-ascii",

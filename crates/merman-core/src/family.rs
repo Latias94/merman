@@ -56,9 +56,9 @@ pub struct DiagramHeaderFact {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiagramFamilyCapability {
-    /// Mermaid diagram type id used by detector and parser registries.
+    /// Mermaid diagram type id used by the pinned detector and parser registries.
     pub diagram_type: &'static str,
-    /// Public supported-diagram metadata id, when this family contributes one.
+    /// Public supported-diagram metadata id, when this family contributes an admitted renderer.
     pub metadata_id: Option<&'static str>,
     /// Whether the selected registry profile has a semantic parser for this diagram type.
     pub has_semantic_parser: bool,
@@ -215,19 +215,42 @@ pub(crate) fn diagram_family_capabilities(
     profile: BaselineRegistryProfile,
 ) -> &'static [DiagramFamilyCapability] {
     fn build(profile: BaselineRegistryProfile) -> Vec<DiagramFamilyCapability> {
+        let detector_facts = detector_facts(profile);
+        let semantic_facts = semantic_parser_facts(profile);
         let render_facts = render_parser_facts(profile);
-        let mut capabilities: Vec<_> = semantic_parser_facts(profile)
+
+        let mut capabilities: Vec<_> = detector_facts
             .iter()
-            .map(|semantic| {
-                let render = render_facts.iter().find(|render| render.id == semantic.id);
+            .filter(|detector| detector.id != "---")
+            .map(|detector| {
+                let semantic = semantic_facts
+                    .iter()
+                    .find(|semantic| semantic.id == detector.id);
+                let render = render_facts.iter().find(|render| render.id == detector.id);
                 DiagramFamilyCapability {
-                    diagram_type: semantic.id,
+                    diagram_type: detector.id,
                     metadata_id: render.and_then(|render| render.metadata_id),
-                    has_semantic_parser: true,
+                    has_semantic_parser: semantic.is_some(),
                     has_render_parser: render.is_some(),
                 }
             })
             .collect();
+
+        for semantic in semantic_facts {
+            if capabilities
+                .iter()
+                .any(|capability| capability.diagram_type == semantic.id)
+            {
+                continue;
+            }
+            let render = render_facts.iter().find(|render| render.id == semantic.id);
+            capabilities.push(DiagramFamilyCapability {
+                diagram_type: semantic.id,
+                metadata_id: render.and_then(|render| render.metadata_id),
+                has_semantic_parser: true,
+                has_render_parser: render.is_some(),
+            });
+        }
 
         for render in render_facts {
             if capabilities
@@ -439,6 +462,10 @@ const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
         detector: crate::detect::detector_sequence,
     },
     DetectorFact {
+        id: "swimlane",
+        detector: crate::detect::detector_swimlane,
+    },
+    DetectorFact {
         id: "flowchart-v2",
         detector: crate::detect::detector_flowchart_v2,
     },
@@ -487,28 +514,52 @@ const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
         detector: crate::detect::detector_block,
     },
     DetectorFact {
-        id: "treeView",
-        detector: crate::detect::detector_tree_view,
-    },
-    DetectorFact {
-        id: "ishikawa",
-        detector: crate::detect::detector_ishikawa,
-    },
-    DetectorFact {
         id: "eventmodeling",
         detector: crate::detect::detector_eventmodeling,
+    },
+    DetectorFact {
+        id: "treeView",
+        detector: crate::detect::detector_tree_view,
     },
     DetectorFact {
         id: "radar",
         detector: crate::detect::detector_radar,
     },
     DetectorFact {
+        id: "ishikawa",
+        detector: crate::detect::detector_ishikawa,
+    },
+    DetectorFact {
         id: "treemap",
         detector: crate::detect::detector_treemap,
     },
     DetectorFact {
+        id: "railroad",
+        detector: crate::detect::detector_railroad,
+    },
+    DetectorFact {
+        id: "railroadEbnf",
+        detector: crate::detect::detector_railroad_ebnf,
+    },
+    DetectorFact {
+        id: "railroadAbnf",
+        detector: crate::detect::detector_railroad_abnf,
+    },
+    DetectorFact {
+        id: "railroadPeg",
+        detector: crate::detect::detector_railroad_peg,
+    },
+    DetectorFact {
         id: "venn",
         detector: crate::detect::detector_venn,
+    },
+    DetectorFact {
+        id: "wardley",
+        detector: crate::detect::detector_wardley,
+    },
+    DetectorFact {
+        id: "cynefin",
+        detector: crate::detect::detector_cynefin,
     },
 ];
 
@@ -1112,6 +1163,12 @@ const DIAGRAM_HEADER_FACTS: &[DiagramHeaderFact] = &[
         full_only: false,
     },
     DiagramHeaderFact {
+        diagram_type: "swimlane",
+        label: "swimlane-beta",
+        detail: "swimlane header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
         diagram_type: "classDiagram",
         label: "classDiagram",
         detail: "class header",
@@ -1307,6 +1364,42 @@ const DIAGRAM_HEADER_FACTS: &[DiagramHeaderFact] = &[
         diagram_type: "treemap",
         label: "treemap-beta",
         detail: "treemap header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "railroad",
+        label: "railroad-beta",
+        detail: "railroad header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "railroadEbnf",
+        label: "railroad-ebnf-beta",
+        detail: "railroad ebnf header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "railroadAbnf",
+        label: "railroad-abnf-beta",
+        detail: "railroad abnf header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "railroadPeg",
+        label: "railroad-peg-beta",
+        detail: "railroad peg header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "wardley",
+        label: "wardley-beta",
+        detail: "wardley header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "cynefin",
+        label: "cynefin-beta",
+        detail: "cynefin header",
         full_only: false,
     },
     DiagramHeaderFact {

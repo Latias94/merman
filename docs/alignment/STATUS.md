@@ -1,6 +1,6 @@
 # Alignment Status (Mermaid Parity Dashboard)
 
-Baseline: Mermaid `@11.15.0` for the implemented diagram matrix (see
+Baseline: Mermaid `@11.16.0` for the implemented diagram matrix (see
 `tools/upstreams/REPOS.lock.json`). Unsupported upstream diagram families are scoped below.
 
 This file is a lightweight dashboard of what is currently implemented and what is covered by
@@ -100,14 +100,13 @@ Notes:
   This is not currently covered by upstream SVG baselines.
   Coverage docs: `docs/alignment/ZENUML_MINIMUM.md`, `docs/alignment/ZENUML_UPSTREAM_TEST_COVERAGE.md`.
 
-## Mermaid 11.15 Diagram Family Scope
+## Mermaid 11.16 Diagram Family Scope
 
-The `mermaid-11-15-baseline-upgrade` workstream selected existing-diagram compatibility as the
-baseline bump path. The 11.15 baseline covers the diagram matrix above plus the implemented
-11.13-11.15 deltas for those diagrams; it does not imply support for every upstream diagram
-directory. M15C-080 final decision check was refreshed on 2026-06-01 against
-`repo-ref/mermaid/packages/mermaid/src/diagrams`; no new upstream family is promoted into the
-implemented matrix without a child workstream. Some families below now have Phase 1 local support.
+The `mermaid-11-16-parity` workstream keeps implemented-family compatibility as the baseline bump
+path while making newly pinned upstream families explicit. The 11.16 baseline covers the diagram
+matrix above plus the implemented 11.13-11.16 deltas for those diagrams; it does not imply support
+for every upstream diagram directory. No new upstream family is promoted into the implemented
+matrix without a child workstream. Some families below now have Phase 1 local support.
 The Phase 2 Stage B families are admitted to the primary SVG DOM parity matrix once they have
 upstream SVG baselines and green family-local compare evidence; root viewport parity can remain a
 separate residual track when it is derived from browser text measurement or layout behavior.
@@ -124,15 +123,16 @@ Phase 2 admission work for `treeView`, `ishikawa`, and `eventmodeling` is tracke
 `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 Venn classic SVG admission is tracked separately in `docs/alignment/VENN_BETA_ADMISSION_PLAN.md`.
 
-| Upstream header or id | Pinned 11.15 source status | Local 11.15 status | Admission decision |
+| Upstream header or id | Pinned 11.16 source status | Local 11.16 status | Admission decision |
 |---|---|---|---|
 | `treeView-beta` header / `treeView` id | Present at `packages/mermaid/src/diagrams/treeView` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, and `compare-tree-view-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity remains deferred in the global `parity-root` sweep because current residuals are browser `getBBox()` text-metric drift; see `TREEVIEW_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
 | `ishikawa` / `ishikawa-beta` | Present at `packages/mermaid/src/diagrams/ishikawa` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, config/theme coverage, and `compare-ishikawa-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity and rough/handDrawn mode remain deferred; see `ISHIKAWA_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
 | `eventmodeling` | Present at `packages/mermaid/src/diagrams/eventmodeling` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, parser-source coverage, and `compare-eventmodeling-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity, unsupported `entity`/`note`/`gwt` rendering, and strict data `foreignObject` HTML/browser text-metric parity remain deferred; see `EVENTMODELING_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
 | `venn-beta` | Present at `packages/mermaid/src/diagrams/venn` | Admitted classic SVG support exists: detector, typed parser/model, source-backed `@upsetjs/venn.js@2.0.0` / `fmin@0.0.4` Rust layout kernel, Stage B SVG renderer, `PresentationTheme::venn()` roles, semantic/layout fixtures, upstream SVG baselines, and `compare-venn-svgs`. | Admitted to `compare-all-svgs` primary `parity` mode. `look: "handDrawn"`/RoughJS Venn output remains deferred; see `VENN_BETA_ADMISSION_PLAN.md`. |
-| `wardley-beta` | Present at `packages/mermaid/src/diagrams/wardley` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 5; large family lane, not a starter task. |
-| `railroad-diagram`, `railroad-abnf`, `railroad-ebnf`, `railroad-peg` | Absent from pinned Mermaid `11.15.0` source. | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not part of the 11.15 parity backlog; reclassify only after a baseline bump includes it. |
-| `cynefin-beta` | Absent from pinned Mermaid `11.15.0` source. | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not part of the 11.15 parity backlog; reclassify only after a baseline bump includes it. |
+| `swimlane-beta` header / `swimlane` id | Present at `packages/mermaid/src/diagrams/swimlanes` | Detector/header/config/admission visibility exists. No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not admitted; parser/layout/render admission is tracked by the 11.16 parity workstream. |
+| `wardley-beta` | Present at `packages/mermaid/src/diagrams/wardley` | Detector/header/admission visibility exists. No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Large family lane, not a starter task. |
+| `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, `railroad-peg-beta` | Present at `packages/mermaid/src/diagrams/railroad` | Detector/header/config/admission visibility exists. No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not admitted; parser/layout/render admission is tracked by the 11.16 parity workstream. |
+| `cynefin-beta` | Present at `packages/mermaid/src/diagrams/cynefin` | Detector/header/config/admission visibility exists. No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not admitted; parser/layout/render admission is tracked by the 11.16 parity workstream. |
 
 These families should enter the main coverage matrix only after they have at least parse coverage
 and an accepted support plan for layout/render behavior.
