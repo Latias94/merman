@@ -1615,7 +1615,7 @@ accDescr: XY accDescription
 x-axis "X Axis" [Alpha, Beta]
 y-axis "Y Axis" 1 --> 5
 bar "Series 1" [1, 2]
-line "Series 2" [2, 3]
+line "Series 2" [2 "early", 3 "late"]
 "#;
 
     let parsed = engine
@@ -1658,6 +1658,7 @@ line "Series 2" [2, 3]
             );
             assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
             assert_eq!(model.plots[1].title.as_deref(), Some("Series 2"));
+            assert_eq!(model.plots[1].point_labels, vec!["early", "late"]);
             model.to_compat_json(&parsed.meta)
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
@@ -1680,6 +1681,10 @@ line "Series 2" [2, 3]
     assert_eq!(parsed_json.model["plots"][0]["type"], json!("bar"));
     assert!(parsed_json.model["plots"][0].get("title").is_none());
     assert_eq!(parsed_json.model["plots"][1]["type"], json!("line"));
+    assert_eq!(
+        parsed_json.model["plots"][1]["pointLabels"],
+        json!(["early", "late"])
+    );
     assert!(parsed_json.model["plots"][1].get("title").is_none());
     assert!(parsed_json.model.get("config").is_some());
     assert_eq!(typed_json, parsed_json.model);

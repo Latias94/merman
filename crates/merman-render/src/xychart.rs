@@ -33,6 +33,7 @@ struct AxisConfig {
     tick_width: f64,
     show_axis_line: bool,
     axis_line_width: f64,
+    label_rotation: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -95,6 +96,7 @@ fn default_axis_config() -> AxisConfig {
         tick_width: 2.0,
         show_axis_line: true,
         axis_line_width: 2.0,
+        label_rotation: 0.0,
     }
 }
 
@@ -137,6 +139,8 @@ fn parse_axis_config(effective_config: &Value, axis_key: &str) -> AxisConfig {
             .unwrap_or(base.show_axis_line),
         axis_line_width: config_f64(effective_config, &["xyChart", axis_key, "axisLineWidth"])
             .unwrap_or(base.axis_line_width),
+        label_rotation: config_f64(effective_config, &["xyChart", axis_key, "labelRotation"])
+            .unwrap_or(base.label_rotation),
     }
 }
 
@@ -361,6 +365,7 @@ struct Axis {
     outer_padding: f64,
     title: String,
     title_text_height: f64,
+    label_dimension: Dimension,
 }
 
 impl Axis {
@@ -390,6 +395,10 @@ impl Axis {
             outer_padding: 0.0,
             title,
             title_text_height: 0.0,
+            label_dimension: Dimension {
+                width: 0.0,
+                height: 0.0,
+            },
         }
     }
 
@@ -503,6 +512,27 @@ impl Axis {
         }
     }
 
+    fn normalized_label_rotation_rad(&self) -> f64 {
+        let rotation = self.axis_config.label_rotation;
+        if (-90.0..=90.0).contains(&rotation) {
+            rotation.to_radians()
+        } else {
+            0.0
+        }
+    }
+
+    fn label_rotation_offset(&self, reference: AxisLabelDimensionRef) -> f64 {
+        let rotation = self.normalized_label_rotation_rad();
+        if rotation == 0.0 {
+            return 0.0;
+        }
+        let dimension = match reference {
+            AxisLabelDimensionRef::Width => self.label_dimension.width,
+            AxisLabelDimensionRef::Height => self.label_dimension.height,
+        };
+        rotation.sin() * dimension / 2.0
+    }
+
     fn calculate_space(&mut self, available: Dimension, measurer: &dyn TextMeasurer) -> Dimension {
         self.show_title = false;
         self.show_label = false;
@@ -510,6 +540,10 @@ impl Axis {
         self.show_axis_line = false;
         self.outer_padding = 0.0;
         self.title_text_height = 0.0;
+        self.label_dimension = Dimension {
+            width: 0.0,
+            height: 0.0,
+        };
 
         if matches!(self.axis_position, AxisPosition::Left) {
             let mut available_width = available.width;
@@ -523,6 +557,7 @@ impl Axis {
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
                 let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
+                self.label_dimension = dim;
                 let max_padding = 0.2 * available.height;
                 self.outer_padding = (dim.height / 2.0).min(max_padding);
                 let width_required = dim.width + self.axis_config.label_padding * 2.0;
@@ -567,9 +602,17 @@ impl Axis {
             if self.axis_config.show_label {
                 let ticks = self.tick_values();
                 let dim = max_text_dimension(ticks, self.axis_config.label_font_size, measurer);
+                self.label_dimension = dim;
                 let max_padding = 0.2 * available.width;
                 self.outer_padding = (dim.width / 2.0).min(max_padding);
-                let height_required = dim.height + self.axis_config.label_padding * 2.0;
+                let mut height_required = dim.height;
+                let rotation = self.normalized_label_rotation_rad();
+                if matches!(self.axis_position, AxisPosition::Bottom) && rotation != 0.0 {
+                    height_required = height_required.max(
+                        (rotation.sin() * dim.width).abs() + (rotation.cos() * dim.height).abs(),
+                    );
+                }
+                height_required += self.axis_config.label_padding * 2.0;
                 if height_required <= available_height {
                     available_height -= height_required;
                     self.show_label = true;
@@ -731,7 +774,8 @@ impl Axis {
                     .iter()
                     .map(|t| XyChartTextData {
                         text: t.clone(),
-                        x: self.get_scale_value(t),
+                        x: self.get_scale_value(t)
+                            + self.label_rotation_offset(AxisLabelDimensionRef::Height),
                         y: self.bounding_rect.y
                             + self.axis_config.label_padding
                             + (if self.show_tick {
@@ -743,10 +787,13 @@ impl Axis {
                                 self.axis_config.axis_line_width
                             } else {
                                 0.0
-                            }),
+                            })
+                            + self
+                                .label_rotation_offset(AxisLabelDimensionRef::Width)
+                                .abs(),
                         fill: self.axis_theme.label_color.clone(),
                         font_size: self.axis_config.label_font_size,
-                        rotation: 0.0,
+                        rotation: self.normalized_label_rotation_rad().to_degrees(),
                         vertical_pos: "top".to_string(),
                         horizontal_pos: "center".to_string(),
                     })
@@ -890,6 +937,12 @@ impl Axis {
         }
         out
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AxisLabelDimensionRef {
+    Width,
+    Height,
 }
 
 fn line_path(points: &[(f64, f64)]) -> Option<String> {
@@ -1175,15 +1228,66 @@ pub(crate) fn layout_xychart_diagram_typed(
                     });
                 }
                 if let Some(path) = line_path(&points) {
+                    let line_color = color.clone();
                     drawables.push(XyChartDrawableElem::Path {
                         group_texts: vec!["plot".to_string(), format!("line-plot-{plot_index}")],
                         data: vec![XyChartPathData {
                             path,
                             fill: None,
-                            stroke_fill: color,
+                            stroke_fill: line_color.clone(),
                             stroke_width: 2.0,
                         }],
                     });
+                    if !plot.point_labels.is_empty() {
+                        let label_offset = 10.0;
+                        let font_size = 12.0;
+                        let labels = points
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(idx, (px, py))| {
+                                let label = plot.point_labels.get(idx)?;
+                                if label.is_empty() {
+                                    return None;
+                                }
+                                let (x, y, vertical_pos, horizontal_pos) =
+                                    if chart_cfg.chart_orientation == "horizontal" {
+                                        (
+                                            py + label_offset,
+                                            *px,
+                                            "middle".to_string(),
+                                            "left".to_string(),
+                                        )
+                                    } else {
+                                        (
+                                            *px,
+                                            py - label_offset,
+                                            "middle".to_string(),
+                                            "center".to_string(),
+                                        )
+                                    };
+                                Some(XyChartTextData {
+                                    text: label.clone(),
+                                    x,
+                                    y,
+                                    fill: line_color.clone(),
+                                    font_size,
+                                    rotation: 0.0,
+                                    vertical_pos,
+                                    horizontal_pos,
+                                })
+                            })
+                            .collect::<Vec<_>>();
+                        if !labels.is_empty() {
+                            drawables.push(XyChartDrawableElem::Text {
+                                group_texts: vec![
+                                    "plot".to_string(),
+                                    format!("line-plot-{plot_index}"),
+                                    "labels".to_string(),
+                                ],
+                                data: labels,
+                            });
+                        }
+                    }
                 }
             }
         }
