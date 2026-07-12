@@ -5,7 +5,6 @@
 // contract. The repository's active Mermaid baseline is 11.16.0; existing modules
 // stay in place until each family is regenerated and renamed in a controlled migration.
 
-#[cfg(feature = "cytoscape-layout")]
 pub mod block_text_overrides_11_12_2;
 pub mod c4_root_overrides_11_12_2;
 pub mod c4_text_overrides_11_12_2;

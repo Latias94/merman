@@ -46,4 +46,3 @@ the upstream State SVG baselines.
   `crates/merman-render/src/generated/state_text_overrides_11_12_2.rs`.
 - Tests: `crates/merman-render/tests/state_svg_test.rs`.
 - Fixtures: `fixtures/state/*.layout.golden.json` and `fixtures/upstream-svgs/state/*.svg`.
-

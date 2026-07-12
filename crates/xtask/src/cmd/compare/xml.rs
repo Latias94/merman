@@ -888,15 +888,15 @@ mod tests {
         ));
         let root = base.join("root");
         let outside = base.join("outside");
-        fs::create_dir_all(&root).expect("create test root");
-        fs::create_dir_all(&outside).expect("create outside directory");
+        std::fs::create_dir_all(&root).expect("create test root");
+        std::fs::create_dir_all(&outside).expect("create outside directory");
         symlink(&outside, root.join("flowchart")).expect("create escaping family symlink");
 
         let error = svg_xml_family_dir(&root, "flowchart", "test")
             .expect_err("canonical family escape must be rejected");
         assert!(error.to_string().contains("canonical direct child"));
 
-        fs::remove_dir_all(base).expect("remove isolated symlink test tree");
+        std::fs::remove_dir_all(base).expect("remove isolated symlink test tree");
     }
 
     #[test]

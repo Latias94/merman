@@ -33,4 +33,3 @@ work. Regenerating State layout snapshots against the 11.16 implementation resol
 
 The upstream SVG generation emitted Puppeteer `net::ERR_FILE_NOT_FOUND` warnings for fixture-local
 asset loads, but it still completed and wrote the 11.16 State SVG baselines.
-
