@@ -39,7 +39,7 @@
       "edges": [
         {
           "id": "L_three_two_0",
-          "from": "three",
+          "from": "c2",
           "to": "two",
           "from_cluster": "three",
           "to_cluster": null,

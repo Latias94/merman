@@ -299,6 +299,8 @@ pub(crate) fn render_pie_diagram_svg_model(
             x = fmt(pie_offset_x),
             y = fmt(pie_offset_y)
         );
+    } else {
+        out.push_str("<g>");
     }
 
     let _ = write!(
@@ -387,9 +389,7 @@ pub(crate) fn render_pie_diagram_svg_model(
         );
     }
 
-    if has_pie_offset {
-        out.push_str("</g>");
-    }
+    out.push_str("</g>");
 
     match model.title.as_deref() {
         Some(t) => {

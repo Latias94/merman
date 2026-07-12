@@ -6,14 +6,12 @@ use super::root::ArchitectureRootOpen;
 
 pub(super) struct ArchitectureRootViewportContext<'a, M: ArchitectureModelAccess> {
     pub(super) out: String,
-    pub(super) diagram_id: &'a str,
     pub(super) model: &'a M,
     pub(super) root_open: ArchitectureRootOpen,
     pub(super) content_bounds: Option<Bounds>,
     pub(super) padding_px: f64,
     pub(super) icon_size_px: f64,
     pub(super) use_max_width: bool,
-    pub(super) apply_root_overrides: bool,
     pub(super) trust_content_bounds: bool,
 }
 
@@ -144,14 +142,12 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
 ) -> String {
     let ArchitectureRootViewportContext {
         mut out,
-        diagram_id,
         model,
         root_open,
         content_bounds,
         padding_px,
         icon_size_px,
         use_max_width,
-        apply_root_overrides,
         trust_content_bounds,
     } = ctx;
 
@@ -160,16 +156,8 @@ pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
     let profile = ArchitectureRootViewportProfile::from_model(model);
     let viewport = architecture_root_viewport_from_bbox(&b, padding_px, profile);
 
-    let mut view_box_attr = viewport.view_box_attr();
-    let mut max_w_attr = fmt_string(viewport.width);
-    if apply_root_overrides
-        && let Some((override_viewbox, override_max_w)) =
-            crate::generated::architecture_root_overrides_11_12_2::lookup_architecture_root_viewport_override(diagram_id)
-        && std::env::var_os("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES").is_none()
-    {
-        view_box_attr = override_viewbox.to_string();
-        max_w_attr = override_max_w.to_string();
-    }
+    let view_box_attr = viewport.view_box_attr();
+    let max_w_attr = fmt_string(viewport.width);
 
     let mut replacements: Vec<(usize, std::ops::Range<usize>, &str)> =
         Vec::with_capacity(if use_max_width { 2 } else { 1 });

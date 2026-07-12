@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "prefix_suffix_any": {
+      "input_sha256": "a6ab8a1fefeff79413e7ded4acbbcb8834031879c00bb6afcc837f20b08d2552",
+      "svg_sha256": "1ec99c25cad689708f57d8567703b8f3edca01a2dea588330a9cd107991a38fb",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

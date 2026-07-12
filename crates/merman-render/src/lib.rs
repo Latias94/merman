@@ -18,6 +18,7 @@ mod chart_palette;
 pub mod class;
 mod config;
 pub mod cynefin;
+mod dagre;
 mod entities;
 pub mod er;
 pub mod error;
@@ -290,8 +291,9 @@ pub fn layout_parsed_render_layout_only(
             )?,
         ))),
         RenderSemanticModel::Railroad(model) => Ok(LayoutDiagram::RailroadDiagram(Box::new(
-            railroad::layout_railroad_diagram_typed(
+            railroad::layout_railroad_diagram_typed_for_type(
                 model,
+                diagram_type,
                 effective_config,
                 options.text_measurer.as_ref(),
             )?,
@@ -751,8 +753,9 @@ fn layout_json_by_type(
             )?,
         ))),
         "railroad" | "railroadEbnf" | "railroadAbnf" | "railroadPeg" => Ok(
-            LayoutDiagram::RailroadDiagram(Box::new(railroad::layout_railroad_diagram(
+            LayoutDiagram::RailroadDiagram(Box::new(railroad::layout_railroad_diagram_for_type(
                 semantic,
+                diagram_type,
                 effective_config_value,
                 options.text_measurer.as_ref(),
             )?)),
@@ -1406,6 +1409,69 @@ Animal <|-- Duck
         assert!(svg.contains("Pattern emerges"));
         assert!(svg.contains(r#"<title id="chart-title-cynefin-test">Cynefin map</title>"#));
         assert!(svg.contains(r#"<desc id="chart-desc-cynefin-test">Practice movement</desc>"#));
+        assert!(svg.contains("#cynefin-test .cynefinDomain{stroke:none;}"));
+        assert_eq!(svg.matches("<title").count(), 2, "{svg}");
+        assert_eq!(svg.matches("<desc").count(), 2, "{svg}");
+
+        let scoped_title = svg
+            .find(r#"<title id="chart-title-cynefin-test">"#)
+            .expect("scoped accessibility title");
+        let scoped_descr = svg
+            .find(r#"<desc id="chart-desc-cynefin-test">"#)
+            .expect("scoped accessibility description");
+        let style = svg.find("<style>").expect("style");
+        let framework_group = svg.find("<g/>").expect("Mermaid framework group");
+        let renderer_title = svg
+            .find("<title>Cynefin map</title>")
+            .expect("renderer accessibility title");
+        let renderer_descr = svg
+            .find("<desc>Practice movement</desc>")
+            .expect("renderer accessibility description");
+        let root_group = svg
+            .find(r#"<g transform="translate("#)
+            .expect("cynefin root group");
+        let defs = svg.find("<defs>").expect("transition marker defs");
+
+        assert!(scoped_title < scoped_descr, "{svg}");
+        assert!(scoped_descr < style, "{svg}");
+        assert!(style < framework_group, "{svg}");
+        assert!(framework_group < renderer_title, "{svg}");
+        assert!(renderer_title < renderer_descr, "{svg}");
+        assert!(renderer_descr < root_group, "{svg}");
+        assert!(root_group < defs, "{svg}");
+    }
+
+    #[test]
+    fn render_model_dispatch_keeps_whitespace_cynefin_transition_labels() {
+        let source = r#"cynefin-beta
+  complex
+  complicated
+  complex --> complicated : "   "
+"#;
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let layout_options = LayoutOptions::default();
+        let layout = layout_parsed_render_layout_only(&parsed, &layout_options).unwrap();
+        let svg = crate::svg::render_layout_svg_parts_for_render_model_with_metadata(
+            &layout,
+            &parsed.model,
+            &parsed.meta.effective_config,
+            &parsed.meta.diagram_type,
+            parsed.meta.title.as_deref(),
+            layout_options.text_measurer.as_ref(),
+            &crate::svg::SvgRenderOptions {
+                diagram_id: Some("cynefin-whitespace".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(
+            svg.contains(r#"class="cynefinArrowLabel""#),
+            "a whitespace-only label is truthy in JavaScript and must emit a text node: {svg}"
+        );
     }
 
     #[test]
@@ -1448,6 +1514,10 @@ expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(term
         assert!(svg.contains("+"));
         assert!(svg.contains(r#"<title id="chart-title-railroad-test">Railroad grammar</title>"#));
         assert!(svg.contains(r#"<desc id="chart-desc-railroad-test">Expression grammar</desc>"#));
+        assert!(
+            svg.contains("</style><g/><g class=\"railroad-rule\""),
+            "{svg}"
+        );
     }
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]

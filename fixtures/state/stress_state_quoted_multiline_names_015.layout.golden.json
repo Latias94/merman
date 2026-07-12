@@ -128,6 +128,44 @@
           "stroke_dasharray": null
         },
         {
+          "id": "edge2",
+          "from": "long1",
+          "to": "long1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 159.898,
+              "y": 287.5
+            },
+            {
+              "x": 159.898,
+              "y": 327.55
+            },
+            {
+              "x": 259.898,
+              "y": 327.55
+            },
+            {
+              "x": 259.898,
+              "y": 287.5
+            }
+          ],
+          "label": {
+            "x": 209.898,
+            "y": 343.55,
+            "width": 121.594,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge3",
           "from": "long1",
           "to": "ProcessData",
@@ -219,106 +257,6 @@
             "x": 200.93,
             "y": 600.1,
             "width": 30.234,
-            "height": 24.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "long1-cyclic-special-1",
-          "from": "long1",
-          "to": "long1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 153.646,
-              "y": 287.5
-            },
-            {
-              "x": 91.073,
-              "y": 337.0
-            },
-            {
-              "x": 91.073,
-              "y": 406.45
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "long1-cyclic-special-2",
-          "from": "long1",
-          "to": "long1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 209.948,
-              "y": 525.53
-            },
-            {
-              "x": 333.66,
-              "y": 476.0
-            },
-            {
-              "x": 333.66,
-              "y": 406.5
-            },
-            {
-              "x": 333.66,
-              "y": 337.0
-            },
-            {
-              "x": 268.488,
-              "y": 287.5
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "long1-cyclic-special-mid",
-          "from": "long1",
-          "to": "long1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 91.073,
-              "y": 406.55
-            },
-            {
-              "x": 91.073,
-              "y": 476.0
-            },
-            {
-              "x": 209.848,
-              "y": 525.529
-            }
-          ],
-          "label": {
-            "x": 91.073,
-            "y": 476.0,
-            "width": 121.594,
             "height": 24.0
           },
           "start_label_left": null,

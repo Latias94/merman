@@ -95,6 +95,18 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
         Some("elk")
     );
 
+    let cleared_override = engine
+        .parse_metadata_sync(
+            "%%{init: {\"layout\": null}}%%\nswimlane-beta LR\nA-->B\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("swimlane metadata with a null layout override");
+    assert_eq!(
+        cleared_override.effective_config.get_str("layout"),
+        Some("swimlane")
+    );
+
     let known_type = engine
         .parse_metadata_with_type_sync(
             "swimlane",
@@ -1797,6 +1809,7 @@ fn parse_diagram_flowchart_supports_subgraph_block() {
             "classes": [],
             "styles": [],
             "dir": null,
+            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -1818,6 +1831,7 @@ fn parse_diagram_flowchart_supports_nested_subgraphs() {
             "classes": [],
             "styles": [],
             "dir": null,
+            "hasExplicitDir": false,
             "labelType": "text"
         }, {
             "id": "Outer",
@@ -1826,6 +1840,7 @@ fn parse_diagram_flowchart_supports_nested_subgraphs() {
             "classes": [],
             "styles": [],
             "dir": null,
+            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -1847,6 +1862,7 @@ fn parse_diagram_flowchart_subgraph_supports_explicit_id_and_title() {
             "classes": [],
             "styles": [],
             "dir": null,
+            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -1868,6 +1884,7 @@ fn parse_diagram_flowchart_subgraph_title_with_spaces_uses_auto_id() {
             "classes": [],
             "styles": [],
             "dir": null,
+            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -1889,6 +1906,7 @@ fn parse_diagram_flowchart_subgraph_direction_statement_sets_dir() {
             "classes": [],
             "styles": [],
             "dir": "TD",
+            "hasExplicitDir": true,
             "labelType": "text"
         }])
     );
@@ -1904,6 +1922,7 @@ fn parse_diagram_flowchart_subgraph_inherits_global_direction_when_enabled() {
         .unwrap()
         .unwrap();
     assert_eq!(res.model["subgraphs"][0]["dir"], json!("LR"));
+    assert_eq!(res.model["subgraphs"][0]["hasExplicitDir"], json!(false));
 }
 
 #[test]
@@ -1922,6 +1941,7 @@ fn parse_diagram_flowchart_subgraph_tab_indentation_matches_mermaid_membership_o
             "classes": [],
             "styles": [],
             "dir": null,
+            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );
@@ -2003,6 +2023,7 @@ fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuni
             "classes": [],
             "styles": [],
             "dir": null,
+            "hasExplicitDir": false,
             "labelType": "text"
         }, {
             "id": "X",
@@ -2011,6 +2032,7 @@ fn parse_diagram_flowchart_duplicate_subgraph_membership_matches_mermaid_makeuni
             "classes": [],
             "styles": [],
             "dir": null,
+            "hasExplicitDir": false,
             "labelType": "text"
         }])
     );

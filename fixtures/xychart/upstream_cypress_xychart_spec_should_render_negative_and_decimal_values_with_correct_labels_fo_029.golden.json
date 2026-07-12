@@ -1,11 +1,10 @@
 {
   "diagramType": "xychart",
   "model": {
-    "type": "xychart",
+    "orientation": "horizontal",
     "title": "Decimal and Negative Values",
     "accTitle": null,
     "accDescr": null,
-    "orientation": "horizontal",
     "xAxis": {
       "type": "band",
       "title": "Categories",
@@ -44,6 +43,7 @@
           ]
         ]
       }
-    ]
+    ],
+    "type": "xychart"
   }
 }

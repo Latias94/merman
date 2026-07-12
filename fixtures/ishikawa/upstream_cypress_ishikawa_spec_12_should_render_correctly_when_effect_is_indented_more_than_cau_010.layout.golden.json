@@ -40,192 +40,216 @@
           }
         }
       },
-      "lines": [
+      "spine": {
+        "x1": -197.799,
+        "y1": 333.333,
+        "x2": 0.0,
+        "y2": 333.333,
+        "class_name": "ishikawa-spine",
+        "marker_start": false
+      },
+      "pairs": [
         {
-          "x1": -20.0,
-          "y1": 333.333,
-          "x2": -66.391,
-          "y2": 3.244,
-          "class_name": "ishikawa-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -35.464,
-          "y1": 223.304,
-          "x2": -65.464,
-          "y2": 223.304,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -50.927,
-          "y1": 113.274,
-          "x2": -80.927,
-          "y2": 113.274,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -20.0,
-          "y1": 333.333,
-          "x2": -43.196,
-          "y2": 498.378,
-          "class_name": "ishikawa-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -31.598,
-          "y1": 415.856,
-          "x2": -61.598,
-          "y2": 415.856,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -162.521,
-          "y1": 333.333,
-          "x2": -171.799,
-          "y2": 267.315,
-          "class_name": "ishikawa-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -197.799,
-          "y1": 333.333,
-          "x2": 0.0,
-          "y2": 333.333,
-          "class_name": "ishikawa-spine",
-          "marker_start": false
-        }
-      ],
-      "labels": [
-        {
-          "text": "Cause A",
-          "lines": [
-            "Cause A"
-          ],
-          "class_name": "ishikawa-label cause",
-          "x": -66.391,
-          "y": -7.756,
-          "anchor": "middle",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -92.391,
-            "min_y": -18.569,
-            "max_x": -40.391,
-            "max_y": 0.431
+          "upper": {
+            "line": {
+              "x1": -20.0,
+              "y1": 333.333,
+              "x2": -66.391,
+              "y2": 3.244,
+              "class_name": "ishikawa-branch",
+              "marker_start": true
+            },
+            "label_group": {
+              "label_box": {
+                "x": -112.391,
+                "y": -20.569,
+                "width": 92.0,
+                "height": 23.0
+              },
+              "label": {
+                "text": "Cause A",
+                "lines": [
+                  "Cause A"
+                ],
+                "class_name": "ishikawa-label cause",
+                "x": -66.391,
+                "y": -7.756,
+                "anchor": "middle",
+                "line_height": 16.8,
+                "font_size": 16.0,
+                "bbox": {
+                  "min_x": -92.391,
+                  "min_y": -18.569,
+                  "max_x": -40.391,
+                  "max_y": 0.431
+                }
+              }
+            },
+            "sub_groups": [
+              {
+                "line": {
+                  "x1": -35.464,
+                  "y1": 223.304,
+                  "x2": -65.464,
+                  "y2": 223.304,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Subcause A2",
+                  "lines": [
+                    "Subcause A2"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -65.464,
+                  "y": 223.304,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -147.057,
+                    "min_y": 212.491,
+                    "max_x": -65.464,
+                    "max_y": 231.491
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -50.927,
+                  "y1": 113.274,
+                  "x2": -80.927,
+                  "y2": 113.274,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Subcause A1",
+                  "lines": [
+                    "Subcause A1"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -80.927,
+                  "y": 113.274,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -162.521,
+                    "min_y": 102.461,
+                    "max_x": -80.927,
+                    "max_y": 121.461
+                  }
+                }
+              }
+            ]
+          },
+          "lower": {
+            "line": {
+              "x1": -20.0,
+              "y1": 333.333,
+              "x2": -43.196,
+              "y2": 498.378,
+              "class_name": "ishikawa-branch",
+              "marker_start": true
+            },
+            "label_group": {
+              "label_box": {
+                "x": -89.196,
+                "y": 496.566,
+                "width": 92.0,
+                "height": 23.0
+              },
+              "label": {
+                "text": "Cause B",
+                "lines": [
+                  "Cause B"
+                ],
+                "class_name": "ishikawa-label cause",
+                "x": -43.196,
+                "y": 509.378,
+                "anchor": "middle",
+                "line_height": 16.8,
+                "font_size": 16.0,
+                "bbox": {
+                  "min_x": -69.196,
+                  "min_y": 498.566,
+                  "max_x": -17.196,
+                  "max_y": 517.566
+                }
+              }
+            },
+            "sub_groups": [
+              {
+                "line": {
+                  "x1": -31.598,
+                  "y1": 415.856,
+                  "x2": -61.598,
+                  "y2": 415.856,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Subcause B1",
+                  "lines": [
+                    "Subcause B1"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -61.598,
+                  "y": 415.856,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -143.192,
+                    "min_y": 405.043,
+                    "max_x": -61.598,
+                    "max_y": 424.043
+                  }
+                }
+              }
+            ]
           }
         },
         {
-          "text": "Subcause A2",
-          "lines": [
-            "Subcause A2"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -65.464,
-          "y": 223.304,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -147.057,
-            "min_y": 212.491,
-            "max_x": -65.464,
-            "max_y": 231.491
-          }
-        },
-        {
-          "text": "Subcause A1",
-          "lines": [
-            "Subcause A1"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -80.927,
-          "y": 113.274,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -162.521,
-            "min_y": 102.461,
-            "max_x": -80.927,
-            "max_y": 121.461
-          }
-        },
-        {
-          "text": "Cause B",
-          "lines": [
-            "Cause B"
-          ],
-          "class_name": "ishikawa-label cause",
-          "x": -43.196,
-          "y": 509.378,
-          "anchor": "middle",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -69.196,
-            "min_y": 498.566,
-            "max_x": -17.196,
-            "max_y": 517.566
-          }
-        },
-        {
-          "text": "Subcause B1",
-          "lines": [
-            "Subcause B1"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -61.598,
-          "y": 415.856,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -143.192,
-            "min_y": 405.043,
-            "max_x": -61.598,
-            "max_y": 424.043
-          }
-        },
-        {
-          "text": "Cause C",
-          "lines": [
-            "Cause C"
-          ],
-          "class_name": "ishikawa-label cause",
-          "x": -171.799,
-          "y": 256.315,
-          "anchor": "middle",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -197.799,
-            "min_y": 245.503,
-            "max_x": -145.799,
-            "max_y": 264.503
-          }
-        }
-      ],
-      "label_boxes": [
-        {
-          "x": -112.391,
-          "y": -20.569,
-          "width": 92.0,
-          "height": 23.0
-        },
-        {
-          "x": -89.196,
-          "y": 496.566,
-          "width": 92.0,
-          "height": 23.0
-        },
-        {
-          "x": -217.799,
-          "y": 243.503,
-          "width": 92.0,
-          "height": 23.0
+          "upper": {
+            "line": {
+              "x1": -162.521,
+              "y1": 333.333,
+              "x2": -171.799,
+              "y2": 267.315,
+              "class_name": "ishikawa-branch",
+              "marker_start": true
+            },
+            "label_group": {
+              "label_box": {
+                "x": -217.799,
+                "y": 243.503,
+                "width": 92.0,
+                "height": 23.0
+              },
+              "label": {
+                "text": "Cause C",
+                "lines": [
+                  "Cause C"
+                ],
+                "class_name": "ishikawa-label cause",
+                "x": -171.799,
+                "y": 256.315,
+                "anchor": "middle",
+                "line_height": 16.8,
+                "font_size": 16.0,
+                "bbox": {
+                  "min_x": -197.799,
+                  "min_y": 245.503,
+                  "max_x": -145.799,
+                  "max_y": 264.503
+                }
+              }
+            },
+            "sub_groups": []
+          },
+          "lower": null
         }
       ]
     }

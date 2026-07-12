@@ -164,13 +164,11 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
     let stem = normalized_fixture_stem(fixture_name_or_stem);
 
     if diagram == "sequence" && stem == "stress_end_keyword_016" {
-        return Some("upstream Mermaid 11.15 rejects `(end)` as a participant id");
+        return Some("pinned Mermaid 11.16 rejects `(end)` as a participant id");
     }
 
     if diagram == "flowchart" && stem == "upstream_flow_text_ellipse_vertex_parser_only_spec" {
-        return Some(
-            "upstream Mermaid 11.15 cannot render this parser-only ellipse vertex fixture",
-        );
+        return Some("pinned Mermaid 11.16 cannot render this parser-only ellipse vertex fixture");
     }
 
     if diagram == "flowchart" && stem.starts_with("local_flowchart_elk_hardening_") {
@@ -180,11 +178,42 @@ pub(crate) fn upstream_svg_baseline_skip_reason(
     }
 
     if diagram == "state" && stem == "upstream_state_parser_spec" {
-        return Some("upstream Mermaid 11.15 crashes on this parser-only state fixture");
+        return Some("pinned Mermaid 11.16 crashes on this parser-only state fixture");
     }
 
     if diagram == "class" && stem == "upstream_text_label_variants_spec" {
-        return Some("upstream Mermaid 11.15 fails on the whitespace-only class label fixture");
+        return Some("pinned Mermaid 11.16 fails on the whitespace-only class label fixture");
+    }
+
+    if diagram == "gantt"
+        && matches!(
+            stem,
+            "click_loose"
+                | "click_strict"
+                | "dateformat_hash_comment_truncates"
+                | "excludes_hash_comment_truncates"
+                | "today_marker_and_axis"
+        )
+    {
+        return Some(
+            "fixture is retained for parser parity but is not a stable pinned Mermaid 11.16 SVG baseline",
+        );
+    }
+
+    if diagram == "c4"
+        && matches!(
+            stem,
+            "nesting_updates"
+                | "upstream_boundary_spec"
+                | "upstream_c4container_header_and_direction_spec"
+                | "upstream_container_spec"
+                | "upstream_person_ext_spec"
+                | "upstream_person_spec"
+                | "upstream_system_spec"
+                | "upstream_update_element_style_all_fields_spec"
+        )
+    {
+        return Some("pinned Mermaid 11.16 C4 renderer rejects this parser fixture at render time");
     }
 
     None
@@ -202,7 +231,7 @@ pub(crate) fn upstream_svg_compare_skip_reason(
 
     if diagram == "class" && stem == "upstream_parser_class_spec" {
         return Some(
-            "upstream Mermaid 11.15 renders prototype-key class ids with NaN transforms and missing nodes; compare-class-svgs and compare-svg-xml already exclude this fixture",
+            "pinned Mermaid 11.16 renders prototype-key class ids with NaN transforms and missing nodes; compare-class-svgs and compare-svg-xml already exclude this fixture",
         );
     }
 
@@ -505,14 +534,14 @@ mod tests {
     fn upstream_svg_baseline_skip_reason_accepts_fixture_names_and_stems() {
         assert_eq!(
             upstream_svg_baseline_skip_reason("sequence", "stress_end_keyword_016.mmd"),
-            Some("upstream Mermaid 11.15 rejects `(end)` as a participant id")
+            Some("pinned Mermaid 11.16 rejects `(end)` as a participant id")
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason(
                 "flowchart",
                 "upstream_flow_text_ellipse_vertex_parser_only_spec.svg"
             ),
-            Some("upstream Mermaid 11.15 cannot render this parser-only ellipse vertex fixture")
+            Some("pinned Mermaid 11.16 cannot render this parser-only ellipse vertex fixture")
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason(
@@ -532,11 +561,21 @@ mod tests {
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason("state", "upstream_state_parser_spec.mmd"),
-            Some("upstream Mermaid 11.15 crashes on this parser-only state fixture")
+            Some("pinned Mermaid 11.16 crashes on this parser-only state fixture")
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason("class", "upstream_text_label_variants_spec.mmd"),
-            Some("upstream Mermaid 11.15 fails on the whitespace-only class label fixture")
+            Some("pinned Mermaid 11.16 fails on the whitespace-only class label fixture")
+        );
+        assert_eq!(
+            upstream_svg_baseline_skip_reason("gantt", "click_loose.mmd"),
+            Some(
+                "fixture is retained for parser parity but is not a stable pinned Mermaid 11.16 SVG baseline"
+            )
+        );
+        assert_eq!(
+            upstream_svg_baseline_skip_reason("c4", "upstream_person_spec.mmd"),
+            Some("pinned Mermaid 11.16 C4 renderer rejects this parser fixture at render time")
         );
         assert_eq!(
             upstream_svg_baseline_skip_reason("flowchart", "upstream_docs_flowchart_basic_001"),
@@ -548,11 +587,11 @@ mod tests {
     fn upstream_svg_compare_skip_reason_covers_compare_only_class_artifacts() {
         assert_eq!(
             upstream_svg_compare_skip_reason("state", "upstream_state_parser_spec"),
-            Some("upstream Mermaid 11.15 crashes on this parser-only state fixture")
+            Some("pinned Mermaid 11.16 crashes on this parser-only state fixture")
         );
         assert_eq!(
             upstream_svg_compare_skip_reason("class", "upstream_text_label_variants_spec"),
-            Some("upstream Mermaid 11.15 fails on the whitespace-only class label fixture")
+            Some("pinned Mermaid 11.16 fails on the whitespace-only class label fixture")
         );
         let reason = upstream_svg_compare_skip_reason("class", "upstream_parser_class_spec")
             .expect("prototype-key class ids should be skipped from compare");

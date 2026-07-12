@@ -2,6 +2,8 @@
 //
 // These values are keyed by fixture `diagram_id` and are used to close remaining
 // parity-root differences on the root `<svg>` (`viewBox` + `style max-width`).
+// Entries whose upstream root changed in Mermaid 11.16 are intentionally omitted so computed
+// layout bounds cannot be forced back to the 11.12 geometry.
 
 pub fn lookup_mindmap_root_viewport_override(
     diagram_id: &str,
@@ -30,21 +32,10 @@ pub fn lookup_mindmap_root_viewport_override(
         "upstream_cypress_mindmap_spec_should_render_all_level_2_nodes_correctly_when_there_are_more_th_019" => {
             Some(("5 5 466.2218017578125 284.1161804199219", "466.222"))
         }
-        "upstream_docs_mindmap_hexagon_017" => Some(("5 5 204.6432342529297 64", "204.643")),
         "upstream_docs_mindmap_bang_013" => Some((
             "8.327735900878906 6.599998474121094 186.38671875 100",
             "186.387",
         )),
-        "upstream_docs_mindmap_markdown_strings_028" => {
-            Some(("5 5 787.6028442382812 132.77752685546875", "787.603"))
-        }
-        "upstream_node_types" => Some((
-            "7.709373474121094 5 412.6386413574219 268.28924560546875",
-            "412.639",
-        )),
-        "upstream_cypress_mindmap_tidy_tree_spec_3_tidy_tree_should_render_a_mindmap_with_different_shapes_003" => {
-            Some(("5 5 1144.203369140625 700.1749877929688", "1144.2"))
-        }
         "upstream_docs_intro_how_can_i_help_001" => {
             Some(("5 5 893.5901489257812 384.7295837402344", "893.59"))
         }
@@ -68,10 +59,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "stress_deep_wide_combo_011" => {
             Some(("5 5 785.1439819335938 678.3199462890625", "785.144"))
         }
-        "stress_mindmap_html_sanitization_013" => {
-            Some(("5 5 233.390625 258.71905517578125", "233.391"))
-        }
-        "stress_mindmap_markdown_emphasis_icons_014" => Some(("5 5 260 330.546142578125", "260")),
         "stress_mindmap_many_siblings_decorators_015" => {
             Some(("5 5 373.0360412597656 290.3151550292969", "373.036"))
         }
@@ -84,12 +71,6 @@ pub fn lookup_mindmap_root_viewport_override(
         "stress_mindmap_whitespace_comments_indent_018" => {
             Some(("5 5 435.1615905761719 589.0218505859375", "435.162"))
         }
-        "stress_mindmap_unicode_punct_020" => {
-            Some(("5 5 635.117919921875 257.3459167480469", "635.118"))
-        }
-        "stress_mindmap_multiline_markdown_021" => {
-            Some(("5 5 738.185791015625 131.3553237915039", "738.186"))
-        }
         "stress_mindmap_proto_like_ids_022" => {
             Some(("5 5 142.109375 461.2441101074219", "142.109"))
         }
@@ -99,9 +80,6 @@ pub fn lookup_mindmap_root_viewport_override(
         )),
         "stress_mindmap_icons_multi_packs_025" => {
             Some(("5 5 362.785400390625 267.94415283203125", "362.785"))
-        }
-        "stress_mindmap_shapes_with_ids_and_labels_028" => {
-            Some(("5 5 563.7918701171875 368.91632080078125", "563.792"))
         }
         "stress_mindmap_markdown_vs_verbatim_030" => {
             Some(("5 5 427.04827880859375 264.58648681640625", "427.048"))

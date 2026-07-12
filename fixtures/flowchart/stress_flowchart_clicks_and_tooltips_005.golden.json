@@ -9,8 +9,8 @@
     "classDefs": {},
     "tooltips": {
       "db": "DB docs",
-      "api": "API docs",
-      "cache": "Cache docs"
+      "cache": "Cache docs",
+      "api": "API docs"
     },
     "edgeDefaults": {
       "style": [],

@@ -1,0 +1,315 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "stress_quadrantchart_batch1_axis_missing_sides_011": {
+      "input_sha256": "64a13bae0a311cf8490a4c46956bfa9348b32600c33c31cf60858c494c7ffb38",
+      "svg_sha256": "14cb938b4be6220fa82128c2dae3e72234e055abb5a53273cb9588ab7a90c077",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_boundaries_001": {
+      "input_sha256": "97984eb216ae936c11cff3f769046992f185220736f31fe0c81262f69ca39b4b",
+      "svg_sha256": "67af95dd41b8d6c6dce9d4712de858b2a571b72bbf5559a420f0254edb7a11c9",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_br_in_axes_and_long_quadrants_010": {
+      "input_sha256": "bc0cb7e2b5d3ef17936bd6fbd614896622fec39ccaa1f8c7677eacd5f6ad08d7",
+      "svg_sha256": "7af4eb95b0d1313ad46e5e19f8aebd014bd943b6180643545001a09b527250ba",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_config_positions_padding_006": {
+      "input_sha256": "d035cffe50499fb1d6007e40a5bb3037b002e95de61ce3c3ec5a93e6cefe6ee3",
+      "svg_sha256": "72c2ae90018bf9b521ce594c3a84d8fe648c545a0b06be26461fd1f8e4da8eba",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_dense_points_overlap_003": {
+      "input_sha256": "aadbb8dd436113794e2105ccb80ce9e3a4c137cd683a2f45db0da89f31a4e94d",
+      "svg_sha256": "eeedea7e957295227cf756cdb82b6943d03c365c82403617013cf7269fd2179f",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_large_chart_many_points_012": {
+      "input_sha256": "68f39e16abca07653499bf2595679adbdaf70cb85896b3a71e98cb6b53683f61",
+      "svg_sha256": "58f1a6227f10ef72db6d511e998077feff26a7ba9d435fb4a7b6eaa37b046ab7",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_no_points_centered_labels_002": {
+      "input_sha256": "0de65c72e4459b57ef2d312caee6abf86c17d94fd3fd4c367a7ebdd351a1bc4f",
+      "svg_sha256": "09e1c4795aeb1f4ac7164bee1e4f2655fd80a5b29c58e5b1971d7c361ec20223",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_style_precedence_direct_vs_class_004": {
+      "input_sha256": "77e074d5f9e95a5388571cacc01d32a25b32cb26f7ce5aa92ac04942f3d68212",
+      "svg_sha256": "141cdb928d0996b31b4f76bccfe78c59a5996728402d3a71b0473033ceef524b",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_style_whitespace_and_order_005": {
+      "input_sha256": "2f32abf62fdf4a00abf0b6d9c9f87cb5452c1112a0e3f84e42a543d2014a409a",
+      "svg_sha256": "f216fbbb09606e0c85a9552caafd4f45369ff272c6fb6055de9faeaf239cf223",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_themevariables_custom_fills_008": {
+      "input_sha256": "a3e90f7e6bc89b74f90906706e07ce05583959646bab9a7d6ddcd2db2fb87e60",
+      "svg_sha256": "ba70234f7f141ab0bf4f34dbc90993ca0e9881abb3d4fb69fb233bc5dccbd1b6",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_unicode_quotes_punct_009": {
+      "input_sha256": "5f2e888869cfe7ad403812096f0847f1ea7dc89279f1070bf0a129d0b9d84779",
+      "svg_sha256": "3da539e8e50a27906de6554e1a4a984894cc6073c801b6962f57dbdde6b1acc9",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_quadrantchart_batch1_usemaxwidth_false_fixed_size_007": {
+      "input_sha256": "000772d73e040d84a4660e2970f1cdf27c226feb6b6df174f4f667cf1dd50219",
+      "svg_sha256": "4c8dcfdac491761cc1746980c0ccba955290712faeb90f98b4a175cb2b52b889",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_example_001": {
+      "input_sha256": "31b1090b7aee519fb7d38f8324acd3bb4622e11fc8c72297a2508afee545cdf2",
+      "svg_sha256": "264ad7e1c2ba02bf1a7f57a768ba52ea79ae1762f65d913403300c68b2dc4a53",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_it_should_render_data_points_with_styles_013": {
+      "input_sha256": "0449b9802ff0f6f5fc03d15e50aa53eb3023b94ea4a129e66f9184a3654264ee",
+      "svg_sha256": "7cc88bafba277f76f393cefd88a586cc6f3f8c8fc61cda65a8a3e5719f2f84cc",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_it_should_render_data_points_with_styles_classes_014": {
+      "input_sha256": "26236aacade28dd527586ed762d3a2ce5129bd661043b03468d9e09a3bd15902",
+      "svg_sha256": "d18ec79ad91391754e5931b51bdb6d84cd07ca42d2dd6f2aab1ecdde57bd74ee",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_able_to_render_x_axis_on_bottom_005": {
+      "input_sha256": "1c29ac80f225fb08e29393b23b77f5feb3e21d2fede10c91c47b125f7923aee0",
+      "svg_sha256": "4f640d70cdd459538ce824079ffa084f142dc8cd34e0fd6c3a7a63bfd2e4ee29",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_able_to_render_x_axis_on_bottom_and_y_axis_on_right_006": {
+      "input_sha256": "788e23228a9f7f5a8ec4441c6252220bd571f75273982a36106006843844350a",
+      "svg_sha256": "d1fdf3087e33e8f644d5464fda4f0e950f7e635d5411facbf2442884127305ef",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_able_to_render_y_axis_on_right_side_004": {
+      "input_sha256": "7f9691d387061e7414bada0a1fd0c0dc13460cb16238098c9c81d7629bf53f09",
+      "svg_sha256": "3c835906c2dde6fa4eb12558fe65c38a012b6046e0053581844a7dccee4d3584",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_render_a_complete_quadrant_chart_002": {
+      "input_sha256": "008c05269b5bb2d3cca3791581781e5c004afe7f2978c1e7cfcd6557218d6aa6",
+      "svg_sha256": "65fe8cb31b66f4f542d1b9e4ed60c617ff8b4d8e32da0c5ad200981b1efcf4f7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_render_both_axes_labels_on_the_left_and_bottom_if_both_ax_012": {
+      "input_sha256": "80e2902f31cd5421b2224ccb861170f20c76d01ac3997a98296a05141a8730ab",
+      "svg_sha256": "df0ccfb9496cd7faef1a7f4b71cf9a8ee2104c61162f1af4ca3ab713ff562d02",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_render_without_points_003": {
+      "input_sha256": "58c402e26ed5424981955fa3bdee35f16073be6f93b9bfb33a55fb9c70720a25",
+      "svg_sha256": "1f569e2778c4c1ad4985a25eb8c9aa4002a8e5539ada26b6ca626ac42ceafbe3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_render_without_title_007": {
+      "input_sha256": "946c17c830a904ac0d846b3124784f92fcb8fe8350f5b154a03a189e3af0b635",
+      "svg_sha256": "126956c308c568b6680eae9e6885897897974292fff89c5096a3a1da8f7aff30",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_render_x_axis_labels_in_the_center_if_x_axis_has_two_labe_010": {
+      "input_sha256": "034788581619c073834e257004121b116a88cb68e133b05ede854ae319940e98",
+      "svg_sha256": "8e3c1a3f94caead233b7d9161b8dee7977de3f9ff9df07e8a20f65f95d4e1c61",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_render_y_axis_labels_in_the_center_if_y_axis_has_two_labe_011": {
+      "input_sha256": "accd19f9003c40d4481287bc788ccc356dab7eda9533e3fe57cd553e76240ba0",
+      "svg_sha256": "97c69dfe850dda39680c63f8a6b1ded57ca3c6b7a9d49e5d8a42b7ce3604df6d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_use_all_the_config_008": {
+      "input_sha256": "175e5739891acaab9af51921a776113b02ff20799445e8fe68b3a82782a40beb",
+      "svg_sha256": "91b22ae9d87a69d9801c8a42080ab68677db3ed22e3064600051215ddd43d02a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_quadrantchart_spec_should_use_all_the_theme_variable_009": {
+      "input_sha256": "9217408717125150f0de2e9292c8059c63a754712998e6acc574ed097efe65bb",
+      "svg_sha256": "e1d37d4cb75ddf76a72223c67a0a9da400de460503b4cab55b72392c0cde67a7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_quadrantchart_example_003": {
+      "input_sha256": "c519e38229854db7ff1722527d8d49bfcd055f162870bfe21b2a0a091be7ddf6",
+      "svg_sha256": "b7f9d9d502ab7aff770d327e8723ecb0ba1587dcd06e2f1296c3c401479741d2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_examples_quadrant_chart_product_positioning_001": {
+      "input_sha256": "486722058de4895de5eb7878f4a718df0d36ebe85260b1bffa2ac1201f958244",
+      "svg_sha256": "5f7fde116f2c97563f802a5ceb56186b4fb7085aec03a3b565f0ddf84e586188",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_quadrantchart_quadrant_chart_demos_001": {
+      "input_sha256": "2c5efcfb761f2124e20fa0d6d3229dfb689d26d999a32aabbb7b5e284509d71d",
+      "svg_sha256": "d0210cb8a64da6ecbadcec303b1aa247f0998c71cc53fd0d318a1885bb5f0ffd",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_quadrantchart_quadrant_chart_demos_002": {
+      "input_sha256": "9191525100da390f42cfd30b25cf65d3b3f32aade2a6a8fefc4822fb7fddece1",
+      "svg_sha256": "f072e5cd8a6bd6cba2e111b11886f752aa066fc72249d88f94c76db5c0c86f4d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_001": {
+      "input_sha256": "47c72aaeb253c2c354f6e4e750a579c8691e2cb89c24520333fc86e6aac66ba3",
+      "svg_sha256": "ad339793a70f493622fb261186c3a8134ba3537cf6dda041ec6cc5472548d73f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_002": {
+      "input_sha256": "39e9309234f04a036609960677ad0a1fe0038ade574feaa22c387657fb331cde",
+      "svg_sha256": "e8ca796e25ff1050077e5c558079a7a9b6a22fd49acb6065e0cbf6d5fe552956",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_003": {
+      "input_sha256": "faec8b75f7601400c184d33d5fe27d11f62778dda9e848790fa6e6cbd87c7a73",
+      "svg_sha256": "bb5b5de2b92f16f1a8a7cee1b6c4cff50d6277750ee15616b77f7dcfa4f37294",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_014": {
+      "input_sha256": "e9ee78c6ab279d4c154e8ad5a53976e3931e39bcbb231bc630b3e33e8626be78",
+      "svg_sha256": "6664fc64a8f52153b795012dda23954d7bb137119f8fe1c492520f444602297f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_019": {
+      "input_sha256": "a5cf313b5b1728b294e7120975e7f964022a4a9378704fe160c47e13d1242dbe",
+      "svg_sha256": "0310fbcf6cb4d634eb17eb5ee391b0d62b076550358537b2ca37c5f6d62876a0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_024": {
+      "input_sha256": "ed98a855894a94b99f943aaab62613b06ec55295c550f63f24c56dc770a36f2e",
+      "svg_sha256": "56d0886c9eb7a602b2d9112cbd42a9f873ea68d2fab34e2ee19f662419ddc8d7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_029": {
+      "input_sha256": "c9b45360f5be9e70d27bb8b53ecdd58e01d15d88bdd763f722892f310c69c038",
+      "svg_sha256": "da68a06d46eac57144dad013cdb762cf5678d2c2f976142145d1faa9f9400238",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_032": {
+      "input_sha256": "89284852359912e0dc7ca5a5bba089804087a32e224ced9d194d388f7c12590b",
+      "svg_sha256": "e9ca721a1c5d0aed2803d546c634cb6cd03972519ad57985fb7f20f7bb1dc7ed",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_036": {
+      "input_sha256": "50c164eba9432a9d64ecffdaecc9c483d86bf74e6ce09688eb6238bdd728a091",
+      "svg_sha256": "f9e5156d50e3abf227c3617ec211c710d854a84e4575a16f93a44ec199e697cb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_041": {
+      "input_sha256": "86140df1387773b4d8696a3ef9487c36d62b7356f7ae3e5817dcf6adb6a908de",
+      "svg_sha256": "0a7b3d9781082e4270b8bdd47af082a9b32c5959bd7db059272fb835c815fb7e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_046": {
+      "input_sha256": "2bf552f4fbd671cd404dfde58b6dd2b947a2ad5157f6a01519d3c2938ff638b9",
+      "svg_sha256": "69301119c86cef0a6bd620e9ad0771930b7b04f85b79181337121c1cb15be978",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_051": {
+      "input_sha256": "c160ccb8af36a957afa40e494a634c5130c6efed82172d28785cfdfb72e4f662",
+      "svg_sha256": "75a9241af11235e03b78d495408fce798dbbccd6d17b8da40c56357f6dffc34e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_054": {
+      "input_sha256": "237bb1d6f52576c9ab1dac732f961abe0a0f405484a7a6943f70cd0abc361091",
+      "svg_sha256": "76370385b5539342acdd376f4b86c128b3f33330fc49f7ab0bb6bc3ae3756157",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_058": {
+      "input_sha256": "46b153d9c886eb7274716bfb0d83859758cdac5337fdacbcd58a15e80bf979a4",
+      "svg_sha256": "5650569a9e018b1edc02efb520411735c65d58786e115fecf48bb39d3822f208",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_068": {
+      "input_sha256": "12d24abe166f79142f1e27841375f16ddbec9b8c5462b0373aba472d7a1c3d6c",
+      "svg_sha256": "116c6f9db788654069d7ece9e65bd5f126443a21c1bfbc5b5bab138ab8be3d07",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_078": {
+      "input_sha256": "e8db19e9a230e63bbb2bbc5e7c48b6fb3caa229b95aea22c9d0637fa9e6897f1",
+      "svg_sha256": "72f1000379ec3cd65ad6ce96035dd1e7e59afd490294bb901eb23aa038fbe785",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_088": {
+      "input_sha256": "695e8f9ba00af61f8cc996b663a1e0d4df491c748012395da82394b0d030cf36",
+      "svg_sha256": "812b6afeae4f7d3dff26400f722e30b09a89e8860db57877257d6c92c59d9e36",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_098": {
+      "input_sha256": "50dc90f02c8a5e18428a35c52ac895ce57d0b5f8385aa4fee27ab11706cfa8a6",
+      "svg_sha256": "839b799af956aad26798e18a22ee6e9b2bd72699213fc28a5e49aee5447296f1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_quadrant_jison_spec_105": {
+      "input_sha256": "feaf3a7183c041cc3b3f6a730b8afbe1cebdfc27456e65e1902818d405f97fe8",
+      "svg_sha256": "dccaee8fda275fb5bad5eebfeefa17d29948afaa04b9a92cc5679cf2074f342c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_axes_missing_side_jison_spec": {
+      "input_sha256": "d9b255965067102ef2ff17b178e0f17676ad41b9c1783ea0506e1df90221d891",
+      "svg_sha256": "571a42c6014da02512d1bcd5b3da7340f14021fd1e4234fb78e4b2de58e5b72e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_docs_config_and_theme_example": {
+      "input_sha256": "0a45f6afb35ff74532d8211185c1f93c5fba4d6a5e03a95b4d854e0cdf422c57",
+      "svg_sha256": "9b0529b83d80fb323f10b2841cad41f04fd2ea31e99f201e0f05498c0457f72d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_docs_example_reach_engagement": {
+      "input_sha256": "3a7369d4ff416e70e839d2b329756525d06a2ad26cf8e136892bd4f95d9e7b4a",
+      "svg_sha256": "00e80f91163929ab437dc7d33b9889d46f2925e7edc3801ee408e68797474530",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_docs_styling_example": {
+      "input_sha256": "3537815ea1f2a51865c3e2bb7afa8a731ded5fd3d6d06513a8262760f6945c00",
+      "svg_sha256": "0bf19c189dabc6ae3f39cfd3aa3ecb1337b1822842b4d2b77d964b5aa9301b17",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_header_only_jison_spec": {
+      "input_sha256": "716297b90788d7c54553e14117d18a7607009c988f2928eb35a1fb6de61aee8f",
+      "svg_sha256": "b2439cee221af9d54b00a72157dd7c6ba7c3674af6ed76ace29da462b9fa8820",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_title_raw_jison_spec": {
+      "input_sha256": "668ab71345e8435159d426762baa88069032f6e824ad49a2d096444ce6c9b042",
+      "svg_sha256": "5db3468c2beca84241b207239dad59e0508ea1ffa3f3ef35d0ab68ce07ebd902",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_whole_chart_jison_spec": {
+      "input_sha256": "af168d4b7f5fabbfd9e6fce9b9e22b1ffbd2655b6f0387f031350d305004024c",
+      "svg_sha256": "2941d435e5d0bd9a27072d2a6986d15941e6f9f6a509eb0afa08d20818438405",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_whole_chart_point_styles_jison_spec": {
+      "input_sha256": "126084e465594a77e6058d0bd25b77afaa23566519fbcf45e27dd7268728dd06",
+      "svg_sha256": "c49138a4b47bc38436aac204dd55df19a52dcb448e3730029bc42a25d924fba1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_quadrant_whole_chart_random_style_order_and_class_jison_spec": {
+      "input_sha256": "99ab924a47a3b7c8b4f5566a8385f40cb2cfb583ee6d1e78f180dcf63f12b38c",
+      "svg_sha256": "b235aae9b50b1c1b75516e54550ef9ebdafb642349a4fd997d2765dae2c339c7",
+      "renderer_profile": "mmdc-default"
+    },
+    "zed_pr_57644_quadrant": {
+      "input_sha256": "3ee05f0e1dcaa255e8e6c8cd584cd1bb964b8897b1e28dab2882f07b665974a3",
+      "svg_sha256": "e5f0121722e510a36c14d1ef47c2e90c583d8d272f862d45e3527ca0090c8751",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

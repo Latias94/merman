@@ -576,9 +576,11 @@ pub(crate) fn render_treemap_diagram_svg(
         if label_text.is_empty() {
             let _ = write!(
                 &mut out,
-                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" style="display: none;"/>"#,
+                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" clip-path="url(#clip-section-{id}-{i})" style="display: none;"/>"#,
                 x = fmt(section_label_inset_x),
-                y = fmt(section_header_center_y)
+                y = fmt(section_header_center_y),
+                id = escape_attr(diagram_id),
+                i = i
             );
         } else {
             // Mirror Mermaid's truncation loop in `renderer.ts` (uses `getComputedTextLength()`).
@@ -634,9 +636,11 @@ pub(crate) fn render_treemap_diagram_svg(
             );
             let _ = write!(
                 &mut out,
-                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" style="{style}">{text}</text>"#,
+                r#"<text class="treemapSectionLabel" x="{x}" y="{y}" dominant-baseline="middle" font-weight="bold" clip-path="url(#clip-section-{id}-{i})" style="{style}">{text}</text>"#,
                 x = fmt(section_label_inset_x),
                 y = fmt(section_header_center_y),
+                id = escape_attr(diagram_id),
+                i = i,
                 style = escape_attr(&section_label_style),
                 text = escape_xml(&label_text)
             );
@@ -680,6 +684,15 @@ pub(crate) fn render_treemap_diagram_svg(
 
         out.push_str("</g>");
     }
+
+    let is_complex_treemap = layout.leaves.len() > 20;
+    let base_label_font_size = if is_complex_treemap { 16.0 } else { 38.0 };
+    let base_value_font_size = if is_complex_treemap { 14.0 } else { 28.0 };
+    let min_label_font_size = if is_complex_treemap { 4.0 } else { 8.0 };
+    let min_value_font_size = if is_complex_treemap { 4.0 } else { 6.0 };
+    let label_padding = if is_complex_treemap { 2.0 } else { 4.0 };
+    let min_display_threshold = if is_complex_treemap { 8.0 } else { 10.0 };
+    let spacing_between_label_and_value = if is_complex_treemap { 1.0 } else { 2.0 };
 
     for (i, leaf) in layout.leaves.iter().enumerate() {
         let w = leaf.x1 - leaf.x0;
@@ -734,19 +747,14 @@ pub(crate) fn render_treemap_diagram_svg(
             h = fmt((h - 4.0).max(0.0))
         );
 
-        let padding = 4.0;
-        let available_w = w - 2.0 * padding;
-        let available_h = h - 2.0 * padding;
+        let available_w = w - 2.0 * label_padding;
+        let available_h = h - 2.0 * label_padding;
 
-        let mut label_font_size = 38.0;
-        let min_label_font_size = 8.0;
-        let original_value_rel_font_size = 28.0;
+        let mut label_font_size = base_label_font_size;
         let value_scale_factor = 0.6;
-        let min_value_font_size = 6.0;
-        let spacing_between_label_and_value = 2.0;
 
         let mut label_hidden = false;
-        if available_w < 10.0 || available_h < 10.0 {
+        if available_w < min_display_threshold || available_h < min_display_threshold {
             label_hidden = true;
         } else {
             let mut style = crate::text::TextStyle {
@@ -769,7 +777,7 @@ pub(crate) fn render_treemap_diagram_svg(
 
             let mut prospective_value_font_size = (label_font_size * value_scale_factor)
                 .round()
-                .min(original_value_rel_font_size)
+                .min(base_value_font_size)
                 .max(min_value_font_size);
             let mut combined_h =
                 label_font_size + spacing_between_label_and_value + prospective_value_font_size;
@@ -779,28 +787,36 @@ pub(crate) fn render_treemap_diagram_svg(
                 style.font_size = label_font_size;
                 prospective_value_font_size = (label_font_size * value_scale_factor)
                     .round()
-                    .min(original_value_rel_font_size)
+                    .min(base_value_font_size)
                     .max(min_value_font_size);
                 combined_h =
                     label_font_size + spacing_between_label_and_value + prospective_value_font_size;
             }
 
             style.font_size = label_font_size;
-            let fit_tolerance_px =
-                treemap_leaf_label_fit_tolerance_px(&leaf.name, label_font_size, available_w);
-            if measurer.measure(&leaf.name, &style).width > available_w + fit_tolerance_px
-                || label_font_size < min_label_font_size
-                || available_h < label_font_size
-            {
-                label_hidden = true;
+            if is_complex_treemap {
+                if label_font_size < min_label_font_size || available_h < min_label_font_size {
+                    label_hidden = true;
+                }
+            } else {
+                let fit_tolerance_px =
+                    treemap_leaf_label_fit_tolerance_px(&leaf.name, label_font_size, available_w);
+                if measurer.measure(&leaf.name, &style).width > available_w + fit_tolerance_px
+                    || label_font_size < min_label_font_size
+                    || available_h < label_font_size
+                {
+                    label_hidden = true;
+                }
             }
         }
 
-        let label_style = if !label_hidden && (label_font_size - 38.0).abs() < 1e-9 {
+        let label_style = if !label_hidden && (label_font_size - base_label_font_size).abs() < 1e-9
+        {
             // Preserve Mermaid's "raw attr('style', ...)" formatting when the label isn't
             // modified by the `.each()` loop.
             format!(
-                "text-anchor: middle; dominant-baseline: middle; font-size: 38px;fill:{fill};{suffix}",
+                "text-anchor: middle; dominant-baseline: middle; font-size: {font_size}px;fill:{fill};{suffix}",
+                font_size = fmt(base_label_font_size),
                 fill = escape_attr(&leaf_label_fill),
                 suffix = label_styles_suffix
             )
@@ -837,14 +853,14 @@ pub(crate) fn render_treemap_diagram_svg(
             } else {
                 String::new()
             };
-            let mut value_font_size = 28.0;
+            let mut value_font_size = base_value_font_size;
             let mut value_y = h / 2.0; // placeholder (overwritten when label is visible)
             let mut value_hidden = true;
 
             if !label_hidden {
                 let actual_value_font_size = (label_font_size * value_scale_factor)
                     .round()
-                    .min(original_value_rel_font_size)
+                    .min(base_value_font_size)
                     .max(min_value_font_size);
                 value_font_size = actual_value_font_size;
 
@@ -854,7 +870,7 @@ pub(crate) fn render_treemap_diagram_svg(
 
                 let cell_bottom_padding = 4.0;
                 let max_value_bottom_y = h - cell_bottom_padding;
-                let available_w_for_value = w - 2.0 * 4.0;
+                let available_w_for_value = w - 2.0 * label_padding;
 
                 let style = crate::text::TextStyle {
                     font_family: Some(font_family.clone()),
@@ -916,6 +932,38 @@ pub(crate) fn render_treemap_diagram_svg(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
+
+    fn leaf(name: impl Into<String>, value: f64, x0: f64, x1: f64, y1: f64) -> TreemapLeafLayout {
+        TreemapLeafLayout {
+            name: name.into(),
+            value,
+            parent_name: None,
+            x0,
+            y0: 0.0,
+            x1,
+            y1,
+            class_selector: None,
+            css_compiled_styles: None,
+        }
+    }
+
+    fn leaf_group(svg: &str, index: usize) -> &str {
+        let class = format!(r#"class="treemapNode treemapLeafGroup leaf{index}x""#);
+        let class_start = svg.find(&class).expect("leaf group class");
+        let start = svg[..class_start].rfind("<g").expect("leaf group start");
+        let end = start + svg[start..].find("</g>").expect("leaf group end") + 4;
+        &svg[start..end]
+    }
+
+    fn opening_tag_by_class<'a>(fragment: &'a str, class_name: &str) -> &'a str {
+        let needle = format!(r#"<text class="{class_name}""#);
+        let start = fragment.find(&needle).expect("text tag by class");
+        let end = start + fragment[start..].find('>').expect("text tag end") + 1;
+        &fragment[start..end]
+    }
+
     #[test]
     fn treemap_leaf_label_fit_tolerance_matches_mermaid_fixture() {
         assert_eq!(
@@ -926,5 +974,87 @@ mod tests {
             super::treemap_leaf_label_fit_tolerance_px("Item A2", 34.0, 117.0),
             0.0
         );
+    }
+
+    #[test]
+    fn treemap_complex_leaf_text_and_section_clipping_match_mermaid_11_16() {
+        let mut leaves = vec![
+            leaf("Wide", 100.0, 0.0, 200.0, 100.0),
+            leaf("A label much wider than its cell", 1.0, 210.0, 222.0, 40.0),
+            leaf("Tiny", 1.0, 230.0, 236.0, 40.0),
+        ];
+        for index in 3..21 {
+            leaves.push(leaf(format!("Leaf {index}"), 1.0, 0.0, 100.0, 60.0));
+        }
+        let layout = TreemapDiagramLayout {
+            title_height: 0.0,
+            width: 500.0,
+            height: 200.0,
+            use_max_width: true,
+            diagram_padding: 8.0,
+            show_values: true,
+            value_format: ",".to_string(),
+            acc_title: None,
+            acc_descr: None,
+            title: None,
+            sections: vec![TreemapSectionLayout {
+                name: "Section label wider than its header".to_string(),
+                depth: 1,
+                value: 102.0,
+                x0: 0.0,
+                y0: 0.0,
+                x1: 40.0,
+                y1: 100.0,
+                class_selector: None,
+                css_compiled_styles: None,
+            }],
+            leaves,
+        };
+
+        let svg = render_treemap_diagram_svg(
+            &layout,
+            &serde_json::json!({}),
+            &serde_json::json!({}),
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+
+        let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");
+        assert!(
+            section_label.contains(r#"clip-path="url(#clip-section-treemap-0)""#),
+            "section label must use its emitted clipping path: {section_label}"
+        );
+
+        let wide = leaf_group(&svg, 0);
+        let wide_label = opening_tag_by_class(wide, "treemapLabel");
+        let wide_value = opening_tag_by_class(wide, "treemapValue");
+        assert!(wide_label.contains("font-size: 16px"), "{wide_label}");
+        assert!(wide_value.contains("font-size: 10px"), "{wide_value}");
+        assert!(wide_value.contains(r#"y="59""#), "{wide_value}");
+
+        let narrow = leaf_group(&svg, 1);
+        let narrow_label = opening_tag_by_class(narrow, "treemapLabel");
+        let narrow_value = opening_tag_by_class(narrow, "treemapValue");
+        assert!(
+            narrow.contains(">A label much wider than its cell</text>"),
+            "{narrow}"
+        );
+        assert!(narrow_label.contains("font-size: 4px"), "{narrow_label}");
+        assert!(!narrow_label.contains("display: none"), "{narrow_label}");
+        assert!(
+            narrow_label.contains(r#"clip-path="url(#clip-treemap-1)""#),
+            "narrow complex labels remain present and rely on clipping: {narrow_label}"
+        );
+        assert!(narrow_value.contains("font-size: 4px"), "{narrow_value}");
+        assert!(narrow_value.contains(r#"y="23""#), "{narrow_value}");
+        assert!(!narrow_value.contains("display: none"), "{narrow_value}");
+
+        let tiny = leaf_group(&svg, 2);
+        let tiny_label = opening_tag_by_class(tiny, "treemapLabel");
+        let tiny_value = opening_tag_by_class(tiny, "treemapValue");
+        assert!(tiny_label.contains("font-size: 16px"), "{tiny_label}");
+        assert!(tiny_label.contains("display: none"), "{tiny_label}");
+        assert!(tiny_value.contains("font-size: 14px"), "{tiny_value}");
+        assert!(tiny_value.contains("display: none"), "{tiny_value}");
     }
 }

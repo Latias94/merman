@@ -132,13 +132,13 @@
     ],
     "other": {},
     "links": {
-      "B": {
-        "url": "https://mermaid.js.org/",
-        "tooltip": ""
-      },
       "A": {
         "url": "https://mermaid.js.org/",
         "tooltip": "Tooltip for A"
+      },
+      "B": {
+        "url": "https://mermaid.js.org/",
+        "tooltip": ""
       }
     },
     "direction": "TB",

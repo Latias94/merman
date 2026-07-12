@@ -1,14 +1,14 @@
 # Venn Beta Admission Plan (Mermaid@11.16.0)
 
 Status: Admitted
-Last updated: 2026-06-08
-Pinned Mermaid commit: `41646dfd43ac83f001b03c70605feb036afae46d`
+Last updated: 2026-07-12
+Pinned Mermaid commit: `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`
 
 This document records the source-backed plan and admission evidence for `venn-beta` in `merman`.
 
 ## Problem
 
-Mermaid 11.15 includes `venn-beta`. Local support now has a source-backed Rust layout kernel, a core detector/parser/typed semantic model, a classic Stage B SVG renderer, normalized Venn fixtures, committed upstream SVG baselines, and a green family-local compare gate.
+Mermaid 11.16 retains `venn-beta`. Local support now has a source-backed Rust layout kernel, a core detector/parser/typed semantic model, a classic Stage B SVG renderer, normalized Venn fixtures, committed upstream SVG baselines, and a green family-local compare gate.
 
 The parser and DB are small enough to port directly. The risky part is layout/rendering: Mermaid delegates circle placement and intersection geometry to `@upsetjs/venn.js@2.0.0`, then mutates the generated SVG with D3 and optionally replaces shapes with RoughJS for `look: "handDrawn"`. A local renderer must not approximate that geometry with ad hoc circle formulas and then claim Mermaid parity.
 

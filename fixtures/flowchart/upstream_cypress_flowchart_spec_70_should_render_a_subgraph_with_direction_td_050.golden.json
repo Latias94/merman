@@ -86,6 +86,7 @@
         "classes": [],
         "styles": [],
         "dir": "TD",
+        "hasExplicitDir": true,
         "labelType": "text"
       }
     ]

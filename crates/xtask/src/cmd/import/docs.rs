@@ -81,6 +81,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         diagram_dir: String,
         stem: String,
         path: PathBuf,
+        rollback: Option<ImportedFixtureSnapshot>,
         source_md: PathBuf,
         source_idx_in_file: usize,
         source_info: String,
@@ -331,23 +332,6 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         String,
         std::collections::HashMap<String, PathBuf>,
     > = std::collections::HashMap::new();
-
-    fn load_existing_fixtures(fixtures_dir: &Path) -> std::collections::HashMap<String, PathBuf> {
-        let mut map = std::collections::HashMap::new();
-        let Ok(entries) = fs::read_dir(fixtures_dir) else {
-            return map;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "mmd")
-                && let Ok(text) = fs::read_to_string(&path)
-            {
-                let canon = canonical_fixture_text(&text);
-                map.insert(canon, path);
-            }
-        }
-        map
-    }
 
     #[derive(Debug, Clone)]
     struct Candidate {
@@ -641,17 +625,16 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             "flowchart" => {
                 // Flowchart-ELK has a lightweight renderer path, but upstream SVG parity is tracked
                 // by the dedicated ELK layout lane.
-                if fixture_text.trim_start().starts_with("flowchart-elk") {
-                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
-                        return Some(reason);
-                    }
-                }
-                if fixture_text.contains("\n  layout: elk")
-                    || fixture_text.contains("\nlayout: elk")
+                if fixture_text.trim_start().starts_with("flowchart-elk")
+                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
                 {
-                    if let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem) {
-                        return Some(reason);
-                    }
+                    return Some(reason);
+                }
+                if (fixture_text.contains("\n  layout: elk")
+                    || fixture_text.contains("\nlayout: elk"))
+                    && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
+                {
+                    return Some(reason);
                 }
                 // Flowchart "look" variants change DOM structure and markers; only classic is in scope.
                 if (fixture_text.contains("\n  look:") || fixture_text.contains("\nlook:"))
@@ -684,34 +667,54 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         None
     }
 
-    fn is_suspicious_blank_svg(svg_path: &Path) -> bool {
+    fn is_suspicious_blank_svg(svg_path: &Path) -> Result<bool, XtaskError> {
         // Mermaid CLI often emits a tiny 16x16 SVG for "empty" diagrams (e.g. `graph LR` with
         // no nodes/edges). These are usually unhelpful as parity fixtures and tend to create
         // noisy root viewport diffs.
         //
         // Treat them as "output anomalies" for fixture import purposes: keep the candidate
         // traceable via the report and skip importing it for now.
-        let Ok(head) = fs::read_to_string(svg_path) else {
-            return false;
-        };
+        let head = fs::read_to_string(svg_path).map_err(|source| XtaskError::ReadFile {
+            path: svg_path.display().to_string(),
+            source,
+        })?;
         let first = head.lines().next().unwrap_or_default();
-        first.contains(r#"viewBox="-8 -8 16 16""#)
+        Ok(first.contains(r#"viewBox="-8 -8 16 16""#)
             || first.contains(r#"viewBox="0 0 16 16""#)
-            || first.contains(r#"style="max-width: 16px"#)
+            || first.contains(r#"style="max-width: 16px"#))
     }
 
-    fn cleanup_fixture_files(f: &CreatedFixture) {
-        crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path);
+    fn reject_fixture(f: &CreatedFixture) -> Result<(), XtaskError> {
+        match &f.rollback {
+            Some(snapshot) => restore_imported_fixture_snapshot(snapshot),
+            None => crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path),
+        }
     }
 
-    fn defer_fixture_files(f: &CreatedFixture, keep_upstream_svg: bool, replace_existing: bool) {
-        let _ = crate::cmd::import::defer_fixture_files_with_replace_existing(
+    fn defer_fixture_files(
+        f: &CreatedFixture,
+        keep_upstream_svg: bool,
+        replace_existing: bool,
+    ) -> Result<PathBuf, XtaskError> {
+        let deferred_path = match crate::cmd::import::defer_fixture_files_with_replace_existing(
             &f.diagram_dir,
             &f.stem,
             &f.path,
             keep_upstream_svg,
             replace_existing,
-        );
+        ) {
+            Ok(path) => path,
+            Err(error) => {
+                return Err(rollback_imported_fixture_snapshots(
+                    error,
+                    f.rollback.iter(),
+                ));
+            }
+        };
+        if let Some(snapshot) = &f.rollback {
+            restore_imported_fixture_snapshot_preserving_deferred(snapshot)?;
+        }
+        Ok(deferred_path)
     }
 
     let report_path = crate::cmd::target_root().join("import-upstream-docs.report.txt");
@@ -721,11 +724,29 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
     let mut report_skip_exists: usize = 0;
 
     let mut imported = 0usize;
+    let workspace_lock = acquire_imported_fixture_workspace_lock()?;
+    let _non_baseline_family_locks = if with_baselines {
+        None
+    } else {
+        Some(acquire_imported_fixture_family_locks(
+            &workspace_lock,
+            candidates
+                .iter()
+                .map(|candidate| candidate.diagram_dir.as_str()),
+        )?)
+    };
     for c in candidates {
         report_total_candidates += 1;
         let existing = existing_by_diagram
             .entry(c.diagram_dir.clone())
-            .or_insert_with(|| load_existing_fixtures(&c.fixtures_dir));
+            .or_insert_with(|| {
+                load_existing_imported_fixtures(
+                    &workspace_lock,
+                    &c.fixtures_dir,
+                    &c.diagram_dir,
+                    canonical_fixture_text,
+                )
+            });
         if let Some(existing_path) = existing.get(&c.body) {
             if with_baselines {
                 report_skip_duplicate_content += 1;
@@ -766,13 +787,61 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             skipped.push(format!("skip (exists): {}", out_path.display()));
             continue;
         }
+        let deferred_out_path = crate::cmd::fixtures_root()
+            .join("_deferred")
+            .join(&c.diagram_dir)
+            .join(format!("{}.mmd", c.stem));
+        if deferred_out_path.exists() && !overwrite {
+            skipped.push(format!(
+                "skip (already deferred): {}",
+                deferred_out_path.display()
+            ));
+            continue;
+        }
 
-        write_imported_fixture(&c.diagram_dir, &c.stem, &out_path, &c.body)?;
+        let transaction_locks = if with_baselines {
+            Some(acquire_imported_fixture_transaction_locks(
+                &workspace_lock,
+                &c.diagram_dir,
+            )?)
+        } else {
+            None
+        };
+        if with_baselines && !overwrite && (out_path.exists() || deferred_out_path.exists()) {
+            skipped.push(format!(
+                "skip (candidate appeared while waiting for import lock): {}",
+                if out_path.exists() {
+                    out_path.display()
+                } else {
+                    deferred_out_path.display()
+                }
+            ));
+            continue;
+        }
+        let rollback = if with_baselines {
+            Some(ImportedFixtureSnapshot::capture(
+                &c.diagram_dir,
+                &c.stem,
+                &out_path,
+            )?)
+        } else {
+            None
+        };
+        if let Err(error) = write_imported_fixture(&c.diagram_dir, &c.stem, &out_path, &c.body) {
+            return Err(rollback_imported_fixture_snapshots(error, rollback.iter()));
+        }
+        if with_baselines
+            && let Err(error) =
+                validate_exact_import_candidate_filter(&c.diagram_dir, &c.stem, &out_path)
+        {
+            return Err(rollback_imported_fixture_snapshots(error, rollback.iter()));
+        }
 
         let f = CreatedFixture {
             diagram_dir: c.diagram_dir,
             stem: c.stem,
             path: out_path.clone(),
+            rollback,
             source_md: c.md_block.source_md.clone(),
             source_idx_in_file: c.md_block.idx_in_file,
             source_info: c.md_block.info.clone(),
@@ -808,7 +877,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 f.path.display(),
             ));
             // Preserve the corpus for future parity work without breaking current gates.
-            defer_fixture_files(&f, false, overwrite);
+            let _ = defer_fixture_files(&f, false, overwrite)?;
             continue;
         }
 
@@ -821,9 +890,28 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         if install {
             svg_args.push("--install".to_string());
         }
-        match super::super::gen_upstream_svgs(svg_args) {
+        match super::super::gen_upstream_svgs_with_transaction_locks(
+            svg_args,
+            transaction_locks
+                .as_ref()
+                .expect("baseline import transaction must hold a family lock")
+                .family_lock(),
+            transaction_locks
+                .as_ref()
+                .expect("baseline import transaction must hold a toolchain lock")
+                .toolchain_lock(),
+        ) {
             Ok(()) => {}
-            Err(XtaskError::UpstreamSvgFailed(msg)) => {
+            Err(error) => {
+                let msg = match candidate_upstream_svg_failure(error, &f.path) {
+                    Ok(msg) => msg,
+                    Err(error) => {
+                        return Err(rollback_imported_fixture_snapshots(
+                            error,
+                            f.rollback.iter(),
+                        ));
+                    }
+                };
                 report_lines.push(format!(
                     "UPSTREAM_SVG_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\tmsg={}",
                     f.diagram_dir,
@@ -840,17 +928,18 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                     msg.lines().next().unwrap_or("unknown upstream error")
                 ));
                 // Keep the fixture source for later investigation/alignment.
-                defer_fixture_files(&f, false, overwrite);
+                let _ = defer_fixture_files(&f, false, overwrite)?;
                 continue;
             }
-            Err(other) => return Err(other),
         }
 
         let svg_path = crate::cmd::fixtures_root()
             .join("upstream-svgs")
             .join(&f.diagram_dir)
             .join(format!("{}.svg", f.stem));
-        if is_suspicious_blank_svg(&svg_path) {
+        if is_suspicious_blank_svg(&svg_path)
+            .map_err(|error| rollback_imported_fixture_snapshots(error, f.rollback.iter()))?
+        {
             report_lines.push(format!(
                 "UPSTREAM_SVG_SUSPICIOUS_BLANK\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}",
                 f.diagram_dir,
@@ -865,16 +954,25 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 f.path.display(),
             ));
             // Preserve the upstream output anomaly for later root-viewport parity work.
-            defer_fixture_files(&f, true, overwrite);
+            let _ = defer_fixture_files(&f, true, overwrite)?;
             continue;
         }
 
-        if let Err(err) = super::super::update_snapshots(vec![
+        if let Err(error) = super::super::update_snapshots(vec![
             "--diagram".to_string(),
             f.diagram_dir.clone(),
             "--filter".to_string(),
             f.stem.clone(),
         ]) {
+            let err = match candidate_snapshot_failure(error, &f.path) {
+                Ok(message) => message,
+                Err(error) => {
+                    return Err(rollback_imported_fixture_snapshots(
+                        error,
+                        f.rollback.iter(),
+                    ));
+                }
+            };
             report_lines.push(format!(
                 "SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
                 f.diagram_dir,
@@ -888,15 +986,24 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 "skip (snapshot update failed): {} ({err})",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&f);
+            reject_fixture(&f)?;
             continue;
         }
-        if let Err(err) = super::super::update_layout_snapshots(vec![
+        if let Err(error) = super::super::update_layout_snapshots(vec![
             "--diagram".to_string(),
             f.diagram_dir.clone(),
             "--filter".to_string(),
             f.stem.clone(),
         ]) {
+            let err = match candidate_snapshot_failure(error, &f.path) {
+                Ok(message) => message,
+                Err(error) => {
+                    return Err(rollback_imported_fixture_snapshots(
+                        error,
+                        f.rollback.iter(),
+                    ));
+                }
+            };
             report_lines.push(format!(
                 "LAYOUT_SNAPSHOT_UPDATE_FAILED\t{}\t{}\t{}\tblock_idx={}\tinfo={}\theading={}\terr={err}",
                 f.diagram_dir,
@@ -910,11 +1017,19 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
                 "skip (layout snapshot update failed): {} ({err})",
                 f.path.display(),
             ));
-            cleanup_fixture_files(&f);
+            reject_fixture(&f)?;
             continue;
         }
 
+        if let Err(error) = cleanup_deferred_fixture_files(&f.diagram_dir, &f.stem) {
+            return Err(rollback_imported_fixture_snapshots(
+                error,
+                f.rollback.iter(),
+            ));
+        }
         existing.insert(c.body.clone(), out_path);
+        let mut f = f;
+        f.rollback = None;
         created.push(f);
         imported += 1;
         if let Some(max) = limit
@@ -926,7 +1041,10 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
 
     if with_baselines {
         if let Some(parent) = report_path.parent() {
-            let _ = fs::create_dir_all(parent);
+            fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+                path: parent.display().to_string(),
+                source,
+            })?;
         }
         let header = format!(
             "# import-upstream-docs report (Mermaid{baseline_label})\n# generated_at={}\n# total_candidates={}\n# skip_duplicate_content={}\n# skip_exists={}\n",
@@ -944,7 +1062,10 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
             out.push('\n');
         }
         out.push('\n');
-        let _ = fs::write(&report_path, out);
+        fs::write(&report_path, out).map_err(|source| XtaskError::WriteFile {
+            path: report_path.display().to_string(),
+            source,
+        })?;
         eprintln!("Wrote import report: {}", report_path.display());
     }
 

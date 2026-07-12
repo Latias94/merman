@@ -21,28 +21,14 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         };
     }
 
-    // Mermaid expands self-loop edges into a chain of helper nodes plus `*-cyclic-special-*` edge
-    // segments during Dagre layout. Replicate that expansion here so rendered SVG ids match.
-    let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
+    // Mermaid 11.16 keeps the helper nodes used by Dagre, but merges their three layout segments
+    // back into the original logical self-loop before rendering.
     let mut render_edges: Vec<Cow<'a, crate::flowchart::FlowEdge>> =
-        Vec::with_capacity(model.edges.len() + self_loop_count * 3);
+        model.edges.iter().map(Cow::Borrowed).collect();
     let mut self_loop_label_node_ids: BTreeSet<String> = BTreeSet::new();
-    for e in &model.edges {
-        if e.from != e.to {
-            render_edges.push(Cow::Borrowed(e));
-            continue;
-        }
-
-        let helper_edges = crate::flowchart::flowchart_self_loop_helper_edges(
-            e,
-            crate::flowchart::FlowchartSelfLoopEdgeOptions::svg_render(),
-        );
-        self_loop_label_node_ids.insert(helper_edges.special_id_1.clone());
-        self_loop_label_node_ids.insert(helper_edges.special_id_2.clone());
-
-        render_edges.push(Cow::Owned(helper_edges.edge1));
-        render_edges.push(Cow::Owned(helper_edges.edge_mid));
-        render_edges.push(Cow::Owned(helper_edges.edge2));
+    for edge in model.edges.iter().filter(|edge| edge.from == edge.to) {
+        self_loop_label_node_ids.insert(format!("{}---{}---1", edge.from, edge.from));
+        self_loop_label_node_ids.insert(format!("{}---{}---2", edge.from, edge.from));
     }
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
@@ -71,6 +57,22 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         }
         normal.extend(cluster);
         render_edges = normal;
+    }
+
+    // `getEdgesToRender` first emits every regular Graphlib edge, then appends merged self-loop
+    // groups in first-seen order. Preserve that 11.16 DOM ordering independently of model order.
+    if render_edges.len() >= 2 {
+        let mut regular = Vec::with_capacity(render_edges.len());
+        let mut self_loops = Vec::new();
+        for edge in render_edges {
+            if edge.from == edge.to {
+                self_loops.push(edge);
+            } else {
+                regular.push(edge);
+            }
+        }
+        regular.extend(self_loops);
+        render_edges = regular;
     }
 
     let mut extra_nodes: Vec<crate::flowchart::FlowNode> =

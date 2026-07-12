@@ -1,11 +1,10 @@
 {
   "diagramType": "xychart",
   "model": {
-    "type": "xychart",
+    "orientation": "vertical",
     "title": null,
     "accTitle": null,
     "accDescr": null,
-    "orientation": "vertical",
     "xAxis": {
       "type": "linear",
       "title": "",
@@ -86,6 +85,7 @@
           ]
         ]
       }
-    ]
+    ],
+    "type": "xychart"
   }
 }

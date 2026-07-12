@@ -114,7 +114,7 @@
         {
           "id": "L_process_B_container_Beta_0",
           "from": "process_B",
-          "to": "container_Beta",
+          "to": "process_C",
           "from_cluster": null,
           "to_cluster": "container_Beta",
           "points": [

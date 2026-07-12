@@ -1,0 +1,384 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "stress_xychart_theme_default_vs_base_base_002": {
+      "input_sha256": "742e2ba13da1c0bc885755e6f2e2dd75dec52aab696728bb306f60e1fe817c57",
+      "svg_sha256": "8cbf3ac0f73fb4bdab31c8c37c7a5ddf8abfd8d5e7e25df9034d3c31e0dbd544",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_xychart_theme_default_vs_base_default_001": {
+      "input_sha256": "b5039ed2614c14a024642fefd54e4f63656cbd6a906b707fcfc7ddf4ccc22bd9",
+      "svg_sha256": "6f19f57fc6866cba871e7bff7fe088f15715a41753a4b8e3afd0f89f3fdaa281",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_decimals_and_negative_numbers_are_supported_009": {
+      "input_sha256": "7bf539ed4935bd063b28276d89bcac9ecb269a60a6e02f49f93703be4247a14c",
+      "svg_sha256": "773dd9930554731b207910f425f2bcd8c8bfe6876a4298d4b0f8e08314368362",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_multiple_plots_can_be_rendered_008": {
+      "input_sha256": "d27d99be2e8f56c3b6d4012c14f310ddaacc4d512b6b97d05b8766f0e4e96a88",
+      "svg_sha256": "f89af858651e72fadb9cda3ba4cb19fc5ae2761ccb1e645ef2a6e4c46c1e94c5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_render_all_the_theme_color_018": {
+      "input_sha256": "b604437a8712ffdbffb4dab1c722763ff596be154acbce6d12890ff6bc9d1a2d",
+      "svg_sha256": "7d4fd331dd78c0310b3149aba9ce4507db1625895bb125768eede1d66a1d9d70",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_render_spark_bar_without_displaying_other_property_011": {
+      "input_sha256": "4bfa9b0b6ff611a098f142fb243ca36853c615d0407cc2c716ecdfacdfc7d53b",
+      "svg_sha256": "3b1a31cfc62c43170d475d4a1fa5ebd5ff8cf7c2d7e500ab41e34faf79b99331",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_render_spark_line_with_plotreservedspacepercent_010": {
+      "input_sha256": "34c16c3cf878be987664aab7dcb661564b793bed31b94ddea33c42fdde6e6c8a",
+      "svg_sha256": "c7efb60159c4586fc2a4044efe80566a1a676ca9cf8cf70797b595177999cd87",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_render_with_show_axis_label_false_015": {
+      "input_sha256": "2a560d9f1a4a77ccb143082697bff160ad7f9f3fe3425b9b8ddbd0e30cfc44ac",
+      "svg_sha256": "f45a4d4612d04d0e3437a80a17942384edfa2bd51b8191de69f8f6735530fc8f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_render_with_show_axis_line_false_017": {
+      "input_sha256": "3ed4094769d676b210bb2c770fe72b3626e1c864858c33492abb3fe9c5c75cac",
+      "svg_sha256": "a32e9364dd9913a4686b1d5b3d31ddec7b829c8711fcef742a83e0a27ab7a52c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_render_with_show_axis_tick_false_016": {
+      "input_sha256": "804c98ab5c760b722e995ffccd74d54e4bd358be942db27ffdd4d749c4bc91e8",
+      "svg_sha256": "da49e34afe4e0458d42fd1932bac4d3c22a4ab4031587dce1be2e9edcdc6aeba",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_render_with_show_axis_title_false_014": {
+      "input_sha256": "e38d2009076692e2096af82eb9ca78c091f943fa564b76a3da086cdd2c7bc344",
+      "svg_sha256": "4fcacfe84dd4f7234ff4224c60c6e280019b8e4345e67ac4b65f19005158dc94",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_a_chart_without_title_004": {
+      "input_sha256": "b5cecba0def962c8ac4a2f609a39a62902bff6acbec7600c073482a35292f33d",
+      "svg_sha256": "024f30bf3ae3319265f72ae20374bb4280cb06f7603a5b57ca3209c6030edf3e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_a_chart_without_y_axis_with_different_range_006": {
+      "input_sha256": "e05849d74172029c24afd0a4cd7d6df2af8c6691cbe25a8dd643a311b98612f5",
+      "svg_sha256": "96719fa7eaa226af2099173e9b300e527c0254b56095d93d6eb7edcf08313ce8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_a_complete_chart_003": {
+      "input_sha256": "cbd65c7f26c8e2a3ff408fc41a1ff849a408f4a114cc7e3774794431812c7074",
+      "svg_sha256": "423b3da2cff80e9bc353888d190885154c213cb99a193b59b33c0ab5c7384f64",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_a_single_bar_with_label_for_a_horizontal_xy_chart_027": {
+      "input_sha256": "f50b2db43a08015934592b821c12976bb63fc0cb491eae9c3a67d288449b6070",
+      "svg_sha256": "f3d8fff4e52d0a7b9130812736050e25d369b398aed8bfaf250b58400f530d2b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_a_single_bar_with_label_for_a_vertical_xy_chart_026": {
+      "input_sha256": "4239cdd92c167316194cf9e44291aafbf9ac9f0ede0ec283f41b1e4694ce978a",
+      "svg_sha256": "e526f779e316180d55eaabb03dc12979b4019aa56e1fb298ad9479dd23ee0320",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_data_labels_correctly_for_a_bar_in_the_horizontal_035": {
+      "input_sha256": "1465019ee2ee57a21217497b69c6a0547653aa7c338b509fa5da6d3255714fa3",
+      "svg_sha256": "36c0ab75158aa45fe72c877e3fec27f4fb48469f35e735b8834d19a2dcca132f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_data_labels_correctly_for_a_bar_in_the_vertical_xy_034": {
+      "input_sha256": "59b5415a0a3b8cb73f0de6a51c0f21fe1b44df37ec0cca5316da3e23b3d896f7",
+      "svg_sha256": "1e77646b81fce9e3262d932fdc9bf4b102869bd6082e04432158ae0c8d3b6d87",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_data_labels_within_each_bar_in_the_horizontal_xy_c_033": {
+      "input_sha256": "b50974f5288abac7cfe4cd0f66d9084936a2588216809a6231fae4e841df10fe",
+      "svg_sha256": "37d3449ba9c725735236435e3aa30e39d68921fa82d8c566a79d5bbbeba58a45",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_data_labels_within_each_bar_in_the_vertical_xy_cha_030": {
+      "input_sha256": "83af26d25cc380d2005d21beebc14b9422ce5fde7476c477f1170312a8b552ad",
+      "svg_sha256": "16eababa5095da90d7947b8323197428336014001aa388cb1bd3ef3a98a2009a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_horizontal_bar_chart_with_labels_021": {
+      "input_sha256": "b7e2e0438a13f8dff541004a93678b9485a6035406c2d2d4ad61e11b78ce8b74",
+      "svg_sha256": "3ea5fb01b5dd0109ae520e944c19fd44fe2ccfc7d5f35fa936b95e09818bb1a4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_horizontal_bar_chart_without_labels_by_default_023": {
+      "input_sha256": "334a9b8332ecd21f26774fcc7830a1984cae6677963668c3ac09c0355bb538d2",
+      "svg_sha256": "887a893d4218e7948721b7eb76a1076caa43e7c8cc415b3c3b5452eea738d477",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_multiple_bar_plots_horizontally_with_labels_correc_025": {
+      "input_sha256": "9c890fc9196c5893c9eae7e07ea4f7f13edbdd7030e658a377926aa2140220e3",
+      "svg_sha256": "687cf28aafe7b5df2d0503d1fd467fecea9b856ad4423748940bd46dba3b462d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_multiple_bar_plots_vertically_with_labels_correctl_024": {
+      "input_sha256": "8d26606bfb96f8e5c41213f7d582828cd8512d84e4e6d2246cd1d41a5649b79c",
+      "svg_sha256": "348df6af37f88def5ea93833210a50bfcc8dc46136629d24bad8e5fc3bf9eb6c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_negative_and_decimal_values_with_correct_labels_fo_029": {
+      "input_sha256": "f5f012ca4e7055701b834cea909c39809f0e53e235aa6606cbb3491d70e3cc34",
+      "svg_sha256": "454b21961f884698c32cdfc606cd6f9b9ef8be003c6c06800d1bfa71cf4fed9e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_the_simplest_possible_xy_beta_chart_001": {
+      "input_sha256": "a0fbcfdd315ff3a7a3e8d9b9b5875d1931c1a76135ea0da3ea27f8326d793634",
+      "svg_sha256": "98da85b43c453c448b66f15c3b14d63b3b45e9f371babee7c15aa668f892738e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_the_simplest_possible_xy_chart_002": {
+      "input_sha256": "2b64d066d87691438eb27efc14a7a55e4052e3e142b1f58bc2ed828b6fb5e5d0",
+      "svg_sha256": "775f900ef5c4c332fc50b8176509ceefe2268d4faef3161e8252be8940e18920",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_vertical_bar_chart_with_labels_020": {
+      "input_sha256": "d132fb3382109612f2a2998a4cc3d48e3bbc2edec8b44b11b782c01d9c3f14b4",
+      "svg_sha256": "21e53d48b50904229efe38f08769d09735a920acfaccddca21d7b6d9b2ebfe5c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_render_vertical_bar_chart_without_labels_by_default_022": {
+      "input_sha256": "468d4936e16c6a14d94b03c7961db3d4721800f5154340f91eb382af51dd7ae7",
+      "svg_sha256": "1c5ca736249cccd30ac3960f5e6e32c7478b3494331e74b93b8fd437d9d6425a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_use_all_the_config_from_directive_012": {
+      "input_sha256": "e129388167382a04e9f9d15fe80d26693a56ec91565552c7d11a64038681c637",
+      "svg_sha256": "caaad190e2ffac37f7d2bcfe30fbf382e136e0017da624ccf3f3ef4944b71038",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_use_all_the_config_from_yaml_013": {
+      "input_sha256": "76934683ae5dc045dbae859ffa1a5ff0d1f05acfeef175d577ff41095f8b5d7e",
+      "svg_sha256": "321704558d2b06a7ccc707d956e207efb3d2bfacade030ff7468eec9b87b67d6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_should_use_the_correct_distances_between_data_points_019": {
+      "input_sha256": "d191355da1e4302cfae551e54b8c24ba111076823deb24df68555813bb31d6d7",
+      "svg_sha256": "eeec49599ca8d193dce52edd695fe03ffd0f9ef432073c927f832fac90985c2d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_x_axis_title_not_required_007": {
+      "input_sha256": "738e32a2c8019553e8c2be4f355790d76121abc6f755c6b3dcf38bb66aa850fc",
+      "svg_sha256": "8bc0ff0c540a2c5ad3fd175c26f3934cd9b128bb1964a31326e97267f2b3b74d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_xychart_spec_y_axis_title_not_required_005": {
+      "input_sha256": "47bf83c00ac7e8730b46849557f7cb4abeb8a163338d190eda06bd0cd4524632",
+      "svg_sha256": "8a382d0467b2d3c8571e988989cb0a8bebdf2e18f93c5b21d8a700fc7965462d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_examples_xy_chart_syntax_xychart_md_009": {
+      "input_sha256": "9bc72e53b583e12e01d4d40ed58a3ab85646edcf08abb31bdc7201580bcb85e4",
+      "svg_sha256": "6fd8adcdf55b3860003537deb84eff6f72106b743655143c1d96781637a333a5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_xychart_example_001": {
+      "input_sha256": "26b0cd5e3c3bcf2c2d0cbbc02df82376d779b0ec1893940495460009622029fe",
+      "svg_sha256": "7aa64f36377dbbca4124f63fdf14b89772a0e76b92ad5352e8f0c4128891ad3e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_xychart_example_on_config_and_theme_010": {
+      "input_sha256": "4191b7b5dc6ecbe6b73464417555919ff9b13c4c17be733fe9032b25f572fd6b",
+      "svg_sha256": "dfd6adf4cad3eb20ca32b674ba188d558366f7e6422ec3314efc06a1639fdcc1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_xychart_setting_colors_for_lines_and_bars_008": {
+      "input_sha256": "fbe6837b9d1a9a5dfe236abba0807caf5cb10dc5903af438e9717bf7da5688d2",
+      "svg_sha256": "e9605a3809e7999ef9bb230bf2113410b61f6416267e75d92c9d4c18dfaea256",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_xychart_simplest_example_005": {
+      "input_sha256": "7a3a4cfd44ca5c60aaa46f2856e13d7f108039b7097c08486e5c272c1259754d",
+      "svg_sha256": "b403f6ab38800c86f9307a3dd34709f49a5553fa0a70ece6f4cc5c3d87765149",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_examples_xychart_sales_revenue_001": {
+      "input_sha256": "849085d741016c9335f02dcdfc6252ec5080b9d325c8a70ac40b5299c0313d0f",
+      "svg_sha256": "4c6199eddfcb1af81cc14ea80601d9e6b27882e6b528f139459b6b05f84e66a9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_sparkbar_demo_009": {
+      "input_sha256": "e08b0c527f3a15fff9dfb0c175d3985ce66993f1108a7b8960e4333aa6c5a257",
+      "svg_sha256": "173d1a38adcb2f14cde8ee91ea3b116499e38a987de39ae2dd3e0c9872685475",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_sparkline_demo_008": {
+      "input_sha256": "4536e1d2bba281160f015ec4a57d5f13e68101cccae1152f9ab1ada0f66b1c4b",
+      "svg_sha256": "9c71fc921a7c42ab54ff75310d928f0cb10f2d57b68fd1944389e38fdff59bcc",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_bar_with_multiple_category_005": {
+      "input_sha256": "38399d9b6f84b66f397be3a42b5a03e6359ad78b5f71766c25ca776587292354",
+      "svg_sha256": "6813a7b1abe2db35c4f39dc3a8d29146d4b753056d6188121d95e38574c811d9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_category_with_large_text_007": {
+      "input_sha256": "0cfc570b349a718a0f1842049a506a95bfd2486a6f18d78b95d5a8358e21dfc4",
+      "svg_sha256": "0d308cf595129621f40dcd71a3be068715deb8e186623726f5e09523cd1a5ba5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_demos_001": {
+      "input_sha256": "3390df4173003c7ed0f90bdc0f7b3eadd97572cfcdb7f8970b05ba3b0af20d88",
+      "svg_sha256": "a8ea7b32f0762ddbf34927be73251e29e5df8f0d459e8d0016e75c0176ec14ff",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_demos_with_all_configs_010": {
+      "input_sha256": "be76c5e68481288670b7d70640e209281e2962aa40e54c159c254c305eb5c51a",
+      "svg_sha256": "d3d7d9f9608af99091bc881eba8de13e46ba9165f79cc093674df24a94386eb4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_demos_with_all_theme_config_011": {
+      "input_sha256": "0fda862e7d39ad81ff9da093d41226f7a6397073adfcd476b3f27f8f90ab1994",
+      "svg_sha256": "ec15a5a46ebf16fda7004ac96102b18409816b5ee30e1b9ed19e578d66a31928",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_horizontal_002": {
+      "input_sha256": "ada5297b3962a5dd64f0528fa1b58d5dd3335bf7a8c66b70ef1060e362c1a663",
+      "svg_sha256": "23f63961db062692204b2a0b83b1db1ab9a624906362b1dabdb6689a2c5d433c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_line_with_multiple_category_006": {
+      "input_sha256": "506f4a1e821982f95384287df78270dbfd75a722907f32b7a2d836223847dd1c",
+      "svg_sha256": "283ddfc8106b775792283c0fb15d980101049203366d418e25cf430b7555b1b2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_only_lines_and_bar_003": {
+      "input_sha256": "e52cdbcd37786e88ebc968d953acffe5826346b09db66017d246b0e0348716b3",
+      "svg_sha256": "8dcaf2f0c948f525aa7e1767e25ead1a073c1bd996d5a175493c351dbbb2d086",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_xychart_xy_charts_with_ve_and_ve_numbers_004": {
+      "input_sha256": "a2ae77ba741297d0670ccdf4c28c39509f15b0cb42dcaa45b3a88add8d19970f",
+      "svg_sha256": "f3ffa1120b843fcfa8beea569d6c842831007f88b9c8a270a2d910ce1a37af43",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_xychart_jison_spec_002": {
+      "input_sha256": "f8d89363e95de9e9505fe1b70b5196d74eeb8348ba140f62ba0ae4eebd4af00f",
+      "svg_sha256": "6fe8b04b064af67bfc59ec7b7c1b70156a558632dd4a3ed6b48ff18068e145d6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_xychart_jison_spec_141": {
+      "input_sha256": "88050d11f4a8870db912434e0ce08400f2cb1ace7809751d26177c7b41448f89",
+      "svg_sha256": "0d9f4c9d45154c71f6269f6ab85d9c91addba12d1575a32b37e32fd495d5a894",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_xychart_jison_spec_149": {
+      "input_sha256": "40cbcbf662ff791b8d4a399972bb3ce8e6e4affbde6d11e0f19a0dddfefe458b",
+      "svg_sha256": "d18373eae24fe10fd9a2623d39839214e8ad9e7e73ec5b7690f6db94f21a2a8c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_xychart_jison_spec_157": {
+      "input_sha256": "7219a84dd2f74f666a807d511dd5d253f295f29aeb8a8a58d0e3c0ca33ca48ee",
+      "svg_sha256": "4e83fa7c1e5216cbd182fa172600f508865652689ca92a0ecca7182abd3183c3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_xychart_jison_spec_176": {
+      "input_sha256": "7c40b524079c65f8b63fc799936d3bdfa3595e5c52748d7b5530c57664068adc",
+      "svg_sha256": "f1a3536009f5d93219549132e2ddd7f514d2a96ebc37a80db9b2917a5e30845d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_xychart_jison_spec_184": {
+      "input_sha256": "7068173027edf7cd3157a1d061b48d92df4a0f4724225e8073bb3195d43056cd",
+      "svg_sha256": "2e00e7793f8c3ad87abd6a0777ab4cb3b9a35a607ca867e83b67c8788d34da85",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_xychart_jison_spec_192": {
+      "input_sha256": "e09ec704d153a3b146db6955a76d59fd1ebd27f5384ce9109a74865fec6c1c39",
+      "svg_sha256": "389a63941b158e4627afb27869a58c885f6e2edc491ae01bf4f2d83ccb3f4d7c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_xychart_jison_spec_213": {
+      "input_sha256": "aa1b960c08021c182bc4433d39c3bd64232bdb6a2fff480140742df9d58b9954",
+      "svg_sha256": "49643309b80cd26a6033eba97ed130df757a989acd000e37b2e5ea16c7e817c0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_autoderive_axes_db": {
+      "input_sha256": "71cc16091fba71ae5c00b2e975fcc6e6366f0e9a28f8368d3fd3e753dbcd8588",
+      "svg_sha256": "cc367f185ee8c5f562d93a2f56eb4d024ee03e467a855a4f632f9d8a89393ce5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_axes_titles_only_then_plots_jison_spec": {
+      "input_sha256": "f248b6991b99619a837a8e2ce0b25d7b84f915289a04d5cd9878d3498fb81095",
+      "svg_sha256": "14526ce92b250cd2ae3c41e7bb3e4807b6361cdd62b2b65a64532f7f56dc3318",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_axis_range_only_jison_spec": {
+      "input_sha256": "8b87d96bf3d739887fc7b181411a1383abd6e0278dea7246d859cdf044a227ae",
+      "svg_sha256": "6354d35eadc81426d479877d454c231384cacfd15fc5c446297780e06c6cc2f4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_axis_title_and_decimal_range_jison_spec": {
+      "input_sha256": "95713fa70777f7bda028a846b3c19e2eada414c4ab8a10dd4240998eb65ab21b",
+      "svg_sha256": "94c3c109ce3b3798c32e0fb8923dcb21bb34814ff99ab54a14f6b82a9ae648b7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_band_mismatch_db": {
+      "input_sha256": "c72edeefc2511714d434c562e48b58e7f7a5f0a28d26df99ae3f6c62f6231961",
+      "svg_sha256": "409cffe077b65123779bbdd684a414d7ce29b40880e24d8095ee8dd2aa6b7053",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_orientation_and_axes_jison_spec": {
+      "input_sha256": "93f0e9dadd2c5c259dd37c2b958989291f56faf604edfda183dbcff0d53e693a",
+      "svg_sha256": "ba257328799b9720bd16bce55526beae2199f5b9ddb7003c23528a73d89211ba",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_plot_numbers_and_titles_jison_spec": {
+      "input_sha256": "1c6eefd22f3dc00ae3fc98cbb623b8c47f00734ff291d289f5c05d3e8a8c72ee",
+      "svg_sha256": "3454f478b9904e6387251d64ecbcb0654ea3a11a02a4be79f4458f8e00c76e5b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_xaxis_band_cat2asdf_jison_spec": {
+      "input_sha256": "ec60b8a277bb36d02d78ed5c9b19dfc012f2e714b9e33febb52ed1efaf42dd4a",
+      "svg_sha256": "5ecdad7af8bd3d848f7eb4d554e673823bbd2380f3f74342d37ddaf22154809b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_xaxis_quoted_title_with_spaces_jison_spec": {
+      "input_sha256": "b944e4dfd0d536898b9cdf82261417f4aea7437492130d4fb65ecff0ac12e478",
+      "svg_sha256": "5c520e92730db150558a27169c39449d661299121224165e3522788cc5a0cd0c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_yaxis_quoted_title_with_spaces_jison_spec": {
+      "input_sha256": "3fe83bcd87a0b6f4b75e7f7ee3ae6ae3f997ed564bc0e4611226c85a0492f80e",
+      "svg_sha256": "2e7328c9559553f9302f0f5f1f89773cf660af55b79e265a0b47a4a1564e35c7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_xychart_yaxis_range_without_title_jison_spec": {
+      "input_sha256": "f6e1865fc70d2c098e9ccd2d249a2631237074a3b893d18df6296371de9a96fb",
+      "svg_sha256": "5332be81934f2e2629e6f327b038bee7d06b561740ed5c7674bb54b109faf5aa",
+      "renderer_profile": "mmdc-default"
+    },
+    "zed_pr_57644_xychart": {
+      "input_sha256": "0575388ac37eb858ef54e48fa1690a5aa871e61014ff569275041782229c2d0b",
+      "svg_sha256": "8961ef48f97f5e03bd9023e9b3cab19029ec0cd5ab9406370eee1c62d738bab5",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {
+    "upstream_xychart_header_only_jison_spec_parser_only_": {
+      "input_sha256": "7b7ed6ad2b62a73d1288726fcd6e7d68e7cc0f17c583ef8ed1d829e43647c961",
+      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
+    },
+    "upstream_xychart_title_variants_jison_spec_parser_only_": {
+      "input_sha256": "aad891514338a8ec11498ab6c3a4108744d51f1a4314dc5826160eab79c10f5a",
+      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
+    }
+  }
+}

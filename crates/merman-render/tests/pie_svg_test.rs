@@ -68,6 +68,29 @@ fn pie_slices_follow_input_order_like_mermaid_11_16() {
 }
 
 #[test]
+fn pie_chart_content_is_grouped_before_title_and_legend_like_mermaid_11_16() {
+    let svg = render_pie_from_text(
+        r#"pie
+  "A" : 3
+  "B" : 2
+"#,
+    );
+
+    assert!(
+        svg.contains(
+            r#"<g transform="translate(225,225)"><g><circle cx="0" cy="0" r="186" class="pieOuterCircle"/>"#
+        ),
+        "pie geometry should start in its own attribute-free group: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#">40%</text></g><text x="0" y="-200" class="pieTitleText"/><g class="legend""#
+        ),
+        "the pie group should close before the sibling title and legend nodes: {svg}"
+    );
+}
+
+#[test]
 fn pie_hidden_slices_still_reserve_color_domain_slots() {
     let layout = layout_pie_from_text(
         r#"pie

@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -91.719,
-        "min_y": -18.0,
+        "min_y": -20.0,
         "max_x": 158.0,
-        "max_y": 18.0
+        "max_y": 16.0
       },
       "direction": "LR",
       "rotate_commit_label": true,
@@ -40,7 +40,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Reverse Commit with tag",
@@ -59,7 +59,7 @@
           "pos": 50.0,
           "pos_with_offset": 60.0,
           "x": 60.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Highlight Commit",
@@ -78,7 +78,7 @@
           "pos": 100.0,
           "pos_with_offset": 110.0,
           "x": 110.0,
-          "y": 0.0
+          "y": -2.0
         }
       ],
       "arrows": [
@@ -86,13 +86,13 @@
           "from": "Normal Commit with tag",
           "to": "Reverse Commit with tag",
           "class_index": 0.0,
-          "d": "M 10 0 L 60 0"
+          "d": "M 10 -2 L 60 -2"
         },
         {
           "from": "Reverse Commit with tag",
           "to": "Highlight Commit",
           "class_index": 0.0,
-          "d": "M 60 0 L 110 0"
+          "d": "M 60 -2 L 110 -2"
         }
       ]
     }

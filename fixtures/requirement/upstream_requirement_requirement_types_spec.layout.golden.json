@@ -7,13 +7,13 @@
           "id": "req_requirement",
           "x": 8.0,
           "y": 8.0,
-          "width": 171.68,
+          "width": 171.688,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_functional",
-          "x": 229.68,
+          "x": 229.688,
           "y": 8.0,
           "width": 212.0,
           "height": 184.0,
@@ -21,33 +21,33 @@
         },
         {
           "id": "req_interface",
-          "x": 491.68,
+          "x": 491.688,
           "y": 8.0,
-          "width": 205.12,
+          "width": 205.125,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_performance",
-          "x": 746.8,
+          "x": 746.813,
           "y": 8.0,
-          "width": 240.953,
+          "width": 229.281,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_physical",
-          "x": 1037.753,
+          "x": 1026.094,
           "y": 8.0,
-          "width": 200.16,
+          "width": 200.156,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "req_design",
-          "x": 1287.913,
+          "x": 1276.25,
           "y": 8.0,
-          "width": 174.4,
+          "width": 174.406,
           "height": 184.0,
           "is_cluster": false
         }
@@ -56,7 +56,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 1462.313,
+        "max_x": 1450.656,
         "max_y": 192.0
       }
     }

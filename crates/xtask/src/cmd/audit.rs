@@ -1,7 +1,10 @@
 //! Gap audits and corpus health checks.
 
 use crate::XtaskError;
-use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures};
+use crate::cmd::{
+    MmdFixtureScan, collect_mmd_fixtures, ensure_upstream_svg_puppeteer_config,
+    spawn_timeout_managed_child, wait_with_timeout,
+};
 use crate::util::*;
 use regex::Regex;
 use std::collections::BTreeMap;
@@ -11,7 +14,7 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 struct DeferredParseOk {
@@ -49,27 +52,6 @@ fn sanitize_svg_id(raw: &str) -> String {
         "diagram".to_string()
     } else {
         out
-    }
-}
-
-fn wait_with_timeout(
-    mut child: std::process::Child,
-    timeout: Duration,
-) -> Result<std::process::ExitStatus, std::io::Error> {
-    let start = Instant::now();
-    loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(status);
-        }
-        if start.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                "process timed out",
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(25));
     }
 }
 
@@ -255,6 +237,34 @@ fn extract_upstream_error_key_from_error_svg(svg_text: &str) -> Option<String> {
     Some("rendered error svg".to_string())
 }
 
+fn upstream_mmdc_command(
+    mmdc: &Path,
+    node_cwd: &Path,
+    mmd_path: &Path,
+    out_path: &Path,
+    pinned_config: &Path,
+    puppeteer_config: &Path,
+    svg_id: &str,
+) -> Command {
+    let mut command = Command::new("node");
+    command
+        .arg(mmdc)
+        .current_dir(node_cwd)
+        .arg("-i")
+        .arg(mmd_path)
+        .arg("-o")
+        .arg(out_path)
+        .arg("-t")
+        .arg("default")
+        .arg("-c")
+        .arg(pinned_config)
+        .arg("-p")
+        .arg(puppeteer_config)
+        .arg("--svgId")
+        .arg(svg_id);
+    command
+}
+
 fn check_upstream_renderability_for_parser_only(
     workspace_root: &Path,
     diagram: &str,
@@ -269,15 +279,11 @@ fn check_upstream_renderability_for_parser_only(
         .to_string();
 
     let tools_root = crate::cmd::mermaid_cli_root();
-    let mmdc = crate::cmd::find_mmdc(&tools_root).ok_or_else(|| {
-        XtaskError::UpstreamSvgFailed(format!(
-            "mmdc not found under {} (run: `cargo run -p xtask -- gen-upstream-svgs --install`)",
-            tools_root.display()
-        ))
-    })?;
+    let mmdc = crate::cmd::validate_mermaid_cli_install(&tools_root)?;
 
     let node_cwd = tools_root.clone();
     let pinned_config = node_cwd.join("mermaid-config.json");
+    let puppeteer_config = ensure_upstream_svg_puppeteer_config()?;
 
     let Some(stem) = mmd_path.file_stem().and_then(|s| s.to_str()) else {
         return Ok(UpstreamRenderCheck {
@@ -296,51 +302,26 @@ fn check_upstream_renderability_for_parser_only(
     let out_path = out_dir.join(format!("{stem}.svg"));
     let log_path = out_dir.join(format!("{stem}.stderr.txt"));
 
-    let mut cmd = if cfg!(windows) {
-        match mmdc.extension().and_then(|s| s.to_str()) {
-            Some(ext) if ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat") => {
-                let mut cmd = Command::new("cmd.exe");
-                cmd.arg("/c").arg(&mmdc);
-                cmd
-            }
-            Some(ext) if ext.eq_ignore_ascii_case("ps1") => {
-                let mut cmd = Command::new("powershell.exe");
-                cmd.arg("-NoProfile")
-                    .arg("-ExecutionPolicy")
-                    .arg("Bypass")
-                    .arg("-File")
-                    .arg(&mmdc);
-                cmd
-            }
-            _ => Command::new(&mmdc),
-        }
-    } else {
-        Command::new(&mmdc)
-    };
+    let mut cmd = upstream_mmdc_command(
+        &mmdc,
+        &node_cwd,
+        mmd_path,
+        &out_path,
+        &pinned_config,
+        &puppeteer_config,
+        &svg_id,
+    );
 
     let log_file = fs::File::create(&log_path).map_err(|source| XtaskError::WriteFile {
         path: log_path.display().to_string(),
         source,
     })?;
 
-    cmd.current_dir(&node_cwd)
-        .arg("-i")
-        .arg(mmd_path)
-        .arg("-o")
-        .arg(&out_path)
-        .arg("-t")
-        .arg("default")
-        .arg("-c")
-        .arg(pinned_config)
-        .arg("--svgId")
-        .arg(svg_id)
-        .stdout(Stdio::null())
-        .stderr(Stdio::from(log_file));
+    cmd.stdout(Stdio::null()).stderr(Stdio::from(log_file));
 
-    let child = cmd
-        .spawn()
+    let mut child = spawn_timeout_managed_child(&mut cmd)
         .map_err(|err| XtaskError::UpstreamSvgFailed(format!("failed to spawn mmdc: {err}")))?;
-    let status = match wait_with_timeout(child, timeout) {
+    let status = match wait_with_timeout(&mut child, timeout) {
         Ok(s) => s,
         Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
             return Ok(UpstreamRenderCheck {
@@ -1039,6 +1020,38 @@ mod tests {
     }
 
     #[test]
+    fn upstream_audit_mmdc_command_passes_the_managed_puppeteer_config() {
+        let mmdc = Path::new("tools/mermaid-cli/mmdc.js");
+        let node_cwd = Path::new("tools/mermaid-cli");
+        let input = Path::new("fixtures/flowchart/basic.mmd");
+        let output = Path::new("target/audit/basic.svg");
+        let mermaid_config = Path::new("tools/mermaid-cli/mermaid-config.json");
+        let puppeteer_config = Path::new("target/xtask-js/puppeteer.json");
+        let command = upstream_mmdc_command(
+            mmdc,
+            node_cwd,
+            input,
+            output,
+            mermaid_config,
+            puppeteer_config,
+            "basic",
+        );
+        let args: Vec<_> = command.get_args().collect();
+        let puppeteer_arg = args
+            .iter()
+            .position(|arg| *arg == std::ffi::OsStr::new("-p"))
+            .expect("mmdc command must pass a Puppeteer config");
+
+        assert_eq!(command.get_program(), std::ffi::OsStr::new("node"));
+        assert_eq!(args.first(), Some(&mmdc.as_os_str()));
+        assert_eq!(
+            args.get(puppeteer_arg + 1),
+            Some(&puppeteer_config.as_os_str())
+        );
+        assert_eq!(command.get_current_dir(), Some(node_cwd));
+    }
+
+    #[test]
     fn absorbed_deferred_duplicate_recognizes_admitted_flowchart_elk_copy() {
         let root = crate::cmd::target_root()
             .join("xtask-tests")
@@ -1082,7 +1095,7 @@ mod tests {
         let meta = parse_meta("flowchart-elk\n  A-->B\n");
 
         assert!(
-            absorbed_deferred_duplicate(&fixtures_root, &deferred_root, &path, "flowchart", &meta)
+            absorbed_deferred_duplicate(fixtures_root, &deferred_root, &path, "flowchart", &meta)
                 .is_none()
         );
     }

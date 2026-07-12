@@ -137,7 +137,7 @@
           "task": "9    ",
           "section": "Issue1300",
           "task_type": "Issue1300",
-          "order": 2.0,
+          "order": -1.0,
           "start_ms": -2019686400000.0,
           "end_ms": -2019686400000.0,
           "render_end_ms": null,
@@ -148,7 +148,7 @@
             "x": 131.0,
             "y": 35.0,
             "width": 1.6,
-            "height": 208.0,
+            "height": 184.0,
             "rx": 3.0,
             "ry": 3.0,
             "class": "task vert task0"
@@ -159,7 +159,7 @@
             "font_size": 11.0,
             "width": 6.16,
             "x": 131.0,
-            "y": 263.0,
+            "y": 239.0,
             "class": "taskTextOutsideRight taskTextOutside0 width-6.16"
           }
         },

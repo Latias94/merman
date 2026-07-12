@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -111.234,
-        "min_y": -8.0,
+        "min_y": -10.0,
         "max_x": 58.0,
-        "max_y": 818.0
+        "max_y": 816.0
       },
       "direction": "LR",
       "rotate_commit_label": true,
@@ -101,7 +101,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 90.0
+          "y": 88.0
         }
       ],
       "arrows": []

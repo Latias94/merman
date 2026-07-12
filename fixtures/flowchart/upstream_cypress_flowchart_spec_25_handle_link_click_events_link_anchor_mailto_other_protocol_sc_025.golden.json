@@ -9,10 +9,10 @@
     "classDefs": {},
     "tooltips": {
       "A": "link test (open in same tab)",
-      "D": "mailto test",
-      "F": "script test",
       "B": "link test (open in new tab)",
-      "E": "other protocol test"
+      "E": "other protocol test",
+      "F": "script test",
+      "D": "mailto test"
     },
     "edgeDefaults": {
       "style": [],

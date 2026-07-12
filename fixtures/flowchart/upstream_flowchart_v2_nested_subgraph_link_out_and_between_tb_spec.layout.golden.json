@@ -80,8 +80,8 @@
         },
         {
           "id": "L_S1_S2_0",
-          "from": "S1",
-          "to": "S2",
+          "from": "sub1",
+          "to": "sub4",
           "from_cluster": "S1",
           "to_cluster": "S2",
           "points": [

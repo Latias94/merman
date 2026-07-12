@@ -1074,6 +1074,31 @@ pub struct IshikawaLabelBoxLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IshikawaCauseLabelGroupLayout {
+    pub label_box: IshikawaLabelBoxLayout,
+    pub label: IshikawaTextLayout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IshikawaSubGroupLayout {
+    pub line: IshikawaLineLayout,
+    pub label: IshikawaTextLayout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IshikawaBranchLayout {
+    pub line: IshikawaLineLayout,
+    pub label_group: IshikawaCauseLabelGroupLayout,
+    pub sub_groups: Vec<IshikawaSubGroupLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IshikawaPairLayout {
+    pub upper: IshikawaBranchLayout,
+    pub lower: Option<IshikawaBranchLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IshikawaHeadLayout {
     pub x: f64,
     pub y: f64,
@@ -1094,9 +1119,9 @@ pub struct IshikawaDiagramLayout {
     pub use_max_width: bool,
     pub font_size: f64,
     pub head: Option<IshikawaHeadLayout>,
-    pub lines: Vec<IshikawaLineLayout>,
-    pub labels: Vec<IshikawaTextLayout>,
-    pub label_boxes: Vec<IshikawaLabelBoxLayout>,
+    pub spine: Option<IshikawaLineLayout>,
+    #[serde(default)]
+    pub pairs: Vec<IshikawaPairLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1210,6 +1235,7 @@ pub struct CynefinDiagramLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RailroadDiagramLayout {
     pub bounds: Option<Bounds>,
+    pub diagram_type: String,
     pub width: f64,
     pub height: f64,
     pub use_max_width: bool,

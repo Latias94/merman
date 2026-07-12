@@ -7,15 +7,15 @@
           "id": "test_req",
           "x": 8.0,
           "y": 8.0,
-          "width": 150.72,
+          "width": 150.719,
           "height": 184.0,
           "is_cluster": false
         },
         {
           "id": "dc1",
-          "x": 208.72,
+          "x": 208.719,
           "y": 8.0,
-          "width": 174.4,
+          "width": 174.406,
           "height": 184.0,
           "is_cluster": false
         }
@@ -24,7 +24,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 383.12,
+        "max_x": 383.125,
         "max_y": 192.0
       }
     }

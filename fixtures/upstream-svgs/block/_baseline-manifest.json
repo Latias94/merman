@@ -1,0 +1,615 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "stress_block_font_size_precedence_001": {
+      "input_sha256": "eefede9660a8fd5f9393d2329552a7d092b9afb106bc89059fb2f388a3304cc0",
+      "svg_sha256": "05df994aaa7c7a42c1c0b0fff3bb3ae7f1734e6e0ef353185c57177eda1bdea1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_basic_nodes": {
+      "input_sha256": "931b9626ab348f791f1fc3c076882ef3d5ecc2a9599478b7218afc6e56cacb68",
+      "svg_sha256": "392dc68c4321da633c85e66b8318df625c5ddd7fc57933d88071758d351619fe",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_basic_nodes_2": {
+      "input_sha256": "bbe1c302a310e97f37bf14bbc268837114bec8238c3a640ab9be2a3ce77d7ba5",
+      "svg_sha256": "278f083bd132b1a777967f38f4d29818e33d85f952aeed2d681ff671f1bb0a33",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_basic_nodes_3": {
+      "input_sha256": "1032ffda1e22b7354e6901a666c044654ff8ac8529ca9732828d50d2fb0653a9",
+      "svg_sha256": "c0fb31d22a889aaba9766af7e87855ce968e4b3c205f615ca6424816cf1594d3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_basic_nodes_4": {
+      "input_sha256": "129d880db071314de86a22bb781a3d6c8eededa30ee4e322126bb3608eeec6af",
+      "svg_sha256": "41632d1568b4494b1d5e6eec9f4268a133957606b44fb221772e0d19533c25cb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_block_arrows": {
+      "input_sha256": "43e93735812b940cba85a57415ca5916d268bcac21828171ca8e9595a8d7cc7e",
+      "svg_sha256": "b5399a19952543b907cc7a9bb1942ba47026a54931a7b1fe8fe4277c30217785",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_block_arrows_2": {
+      "input_sha256": "d18f31d9b1150abec18d0fdefe86eb8c20cdfede5ea6cd6307a39d268092017f",
+      "svg_sha256": "4bc5f7e487ad25f393fda76831df726baef26ccde703f6d06b2e3405b03c7f04",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_columns_and_layout": {
+      "input_sha256": "f92ce71b40271d6a8567fcc7574a7de4386dea3f986f447026fa8d38ef08c893",
+      "svg_sha256": "0ceb9442cff636c549bea5234c79e42cb31744b0ecb516850b73d5660df0eeff",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_columns_and_layout_2": {
+      "input_sha256": "5fcae0ae6959216b540528f418a57153dbbe5f521c47819c0de8fbe93bdaa731",
+      "svg_sha256": "2099704bfee218b1f278657fc388b4376644c42ff3619ca18a00811c28b478e9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_columns_and_layout_3": {
+      "input_sha256": "3b32c6d8a24d174f214af367302bb5a3ac0d4f0c8c69b94ef1dcc472f9c4905f",
+      "svg_sha256": "192a2950767081077b9cfd53b68d3e720a29323fe38659b83f5a2b712af2c396",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_columns_and_layout_4": {
+      "input_sha256": "8a667ad3a124e76e5ebae3dedff5c17a84cedf931a6c7818fbe13479ebb8ebdc",
+      "svg_sha256": "04962e9b634101645ea89de80b72943ef915e829551f0b0fa6d9f393ef0db9f1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_columns_and_layout_5": {
+      "input_sha256": "a0b137a3f5ec8c87da27d7efef9d95e44eef0ab423fa41b2cd7c278042e6178f",
+      "svg_sha256": "a671b3e13cccf34b4b196ca5804c93ed427cf64ca5a980585d1c22f900d90988",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_composites": {
+      "input_sha256": "23bd1112adeff625409491c02d0d520ace9a4fc1e10988bdca47587aa11497dd",
+      "svg_sha256": "aaa079d3e228a0ddb6d98b37aa7c2b57f7d226ca844f14dc84a1426dca263fed",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_composites_2": {
+      "input_sha256": "ba2944fc213ae7ce76064b995b0298582efab26b3196d9339392b4f62fd816ee",
+      "svg_sha256": "ad353cdbdeb4f861f4ff6aef549ff7cdc14df49eef6be7dfb5a365fed4022bdd",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_composites_3": {
+      "input_sha256": "b046867a292823438eea454518a3cdeb29042e050097e06dbd6f72d6e6869465",
+      "svg_sha256": "e0cd0d31ce4669cfafaefa41d5d866b71f922288dbaf994f281ad5dd59a233a4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_composites_4": {
+      "input_sha256": "ce8fe59dc70e2515cb9fba2d15a54c1b9b9ba85b5fd63e0305f1f1cfd1001540",
+      "svg_sha256": "81d87b003d59afa9661b49ab931ef70d09397ab677320fc55ef0e6caab11ef36",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl10_should_handle_edges_from_composite_blocks_010": {
+      "input_sha256": "900c42c59728bcbaed81be143264b0ff6ab8d8601d8e9c3e77a129f0e68cac38",
+      "svg_sha256": "1a8ea250ec490b489ba088d28f31000254d83fe791a67da919bb03bc85bdaef2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl11_should_handle_edges_to_composite_blocks_011": {
+      "input_sha256": "ecfb893294389977df5124291fa5330b8b6e0daa57f1c4d94ce63c4bca9909d7",
+      "svg_sha256": "bfe848b1d83a848a003986b5fe73cd11c3fbe92c996821c268afe973f5701c98",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl12_edges_should_handle_labels_012": {
+      "input_sha256": "24d2842661f2cc4244038ef0793957247ddfd0c15b43c8b06ee96f9ba0be4099",
+      "svg_sha256": "4c65043211b74e9a819bf77560a056943c1032491104546fea9be01f9eef985b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl13_should_handle_block_arrows_in_different_directions_013": {
+      "input_sha256": "e038f99652d9183d221225f54804f4e8812781a7fa793aba90be5e16d78dc2cd",
+      "svg_sha256": "0aa5eaee1e994f69b8947495b69b18954d44289f7e7f02007a02d40ed39cf060",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl14_should_style_statements_and_class_statements_014": {
+      "input_sha256": "41b359481a30ec325b199cbe1ba633270b7ea0861a6760346d265dbe1783ab62",
+      "svg_sha256": "ab7d96b9c8b369142da446ba3981b3ec791ad304426fff44b33ea5dd00495645",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl15_width_alignment_d_and_e_should_share_available_space_015": {
+      "input_sha256": "3e9d474b33bf0bb0b521cd947e95b9ee60e04ef399889a1722e8275029ee6bef",
+      "svg_sha256": "880eb3e676b1667753269fb54fa81f31516fdae5c637a09f8fa0a64e295aa708",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl16_width_alignment_c_should_be_as_wide_as_the_composite_block_016": {
+      "input_sha256": "25d4abebcb8d680f65f50c73a15d2151d3a31d94745ce7c6931e28a60bb104d0",
+      "svg_sha256": "00dc4d3082e5b50ebd50cf9c687168513e20f87c4673e416a320e803d38a8630",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl17_width_alignment_blocks_should_be_equal_in_width_017": {
+      "input_sha256": "67a6d98d2cab98e8c9ca231f72b1e3099fb544722e1039e4920a58543d33262c",
+      "svg_sha256": "cdda4c53f443eb5334d81ead8500bf912bc2f57fa3ff5b16ccbe32fa2bedd0c7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl18_block_types_1_square_rounded_and_circle_018": {
+      "input_sha256": "5cbf84d1a9a023cf8875d9d1bd642e76c5ed2937d3a7b6461552ac87c21c5659",
+      "svg_sha256": "036190a48d4e8cfaf9820866d29e766c83d2fb321d6824ccb681819ce38421fb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl19_block_types_2_odd_diamond_and_hexagon_019": {
+      "input_sha256": "3f31bf6f5bb2e1dd1a93d87cd358a51f67d11cdeda8973f982374813e102d22b",
+      "svg_sha256": "15ccc8554dac9050eae7d1e95b98ed9b7e0dcea2ca9e3e4e72e513363625a5a9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl1_should_calculate_the_block_widths_001": {
+      "input_sha256": "8ea37e19aadf79fe3af571dd4d15aa80fe8641c1b96c90f5f22623f3d45e9cff",
+      "svg_sha256": "cbd5ff9bcc8d75c645f32a5406f88e67d03c976bd1dad4bd68a31e367a0f5b26",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl20_block_types_3_stadium_020": {
+      "input_sha256": "3f772b0942d082df17f2d9f616339677d52d05a8fa0ab2e45d8c7a3972434c06",
+      "svg_sha256": "2a6adf7004b946f2807fc1e2b9d0b32ebe8efe53bed5d46206348103f54d47d7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl21_block_types_4_lean_right_lean_left_trapezoid_and_inv_trapez_021": {
+      "input_sha256": "14550bc768dbff4615bf944c0cc3d73997e9bb6e58deb087e7c692e22e9eda5a",
+      "svg_sha256": "2a36de302dc14484e25337c98443cbe601c6fae4dec34cef516c5593faa7f59c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl23_sizing_it_should_be_possible_to_make_a_block_wider_023": {
+      "input_sha256": "5a17700110258975995690d3b68993908c1e766d072c91a4514664ab9ffbb411",
+      "svg_sha256": "987d1b01ba60606cb31f194a9f280dfac35a5758d72d9dc2ac9bfbc499458438",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl24_sizing_it_should_be_possible_to_make_a_composite_block_wide_024": {
+      "input_sha256": "dab97ad5a83b2ee94bb9dca1f0aacccedaae092ed6027298ab0bed65f490d1d5",
+      "svg_sha256": "d769e6e958c3da7e1bc3fa0602835981da4da2327520db54e18002843ed53ea3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl25_block_in_the_middle_with_space_on_each_side_025": {
+      "input_sha256": "95f7dd002561d2182cca4c2953d270a093b19be5f63166d3c68fb38e23ae88af",
+      "svg_sha256": "a37df3c875dfe2f81eab5d609687044fb922730e72a850386474f2aa60c551f3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl26_space_and_an_edge_026": {
+      "input_sha256": "78268ba671a21955b655829e27be283e6a9648fd92df203988da73224ecbac10",
+      "svg_sha256": "e9ceaa47299b62d6f20548d11377c432d9b2267de54c514effe39330287daa9f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl27_block_sizes_for_regular_blocks_027": {
+      "input_sha256": "e7ceb01792eb91f2328c60c99477a089495cbba446d60a0622d0dc2338dfc75f",
+      "svg_sha256": "43d84bd9568061ae65d17346c36b3d93999cf1f30742e760b1c416a7c8f781a5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl28_composite_block_with_a_set_width_f_should_use_the_available_028": {
+      "input_sha256": "536c90cb5fe6c5f9e297bf3ff3e0110b9e0c68b570d627f9063ba3410782f975",
+      "svg_sha256": "fe7dbd3939ffcd9ae568574d3af4d4effaa90d70ec378b7030a68377cb24ddc9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl2_should_handle_columns_statement_in_sub_blocks_002": {
+      "input_sha256": "25668a6cdc1feabc5e572402487e5f0359df68de17e05a002e2c69195ce91089",
+      "svg_sha256": "4c96aefc0acb8f36c4fc13b0c7ad234a48cffbd9f131f8339aa3aabd46d9e435",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl30_block_should_overflow_if_too_wide_for_columns_030": {
+      "input_sha256": "3677cc11a0fca9b3a7b7f2978b238f6b9b8edba8792681d9427bcf6a858ae438",
+      "svg_sha256": "8c9af29f155657a07d5e1147bdadf77f23062e6ce231196ed091e93ad5ed027f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl31_edge_without_arrow_syntax_should_render_with_no_arrowheads_031": {
+      "input_sha256": "5b9779dd7d58185a91b9722375dce81e21de061f6e1da920d3994c0d7612f699",
+      "svg_sha256": "8c6663be6de69d5e803c1796ee492d28253fc40c403ee57fa074564fb77fb7c1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl3_should_align_block_widths_and_handle_columns_statement_in_su_003": {
+      "input_sha256": "d74ef19a9b329d75476244ccfe29d15a43efc7231fdd8c2b90a46bba152c8b21",
+      "svg_sha256": "572c57a6af172b28e9cca16ee7a0067df0fd19a5726cb1111e11dd92fb835951",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl4_should_align_block_widths_and_handle_columns_statements_in_d_004": {
+      "input_sha256": "ccbeaa3a26030aa77d9c4fb447744112cb4a337213ffa003508faaa5902d34f3",
+      "svg_sha256": "d7a34f726d86333237be6c97c0b2bb005710b420a2a0beb684a40d3968d4d03e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl5_should_align_block_widths_and_handle_columns_statements_in_d_005": {
+      "input_sha256": "7a7a503b200c188850dc41632ba9593e33a448763ce28e835037c3e2202e8d42",
+      "svg_sha256": "813da9526c0388ac8238f03387c2d1eeaa6b16606200df335187f3229652f85f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl6_should_handle_block_arrows_and_spece_statements_006": {
+      "input_sha256": "9eb9c2e9527dbb8b8ac2f260bfc0c893fa6b53fddbc3e577792533f6806c843c",
+      "svg_sha256": "3075c4d2ccb64c2caee40d0710674c144e0d82bc19fe8deb2dbd4bba2865bdbc",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl7_should_handle_different_types_of_edges_007": {
+      "input_sha256": "aea6247e9a5e9ef518bde923259e93abfb74d5b59d09c41946dbf505351f0a1f",
+      "svg_sha256": "5779c806706371712aa06f6275e62e466ef4abe42385906e091cb864a9308fa8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl8_should_handle_sub_blocks_without_columns_statements_008": {
+      "input_sha256": "33fd04287320931ab2d62b8d58d6ead01ec55b4add70210e651043c6923b66a9",
+      "svg_sha256": "1686382845878ee4bc026ef14edae3bc31ab441ebfcc125935427d1997be02da",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_block_spec_bl9_should_handle_edges_from_blocks_in_sub_blocks_to_other_block_009": {
+      "input_sha256": "a9054421311ac045275476cf74bac95f75007a876d05075de59adfcf7716590b",
+      "svg_sha256": "dcc423efbfd70b34164b5bf4584dffc4f045ec8edcdaf2afcdd7924c0eb2037b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_adjusting_widths_011": {
+      "input_sha256": "7ddc40305625dcd51e15b5419a1ca1bc073d91b8c201b6ea65b00e9016b324dd",
+      "svg_sha256": "1839df6ebaaff307b6ef87b7e72bad4f07d0d9a4741ffea32d189cb262764422",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_adjusting_widths_013": {
+      "input_sha256": "8c1f8d5387a4888cee478e46f20f8f004f886e49efaab1b25cad980056e0aa0a",
+      "svg_sha256": "84c65cd087f025608bd00b69ce580ef9629f5f6b37b5af300702ecd5d6995225",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_basic_linking_and_arrow_types_021": {
+      "input_sha256": "f84186409cf32f763577dc6df754dd5ff83e66c4082333724d19203aa6f5f9af",
+      "svg_sha256": "300c2a2a7c94e9ac9632c66642bc2ad7fc81319cd49c9d62e3bb20d31f0c14d4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_basic_structure_003": {
+      "input_sha256": "24e2536fc7a02abbc39c94baca52fcb055a4dd6c79fdd1e9733fba9faa2d823e",
+      "svg_sha256": "ab65205de86cd64fc74e2a275e380db57e0a627c3144d6064335f98eee35f3e7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_column_usage_003": {
+      "input_sha256": "50dc2ed1ddf81876b7893c9bd57f920d4792a05470bf5f1ec6f1918f8ad34112",
+      "svg_sha256": "2ce2e92279a592bbc13711208a8ce77b477e667d46349e33d93880840d42c415",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_asymmetric_rhombus_and_hexagon_shapes_025": {
+      "input_sha256": "7134441c41f218d3085fa6869391398187b220962c0065c084bd6afc2aedfbf3",
+      "svg_sha256": "db4e955780d3ec0bb2b0f8bdc0fcb1489cbea1679deb1a727acd0229f2c9bda3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_asymmetric_rhombus_and_hexagon_shapes_027": {
+      "input_sha256": "66fde5799aa4c0f763c6d0ba5d4c59c4a78d4ffb479a9480722c231ab6a8ab6f",
+      "svg_sha256": "ef15540a610eda6057dfc0d534e5437a3a45ac9f27e1e0edd4af3d830ec5efe6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_asymmetric_rhombus_and_hexagon_shapes_029": {
+      "input_sha256": "6dd28f68976ab76a5fb99a40374e1ad0a6bed2f455e314f5e17e8ea6ab7b87d3",
+      "svg_sha256": "2c09aaf3fd3ed921f2d96bfc4d13bb584f1492cfcd28255b05778c0f91ff9444",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_block_arrows_035": {
+      "input_sha256": "c574652df330f12f5c44143737737d2308b03c563e3359dbaaec41131ecb9059",
+      "svg_sha256": "45d49912adb0b129e4ba21d3a3bf627a5e4240d7318f8f6a5c08a890cbb6618c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_block_arrows_036": {
+      "input_sha256": "840d16eca52cdfba9778dc2046759b4219eddcb837e0f369c8fd98dbe6024ac1",
+      "svg_sha256": "440f257b3810c63bad40f949b6958986960f544b519e734c470c96a6536ddd56",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_business_process_flow_053": {
+      "input_sha256": "668adabdd9df94a6af6123269da67044846272e127ec5bea1761abbf7cb40f34",
+      "svg_sha256": "e463ffcbf4373e9c5be0f1ba0114c6d40392a1c7b8965f6ca16a451b2398007b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_circle_shape_023": {
+      "input_sha256": "1493c7342a308ca295fd6bdc0d45d5d2aa97abb8c47275108f7d4e3cac97fafa",
+      "svg_sha256": "f6432cea58d9392ae53c19c2dfbecc6214bb606ec9f7f8f7388769e4d1c1cb89",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_cylindrical_shape_021": {
+      "input_sha256": "fd481f6b76858a8b13617c8ca2b7aa369fcadab2f1c23ee1811676ccaa8a5284",
+      "svg_sha256": "d85fb6989d1f149e4492ddd020c7519a1054749513a4e51c6f3536d5124462a5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_double_circle_033": {
+      "input_sha256": "1d2ef9d1ea44d3522a7418a71527d39cc93363f161cddb44fa8f9022fbd4204a",
+      "svg_sha256": "ecabcff60d65bd49a807047ec35d071b4d3e9f4309b3a9bee1d615af398f87ef",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_incorrect_linking_029": {
+      "input_sha256": "fddacaac62f065cc7859657ad249c244fef108deecf83c2f32c668afa42d5116",
+      "svg_sha256": "032b5031758da316b8ab99042a972981c4d6775636df349589cb7967c9b10e90",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_misplaced_styling_058": {
+      "input_sha256": "6a5c5e673d9bdb2e5baef29b3ec41459e1e9cc2ca998715b43e252643f6a1b61",
+      "svg_sha256": "6120ca3a5f034aa750e521cea3a024b0f630e99f4610ddbf9e0f55369cd3cd47",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_misplaced_styling_060": {
+      "input_sha256": "9636dee43e31f64c521248cc1e28d5dd93061747eae585a1aa68c5a117a09f4d",
+      "svg_sha256": "a3b94eefb0ef7648ca84051f8963444f1882996b6ea3a13c8a2a281ae7aa0628",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_parallelogram_and_trapezoid_shapes_031": {
+      "input_sha256": "0c75f48188937507e2e81141eb236b5f93614b8589b01243c0cc9886735d9c02",
+      "svg_sha256": "1b2fbf07c482df0cc4bfedb4f2d94824958927eb4888722a95580adec07c149f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_round_edged_block_015": {
+      "input_sha256": "2a2aedc0e1a70079bc246e8d2b88d2888655ebdcac2ccc86c5a8e0110e55253a",
+      "svg_sha256": "4d18f010299d8e1e640c330936e6ee9428b288ddb2fdb48c03828688acdf4d60",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_space_blocks_037": {
+      "input_sha256": "ab04e71554b0a34c34089733e264346ba6c626c639dd4b208c15a12a1bcf47c1",
+      "svg_sha256": "d6d47462206008f4a9f9ae314f5d9baa7a376cb6806134a393c32083d2383ff3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_space_blocks_039": {
+      "input_sha256": "7c6756e88c82bb955d6e42248ca25dfc29f8601746602f367fd4478e8fc6afd0",
+      "svg_sha256": "51afb2a7839c287a8e7dc917784171c53e0b7e248824f25861c22e4015436dcb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_stadium_shaped_block_017": {
+      "input_sha256": "a5a467c814bf0c9494becff51415866e6694ebe8b417a596f30a14d2c80b4f76",
+      "svg_sha256": "18e35d275039eaea72effb8c1536c97d238f55bc94581007b94718f1e9d55c88",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_styling_a_single_block_047": {
+      "input_sha256": "b6eebb8cba7e7a586b8454edf35aa45aeb4e526c3fa1a7c7077df60990f511bd",
+      "svg_sha256": "ad73e6a361ade61e21c2e82bca408da318a70c321201c51c7d433e54ec3a5fb7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_styling_a_single_class_049": {
+      "input_sha256": "f3c3e654997c3a542fd67da9e38f3e41d67c9931647f139665c739e4e789bad9",
+      "svg_sha256": "634440735b70c689a839c9ddbaa13aa4f2f16bf0c5ec69bfbf6665c70daa62f2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_subroutine_shape_019": {
+      "input_sha256": "3eeec690367a6d711f1da9a10359cd7f3e9bebfd9400be3179c4fc8f4d66de09",
+      "svg_sha256": "40d54bc6b4a611ede5dbced02f463c8110da7bd643f93e4d58575759821639ab",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_example_system_architecture_051": {
+      "input_sha256": "c1690d0b0e175012900f71bd698d12f77c55a219b80856fa5852ec0fd909c7a9",
+      "svg_sha256": "9b636815ad1cfb114ec246868d4922e4ce37905421aa3c1b6c047b48e8a989a4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_introduction_to_block_diagrams_001": {
+      "input_sha256": "78e30a8aaf7fb9a0a374414e1984d2882815549cfce0428d71601302ed4998d2",
+      "svg_sha256": "6c62f7ad1c479ccdf271b803dece3d9ed9a51f1165ac66866a38a07d21738226",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_nested_blocks_009": {
+      "input_sha256": "bd54fe8aea77a0c8cac4f1c6390ea744f26b3e7eab1142d5c8cb238ead92a7d4",
+      "svg_sha256": "be8f6d0eea443cf17467842dcb6d348eb7e0f81b5bff03c777a3a1950070c144",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_spanning_multiple_columns_007": {
+      "input_sha256": "6fbaef0c0b994cc3bc8d26d54d52647b5b3fdb184e5fc8ddbd75f846e8a8766c",
+      "svg_sha256": "9fbe8ebec24b326fb5705907871650865feb04a5c8c042f8f209bbed041bb3a4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_text_on_links_022": {
+      "input_sha256": "e29ee1ca59125b3c2c9e819f3511554448f8cf5a57304e7fd3317f01405179c8",
+      "svg_sha256": "1947cfc1a8c31960b641b1fc9e7aa1016ba8f144015b1ba091154ad61a62aaf4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_block_text_on_links_045": {
+      "input_sha256": "0eeed10abc3140def4fd7496fed3cbf95e1c79dbe41456455b20a2cd94b1099f",
+      "svg_sha256": "00b1e91f3ac53e76adbfa394dceed4c500ef20a1543a2d36b0878b05b01d023f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_edges": {
+      "input_sha256": "375715a3062d4efedd94fcc03f11ac1509833e82383fbe16485404d410c10874",
+      "svg_sha256": "2b8e2b5cfc18247182b35d01011976c4e4f8ecc54bd274ae3dfd1cca7e912d86",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_examples_block_basic_block_layout_001": {
+      "input_sha256": "31d4c217b46e59ed5c9c6c6701d6c8effb22fa36e85ca959c031ad326cadc957",
+      "svg_sha256": "088e97bdee913bc5c0ed5171153bd820422e8181996e4dad8f0345a95899fdc1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_001": {
+      "input_sha256": "1b47e92aaf0800a7d109e2c8ac2d8a22c5b70dcff39fe48ce646d220f5be67ea",
+      "svg_sha256": "b15fccb29931c0e984435217c33f9f2a9640cf3fa6f40202400a74e421d90175",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_002": {
+      "input_sha256": "6a4b77b45840ed2ee568e9825e89b7d31a5c27f01b4cc3eae85cd37d2cbf0815",
+      "svg_sha256": "a39d1daedd9c76a696890eea9153310f564ca36e8b5dfb3d30b633826b11e827",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_003": {
+      "input_sha256": "6deb7c3c7575339e155aad3d71bd82efadef735a1f9cfe603e518332c3701fca",
+      "svg_sha256": "ca7cb5659d4849821e9397933e169e498ab0531688647a6819fc7b567f987703",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_004": {
+      "input_sha256": "483ffc193dc756047ab6511e718701fbf99ab6306d862ea844708d27146e3ee2",
+      "svg_sha256": "8162a907b72b2529bb21b9e31222c584beceab4256a9a20e54d4d518f73f3cd1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_005": {
+      "input_sha256": "8cb34dedd28d7bc4c4d1c630623111a5a2cce58d229e70d1c9f7f637fae88531",
+      "svg_sha256": "2f9daaad76d7bf8256c65f597b8682bc0ff8180ba1aabe3626a84941747a2732",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_006": {
+      "input_sha256": "4cbeae4d57f3b8672098327225506a57ca03174a2203736d6f0931862fa894d9",
+      "svg_sha256": "86c3aa7efe573c73325d34eff62af963a3ad9aee1b23dd0e9d46acc2f7bc426f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_007": {
+      "input_sha256": "7dbdaff8738a6c660d7a3d7074d3d797fa69a525f9b80bb6d5172a5f6c2a413d",
+      "svg_sha256": "846dd697d7cf16e2e6c550d9abdbe58e0de2a475e68e3241617ba8cb654b7708",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_009": {
+      "input_sha256": "5f3a99b8dcfaec30d9648d995ff68f14895849d799accb8f9a65105dc89b9469",
+      "svg_sha256": "8fd7454cd6cb48092d832a673be4bf7385a064f75d6c6cb74a5640f1ce103827",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_010": {
+      "input_sha256": "dda6e8b584252ef03ef9f261af1da14ad95495af9c0d83d1c9ae8f96ae621736",
+      "svg_sha256": "02b954c2a4f1e813826de95a8aeb96b1a194e1b185c61e98c013d16798e3c788",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_011": {
+      "input_sha256": "189672c3bf32151cda708d764f251aa53d040fcaf4f8a56d4e2f9e544fdd0eba",
+      "svg_sha256": "010afdd91014aed0b7a18dce2e0420a5ec4cc240d6ea4aab5d8054df7af66152",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_block_block_diagram_demos_012": {
+      "input_sha256": "1ec8d13119088ee2228a3222ada0464046efdadfeb02a58e75048dd4c027721a",
+      "svg_sha256": "fa162fded726ee3cb2ca9831d1789dff99f0f04222f944dc7df3e89c2f9325e7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_001": {
+      "input_sha256": "692dbd56c7ee4b71ea458a86b70eb05007dd50390deb95886a636b137543d8be",
+      "svg_sha256": "35ebf23d9ecb45f1e8417d51cf1b4d08d68603d3f64b40e21721c9bf66753068",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_002": {
+      "input_sha256": "25415da5d5421ff9664883d92858bb29e2fc897c3938aaf84edc17b8dd454691",
+      "svg_sha256": "b6cfd911a72bf548b3d2a3e5e9feac9b0557096f5039f69522e03d308bb60391",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_003": {
+      "input_sha256": "e9b1c467f8f36c858069f327e1e2dce7080fe9efcc683c066f0618de2156cb1b",
+      "svg_sha256": "2f97621fa43a2b5ffa4b6beebf66fcc198b531118787374a946a9a50575518b3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_004": {
+      "input_sha256": "16765bcf3e12e8435daaf89f5a5518fa38cf2e5b9f11475f1a15b152c27b411a",
+      "svg_sha256": "d7c930a2cc7460df60056e527e8c659001826fefe12e8ce834ff61a5a5858ca7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_005": {
+      "input_sha256": "21bb173ca28117e610b0a5835f2642bf74b032472e76e0f2a89bc6c764041c29",
+      "svg_sha256": "f135d6bdf1c8d6c707faeae1583f984179480f996ad42fa74661f71cbaaeee53",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_006": {
+      "input_sha256": "d7a5652c1b5e66732cdb6f6f52ac9a6028de37923f2fcdeae368aba5794ef40a",
+      "svg_sha256": "35ada787021597366c01555e23efea0ecc35fb9c26ba157d1595cc16d3eba3df",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_007": {
+      "input_sha256": "9bf5a37bdaf8000710347e525e7aa7d683f7df4e77d9f983a9b8b58b8e2c0551",
+      "svg_sha256": "496f5c56db52a2ea914d5770a3460d169a13d8cc62297679f81b3a3239b41c53",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_008": {
+      "input_sha256": "8aee307de01c398aa8cbe29e961372cc50566b8153cbbd48f66c3b1e5cfc2e41",
+      "svg_sha256": "258534b22f0833073b0767a21a196366f5d73757b85b954b7cd3652fa639235c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_009": {
+      "input_sha256": "b173b6ac14c546694fe25cc6cde16b0dddcf1d39f718c0d46cdfdcc319cca9fc",
+      "svg_sha256": "b44f35d7ea4f26e7afbc872e8d6b9804d1bf2926c01543159d69844e089beea2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_010": {
+      "input_sha256": "ca86c0989f572f96b6c8f73987bc16ea77cd3721c5bbb6612687d7ad332a1159",
+      "svg_sha256": "028e92236e602b4ff856cc35617442e5b8e621841b6971c81d0faaa3289ee88b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_011": {
+      "input_sha256": "e6fd3d920ad25bb69b3e723a5a3a63adb3557703fb2b438fdd61ded4d0a69da8",
+      "svg_sha256": "2bd0b2f819361aeabc63a2a7897af3e26a9346944145512171a7221757f4e79a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_012": {
+      "input_sha256": "188ec6b3790e127975e4de8367ee2075c82fa8b086124175abc406e63798f9b9",
+      "svg_sha256": "1c1b06029226229c9847188c84744fb3ca50154b322bcb98bcdfcebb93417df9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_013": {
+      "input_sha256": "51f0b471f773d3cce2bbeaca66d40f2bf1a403e3b1455d1ebf3156500f02b1f8",
+      "svg_sha256": "347927c41e06f75b98b850452c7e5d1adaa5df9990fa9225959d4270914cdefd",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_014": {
+      "input_sha256": "60db2c95fdf469943bbd9185d44c9b61fd54adfc88f4fbe4ad5ea0f88715ab29",
+      "svg_sha256": "dccebfb0265ccdd10a49dd4992bdc1ab65e661c2094bdb85eef23f16aae605e7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_015": {
+      "input_sha256": "1dc8e8f975fe0591edc4b5ed03fa3ce00389aa34c6cc304bf094bb646c876d3e",
+      "svg_sha256": "a219fce9df7933728737ceea4515f9058070246bb6f23522bf5dc1b271e8b236",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_016": {
+      "input_sha256": "eedbf989d18839cb49ab2e40124263cceba7f1d330189ebd209ce01b5e59ecad",
+      "svg_sha256": "82a93e35366cc064ae18ec9cd65fd196590c65d4db93fe9e9b4de66a9221bdb6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_017": {
+      "input_sha256": "109864c05d396a2675a73816ac7fb473bc4d876acfac32cd44c166e53bcfa714",
+      "svg_sha256": "5784b3ce621a368e72103ff7b99b7a119f84d5794cf13dac0b72803d86be91ef",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_018": {
+      "input_sha256": "17e83ff1a998fe922a519648587b69442ae72bc59657302475631b6d0a98b517",
+      "svg_sha256": "09ceeef15d923b25af496edb0c2e89ab56bf5c3c82277563e9f0d6678f6eb1b3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_019": {
+      "input_sha256": "a5fcef8f139354c80f7c1effd297d2ce501d90fb38da8e0c3377d381ebd37825",
+      "svg_sha256": "1af8f45e4222d3c663bed9ac242672d8227226d2a56259d852670416f7d6459b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_020": {
+      "input_sha256": "6693d53afcc2c3dd86db8d6fedd09e83d3e8d8003030bc95891a3c560e64309d",
+      "svg_sha256": "bb7ae740bb7f4507aa9c03e6abfd166767bb3ed2460b22b245cf3bbf4473c2eb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_021": {
+      "input_sha256": "1e1259ea20cd540c7667eee95876b0664299ce5f41401bc9c5c6cdb8ce1fee7a",
+      "svg_sha256": "2b266ca9e25f9a697046a23dc2cfe4c4ec913893598ca853e9379ed59c303634",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_022": {
+      "input_sha256": "2b5590390a35970d88f9ec86e4d82e2e889a26ee5a51c0eecf2e2722e8c97232",
+      "svg_sha256": "b7a363dd27cd9b6c301ad54d294733d4a9a871138484db715deee77912a23918",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_024": {
+      "input_sha256": "cf8e7c3dd3b770afca292f9d105343184fb9817ae4a95b7f35530a78f41ead72",
+      "svg_sha256": "227e350335a28e993c85d0617d6ca3af3eae0d430850a73bc4dac2bb5737c526",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_block_spec_025": {
+      "input_sha256": "f79bf8178d8dfa4f7ccac725c9cd3b2be57a721cb67e24b8712512ffb9b0bbb2",
+      "svg_sha256": "8846426e1b6b995b0698e3eb11510034851a225c788b486ff0fbdd1c6eb61c2f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_prototype_properties": {
+      "input_sha256": "e949c039e966d3cd038b05d24fdd25ba15398bdcf04c323566a374f5f400b4c8",
+      "svg_sha256": "d33b5f8624b27b8ccc8eb49a6e63acc4d9c43872ffcd7434d8e72f1b529d7451",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_styles": {
+      "input_sha256": "321ea70801d8e31c01d1385d3d1ea6a4cfe327a7d1f94eaa6806d5494247242b",
+      "svg_sha256": "27b6ce2394742a976188467ac2611967284d1b614c2a1c483625e6aed3a024d8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_styles_2": {
+      "input_sha256": "10bc6826e480bf6bc49a9d4acab5ed1134fdc6714b7ab3a880363206f2d0f405",
+      "svg_sha256": "3cbdc8b36e90f8b3bbb145d834d9469195732560ccd9fbda8168128fa445c4f1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_warnings": {
+      "input_sha256": "4d279919c7a5cedf6259feb390a6ccb2d6482b70d268f1e448d1d9fe6fd46f67",
+      "svg_sha256": "aa061e71ba6ae3c81f47dbf7a0cf7880127a114c119f553d13771bc97be7d88a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_widths_and_spaces": {
+      "input_sha256": "11a10447ce477c7f5abcaf06f37ae09af86bc59eb5ae5793fa626e1ab61281f4",
+      "svg_sha256": "552c019087f8e7530f58d9610e6e2cfed6e14fc841b5750b85204e3f802915d3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_widths_and_spaces_2": {
+      "input_sha256": "018fa24876f57fd765aafa2bb90ce36b04e02db1169021859264b5dc441c01bd",
+      "svg_sha256": "e1753037efc85fb4c47bd8d12faa6e9f9dc208a8f57a31e45cd6a1c490b47b89",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

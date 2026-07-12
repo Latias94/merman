@@ -2,7 +2,7 @@ use super::super::*;
 use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
 use crate::sequence::{
-    SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR, SequenceMathHeightMode, sequence_activation_stack_bounds,
+    SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceMathHeightMode, sequence_activation_stack_bounds,
     sequence_activation_start_x, sequence_text_line_step_px,
 };
 use rustc_hash::FxHashMap;
@@ -324,15 +324,13 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                     (p0.y - katex.height).round(),
                 );
             } else if msg.wrap && !text.is_empty() {
-                // Mermaid's `wrapLabel(...)` uses DOM-backed SVG text bbox widths. Our headless
-                // vendored metrics are close but can be slightly more conservative in some edge
-                // cases; give message wrapping a bit of extra horizontal slack so line breaks match
-                // upstream Cypress baselines.
+                // Mermaid wraps message labels to
+                // `max(boundedWidth + 2*wrapPadding, conf.width)`.
                 let wrap_w = (bounded_width
-                    + SEQUENCE_MESSAGE_WRAP_SLACK_FACTOR * ctx.wrap_padding)
+                    + SEQUENCE_MESSAGE_WRAP_PADDING_SIDES * ctx.wrap_padding)
                     .max(ctx.sequence_width)
                     .max(1.0);
-                let raw_lines = crate::text::wrap_label_like_mermaid_lines_floored_bbox(
+                let raw_lines = crate::text::wrap_label_like_mermaid_lines(
                     text,
                     ctx.measurer,
                     ctx.loop_text_style,

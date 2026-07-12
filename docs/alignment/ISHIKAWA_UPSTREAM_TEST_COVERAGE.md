@@ -1,6 +1,6 @@
 # Ishikawa Upstream Test Coverage (Mermaid@11.16.0)
 
-Scope: locked Mermaid commit `41646dfd43ac83f001b03c70605feb036afae46d`.
+Scope: locked Mermaid commit `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`.
 
 Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
@@ -20,6 +20,7 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
   - parser unit coverage in `crates/merman-core/src/diagrams/ishikawa.rs`
 - Basic typed SVG output:
   - `crates/merman-render/tests/ishikawa_svg_test.rs`
+  - asserts typed pair, upper/lower branch, cause-label group, and sub-group ownership
 
 ## Fixture Coverage
 
@@ -59,8 +60,12 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 - Family-local command: `cargo run -p xtask -- compare-ishikawa-svgs`
 - Upstream baseline reproducibility: `cargo run -p xtask -- check-upstream-svgs --diagram ishikawa --check-dom --dom-mode parity --dom-decimals 3`
-- Current DOM gate: `compare-ishikawa-svgs --check-dom --dom-mode parity --dom-decimals 3`
-  passes for the committed baseline corpus.
+- Current DOM gates pass all 12 committed baselines:
+  - `compare-ishikawa-svgs --check-dom --dom-mode structure --dom-decimals 3`
+  - `compare-ishikawa-svgs --check-dom --dom-mode parity --dom-decimals 3`
+- Structure convergence comes from the typed layout/render tree matching Mermaid 11.16's
+  `ishikawa-pair`, `ishikawa-label-group`, and `ishikawa-sub-group` ownership. It does not use
+  comparator normalization or fixture-specific exceptions.
 
 ## Not Yet Covered
 

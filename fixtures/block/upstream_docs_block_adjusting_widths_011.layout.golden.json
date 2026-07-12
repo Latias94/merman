@@ -5,122 +5,122 @@
       "nodes": [
         {
           "id": "a",
-          "x": 153.766,
+          "x": 114.484,
           "y": -96.0,
-          "width": 307.531,
+          "width": 228.969,
           "height": 88.0,
           "is_cluster": false
         },
         {
           "id": "group1",
-          "x": 101.177,
+          "x": 74.99,
           "y": 0.0,
-          "width": 202.354,
+          "width": 149.979,
           "height": 88.0,
           "is_cluster": false
         },
         {
           "id": "h",
-          "x": 52.589,
+          "x": 39.495,
           "y": -20.0,
-          "width": 89.177,
+          "width": 62.99,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "i",
-          "x": 149.766,
+          "x": 110.484,
           "y": -20.0,
-          "width": 89.177,
+          "width": 62.99,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "j",
-          "x": 52.589,
+          "x": 39.495,
           "y": 20.0,
-          "width": 89.177,
+          "width": 62.99,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "k",
-          "x": 149.766,
+          "x": 110.484,
           "y": 20.0,
-          "width": 89.177,
+          "width": 62.99,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "g",
-          "x": 258.943,
+          "x": 193.474,
           "y": 0.0,
-          "width": 97.177,
+          "width": 70.99,
           "height": 88.0,
           "is_cluster": false
         },
         {
           "id": "group2",
-          "x": 153.766,
-          "y": 96.0,
-          "width": 307.531,
-          "height": 88.0,
+          "x": 114.484,
+          "y": 76.0,
+          "width": 228.969,
+          "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "l",
-          "x": 25.395,
-          "y": 96.0,
-          "width": 34.79,
-          "height": 72.0,
+          "x": 19.783,
+          "y": 76.0,
+          "width": 23.567,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "m",
-          "x": 68.185,
-          "y": 96.0,
-          "width": 34.79,
-          "height": 72.0,
+          "x": 51.35,
+          "y": 76.0,
+          "width": 23.567,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "n",
-          "x": 110.975,
-          "y": 96.0,
-          "width": 34.79,
-          "height": 72.0,
+          "x": 82.917,
+          "y": 76.0,
+          "width": 23.567,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "o",
-          "x": 153.766,
-          "y": 96.0,
-          "width": 34.79,
-          "height": 72.0,
+          "x": 114.484,
+          "y": 76.0,
+          "width": 23.567,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "p",
-          "x": 196.556,
-          "y": 96.0,
-          "width": 34.79,
-          "height": 72.0,
+          "x": 146.051,
+          "y": 76.0,
+          "width": 23.567,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "q",
-          "x": 239.346,
-          "y": 96.0,
-          "width": 34.79,
-          "height": 72.0,
+          "x": 177.618,
+          "y": 76.0,
+          "width": 23.567,
+          "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "r",
-          "x": 282.136,
-          "y": 96.0,
-          "width": 34.79,
-          "height": 72.0,
+          "x": 209.185,
+          "y": 76.0,
+          "width": 23.567,
+          "height": 32.0,
           "is_cluster": false
         }
       ],
@@ -128,8 +128,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -140.0,
-        "max_x": 307.531,
-        "max_y": 140.0
+        "max_x": 228.969,
+        "max_y": 100.0
       }
     }
   }

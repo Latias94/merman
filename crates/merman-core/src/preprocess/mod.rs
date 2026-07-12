@@ -655,6 +655,12 @@ enum DirectiveValuePathSegment {
     Index(usize),
 }
 
+#[derive(Clone, Copy)]
+enum DirectiveDictionaryKind {
+    NodeColors,
+    IconReferences,
+}
+
 fn sanitize_directive(value: &mut Value) {
     let mut stack = vec![Vec::<DirectiveValuePathSegment>::new()];
 
@@ -682,6 +688,14 @@ fn sanitize_directive(value: &mut Value) {
 
                 let child_keys = map.keys().cloned().collect::<Vec<_>>();
                 for key in child_keys.into_iter().rev() {
+                    if let Some(kind) = directive_dictionary_kind(&key)
+                        && map
+                            .get_mut(&key)
+                            .is_some_and(|child| sanitize_directive_dictionary(child, kind))
+                    {
+                        continue;
+                    }
+
                     let mut child_path = path.clone();
                     child_path.push(DirectiveValuePathSegment::Key(key));
                     stack.push(child_path);
@@ -703,6 +717,125 @@ fn sanitize_directive(value: &mut Value) {
             _ => {}
         }
     }
+}
+
+fn directive_dictionary_kind(key: &str) -> Option<DirectiveDictionaryKind> {
+    // Source: Mermaid 11.16 `sanitizeDirective.ts` DICTIONARY_CONFIG_PATTERNS.
+    match key {
+        "nodeColors" => Some(DirectiveDictionaryKind::NodeColors),
+        "filenameIcons" | "extensionIcons" => Some(DirectiveDictionaryKind::IconReferences),
+        _ => None,
+    }
+}
+
+fn sanitize_directive_dictionary(value: &mut Value, kind: DirectiveDictionaryKind) -> bool {
+    let is_valid_value = |value: &Value| {
+        value.as_str().is_some_and(|value| match kind {
+            DirectiveDictionaryKind::NodeColors => is_valid_node_color(value),
+            DirectiveDictionaryKind::IconReferences => is_valid_icon_reference(value),
+        })
+    };
+
+    match value {
+        Value::Object(map) => {
+            let blocked_keys = map
+                .iter()
+                .filter_map(|(key, value)| {
+                    (is_suspicious_dictionary_key(key) || !is_valid_value(value))
+                        .then(|| key.clone())
+                })
+                .collect::<Vec<_>>();
+
+            for key in blocked_keys {
+                if let Some(old) = map.remove(&key) {
+                    crate::config::drop_value_nonrecursive(old);
+                }
+            }
+            true
+        }
+        Value::Array(values) => {
+            for value in values.iter_mut().filter(|value| !is_valid_value(value)) {
+                let old = std::mem::replace(value, Value::Null);
+                crate::config::drop_value_nonrecursive(old);
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn is_suspicious_dictionary_key(key: &str) -> bool {
+    key.starts_with("__") || key.contains("proto") || key.contains("constr")
+}
+
+fn is_valid_icon_reference(value: &str) -> bool {
+    let mut segments = value.split(':');
+    let Some(first) = segments.next() else {
+        return false;
+    };
+    let second = segments.next();
+
+    is_valid_icon_reference_segment(first)
+        && second.is_none_or(is_valid_icon_reference_segment)
+        && segments.next().is_none()
+}
+
+fn is_valid_icon_reference_segment(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+fn is_valid_node_color(value: &str) -> bool {
+    if let Some(hex) = value.strip_prefix('#') {
+        return (3..=8).contains(&hex.len()) && hex.bytes().all(|byte| byte.is_ascii_hexdigit());
+    }
+
+    if is_valid_node_color_function(value, "rgb(") || is_valid_node_color_function(value, "hsl(") {
+        return true;
+    }
+
+    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_alphabetic())
+}
+
+fn is_valid_node_color_function(value: &str, prefix: &str) -> bool {
+    let Some(actual_prefix) = value.get(..prefix.len()) else {
+        return false;
+    };
+    if !actual_prefix.eq_ignore_ascii_case(prefix) || !value.ends_with(')') {
+        return false;
+    }
+
+    let inner = &value[prefix.len()..value.len() - 1];
+    !inner.is_empty()
+        && inner.chars().all(|ch| {
+            ch.is_ascii_digit() || is_js_regex_whitespace(ch) || matches!(ch, '%' | ',' | '.')
+        })
+}
+
+fn is_js_regex_whitespace(ch: char) -> bool {
+    if ('\u{2000}'..='\u{200A}').contains(&ch) {
+        return true;
+    }
+
+    matches!(
+        ch,
+        '\u{0009}'
+            | '\u{000A}'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
 }
 
 fn directive_value_at_path_mut<'a>(
@@ -891,7 +1024,7 @@ fn yaml_inline_sequence_indicator_count(mut text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Map;
+    use serde_json::{Map, json};
 
     #[test]
     fn normalize_crlf_matches_mermaid_line_ending_cleanup() {
@@ -976,6 +1109,135 @@ mod tests {
         handle
             .join()
             .expect("deep directive sanitizer should finish without stack overflow");
+    }
+
+    #[test]
+    fn sanitize_directive_preserves_valid_dictionary_entries() {
+        let mut value = json!({
+            "sankey": {
+                "nodeColors": {
+                    "shortHex": "#abc",
+                    "alphaHex": "#12345678",
+                    "rgb": "rgb(0, 10%, 255)",
+                    "hsl": "hsl(120, 50%, 25.5%)",
+                    "named": "rebeccapurple"
+                }
+            },
+            "treeView": {
+                "filenameIcons": {
+                    "Makefile": "cmake",
+                    "README.md": "fa:bell"
+                },
+                "extensionIcons": {
+                    ".ts": "logos:typescript-icon",
+                    ".txt": "none"
+                }
+            }
+        });
+
+        sanitize_directive(&mut value);
+
+        assert_eq!(value["sankey"]["nodeColors"]["shortHex"], "#abc");
+        assert_eq!(value["sankey"]["nodeColors"]["alphaHex"], "#12345678");
+        assert_eq!(value["sankey"]["nodeColors"]["rgb"], "rgb(0, 10%, 255)");
+        assert_eq!(value["sankey"]["nodeColors"]["hsl"], "hsl(120, 50%, 25.5%)");
+        assert_eq!(value["sankey"]["nodeColors"]["named"], "rebeccapurple");
+        assert_eq!(value["treeView"]["filenameIcons"]["README.md"], "fa:bell");
+        assert_eq!(
+            value["treeView"]["extensionIcons"][".ts"],
+            "logos:typescript-icon"
+        );
+    }
+
+    #[test]
+    fn sanitize_directive_removes_invalid_dictionary_values() {
+        let mut value = json!({
+            "sankey": {
+                "nodeColors": {
+                    "valid": "#ff0000",
+                    "short": "#12",
+                    "function": "url(javascript:alert(1))",
+                    "wrongType": 42
+                }
+            },
+            "treeView": {
+                "filenameIcons": {
+                    "valid": "docker",
+                    "markup": "<script>alert(1)</script>",
+                    "wrongType": false
+                },
+                "extensionIcons": {
+                    ".ts": "logos:typescript-icon",
+                    ".css": "not a valid name",
+                    ".json": "one:two:three"
+                }
+            }
+        });
+
+        sanitize_directive(&mut value);
+
+        assert_eq!(value["sankey"]["nodeColors"], json!({ "valid": "#ff0000" }));
+        assert_eq!(
+            value["treeView"]["filenameIcons"],
+            json!({ "valid": "docker" })
+        );
+        assert_eq!(
+            value["treeView"]["extensionIcons"],
+            json!({ ".ts": "logos:typescript-icon" })
+        );
+    }
+
+    #[test]
+    fn sanitize_directive_removes_suspicious_dictionary_keys() {
+        let mut value = json!({
+            "sankey": {
+                "nodeColors": {
+                    "__proto__hack": "red",
+                    "prototype": "green",
+                    "constructor.js": "blue",
+                    "safe": "black"
+                }
+            },
+            "treeView": {
+                "filenameIcons": {
+                    "__proto__hack": "docker",
+                    "prototype.ts": "docker",
+                    "constructor.js": "docker",
+                    "a.ts": "docker"
+                }
+            }
+        });
+
+        sanitize_directive(&mut value);
+
+        assert_eq!(value["sankey"]["nodeColors"], json!({ "safe": "black" }));
+        assert_eq!(
+            value["treeView"]["filenameIcons"],
+            json!({ "a.ts": "docker" })
+        );
+    }
+
+    #[test]
+    fn sanitize_directive_validates_dictionary_arrays_like_javascript_objects() {
+        let mut value = json!({
+            "sankey": {
+                "nodeColors": ["#ff0000", "url(javascript:alert(1))", 42]
+            },
+            "treeView": {
+                "extensionIcons": ["logos:typescript-icon", "not a valid name", false]
+            }
+        });
+
+        sanitize_directive(&mut value);
+
+        assert_eq!(
+            value["sankey"]["nodeColors"],
+            json!(["#ff0000", null, null])
+        );
+        assert_eq!(
+            value["treeView"]["extensionIcons"],
+            json!(["logos:typescript-icon", null, null])
+        );
     }
 
     #[test]

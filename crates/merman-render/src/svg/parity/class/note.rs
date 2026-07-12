@@ -158,31 +158,15 @@ pub(super) fn render_class_note_node(
     } else {
         "node undefined"
     };
-    let note_data_look_attr = if hand_drawn {
-        String::new()
-    } else {
-        format!(r#" data-look="{}""#, escape_attr_display(ctx.look))
-    };
-    let note_label_class = if hand_drawn {
-        "label"
-    } else {
-        "label noteLabel"
-    };
-    let note_span_class = if hand_drawn {
-        "nodeLabel"
-    } else {
-        "nodeLabel markdown-node-label"
-    };
-    let note_node_id = if hand_drawn {
-        note.id.clone()
-    } else {
-        format!("{}-{}", ctx.diagram_id, note.id)
-    };
+    let note_data_look_attr = format!(r#" data-look="{}""#, escape_attr_display(ctx.look));
+    let note_label_class = "label noteLabel";
+    let note_span_class = "nodeLabel markdown-node-label";
+    let note_node_id = format!("{}-{}", ctx.diagram_id, note.id);
     let mut note_shape = String::new();
     if hand_drawn {
         let _ = write!(
             &mut note_shape,
-            r##"<g class="basic label-container"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
+            r##"<g class="basic label-container outer-path"><path d="{}" stroke="{}" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
             escape_attr_display(&note_fill_d),
             escape_attr_display(&note_fill),
             escape_attr_display(&note_stroke_d),

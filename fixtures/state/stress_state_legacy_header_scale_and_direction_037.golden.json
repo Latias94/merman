@@ -58,7 +58,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": true
       },
       {
         "labelStyle": "",

@@ -102,106 +102,6 @@
       ],
       "edges": [
         {
-          "id": "State3-cyclic-special-1",
-          "from": "State3",
-          "to": "State3",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 360.436,
-              "y": 791.1
-            },
-            {
-              "x": 363.411,
-              "y": 828.1
-            },
-            {
-              "x": 363.411,
-              "y": 872.05
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "State3-cyclic-special-2",
-          "from": "State3",
-          "to": "State3",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 403.013,
-              "y": 953.1
-            },
-            {
-              "x": 403.013,
-              "y": 916.1
-            },
-            {
-              "x": 403.013,
-              "y": 872.1
-            },
-            {
-              "x": 403.013,
-              "y": 828.1
-            },
-            {
-              "x": 394.852,
-              "y": 791.1
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "State3-cyclic-special-mid",
-          "from": "State3",
-          "to": "State3",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 363.411,
-              "y": 872.15
-            },
-            {
-              "x": 363.411,
-              "y": 916.1
-            },
-            {
-              "x": 402.963,
-              "y": 953.103
-            }
-          ],
-          "label": {
-            "x": 363.411,
-            "y": 916.1,
-            "width": 39.203,
-            "height": 24.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
           "id": "edge0",
           "from": "root_start",
           "to": "State1",
@@ -454,6 +354,44 @@
           "stroke_dasharray": null
         },
         {
+          "id": "edge6",
+          "from": "long1",
+          "to": "long1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 324.499,
+              "y": 515.5
+            },
+            {
+              "x": 324.499,
+              "y": 555.55
+            },
+            {
+              "x": 388.983,
+              "y": 555.55
+            },
+            {
+              "x": 388.983,
+              "y": 515.5
+            }
+          ],
+          "label": {
+            "x": 356.741,
+            "y": 571.55,
+            "width": 64.484,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge7",
           "from": "long1",
           "to": "ProcessData",
@@ -488,6 +426,44 @@
           "stroke_dasharray": null
         },
         {
+          "id": "edge8",
+          "from": "State3",
+          "to": "State3",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 293.51,
+              "y": 791.1
+            },
+            {
+              "x": 293.51,
+              "y": 839.1
+            },
+            {
+              "x": 387.875,
+              "y": 839.1
+            },
+            {
+              "x": 387.875,
+              "y": 791.1
+            }
+          ],
+          "label": {
+            "x": 340.692,
+            "y": 855.1,
+            "width": 39.203,
+            "height": 24.0
+          },
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
           "id": "edge9",
           "from": "State3",
           "to": "root_end",
@@ -511,106 +487,6 @@
             "x": 193.739,
             "y": 828.1,
             "width": 157.594,
-            "height": 24.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "long1-cyclic-special-1",
-          "from": "long1",
-          "to": "long1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 310.057,
-              "y": 515.5
-            },
-            {
-              "x": 258.128,
-              "y": 565.0
-            },
-            {
-              "x": 258.128,
-              "y": 634.45
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "long1-cyclic-special-2",
-          "from": "long1",
-          "to": "long1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 340.742,
-              "y": 753.527
-            },
-            {
-              "x": 447.901,
-              "y": 704.0
-            },
-            {
-              "x": 447.901,
-              "y": 634.5
-            },
-            {
-              "x": 447.901,
-              "y": 565.0
-            },
-            {
-              "x": 399.896,
-              "y": 515.5
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "long1-cyclic-special-mid",
-          "from": "long1",
-          "to": "long1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 258.128,
-              "y": 634.55
-            },
-            {
-              "x": 258.128,
-              "y": 704.0
-            },
-            {
-              "x": 340.642,
-              "y": 753.52
-            }
-          ],
-          "label": {
-            "x": 258.128,
-            "y": 704.0,
-            "width": 64.484,
             "height": 24.0
           },
           "start_label_left": null,

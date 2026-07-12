@@ -40,50 +40,54 @@
           }
         }
       },
-      "lines": [
+      "spine": {
+        "x1": -52.959,
+        "y1": 250.0,
+        "x2": 0.0,
+        "y2": 250.0,
+        "class_name": "ishikawa-spine",
+        "marker_start": false
+      },
+      "pairs": [
         {
-          "x1": -20.0,
-          "y1": 250.0,
-          "x2": -26.959,
-          "y2": 200.487,
-          "class_name": "ishikawa-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -52.959,
-          "y1": 250.0,
-          "x2": 0.0,
-          "y2": 250.0,
-          "class_name": "ishikawa-spine",
-          "marker_start": false
-        }
-      ],
-      "labels": [
-        {
-          "text": "Cause A",
-          "lines": [
-            "Cause A"
-          ],
-          "class_name": "ishikawa-label cause",
-          "x": -26.959,
-          "y": 189.487,
-          "anchor": "middle",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -52.959,
-            "min_y": 178.674,
-            "max_x": -0.959,
-            "max_y": 197.674
-          }
-        }
-      ],
-      "label_boxes": [
-        {
-          "x": -72.959,
-          "y": 176.674,
-          "width": 92.0,
-          "height": 23.0
+          "upper": {
+            "line": {
+              "x1": -20.0,
+              "y1": 250.0,
+              "x2": -26.959,
+              "y2": 200.487,
+              "class_name": "ishikawa-branch",
+              "marker_start": true
+            },
+            "label_group": {
+              "label_box": {
+                "x": -72.959,
+                "y": 176.674,
+                "width": 92.0,
+                "height": 23.0
+              },
+              "label": {
+                "text": "Cause A",
+                "lines": [
+                  "Cause A"
+                ],
+                "class_name": "ishikawa-label cause",
+                "x": -26.959,
+                "y": 189.487,
+                "anchor": "middle",
+                "line_height": 16.8,
+                "font_size": 16.0,
+                "bbox": {
+                  "min_x": -52.959,
+                  "min_y": 178.674,
+                  "max_x": -0.959,
+                  "max_y": 197.674
+                }
+              }
+            },
+            "sub_groups": []
+          },
+          "lower": null
         }
       ]
     }

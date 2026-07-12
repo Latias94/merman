@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -91.719,
-        "min_y": -18.0,
+        "min_y": -20.0,
         "max_x": 358.0,
-        "max_y": 198.0
+        "max_y": 196.0
       },
       "direction": "LR",
       "rotate_commit_label": true,
@@ -52,7 +52,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "2-abcdefg",
@@ -69,7 +69,7 @@
           "pos": 50.0,
           "pos_with_offset": 60.0,
           "x": 60.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "3-abcdefg",
@@ -86,7 +86,7 @@
           "pos": 100.0,
           "pos_with_offset": 110.0,
           "x": 110.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "3-<dynamic>",
@@ -104,7 +104,7 @@
           "pos": 150.0,
           "pos_with_offset": 160.0,
           "x": 160.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "4-abcdefg",
@@ -121,7 +121,7 @@
           "pos": 200.0,
           "pos_with_offset": 210.0,
           "x": 210.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "5-abcdefg",
@@ -138,7 +138,7 @@
           "pos": 250.0,
           "pos_with_offset": 260.0,
           "x": 260.0,
-          "y": 180.0
+          "y": 178.0
         },
         {
           "id": "6-<dynamic>",
@@ -156,7 +156,7 @@
           "pos": 300.0,
           "pos_with_offset": 310.0,
           "x": 310.0,
-          "y": 90.0
+          "y": 88.0
         }
       ],
       "arrows": [
@@ -164,49 +164,49 @@
           "from": "1-abcdefg",
           "to": "2-abcdefg",
           "class_index": 0.0,
-          "d": "M 10 0 L 60 0"
+          "d": "M 10 -2 L 60 -2"
         },
         {
           "from": "1-abcdefg",
           "to": "3-abcdefg",
           "class_index": 1.0,
-          "d": "M 10 0 L 10 70 A 20 20, 0, 0, 0, 30 90 L 110 90"
+          "d": "M 10 -2 L 10 68 A 20 20, 0, 0, 0, 30 88 L 110 88"
         },
         {
           "from": "2-abcdefg",
           "to": "3-<dynamic>",
           "class_index": 0.0,
-          "d": "M 60 0 L 160 0"
+          "d": "M 60 -2 L 160 -2"
         },
         {
           "from": "3-abcdefg",
           "to": "3-<dynamic>",
           "class_index": 1.0,
-          "d": "M 110 90 L 140 90 A 20 20, 0, 0, 0, 160 70 L 160 0"
+          "d": "M 110 88 L 140 88 A 20 20, 0, 0, 0, 160 68 L 160 -2"
         },
         {
           "from": "3-abcdefg",
           "to": "4-abcdefg",
           "class_index": 1.0,
-          "d": "M 110 90 L 210 90"
+          "d": "M 110 88 L 210 88"
         },
         {
           "from": "3-abcdefg",
           "to": "5-abcdefg",
           "class_index": 2.0,
-          "d": "M 110 90 L 110 160 A 20 20, 0, 0, 0, 130 180 L 260 180"
+          "d": "M 110 88 L 110 158 A 20 20, 0, 0, 0, 130 178 L 260 178"
         },
         {
           "from": "4-abcdefg",
           "to": "6-<dynamic>",
           "class_index": 1.0,
-          "d": "M 210 90 L 310 90"
+          "d": "M 210 88 L 310 88"
         },
         {
           "from": "5-abcdefg",
           "to": "6-<dynamic>",
           "class_index": 2.0,
-          "d": "M 260 180 L 290 180 A 20 20, 0, 0, 0, 310 160 L 310 90"
+          "d": "M 260 178 L 290 178 A 20 20, 0, 0, 0, 310 158 L 310 88"
         }
       ]
     }

@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -91.719,
-        "min_y": -18.0,
+        "min_y": -20.0,
         "max_x": 208.0,
-        "max_y": 18.0
+        "max_y": 16.0
       },
       "direction": "LR",
       "rotate_commit_label": true,
@@ -38,7 +38,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "0db4784daf82736dec4569e0dc92980d328c1f2e",
@@ -55,7 +55,7 @@
           "pos": 50.0,
           "pos_with_offset": 60.0,
           "x": 60.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "7067e9973f9eaa6cd4a4b723c506d1eab598e83e",
@@ -72,7 +72,7 @@
           "pos": 100.0,
           "pos_with_offset": 110.0,
           "x": 110.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "66972321ad6c199013b5b31f03b3a86fa3f9817d",
@@ -89,7 +89,7 @@
           "pos": 150.0,
           "pos_with_offset": 160.0,
           "x": 160.0,
-          "y": 0.0
+          "y": -2.0
         }
       ],
       "arrows": [
@@ -97,19 +97,19 @@
           "from": "75f7219e83b321cd3fdde7dcf83bc7c1000a6828",
           "to": "0db4784daf82736dec4569e0dc92980d328c1f2e",
           "class_index": 0.0,
-          "d": "M 10 0 L 60 0"
+          "d": "M 10 -2 L 60 -2"
         },
         {
           "from": "0db4784daf82736dec4569e0dc92980d328c1f2e",
           "to": "7067e9973f9eaa6cd4a4b723c506d1eab598e83e",
           "class_index": 0.0,
-          "d": "M 60 0 L 110 0"
+          "d": "M 60 -2 L 110 -2"
         },
         {
           "from": "7067e9973f9eaa6cd4a4b723c506d1eab598e83e",
           "to": "66972321ad6c199013b5b31f03b3a86fa3f9817d",
           "class_index": 0.0,
-          "d": "M 110 0 L 160 0"
+          "d": "M 110 -2 L 160 -2"
         }
       ]
     }

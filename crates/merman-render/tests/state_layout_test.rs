@@ -307,7 +307,7 @@ fn state_layout_composite_and_dividers_contain_children() {
 }
 
 #[test]
-fn state_layout_expands_self_loop_edges() {
+fn state_layout_exposes_one_logical_self_loop_edge() {
     let path = workspace_root()
         .join("fixtures")
         .join("state")
@@ -324,27 +324,154 @@ fn state_layout_expands_self_loop_edges() {
         panic!("expected StateDiagramV2 layout");
     };
 
-    // Mermaid expands self-loop edges into 3 helper edges: `*-cyclic-special-{1,mid,2}`.
-    let self_loop_1 = layout
+    let self_loop = layout
         .edges
         .iter()
-        .find(|e| e.id == "Active-cyclic-special-1")
-        .expect("Active-cyclic-special-1");
-    let self_loop_mid = layout
-        .edges
-        .iter()
-        .find(|e| e.id == "Active-cyclic-special-mid")
-        .expect("Active-cyclic-special-mid");
-    let self_loop_2 = layout
-        .edges
-        .iter()
-        .find(|e| e.id == "Active-cyclic-special-2")
-        .expect("Active-cyclic-special-2");
+        .find(|edge| edge.from == "Active" && edge.to == "Active")
+        .expect("logical Active self-loop");
 
-    for e in [self_loop_1, self_loop_mid, self_loop_2] {
-        assert_eq!(e.from, "Active");
-        assert_eq!(e.to, "Active");
-        assert!(e.points.len() >= 2);
-    }
-    assert!(self_loop_mid.label.is_some());
+    assert_eq!(self_loop.id, "edge1");
+    assert_eq!(self_loop.points.len(), 4);
+    assert!(self_loop.label.is_some());
+
+    let ordinary_edge = layout
+        .edges
+        .iter()
+        .find(|edge| edge.id == "edge0")
+        .expect("ordinary composite transition");
+    assert_eq!(
+        ordinary_edge.points.len(),
+        4,
+        "the self-loop helper key must not perturb the unrelated transition topology"
+    );
+    assert!(
+        layout
+            .edges
+            .iter()
+            .all(|edge| !edge.id.contains("cyclic-special")),
+        "cyclic-special segments are internal Dagre helpers, not public layout edges"
+    );
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .any(|node| node.id == "Active---Active---1")
+            && layout
+                .nodes
+                .iter()
+                .any(|node| node.id == "Active---Active---2"),
+        "Dagre self-loop helper nodes must remain available as layout hints"
+    );
+}
+
+#[test]
+fn state_safe_anchor_avoids_leaf_inside_extractable_sibling_cluster() {
+    let layout = layout_state_from_text(
+        r#"stateDiagram-v2
+state P {
+  state I {
+    a
+  }
+  b
+}
+b --> x
+P --> y
+"#,
+    );
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing state node {id}"))
+    };
+    let edge = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "P" && edge.to == "y")
+        .expect("direct edge from P to y");
+    let route_control = edge.points.get(1).expect("first Dagre route control point");
+    let distance = |id: &str| {
+        let node = node(id);
+        (route_control.x - node.x).hypot(route_control.y - node.y)
+    };
+
+    let distance_to_a = distance("a");
+    let distance_to_b = distance("b");
+    assert!(
+        distance_to_b < distance_to_a,
+        "the edge anchor must survive extraction of sibling cluster I: points={:?}, \
+         a={:?}, b={:?}, distance_to_a={distance_to_a}, distance_to_b={distance_to_b}",
+        edge.points,
+        node("a"),
+        node("b")
+    );
+    assert!(
+        edge.from_cluster.is_some(),
+        "the rebound edge must retain its source-cluster metadata"
+    );
+}
+
+#[test]
+fn state_layout_extracts_explicit_direction_composite_with_external_edge() {
+    let layout = layout_state_from_text(
+        r#"stateDiagram-v2
+state Composite {
+  direction LR
+  A --> B: internal
+}
+B --> Outside: external
+"#,
+    );
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing state node {id}"))
+    };
+    let a = node("A");
+    let b = node("B");
+
+    assert!(
+        b.x > a.x && (b.y - a.y).abs() < 1e-6,
+        "explicit LR direction must govern the extracted composite layout: A={a:?}, B={b:?}"
+    );
+    assert!(
+        layout
+            .edges
+            .iter()
+            .any(|edge| edge.from == "B" && edge.to == "Outside"),
+        "the cross-boundary edge must survive explicit-direction extraction"
+    );
+}
+
+#[test]
+fn state_layout_keeps_implicit_direction_composite_with_external_edge_in_parent_graph() {
+    let layout = layout_state_from_text(
+        r#"stateDiagram-v2
+direction LR
+state Composite {
+  A --> B: internal
+}
+B --> Outside: external
+"#,
+    );
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing state node {id}"))
+    };
+    let a = node("A");
+    let b = node("B");
+
+    assert!(
+        b.x > a.x && (b.y - a.y).abs() < 1e-6,
+        "an implicit nested direction must not override the LR parent graph when the composite has external edges: A={a:?}, B={b:?}"
+    );
 }

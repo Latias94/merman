@@ -110,6 +110,8 @@ pub struct FlowSubgraph {
     pub id: String,
     pub title: String,
     pub dir: Option<String>,
+    #[serde(default, rename = "hasExplicitDir")]
+    pub has_explicit_dir: bool,
     #[serde(default, rename = "labelType")]
     pub label_type: Option<String>,
     #[serde(default)]

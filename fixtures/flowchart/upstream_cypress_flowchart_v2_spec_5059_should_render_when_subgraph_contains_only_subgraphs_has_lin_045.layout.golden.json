@@ -79,7 +79,7 @@
       "edges": [
         {
           "id": "L_Main_Out1_0",
-          "from": "Main",
+          "from": "Child2",
           "to": "Out1",
           "from_cluster": "Main",
           "to_cluster": null,

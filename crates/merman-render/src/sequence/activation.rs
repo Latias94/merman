@@ -17,12 +17,12 @@ pub(crate) fn sequence_activation_stack_bounds(
         })
 }
 
-pub(super) struct SequenceActivationState<'a> {
+pub(super) struct SequenceActivationState {
     width: f64,
-    stacks: BTreeMap<&'a str, Vec<f64>>,
+    stacks: BTreeMap<usize, Vec<f64>>,
 }
 
-impl<'a> SequenceActivationState<'a> {
+impl SequenceActivationState {
     pub(super) fn new(width: f64) -> Self {
         Self {
             width,
@@ -32,8 +32,8 @@ impl<'a> SequenceActivationState<'a> {
 
     pub(super) fn handle_directive(
         &mut self,
-        msg: &'a SequenceMessage,
-        actor_index: &std::collections::HashMap<&'a str, usize>,
+        msg: &SequenceMessage,
+        actor_index: &std::collections::HashMap<&str, usize>,
         actor_centers_x: &[f64],
     ) -> bool {
         match msg.message_type {
@@ -46,7 +46,7 @@ impl<'a> SequenceActivationState<'a> {
                     return true;
                 };
                 let cx = actor_centers_x[idx];
-                let stack = self.stacks.entry(actor_id).or_default();
+                let stack = self.stacks.entry(idx).or_default();
                 let stacked_size = stack.len();
                 let startx = sequence_activation_start_x(cx, stacked_size, self.width);
                 stack.push(startx);
@@ -57,7 +57,10 @@ impl<'a> SequenceActivationState<'a> {
                 let Some(actor_id) = msg.from.as_deref() else {
                     return true;
                 };
-                if let Some(stack) = self.stacks.get_mut(actor_id) {
+                let Some(&idx) = actor_index.get(actor_id) else {
+                    return true;
+                };
+                if let Some(stack) = self.stacks.get_mut(&idx) {
                     let _ = stack.pop();
                 }
                 true
@@ -66,10 +69,10 @@ impl<'a> SequenceActivationState<'a> {
         }
     }
 
-    pub(super) fn actor_bounds(&self, actor_id: &str, center_x: f64) -> (f64, f64) {
+    pub(super) fn actor_bounds(&self, actor_index: usize, center_x: f64) -> (f64, f64) {
         sequence_activation_stack_bounds(
             self.stacks
-                .get(actor_id)
+                .get(&actor_index)
                 .into_iter()
                 .flat_map(|stack| stack.iter().copied()),
             center_x,

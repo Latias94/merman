@@ -9,9 +9,9 @@
     "classDefs": {},
     "tooltips": {
       "A3": "tooltip",
-      "A7": "tooltip",
+      "A2": "tooltip",
       "A6": "tooltip",
-      "A2": "tooltip"
+      "A7": "tooltip"
     },
     "edgeDefaults": {
       "style": [],

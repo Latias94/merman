@@ -3,11 +3,114 @@
 use crate::XtaskError;
 use crate::cmd::svg_compare_engine_with_site_config;
 use crate::svgdom;
-use crate::util::*;
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpstreamRootTrust {
+    PinnedCanonical,
+    UntrustedCustom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProvenanceCoverage {
+    CompleteFamily,
+    SelectedFixtures,
+}
+
+impl UpstreamRootTrust {
+    fn provenance_coverage(self, filter: Option<&str>) -> Option<ProvenanceCoverage> {
+        match (self, filter) {
+            (Self::PinnedCanonical, None) => Some(ProvenanceCoverage::CompleteFamily),
+            (Self::PinnedCanonical, Some(_)) => Some(ProvenanceCoverage::SelectedFixtures),
+            (Self::UntrustedCustom, _) => None,
+        }
+    }
+}
+
+fn classify_upstream_root(upstream_root: &Path, canonical_root: &Path) -> UpstreamRootTrust {
+    if upstream_root == canonical_root
+        || fs::canonicalize(upstream_root)
+            .ok()
+            .zip(fs::canonicalize(canonical_root).ok())
+            .is_some_and(|(upstream, canonical)| upstream == canonical)
+    {
+        UpstreamRootTrust::PinnedCanonical
+    } else {
+        UpstreamRootTrust::UntrustedCustom
+    }
+}
+
+fn validate_svg_xml_diagram(diagram: &str) -> Result<(), XtaskError> {
+    let path = Path::new(diagram);
+    let mut components = path.components();
+    let is_single_normal_component = matches!(
+        (components.next(), components.next()),
+        (Some(Component::Normal(component)), None) if component == path.as_os_str()
+    );
+    let contains_separator = diagram.chars().any(|ch| matches!(ch, '/' | '\\'));
+    let bytes = diagram.as_bytes();
+    let has_windows_drive_prefix =
+        bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
+
+    if path.is_absolute()
+        || contains_separator
+        || has_windows_drive_prefix
+        || !is_single_normal_component
+    {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "invalid --diagram {diagram:?}: expected a single normal path component"
+        )));
+    }
+
+    Ok(())
+}
+
+fn svg_xml_family_dir(
+    root: &Path,
+    diagram: &str,
+    root_description: &str,
+) -> Result<PathBuf, XtaskError> {
+    validate_svg_xml_diagram(diagram)?;
+    let family_dir = root.join(diagram);
+    if family_dir.parent() != Some(root) {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "refusing to resolve --diagram {diagram:?} outside the {root_description} root {}",
+            root.display()
+        )));
+    }
+
+    let canonical_root = match fs::canonicalize(root) {
+        Ok(path) => path,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(family_dir),
+        Err(err) => {
+            return Err(XtaskError::SvgCompareFailed(format!(
+                "failed to resolve the {root_description} root {}: {err}",
+                root.display()
+            )));
+        }
+    };
+    let canonical_family = match fs::canonicalize(&family_dir) {
+        Ok(path) => path,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(family_dir),
+        Err(err) => {
+            return Err(XtaskError::SvgCompareFailed(format!(
+                "failed to resolve the {root_description} family {}: {err}",
+                family_dir.display()
+            )));
+        }
+    };
+    if canonical_family.parent() != Some(canonical_root.as_path()) {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "refusing {root_description} family {diagram:?}: {} is not a canonical direct child of {}",
+            canonical_family.display(),
+            canonical_root.display()
+        )));
+    }
+    Ok(family_dir)
+}
 
 fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str> {
     crate::cmd::upstream_svg_compare_skip_reason(diagram, stem)
@@ -61,9 +164,8 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             "--diagram" => {
                 i += 1;
                 let d = args.get(i).ok_or(XtaskError::Usage)?.trim().to_string();
-                if !d.is_empty() {
-                    only_diagrams.push(d);
-                }
+                validate_svg_xml_diagram(&d)?;
+                only_diagrams.push(d);
             }
             "--flowchart-elk-backend" => {
                 i += 1;
@@ -131,11 +233,20 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         workspace_root.join(raw)
     }
 
+    let canonical_upstream_root = crate::cmd::fixtures_root().join("upstream-svgs");
     let upstream_root = resolve_root(
         &workspace_root,
         upstream_root_arg,
-        crate::cmd::fixtures_root().join("upstream-svgs"),
+        canonical_upstream_root.clone(),
     );
+    let upstream_root_trust = classify_upstream_root(&upstream_root, &canonical_upstream_root);
+    let provenance_coverage = upstream_root_trust.provenance_coverage(filter.as_deref());
+    if upstream_root_trust == UpstreamRootTrust::UntrustedCustom {
+        eprintln!(
+            "warning: compare-svg-xml is using untrusted custom upstream SVGs from {}; pinned provenance validation is disabled",
+            upstream_root.display()
+        );
+    }
     let fixtures_root = resolve_root(
         &workspace_root,
         fixtures_root_arg,
@@ -289,27 +400,32 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         if x == target_x { Some(lo) } else { None }
     }
 
-    let mut diagrams: Vec<String> = Vec::new();
-    let Ok(entries) = fs::read_dir(&upstream_root) else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "failed to list upstream svg directory {}",
-            upstream_root.display()
-        )));
+    let mut diagrams: Vec<String> = if !only_diagrams.is_empty() {
+        only_diagrams
+    } else if upstream_root_trust == UpstreamRootTrust::PinnedCanonical {
+        crate::cmd::primary_svg_matrix_diagrams()
+            .map(str::to_string)
+            .collect()
+    } else {
+        let entries = fs::read_dir(&upstream_root).map_err(|err| {
+            XtaskError::SvgCompareFailed(format!(
+                "failed to list upstream svg directory {}: {err}",
+                upstream_root.display()
+            ))
+        })?;
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .filter_map(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string)
+            })
+            .collect()
     };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if !only_diagrams.is_empty() && !only_diagrams.iter().any(|d| d == name) {
-            continue;
-        }
-        diagrams.push(name.to_string());
-    }
     diagrams.sort();
+    diagrams.dedup();
 
     if diagrams.is_empty() {
         return Err(XtaskError::SvgCompareFailed(
@@ -322,52 +438,56 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut skipped: Vec<(String, &'static str)> = Vec::new();
 
     for diagram in diagrams {
-        let upstream_dir = upstream_root.join(&diagram);
-        let fixtures_dir = fixtures_root.join(&diagram);
-        let out_dir = out_root.join(&diagram);
+        let upstream_dir = svg_xml_family_dir(&upstream_root, &diagram, "upstream SVG")?;
+        let fixtures_dir = svg_xml_family_dir(&fixtures_root, &diagram, "fixtures")?;
+        let out_dir = svg_xml_family_dir(&out_root, &diagram, "output")?;
+        let _upstream_family_lock = super::acquire_upstream_svg_family_lock_for_compare(
+            &upstream_dir,
+            provenance_coverage.is_some(),
+        )?;
+        let provenance = if let Some(coverage) = provenance_coverage {
+            Some(crate::cmd::load_upstream_svg_provenance(
+                &diagram,
+                &fixtures_dir,
+                &upstream_dir,
+                coverage == ProvenanceCoverage::CompleteFamily,
+            )?)
+        } else {
+            None
+        };
         fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
             path: out_dir.display().to_string(),
             source,
         })?;
 
-        let Ok(svg_entries) = fs::read_dir(&upstream_dir) else {
+        let fixture_paths =
+            crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, filter.as_deref(), true);
+        if fixture_paths.is_empty() {
             missing.push(format!(
-                "{diagram}: failed to list {}",
-                upstream_dir.display()
+                "{diagram}: no fixtures matched under {}",
+                fixtures_dir.display()
             ));
             continue;
-        };
-
-        let mut upstream_svgs: Vec<PathBuf> = Vec::new();
-        for entry in svg_entries.flatten() {
-            let p = entry.path();
-            if !p.is_file() {
-                continue;
-            }
-            if !has_extension(&p, "svg") {
-                continue;
-            }
-            if let Some(ref f) = filter
-                && !p
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains(f))
-            {
-                continue;
-            }
-            upstream_svgs.push(p);
         }
-        upstream_svgs.sort();
 
-        for upstream_path in upstream_svgs {
-            let Some(stem) = upstream_path.file_stem().and_then(|s| s.to_str()) else {
+        for fixture_path in fixture_paths {
+            let Some(stem) = fixture_path.file_stem().and_then(|s| s.to_str()) else {
+                missing.push(format!(
+                    "{diagram}: invalid fixture filename {}",
+                    fixture_path.display()
+                ));
                 continue;
             };
             if let Some(reason) = svg_xml_compare_skip_reason(&diagram, stem) {
                 skipped.push((format!("{diagram}/{stem}"), reason));
                 continue;
             }
-            let fixture_path = fixtures_dir.join(format!("{stem}.mmd"));
+            let upstream_path = upstream_dir.join(format!("{stem}.svg"));
+            if let Some(provenance) = &provenance {
+                provenance
+                    .validate_fixture(&fixture_path, &upstream_path)
+                    .map_err(XtaskError::SvgCompareFailed)?;
+            }
             let text = match fs::read_to_string(&fixture_path) {
                 Ok(v) => v,
                 Err(err) => {
@@ -539,6 +659,19 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let _ = writeln!(&mut report, "- Decimals: `{dom_decimals}`");
     let _ = writeln!(
         &mut report,
+        "- Upstream provenance: {}",
+        match provenance_coverage {
+            Some(ProvenanceCoverage::CompleteFamily) => {
+                "`pinned canonical (complete family validated)`"
+            }
+            Some(ProvenanceCoverage::SelectedFixtures) => {
+                "`pinned canonical (selected fixtures validated)`"
+            }
+            None => "`untrusted custom (debug only)`",
+        }
+    );
+    let _ = writeln!(
+        &mut report,
         "- Output: `target/compare/xml/<diagram>/<fixture>.(upstream|local).xml`"
     );
     let _ = writeln!(&mut report);
@@ -652,13 +785,205 @@ pub(crate) fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{compare_svg_xml, svg_xml_compare_skip_reason};
+    use super::{
+        ProvenanceCoverage, UpstreamRootTrust, classify_upstream_root, compare_svg_xml,
+        svg_xml_compare_skip_reason, svg_xml_family_dir, validate_svg_xml_diagram,
+    };
+
+    #[test]
+    fn svg_xml_diagram_accepts_primary_matrix_family_names() {
+        for diagram in crate::cmd::primary_svg_matrix_diagrams() {
+            validate_svg_xml_diagram(diagram).unwrap_or_else(|err| {
+                panic!("primary matrix family {diagram:?} was rejected: {err}")
+            });
+        }
+    }
+
+    #[test]
+    fn svg_xml_diagram_rejects_non_normal_or_nested_path_components() {
+        let absolute = crate::cmd::workspace_root()
+            .join("outside-family")
+            .display()
+            .to_string();
+        let invalid = [
+            "",
+            ".",
+            "..",
+            "./flowchart",
+            r".\flowchart",
+            "../flowchart",
+            r"..\flowchart",
+            "/flowchart",
+            r"\flowchart",
+            "flowchart/sequence",
+            r"flowchart\sequence",
+            "flowchart//sequence",
+            r"flowchart\\sequence",
+            "flowchart/",
+            r"flowchart\",
+            "C:flowchart",
+            r"C:\flowchart",
+            r"\\server\share\flowchart",
+            absolute.as_str(),
+        ];
+
+        for diagram in invalid {
+            let err = validate_svg_xml_diagram(diagram)
+                .expect_err("non-normal or nested diagram path must be rejected");
+            assert!(
+                err.to_string().contains("single normal path component"),
+                "unexpected error for {diagram:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn compare_svg_xml_rejects_an_escaping_diagram_at_the_cli_boundary() {
+        let err = compare_svg_xml(vec![
+            "--diagram".to_string(),
+            "../outside-family".to_string(),
+        ])
+        .expect_err("escaping --diagram must be rejected before resolving family paths");
+
+        assert!(
+            err.to_string().contains("single normal path component"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn pinned_family_directories_are_direct_children_of_their_roots() {
+        let roots = [
+            ("fixtures", crate::cmd::fixtures_root()),
+            (
+                "upstream SVG",
+                crate::cmd::fixtures_root().join("upstream-svgs"),
+            ),
+            (
+                "output",
+                crate::cmd::target_root().join("compare").join("xml"),
+            ),
+        ];
+
+        for (description, root) in roots {
+            let family = svg_xml_family_dir(&root, "flowchart", description)
+                .expect("pinned family path should resolve");
+            assert_eq!(family, root.join("flowchart"));
+            assert_eq!(family.parent(), Some(root.as_path()));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_family_symlink_cannot_escape_its_root() {
+        use std::os::unix::fs::symlink;
+
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!(
+            "merman-svg-xml-family-symlink-{}-{nonce}",
+            std::process::id()
+        ));
+        let root = base.join("root");
+        let outside = base.join("outside");
+        fs::create_dir_all(&root).expect("create test root");
+        fs::create_dir_all(&outside).expect("create outside directory");
+        symlink(&outside, root.join("flowchart")).expect("create escaping family symlink");
+
+        let error = svg_xml_family_dir(&root, "flowchart", "test")
+            .expect_err("canonical family escape must be rejected");
+        assert!(error.to_string().contains("canonical direct child"));
+
+        fs::remove_dir_all(base).expect("remove isolated symlink test tree");
+    }
+
+    #[test]
+    fn explicit_canonical_upstream_root_remains_pinned() {
+        let canonical = crate::cmd::fixtures_root().join("upstream-svgs");
+        let explicit = canonical.join(".");
+
+        assert_eq!(
+            classify_upstream_root(&explicit, &canonical),
+            UpstreamRootTrust::PinnedCanonical
+        );
+    }
+
+    #[test]
+    fn custom_upstream_root_is_untrusted() {
+        let canonical = crate::cmd::fixtures_root().join("upstream-svgs");
+        let custom = crate::cmd::target_root().join("custom-upstream-svgs");
+
+        assert_eq!(
+            classify_upstream_root(&custom, &canonical),
+            UpstreamRootTrust::UntrustedCustom
+        );
+    }
+
+    #[test]
+    fn pinned_provenance_requires_complete_coverage_unless_filtered() {
+        assert_eq!(
+            UpstreamRootTrust::PinnedCanonical.provenance_coverage(None),
+            Some(ProvenanceCoverage::CompleteFamily)
+        );
+        assert_eq!(
+            UpstreamRootTrust::PinnedCanonical.provenance_coverage(Some("fixture")),
+            Some(ProvenanceCoverage::SelectedFixtures)
+        );
+        assert_eq!(
+            UpstreamRootTrust::UntrustedCustom.provenance_coverage(None),
+            None
+        );
+    }
+
+    #[test]
+    fn filtered_compare_rejects_a_matching_fixture_without_an_upstream_svg() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let root = crate::cmd::target_root()
+            .join("compare")
+            .join("xtask-tests")
+            .join(format!(
+                "xml-missing-upstream-{}-{nonce}",
+                std::process::id()
+            ));
+        let fixtures_root = root.join("fixtures");
+        let upstream_root = root.join("upstream");
+        let out_root = root.join("out");
+        std::fs::create_dir_all(fixtures_root.join("info")).expect("create fixture family");
+        std::fs::create_dir_all(upstream_root.join("info")).expect("create upstream family");
+        std::fs::write(
+            fixtures_root.join("info").join("missing-baseline.mmd"),
+            "info\nshowInfo\n",
+        )
+        .expect("write fixture");
+
+        let err = compare_svg_xml(vec![
+            "--diagram".to_string(),
+            "info".to_string(),
+            "--filter".to_string(),
+            "missing-baseline".to_string(),
+            "--check".to_string(),
+            "--fixtures-root".to_string(),
+            fixtures_root.display().to_string(),
+            "--upstream-root".to_string(),
+            upstream_root.display().to_string(),
+            "--out-root".to_string(),
+            out_root.display().to_string(),
+        ])
+        .expect_err("a matching fixture without an SVG must fail the compare gate");
+
+        assert!(err.to_string().contains("upstream svg"), "{err}");
+    }
 
     #[test]
     fn svg_xml_compare_skip_reason_keeps_known_sequence_regen_skip() {
         assert_eq!(
             svg_xml_compare_skip_reason("sequence", "stress_end_keyword_016"),
-            Some("upstream Mermaid 11.15 rejects `(end)` as a participant id")
+            Some("pinned Mermaid 11.16 rejects `(end)` as a participant id")
         );
         assert_eq!(
             svg_xml_compare_skip_reason("sequence", "stress_end_keyword_015"),
@@ -707,7 +1032,7 @@ mod tests {
                 "flowchart",
                 "upstream_flow_text_ellipse_vertex_parser_only_spec"
             ),
-            Some("upstream Mermaid 11.15 cannot render this parser-only ellipse vertex fixture")
+            Some("pinned Mermaid 11.16 cannot render this parser-only ellipse vertex fixture")
         );
         assert_eq!(
             svg_xml_compare_skip_reason(

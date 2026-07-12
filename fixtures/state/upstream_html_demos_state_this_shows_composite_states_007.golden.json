@@ -40,6 +40,7 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true,
+        "explicitDir": false,
         "description": []
       },
       {
@@ -59,7 +60,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -78,7 +80,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -135,7 +138,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": "First",
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",

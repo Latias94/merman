@@ -6,16 +6,18 @@ pub(crate) fn render_railroad_diagram_svg(
     layout: &RailroadDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: RailroadDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_railroad_diagram_svg_model(layout, &model, effective_config, options)
+    render_railroad_diagram_svg_model(layout, &model, effective_config, measurer, options)
 }
 
 pub(crate) fn render_railroad_diagram_svg_model(
     layout: &RailroadDiagramLayout,
     model: &RailroadDiagramRenderModel,
     effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("railroad");
@@ -44,7 +46,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
             aria_labelledby: aria_labelledby.as_deref(),
             aria_describedby: aria_describedby.as_deref(),
             trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "railroad")
+            ..root_svg::SvgRootAttrs::new(diagram_id, &layout.diagram_type)
         },
         &viewport_plan,
     );
@@ -66,17 +68,34 @@ pub(crate) fn render_railroad_diagram_svg_model(
         );
     }
     let _ = write!(&mut out, "<style>{}</style>", railroad_css(&style));
+    out.push_str("<g/>");
 
-    for rule in &layout.rules {
+    for (rule_index, rule) in layout.rules.iter().enumerate() {
+        let model_rule = model
+            .rules
+            .get(rule_index)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!(
+                    "railroad layout contains rule {} without a matching semantic rule",
+                    rule.name
+                ),
+            })?;
         let _ = write!(
             &mut out,
             r#"<g class="railroad-rule" transform="translate({}, {})">"#,
             fmt(rule.x),
             fmt(rule.y)
         );
-        for element in &rule.elements {
-            push_element(&mut out, element);
-        }
+        let (render_node, definition_up) =
+            crate::railroad::railroad_render_node(&model_rule.definition, &style, measurer);
+        let _ = write!(
+            &mut out,
+            r#"<g transform="translate({}, {})">"#,
+            fmt(rule.definition_x),
+            fmt(rule.baseline_y - definition_up)
+        );
+        push_render_node(&mut out, &render_node);
+        out.push_str("</g>");
         let _ = write!(
             &mut out,
             r#"<g class="railroad-rule-name-group"><text class="railroad-rule-name" x="0" y="{}">{} =</text></g>"#,
@@ -93,22 +112,8 @@ pub(crate) fn render_railroad_diagram_svg_model(
             fmt(rule.baseline_y),
             fmt(rule.marker_radius)
         );
-        for path in &rule.paths {
-            if path.x == 0.0 && path.y == 0.0 {
-                let _ = write!(
-                    &mut out,
-                    r#"<path class="railroad-line" d="{}"></path>"#,
-                    escape_attr_display(&path.d)
-                );
-            } else {
-                let _ = write!(
-                    &mut out,
-                    r#"<path class="railroad-line" transform="translate({}, {})" d="{}"></path>"#,
-                    fmt(path.x),
-                    fmt(path.y),
-                    escape_attr_display(&path.d)
-                );
-            }
+        for path in rule.paths.iter().rev().take(2).rev() {
+            push_path(&mut out, path);
         }
         out.push_str("</g>");
     }
@@ -117,20 +122,57 @@ pub(crate) fn render_railroad_diagram_svg_model(
     Ok(out)
 }
 
-fn push_element(out: &mut String, element: &RailroadElementLayout) {
+fn push_render_node(out: &mut String, node: &crate::railroad::RailroadRenderNode) {
+    match node {
+        crate::railroad::RailroadRenderNode::Group {
+            class,
+            transform,
+            children,
+        } => {
+            let _ = write!(out, r#"<g class="{}""#, escape_attr_display(class));
+            push_optional_transform(out, *transform);
+            out.push('>');
+            for child in children {
+                push_render_node(out, child);
+            }
+            out.push_str("</g>");
+        }
+        crate::railroad::RailroadRenderNode::Element { layout, transform } => {
+            push_element(out, layout, *transform);
+        }
+        crate::railroad::RailroadRenderNode::Path(path) => push_path(out, path),
+    }
+}
+
+fn push_optional_transform(out: &mut String, transform: Option<(f64, f64)>) {
+    if let Some((x, y)) = transform {
+        let _ = write!(out, r#" transform="translate({}, {})""#, fmt(x), fmt(y));
+    }
+}
+
+fn push_path(out: &mut String, path: &crate::model::RailroadPathLayout) {
+    out.push_str(r#"<path class="railroad-line""#);
+    if path.x != 0.0 || path.y != 0.0 {
+        let _ = write!(
+            out,
+            r#" transform="translate({}, {})""#,
+            fmt(path.x),
+            fmt(path.y)
+        );
+    }
+    let _ = write!(out, r#" d="{}"></path>"#, escape_attr_display(&path.d));
+}
+
+fn push_element(out: &mut String, element: &RailroadElementLayout, transform: Option<(f64, f64)>) {
     let class = match element.kind.as_str() {
         "terminal" => "railroad-terminal",
         "nonterminal" => "railroad-nonterminal",
         "special" => "railroad-special",
         _ => "railroad-group",
     };
-    let _ = write!(
-        out,
-        r#"<g class="{}" transform="translate({}, {})">"#,
-        class,
-        fmt(element.x),
-        fmt(element.y)
-    );
+    let _ = write!(out, r#"<g class="{}""#, class);
+    push_optional_transform(out, transform);
+    out.push('>');
     match element.kind.as_str() {
         "terminal" => {
             let _ = write!(

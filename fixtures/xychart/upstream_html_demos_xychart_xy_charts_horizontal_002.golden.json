@@ -1,11 +1,10 @@
 {
   "diagramType": "xychart",
   "model": {
-    "type": "xychart",
+    "orientation": "horizontal",
     "title": "Basic xychart",
     "accTitle": null,
     "accDescr": null,
-    "orientation": "horizontal",
     "xAxis": {
       "type": "band",
       "title": "this is x axis",
@@ -77,6 +76,7 @@
           ]
         ]
       }
-    ]
+    ],
+    "type": "xychart"
   }
 }

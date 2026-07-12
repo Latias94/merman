@@ -284,8 +284,8 @@ fn is_invalid_protocol_like(url_scheme: &str) -> bool {
 }
 
 pub fn sanitize_url(url: &str) -> String {
-    // Ported to match `@braintree/sanitize-url@7.1.1` behavior (Mermaid dependency).
-    // Reference: `repo-ref/sanitize-url@v7.1.1`.
+    // Ported to match `@braintree/sanitize-url@7.1.2` behavior (Mermaid 11.16 dependency).
+    // The 7.1.2 runtime source is unchanged from 7.1.1; the upstream vectors remain applicable.
     if url.is_empty() {
         return BLANK_URL.to_string();
     }
@@ -461,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_url_matches_braintree_sanitize_url_7_1_1() {
+    fn sanitize_url_matches_braintree_sanitize_url_7_1_2() {
         assert_eq!(
             sanitize_url("http://example.com/path/to:something"),
             "http://example.com/path/to:something"

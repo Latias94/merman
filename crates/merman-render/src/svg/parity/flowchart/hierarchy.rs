@@ -312,14 +312,29 @@ pub(in crate::svg::parity) fn flowchart_lca(
     a: &str,
     b: &str,
 ) -> Option<String> {
+    fn first_render_root(
+        ctx: &FlowchartRenderCtx<'_>,
+        id: &str,
+        include_cluster_endpoint: bool,
+    ) -> Option<String> {
+        if include_cluster_endpoint && ctx.recursive_clusters.contains(id) {
+            Some(id.to_string())
+        } else {
+            flowchart_effective_parent(ctx, id).map(str::to_string)
+        }
+    }
+
+    // Mermaid keeps a recursive cluster's self-loop in its parent graph, while a non-self edge to
+    // that cluster is rebound through the cluster graph and therefore belongs to the cluster root.
+    let include_cluster_endpoints = a != b;
     let mut ancestors: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut cur = flowchart_effective_parent(ctx, a).map(|s| s.to_string());
+    let mut cur = first_render_root(ctx, a, include_cluster_endpoints);
     while let Some(p) = cur {
         ancestors.insert(p.clone());
         cur = flowchart_effective_parent(ctx, &p).map(|s| s.to_string());
     }
 
-    let mut cur = flowchart_effective_parent(ctx, b).map(|s| s.to_string());
+    let mut cur = first_render_root(ctx, b, include_cluster_endpoints);
     while let Some(p) = cur {
         if ancestors.contains(&p) {
             return Some(p);

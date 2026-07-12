@@ -24,28 +24,24 @@ maintained to match the pinned baseline until each family is regenerated and ren
 
 ## Override Files
 
-All override maps live in `crates/merman-render/src/generated/`:
+Root viewport override modules live in `crates/merman-render/src/generated/`:
 
-- `architecture_root_overrides_11_12_2.rs`
-  - `lookup_architecture_root_viewport_override(diagram_id)`
-- `er_root_overrides_11_12_2.rs`
-  - `lookup_er_root_viewport_override(diagram_id)`
-- `flowchart_root_overrides_11_12_2.rs`
-  - `lookup_flowchart_root_viewport_override(diagram_id)`
 - `c4_root_overrides_11_12_2.rs`
   - `lookup_c4_root_viewport_override(diagram_id)`
+- `er_root_overrides_11_12_2.rs`
+  - `lookup_er_root_viewport_override(diagram_id)`
+- `eventmodeling_root_overrides_11_15_0.rs`
+  - `lookup_eventmodeling_root_viewport_override(diagram_id)`
+- `flowchart_root_overrides_11_12_2.rs`
+  - `lookup_flowchart_root_viewport_override(diagram_id)`
 - `mindmap_root_overrides_11_12_2.rs`
   - `lookup_mindmap_root_viewport_override(diagram_id)`
-- `requirement_root_overrides_11_12_2.rs`
-  - `lookup_requirement_root_viewport_override(diagram_id)`
+- `pie_root_overrides_11_12_2.rs`
+  - `lookup_pie_root_viewport_override(diagram_id)`
 - `sankey_root_overrides_11_12_2.rs`
   - `lookup_sankey_root_viewport_override(diagram_id)`
-- `sequence_root_overrides_11_12_2.rs`
-  - `lookup_sequence_root_viewport_override(diagram_id)`
 - `state_root_overrides_11_12_2.rs`
   - `lookup_state_root_viewport_override(diagram_id)`
-- `gitgraph_root_overrides_11_12_2.rs`
-  - `lookup_gitgraph_root_viewport_override(diagram_id)`
 - `timeline_root_overrides_11_12_2.rs`
   - `lookup_timeline_root_viewport_override(diagram_id)`
 
@@ -53,12 +49,10 @@ State diagram also uses text/bbox overrides in:
 
 - `state_text_overrides_11_12_2.rs`
 
-All modules are registered in `crates/merman-render/src/generated/mod.rs`.
-
-Deleted buckets are intentionally absent from this list. Class and Pie root viewport behavior is
-now covered by typed renderer calibration instead of generated fixture-scoped root maps.
-Architecture still has a small generated map, but it was pruned to 31 entries on 2026-05-09 after
-the nested-groups and reasonable-height root viewport profiles moved into renderer logic.
+All modules are registered in `crates/merman-render/src/generated/mod.rs`; Mindmap is feature-gated
+with `cytoscape-layout`. Architecture, Class, Requirement, Sequence, and GitGraph do not use
+generated fixture-scoped root maps. Pie still has a generated root map for the remaining
+browser-measurement residuals.
 
 ## Where They Are Applied
 
@@ -67,16 +61,14 @@ Overrides are only applied at render time for root viewport attributes and only 
 
 Current integration points:
 
-- Architecture renderer: `render_architecture_diagram_svg`
-- ER renderer: `render_er_diagram_svg`
-- Flowchart renderer: `render_flowchart_v2_svg`
 - C4 renderer: `render_c4_diagram_svg`
+- ER renderer: `render_er_diagram_svg`
+- EventModeling renderer: `render_eventmodeling_diagram_svg`
+- Flowchart renderer: `render_flowchart_v2_svg`
 - Mindmap renderer: `render_mindmap_diagram_svg`
-- Requirement renderer: `render_requirement_diagram_svg`
+- Pie renderer: `render_pie_diagram_svg`
 - Sankey renderer: `render_sankey_diagram_svg`
-- Sequence renderer: `render_sequence_diagram_svg`
 - State renderer: `render_state_diagram_v2_svg`
-- GitGraph renderer: `render_gitgraph_diagram_svg`
 - Timeline renderer: `render_timeline_diagram_svg`
 
 In upstream parity compares, `xtask` sets `diagram_id` to fixture stem, so these keys match.
@@ -114,15 +106,15 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 - Store exact upstream strings for `viewBox`/`max-width` to avoid re-rounding drift.
 - Prefer real layout/render parity fixes first; use overrides for remaining deterministic gaps.
 
-## Current Status (2026-06-01)
+## Current Status
 
 Small fixture-scoped root viewport overrides remain in use for the pinned Mermaid baseline. They
 exist to pin `viewBox` + `style max-width` when browser `getBBox()` serialization introduces
 deterministic drift that is not yet worth globalizing into layout/render logic.
 
 Current root viewport inventory is tracked by
-`cargo run -p xtask -- report-overrides --check-no-growth`; the latest snapshot reports 281 total
-root viewport entries. After the Mermaid 11.15 baseline refresh, full structural `parity` is green
-for the implemented matrix, but `parity-root` still has a broad root-only recalibration set. Do not
-grow these tables before checking whether the residuals share a deterministic 11.15 root viewport
-or measurement-rule change.
+`cargo run -p xtask -- report-overrides --check-no-growth`; run it against the current worktree for
+the authoritative total rather than relying on a historical snapshot in this document. Family
+compare reports are likewise authoritative for current `parity` and `parity-root` status. Do not
+grow these tables before checking whether residuals share a deterministic pinned-baseline root
+viewport or measurement-rule change.

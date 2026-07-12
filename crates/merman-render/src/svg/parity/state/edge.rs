@@ -500,273 +500,68 @@ fn state_edge_encode_path(
     (d, data_points)
 }
 
-fn state_self_loop_node_bounds(
-    ctx: &StateRenderCtx<'_>,
-    node_id: &str,
-) -> Option<StateEdgeBoundaryNode> {
-    if let Some(cluster) = ctx.layout_clusters_by_id.get(node_id).copied() {
-        return Some(StateEdgeBoundaryNode {
-            x: cluster.x,
-            y: cluster.y,
-            width: cluster.width,
-            height: cluster.height,
-        });
-    }
-    ctx.layout_nodes_by_id
-        .get(node_id)
-        .copied()
-        .map(|node| StateEdgeBoundaryNode {
-            x: node.x,
-            y: node.y,
-            width: node.width,
-            height: node.height,
-        })
+enum StateSelfLoopLayout<'a> {
+    Compacted(&'a crate::model::LayoutEdge),
+    Segmented(Vec<(String, &'a crate::model::LayoutEdge)>),
 }
 
-fn state_self_loop_default_side(ctx: &StateRenderCtx<'_>, node_id: &str) -> &'static str {
-    let dir = ctx
-        .nodes_by_id
-        .get(node_id)
-        .and_then(|node| node.dir.as_deref())
-        .unwrap_or("TB");
-    match dir {
-        "BT" => "bottom",
-        "LR" => "right",
-        "RL" => "left",
-        _ => "top",
-    }
-}
-
-fn state_self_loop_side(
-    ctx: &StateRenderCtx<'_>,
-    node_id: &str,
-    node: &StateEdgeBoundaryNode,
-) -> &'static str {
-    let special_id1 = format!("{node_id}---{node_id}---1");
-    let special_id2 = format!("{node_id}---{node_id}---2");
-    let mut hints: Vec<crate::model::LayoutPoint> = Vec::new();
-
-    for id in [special_id1.as_str(), special_id2.as_str()] {
-        if let Some(dummy) = ctx.layout_nodes_by_id.get(id).copied() {
-            hints.push(crate::model::LayoutPoint {
-                x: dummy.x,
-                y: dummy.y,
-            });
-        }
-    }
-
-    if hints.is_empty() {
-        let id1 = format!("{node_id}-cyclic-special-1");
-        let idm = format!("{node_id}-cyclic-special-mid");
-        let id2 = format!("{node_id}-cyclic-special-2");
-        for id in [id1.as_str(), idm.as_str(), id2.as_str()] {
-            if let Some(edge) = ctx.layout_edges_by_id.get(id).copied() {
-                hints.extend(edge.points.iter().cloned());
-            }
-        }
-    }
-
-    if hints.is_empty() {
-        return state_self_loop_default_side(ctx, node_id);
-    }
-
-    let len = hints.len() as f64;
-    let center_x = hints.iter().map(|p| p.x).sum::<f64>() / len;
-    let center_y = hints.iter().map(|p| p.y).sum::<f64>() / len;
-    let dx = center_x - node.x;
-    let dy = center_y - node.y;
-    if dx.abs() > dy.abs() {
-        if dx > 0.0 { "right" } else { "left" }
-    } else if dy.abs() > 0.0 {
-        if dy > 0.0 { "bottom" } else { "top" }
-    } else {
-        state_self_loop_default_side(ctx, node_id)
-    }
-}
-
-fn state_self_loop_points(
-    node: &StateEdgeBoundaryNode,
-    side: &str,
-    label_width: f64,
-) -> Vec<crate::model::LayoutPoint> {
-    let x = node.x;
-    let y = node.y;
-    let half_width = node.width / 2.0;
-    let half_height = node.height / 2.0;
-    let max_span = 36.0_f64.max(100.0_f64.min(node.width * 0.8));
-    let span = label_width.max(node.width * 0.35).clamp(36.0, max_span);
-    let depth = node.width.min(node.height) * 0.45;
-    let depth = depth.clamp(24.0, 48.0);
-
-    match side {
-        "bottom" => {
-            let bottom = y + half_height;
-            vec![
-                crate::model::LayoutPoint {
-                    x: x - span / 2.0,
-                    y: bottom,
-                },
-                crate::model::LayoutPoint {
-                    x: x - span / 2.0,
-                    y: bottom + depth,
-                },
-                crate::model::LayoutPoint {
-                    x: x + span / 2.0,
-                    y: bottom + depth,
-                },
-                crate::model::LayoutPoint {
-                    x: x + span / 2.0,
-                    y: bottom,
-                },
-            ]
-        }
-        "right" => {
-            let right = x + half_width;
-            vec![
-                crate::model::LayoutPoint {
-                    x: right,
-                    y: y - span / 2.0,
-                },
-                crate::model::LayoutPoint {
-                    x: right + depth,
-                    y: y - span / 2.0,
-                },
-                crate::model::LayoutPoint {
-                    x: right + depth,
-                    y: y + span / 2.0,
-                },
-                crate::model::LayoutPoint {
-                    x: right,
-                    y: y + span / 2.0,
-                },
-            ]
-        }
-        "left" => {
-            let left = x - half_width;
-            vec![
-                crate::model::LayoutPoint {
-                    x: left,
-                    y: y - span / 2.0,
-                },
-                crate::model::LayoutPoint {
-                    x: left - depth,
-                    y: y - span / 2.0,
-                },
-                crate::model::LayoutPoint {
-                    x: left - depth,
-                    y: y + span / 2.0,
-                },
-                crate::model::LayoutPoint {
-                    x: left,
-                    y: y + span / 2.0,
-                },
-            ]
-        }
-        _ => {
-            let top = y - half_height;
-            vec![
-                crate::model::LayoutPoint {
-                    x: x - span / 2.0,
-                    y: top,
-                },
-                crate::model::LayoutPoint {
-                    x: x - span / 2.0,
-                    y: top - depth,
-                },
-                crate::model::LayoutPoint {
-                    x: x + span / 2.0,
-                    y: top - depth,
-                },
-                crate::model::LayoutPoint {
-                    x: x + span / 2.0,
-                    y: top,
-                },
-            ]
-        }
-    }
-}
-
-fn state_self_loop_label(
-    points: &[crate::model::LayoutPoint],
-    side: &str,
-    width: f64,
-    height: f64,
-) -> crate::model::LayoutLabel {
-    let gap = 4.0;
-    let x_min = points
-        .iter()
-        .map(|p| p.x)
-        .fold(f64::INFINITY, |acc, x| acc.min(x));
-    let x_max = points
-        .iter()
-        .map(|p| p.x)
-        .fold(f64::NEG_INFINITY, |acc, x| acc.max(x));
-    let y_min = points
-        .iter()
-        .map(|p| p.y)
-        .fold(f64::INFINITY, |acc, y| acc.min(y));
-    let y_max = points
-        .iter()
-        .map(|p| p.y)
-        .fold(f64::NEG_INFINITY, |acc, y| acc.max(y));
-    let x_center = (x_min + x_max) / 2.0;
-    let y_center = (y_min + y_max) / 2.0;
-
-    let (x, y) = match side {
-        "bottom" => (x_center, y_max + height / 2.0 + gap),
-        "right" => (x_max + width / 2.0 + gap, y_center),
-        "left" => (x_min - width / 2.0 - gap, y_center),
-        _ => (x_center, y_min - height / 2.0 - gap),
-    };
-
-    crate::model::LayoutLabel {
-        x,
-        y,
-        width,
-        height,
-    }
-}
-
-fn state_self_loop_layout_edge(
-    ctx: &StateRenderCtx<'_>,
+fn state_self_loop_layout<'a>(
+    ctx: &'a StateRenderCtx<'_>,
     edge: &StateSvgEdge,
-) -> Option<crate::model::LayoutEdge> {
+) -> Option<StateSelfLoopLayout<'a>> {
     if edge.start != edge.end {
         return None;
     }
-    let node_id = edge.start.as_str();
-    let node = state_self_loop_node_bounds(ctx, node_id)?;
-    let mid_id = format!("{node_id}-cyclic-special-mid");
-    let mid_label = ctx
-        .layout_edges_by_id
-        .get(mid_id.as_str())
-        .and_then(|edge| edge.label.clone())
-        .or_else(|| {
-            ctx.layout_edges_by_id
-                .get(edge.id.as_str())
-                .and_then(|edge| edge.label.clone())
-        });
-    let label_width = mid_label.as_ref().map(|label| label.width).unwrap_or(0.0);
-    let label_height = mid_label.as_ref().map(|label| label.height).unwrap_or(0.0);
-    let side = state_self_loop_side(ctx, node_id, &node);
-    let points = state_self_loop_points(&node, side, label_width);
-    let label = state_self_loop_label(&points, side, label_width, label_height);
-    Some(crate::model::LayoutEdge {
-        id: edge.id.clone(),
-        from: edge.start.clone(),
-        to: edge.end.clone(),
-        from_cluster: None,
-        to_cluster: None,
-        points,
-        label: Some(label),
-        start_label_left: None,
-        start_label_right: None,
-        end_label_left: None,
-        end_label_right: None,
-        start_marker: None,
-        end_marker: None,
-        stroke_dasharray: None,
-    })
+    if let Some(compacted) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() {
+        return Some(StateSelfLoopLayout::Compacted(compacted));
+    }
+
+    let mut segments = Vec::with_capacity(3);
+    for suffix in [
+        "-cyclic-special-1",
+        "-cyclic-special-mid",
+        "-cyclic-special-2",
+    ] {
+        let id = format!("{}{suffix}", edge.start);
+        if let Some(segment) = ctx.layout_edges_by_id.get(id.as_str()).copied() {
+            segments.push((id, segment));
+        }
+    }
+    (!segments.is_empty()).then_some(StateSelfLoopLayout::Segmented(segments))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_state_edge_path(
+    out: &mut String,
+    ctx: &StateRenderCtx<'_>,
+    le: &crate::model::LayoutEdge,
+    edge_id: &str,
+    classes: &str,
+    marker_end: Option<&str>,
+    arrow_type_end: Option<&str>,
+    origin_x: f64,
+    origin_y: f64,
+) {
+    if le.points.len() < 2 {
+        return;
+    }
+
+    let (d, data_points) =
+        state_edge_encode_path(ctx, le, edge_id, arrow_type_end, origin_x, origin_y);
+    let _ = write!(
+        out,
+        r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+        d,
+        escape_xml_display(&state_scoped_dom_id(ctx, edge_id)),
+        escape_xml_display(classes),
+        escape_xml_display(edge_id),
+        data_points,
+        escape_xml_display(state_data_look(ctx))
+    );
+    if let Some(marker_end) = marker_end {
+        let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(marker_end));
+    }
+    out.push_str("/>");
 }
 
 pub(super) fn render_state_edge_path(
@@ -776,7 +571,6 @@ pub(super) fn render_state_edge_path(
     origin_x: f64,
     origin_y: f64,
 ) {
-    let data_look = state_data_look(ctx);
     let mut classes = "edge-thickness-normal edge-pattern-solid".to_string();
     for c in edge.classes.split_whitespace() {
         if c.trim().is_empty() {
@@ -794,68 +588,55 @@ pub(super) fn render_state_edge_path(
     };
 
     if edge.start == edge.end {
-        let Some(le) = state_self_loop_layout_edge(ctx, edge) else {
+        let Some(layout) = state_self_loop_layout(ctx, edge) else {
             return;
         };
-        if le.points.len() < 2 {
-            return;
+        match layout {
+            StateSelfLoopLayout::Compacted(le) => write_state_edge_path(
+                out,
+                ctx,
+                le,
+                edge.id.as_str(),
+                &classes,
+                marker_end.as_deref(),
+                marker_end.as_ref().map(|_| edge.arrow_type_end.as_str()),
+                origin_x,
+                origin_y,
+            ),
+            StateSelfLoopLayout::Segmented(segments) => {
+                for (segment_id, segment) in segments {
+                    let is_terminal = segment_id.ends_with("-cyclic-special-2");
+                    write_state_edge_path(
+                        out,
+                        ctx,
+                        segment,
+                        &segment_id,
+                        &classes,
+                        is_terminal.then_some(marker_end.as_deref()).flatten(),
+                        is_terminal.then_some(edge.arrow_type_end.as_str()),
+                        origin_x,
+                        origin_y,
+                    );
+                }
+            }
         }
-
-        let (d, data_points) = state_edge_encode_path(
-            ctx,
-            &le,
-            edge.id.as_str(),
-            marker_end.as_ref().map(|_| edge.arrow_type_end.as_str()),
-            origin_x,
-            origin_y,
-        );
-        let _ = write!(
-            out,
-            r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-            d,
-            escape_xml_display(&state_scoped_dom_id(ctx, edge.id.as_str())),
-            escape_xml_display(&classes),
-            escape_xml_display(edge.id.as_str()),
-            data_points,
-            escape_xml_display(data_look)
-        );
-        if let Some(m) = marker_end {
-            let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(&m));
-        }
-        out.push_str("/>");
         return;
     }
 
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
         return;
     };
-    if le.points.len() < 2 {
-        return;
-    }
-
-    let (d, data_points) = state_edge_encode_path(
+    write_state_edge_path(
+        out,
         ctx,
         le,
         edge.id.as_str(),
+        &classes,
+        marker_end.as_deref(),
         Some(edge.arrow_type_end.as_str()),
         origin_x,
         origin_y,
     );
-
-    let _ = write!(
-        out,
-        r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
-        d,
-        escape_xml_display(&state_scoped_dom_id(ctx, edge.id.as_str())),
-        escape_xml_display(&classes),
-        escape_xml_display(&edge.id),
-        data_points,
-        escape_xml_display(data_look)
-    );
-    if let Some(m) = marker_end {
-        let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(&m));
-    }
-    out.push_str("/>");
 }
 
 pub(super) fn render_state_edge_label(
@@ -1024,31 +805,67 @@ pub(super) fn render_state_edge_label(
     let empty_edge_label_style = edge_label_div_style(0.0);
     let label_text = edge.label.trim();
     if edge.start == edge.end {
-        if label_text.is_empty() {
-            write_empty_edge_label(
+        match state_self_loop_layout(ctx, edge) {
+            Some(StateSelfLoopLayout::Compacted(le)) => {
+                if label_text.is_empty() {
+                    write_empty_edge_label(
+                        out,
+                        &edge.id,
+                        ctx.html_labels,
+                        empty_edge_label_style.as_str(),
+                    );
+                } else if let Some(lbl) = le.label.as_ref() {
+                    write_visible_edge_label(
+                        out,
+                        &edge.id,
+                        label_text,
+                        crate::model::LayoutPoint {
+                            x: lbl.x - origin_x,
+                            y: lbl.y - origin_y,
+                        },
+                        lbl.width,
+                        lbl.height,
+                        ctx.html_labels,
+                    );
+                }
+            }
+            Some(StateSelfLoopLayout::Segmented(segments)) => {
+                for (segment_id, segment) in segments {
+                    let segment_text = if segment_id.ends_with("-cyclic-special-mid") {
+                        label_text
+                    } else {
+                        ""
+                    };
+                    if segment_text.is_empty() {
+                        write_empty_edge_label(
+                            out,
+                            &segment_id,
+                            ctx.html_labels,
+                            empty_edge_label_style.as_str(),
+                        );
+                    } else if let Some(lbl) = segment.label.as_ref() {
+                        write_visible_edge_label(
+                            out,
+                            &segment_id,
+                            segment_text,
+                            crate::model::LayoutPoint {
+                                x: lbl.x - origin_x,
+                                y: lbl.y - origin_y,
+                            },
+                            lbl.width,
+                            lbl.height,
+                            ctx.html_labels,
+                        );
+                    }
+                }
+            }
+            None if label_text.is_empty() => write_empty_edge_label(
                 out,
                 &edge.id,
                 ctx.html_labels,
                 empty_edge_label_style.as_str(),
-            );
-            return;
-        }
-
-        if let Some(le) = state_self_loop_layout_edge(ctx, edge)
-            && let Some(lbl) = le.label.as_ref()
-        {
-            write_visible_edge_label(
-                out,
-                &edge.id,
-                label_text,
-                crate::model::LayoutPoint {
-                    x: lbl.x - origin_x,
-                    y: lbl.y - origin_y,
-                },
-                lbl.width,
-                lbl.height,
-                ctx.html_labels,
-            );
+            ),
+            None => {}
         }
         return;
     }

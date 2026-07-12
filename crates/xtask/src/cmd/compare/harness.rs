@@ -56,6 +56,16 @@ pub(crate) struct CompareFixtureReportInput<'a> {
     pub(crate) failed: bool,
 }
 
+fn is_pinned_upstream_dir(diagram: &str, upstream_dir: &Path) -> bool {
+    let pinned = crate::cmd::fixtures_root()
+        .join("upstream-svgs")
+        .join(diagram);
+    match (fs::canonicalize(upstream_dir), fs::canonicalize(&pinned)) {
+        (Ok(actual), Ok(expected)) => actual == expected,
+        _ => upstream_dir == pinned,
+    }
+}
+
 pub(crate) fn run_svg_compare<S, Header, Skip, Render, Report>(
     options: CompareRunOptions<'_>,
     state: &mut S,
@@ -82,6 +92,9 @@ where
     )
 }
 
+// These internal adapters intentionally expose each harness callback separately. Bundling five
+// unrelated generic closures only to satisfy the argument-count heuristic would obscure callers.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_svg_compare_with_roots<S, Header, Skip, Render, Report>(
     options: CompareRunOptions<'_>,
     fixtures_root: Option<PathBuf>,
@@ -142,6 +155,8 @@ where
     )
 }
 
+// See `run_svg_compare_with_roots`: this is the complete callback-oriented harness entry point.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_svg_compare_with_roots_and_fixture_reports<
     S,
     Header,
@@ -176,15 +191,29 @@ where
     );
     let fixtures_dir = compare_paths.fixtures_dir.clone();
     let upstream_dir = compare_paths.upstream_dir.clone();
+    let validate_pinned_upstream = is_pinned_upstream_dir(options.diagram, &upstream_dir);
     let out_svg_dir = compare_paths.out_svg_dir.clone();
+    let _upstream_family_lock = super::acquire_upstream_svg_family_lock_for_compare(
+        &upstream_dir,
+        validate_pinned_upstream,
+    )?;
     let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, options.filter, true);
-
     if mmd_files.is_empty() {
         return Err(XtaskError::SvgCompareFailed(format!(
             "no .mmd fixtures matched under {}",
             fixtures_dir.display()
         )));
     }
+    let provenance = if validate_pinned_upstream {
+        Some(crate::cmd::load_upstream_svg_provenance(
+            options.diagram,
+            &fixtures_dir,
+            &upstream_dir,
+            options.filter.is_none(),
+        )?)
+    } else {
+        None
+    };
 
     fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
         path: out_svg_dir.display().to_string(),
@@ -210,6 +239,12 @@ where
         }
 
         let upstream_path = upstream_dir.join(format!("{stem}.svg"));
+        if let Some(provenance) = &provenance
+            && let Err(err) = provenance.validate_fixture(&mmd_path, &upstream_path)
+        {
+            failures.push(err);
+            continue;
+        }
         let upstream_svg = match fs::read_to_string(&upstream_path) {
             Ok(v) => v,
             Err(err) => {
@@ -358,7 +393,7 @@ fn write_rendered_fixture(
     mode: svgdom::DomMode,
     dom_decimals: u32,
 ) -> Result<(), XtaskError> {
-    fs::write(&local_out_path, &local_svg).map_err(|source| XtaskError::WriteFile {
+    fs::write(local_out_path, local_svg).map_err(|source| XtaskError::WriteFile {
         path: local_out_path.display().to_string(),
         source,
     })?;
@@ -415,9 +450,22 @@ fn compare_dom_signatures(
         .map_err(|err| format!("local dom parse failed for {stem}: {err}"))?;
 
     if upstream != local {
-        let detail = svgdom::dom_diff(&upstream, &local)
-            .map(|d| format!(" ({d})"))
-            .unwrap_or_default();
+        let detail = if mode == svgdom::DomMode::ParityRoot {
+            let mismatch = svgdom::diagnose_parity_root_mismatch(
+                upstream_svg,
+                local_svg,
+                &upstream,
+                &local,
+                dom_decimals,
+            )
+            .map_err(|err| format!("parity-root diagnosis failed for {stem}: {err}"))?
+            .ok_or_else(|| format!("parity-root diagnosis unexpectedly matched for {stem}"))?;
+            format!(" ({mismatch})")
+        } else {
+            svgdom::dom_diff(&upstream, &local)
+                .map(|d| format!(" ({d})"))
+                .unwrap_or_default()
+        };
         return Err(format!(
             "dom mismatch for {stem}: upstream={} local={}{}",
             upstream_path.display(),
@@ -471,6 +519,50 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    #[test]
+    fn parity_root_failure_marks_normalized_descendant_match() {
+        let upstream = r#"<svg width="100%" viewBox="0 0 100 100" style="max-width: 100px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
+        let local = r#"<svg width="100%" viewBox="0 0 120 100" style="max-width: 120px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
+
+        let failure = compare_dom_signatures(
+            "root-only",
+            upstream,
+            local,
+            Path::new("upstream.svg"),
+            Path::new("local.svg"),
+            svgdom::DomMode::ParityRoot,
+            3,
+        )
+        .expect_err("root viewport mismatch should fail");
+
+        assert!(failure.contains(svgdom::PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER));
+        assert!(failure.contains("svg: attr `style` mismatch"));
+        assert_eq!(failure.lines().count(), 1);
+    }
+
+    #[test]
+    fn parity_root_failure_prioritizes_hidden_parity_visible_mismatch() {
+        let upstream = r#"<svg width="100%" viewBox="0 0 100 100" style="max-width: 100px; background-color: white;"><g transform="translate(10,20)"/></svg>"#;
+        let local = r#"<svg width="100%" viewBox="0 0 120 100" style="max-width: 120px; background-color: white;"><g transform="scale(10,20)"/></svg>"#;
+
+        let failure = compare_dom_signatures(
+            "root-and-subtree",
+            upstream,
+            local,
+            Path::new("upstream.svg"),
+            Path::new("local.svg"),
+            svgdom::DomMode::ParityRoot,
+            3,
+        )
+        .expect_err("parity-visible subtree mismatch should fail");
+
+        assert!(failure.contains(svgdom::PARITY_NORMALIZED_DESCENDANTS_DIFFER_MARKER));
+        assert!(failure.contains("root-viewport-also-differs=true"));
+        assert!(failure.contains("svg/g[0]: attr `transform` mismatch"));
+        assert!(!failure.contains("max-width: 100px"));
+        assert_eq!(failure.lines().count(), 1);
+    }
+
     fn unique_test_root(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -480,6 +572,13 @@ mod tests {
             .join("compare")
             .join("xtask-harness-tests")
             .join(format!("{name}-{}-{nonce}", std::process::id()))
+    }
+
+    #[test]
+    fn explicit_canonical_upstream_path_still_requires_pinned_provenance() {
+        let pinned = crate::cmd::fixtures_root().join("upstream-svgs").join("er");
+        assert!(is_pinned_upstream_dir("er", &pinned));
+        assert!(is_pinned_upstream_dir("er", &pinned.join(".")));
     }
 
     #[test]

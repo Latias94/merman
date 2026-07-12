@@ -101,6 +101,12 @@ pub struct StateDiagramRenderNode {
     pub css_styles: Vec<String>,
     #[serde(default)]
     pub dir: Option<String>,
+    #[serde(
+        default,
+        rename = "explicitDir",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub explicit_dir: Option<bool>,
     #[serde(default)]
     pub padding: Option<f64>,
     #[serde(default)]

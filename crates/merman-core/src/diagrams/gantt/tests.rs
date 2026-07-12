@@ -519,6 +519,27 @@ test2: id2,after id1,2d
 }
 
 #[test]
+fn gantt_merges_multiple_includes_and_excludes_in_first_seen_order() {
+    let model = parse(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+excludes weekends,2019-02-06
+excludes WEEKENDS friday
+excludes monday,2019-02-06
+includes 2019-02-09
+includes 2019-02-10,2019-02-09
+"#,
+    );
+
+    assert_eq!(
+        model["excludes"],
+        json!(["weekends", "2019-02-06", "friday", "monday"])
+    );
+    assert_eq!(model["includes"], json!(["2019-02-09", "2019-02-10"]));
+}
+
+#[test]
 fn gantt_inclusive_end_dates_adds_one_day_for_strict_dates() {
     let model = parse(
         r#"
@@ -685,6 +706,40 @@ Future task: des3, after des2, 5d
     assert_eq!(tasks[0]["id"].as_str().unwrap(), "des1");
     assert_eq!(tasks[1]["id"].as_str().unwrap(), "des2");
     assert_eq!(tasks[2]["id"].as_str().unwrap(), "des3");
+}
+
+#[test]
+fn gantt_vertical_markers_do_not_consume_task_row_order() {
+    let model = parse(
+        r#"
+gantt
+dateFormat YYYY-MM-DD
+section Delivery
+Task one: task-1,2024-01-01,1d
+Release marker: vert,marker-1,2024-01-02,1d
+Task two: task-2,2024-01-03,1d
+Review marker: vert,marker-2,2024-01-04,1d
+Task three: task-3,2024-01-05,1d
+"#,
+    );
+    let tasks = model["tasks"].as_array().unwrap();
+
+    assert_eq!(
+        tasks
+            .iter()
+            .map(|task| (
+                task["id"].as_str().unwrap(),
+                task["order"].as_i64().unwrap()
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("task-1", 0),
+            ("marker-1", -1),
+            ("task-2", 1),
+            ("marker-2", -1),
+            ("task-3", 2),
+        ]
+    );
 }
 
 #[test]

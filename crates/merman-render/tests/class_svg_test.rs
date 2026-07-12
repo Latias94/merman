@@ -198,22 +198,24 @@ Animal --> Keeper
 fn class_svg_hand_drawn_basic_node_uses_rough_wrapper_and_hachure_paths() {
     let svg = render_class_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
-        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7, "themeVariables": {"mainBkg": "#f8fafc", "nodeBorder": "#ef4444"}}}%%
+        r##"%%{init: {"look": "handDrawn", "handDrawnSeed": 7, "themeVariables": {"mainBkg": "#f8fafc", "nodeBorder": "#ef4444", "useGradient": true, "gradientStart": "#112233", "gradientStop": "#445566"}}}%%
 classDiagram
   class Class10
 "##,
     );
 
     assert!(
-        svg.contains(r#"<g class="rough-node default" id="classId-Class10-0""#),
+        svg.contains(
+            r#"<g class="rough-node default" id="merman-classId-Class10-0" data-look="handDrawn""#
+        ),
         "hand-drawn class node should use Mermaid's rough-node wrapper class: {svg}"
     );
     assert!(
-        !svg.contains(r#"<g class="node default" id="classId-Class10-0""#),
+        !svg.contains(r#"<g class="node default" id="merman-classId-Class10-0""#),
         "hand-drawn class node should not keep the classic node wrapper class: {svg}"
     );
     assert!(
-        svg.contains(r#"<g class="basic label-container"><path d=""#)
+        svg.contains(r#"<g class="basic label-container outer-path"><path d=""#)
             && svg.contains(
                 r##"stroke="#f8fafc" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
             )
@@ -222,17 +224,49 @@ classDiagram
             ),
         "hand-drawn class node should render RoughJS hachure fill and outline paths: {svg}"
     );
+    let marker_ids = [
+        "aggregationStart",
+        "aggregationEnd",
+        "aggregationStart-margin",
+        "aggregationEnd-margin",
+        "extensionStart",
+        "extensionEnd",
+        "extensionStart-margin",
+        "extensionEnd-margin",
+        "compositionStart",
+        "compositionEnd",
+        "compositionStart-margin",
+        "compositionEnd-margin",
+        "dependencyStart",
+        "dependencyEnd",
+        "dependencyStart-margin",
+        "dependencyEnd-margin",
+        "lollipopStart",
+        "lollipopEnd",
+        "lollipopStart-margin",
+        "lollipopEnd-margin",
+    ];
+    let marker_positions = marker_ids.map(|marker_id| {
+        let marker_attr = format!(r#"id="merman_class-{marker_id}""#);
+        svg.find(&marker_attr)
+            .unwrap_or_else(|| panic!("missing Mermaid 11.16 class marker {marker_id}: {svg}"))
+    });
     assert!(
-        !svg.contains(r#"<g class="basic label-container outer-path"><path d=""#),
-        "hand-drawn class node should not use the classic outer-path shape group: {svg}"
+        marker_positions.windows(2).all(|pair| pair[0] < pair[1]),
+        "hand-drawn class marker variants should preserve Mermaid's insertion order: {svg}"
     );
+    let graph_end = svg
+        .find(r#"</g><defs><filter id="merman-drop-shadow""#)
+        .expect("hand-drawn class SVG should append shared resources after the graph wrapper");
+    let small_shadow = svg
+        .find(r#"<defs><filter id="merman-drop-shadow-small""#)
+        .expect("hand-drawn class SVG should include the shared small shadow filter");
+    let gradient = svg
+        .find(r#"<linearGradient id="merman-gradient""#)
+        .expect("hand-drawn class SVG should include a configured root gradient");
     assert!(
-        !svg.contains("-margin"),
-        "hand-drawn class SVG should not emit unused margin marker defs: {svg}"
-    );
-    assert!(
-        !svg.contains("drop-shadow"),
-        "hand-drawn class SVG should not emit unused shadow filter defs: {svg}"
+        graph_end < small_shadow && small_shadow < gradient,
+        "shared shadow filters should preserve Mermaid root resource order: {svg}"
     );
 }
 
@@ -265,17 +299,19 @@ classDiagram
     );
 
     assert!(
-        svg.contains(r#"<g class="rough-node undefined" id="note0""#),
+        svg.contains(r#"<g class="rough-node undefined" id="merman-note0" data-look="handDrawn""#),
         "hand-drawn class note should use Mermaid's rough-node wrapper class: {svg}"
     );
     assert!(
-        svg.contains(r#"<g class="basic label-container"><path d=""#)
+        svg.contains(r#"<g class="basic label-container outer-path"><path d=""#)
             && svg.contains(
                 r##"stroke="#fff5ad" stroke-width="4" fill="none" stroke-dasharray="0 0"/><path d=""##
             )
             && svg.contains(
                 r##"stroke="#aaaa33" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/>"##
-            ),
+            )
+            && svg.contains(r#"<g class="label noteLabel""#)
+            && svg.contains(r#"class="nodeLabel markdown-node-label""#),
         "hand-drawn class note should render note-colored hachure fill and outline paths: {svg}"
     );
 }
@@ -285,14 +321,21 @@ fn class_svg_hand_drawn_edges_use_rough_transition_class() {
     let svg = render_class_svg_from_text(
         r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 7}}%%
 classDiagram
+  class A
+  class B
   A --> B
+  note for A "hello"
 "#,
     );
 
     assert!(
         svg.contains(r#"class="edge-thickness-normal edge-pattern-solid transition relation""#)
             && svg.contains(r##"stroke="#000" stroke-width="1" fill="none""##)
-            && !svg.contains(r#"data-look="handDrawn""#),
+            && svg.contains(r#"id="merman-id_A_B_1""#)
+            && svg.contains(r#"data-id="id_A_B_1""#)
+            && svg.contains(r#"id="merman-edgeNote0""#)
+            && svg.contains(r#"data-id="edgeNote0""#)
+            && svg.contains(r#"data-look="handDrawn""#),
         "hand-drawn class relations should use RoughJS transition edge DOM: {svg}"
     );
 }
@@ -935,8 +978,9 @@ fn class_svg_cardinality_terminals_keep_mermaid_sizes_and_offsets() {
     .expect("svg render ok");
 
     assert!(
-        svg.contains(r#"<foreignObject width="36" height="12">"#)
-            && svg.contains(r#"<span class="edgeLabel"><p>many</p></span>"#),
+        svg.contains(
+            r#"<foreignObject width="26.359375" height="16.5" style="width: 36px; height: 12px;">"#
+        ) && svg.contains(r#"<span class="edgeLabel"><p>many</p></span>"#),
         "expected `many` cardinality terminal to keep Mermaid width sizing"
     );
 }
@@ -951,9 +995,9 @@ classDiagram
     );
 
     assert!(
-        svg.contains(r#"<foreignObject style="width: 9px; height: 12px;">"#)
-            && svg.contains(r#"<span class="edgeLabel">1</span>"#)
-            && !svg.contains(r#"<span class="edgeLabel"><p>1</p></span>"#),
+        svg.contains(
+            r#"<g class="inner" transform="translate(-2.890625, -8.25)"><foreignObject width="5.78125" height="16.5" style="width: 9px; height: 12px;">"#
+        ) && svg.contains(r#"<span class="edgeLabel"><p>1</p></span>"#),
         "hand-drawn class cardinality terminals should match Mermaid's XHTML shape: {svg}"
     );
 }
@@ -1218,16 +1262,18 @@ classDiagram
 "##,
     );
 
-    assert!(
-        svg.contains(
-            r#"Probe:</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> String</tspan>"#
-        ),
-        "expected Mermaid-like native SVG wrapping to keep the type suffix on the second row: {svg}"
+    assert_eq!(
+        svg.matches("text-outer-tspan").count(),
+        10,
+        "the title plus three three-line members should emit ten outer tspans: {svg}"
+    );
+    assert_eq!(
+        svg.matches("text-inner-tspan").count(),
+        10,
+        "each outer tspan should contain one text run after wrapping: {svg}"
     );
     assert!(
-        !svg.contains(
-            r#"<tspan font-style="normal" class="text-inner-tspan" font-weight="normal">String</tspan></tspan>"#
-        ),
-        "type suffix should not be forced onto a standalone third row: {svg}"
+        svg.contains(r#">String</tspan></tspan>"#),
+        "Mermaid 11.16 should wrap each type suffix onto a standalone third row: {svg}"
     );
 }

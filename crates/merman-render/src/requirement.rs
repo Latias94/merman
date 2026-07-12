@@ -33,15 +33,11 @@ fn rank_dir_from(direction: &str) -> RankDir {
     }
 }
 
-#[derive(Debug, Clone)]
-struct RequirementLabelMetrics {
-    width: f64,
-    height: f64,
-}
-
-fn requirement_label_uses_markdown_html(raw: &str) -> bool {
-    let lower = raw.to_ascii_lowercase();
-    raw.contains('*') || raw.contains('_') || raw.contains('\n') || lower.contains("<br")
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RequirementLabelMetrics {
+    pub(crate) width: f64,
+    pub(crate) height: f64,
+    pub(crate) max_width_px: i64,
 }
 
 pub(crate) fn requirement_styles_force_bold(css_styles: &[String]) -> bool {
@@ -68,41 +64,97 @@ pub(crate) fn requirement_styles_force_bold(css_styles: &[String]) -> bool {
     })
 }
 
-fn measure_requirement_label_metrics(
+fn calculate_text_dimensions_like_mermaid(
     measurer: &dyn TextMeasurer,
-    html_style: &TextStyle,
+    style: &TextStyle,
+    text: &str,
+) -> (i64, i64, i64) {
+    let mut width = 0_i64;
+    let mut height = 0_i64;
+    let mut line_height = 0_i64;
+
+    for line in crate::text::split_html_br_lines(text) {
+        let measured_line = if line.is_empty() { "\u{200b}" } else { line };
+        let line_width = measurer
+            .measure_svg_simple_text_bbox_width_px(measured_line, style)
+            .max(0.0)
+            .round() as i64;
+        let measured_height = measurer
+            .measure_svg_simple_text_bbox_height_px(measured_line, style)
+            .max(0.0)
+            .round() as i64;
+        width = width.max(line_width);
+        height += measured_height;
+        line_height = line_height.max(measured_height);
+    }
+
+    (width, height, line_height)
+}
+
+pub(crate) fn calculate_text_width_like_mermaid_px(
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    text: &str,
+) -> i64 {
+    let mut sans = style.clone();
+    sans.font_family = Some("sans-serif".to_string());
+    sans.font_weight = None;
+
+    let mut configured = style.clone();
+    configured.font_weight = None;
+
+    let sans_dimensions = calculate_text_dimensions_like_mermaid(measurer, &sans, text);
+    let configured_dimensions = calculate_text_dimensions_like_mermaid(measurer, &configured, text);
+
+    // Mermaid measures both families but selects sans-serif only when every dimension is larger.
+    // In particular, it does not take the maximum width of the two probes.
+    if sans_dimensions.0 > configured_dimensions.0
+        && sans_dimensions.1 > configured_dimensions.1
+        && sans_dimensions.2 > configured_dimensions.2
+    {
+        sans_dimensions.0
+    } else {
+        configured_dimensions.0
+    }
+}
+
+pub(crate) fn measure_requirement_label_metrics(
+    measurer: &dyn TextMeasurer,
+    html_style_regular: &TextStyle,
+    html_style_bold: &TextStyle,
+    calculation_style: &TextStyle,
     display_text: &str,
+    calculation_text: &str,
     bold: bool,
 ) -> Option<RequirementLabelMetrics> {
     if display_text.trim().is_empty() {
         return None;
     }
 
-    let font_size = html_style.font_size.max(1.0);
-    let looks_like_markdown_inline = requirement_label_uses_markdown_html(display_text);
-    let measured = if looks_like_markdown_inline {
-        crate::text::measure_markdown_with_flowchart_bold_deltas(
-            measurer,
-            display_text,
-            html_style,
-            None,
-            WrapMode::HtmlLike,
-        )
+    let html_style = if bold {
+        html_style_bold
     } else {
-        measurer.measure_wrapped(display_text, html_style, None, WrapMode::HtmlLike)
+        html_style_regular
     };
+    let max_width_px =
+        (calculate_text_width_like_mermaid_px(measurer, calculation_style, calculation_text) + 50)
+            .max(0);
+    let max_width = (max_width_px > 0).then_some(max_width_px as f64);
+    let measured = crate::text::measure_markdown_with_flowchart_bold_deltas(
+        measurer,
+        calculation_text,
+        html_style,
+        max_width,
+        WrapMode::HtmlLike,
+    );
     let height = measured.height.max(1.0);
-    let width = if let Some(em) =
-        crate::generated::requirement_text_overrides_11_12_2::lookup_requirement_html_label_width_em(
-            display_text,
-            bold,
-        ) {
-        (em * font_size).max(1.0)
-    } else {
-        measured.width.max(1.0)
-    };
+    let width = measured.width.max(1.0);
 
-    Some(RequirementLabelMetrics { width, height })
+    Some(RequirementLabelMetrics {
+        width,
+        height,
+        max_width_px,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -115,7 +167,8 @@ fn requirement_box_layout(
     measurer: &dyn TextMeasurer,
     html_style_regular: &TextStyle,
     html_style_bold: &TextStyle,
-    lines: &[(String, bool)],
+    calculation_style: &TextStyle,
+    lines: &[(String, String, bool)],
     gap: f64,
     padding: f64,
 ) -> RequirementBoxLayout {
@@ -124,13 +177,16 @@ fn requirement_box_layout(
     let mut max_w: f64 = 0.0;
 
     // First pass: label bbox widths/heights (HTML).
-    for (display, bold) in lines {
-        let html_style = if *bold {
-            html_style_bold
-        } else {
-            html_style_regular
-        };
-        let m = measure_requirement_label_metrics(measurer, html_style, display, *bold);
+    for (display, calculation, bold) in lines {
+        let m = measure_requirement_label_metrics(
+            measurer,
+            html_style_regular,
+            html_style_bold,
+            calculation_style,
+            display,
+            calculation,
+            *bold,
+        );
         if let Some(m) = &m {
             max_w = max_w.max(m.width);
         }
@@ -225,6 +281,11 @@ pub fn layout_requirement_diagram_typed(
         font_size: cfg.font_size,
         font_weight: Some("bold".to_string()),
     };
+    let calculation_style = TextStyle {
+        font_family: Some(cfg.calculation_font_family),
+        font_size: cfg.calculation_font_size,
+        font_weight: None,
+    };
 
     let padding = 20.0;
     let gap = 20.0;
@@ -251,28 +312,30 @@ pub fn layout_requirement_diagram_typed(
             continue;
         }
 
-        let type_disp = format!("<<{}>>", r.node_type);
+        let type_disp = format!("&lt;&lt;{}&gt;&gt;", r.node_type);
+        let type_calculation = type_disp.clone();
         let style_bold = requirement_styles_force_bold(&r.css_styles);
-        let mut lines: Vec<(String, bool)> = Vec::new();
-        lines.push((type_disp, style_bold));
-        lines.push((r.name.clone(), true));
+        let mut lines: Vec<(String, String, bool)> = Vec::new();
+        lines.push((type_disp, type_calculation, style_bold));
+        lines.push((r.name.clone(), r.name.clone(), true));
 
         let id_line = prefixed_nonempty_line("ID: ", &r.requirement_id);
-        lines.push((id_line, style_bold));
+        lines.push((id_line.clone(), id_line, style_bold));
 
         let text_line = prefixed_nonempty_line("Text: ", &r.text);
-        lines.push((text_line, style_bold));
+        lines.push((text_line.clone(), text_line, style_bold));
 
         let risk_line = prefixed_nonempty_line("Risk: ", &r.risk);
-        lines.push((risk_line, style_bold));
+        lines.push((risk_line.clone(), risk_line, style_bold));
 
         let verify_line = prefixed_nonempty_line("Verification: ", &r.verify_method);
-        lines.push((verify_line, style_bold));
+        lines.push((verify_line.clone(), verify_line, style_bold));
 
         let box_layout = requirement_box_layout(
             text_measurer,
             &html_style_regular,
             &html_style_bold,
+            &calculation_style,
             &lines,
             gap,
             padding,
@@ -292,11 +355,12 @@ pub fn layout_requirement_diagram_typed(
             continue;
         }
 
-        let type_disp = "<<Element>>".to_string();
+        let type_disp = "&lt;&lt;Element&gt;&gt;".to_string();
+        let type_calculation = type_disp.clone();
         let style_bold = requirement_styles_force_bold(&e.css_styles);
-        let mut lines: Vec<(String, bool)> = Vec::new();
-        lines.push((type_disp, style_bold));
-        lines.push((e.name.clone(), true));
+        let mut lines: Vec<(String, String, bool)> = Vec::new();
+        lines.push((type_disp, type_calculation, style_bold));
+        lines.push((e.name.clone(), e.name.clone(), true));
 
         let type_line = e.element_type.trim().to_string();
         let type_line = if type_line.is_empty() {
@@ -304,15 +368,16 @@ pub fn layout_requirement_diagram_typed(
         } else {
             format!("Type: {type_line}")
         };
-        lines.push((type_line, style_bold));
+        lines.push((type_line.clone(), type_line, style_bold));
 
         let doc_line = prefixed_nonempty_line("Doc Ref: ", &e.doc_ref);
-        lines.push((doc_line, style_bold));
+        lines.push((doc_line.clone(), doc_line, style_bold));
 
         let box_layout = requirement_box_layout(
             text_measurer,
             &html_style_regular,
             &html_style_bold,
+            &calculation_style,
             &lines,
             gap,
             padding,
@@ -345,16 +410,21 @@ pub fn layout_requirement_diagram_typed(
         // Mirror this behavior to match the upstream SVG baselines.
         let edge_id = requirement_edge_id(&rel.src, &rel.dst, 0);
 
-        let label_display = format!("<<{}>>", rel.rel_type);
+        let label_display = format!("&lt;&lt;{}&gt;&gt;", rel.rel_type);
+        let label_calculation = label_display.clone();
         let metrics = measure_requirement_label_metrics(
             text_measurer,
             &html_style_regular,
+            &html_style_bold,
+            &calculation_style,
             &label_display,
+            &label_calculation,
             false,
         )
         .unwrap_or(RequirementLabelMetrics {
             width: 0.0,
             height: 0.0,
+            max_width_px: 0,
         });
 
         let el = EdgeLabel {
@@ -487,6 +557,33 @@ pub fn layout_requirement_diagram_typed(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::text::{TextMetrics, VendoredFontMetricsTextMeasurer};
+
+    struct FamilySelectionMeasurer;
+
+    impl TextMeasurer for FamilySelectionMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 0.0,
+                height: 10.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_simple_text_bbox_width_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_family.as_deref() == Some("sans-serif") {
+                200.0
+            } else {
+                100.0
+            }
+        }
+
+        fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            10.0
+        }
+    }
+
     #[test]
     fn requirement_styles_detect_bold_font_weight() {
         assert!(super::requirement_styles_force_bold(&[
@@ -500,5 +597,85 @@ mod tests {
             "font-weight: normal".to_string(),
             "stroke:blue".to_string(),
         ]));
+    }
+
+    #[test]
+    fn requirement_calculate_text_width_uses_mermaid_dimension_selection() {
+        let style = TextStyle {
+            font_family: Some("configured".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+        };
+
+        assert_eq!(
+            calculate_text_width_like_mermaid_px(&FamilySelectionMeasurer, &style, "label"),
+            100
+        );
+    }
+
+    #[test]
+    fn requirement_box_wraps_with_root_font_probe_before_group_bbox_padding() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let family = Some(crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+        let regular = TextStyle {
+            font_family: family.clone(),
+            font_size: 24.0,
+            font_weight: None,
+        };
+        let bold = TextStyle {
+            font_family: family.clone(),
+            font_size: 24.0,
+            font_weight: Some("bold".to_string()),
+        };
+        let calculation = TextStyle {
+            font_family: family,
+            font_size: 10.0,
+            font_weight: None,
+        };
+        let lines = vec![
+            (
+                "&lt;&lt;Requirement&gt;&gt;".to_string(),
+                "&lt;&lt;Requirement&gt;&gt;".to_string(),
+                false,
+            ),
+            (
+                "req_font_size".to_string(),
+                "req_font_size".to_string(),
+                true,
+            ),
+            (
+                "ID: req_font_size".to_string(),
+                "ID: req_font_size".to_string(),
+                false,
+            ),
+            (
+                "Text: font size precedence should be deterministic".to_string(),
+                "Text: font size precedence should be deterministic".to_string(),
+                false,
+            ),
+            ("Risk: Low".to_string(), "Risk: Low".to_string(), false),
+            (
+                "Verification: Test".to_string(),
+                "Verification: Test".to_string(),
+                false,
+            ),
+        ];
+
+        let text = measure_requirement_label_metrics(
+            &measurer,
+            &regular,
+            &bold,
+            &calculation,
+            &lines[3].0,
+            &lines[3].1,
+            false,
+        )
+        .expect("text line should be measured");
+        let layout =
+            requirement_box_layout(&measurer, &regular, &bold, &calculation, &lines, 20.0, 20.0);
+
+        assert_eq!(text.max_width_px, 279);
+        assert_eq!((text.width, text.height), (279.0, 108.0));
+        assert_eq!((layout.width, layout.height), (299.0, 418.0));
     }
 }

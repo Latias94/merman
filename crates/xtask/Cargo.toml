@@ -14,6 +14,7 @@ chrono = { workspace = true, features = ["clock"] }
 base64.workspace = true
 brotli.workspace = true
 flate2.workspace = true
+fs2.workspace = true
 futures.workspace = true
 dugong = { path = "../dugong" }
 merman = { path = "../merman" }
@@ -25,6 +26,13 @@ roxmltree.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde-saphyr.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 wasmi.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

@@ -632,8 +632,29 @@ fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
     assert_eq!(cynefin["showDomainDescriptions"], json!(true));
 
     let railroad = &config["railroad"];
-    assert_eq!(railroad["fontFamily"], json!("monospace"));
-    assert_eq!(railroad["fontSize"], json!(14));
+    for theme_derived_key in [
+        "fontFamily",
+        "fontSize",
+        "terminalFill",
+        "terminalStroke",
+        "terminalTextColor",
+        "nonTerminalFill",
+        "nonTerminalStroke",
+        "nonTerminalTextColor",
+        "lineColor",
+        "markerFill",
+        "commentFill",
+        "commentStroke",
+        "commentTextColor",
+        "specialFill",
+        "specialStroke",
+        "ruleNameColor",
+    ] {
+        assert!(
+            railroad.get(theme_derived_key).is_none(),
+            "railroad.{theme_derived_key} should derive from active themeVariables"
+        );
+    }
     assert_eq!(railroad["showMarkers"], json!(true));
 
     let swimlane = &config["swimlane"];

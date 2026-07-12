@@ -81,11 +81,52 @@ impl MathRenderer for NoopMathRenderer {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DelimitedMathFragment<'a> {
+    pub(crate) leading_text: &'a str,
+    #[cfg(feature = "ratex-math")]
+    pub(crate) formula: &'a str,
+    pub(crate) delimited: &'a str,
+}
+
+#[derive(Debug)]
+pub(crate) struct DelimitedMathLine<'a> {
+    pub(crate) fragments: Vec<DelimitedMathFragment<'a>>,
+    pub(crate) trailing_text: &'a str,
+}
+
+pub(crate) fn parse_delimited_math_line(text: &str) -> Option<DelimitedMathLine<'_>> {
+    let mut fragments = Vec::new();
+    let mut search_from = 0usize;
+
+    while let Some(start_rel) = text[search_from..].find("$$") {
+        let start = search_from + start_rel;
+        let content_start = start + 2;
+        let Some(end_rel) = text[content_start..].find("$$") else {
+            break;
+        };
+        let end_start = content_start + end_rel;
+        let end = end_start + 2;
+        fragments.push(DelimitedMathFragment {
+            leading_text: &text[search_from..start],
+            #[cfg(feature = "ratex-math")]
+            formula: &text[content_start..end_start],
+            delimited: &text[start..end],
+        });
+        search_from = end;
+    }
+
+    (!fragments.is_empty()).then_some(DelimitedMathLine {
+        fragments,
+        trailing_text: &text[search_from..],
+    })
+}
+
 /// Pure-Rust math renderer backed by RaTeX.
 ///
 /// The first Flowchart surface is intentionally narrow: labels where each non-empty line is a
-/// single `$$...$$` formula. Sequence additionally supports one formula embedded in surrounding
-/// prose per line, matching Mermaid's `drawKatex(...)` shell.
+/// single `$$...$$` formula. Sequence additionally supports formulas embedded in surrounding
+/// prose, matching Mermaid's `drawKatex(...)` shell.
 #[cfg(feature = "ratex-math")]
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RatexMathRenderer;
@@ -186,25 +227,14 @@ impl RatexMathRenderer {
         })
     }
 
-    fn render_katex_like_line_html(line: &str) -> Option<String> {
-        if !line.contains("$$") {
-            return Some(line.to_string());
+    fn render_katex_like_line_html(parsed: DelimitedMathLine<'_>) -> Option<String> {
+        let mut html = String::new();
+        for fragment in parsed.fragments {
+            let (svg, _width_em, _height_em) = Self::render_formula_svg_em(fragment.formula)?;
+            html.push_str(fragment.leading_text);
+            html.push_str(&svg);
         }
-        let start = line.find("$$")?;
-        let content_start = start + 2;
-        let end_start = line[content_start..].rfind("$$")? + content_start;
-        if end_start < content_start {
-            return None;
-        }
-        let formula = &line[content_start..end_start];
-        if formula.contains("$$") {
-            return None;
-        }
-        let (svg, _width_em, _height_em) = Self::render_formula_svg_em(formula)?;
-        let mut html = String::with_capacity(line.len() + svg.len());
-        html.push_str(&line[..start]);
-        html.push_str(&svg);
-        html.push_str(&line[end_start + 2..]);
+        html.push_str(parsed.trailing_text);
         Some(html)
     }
 
@@ -217,9 +247,9 @@ impl RatexMathRenderer {
         let mut html = String::new();
         let mut saw_math = false;
         for line in split_html_br_lines(&normalized) {
-            if line.contains("$$") {
+            if let Some(parsed) = parse_delimited_math_line(line) {
                 saw_math = true;
-                let rendered_line = Self::render_katex_like_line_html(line)?;
+                let rendered_line = Self::render_katex_like_line_html(parsed)?;
                 let _ = write!(
                     &mut html,
                     r#"<div style="display: flex; align-items: center; justify-content: center; white-space: nowrap;">{rendered_line}</div>"#
@@ -732,27 +762,69 @@ mod tests {
 
     #[cfg(feature = "ratex-math")]
     #[test]
-    fn ratex_math_renderer_rejects_multiple_formulas_on_one_line() {
+    fn ratex_math_renderer_renders_multiple_formulas_on_one_line_independently() {
         let renderer = RatexMathRenderer;
         let config = MermaidConfig::default();
-        let style = TextStyle::default();
         let label = "a $$x$$ b $$y$$ c";
 
-        assert!(
-            renderer.render_html_label(label, &config).is_none(),
-            "Mermaid's greedy $$...$$ regex treats same-line multiple formulas as one invalid formula, so RaTeX should not render them non-greedily"
+        let html = renderer
+            .render_html_label(label, &config)
+            .expect("same-line formulas should render");
+        assert_eq!(
+            html.matches(r#"<svg xmlns="http://www.w3.org/2000/svg""#)
+                .count(),
+            2,
+            "each non-greedy math fragment should render independently: {html}"
         );
         assert!(
-            renderer
-                .measure_html_label(label, &config, &style, Some(200.0), WrapMode::HtmlLike)
-                .is_none(),
-            "same-line multiple formulas should remain unsupported in measurement too"
+            html.contains("a ") && html.contains(" b ") && html.contains(" c"),
+            "plain text between formulas should be preserved: {html}"
         );
         assert!(
+            !html.contains("$$"),
+            "all complete math delimiters should be replaced: {html}"
+        );
+
+        let sequence_html = renderer
+            .render_sequence_html_label(label, &config)
+            .expect("Sequence should share the non-greedy delimiter policy");
+        assert_eq!(
+            sequence_html
+                .matches(r#"<svg xmlns="http://www.w3.org/2000/svg""#)
+                .count(),
+            2,
+            "Sequence should render both same-line formulas: {sequence_html}"
+        );
+    }
+
+    #[cfg(feature = "ratex-math")]
+    #[test]
+    fn ratex_math_renderer_preserves_unclosed_delimiters_on_plain_lines() {
+        let renderer = RatexMathRenderer;
+        let config = MermaidConfig::default();
+
+        assert!(
             renderer
-                .measure_sequence_html_label(label, &config)
+                .render_sequence_html_label("literal $$", &config)
                 .is_none(),
-            "Sequence should keep the same delimiter policy"
+            "an unmatched delimiter alone must not enable Sequence math rendering"
+        );
+
+        let label = "valid $$x$$<br>literal $$";
+
+        let html = renderer
+            .render_sequence_html_label(label, &config)
+            .expect("the complete formula should still render");
+
+        assert_eq!(
+            html.matches(r#"<svg xmlns="http://www.w3.org/2000/svg""#)
+                .count(),
+            1,
+            "only the complete formula should render: {html}"
+        );
+        assert!(
+            html.contains("<div>literal $$</div>"),
+            "the unmatched delimiter should remain plain text: {html}"
         );
     }
 

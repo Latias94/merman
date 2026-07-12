@@ -40,18 +40,15 @@
           }
         }
       },
-      "lines": [
-        {
-          "x1": 0.0,
-          "y1": 250.0,
-          "x2": 0.0,
-          "y2": 250.0,
-          "class_name": "ishikawa-spine",
-          "marker_start": false
-        }
-      ],
-      "labels": [],
-      "label_boxes": []
+      "spine": {
+        "x1": 0.0,
+        "y1": 250.0,
+        "x2": 0.0,
+        "y2": 250.0,
+        "class_name": "ishikawa-spine",
+        "marker_start": false
+      },
+      "pairs": []
     }
   }
 }

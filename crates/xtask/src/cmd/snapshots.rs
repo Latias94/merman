@@ -17,7 +17,7 @@ fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
 
     match selector {
         "er" => diagram_type == "erDiagram",
-        "flowchart" => diagram_type == "flowchart-v2",
+        "flowchart" => matches!(diagram_type, "flowchart-v2" | "flowchart-elk"),
         "state" => diagram_type == "stateDiagram",
         "class" => diagram_type == "classDiagram",
         "gitgraph" => diagram_type == "gitGraph",
@@ -73,6 +73,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
     let mut decimals: u32 = 3;
+    let mut existing_only = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -92,6 +93,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 i += 1;
                 decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
             }
+            "--existing-only" => existing_only = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -286,6 +288,9 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             };
 
             let out_path = mmd_path.with_extension("layout.golden.json");
+            if existing_only && !out_path.is_file() {
+                continue;
+            }
             if let Some(parent) = out_path.parent()
                 && let Err(err) = fs::create_dir_all(parent)
             {
@@ -1000,6 +1005,7 @@ mod tests {
             ("er", "erDiagram", true),
             ("er", "er", true),
             ("flowchart", "flowchart-v2", true),
+            ("flowchart", "flowchart-elk", true),
             ("state", "stateDiagram", true),
             ("class", "classDiagram", true),
             ("class", "class", true),

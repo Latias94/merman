@@ -456,7 +456,7 @@ fn layout_items(
             push_item_layout(
                 &mut out,
                 layout,
-                *domain_name,
+                domain_name,
                 &item.label,
                 idx,
                 start_y,
@@ -470,7 +470,7 @@ fn layout_items(
             push_item_layout(
                 &mut out,
                 layout,
-                *domain_name,
+                domain_name,
                 &label,
                 visible_count,
                 start_y,

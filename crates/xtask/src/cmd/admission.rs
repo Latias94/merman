@@ -526,90 +526,40 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         "docs/alignment/SWIMLANE_MINIMUM.md",
         "present in pinned Mermaid 11.16 source; Flowchart parser/editor reuse exists, while layout/render admission is tracked by the 11.16 parity plan"
     ),
-    DiagramAdmissionRecord {
-        diagram: "railroad",
-        admission: AdmissionStatus::CompatibilityOnly,
-        fixtures: FixtureCorpusStatus::Normalized,
-        normalized_fixture_dir: Some("railroad"),
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::Covered,
-        layout: CoverageStatus::Covered,
-        svg: CoverageStatus::Deferred,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/RAILROAD_MINIMUM.md",
-        defer_reason: Some(
-            "local 11.16 railroad-beta semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
-        ),
-    },
-    DiagramAdmissionRecord {
-        diagram: "railroadEbnf",
-        admission: AdmissionStatus::CompatibilityOnly,
-        fixtures: FixtureCorpusStatus::Normalized,
-        normalized_fixture_dir: Some("railroadEbnf"),
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::Covered,
-        layout: CoverageStatus::Covered,
-        svg: CoverageStatus::Deferred,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/RAILROAD_MINIMUM.md",
-        defer_reason: Some(
-            "local 11.16 railroad-ebnf-beta semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
-        ),
-    },
-    DiagramAdmissionRecord {
-        diagram: "railroadAbnf",
-        admission: AdmissionStatus::CompatibilityOnly,
-        fixtures: FixtureCorpusStatus::Normalized,
-        normalized_fixture_dir: Some("railroadAbnf"),
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::Covered,
-        layout: CoverageStatus::Covered,
-        svg: CoverageStatus::Deferred,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/RAILROAD_MINIMUM.md",
-        defer_reason: Some(
-            "local 11.16 railroad-abnf-beta semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
-        ),
-    },
-    DiagramAdmissionRecord {
-        diagram: "railroadPeg",
-        admission: AdmissionStatus::CompatibilityOnly,
-        fixtures: FixtureCorpusStatus::Normalized,
-        normalized_fixture_dir: Some("railroadPeg"),
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::Covered,
-        layout: CoverageStatus::Covered,
-        svg: CoverageStatus::Deferred,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/RAILROAD_MINIMUM.md",
-        defer_reason: Some(
-            "local 11.16 railroad-peg-beta semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
-        ),
-    },
+    primary!(
+        "railroad",
+        FixtureCorpusStatus::Normalized,
+        "compare-railroad-svgs",
+        "docs/alignment/RAILROAD_MINIMUM.md"
+    ),
+    primary!(
+        "railroadEbnf",
+        FixtureCorpusStatus::Normalized,
+        "compare-railroad-ebnf-svgs",
+        "docs/alignment/RAILROAD_MINIMUM.md"
+    ),
+    primary!(
+        "railroadAbnf",
+        FixtureCorpusStatus::Normalized,
+        "compare-railroad-abnf-svgs",
+        "docs/alignment/RAILROAD_MINIMUM.md"
+    ),
+    primary!(
+        "railroadPeg",
+        FixtureCorpusStatus::Normalized,
+        "compare-railroad-peg-svgs",
+        "docs/alignment/RAILROAD_MINIMUM.md"
+    ),
     not_admitted!(
         "wardley",
         "large family lane deferred behind smaller source-backed work"
     ),
-    DiagramAdmissionRecord {
-        diagram: "cynefin",
-        admission: AdmissionStatus::CompatibilityOnly,
-        fixtures: FixtureCorpusStatus::Normalized,
-        normalized_fixture_dir: Some("cynefin"),
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::Covered,
-        layout: CoverageStatus::Covered,
-        svg: CoverageStatus::Deferred,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/CYNEFIN_MINIMUM.md",
-        defer_reason: Some(
-            "local 11.16 semantic/layout/SVG renderer exists; upstream SVG baselines and compare command are pending the U7 Mermaid 11.16 baseline refresh",
-        ),
-    },
+    primary!(
+        "cynefin",
+        FixtureCorpusStatus::Normalized,
+        "compare-cynefin-svgs",
+        "docs/alignment/CYNEFIN_MINIMUM.md"
+    ),
 ];
 
 #[cfg(test)]
@@ -661,10 +611,11 @@ mod tests {
             .iter()
             .filter(|entry| entry.get("op").and_then(serde_json::Value::as_str) == Some("remove"))
             .filter_map(|entry| {
-                entry
-                    .get("path")
-                    .and_then(serde_json::Value::as_array)?
-                    .first()
+                let path = entry.get("path").and_then(serde_json::Value::as_array)?;
+                if path.len() != 1 {
+                    return None;
+                }
+                path.first()
                     .and_then(serde_json::Value::as_str)
                     .map(str::to_string)
             })
@@ -867,14 +818,12 @@ mod tests {
             }
         }
 
-        for diagram in ["wardley"] {
-            let record = record(diagram);
-            let capability = core_family_capability(core_capabilities, diagram)
-                .unwrap_or_else(|| panic!("{diagram} should exist in core detector facts"));
-            assert_eq!(record.admission, AdmissionStatus::NotAdmitted);
-            assert!(!capability.has_semantic_parser);
-            assert!(!capability.has_render_parser);
-        }
+        let wardley = record("wardley");
+        let wardley_capability = core_family_capability(core_capabilities, "wardley")
+            .expect("wardley should exist in core detector facts");
+        assert_eq!(wardley.admission, AdmissionStatus::NotAdmitted);
+        assert!(!wardley_capability.has_semantic_parser);
+        assert!(!wardley_capability.has_render_parser);
 
         let swimlane = record("swimlane");
         let swimlane_capability = core_family_capability(core_capabilities, "swimlane")
@@ -886,14 +835,14 @@ mod tests {
         let cynefin = record("cynefin");
         let cynefin_capability = core_family_capability(core_capabilities, "cynefin")
             .expect("cynefin should exist in core detector/parser facts");
-        assert_eq!(cynefin.admission, AdmissionStatus::CompatibilityOnly);
+        assert_eq!(cynefin.admission, AdmissionStatus::PrimarySvgMatrix);
         assert!(cynefin_capability.has_semantic_parser);
         assert!(cynefin_capability.has_render_parser);
 
         let railroad = record("railroad");
         let railroad_capability = core_family_capability(core_capabilities, "railroad")
             .expect("railroad should exist in core detector/parser facts");
-        assert_eq!(railroad.admission, AdmissionStatus::CompatibilityOnly);
+        assert_eq!(railroad.admission, AdmissionStatus::PrimarySvgMatrix);
         assert!(railroad_capability.has_semantic_parser);
         assert!(railroad_capability.has_render_parser);
 
@@ -901,7 +850,7 @@ mod tests {
             let record = record(diagram);
             let capability = core_family_capability(core_capabilities, diagram)
                 .unwrap_or_else(|| panic!("{diagram} should exist in core detector/parser facts"));
-            assert_eq!(record.admission, AdmissionStatus::CompatibilityOnly);
+            assert_eq!(record.admission, AdmissionStatus::PrimarySvgMatrix);
             assert!(capability.has_semantic_parser);
             assert!(capability.has_render_parser);
         }

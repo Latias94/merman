@@ -72,7 +72,7 @@
         {
           "id": "L_P1_P1.5_0",
           "from": "P1",
-          "to": "P1.5",
+          "to": "P2",
           "from_cluster": null,
           "to_cluster": "P1.5",
           "points": [
@@ -170,7 +170,7 @@
         },
         {
           "id": "L_P1.5_P5_0",
-          "from": "P1.5",
+          "from": "P2",
           "to": "P5",
           "from_cluster": "P1.5",
           "to_cluster": null,

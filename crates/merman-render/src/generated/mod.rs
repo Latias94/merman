@@ -6,7 +6,6 @@
 // stay in place until each family is regenerated and renamed in a controlled migration.
 
 #[cfg(feature = "cytoscape-layout")]
-pub mod architecture_root_overrides_11_12_2;
 pub mod block_text_overrides_11_12_2;
 pub mod c4_root_overrides_11_12_2;
 pub mod c4_text_overrides_11_12_2;
@@ -17,14 +16,10 @@ pub mod eventmodeling_root_overrides_11_15_0;
 pub mod flowchart_root_overrides_11_12_2;
 pub mod flowchart_text_overrides_11_12_2;
 pub mod font_metrics_flowchart_11_12_2;
-pub mod gitgraph_root_overrides_11_12_2;
 #[cfg(feature = "cytoscape-layout")]
 pub mod mindmap_root_overrides_11_12_2;
 pub mod pie_root_overrides_11_12_2;
-pub mod requirement_root_overrides_11_12_2;
-pub mod requirement_text_overrides_11_12_2;
 pub mod sankey_root_overrides_11_12_2;
-pub mod sequence_root_overrides_11_12_2;
 pub mod state_root_overrides_11_12_2;
 pub mod state_text_overrides_11_12_2;
 pub mod svg_overrides_sequence_11_12_2;

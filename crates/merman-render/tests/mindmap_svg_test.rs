@@ -151,3 +151,63 @@ fn mindmap_svg_uses_direct_classic_shapes_for_rounded_and_hexagon_nodes() {
         "classic Mindmap rounded/hexagon nodes should not use the old rough outer-path wrapper: {svg}"
     );
 }
+
+#[test]
+fn mindmap_tidy_tree_config_dispatches_bidirectional_layout() {
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(
+        r#"---
+config:
+  layout: tidy-tree
+---
+mindmap
+  root((Root))
+    Left
+      Left child
+    Right
+      Right child
+    Also left
+"#,
+        ParseOptions::strict(),
+    ))
+    .expect("parse ok")
+    .expect("diagram detected");
+
+    let layout = layout_parsed(&parsed, &LayoutOptions::headless_svg_defaults())
+        .expect("tidy-tree layout ok");
+    let LayoutDiagram::MindmapDiagram(layout) = &layout.layout else {
+        panic!("expected MindmapDiagram layout");
+    };
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing node {id}"))
+    };
+
+    let root = node("0");
+    let left = node("1");
+    let left_child = node("2");
+    let right = node("3");
+    let right_child = node("4");
+    let also_left = node("5");
+    assert_eq!((root.x, root.y), (0.0, 20.0));
+    assert!(left.x < root.x && left_child.x < left.x);
+    assert!(right.x > root.x && right_child.x > right.x);
+    assert!(also_left.x < root.x);
+
+    assert!(layout.edges.iter().all(|edge| edge.points.len() == 4));
+    let edge_to_left = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "0" && edge.to == "1")
+        .expect("root-to-left edge");
+    let edge_to_right = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "0" && edge.to == "3")
+        .expect("root-to-right edge");
+    assert!(edge_to_left.points[1].x < root.x);
+    assert!(edge_to_right.points[1].x > root.x);
+}

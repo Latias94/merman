@@ -238,6 +238,7 @@
         "classes": [],
         "styles": [],
         "dir": "LR",
+        "hasExplicitDir": true,
         "labelType": "string"
       },
       {
@@ -250,6 +251,7 @@
         "classes": [],
         "styles": [],
         "dir": "BT",
+        "hasExplicitDir": true,
         "labelType": "string"
       }
     ]

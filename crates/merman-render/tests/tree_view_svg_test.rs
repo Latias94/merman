@@ -54,6 +54,7 @@ treeView-beta
     assert!(svg.contains(r#"viewBox="-1.5 0 "#));
     assert!(svg.contains(r#"<g/><g class="tree-view">"#));
     assert!(svg.contains(r#"<g class="tree-view">"#));
+    assert!(svg.contains(r#"<g><text dominant-baseline="middle""#));
     assert!(svg.contains(r#"class="treeView-node-label""#));
     assert!(svg.contains(r#"class="treeView-node-line""#));
     assert!(svg.contains(r#"font-size: 20px"#));
@@ -133,8 +134,8 @@ src/ :::highlight icon(folder) ## source directory
     )
     .unwrap();
 
-    assert!(svg.contains(r#"class="treeView-node-label highlight""#));
-    assert!(!svg.contains("treeView-node-dir"));
+    assert!(svg.contains(r#"class="treeView-node-label treeView-node-dir highlight""#));
+    assert!(svg.contains(".treeView-node-dir { font-weight: bold; }"));
     assert!(svg.contains(r#"class="treeView-highlight-bg""#));
     assert!(svg.contains(r#"class="treeView-node-description""#));
     assert!(svg.contains("source directory"));
@@ -147,6 +148,39 @@ src/ :::highlight icon(folder) ## source directory
     assert!(svg.contains(".treeView-node-icon"));
     assert!(svg.contains(".treeView-node-description"));
     assert!(svg.contains(".treeView-highlight-bg"));
+}
+
+#[test]
+fn tree_view_trailing_slash_only_marks_directory_labels() {
+    let input = r##"treeView-beta
+src/ :::directory-probe
+    main.rs :::file-probe
+"##;
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let svg = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        LayoutOptions::default().text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("tree-view-directory-test".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+
+    assert!(
+        svg.contains(r#"class="treeView-node-label treeView-node-dir directory-probe""#),
+        "trailing-slash directory should receive the upstream directory class: {svg}"
+    );
+    assert!(svg.contains(r#"class="treeView-node-label file-probe""#));
+    assert!(!svg.contains(r#"treeView-node-dir file-probe"#));
 }
 
 #[test]

@@ -171,6 +171,7 @@
           "stroke-width:1px"
         ],
         "dir": "LR",
+        "hasExplicitDir": true,
         "labelType": "string"
       }
     ]

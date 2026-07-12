@@ -86,106 +86,6 @@
       ],
       "edges": [
         {
-          "id": "Inner-cyclic-special-1",
-          "from": "Inner",
-          "to": "Inner",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 115.479,
-              "y": 327.5
-            },
-            {
-              "x": 100.705,
-              "y": 365.0
-            },
-            {
-              "x": 100.705,
-              "y": 402.5
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "Inner-cyclic-special-2",
-          "from": "Inner",
-          "to": "Inner",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 123.39,
-              "y": 501.6
-            },
-            {
-              "x": 153.539,
-              "y": 452.1
-            },
-            {
-              "x": 153.539,
-              "y": 402.55
-            },
-            {
-              "x": 153.539,
-              "y": 365.0
-            },
-            {
-              "x": 133.857,
-              "y": 327.5
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "Inner-cyclic-special-mid",
-          "from": "Inner",
-          "to": "Inner",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 100.705,
-              "y": 402.6
-            },
-            {
-              "x": 100.705,
-              "y": 452.1
-            },
-            {
-              "x": 123.337,
-              "y": 501.6
-            }
-          ],
-          "label": {
-            "x": 100.705,
-            "y": 452.1,
-            "width": 25.125,
-            "height": 24.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
           "id": "edge0",
           "from": "root_start",
           "to": "Outer",
@@ -268,6 +168,44 @@
             }
           ],
           "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "edge3",
+          "from": "Inner",
+          "to": "Inner",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 105.359,
+              "y": 327.5
+            },
+            {
+              "x": 105.359,
+              "y": 351.5
+            },
+            {
+              "x": 141.359,
+              "y": 351.5
+            },
+            {
+              "x": 141.359,
+              "y": 327.5
+            }
+          ],
+          "label": {
+            "x": 123.359,
+            "y": 367.5,
+            "width": 25.125,
+            "height": 24.0
+          },
           "start_label_left": null,
           "start_label_right": null,
           "end_label_left": null,

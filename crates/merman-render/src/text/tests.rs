@@ -1100,7 +1100,7 @@ fn sequence_svg_overrides_measure_final_simple_bbox_widths() {
 }
 
 #[test]
-fn sequence_wrap_uses_exact_single_line_evidence_only_when_it_fits() {
+fn sequence_wrap_does_not_use_final_bbox_overrides_as_incremental_probes() {
     let measurer = VendoredFontMetricsTextMeasurer::default();
     let style = TextStyle {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
@@ -1114,10 +1114,13 @@ fn sequence_wrap_uses_exact_single_line_evidence_only_when_it_fits() {
     assert_eq!(exact, 511.0);
     assert!(exact + 4.0 < probe);
 
-    let single = wrap_label_like_mermaid_lines_floored_bbox(text, &measurer, &style, exact + 31.0);
-    assert_eq!(single, vec![text.to_string()]);
+    let wrapped_at_final_bbox = wrap_label_like_mermaid_lines(text, &measurer, &style, exact + 4.0);
+    assert!(
+        wrapped_at_final_bbox.len() > 1,
+        "final-layout bbox overrides are not valid evidence for incremental wrap probes"
+    );
 
-    let wrapped = wrap_label_like_mermaid_lines_floored_bbox(text, &measurer, &style, 200.0);
+    let wrapped = wrap_label_like_mermaid_lines(text, &measurer, &style, 200.0);
     assert!(
         wrapped.len() > 1,
         "narrow labels should still use the normal Mermaid wrapLabel flow"

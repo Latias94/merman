@@ -457,6 +457,7 @@ mod tests {
                 id: "cluster".to_string(),
                 title: "Cluster".to_string(),
                 dir: None,
+                has_explicit_dir: false,
                 label_type: None,
                 classes: Vec::new(),
                 styles: Vec::new(),

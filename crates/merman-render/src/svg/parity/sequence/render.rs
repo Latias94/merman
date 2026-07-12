@@ -118,13 +118,7 @@ fn render_sequence_diagram_svg_inner(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
-    let root_metrics = write_sequence_svg_root_open(
-        &mut out,
-        layout,
-        model,
-        diagram_id,
-        options.apply_root_overrides,
-    );
+    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id);
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());
@@ -145,6 +139,7 @@ fn render_sequence_diagram_svg_inner(
         settings.actor_label_font_size,
         settings.box_margin,
         settings.box_text_margin,
+        &settings.rect_default_fill,
     );
 
     let actor_ctx = SequenceActorRenderContext {
@@ -184,8 +179,17 @@ fn render_sequence_diagram_svg_inner(
         diagram_id,
     );
 
+    let block_widths_by_id = crate::sequence::sequence_block_widths_for_render(
+        model,
+        layout,
+        sanitize_config,
+        measurer,
+        options.math_renderer.as_deref(),
+    );
+
     let interaction_ctx = SequenceInteractionRenderContext {
         model,
+        block_widths_by_id: &block_widths_by_id,
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         sanitize_config,

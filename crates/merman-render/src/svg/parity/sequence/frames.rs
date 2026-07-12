@@ -11,6 +11,7 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     actor_label_font_size: f64,
     box_margin: f64,
     box_text_margin: f64,
+    rect_default_fill: &str,
 ) {
     // Mermaid renders "box" frames as root-level `<g><rect class="rect"/>...</g>` nodes before actors.
     // Mermaid renders boxes "behind" other elements; multiple boxes end up reversed in DOM order.
@@ -125,7 +126,12 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
             if msg.message_type != 22 {
                 continue;
             }
-            let fill = msg.message_text();
+            let explicit_fill = msg.message_text();
+            let fill = if explicit_fill.is_empty() {
+                rect_default_fill
+            } else {
+                explicit_fill
+            };
             let node_id = format!("rect-{}", msg.id);
             let Some(n) = nodes_by_id.get(node_id.as_str()).copied() else {
                 continue;

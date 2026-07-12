@@ -220,6 +220,18 @@ fn flowchart_layout_produces_positions_and_routes() {
 }
 
 #[test]
+fn flowchart_inherited_subgraph_dir_does_not_force_recursive_extraction() {
+    let layout = layout_flowchart(
+        "%%{init: {\"flowchart\": {\"inheritDir\": true}}}%%\nflowchart TB\nsubgraph A\n  a --> b\nend\na --> c\n",
+    );
+
+    assert!(
+        !layout.dom_node_order_by_root.contains_key("A"),
+        "an inherited direction must not be treated as a user-authored direction"
+    );
+}
+
+#[test]
 fn flowchart_layout_respects_lr_direction() {
     let text = "flowchart LR\nA-->B\nB-->C\n";
     let engine = Engine::new();
@@ -702,10 +714,9 @@ fn flowchart_edge_label_is_included_in_subgraph_bounds() {
 }
 
 #[test]
-fn flowchart_subgraph_dir_is_not_applied_when_cluster_has_external_edges() {
-    // Mermaid only applies subgraph `dir` as a recursive layout when the cluster is isolated
-    // (no external connections). When there is an external edge, internal layout follows the
-    // diagram direction.
+fn flowchart_subgraph_dir_is_applied_when_cluster_has_external_edges() {
+    // Mermaid 11.16 extracts clusters with an explicit direction even when an edge crosses the
+    // cluster boundary. The outer edge is rebound to the extracted cluster node.
     let text = "flowchart TB\nsubgraph A\n  direction LR\n  a --> b\nend\na --> c\n";
 
     let engine = Engine::new();
@@ -718,22 +729,92 @@ fn flowchart_subgraph_dir_is_not_applied_when_cluster_has_external_edges() {
         panic!("expected FlowchartV2 layout");
     };
 
+    assert!(
+        layout.dom_node_order_by_root.contains_key("A"),
+        "an explicit-direction cluster must be recorded as an extracted recursive root"
+    );
+
     let nodes_by_id = layout
         .nodes
         .iter()
         .map(|n| (n.id.as_str(), (n.x, n.y)))
         .collect::<std::collections::HashMap<_, _>>();
 
-    let (_ax, ay) = nodes_by_id["a"];
-    let (_bx, by) = nodes_by_id["b"];
+    let (ax, ay) = nodes_by_id["a"];
+    let (bx, by) = nodes_by_id["b"];
     assert!(
-        by > ay + 5.0,
-        "node b should be below a (TB) when cluster A has external edges"
+        bx > ax + 5.0 && (by - ay).abs() <= 5.0,
+        "node b should be to the right of a (LR) despite cluster A having external edges"
     );
 }
 
 #[test]
-fn flowchart_edge_to_ancestor_cluster_keeps_ancestor_non_recursive() {
+fn flowchart_layout_merges_self_loop_segments_into_one_logical_edge() {
+    let layout = layout_flowchart("flowchart TB\nA -->|again| A\n");
+
+    assert_eq!(layout.edges.len(), 1);
+    let edge = &layout.edges[0];
+    assert_eq!(edge.id, "L_A_A_0");
+    assert_eq!(edge.from, "A");
+    assert_eq!(edge.to, "A");
+    assert_eq!(edge.points.len(), 4);
+    assert!(edge.label.is_some());
+    assert!(
+        layout.nodes.iter().any(|node| node.id == "A---A---1"),
+        "Dagre helper nodes must remain available for layout and DOM parity"
+    );
+}
+
+#[test]
+fn flowchart_safe_anchor_avoids_leaf_inside_extractable_sibling_cluster() {
+    let layout = layout_flowchart(
+        "flowchart TD\nsubgraph P\n  subgraph I\n    a\n  end\n  b\nend\nb --> x\nP --> y\n",
+    );
+
+    let edge = layout
+        .edges
+        .iter()
+        .find(|edge| edge.to == "y")
+        .expect("direct edge from P to y");
+    assert_eq!(
+        edge.from, "b",
+        "the layout endpoint must survive extraction of sibling cluster I"
+    );
+    assert_eq!(edge.from_cluster.as_deref(), Some("P"));
+}
+
+#[test]
+fn flowchart_cross_boundary_edge_exposes_rebound_layout_endpoint() {
+    let layout =
+        layout_flowchart("flowchart TD\nsubgraph C\n  direction LR\n  D1\nend\nD1 --> D2\n");
+
+    let edge = layout.edges.first().expect("cross-boundary edge");
+    assert_eq!(edge.from, "C");
+    assert_eq!(edge.to, "D2");
+}
+
+#[test]
+fn flowchart_regular_edge_id_containing_cyclic_special_is_not_a_helper() {
+    let layout = layout_flowchart("flowchart TD\nA regular-cyclic-special-edge@--> B\n");
+
+    assert_eq!(layout.edges.len(), 1);
+    assert_eq!(layout.edges[0].id, "regular-cyclic-special-edge");
+    assert_eq!(layout.edges[0].from, "A");
+    assert_eq!(layout.edges[0].to, "B");
+}
+
+#[test]
+fn flowchart_parallel_self_loops_match_graphlib_last_write_wins() {
+    let layout =
+        layout_flowchart("flowchart TD\nA first-loop@-->|first| A\nA second-loop@-->|second| A\n");
+
+    assert_eq!(layout.edges.len(), 1);
+    assert_eq!(layout.edges[0].id, "second-loop");
+    assert!(layout.edges[0].label.is_some());
+}
+
+#[test]
+fn flowchart_edge_to_ancestor_cluster_keeps_explicit_nested_directions() {
     let text = std::fs::read_to_string(
         workspace_root()
             .join("fixtures")
@@ -771,21 +852,23 @@ fn flowchart_edge_to_ancestor_cluster_keeps_ancestor_non_recursive() {
 
     let (ax, ay) = nodes_by_id["a"];
     let (bx, by) = nodes_by_id["b"];
-    let (cx, cy) = nodes_by_id["c"];
+    let (_cx, cy) = nodes_by_id["c"];
     assert!(
-        bx > ax + 60.0 && cx > bx + 60.0,
-        "ancestor cluster edge should not make Outer use its TB direction as a recursive layout"
+        bx > ax + 60.0 && (by - ay).abs() < 80.0,
+        "Inner should retain its explicit LR direction"
     );
     assert!(
-        (cy - ay).abs() < 80.0 && (by - ay).abs() < 80.0,
-        "nodes should stay in the root LR layout band"
+        cy > ay.max(by) + 100.0,
+        "Outer should retain its explicit TB direction despite the edge to the ancestor cluster"
     );
 
     let inner = clusters_by_id["Inner"];
     let outer = clusters_by_id["Outer"];
+    assert_eq!(inner.effective_dir, "LR");
+    assert_eq!(outer.effective_dir, "TB");
     assert!(
-        inner.width > inner.height && outer.width > outer.height,
-        "non-recursive nested clusters should keep the upstream wide LR footprint"
+        inner.width > inner.height && outer.height > inner.height + 100.0,
+        "the nested LR cluster should be packed inside the taller TB ancestor"
     );
 }
 

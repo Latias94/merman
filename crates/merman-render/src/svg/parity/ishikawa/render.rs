@@ -1,5 +1,8 @@
 use super::super::*;
-use crate::model::IshikawaTextLayout;
+use crate::model::{
+    IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaLineLayout,
+    IshikawaSubGroupLayout, IshikawaTextLayout,
+};
 
 pub(crate) fn render_ishikawa_diagram_svg(
     layout: &IshikawaDiagramLayout,
@@ -56,6 +59,10 @@ pub(crate) fn render_ishikawa_diagram_svg(
         r#"" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 10 0 L 0 5 L 10 10 Z" class="ishikawa-arrow"></path></marker></defs>"#,
     );
 
+    if let Some(spine) = &layout.spine {
+        push_line(&mut out, spine, &marker_id);
+    }
+
     if let Some(head) = &layout.head {
         let _ = write!(
             &mut out,
@@ -69,43 +76,67 @@ pub(crate) fn render_ishikawa_diagram_svg(
         out.push_str("</g>");
     }
 
-    for label_box in &layout.label_boxes {
-        let _ = write!(
-            &mut out,
-            r#"<rect class="ishikawa-label-box" x="{}" y="{}" width="{}" height="{}"></rect>"#,
-            fmt(label_box.x),
-            fmt(label_box.y),
-            fmt(label_box.width),
-            fmt(label_box.height)
-        );
-    }
-
-    for line in &layout.lines {
-        let _ = write!(
-            &mut out,
-            r#"<line class="{}" x1="{}" y1="{}" x2="{}" y2="{}""#,
-            escape_attr_display(&line.class_name),
-            fmt(line.x1),
-            fmt(line.y1),
-            fmt(line.x2),
-            fmt(line.y2)
-        );
-        if line.marker_start {
-            let _ = write!(
-                &mut out,
-                r#" marker-start="url(#{})""#,
-                escape_attr_display(&marker_id)
-            );
+    for pair in &layout.pairs {
+        out.push_str(r#"<g class="ishikawa-pair">"#);
+        push_branch(&mut out, &pair.upper, &marker_id);
+        if let Some(lower) = &pair.lower {
+            push_branch(&mut out, lower, &marker_id);
         }
-        out.push_str("></line>");
-    }
-
-    for label in &layout.labels {
-        push_text_with_offset(&mut out, label, 0.0, 0.0);
+        out.push_str("</g>");
     }
 
     out.push_str("</g></svg>\n");
     Ok(out)
+}
+
+fn push_branch(out: &mut String, branch: &IshikawaBranchLayout, marker_id: &str) {
+    push_line(out, &branch.line, marker_id);
+    push_cause_label_group(out, &branch.label_group);
+    for sub_group in &branch.sub_groups {
+        push_sub_group(out, sub_group, marker_id);
+    }
+}
+
+fn push_cause_label_group(out: &mut String, group: &IshikawaCauseLabelGroupLayout) {
+    out.push_str(r#"<g class="ishikawa-label-group">"#);
+    let label_box = &group.label_box;
+    let _ = write!(
+        out,
+        r#"<rect class="ishikawa-label-box" x="{}" y="{}" width="{}" height="{}"></rect>"#,
+        fmt(label_box.x),
+        fmt(label_box.y),
+        fmt(label_box.width),
+        fmt(label_box.height)
+    );
+    push_text_with_offset(out, &group.label, 0.0, 0.0);
+    out.push_str("</g>");
+}
+
+fn push_sub_group(out: &mut String, group: &IshikawaSubGroupLayout, marker_id: &str) {
+    out.push_str(r#"<g class="ishikawa-sub-group">"#);
+    push_line(out, &group.line, marker_id);
+    push_text_with_offset(out, &group.label, 0.0, 0.0);
+    out.push_str("</g>");
+}
+
+fn push_line(out: &mut String, line: &IshikawaLineLayout, marker_id: &str) {
+    let _ = write!(
+        out,
+        r#"<line class="{}" x1="{}" y1="{}" x2="{}" y2="{}""#,
+        escape_attr_display(&line.class_name),
+        fmt(line.x1),
+        fmt(line.y1),
+        fmt(line.x2),
+        fmt(line.y2)
+    );
+    if line.marker_start {
+        let _ = write!(
+            out,
+            r#" marker-start="url(#{})""#,
+            escape_attr_display(marker_id)
+        );
+    }
+    out.push_str("></line>");
 }
 
 fn push_ishikawa_head_text(out: &mut String, text: &IshikawaTextLayout, dx: f64, dy: f64) {

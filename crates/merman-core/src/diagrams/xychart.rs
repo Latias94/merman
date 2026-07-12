@@ -403,9 +403,12 @@ impl XyChartState {
         };
     }
 
-    fn transform_data_without_category(&mut self, data: &[f64]) -> Vec<(String, Option<f64>)> {
+    fn transform_data_without_category(
+        &mut self,
+        mut data: Vec<f64>,
+    ) -> (Vec<f64>, Vec<(String, Option<f64>)>) {
         if data.is_empty() {
-            return Vec::new();
+            return (data, Vec::new());
         }
 
         if !self.has_set_x_axis {
@@ -416,11 +419,15 @@ impl XyChartState {
             self.set_x_axis_range(prev_min.min(1.0), prev_max.max(data.len() as f64));
         }
 
-        if !self.has_set_y_axis {
-            self.set_y_axis_range_from_plot_data(data);
+        if let AxisData::Band { categories, .. } = &self.x_axis {
+            data.truncate(categories.len());
         }
 
-        match &self.x_axis {
+        if !self.has_set_y_axis {
+            self.set_y_axis_range_from_plot_data(&data);
+        }
+
+        let plot_data = match &self.x_axis {
             AxisData::Band { categories, .. } => categories
                 .iter()
                 .enumerate()
@@ -443,7 +450,8 @@ impl XyChartState {
                     .map(|(idx, c)| (c, data.get(idx).copied()))
                     .collect()
             }
-        }
+        };
+        (data, plot_data)
     }
 
     fn add_line_data(
@@ -463,10 +471,10 @@ impl XyChartState {
                 }
             })
             .collect::<Vec<_>>();
+        let (values, pairs) = self.transform_data_without_category(values);
         if point_labels.iter().all(String::is_empty) {
             point_labels.clear();
         }
-        let pairs = self.transform_data_without_category(&values);
         self.plots.push(Plot {
             plot_type: XyChartPlotType::Line,
             title,
@@ -478,7 +486,7 @@ impl XyChartState {
 
     fn add_bar_data(&mut self, title: Option<String>, data: Vec<ParsedDataPoint>) {
         let values = data.iter().map(|point| point.value).collect::<Vec<_>>();
-        let pairs = self.transform_data_without_category(&values);
+        let (values, pairs) = self.transform_data_without_category(values);
         self.plots.push(Plot {
             plot_type: XyChartPlotType::Bar,
             title,
@@ -1929,6 +1937,28 @@ bar [2 "ignored", 4, 6]
         assert_eq!(model["plots"][0]["values"], json!([1.0, 5.0, 9.0]));
         assert_eq!(model["plots"][0]["pointLabels"], json!(["low", "", "high"]));
         assert!(model["plots"][1].get("pointLabels").is_none());
+    }
+
+    #[test]
+    fn xychart_band_axis_truncates_points_but_preserves_labels_before_auto_y_range() {
+        let model = parse(
+            r#"xychart
+x-axis [Q1, Q2]
+line [10 "first", 50 "second", 999 "orphan", 800 "ignored"]
+"#,
+        );
+
+        assert_eq!(model["yAxis"]["min"], json!(10.0));
+        assert_eq!(model["yAxis"]["max"], json!(50.0));
+        assert_eq!(model["plots"][0]["values"], json!([10.0, 50.0]));
+        assert_eq!(
+            model["plots"][0]["data"],
+            json!([["Q1", 10.0], ["Q2", 50.0]])
+        );
+        assert_eq!(
+            model["plots"][0]["pointLabels"],
+            json!(["first", "second", "orphan", "ignored"])
+        );
     }
 
     #[test]

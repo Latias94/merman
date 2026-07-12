@@ -2,7 +2,7 @@
 
 This document tracks the first local support slice for Mermaid `eventmodeling`.
 
-Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
+Upstream references at locked commit `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`:
 
 - Detector: `packages/mermaid/src/diagrams/eventmodeling/detector.ts`
 - DB/model: `packages/mermaid/src/diagrams/eventmodeling/db.ts`

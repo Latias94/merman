@@ -52,16 +52,18 @@ pub fn layout_venn_diagram_typed(
     let title_height = if title.is_some() { 48.0 * scale } else { 0.0 };
     let diagram_height = (cfg.height - title_height).max(1.0);
 
-    let areas = model
-        .subsets
-        .iter()
-        .map(|subset| VennArea {
-            sets: subset.sets.clone(),
-            size: subset.size,
-            weight: None,
-            label: subset.label.clone(),
-        })
-        .collect::<Vec<_>>();
+    let areas = ensure_pairwise_subsets_for_layout(
+        model
+            .subsets
+            .iter()
+            .map(|subset| VennArea {
+                sets: subset.sets.clone(),
+                size: subset.size,
+                weight: None,
+                label: subset.label.clone(),
+            })
+            .collect::<Vec<_>>(),
+    );
     let layout_areas = if areas.is_empty() {
         Vec::new()
     } else {
@@ -246,6 +248,54 @@ fn layout_text_nodes(
 
 fn stable_sets_key(sets: &[String]) -> String {
     sets.join("|")
+}
+
+fn ensure_pairwise_subsets_for_layout(mut areas: Vec<VennArea>) -> Vec<VennArea> {
+    let mut existing_keys = areas
+        .iter()
+        .map(|area| {
+            let mut sets = area.sets.clone();
+            sets.sort();
+            sets.join("|")
+        })
+        .collect::<HashSet<_>>();
+    let singleton_sizes = areas
+        .iter()
+        .filter(|area| area.sets.len() == 1)
+        .map(|area| (area.sets[0].clone(), area.size))
+        .collect::<HashMap<_, _>>();
+    let mut synthetic = Vec::new();
+
+    for area in areas.iter().filter(|area| area.sets.len() >= 3) {
+        let mut members = area.sets.clone();
+        members.sort();
+        for left_index in 0..members.len() - 1 {
+            for right_index in left_index + 1..members.len() {
+                let left = &members[left_index];
+                let right = &members[right_index];
+                let key = format!("{left}|{right}");
+                if !existing_keys.insert(key) {
+                    continue;
+                }
+
+                let size = singleton_sizes
+                    .get(left)
+                    .zip(singleton_sizes.get(right))
+                    .map_or(2.5, |(left_size, right_size)| {
+                        left_size.min(*right_size) / 4.0
+                    });
+                synthetic.push(VennArea {
+                    sets: vec![left.clone(), right.clone()],
+                    size,
+                    weight: None,
+                    label: Some(String::new()),
+                });
+            }
+        }
+    }
+
+    areas.extend(synthetic);
+    areas
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1997,6 +2047,7 @@ fn weighted_sum(ret: &mut [f64], w1: f64, v1: &[f64], w2: f64, v2: &[f64]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman_core::diagrams::venn::{VennDiagramRenderModel, VennSubsetRenderModel};
 
     fn c(set: &str, x: f64, y: f64, radius: f64) -> VennCircle {
         VennCircle {
@@ -2009,6 +2060,14 @@ mod tests {
 
     fn area(sets: &[&str], size: f64) -> VennArea {
         VennArea::new(sets.iter().copied(), size)
+    }
+
+    fn subset(sets: &[&str], size: f64) -> VennSubsetRenderModel {
+        VennSubsetRenderModel {
+            sets: sets.iter().map(|set| (*set).to_string()).collect(),
+            size,
+            label: None,
+        }
     }
 
     fn assert_close(actual: f64, expected: f64, tolerance: f64) {
@@ -2250,5 +2309,37 @@ mod tests {
         assert!(!layout[0].path.is_empty());
         assert_eq!(layout[2].circles.len(), 2);
         assert!(!layout[2].text.disjoint);
+    }
+
+    #[test]
+    fn typed_layout_adds_render_only_pairwise_subsets_for_three_set_union() {
+        let model = VennDiagramRenderModel {
+            subsets: vec![
+                subset(&["A"], 12.0),
+                subset(&["B"], 8.0),
+                subset(&["A", "B", "C"], 1.0),
+            ],
+            ..Default::default()
+        };
+        let original_model = model.clone();
+
+        let layout = layout_venn_diagram_typed(&model, None, &serde_json::json!({}))
+            .expect("three-set union layout");
+        let pairwise = layout
+            .areas
+            .iter()
+            .filter(|area| area.sets.len() == 2)
+            .map(|area| (area.sets.join("|"), area.size, area.label.as_deref()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            pairwise,
+            vec![
+                ("A|B".to_string(), 2.0, Some("")),
+                ("A|C".to_string(), 2.5, Some("")),
+                ("B|C".to_string(), 2.5, Some("")),
+            ]
+        );
+        assert_eq!(model, original_model);
     }
 }

@@ -39,7 +39,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -96,7 +97,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": "System",
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -115,7 +117,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": "Running",
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -191,7 +194,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": "Running",
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -267,7 +271,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": "Running",
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",

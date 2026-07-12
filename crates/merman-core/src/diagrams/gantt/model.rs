@@ -180,11 +180,11 @@ impl GanttDb {
     }
 
     pub(super) fn set_includes(&mut self, txt: &str) {
-        self.includes = split_list_lower(txt);
+        merge_list_lower(&mut self.includes, txt);
     }
 
     pub(super) fn set_excludes(&mut self, txt: &str) {
-        self.excludes = split_list_lower(txt);
+        merge_list_lower(&mut self.excludes, txt);
     }
 
     pub(super) fn set_weekday(&mut self, txt: &str) {
@@ -292,6 +292,13 @@ impl GanttDb {
     pub(super) fn add_task(&mut self, descr: &str, data: &str) {
         let prev_task_id = self.last_task_id.clone();
         let task_info = parse_task_data(&mut self.task_cnt, data);
+        let order = if task_info.vert {
+            -1
+        } else {
+            let order = self.last_order;
+            self.last_order += 1;
+            order
+        };
 
         let raw_task = RawTask {
             section: self.current_section.clone(),
@@ -313,12 +320,11 @@ impl GanttDb {
             crit: task_info.crit,
             milestone: task_info.milestone,
             vert: task_info.vert,
-            order: self.last_order,
+            order,
             start_time: None,
             end_time: None,
         };
 
-        self.last_order += 1;
         let pos = self.raw_tasks.len();
         self.raw_tasks.push(raw_task);
         self.last_task_id = Some(task_info.id.clone());
@@ -467,6 +473,14 @@ fn split_list_lower(txt: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect()
+}
+
+fn merge_list_lower(existing: &mut Vec<String>, txt: &str) {
+    for token in split_list_lower(txt) {
+        if !existing.contains(&token) {
+            existing.push(token);
+        }
+    }
 }
 
 fn parse_task_data(task_cnt: &mut i64, data_str: &str) -> TaskInfo {

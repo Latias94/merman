@@ -1,0 +1,95 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_info_001": {
+      "input_sha256": "68a75951352e5a172016721f9b23e17d75d6295ee25d6666e8d096d6aa9897a3",
+      "svg_sha256": "3a5f35afc605771927d8653dc92732af601c8497a1d497c141eb684918ea6174",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_info_info_diagram_demos_001": {
+      "input_sha256": "c628bc44716c62978abfde7d75ad46ed08e261777f8ad7edbe6723ad8fa2c8f0",
+      "svg_sha256": "823402a37968881e356eb07c6691eeabd0e31913984a2cee4e3ff43879285bf0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_info_info_diagram_demos_002": {
+      "input_sha256": "d4e4fcd93f340df32049f954b782ebd2b86eb64c9380faf5182fec4259b7a93f",
+      "svg_sha256": "328e47865b67bbd516e7a74cb18329750287ce39470685fa527b60f7a2724190",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_info_empty_leading_newline_spec": {
+      "input_sha256": "c99f07f7e8cf90c51cb48dc85bd350ea684421ab645fedd8d314a80e7bf8f125",
+      "svg_sha256": "5435252ad57eb576c68a97a7023ac5f443213f39cbd6ce2d541792faacf2a62d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_info_show_info_multiline_spec": {
+      "input_sha256": "aeaec1a369df80786c4e2bb8366aa52e445d1b0d5d6bcff12a93806ba107ed5f",
+      "svg_sha256": "631b9ca06c87800ece151bb007abed0fc1d5e8a63cccfa1a056daec6471317f3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_info_show_info_spec": {
+      "input_sha256": "dbe1669f106bc61a4fac393605fe5198db59a66e5f6aa223022efc0b57c6dc4d",
+      "svg_sha256": "c7f266ee46b444735d3cbbdaf1bc6add23eda83a36ce8615589412159a24019f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_info_spec": {
+      "input_sha256": "a2478d2ad0f1ebb60419fe3e8e39bf5651aabe6dad20ae36f794780dcdda31a4",
+      "svg_sha256": "3910145c6ab6b6676ebec7397b684530544260a00364786265cae53f3ba216be",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_info_test_002": {
+      "input_sha256": "1546868e62f1e7bfdc0a35814f6ca9d4f84c3cec02f152ba7c9664b0a900a83d",
+      "svg_sha256": "97b01dc46865c4dd74b543e615a4a842ab6d93f8368149651137b2955f2bd892",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_info_test_004": {
+      "input_sha256": "5f9b65457e029ad5794a1bebaad39ee1e70ebec51f23874467e0b3838b07f8d9",
+      "svg_sha256": "40e78a3adfb73bcb16bdc142fe09e98d8a2ff806998f9d95487972eb9d5eb5ba",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_info_test_007": {
+      "input_sha256": "5eb41428b71d0960f8863ca95f87334634d0e36f88a50f5909b190cb29748b05",
+      "svg_sha256": "b538a15515eca5122bd1859990b175c463fe6023a2dea550fec74530b5ae0f28",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_info_test_008": {
+      "input_sha256": "c13a9c3c76401c3ff5de035781565a4807c4c677e8d06e867823eb523dba960e",
+      "svg_sha256": "dd6dbf4a5c85e3a4951eb54bf16b288c44e6ce944858dd583562cb7ddaf0a904",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_info_test_009": {
+      "input_sha256": "6264a9bbe3c3b8ffb66cf7ac046fdb62c5425b478cf8fd80ca38baef24ed145a",
+      "svg_sha256": "120aa573e08248e4412dcecd0210220de83c951fdd3dc6c1a0f19bd9a5c9cb87",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_info_test_010": {
+      "input_sha256": "a183bdad0f94681d82524d225e3fc82475a42cb09296f51409330f3d67ce1a70",
+      "svg_sha256": "f39f8cc9e2a815f3953fc0a8ef39351b74dbfd75de1431ade69c310013a6fe3a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_info_test_011": {
+      "input_sha256": "a65b9c4d5bf8580dd1d2005e0520f0b32030166434bc6af0d50d73f39fd3bc4f",
+      "svg_sha256": "cba18909a29c7fddba31f782c064e48edea69491e9d89e7d9a13310333b35bb6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_info_test_012": {
+      "input_sha256": "6ceebc0af77acff1ec6c5de464ca27bf5b95ca617c18e6b53f3248e2767863a3",
+      "svg_sha256": "f4a433e113e9772522c039bf4059c712b5025e5e1c21e2d84af6622bb38fc030",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

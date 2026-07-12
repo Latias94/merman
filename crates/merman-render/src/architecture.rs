@@ -2,7 +2,7 @@ use crate::architecture_metrics::{
     architecture_cytoscape_child_contribution_bounds, architecture_cytoscape_child_label_bounds,
     architecture_measure_cytoscape_node_bbox_extras, architecture_node_bbox_extras_to_manatee,
 };
-use crate::config::config_f64;
+use crate::config::{config_f64, json_f64, value_at};
 use crate::json::from_value_ref;
 use crate::model::{
     ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds,
@@ -270,6 +270,30 @@ fn anchor_from_dir(dir: Dir) -> manatee::Anchor {
         Dir::T => manatee::Anchor::Top,
         Dir::B => manatee::Anchor::Bottom,
     }
+}
+
+fn js_to_uint32(value: f64) -> u64 {
+    const UINT32_MODULUS: f64 = 4_294_967_296.0;
+    value.trunc().rem_euclid(UINT32_MODULUS) as u64
+}
+
+fn architecture_seed_policy(value: Option<&Value>) -> manatee::FcoseRandomPolicy {
+    let numeric_seed = value
+        .and_then(json_f64)
+        .filter(|value| value.is_finite())
+        .unwrap_or(1.0);
+    let is_json_number_zero = value
+        .and_then(Value::as_f64)
+        .is_some_and(|value| value == 0.0);
+    let policy = if is_json_number_zero {
+        manatee::FcoseRandomPolicy::ambient(manatee::FcoseRandomSource::Mulberry32)
+    } else {
+        manatee::FcoseRandomPolicy::seeded(
+            manatee::FcoseRandomSource::Mulberry32,
+            js_to_uint32(numeric_seed),
+        )
+    };
+    policy.with_seed_offset(0).with_reset_seed_each_run(true)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -632,6 +656,7 @@ struct ArchitectureFcoseInputPlan<'a> {
     spatial_maps: Vec<IndexMap<&'a str, (i32, i32)>>,
     graph: manatee::algo::fcose::IndexedGraph,
     options: manatee::algo::fcose::IndexedFcoseOptions,
+    random_policy: manatee::FcoseRandomPolicy,
     default_edge_length: f64,
     compound_padding_px: f64,
 }
@@ -648,7 +673,7 @@ struct ArchitectureFcoseInputPlanInput<'m, 'a> {
     fcose_randomize: bool,
     fcose_node_separation: f64,
     fcose_num_iter: usize,
-    fcose_seed: u64,
+    fcose_random_policy: manatee::FcoseRandomPolicy,
 }
 
 fn build_architecture_fcose_input_plan<'a>(
@@ -666,7 +691,7 @@ fn build_architecture_fcose_input_plan<'a>(
         fcose_randomize,
         fcose_node_separation,
         fcose_num_iter,
-        fcose_seed,
+        fcose_random_policy,
     } = input;
 
     if layout_nodes.len() != model.nodes.len() {
@@ -1129,14 +1154,10 @@ fn build_architecture_fcose_input_plan<'a>(
         compound_padding: Some(compound_padding_px),
         relocate_center: None,
         // Mermaid Architecture runs the layout twice (`layout.run()` inside `layoutstop`),
-        // which advances the seeded RNG stream and can change final positions.
+        // while the additive random policy models each independently wrapped call.
         rerun: true,
-        // Mermaid@11.15 wraps FCoSE in a seeded `Math.random()` helper. Seed 0 opts out
-        // upstream; the Rust port keeps a deterministic fallback for headless repeatability.
-        random_seed: fcose_seed,
-        // The shipped Mermaid 11.15 Architecture render path consumes two seeded random
-        // values before the first FCoSE constraint shuffle even when `randomize=false`.
-        random_seed_offset: Some(2),
+        random_seed: fcose_random_policy.seed().unwrap_or_default(),
+        random_seed_offset: None,
     };
 
     Ok(ArchitectureFcoseInputPlan {
@@ -1146,6 +1167,7 @@ fn build_architecture_fcose_input_plan<'a>(
         spatial_maps,
         graph,
         options,
+        random_policy: fcose_random_policy,
         default_edge_length,
         compound_padding_px,
     })
@@ -1408,10 +1430,8 @@ fn layout_architecture_diagram_model(
         .filter(|v| v.is_finite() && *v >= 1.0)
         .map(|v| v.round() as usize)
         .unwrap_or(2500);
-    let fcose_seed = config_f64(effective_config, &["architecture", "seed"])
-        .filter(|v| v.is_finite() && *v >= 1.0)
-        .map(|v| v.round() as u64)
-        .unwrap_or(1);
+    let fcose_random_policy =
+        architecture_seed_policy(value_at(effective_config, &["architecture", "seed"]));
 
     let node_bounds_extras =
         architecture_fcose_node_bounds_extras(ArchitectureFcoseNodeBoundsExtrasInput {
@@ -1489,7 +1509,7 @@ fn layout_architecture_diagram_model(
             fcose_randomize,
             fcose_node_separation,
             fcose_num_iter,
-            fcose_seed,
+            fcose_random_policy,
         })?;
 
         if std::env::var("MERMAN_ARCH_DEBUG_FCOSE_CONSTRAINTS")
@@ -1521,12 +1541,14 @@ fn layout_architecture_diagram_model(
             timings.manatee_prepare = s.elapsed();
         }
         let manatee_layout_start = timing_enabled.then(web_time::Instant::now);
-        let result =
-            manatee::algo::fcose::layout_indexed(&plan.graph, &plan.options).map_err(|e| {
-                Error::InvalidModel {
-                    message: format!("manatee layout failed: {e}"),
-                }
-            })?;
+        let result = manatee::algo::fcose::layout_indexed_with_random_policy(
+            &plan.graph,
+            &plan.options,
+            plan.random_policy,
+        )
+        .map_err(|e| Error::InvalidModel {
+            message: format!("manatee layout failed: {e}"),
+        })?;
         if let Some(s) = manatee_layout_start {
             timings.manatee_layout = s.elapsed();
         }
@@ -1804,7 +1826,12 @@ mod tests {
             fcose_randomize: false,
             fcose_node_separation: 75.0,
             fcose_num_iter: 2500,
-            fcose_seed: 1,
+            fcose_random_policy: manatee::FcoseRandomPolicy::seeded(
+                manatee::FcoseRandomSource::Mulberry32,
+                1,
+            )
+            .with_seed_offset(0)
+            .with_reset_seed_each_run(true),
         })
         .expect("build architecture FCoSE input plan")
     }
@@ -1863,6 +1890,81 @@ mod tests {
         );
         assert!(plan.graph.edges[0].label_width.unwrap_or_default() > 0.0);
         assert_eq!(plan.options.default_edge_length, Some(120.0));
+    }
+
+    #[test]
+    fn architecture_fcose_input_plan_uses_mermaid_11_16_seed_policy() {
+        let model = super::ArchitectureModelView {
+            nodes: vec![super::ArchitectureNodeView {
+                id: "api",
+                node_type: super::ArchitectureNodeType::Service,
+                title: Some("API"),
+                in_group: None,
+            }],
+            groups: Vec::new(),
+            edges: Vec::new(),
+            layout_hints: Vec::new(),
+        };
+        let layout_nodes = vec![layout_node("api", 80.0, 80.0)];
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let plan =
+            super::build_architecture_fcose_input_plan(super::ArchitectureFcoseInputPlanInput {
+                model: &model,
+                layout_nodes: &layout_nodes,
+                node_bounds_extras: &Default::default(),
+                text_measurer: &measurer,
+                icon_size: 80.0,
+                padding_px: 40.0,
+                ideal_edge_length_multiplier: 1.5,
+                same_group_edge_elasticity: 0.45,
+                fcose_randomize: false,
+                fcose_node_separation: 75.0,
+                fcose_num_iter: 2500,
+                fcose_random_policy: manatee::FcoseRandomPolicy::ambient(
+                    manatee::FcoseRandomSource::Mulberry32,
+                )
+                .with_seed_offset(0)
+                .with_reset_seed_each_run(true),
+            })
+            .expect("build Architecture FCoSE input plan");
+
+        assert_eq!(
+            plan.random_policy.source(),
+            manatee::FcoseRandomSource::Mulberry32
+        );
+        assert!(plan.random_policy.resets_seed_each_run());
+        assert_eq!(plan.random_policy.seed(), None);
+        assert_eq!(plan.random_policy.seed_offset(), Some(0));
+    }
+
+    #[test]
+    fn architecture_seed_uses_javascript_to_uint32_semantics() {
+        assert_eq!(super::js_to_uint32(1.9), 1);
+        assert_eq!(super::js_to_uint32(-1.9), u64::from(u32::MAX));
+        assert_eq!(super::js_to_uint32(4_294_967_297.0), 1);
+        let wraps_to_zero = serde_json::json!(4_294_967_296.0);
+        assert_eq!(
+            super::architecture_seed_policy(Some(&wraps_to_zero)).seed(),
+            Some(0),
+            "JavaScript checks seed === 0 before coercing the enabled seed with >>> 0"
+        );
+    }
+
+    #[test]
+    fn architecture_seed_distinguishes_json_number_zero_from_string_zero() {
+        let number_zero = serde_json::json!(0);
+        let string_zero = serde_json::json!("0");
+
+        let number_policy = super::architecture_seed_policy(Some(&number_zero));
+        let string_policy = super::architecture_seed_policy(Some(&string_zero));
+
+        assert_eq!(number_policy.seed(), None);
+        assert_eq!(string_policy.seed(), Some(0));
+        assert_eq!(
+            string_policy.source(),
+            manatee::FcoseRandomSource::Mulberry32
+        );
+        assert!(string_policy.resets_seed_each_run());
     }
 
     #[test]

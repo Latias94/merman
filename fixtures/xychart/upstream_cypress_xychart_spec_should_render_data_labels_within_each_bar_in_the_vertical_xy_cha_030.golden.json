@@ -1,11 +1,10 @@
 {
   "diagramType": "xychart",
   "model": {
-    "type": "xychart",
+    "orientation": "vertical",
     "title": "Sales Revenue",
     "accTitle": null,
     "accDescr": null,
-    "orientation": "vertical",
     "xAxis": {
       "type": "band",
       "title": "Months",
@@ -27,24 +26,7 @@
         "values": [
           5000.0,
           6000.0,
-          7500.0,
-          8200.0,
-          9500.0,
-          10500.0,
-          11000.0,
-          10200.0,
-          9200.0,
-          8500.0,
-          7000.0,
-          6000.0,
-          3000.0,
-          2000.0,
-          500.0,
-          2000.0,
-          3000.0,
-          11000.0,
-          5000.0,
-          6000.0
+          7500.0
         ],
         "data": [
           [
@@ -61,6 +43,7 @@
           ]
         ]
       }
-    ]
+    ],
+    "type": "xychart"
   }
 }

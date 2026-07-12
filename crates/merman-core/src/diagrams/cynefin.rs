@@ -108,9 +108,10 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
     let mut saw_header = false;
     let mut current_domain: Option<String> = None;
 
-    for segment in code.split_inclusive('\n') {
+    while offset < code.len() {
         let line_start = offset;
-        offset += segment.len();
+        let (segment, next_offset) = physical_line_at(code, offset);
+        offset = next_offset;
         let line = strip_line_ending(segment);
         let stripped = strip_inline_comment_aware(line);
         let trimmed = stripped.trim();
@@ -128,6 +129,15 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
                 Some(SourceSpan::new(line_start, line_start + trimmed.len())),
             );
             return facts;
+        }
+
+        if let Some((field, consumed)) =
+            parse_multiline_acc_descr_spanned(&code[line_start..], line_start)
+        {
+            offset = line_start + consumed;
+            current_domain = None;
+            push_common_field_fact(&mut facts, field);
+            continue;
         }
 
         if let Some(field) = parse_common_field_spanned(stripped, line_start) {
@@ -221,8 +231,12 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
     let mut model = CynefinDiagramModel::default();
     let mut saw_header = false;
     let mut current_domain: Option<usize> = None;
+    let mut offset = 0usize;
 
-    for segment in code.split_inclusive('\n') {
+    while offset < code.len() {
+        let line_start = offset;
+        let (segment, next_offset) = physical_line_at(code, offset);
+        offset = next_offset;
         let line = strip_line_ending(segment);
         let stripped = strip_inline_comment_aware(line);
         let trimmed = stripped.trim();
@@ -236,6 +250,15 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
                 continue;
             }
             return Err(parse_error(meta, "expected cynefin-beta header"));
+        }
+
+        if let Some((field, consumed)) =
+            parse_multiline_acc_descr_spanned(&code[line_start..], line_start)
+        {
+            offset = line_start + consumed;
+            current_domain = None;
+            model.acc_descr = Some(field.value.text);
+            continue;
         }
 
         if let Some(field) = parse_common_field_spanned(stripped, 0) {
@@ -270,7 +293,10 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
                     model.transitions.push(CynefinTransitionModel {
                         from: transition.from.text,
                         to: transition.to.text,
-                        label: transition.label.map(|label| label.text),
+                        label: transition
+                            .label
+                            .map(|label| label.text)
+                            .filter(|label| !label.is_empty()),
                     });
                 }
             }
@@ -292,6 +318,12 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
 
 fn is_header(trimmed: &str) -> bool {
     trimmed == HEADER || trimmed == "cynefin-beta:"
+}
+
+fn physical_line_at(code: &str, start: usize) -> (&str, usize) {
+    let rest = &code[start..];
+    let len = rest.find('\n').map_or(rest.len(), |index| index + 1);
+    (&rest[..len], start + len)
 }
 
 fn start_domain(domains: &mut Vec<CynefinDomainModel>, name: String) -> usize {
@@ -404,11 +436,11 @@ fn parse_title_spanned(line: &str, line_start: usize) -> Option<CommonField> {
         return None;
     }
     let value = rest.trim();
-    let value_rel = line.find(value)?;
+    let value_rel = leading + "title".len() + (rest.len() - rest.trim_start().len());
     Some(CommonField {
         kind: CommonFieldKind::Title,
         value: SpannedText {
-            text: value.to_string(),
+            text: normalize_single_line_common_value(value),
             span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
             selection: SourceSpan::new(
                 line_start + value_rel,
@@ -420,17 +452,17 @@ fn parse_title_spanned(line: &str, line_start: usize) -> Option<CommonField> {
 
 fn parse_acc_title_spanned(line: &str, line_start: usize) -> Option<CommonField> {
     let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("accTitle")?.trim_start();
-    let value = rest.strip_prefix(':')?.trim();
-    let value_rel = if value.is_empty() {
-        line.len()
-    } else {
-        line.find(value)?
-    };
+    let leading = line.len() - trimmed.len();
+    let after_keyword = trimmed.strip_prefix("accTitle")?;
+    let before_colon = after_keyword.len() - after_keyword.trim_start().len();
+    let after_colon = after_keyword.trim_start().strip_prefix(':')?;
+    let value = after_colon.trim();
+    let after_colon_leading = after_colon.len() - after_colon.trim_start().len();
+    let value_rel = leading + "accTitle".len() + before_colon + 1 + after_colon_leading;
     Some(CommonField {
         kind: CommonFieldKind::AccTitle,
         value: SpannedText {
-            text: value.to_string(),
+            text: normalize_single_line_common_value(value),
             span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
             selection: SourceSpan::new(
                 line_start + value_rel,
@@ -442,18 +474,18 @@ fn parse_acc_title_spanned(line: &str, line_start: usize) -> Option<CommonField>
 
 fn parse_acc_descr_spanned(line: &str, line_start: usize) -> Option<CommonField> {
     let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("accDescr")?.trim_start();
-    if let Some(value) = rest.strip_prefix(':') {
-        let value = value.trim();
-        let value_rel = if value.is_empty() {
-            line.len()
-        } else {
-            line.find(value)?
-        };
+    let leading = line.len() - trimmed.len();
+    let after_keyword = trimmed.strip_prefix("accDescr")?;
+    let before_delimiter = after_keyword.len() - after_keyword.trim_start().len();
+    let rest = after_keyword.trim_start();
+    if let Some(after_colon) = rest.strip_prefix(':') {
+        let value = after_colon.trim();
+        let after_colon_leading = after_colon.len() - after_colon.trim_start().len();
+        let value_rel = leading + "accDescr".len() + before_delimiter + 1 + after_colon_leading;
         return Some(CommonField {
             kind: CommonFieldKind::AccDescr,
             value: SpannedText {
-                text: value.to_string(),
+                text: normalize_single_line_common_value(value),
                 span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
                 selection: SourceSpan::new(
                     line_start + value_rel,
@@ -462,25 +494,87 @@ fn parse_acc_descr_spanned(line: &str, line_start: usize) -> Option<CommonField>
             },
         });
     }
-    let rest = rest.strip_prefix('{')?;
-    let end = rest.find('}')?;
-    let value = rest[..end].trim();
-    let value_rel = if value.is_empty() {
-        line.find('{')? + 1
-    } else {
-        line.find(value)?
+    None
+}
+
+fn parse_multiline_acc_descr_spanned(
+    input: &str,
+    input_start: usize,
+) -> Option<(CommonField, usize)> {
+    let trimmed = input.trim_start_matches([' ', '\t']);
+    let leading = input.len() - trimmed.len();
+    let after_keyword = trimmed.strip_prefix("accDescr")?;
+    let whitespace_len = after_keyword
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .map(char::len_utf8)
+        .sum::<usize>();
+    let after_whitespace = &after_keyword[whitespace_len..];
+    let after_open = after_whitespace.strip_prefix('{')?;
+    let close_rel = after_open.find('}')?;
+
+    let open_rel = leading + "accDescr".len() + whitespace_len;
+    let value_start_rel = open_rel + 1;
+    let value_end_rel = value_start_rel + close_rel;
+    let after_close_rel = value_end_rel + 1;
+    let closing_line_len = input[after_close_rel..]
+        .find('\n')
+        .map_or(input.len() - after_close_rel, |index| index + 1);
+    let consumed = after_close_rel + closing_line_len;
+    let trailing = strip_line_ending(&input[after_close_rel..consumed]);
+    if !strip_inline_comment_aware(trailing).trim().is_empty() {
+        return None;
+    }
+
+    let raw_value = &input[value_start_rel..value_end_rel];
+    let value = SpannedText {
+        text: normalize_multiline_common_value(raw_value),
+        span: SourceSpan::new(input_start + value_start_rel, input_start + value_end_rel),
+        selection: SourceSpan::new(input_start + value_start_rel, input_start + value_end_rel),
     };
-    Some(CommonField {
-        kind: CommonFieldKind::AccDescr,
-        value: SpannedText {
-            text: value.to_string(),
-            span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
-            selection: SourceSpan::new(
-                line_start + value_rel,
-                line_start + value_rel + value.len(),
-            ),
+    Some((
+        CommonField {
+            kind: CommonFieldKind::AccDescr,
+            value,
         },
-    })
+        consumed,
+    ))
+}
+
+fn normalize_single_line_common_value(value: &str) -> String {
+    let value = value.trim();
+    let mut normalized = String::with_capacity(value.len());
+    let mut chars = value.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if !matches!(ch, ' ' | '\t') {
+            normalized.push(ch);
+            continue;
+        }
+
+        let mut run_len = 1usize;
+        while chars.peek().is_some_and(|next| matches!(next, ' ' | '\t')) {
+            chars.next();
+            run_len += 1;
+        }
+        if run_len == 1 {
+            normalized.push(ch);
+        } else {
+            normalized.push(' ');
+        }
+    }
+
+    normalized
+}
+
+fn normalize_multiline_common_value(value: &str) -> String {
+    value
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(normalize_single_line_common_value)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn push_common_field_fact(facts: &mut EditorSemanticFacts, field: CommonField) {
@@ -625,7 +719,16 @@ impl<'a> CynefinCursor<'a> {
         let mut escaped = false;
         for (idx, ch) in chars {
             if escaped {
-                text.push(ch);
+                text.push(match ch {
+                    'b' => '\u{0008}',
+                    'f' => '\u{000c}',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    'v' => '\u{000b}',
+                    '0' => '\0',
+                    _ => ch,
+                });
                 escaped = false;
                 continue;
             }

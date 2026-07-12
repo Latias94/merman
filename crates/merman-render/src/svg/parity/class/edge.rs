@@ -10,6 +10,7 @@ use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use base64::Engine as _;
 use std::fmt::Write as _;
 
@@ -36,6 +37,8 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub bounds_dx: f64,
     pub bounds_dy: f64,
     pub edge_use_html_labels: bool,
+    pub text_measurer: &'a dyn TextMeasurer,
+    pub terminal_text_style: &'a TextStyle,
     pub look: &'a str,
     pub hand_drawn_seed: u64,
     pub timing_enabled: bool,
@@ -372,11 +375,7 @@ pub(super) fn render_class_edge_groups(
         }
         edge_class_buf.push_str(" relation");
 
-        let edge_id_attr = if ctx.look == "handDrawn" {
-            edge_dom_id_buf.clone()
-        } else {
-            format!("{}-{}", ctx.diagram_id, edge_dom_id_buf)
-        };
+        let edge_id_attr = format!("{}-{}", ctx.diagram_id, edge_dom_id_buf);
         let _ = write!(out, r#"<path d="{}""#, escape_attr_display(render_d));
         if ctx.look == "handDrawn" {
             let _ = write!(
@@ -393,9 +392,7 @@ pub(super) fn render_class_edge_groups(
             escape_attr_display(&edge_dom_id_buf),
             escape_attr_display(&edge_points_b64_buf),
         );
-        if ctx.look != "handDrawn" {
-            let _ = write!(out, r#" data-look="{}""#, escape_attr_display(ctx.look));
-        }
+        let _ = write!(out, r#" data-look="{}""#, escape_attr_display(ctx.look));
         if !e.id.starts_with("edgeNote")
             && let Some(rel) = ctx.relations_by_id.get(e.id.as_str())
         {
@@ -494,7 +491,8 @@ pub(super) fn render_class_edge_groups(
                         lbl.y + ctx.content_ty,
                         start_text,
                         true,
-                        ctx.look == "handDrawn",
+                        ctx.text_measurer,
+                        ctx.terminal_text_style,
                     );
                 }
             }
@@ -540,7 +538,8 @@ pub(super) fn render_class_edge_groups(
                         lbl.y + ctx.content_ty,
                         end_text,
                         false,
-                        ctx.look == "handDrawn",
+                        ctx.text_measurer,
+                        ctx.terminal_text_style,
                     );
                 }
             }
@@ -664,7 +663,7 @@ pub(super) fn class_terminal_box_size(text: &str) -> (f64, f64) {
     if trimmed.is_empty() {
         return (0.0, 0.0);
     }
-    (trimmed.chars().count() as f64 * 9.0, 12.0)
+    (trimmed.encode_utf16().count() as f64 * 9.0, 12.0)
 }
 
 pub(super) fn render_class_edge_terminal_group(
@@ -673,59 +672,54 @@ pub(super) fn render_class_edge_terminal_group(
     y: f64,
     text: &str,
     is_start_terminal: bool,
-    hand_drawn: bool,
+    text_measurer: &dyn TextMeasurer,
+    terminal_text_style: &TextStyle,
 ) {
     let decoded = decode_entities_minimal_cow(text);
     let trimmed = decoded.trim();
     if trimmed.is_empty() {
         return;
     }
-    let (width, height) = class_terminal_box_size(trimmed);
-    let foreign_object_size = if hand_drawn {
-        format!(
-            r#"style="width: {}px; height: {}px;""#,
-            fmt(width),
-            fmt(height)
-        )
-    } else {
-        format!(r#"width="{}" height="{}""#, fmt(width), fmt(height))
-    };
+    let (style_width, style_height) = class_terminal_box_size(trimmed);
+    let measured =
+        text_measurer.measure_wrapped_raw(trimmed, terminal_text_style, None, WrapMode::HtmlLike);
+    // Chromium's `getBoundingClientRect()` for the terminal div lands one 1/64px cell above the
+    // raw font advance for these unpadded inline labels. Keep that browser-boundary correction
+    // local to cardinality terminals instead of changing the shared text measurement profile.
+    let foreign_width = (measured.width + (1.0 / 64.0)).max(0.0);
+    let foreign_height = measured.height.max(0.0);
+    let inner_tx = -foreign_width / 2.0;
+    let inner_ty = -foreign_height / 2.0;
     if is_start_terminal {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate(0, 0)"><foreignObject {}><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel"><p>"#,
             fmt(x),
             fmt(y),
-            foreign_object_size,
-            class_text_overrides::class_html_span_padding_right_px(),
+            fmt(inner_tx),
+            fmt(inner_ty),
+            fmt(foreign_width),
+            fmt(foreign_height),
+            fmt(style_width),
+            fmt(style_height),
         );
-        if !hand_drawn {
-            out.push_str("<p>");
-        }
         escape_xml_into(out, trimmed);
-        if !hand_drawn {
-            out.push_str("</p>");
-        }
-        out.push_str("</span></div></foreignObject></g></g>");
+        out.push_str("</p></span></div></foreignObject></g></g>");
     } else {
         let _ = write!(
             out,
-            r#"<g class="edgeTerminals" transform="translate({}, {})"><foreignObject {}><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; padding-right: {}px; white-space: nowrap;"><span class="edgeLabel">"#,
+            r#"<g class="edgeTerminals" transform="translate({}, {})"><g class="inner" transform="translate({}, {})"/><foreignObject width="{}" height="{}" style="width: {}px; height: {}px;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5;"><span class="edgeLabel"><p>"#,
             fmt(x),
             fmt(y),
-            foreign_object_size,
-            class_text_overrides::class_html_span_padding_right_px(),
+            fmt(inner_tx),
+            fmt(inner_ty),
+            fmt(foreign_width),
+            fmt(foreign_height),
+            fmt(style_width),
+            fmt(style_height),
         );
-        if !hand_drawn {
-            out.push_str("<p>");
-        }
         escape_xml_into(out, trimmed);
-        if !hand_drawn {
-            out.push_str("</p>");
-        }
-        out.push_str(
-            r#"</span></div></foreignObject><g class="inner" transform="translate(0, 0)"/></g>"#,
-        );
+        out.push_str("</p></span></div></foreignObject></g>");
     }
 }
 

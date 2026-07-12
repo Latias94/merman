@@ -40,6 +40,7 @@
         "look": "classic",
         "parentId": null,
         "centerLabel": true,
+        "explicitDir": false,
         "description": []
       },
       {

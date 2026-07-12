@@ -57,7 +57,7 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
     );
     let _ = write!(
         &mut out,
-        r#"#{} .radarAxisLabel{{dominant-baseline:middle;text-anchor:middle;font-size:{}px;color:{};}}"#,
+        r#"#{} .radarAxisLabel{{font-size:{}px;color:{};}}"#,
         id,
         fmt(theme.axis_label_font_size),
         theme.axis_color
@@ -140,6 +140,7 @@ pub(crate) fn render_radar_diagram_svg_model(
 
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
+    let root_extra_attrs: [(&str, &str); 1] = [("overflow", "visible")];
 
     let mut out = String::new();
     if render_settings.use_max_width {
@@ -150,6 +151,7 @@ pub(crate) fn render_radar_diagram_svg_model(
                 width: root_svg::SvgRootWidth::Percent100,
                 style_attr: Some(style_attr.as_str()),
                 viewbox_attr: Some(viewbox_attr.as_str()),
+                extra_attrs: &root_extra_attrs,
                 aria_labelledby: aria_labelledby.as_deref(),
                 aria_describedby: aria_describedby.as_deref(),
                 trailing_newline: false,
@@ -166,6 +168,7 @@ pub(crate) fn render_radar_diagram_svg_model(
                 width: root_svg::SvgRootWidth::Fixed(&width_attr),
                 height_attr: Some(&height_attr),
                 viewbox_attr: Some(viewbox_attr.as_str()),
+                extra_attrs: &root_extra_attrs,
                 aria_labelledby: aria_labelledby.as_deref(),
                 aria_describedby: aria_describedby.as_deref(),
                 tail_attrs: &tail_attrs,
@@ -227,6 +230,23 @@ pub(crate) fn render_radar_diagram_svg_model(
     }
 
     for a in &layout.axes {
+        let cos_a = a.angle.cos();
+        let sin_a = a.angle.sin();
+        let text_anchor = if cos_a > 0.01 {
+            "start"
+        } else if cos_a < -0.01 {
+            "end"
+        } else {
+            "middle"
+        };
+        let dominant_baseline = if sin_a > 0.01 {
+            "hanging"
+        } else if sin_a < -0.01 {
+            "auto"
+        } else {
+            "central"
+        };
+        let label_padding = 4.0;
         let _ = write!(
             &mut out,
             r#"<line x1="0" y1="0" x2="{x2}" y2="{y2}" class="radarAxisLine"/>"#,
@@ -235,9 +255,9 @@ pub(crate) fn render_radar_diagram_svg_model(
         );
         let _ = write!(
             &mut out,
-            r#"<text x="{x}" y="{y}" class="radarAxisLabel">{label}</text>"#,
-            x = fmt_display(a.label_x),
-            y = fmt_display(a.label_y),
+            r#"<text x="{x}" y="{y}" text-anchor="{text_anchor}" dominant-baseline="{dominant_baseline}" class="radarAxisLabel">{label}</text>"#,
+            x = fmt_display(a.label_x + label_padding * cos_a),
+            y = fmt_display(a.label_y + label_padding * sin_a),
             label = escape_xml(&a.label)
         );
     }
@@ -318,6 +338,7 @@ pub(crate) fn render_radar_diagram_svg_model(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::RadarAxisLayout;
 
     #[test]
     fn radar_css_honors_top_level_style_overrides() {
@@ -358,9 +379,7 @@ mod tests {
 
         assert!(css.contains(r#"#radar .radarTitle{font-size:18px;color:#202020;"#));
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#606060;stroke-width:4;}"#));
-        assert!(css.contains(
-            r#"#radar .radarAxisLabel{dominant-baseline:middle;text-anchor:middle;font-size:14px;color:#606060;}"#
-        ));
+        assert!(css.contains(r#"#radar .radarAxisLabel{font-size:14px;color:#606060;}"#));
         assert!(css.contains(
             r#"#radar .radarGraticule{fill:#707070;fill-opacity:0.8;stroke:#707070;stroke-width:5;}"#
         ));
@@ -399,9 +418,7 @@ mod tests {
         let css = radar_css("radar", &theme);
 
         assert!(css.contains(r#"#radar .radarAxisLine{stroke:#404040;stroke-width:2;}"#));
-        assert!(css.contains(
-            r#"#radar .radarAxisLabel{dominant-baseline:middle;text-anchor:middle;font-size:12px;color:#404040;}"#
-        ));
+        assert!(css.contains(r#"#radar .radarAxisLabel{font-size:12px;color:#404040;}"#));
         assert!(css.contains(
             r#"#radar .radarGraticule{fill:#505050;fill-opacity:0.3;stroke:#505050;stroke-width:1;}"#
         ));
@@ -497,5 +514,78 @@ mod tests {
             "{root_open}"
         );
         assert!(!root_open.contains("max-width"), "{root_open}");
+    }
+
+    #[test]
+    fn radar_root_and_axis_labels_match_mermaid_11_16() {
+        let axes = [
+            ("Top", -std::f64::consts::FRAC_PI_2, 0.0, -100.0),
+            ("Right", 0.0, 100.0, 0.0),
+            ("Bottom", std::f64::consts::FRAC_PI_2, 0.0, 100.0),
+            ("Left", std::f64::consts::PI, -100.0, 0.0),
+        ]
+        .into_iter()
+        .map(|(label, angle, label_x, label_y)| RadarAxisLayout {
+            label: label.to_string(),
+            angle,
+            line_x2: label_x,
+            line_y2: label_y,
+            label_x,
+            label_y,
+        })
+        .collect();
+        let layout = RadarDiagramLayout {
+            bounds: None,
+            svg_width: 240.0,
+            svg_height: 240.0,
+            center_x: 120.0,
+            center_y: 120.0,
+            radius: 100.0,
+            axis_label_factor: 1.0,
+            title_y: -120.0,
+            axes,
+            graticules: Vec::new(),
+            curves: Vec::new(),
+            legend_items: Vec::new(),
+        };
+
+        let svg = render_radar_diagram_svg_model(
+            &layout,
+            &RadarDiagramRenderModel::default(),
+            &serde_json::json!({}),
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+        let root_open = svg.split_once('>').expect("root svg open tag").0;
+
+        assert!(root_open.contains(r#"overflow="visible""#), "{root_open}");
+        assert!(
+            svg.contains(
+                r#"<text x="0" y="-104" text-anchor="middle" dominant-baseline="auto" class="radarAxisLabel">Top</text>"#
+            ),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(
+                r#"<text x="104" y="0" text-anchor="start" dominant-baseline="central" class="radarAxisLabel">Right</text>"#
+            ),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(
+                r#"<text x="0" y="104" text-anchor="middle" dominant-baseline="hanging" class="radarAxisLabel">Bottom</text>"#
+            ),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(
+                r#"<text x="-104" y="0" text-anchor="end" dominant-baseline="central" class="radarAxisLabel">Left</text>"#
+            ),
+            "{svg}"
+        );
+        assert!(
+            svg.contains(".radarAxisLabel{font-size:12px;color:#333333;}"),
+            "radar CSS must leave per-axis alignment attributes in control: {svg}"
+        );
     }
 }

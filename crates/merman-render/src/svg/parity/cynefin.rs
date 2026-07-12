@@ -19,16 +19,8 @@ pub(crate) fn render_cynefin_diagram_svg_model(
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("cynefin");
     let diagram_id_esc = escape_xml(diagram_id);
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let acc_descr = model
-        .acc_descr
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
+    let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
+    let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id_esc}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id_esc}"));
     let root_bounds =
@@ -67,13 +59,17 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         );
     }
 
-    let _ = write!(&mut out, "<style>{}</style>", cynefin_css(&theme));
-    if !layout.transitions.is_empty() {
-        let _ = write!(
-            &mut out,
-            r#"<defs><marker id="{}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="cynefinArrowHead"></path></marker></defs>"#,
-            escape_attr_display(&marker_id)
-        );
+    let _ = write!(
+        &mut out,
+        "<style>{}</style>",
+        cynefin_css(diagram_id, &theme)
+    );
+    out.push_str("<g/>");
+    if let Some(title) = acc_title {
+        let _ = write!(&mut out, "<title>{}</title>", escape_xml_display(title));
+    }
+    if let Some(descr) = acc_descr {
+        let _ = write!(&mut out, "<desc>{}</desc>", escape_xml_display(descr));
     }
 
     let _ = write!(
@@ -90,11 +86,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     }
     push_items(&mut out, layout, &theme);
     push_transitions(&mut out, layout, &marker_id);
-    if let Some(title) = model
-        .title
-        .as_deref()
-        .filter(|value| !value.trim().is_empty())
-    {
+    if let Some(title) = model.title.as_deref().filter(|value| !value.is_empty()) {
         let _ = write!(
             &mut out,
             r#"<text class="cynefinTitle" x="{}" y="{}" text-anchor="middle" dominant-baseline="middle">{}</text>"#,
@@ -103,7 +95,16 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             escape_xml_display(title)
         );
     }
-    out.push_str("</g></svg>\n");
+    out.push_str("</g>");
+
+    if !layout.transitions.is_empty() {
+        let _ = write!(
+            &mut out,
+            r#"<defs><marker id="{}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="cynefinArrowHead"></path></marker></defs>"#,
+            escape_attr_display(&marker_id)
+        );
+    }
+    out.push_str("</svg>\n");
     Ok(out)
 }
 
@@ -300,7 +301,7 @@ fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: 
         if let Some(label) = transition
             .label
             .as_deref()
-            .filter(|value| !value.trim().is_empty())
+            .filter(|value| !value.is_empty())
         {
             let _ = write!(
                 out,
@@ -314,21 +315,22 @@ fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: 
     out.push_str("</g>");
 }
 
-fn cynefin_css(theme: &crate::cynefin::CynefinTheme) -> String {
+fn cynefin_css(diagram_id: &str, theme: &crate::cynefin::CynefinTheme) -> String {
+    let id = escape_xml(diagram_id);
     format!(
-        ".cynefinDomain{{stroke:none;}}\
-.cynefinDomainLabel{{font-size:{}px;font-weight:bold;fill:{};}}\
-.cynefinSubtitle{{font-size:{}px;fill:{};font-style:italic;}}\
-.cynefinItem{{fill-opacity:0.95;stroke:{};stroke-width:1;}}\
-.cynefinItemText{{font-size:{}px;fill:{};}}\
-.cynefinItemOverflow{{fill-opacity:0.6;stroke:{};stroke-width:1;stroke-dasharray:3 2;}}\
-.cynefinBoundary{{stroke:{};stroke-width:{};stroke-dasharray:6 3;}}\
-.cynefinCliff{{stroke:{};stroke-width:{};}}\
-.cynefinConfusion{{stroke:{};stroke-width:1.5;stroke-dasharray:4 2;}}\
-.cynefinArrowLine{{stroke:{};stroke-width:{};fill:none;}}\
-.cynefinArrowHead{{fill:{};stroke:none;}}\
-.cynefinArrowLabel{{font-size:{}px;fill:{};}}\
-.cynefinTitle{{font-size:{}px;font-weight:bold;fill:{};}}",
+        "#{id} .cynefinDomain{{stroke:none;}}\
+#{id} .cynefinDomainLabel{{font-size:{}px;font-weight:bold;fill:{};}}\
+#{id} .cynefinSubtitle{{font-size:{}px;fill:{};font-style:italic;}}\
+#{id} .cynefinItem{{fill-opacity:0.95;stroke:{};stroke-width:1;}}\
+#{id} .cynefinItemText{{font-size:{}px;fill:{};}}\
+#{id} .cynefinItemOverflow{{fill-opacity:0.6;stroke:{};stroke-width:1;stroke-dasharray:3 2;}}\
+#{id} .cynefinBoundary{{stroke:{};stroke-width:{};stroke-dasharray:6 3;}}\
+#{id} .cynefinCliff{{stroke:{};stroke-width:{};}}\
+#{id} .cynefinConfusion{{stroke:{};stroke-width:1.5;stroke-dasharray:4 2;}}\
+#{id} .cynefinArrowLine{{stroke:{};stroke-width:{};fill:none;}}\
+#{id} .cynefinArrowHead{{fill:{};stroke:none;}}\
+#{id} .cynefinArrowLabel{{font-size:{}px;fill:{};}}\
+#{id} .cynefinTitle{{font-size:{}px;font-weight:bold;fill:{};}}",
         fmt(theme.domain_font_size),
         theme.label_color,
         fmt((theme.item_font_size - 1.0).max(1.0)),

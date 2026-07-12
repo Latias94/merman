@@ -1,5 +1,5 @@
 use crate::Result;
-use crate::config::{config_bool, config_f64, config_string};
+use crate::config::{config_bool, value_at};
 use crate::model::{
     Bounds, RailroadDiagramLayout, RailroadElementLayout, RailroadPathLayout, RailroadRuleLayout,
 };
@@ -43,6 +43,35 @@ struct ExprLayout {
     down: f64,
     elements: Vec<RailroadElementLayout>,
     paths: Vec<RailroadPathLayout>,
+    render_node: RailroadRenderNode,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum RailroadRenderNode {
+    Group {
+        class: &'static str,
+        transform: Option<(f64, f64)>,
+        children: Vec<RailroadRenderNode>,
+    },
+    Element {
+        layout: RailroadElementLayout,
+        transform: Option<(f64, f64)>,
+    },
+    Path(RailroadPathLayout),
+}
+
+impl RailroadRenderNode {
+    fn set_transform(&mut self, x: f64, y: f64) {
+        match self {
+            Self::Group { transform, .. } | Self::Element { transform, .. } => {
+                *transform = Some((x, y));
+            }
+            Self::Path(path) => {
+                path.x = x;
+                path.y = y;
+            }
+        }
+    }
 }
 
 pub fn layout_railroad_diagram(
@@ -50,12 +79,30 @@ pub fn layout_railroad_diagram(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<RailroadDiagramLayout> {
+    layout_railroad_diagram_for_type(semantic, "railroad", effective_config, measurer)
+}
+
+pub fn layout_railroad_diagram_for_type(
+    semantic: &serde_json::Value,
+    diagram_type: &str,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<RailroadDiagramLayout> {
     let model: RailroadDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_railroad_diagram_typed(&model, effective_config, measurer)
+    layout_railroad_diagram_typed_for_type(&model, diagram_type, effective_config, measurer)
 }
 
 pub fn layout_railroad_diagram_typed(
     model: &RailroadDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+) -> Result<RailroadDiagramLayout> {
+    layout_railroad_diagram_typed_for_type(model, "railroad", effective_config, measurer)
+}
+
+pub fn layout_railroad_diagram_typed_for_type(
+    model: &RailroadDiagramRenderModel,
+    diagram_type: &str,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<RailroadDiagramLayout> {
@@ -90,6 +137,7 @@ pub fn layout_railroad_diagram_typed(
             max_x: width,
             max_y: height,
         }),
+        diagram_type: normalized_railroad_diagram_type(diagram_type).to_string(),
         width,
         height,
         use_max_width: style.use_max_width,
@@ -97,129 +145,334 @@ pub fn layout_railroad_diagram_typed(
     })
 }
 
-pub(crate) fn railroad_style(effective_config: &serde_json::Value) -> RailroadStyle {
-    fn theme_string(cfg: &serde_json::Value, key: &str) -> Option<String> {
-        config_string(cfg, &["themeVariables", key])
+fn normalized_railroad_diagram_type(diagram_type: &str) -> &'static str {
+    match diagram_type {
+        "railroadEbnf" => "railroadEbnf",
+        "railroadAbnf" => "railroadAbnf",
+        "railroadPeg" => "railroadPeg",
+        _ => "railroad",
     }
-    fn railroad_string(cfg: &serde_json::Value, key: &str, fallback: String) -> String {
-        config_string(cfg, &["railroad", key]).unwrap_or(fallback)
+}
+
+fn railroad_config_value<'a>(
+    effective_config: &'a serde_json::Value,
+    key: &str,
+) -> Option<&'a serde_json::Value> {
+    value_at(effective_config, &["railroad", key])
+}
+
+fn theme_config_value<'a>(
+    effective_config: &'a serde_json::Value,
+    primary_key: &str,
+    secondary_key: Option<&str>,
+) -> Option<&'a serde_json::Value> {
+    let primary = value_at(effective_config, &["themeVariables", primary_key]);
+    match primary {
+        Some(value) if !value.is_null() => Some(value),
+        _ => secondary_key.and_then(|key| value_at(effective_config, &["themeVariables", key])),
     }
-    fn railroad_f64(cfg: &serde_json::Value, key: &str, fallback: f64) -> f64 {
-        config_f64(cfg, &["railroad", key])
-            .filter(|value| value.is_finite() && *value >= 0.0)
-            .unwrap_or(fallback)
+}
+
+fn sanitize_color_value(value: Option<&serde_json::Value>, fallback: &str) -> String {
+    value
+        .and_then(serde_json::Value::as_str)
+        .map(trim_ecmascript_whitespace)
+        .filter(|value| is_valid_color_value(value))
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn is_ecmascript_whitespace(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'
+            | '\u{000A}'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
+    )
+}
+
+fn trim_ecmascript_whitespace(value: &str) -> &str {
+    value.trim_matches(is_ecmascript_whitespace)
+}
+
+fn trim_start_ecmascript_whitespace(value: &str) -> &str {
+    value.trim_start_matches(is_ecmascript_whitespace)
+}
+
+fn is_valid_color_value(value: &str) -> bool {
+    if let Some(hex) = value.strip_prefix('#') {
+        return matches!(hex.len(), 3 | 4 | 6 | 8)
+            && hex.bytes().all(|byte| byte.is_ascii_hexdigit());
     }
 
-    let font_family = railroad_string(
-        effective_config,
-        "fontFamily",
-        theme_string(effective_config, "fontFamily").unwrap_or_else(|| "monospace".to_string()),
+    let Some(open) = value.find('(') else {
+        return !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_alphabetic());
+    };
+    if !value.ends_with(')') {
+        return false;
+    }
+
+    let function = &value[..open];
+    let parameters = &value[open + 1..value.len() - 1];
+    let valid_function = [
+        "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch",
+    ]
+    .iter()
+    .any(|candidate| function.eq_ignore_ascii_case(candidate));
+
+    valid_function
+        && !parameters.is_empty()
+        && parameters.chars().all(|character| {
+            character.is_ascii_digit()
+                || is_ecmascript_whitespace(character)
+                || matches!(character, '%' | '+' | ',' | '.' | '/' | '-')
+        })
+}
+
+fn sanitize_font_family_value(value: Option<&serde_json::Value>, fallback: &str) -> String {
+    value
+        .and_then(serde_json::Value::as_str)
+        .map(trim_ecmascript_whitespace)
+        .filter(|value| {
+            !value.is_empty()
+                && value.chars().all(|character| {
+                    character.is_ascii_alphanumeric()
+                        || character == '_'
+                        || matches!(character, ' ' | '"' | '\'' | ',' | '.' | '-')
+                })
+        })
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn sanitize_number_value(value: Option<&serde_json::Value>, fallback: f64) -> f64 {
+    parse_number_value(value)
+        .filter(|value| value.is_finite() && *value >= 0.0)
+        .unwrap_or(fallback)
+}
+
+fn parse_theme_font_size(value: Option<&serde_json::Value>) -> Option<f64> {
+    parse_number_value(value).filter(|value| value.is_finite() && *value > 0.0)
+}
+
+fn parse_number_value(value: Option<&serde_json::Value>) -> Option<f64> {
+    match value? {
+        serde_json::Value::Number(number) => number.as_f64(),
+        serde_json::Value::String(text) => parse_js_float_prefix(text),
+        _ => None,
+    }
+}
+
+fn parse_js_float_prefix(text: &str) -> Option<f64> {
+    let text = trim_start_ecmascript_whitespace(text);
+    let bytes = text.as_bytes();
+    let mut index = 0;
+
+    if matches!(bytes.first(), Some(b'+' | b'-')) {
+        index += 1;
+    }
+
+    let integer_start = index;
+    while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+        index += 1;
+    }
+    let mut has_digits = index > integer_start;
+
+    if bytes.get(index) == Some(&b'.') {
+        index += 1;
+        let fraction_start = index;
+        while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+        has_digits |= index > fraction_start;
+    }
+
+    if !has_digits {
+        return None;
+    }
+
+    let mut end = index;
+    if matches!(bytes.get(index), Some(b'e' | b'E')) {
+        let mut exponent_index = index + 1;
+        if matches!(bytes.get(exponent_index), Some(b'+' | b'-')) {
+            exponent_index += 1;
+        }
+        let exponent_start = exponent_index;
+        while bytes.get(exponent_index).is_some_and(u8::is_ascii_digit) {
+            exponent_index += 1;
+        }
+        if exponent_index > exponent_start {
+            end = exponent_index;
+        }
+    }
+
+    text[..end].parse::<f64>().ok()
+}
+
+pub(crate) fn railroad_style(effective_config: &serde_json::Value) -> RailroadStyle {
+    let theme_font_family = sanitize_font_family_value(
+        theme_config_value(effective_config, "fontFamily", None),
+        "monospace",
     );
-    let font_size = railroad_f64(
-        effective_config,
-        "fontSize",
-        config_f64(effective_config, &["themeVariables", "fontSize"]).unwrap_or(14.0),
-    )
-    .max(1.0);
-    let line_color =
-        theme_string(effective_config, "lineColor").unwrap_or_else(|| "#000000".into());
-    let text_color =
-        theme_string(effective_config, "textColor").unwrap_or_else(|| "#000000".into());
+    let theme_font_size =
+        parse_theme_font_size(theme_config_value(effective_config, "fontSize", None))
+            .unwrap_or(14.0);
+    let theme_terminal_fill = sanitize_color_value(
+        theme_config_value(effective_config, "secondBkg", Some("secondaryColor")),
+        "#FFFFC0",
+    );
+    let theme_terminal_stroke = sanitize_color_value(
+        theme_config_value(effective_config, "secondaryBorderColor", Some("lineColor")),
+        "#000000",
+    );
+    let theme_terminal_text_color = sanitize_color_value(
+        theme_config_value(effective_config, "secondaryTextColor", Some("textColor")),
+        "#000000",
+    );
+    let theme_non_terminal_fill = sanitize_color_value(
+        theme_config_value(effective_config, "mainBkg", Some("background")),
+        "#FFFFFF",
+    );
+    let theme_non_terminal_stroke = sanitize_color_value(
+        theme_config_value(effective_config, "primaryBorderColor", Some("lineColor")),
+        "#000000",
+    );
+    let theme_non_terminal_text_color = sanitize_color_value(
+        theme_config_value(effective_config, "primaryTextColor", Some("textColor")),
+        "#000000",
+    );
+    let theme_line_color = sanitize_color_value(
+        theme_config_value(effective_config, "lineColor", None),
+        "#000000",
+    );
+    let theme_comment_fill = sanitize_color_value(
+        theme_config_value(effective_config, "labelBackground", Some("tertiaryColor")),
+        "#E8E8E8",
+    );
+    let theme_comment_stroke = sanitize_color_value(
+        theme_config_value(effective_config, "tertiaryBorderColor", Some("lineColor")),
+        "#888888",
+    );
+    let theme_comment_text_color = sanitize_color_value(
+        theme_config_value(effective_config, "tertiaryTextColor", Some("textColor")),
+        "#666666",
+    );
+    let theme_special_fill = sanitize_color_value(
+        theme_config_value(effective_config, "tertiaryColor", Some("secondaryColor")),
+        "#F0E0FF",
+    );
+    let theme_special_stroke = sanitize_color_value(
+        theme_config_value(
+            effective_config,
+            "tertiaryBorderColor",
+            Some("secondaryBorderColor"),
+        ),
+        "#8800CC",
+    );
+    let theme_rule_name_color = sanitize_color_value(
+        theme_config_value(effective_config, "titleColor", Some("textColor")),
+        "#000066",
+    );
 
     RailroadStyle {
-        padding: railroad_f64(effective_config, "padding", 10.0),
-        vertical_separation: railroad_f64(effective_config, "verticalSeparation", 8.0),
-        horizontal_separation: railroad_f64(effective_config, "horizontalSeparation", 10.0),
-        arc_radius: railroad_f64(effective_config, "arcRadius", 10.0),
-        font_size,
-        font_family,
-        terminal_fill: railroad_string(
-            effective_config,
-            "terminalFill",
-            theme_string(effective_config, "secondBkg")
-                .or_else(|| theme_string(effective_config, "secondaryColor"))
-                .unwrap_or_else(|| "#FFFFC0".to_string()),
+        padding: sanitize_number_value(railroad_config_value(effective_config, "padding"), 10.0),
+        vertical_separation: sanitize_number_value(
+            railroad_config_value(effective_config, "verticalSeparation"),
+            8.0,
         ),
-        terminal_stroke: railroad_string(
-            effective_config,
-            "terminalStroke",
-            theme_string(effective_config, "secondaryBorderColor")
-                .or_else(|| Some(line_color.clone()))
-                .unwrap_or_else(|| "#000000".to_string()),
+        horizontal_separation: sanitize_number_value(
+            railroad_config_value(effective_config, "horizontalSeparation"),
+            10.0,
         ),
-        terminal_text_color: railroad_string(
-            effective_config,
-            "terminalTextColor",
-            theme_string(effective_config, "secondaryTextColor")
-                .or_else(|| Some(text_color.clone()))
-                .unwrap_or_else(|| "#000000".to_string()),
+        arc_radius: sanitize_number_value(
+            railroad_config_value(effective_config, "arcRadius"),
+            10.0,
         ),
-        non_terminal_fill: railroad_string(
-            effective_config,
-            "nonTerminalFill",
-            theme_string(effective_config, "mainBkg")
-                .or_else(|| theme_string(effective_config, "background"))
-                .unwrap_or_else(|| "#FFFFFF".to_string()),
+        font_size: sanitize_number_value(
+            railroad_config_value(effective_config, "fontSize"),
+            theme_font_size,
         ),
-        non_terminal_stroke: railroad_string(
-            effective_config,
-            "nonTerminalStroke",
-            theme_string(effective_config, "primaryBorderColor")
-                .or_else(|| Some(line_color.clone()))
-                .unwrap_or_else(|| "#000000".to_string()),
+        font_family: sanitize_font_family_value(
+            railroad_config_value(effective_config, "fontFamily"),
+            &theme_font_family,
         ),
-        non_terminal_text_color: railroad_string(
-            effective_config,
-            "nonTerminalTextColor",
-            theme_string(effective_config, "primaryTextColor")
-                .or_else(|| Some(text_color.clone()))
-                .unwrap_or_else(|| "#000000".to_string()),
+        terminal_fill: sanitize_color_value(
+            railroad_config_value(effective_config, "terminalFill"),
+            &theme_terminal_fill,
         ),
-        line_color: railroad_string(effective_config, "lineColor", line_color.clone()),
-        stroke_width: railroad_f64(effective_config, "strokeWidth", 2.0),
-        marker_fill: railroad_string(effective_config, "markerFill", line_color),
-        comment_fill: railroad_string(
-            effective_config,
-            "commentFill",
-            theme_string(effective_config, "labelBackground")
-                .or_else(|| theme_string(effective_config, "tertiaryColor"))
-                .unwrap_or_else(|| "#E8E8E8".to_string()),
+        terminal_stroke: sanitize_color_value(
+            railroad_config_value(effective_config, "terminalStroke"),
+            &theme_terminal_stroke,
         ),
-        comment_stroke: railroad_string(
-            effective_config,
-            "commentStroke",
-            theme_string(effective_config, "tertiaryBorderColor")
-                .unwrap_or_else(|| "#888888".to_string()),
+        terminal_text_color: sanitize_color_value(
+            railroad_config_value(effective_config, "terminalTextColor"),
+            &theme_terminal_text_color,
         ),
-        comment_text_color: railroad_string(
-            effective_config,
-            "commentTextColor",
-            theme_string(effective_config, "tertiaryTextColor")
-                .or_else(|| Some(text_color.clone()))
-                .unwrap_or_else(|| "#666666".to_string()),
+        non_terminal_fill: sanitize_color_value(
+            railroad_config_value(effective_config, "nonTerminalFill"),
+            &theme_non_terminal_fill,
         ),
-        special_fill: railroad_string(
-            effective_config,
-            "specialFill",
-            theme_string(effective_config, "tertiaryColor")
-                .or_else(|| theme_string(effective_config, "secondaryColor"))
-                .unwrap_or_else(|| "#F0E0FF".to_string()),
+        non_terminal_stroke: sanitize_color_value(
+            railroad_config_value(effective_config, "nonTerminalStroke"),
+            &theme_non_terminal_stroke,
         ),
-        special_stroke: railroad_string(
-            effective_config,
-            "specialStroke",
-            theme_string(effective_config, "tertiaryBorderColor")
-                .or_else(|| theme_string(effective_config, "secondaryBorderColor"))
-                .unwrap_or_else(|| "#8800CC".to_string()),
+        non_terminal_text_color: sanitize_color_value(
+            railroad_config_value(effective_config, "nonTerminalTextColor"),
+            &theme_non_terminal_text_color,
         ),
-        rule_name_color: railroad_string(
-            effective_config,
-            "ruleNameColor",
-            theme_string(effective_config, "titleColor")
-                .or_else(|| Some(text_color))
-                .unwrap_or_else(|| "#000066".to_string()),
+        line_color: sanitize_color_value(
+            railroad_config_value(effective_config, "lineColor"),
+            &theme_line_color,
         ),
-        marker_radius: railroad_f64(effective_config, "markerRadius", 5.0),
+        stroke_width: sanitize_number_value(
+            railroad_config_value(effective_config, "strokeWidth"),
+            2.0,
+        ),
+        marker_fill: sanitize_color_value(
+            railroad_config_value(effective_config, "markerFill"),
+            &theme_line_color,
+        ),
+        comment_fill: sanitize_color_value(
+            railroad_config_value(effective_config, "commentFill"),
+            &theme_comment_fill,
+        ),
+        comment_stroke: sanitize_color_value(
+            railroad_config_value(effective_config, "commentStroke"),
+            &theme_comment_stroke,
+        ),
+        comment_text_color: sanitize_color_value(
+            railroad_config_value(effective_config, "commentTextColor"),
+            &theme_comment_text_color,
+        ),
+        special_fill: sanitize_color_value(
+            railroad_config_value(effective_config, "specialFill"),
+            &theme_special_fill,
+        ),
+        special_stroke: sanitize_color_value(
+            railroad_config_value(effective_config, "specialStroke"),
+            &theme_special_stroke,
+        ),
+        rule_name_color: sanitize_color_value(
+            railroad_config_value(effective_config, "ruleNameColor"),
+            &theme_rule_name_color,
+        ),
+        marker_radius: sanitize_number_value(
+            railroad_config_value(effective_config, "markerRadius"),
+            5.0,
+        ),
         use_max_width: config_bool(effective_config, &["railroad", "useMaxWidth"]).unwrap_or(true),
     }
 }
@@ -298,6 +551,15 @@ fn layout_expr(
     }
 }
 
+pub(crate) fn railroad_render_node(
+    node: &RailroadAstNode,
+    style: &RailroadStyle,
+    measurer: &dyn TextMeasurer,
+) -> (RailroadRenderNode, f64) {
+    let layout = layout_expr(node, style, measurer);
+    (layout.render_node, layout.up)
+}
+
 fn layout_box(
     kind: &str,
     label: &str,
@@ -307,22 +569,27 @@ fn layout_box(
     let (text_width, text_height) = measure_text(label, style, measurer);
     let width = text_width + style.padding * 2.0;
     let height = text_height + style.padding * 2.0;
+    let element = RailroadElementLayout {
+        kind: kind.to_string(),
+        label: label.to_string(),
+        x: 0.0,
+        y: 0.0,
+        width,
+        height,
+        text_x: width / 2.0,
+        text_y: height / 2.0,
+    };
     ExprLayout {
         width,
         height,
         up: height / 2.0,
         down: height / 2.0,
-        elements: vec![RailroadElementLayout {
-            kind: kind.to_string(),
-            label: label.to_string(),
-            x: 0.0,
-            y: 0.0,
-            width,
-            height,
-            text_x: width / 2.0,
-            text_y: height / 2.0,
-        }],
+        elements: vec![element.clone()],
         paths: Vec::new(),
+        render_node: RailroadRenderNode::Element {
+            layout: element,
+            transform: None,
+        },
     }
 }
 
@@ -350,25 +617,39 @@ fn layout_sequence(
         down,
         elements: Vec::new(),
         paths: Vec::new(),
+        render_node: RailroadRenderNode::Group {
+            class: "railroad-sequence",
+            transform: None,
+            children: Vec::new(),
+        },
     };
+    let mut render_children = Vec::new();
     let mut x = 0.0;
     for (idx, mut child) in rendered.into_iter().enumerate() {
         let y = up - child.up;
+        let child_width = child.width;
         translate_elements(&mut child.elements, x, y);
         translate_paths(&mut child.paths, x, y);
         out.elements.extend(child.elements);
         out.paths.extend(child.paths);
+        child.render_node.set_transform(x, y);
+        render_children.push(child.render_node);
         if idx + 1 < elements.len() {
-            let line_x1 = x + child.width;
+            let line_x1 = x + child_width;
             let line_x2 = line_x1 + style.horizontal_separation;
-            out.paths.push(railroad_path(
+            let path = railroad_path(
                 PathBuilder::new()
                     .move_to(line_x1, up)
                     .line_to(line_x2, up)
                     .build(),
-            ));
+            );
+            out.paths.push(path.clone());
+            render_children.push(RailroadRenderNode::Path(path));
         }
-        x += child.width + style.horizontal_separation;
+        x += child_width + style.horizontal_separation;
+    }
+    if let RailroadRenderNode::Group { children, .. } = &mut out.render_node {
+        *children = render_children;
     }
     out
 }
@@ -399,7 +680,13 @@ fn layout_choice(
         down: total_height - center_y,
         elements: Vec::new(),
         paths: Vec::new(),
+        render_node: RailroadRenderNode::Group {
+            class: "railroad-choice",
+            transform: None,
+            children: Vec::new(),
+        },
     };
+    let mut render_children = Vec::new();
 
     let mut y = 0.0;
     for mut child in rendered {
@@ -450,7 +737,8 @@ fn layout_choice(
                 .line_to(elem_x, elem_center_y)
                 .build()
         };
-        out.paths.push(railroad_path(left_path));
+        let left_path = railroad_path(left_path);
+        out.paths.push(left_path.clone());
 
         let right_start = elem_x + child.width;
         let right_lane_x = total_width - arc_radius * 2.0;
@@ -497,12 +785,21 @@ fn layout_choice(
                 )
                 .build()
         };
-        out.paths.push(railroad_path(right_path));
+        let right_path = railroad_path(right_path);
+        out.paths.push(right_path.clone());
+        child.render_node.set_transform(elem_x, elem_y);
+        render_children.push(child.render_node);
+        render_children.push(RailroadRenderNode::Path(left_path));
+        render_children.push(RailroadRenderNode::Path(right_path));
         translate_elements(&mut child.elements, elem_x, elem_y);
         translate_paths(&mut child.paths, elem_x, elem_y);
         out.elements.extend(child.elements);
         out.paths.extend(child.paths);
         y += child.height + style.vertical_separation;
+    }
+
+    if let RailroadRenderNode::Group { children, .. } = &mut out.render_node {
+        *children = render_children;
     }
 
     out
@@ -523,21 +820,24 @@ fn layout_optional(
     let center_y = elem_y + inner.up;
     translate_elements(&mut inner.elements, elem_x, elem_y);
     translate_paths(&mut inner.paths, elem_x, elem_y);
+    inner.render_node.set_transform(elem_x, elem_y);
 
     let mut paths = inner.paths;
-    paths.push(railroad_path(
+    let lower_path = railroad_path(
         PathBuilder::new()
             .move_to(0.0, center_y)
             .line_to(arc_radius * 2.0, center_y)
             .build(),
-    ));
-    paths.push(railroad_path(
+    );
+    paths.push(lower_path.clone());
+    let lower_path_2 = railroad_path(
         PathBuilder::new()
             .move_to(elem_x + inner.width, center_y)
             .line_to(total_width, center_y)
             .build(),
-    ));
-    paths.push(railroad_path(
+    );
+    paths.push(lower_path_2.clone());
+    let bypass_path = railroad_path(
         PathBuilder::new()
             .move_to(0.0, center_y)
             .arc_to(
@@ -580,7 +880,8 @@ fn layout_optional(
                 center_y,
             )
             .build(),
-    ));
+    );
+    paths.push(bypass_path.clone());
 
     ExprLayout {
         width: total_width,
@@ -589,6 +890,16 @@ fn layout_optional(
         down: total_height - center_y,
         elements: inner.elements,
         paths,
+        render_node: RailroadRenderNode::Group {
+            class: "railroad-optional",
+            transform: None,
+            children: vec![
+                inner.render_node,
+                RailroadRenderNode::Path(lower_path),
+                RailroadRenderNode::Path(lower_path_2),
+                RailroadRenderNode::Path(bypass_path),
+            ],
+        },
     }
 }
 
@@ -609,22 +920,25 @@ fn layout_repetition(
     let center_y = elem_y + inner.up;
     translate_elements(&mut inner.elements, elem_x, elem_y);
     translate_paths(&mut inner.paths, elem_x, elem_y);
+    inner.render_node.set_transform(elem_x, elem_y);
     let mut paths = inner.paths;
-    paths.push(railroad_path(
+    let forward_path = railroad_path(
         PathBuilder::new()
             .move_to(0.0, center_y)
             .line_to(arc_radius * 2.0, center_y)
             .build(),
-    ));
-    paths.push(railroad_path(
+    );
+    paths.push(forward_path.clone());
+    let forward_path_2 = railroad_path(
         PathBuilder::new()
             .move_to(elem_x + inner.width, center_y)
             .line_to(total_width, center_y)
             .build(),
-    ));
+    );
+    paths.push(forward_path_2.clone());
 
     let loop_y = elem_y + inner.height + arc_radius;
-    paths.push(railroad_path(
+    let loop_path = railroad_path(
         PathBuilder::new()
             .move_to(elem_x + inner.width, center_y)
             .arc_to(
@@ -659,10 +973,12 @@ fn layout_repetition(
                 center_y,
             )
             .build(),
-    ));
+    );
+    paths.push(loop_path.clone());
 
+    let mut bypass_render_path = None;
     if has_bypass {
-        paths.push(railroad_path(
+        let bypass_path = railroad_path(
             PathBuilder::new()
                 .move_to(0.0, center_y)
                 .arc_to(
@@ -705,7 +1021,19 @@ fn layout_repetition(
                     center_y,
                 )
                 .build(),
-        ));
+        );
+        paths.push(bypass_path.clone());
+        bypass_render_path = Some(bypass_path);
+    }
+
+    let mut render_children = vec![
+        inner.render_node,
+        RailroadRenderNode::Path(forward_path),
+        RailroadRenderNode::Path(forward_path_2),
+        RailroadRenderNode::Path(loop_path),
+    ];
+    if let Some(path) = bypass_render_path {
+        render_children.push(RailroadRenderNode::Path(path));
     }
 
     ExprLayout {
@@ -715,6 +1043,11 @@ fn layout_repetition(
         down: total_height - center_y,
         elements: inner.elements,
         paths,
+        render_node: RailroadRenderNode::Group {
+            class: "railroad-repetition",
+            transform: None,
+            children: render_children,
+        },
     }
 }
 
@@ -726,6 +1059,11 @@ fn empty_expr() -> ExprLayout {
         down: 0.0,
         elements: Vec::new(),
         paths: Vec::new(),
+        render_node: RailroadRenderNode::Group {
+            class: "railroad-group",
+            transform: None,
+            children: Vec::new(),
+        },
     }
 }
 
@@ -735,9 +1073,7 @@ fn measure_text(text: &str, style: &RailroadStyle, measurer: &dyn TextMeasurer) 
         font_size: style.font_size,
         font_weight: None,
     };
-    let width = measurer
-        .measure_svg_raw_text_bbox_width_px(text, &text_style)
-        .max(text.chars().count() as f64 * style.font_size * 0.55);
+    let width = measurer.measure_svg_raw_text_bbox_width_px(text, &text_style);
     let height = measurer
         .measure_svg_simple_text_bbox_height_px(text, &text_style)
         .max(style.font_size);
@@ -784,6 +1120,7 @@ impl PathBuilder {
         self
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn arc_to(
         mut self,
         rx: f64,
@@ -852,7 +1189,31 @@ fn fmt_number(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::DeterministicTextMeasurer;
+    use crate::text::{DeterministicTextMeasurer, TextMetrics};
+
+    struct RailroadBBoxMeasurer;
+
+    impl TextMeasurer for RailroadBBoxMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: self.measure_svg_raw_text_bbox_width_px(text, style),
+                height: style.font_size * 1.1,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_raw_text_bbox_width_px(&self, text: &str, _style: &TextStyle) -> f64 {
+            match text {
+                "other" => 31.25,
+                "? anything ?" => 62.75,
+                _ => 40.0,
+            }
+        }
+
+        fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            style.font_size * 1.1
+        }
+    }
 
     #[test]
     fn railroad_layout_handles_sequence_choice_and_repetition() {
@@ -883,5 +1244,148 @@ mod tests {
                 .any(|path| path.d.contains('A'))
         );
         assert_eq!(layout.rules[0].elements.len(), 2);
+        assert_eq!(layout.diagram_type, "railroad");
+
+        let ebnf_layout = layout_railroad_diagram_typed_for_type(
+            &model,
+            "railroadEbnf",
+            &serde_json::json!({}),
+            &DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        assert_eq!(ebnf_layout.diagram_type, "railroadEbnf");
+        assert_eq!(
+            serde_json::to_value(&ebnf_layout).unwrap()["diagram_type"],
+            "railroadEbnf"
+        );
+    }
+
+    #[test]
+    fn railroad_variants_use_raw_svg_bbox_width_without_character_floor() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "railroad-beta\nexpr = choice(nonterminal(\"other\"), special(\"anything\")) ;\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("railroad render model parses");
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model else {
+            panic!("expected railroad render model");
+        };
+
+        for diagram_type in ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"] {
+            let layout = layout_railroad_diagram_typed_for_type(
+                &model,
+                diagram_type,
+                &serde_json::json!({}),
+                &RailroadBBoxMeasurer,
+            )
+            .unwrap();
+            let elements = &layout.rules[0].elements;
+            let other = elements
+                .iter()
+                .find(|element| element.label == "other")
+                .expect("nonterminal element");
+            let anything = elements
+                .iter()
+                .find(|element| element.label == "? anything ?")
+                .expect("special element");
+
+            assert_eq!(layout.diagram_type, diagram_type);
+            assert_eq!(other.width, 31.25 + 20.0, "{diagram_type}");
+            assert_eq!(anything.width, 62.75 + 20.0, "{diagram_type}");
+        }
+    }
+
+    #[test]
+    fn railroad_style_matches_upstream_css_value_whitelists() {
+        for color in [
+            "#abc",
+            "#abcd",
+            "#abcdef",
+            "#abcdef12",
+            "rgb(10 20 30 / 50%)",
+            "hsl(120, 40%, 50%)",
+            "oklch(70% 0.1 200)",
+            "currentColor",
+        ] {
+            assert!(is_valid_color_value(color), "expected valid color: {color}");
+        }
+        for color in [
+            "#abcde",
+            "var(--railroad-color)",
+            "url(javascript:alert(1))",
+            "#fff;stroke:red",
+            "red}",
+        ] {
+            assert!(
+                !is_valid_color_value(color),
+                "expected invalid color: {color}"
+            );
+        }
+
+        let valid_font = serde_json::json!("\"Fira Code\", monospace");
+        let invalid_font = serde_json::json!("safe\"} body { display: none; } /*");
+        assert_eq!(
+            sanitize_font_family_value(Some(&valid_font), "fallback"),
+            "\"Fira Code\", monospace"
+        );
+        assert_eq!(
+            sanitize_font_family_value(Some(&invalid_font), "fallback"),
+            "fallback"
+        );
+    }
+
+    #[test]
+    fn railroad_style_numbers_follow_number_parse_float_semantics() {
+        for (input, expected) in [
+            ("12px", 12.0),
+            ("1e2junk", 100.0),
+            ("0x10", 0.0),
+            (".5rem", 0.5),
+        ] {
+            assert_eq!(parse_js_float_prefix(input), Some(expected), "{input}");
+        }
+        for input in ["", "NaN", "Infinity", "-Infinity"] {
+            assert_eq!(
+                sanitize_number_value(Some(&serde_json::json!(input)), 7.0),
+                7.0,
+                "{input}"
+            );
+        }
+        assert_eq!(
+            sanitize_number_value(Some(&serde_json::json!("-1px")), 7.0),
+            7.0
+        );
+        assert_eq!(sanitize_number_value(Some(&serde_json::json!(0)), 7.0), 0.0);
+        assert_eq!(parse_theme_font_size(Some(&serde_json::json!(0))), None);
+    }
+
+    #[test]
+    fn railroad_style_uses_ecmascript_whitespace_semantics() {
+        let bom_color = serde_json::json!("\u{FEFF}rgb(1\u{FEFF}2 3)\u{FEFF}");
+        let nel_color = serde_json::json!("rgb(1\u{0085}2 3)");
+        assert_eq!(
+            sanitize_color_value(Some(&bom_color), "fallback"),
+            "rgb(1\u{FEFF}2 3)"
+        );
+        assert_eq!(
+            sanitize_color_value(Some(&nel_color), "fallback"),
+            "fallback"
+        );
+        assert_eq!(parse_js_float_prefix("\u{FEFF}18px"), Some(18.0));
+        assert_eq!(parse_js_float_prefix("\u{0085}18px"), None);
+    }
+
+    #[test]
+    fn invalid_primary_theme_color_uses_hard_fallback() {
+        let style = railroad_style(&serde_json::json!({
+            "themeVariables": {
+                "secondBkg": "#fff; stroke: red",
+                "secondaryColor": "#123456"
+            }
+        }));
+
+        assert_eq!(style.terminal_fill, "#FFFFC0");
     }
 }

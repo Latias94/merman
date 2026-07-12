@@ -215,7 +215,7 @@
         },
         {
           "id": "L_one_two_0",
-          "from": "one",
+          "from": "a2",
           "to": "two",
           "from_cluster": "one",
           "to_cluster": null,
@@ -248,7 +248,7 @@
         },
         {
           "id": "L_three_two_0",
-          "from": "three",
+          "from": "c1",
           "to": "two",
           "from_cluster": "three",
           "to_cluster": null,

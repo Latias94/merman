@@ -17,7 +17,7 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
         fragments: &[
             "svg: attr `style` mismatch",
             "upstream=`max-width: 2355.75px; background-color: white;`",
-            "local=`max-width: 2344.92px; background-color: white;`",
+            "local=`max-width: 2345px; background-color: white;`",
         ],
     },
     AcceptedRootParityResidual {
@@ -25,17 +25,8 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
         stem: "upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037",
         fragments: &[
             "svg: attr `style` mismatch",
-            "upstream=`max-width: 2355.73px; background-color: white;`",
-            "local=`max-width: 2344.92px; background-color: white;`",
-        ],
-    },
-    AcceptedRootParityResidual {
-        diagram: "sequence",
-        stem: "zed_pr_57644_sequence",
-        fragments: &[
-            "svg: attr `viewBox` mismatch",
-            "upstream=`<n> <n> 796 1096`",
-            "local=`<n> <n> 796 1126`",
+            "upstream=`max-width: 2355.75px; background-color: white;`",
+            "local=`max-width: 2345px; background-color: white;`",
         ],
     },
     AcceptedRootParityResidual {
@@ -58,15 +49,6 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
     },
     AcceptedRootParityResidual {
         diagram: "mindmap",
-        stem: "upstream_docs_tidy_tree_example_usage_002",
-        fragments: &[
-            "svg: attr `viewBox` mismatch",
-            "upstream=`<n> <n> 796.5 671.5`",
-            "local=`<n> <n> 796.5 671.75`",
-        ],
-    },
-    AcceptedRootParityResidual {
-        diagram: "mindmap",
         stem: "upstream_examples_mindmap_basic_mindmap_001",
         fragments: &[
             "svg: attr `style` mismatch",
@@ -75,15 +57,171 @@ const ACCEPTED_ROOT_PARITY_RESIDUALS: &[AcceptedRootParityResidual] = &[
         ],
     },
     AcceptedRootParityResidual {
-        diagram: "mindmap",
-        stem: "zed_pr_57644_mindmap",
+        diagram: "railroad",
+        stem: "basic_ir",
         fragments: &[
-            "svg: attr `style` mismatch",
-            "upstream=`max-width: 1199.75px; background-color: white;`",
-            "local=`max-width: 1161.75px; background-color: white;`",
+            "svg: attr `viewBox` mismatch",
+            "upstream=`<n> <n> 368 194.5`",
+            "local=`<n> <n> 368 192.25`",
+        ],
+    },
+    AcceptedRootParityResidual {
+        diagram: "railroadEbnf",
+        stem: "choice_optional_repetition",
+        fragments: &[
+            "svg: attr `viewBox` mismatch",
+            "upstream=`<n> <n> 397.25 174`",
+            "local=`<n> <n> 397.25 171.25`",
+        ],
+    },
+    AcceptedRootParityResidual {
+        diagram: "railroadAbnf",
+        stem: "repetition_optional_numval",
+        fragments: &[
+            "svg: attr `viewBox` mismatch",
+            "upstream=`<n> <n> 289.75 221`",
+            "local=`<n> <n> 289.75 216.75`",
+        ],
+    },
+    AcceptedRootParityResidual {
+        diagram: "railroadPeg",
+        stem: "prefix_suffix_any",
+        fragments: &[
+            "svg: attr `viewBox` mismatch",
+            "upstream=`<n> <n> 431.75 107`",
+            "local=`<n> <n> 431.75 105.5`",
         ],
     },
 ];
+
+#[derive(Debug, Clone, Copy)]
+struct AcceptedDomParityResidual {
+    diagram: &'static str,
+    stem: &'static str,
+    fragments: &'static [&'static str],
+}
+
+const ACCEPTED_DOM_PARITY_RESIDUALS: &[AcceptedDomParityResidual] = &[
+    AcceptedDomParityResidual {
+        diagram: "sequence",
+        stem: "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026",
+        fragments: &["svg/g[16]: child count mismatch upstream=9 local=8"],
+    },
+    AcceptedDomParityResidual {
+        diagram: "sequence",
+        stem: "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019",
+        fragments: &["svg/g[20]: child count mismatch upstream=9 local=8"],
+    },
+    AcceptedDomParityResidual {
+        diagram: "sequence",
+        stem: "upstream_docs_diagrams_mermaid_api_sequence",
+        fragments: &[
+            "svg/g[61]/text[9]: attr `class` mismatch",
+            "upstream=`sectionTitle`",
+            "local=`loopText`",
+        ],
+    },
+];
+
+#[derive(Debug)]
+pub(crate) struct DomParityResidualPolicy {
+    expected: Vec<&'static AcceptedDomParityResidual>,
+    seen: BTreeSet<(&'static str, &'static str)>,
+}
+
+impl DomParityResidualPolicy {
+    pub(crate) fn new(diagrams: &[&str]) -> Self {
+        let expected = ACCEPTED_DOM_PARITY_RESIDUALS
+            .iter()
+            .filter(|residual| diagrams.contains(&residual.diagram))
+            .collect();
+        Self {
+            expected,
+            seen: BTreeSet::new(),
+        }
+    }
+
+    pub(crate) fn accept_or_summarize_failure(
+        &mut self,
+        diagram: &str,
+        msg: &str,
+        report_path: Option<&Path>,
+    ) -> Option<String> {
+        self.accept_or_return_remaining(diagram, msg)
+            .map(|remaining| summarize_dom_parity_failure(diagram, &remaining, report_path))
+    }
+
+    pub(crate) fn accepted_summaries(&self) -> Vec<String> {
+        self.expected
+            .iter()
+            .filter(|residual| self.seen.contains(&(residual.diagram, residual.stem)))
+            .map(|residual| format!("- {}/{}", residual.diagram, residual.stem))
+            .collect()
+    }
+
+    pub(crate) fn missing_failures(&self) -> Vec<String> {
+        self.expected
+            .iter()
+            .filter(|residual| !self.seen.contains(&(residual.diagram, residual.stem)))
+            .map(|residual| {
+                format!(
+                    "DOM parity residual policy expected {}/{} but it was not observed; update or remove the policy only with fresh closeout evidence",
+                    residual.diagram, residual.stem
+                )
+            })
+            .collect()
+    }
+
+    fn accept_or_return_remaining(&mut self, diagram: &str, msg: &str) -> Option<String> {
+        let mut remaining = Vec::new();
+        for line in msg.lines().filter(|line| !line.trim().is_empty()) {
+            if let Some(residual) = self.matching_residual(diagram, line) {
+                self.seen.insert((residual.diagram, residual.stem));
+            } else {
+                remaining.push(line.to_string());
+            }
+        }
+
+        if remaining.is_empty() {
+            None
+        } else {
+            Some(remaining.join("\n"))
+        }
+    }
+
+    fn matching_residual(
+        &self,
+        diagram: &str,
+        line: &str,
+    ) -> Option<&'static AcceptedDomParityResidual> {
+        self.expected.iter().copied().find(|residual| {
+            residual.diagram == diagram
+                && line.contains(&format!("dom mismatch for {}:", residual.stem))
+                && residual
+                    .fragments
+                    .iter()
+                    .all(|fragment| line.contains(fragment))
+        })
+    }
+}
+
+fn summarize_dom_parity_failure(diagram: &str, msg: &str, report_path: Option<&Path>) -> String {
+    let lines: Vec<&str> = msg.lines().filter(|line| !line.trim().is_empty()).collect();
+    let mismatch_count = lines
+        .iter()
+        .filter(|line| line.trim_start().starts_with("dom mismatch for "))
+        .count();
+    let count = if mismatch_count > 0 {
+        mismatch_count
+    } else {
+        lines.len()
+    };
+    let first = lines.first().copied().unwrap_or("no mismatch details");
+    let report = report_path
+        .map(|path| format!("; report={}", path.display()))
+        .unwrap_or_default();
+    format!("{diagram}: {count} unaccepted parity DOM mismatch(es){report}; first: {first}")
+}
 
 #[derive(Debug)]
 pub(crate) struct RootParityResidualPolicy {
@@ -159,6 +297,7 @@ impl RootParityResidualPolicy {
         self.expected.iter().copied().find(|residual| {
             residual.diagram == diagram
                 && line.contains(&format!("dom mismatch for {}:", residual.stem))
+                && line.contains(crate::svgdom::PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER)
                 && residual
                     .fragments
                     .iter()
@@ -189,11 +328,56 @@ fn summarize_root_parity_failure(diagram: &str, msg: &str, report_path: Option<&
 mod tests {
     use super::*;
 
+    const EXACT_SEQUENCE_DOM_RESIDUALS: &str = "dom mismatch for upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026: upstream=a local=b (svg/g[16]: child count mismatch upstream=9 local=8)\n\
+dom mismatch for upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019: upstream=a local=b (svg/g[20]: child count mismatch upstream=9 local=8)\n\
+dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b (svg/g[61]/text[9]: attr `class` mismatch upstream=`sectionTitle` local=`loopText`)";
+
+    #[test]
+    fn dom_parity_policy_accepts_only_the_three_documented_sequence_residuals() {
+        let mut policy = DomParityResidualPolicy::new(&["sequence"]);
+
+        assert!(
+            policy
+                .accept_or_summarize_failure("sequence", EXACT_SEQUENCE_DOM_RESIDUALS, None)
+                .is_none()
+        );
+        assert_eq!(policy.accepted_summaries().len(), 3);
+        assert!(policy.missing_failures().is_empty());
+    }
+
+    #[test]
+    fn dom_parity_policy_preserves_unexpected_sequence_mismatches() {
+        let mut policy = DomParityResidualPolicy::new(&["sequence"]);
+        let msg = format!(
+            "{EXACT_SEQUENCE_DOM_RESIDUALS}\ndom mismatch for unexpected_fixture: upstream=a local=b (svg/g[0]: child count mismatch upstream=1 local=0)"
+        );
+
+        let summary = policy
+            .accept_or_summarize_failure("sequence", &msg, None)
+            .expect("unexpected mismatch should remain");
+
+        assert!(summary.contains("unexpected_fixture"));
+        assert!(policy.missing_failures().is_empty());
+    }
+
+    #[test]
+    fn dom_parity_policy_rejects_changed_sequence_residual_details() {
+        let mut policy = DomParityResidualPolicy::new(&["sequence"]);
+        let changed = EXACT_SEQUENCE_DOM_RESIDUALS.replace("local=8", "local=7");
+
+        let summary = policy
+            .accept_or_summarize_failure("sequence", &changed, None)
+            .expect("changed residual should remain");
+
+        assert!(summary.contains("local=7"));
+        assert_eq!(policy.missing_failures().len(), 2);
+    }
+
     #[test]
     fn root_parity_policy_accepts_exact_recorded_class_residuals() {
         let mut policy = RootParityResidualPolicy::new(&["class"]);
-        let msg = "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2344.92px; background-color: white;`)\n\
-dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.73px; background-color: white;` local=`max-width: 2344.92px; background-color: white;`)";
+        let msg = "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)\n\
+dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)";
 
         assert!(
             policy
@@ -206,8 +390,8 @@ dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_rende
 
     #[test]
     fn root_parity_failure_summary_keeps_final_error_bounded() {
-        let msg = "dom mismatch for a: upstream=a local=b (svg: attr `style` mismatch)\n\
-dom mismatch for b: upstream=a local=b (svg: attr `viewBox` mismatch)";
+        let msg = "dom mismatch for a: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch)\n\
+dom mismatch for b: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `viewBox` mismatch)";
 
         let summary = summarize_root_parity_failure(
             "flowchart",
@@ -225,22 +409,61 @@ dom mismatch for b: upstream=a local=b (svg: attr `viewBox` mismatch)";
 
     #[test]
     fn root_parity_policy_matches_current_strict_root_residuals() {
-        let policy = RootParityResidualPolicy::new(&["sequence", "gitgraph", "mindmap"]);
+        let policy = RootParityResidualPolicy::new(&[
+            "class",
+            "gitgraph",
+            "mindmap",
+            "railroad",
+            "railroadEbnf",
+            "railroadAbnf",
+            "railroadPeg",
+        ]);
 
         let residual_lines = [
             (
-                "sequence",
-                "dom mismatch for zed_pr_57644_sequence: upstream=a local=b (svg: attr `viewBox` mismatch upstream=`<n> <n> 796 1096` local=`<n> <n> 796 1126`)",
+                "class",
+                "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)",
+            ),
+            (
+                "class",
+                "dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)",
             ),
             (
                 "gitgraph",
-                "dom mismatch for zed_pr_57644_gitgraph: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 845.25px; background-color: white;` local=`max-width: 845px; background-color: white;`)",
+                "dom mismatch for zed_pr_57644_gitgraph: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 845.25px; background-color: white;` local=`max-width: 845px; background-color: white;`)",
             ),
             (
                 "mindmap",
-                "dom mismatch for zed_pr_57644_mindmap: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 1199.75px; background-color: white;` local=`max-width: 1161.75px; background-color: white;`)",
+                "dom mismatch for upstream_docs_example_icons_br: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 756.25px; background-color: white;` local=`max-width: 756.75px; background-color: white;`)",
+            ),
+            (
+                "mindmap",
+                "dom mismatch for upstream_examples_mindmap_basic_mindmap_001: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 756.25px; background-color: white;` local=`max-width: 756.75px; background-color: white;`)",
+            ),
+            (
+                "railroad",
+                "dom mismatch for basic_ir: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `viewBox` mismatch upstream=`<n> <n> 368 194.5` local=`<n> <n> 368 192.25`)",
+            ),
+            (
+                "railroadEbnf",
+                "dom mismatch for choice_optional_repetition: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `viewBox` mismatch upstream=`<n> <n> 397.25 174` local=`<n> <n> 397.25 171.25`)",
+            ),
+            (
+                "railroadAbnf",
+                "dom mismatch for repetition_optional_numval: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `viewBox` mismatch upstream=`<n> <n> 289.75 221` local=`<n> <n> 289.75 216.75`)",
+            ),
+            (
+                "railroadPeg",
+                "dom mismatch for prefix_suffix_any: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `viewBox` mismatch upstream=`<n> <n> 431.75 107` local=`<n> <n> 431.75 105.5`)",
             ),
         ];
+
+        assert_eq!(ACCEPTED_ROOT_PARITY_RESIDUALS.len(), 9);
+        assert!(
+            ACCEPTED_ROOT_PARITY_RESIDUALS
+                .iter()
+                .all(|residual| residual.stem != "upstream_docs_tidy_tree_example_usage_002")
+        );
 
         for (diagram, line) in residual_lines {
             assert!(
@@ -251,11 +474,33 @@ dom mismatch for b: upstream=a local=b (svg: attr `viewBox` mismatch)";
     }
 
     #[test]
+    fn root_parity_policy_keeps_railroad_residuals_narrow() {
+        let policy = RootParityResidualPolicy::new(&["railroad"]);
+        let exact = "dom mismatch for basic_ir: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `viewBox` mismatch upstream=`<n> <n> 368 194.5` local=`<n> <n> 368 192.25`)";
+
+        assert!(policy.matching_residual("railroad", exact).is_some());
+        assert!(policy.matching_residual("railroadEbnf", exact).is_none());
+        assert!(
+            policy
+                .matching_residual(
+                    "railroad",
+                    &exact.replace("descendants-match", "descendants-differ"),
+                )
+                .is_none()
+        );
+        assert!(
+            policy
+                .matching_residual("railroad", &exact.replace("192.25", "192.5"))
+                .is_none()
+        );
+    }
+
+    #[test]
     fn root_parity_policy_preserves_unexpected_mismatches() {
         let mut policy = RootParityResidualPolicy::new(&["class"]);
-        let msg = "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2344.92px; background-color: white;`)\n\
-dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 2355.73px; background-color: white;` local=`max-width: 2344.92px; background-color: white;`)\n\
-dom mismatch for unexpected_fixture: upstream=a local=b (svg: attr `style` mismatch)";
+        let msg = "dom mismatch for upstream_cypress_classdiagram_elk_v3_spec_elk_should_render_classes_with_different_text_labels_037: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)\n\
+dom mismatch for upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_render_classes_with_different_text_labels_037: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 2355.75px; background-color: white;` local=`max-width: 2345px; background-color: white;`)\n\
+dom mismatch for unexpected_fixture: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch)";
 
         let summary = policy
             .accept_or_summarize_failure("class", msg, None)
@@ -268,7 +513,7 @@ dom mismatch for unexpected_fixture: upstream=a local=b (svg: attr `style` misma
     #[test]
     fn root_parity_policy_rejects_changed_residual_values() {
         let mut policy = RootParityResidualPolicy::new(&["mindmap"]);
-        let msg = "dom mismatch for upstream_docs_example_icons_br: upstream=a local=b (svg: attr `style` mismatch upstream=`max-width: 756.25px; background-color: white;` local=`max-width: 756.5px; background-color: white;`)";
+        let msg = "dom mismatch for upstream_docs_example_icons_br: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 756.25px; background-color: white;` local=`max-width: 756.5px; background-color: white;`)";
 
         let summary = policy
             .accept_or_summarize_failure("mindmap", msg, None)
@@ -281,5 +526,56 @@ dom mismatch for unexpected_fixture: upstream=a local=b (svg: attr `style` misma
                 .iter()
                 .any(|line| line.contains("upstream_docs_example_icons_br"))
         );
+    }
+
+    #[test]
+    fn root_parity_policy_rejects_tidy_tree_layout_divergence() {
+        let mut policy = RootParityResidualPolicy::new(&["mindmap"]);
+        let msg = "dom mismatch for upstream_docs_tidy_tree_example_usage_002: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 1479.5px; background-color: white;` local=`max-width: 796.5px; background-color: white;`)";
+
+        let summary = policy
+            .accept_or_summarize_failure("mindmap", msg, None)
+            .expect("tidy-tree layout divergence must remain actionable");
+
+        assert!(summary.contains("upstream_docs_tidy_tree_example_usage_002"));
+    }
+
+    #[test]
+    fn root_parity_policy_rejects_sequence_zed_large_geometry_drift() {
+        let mut policy = RootParityResidualPolicy::new(&["sequence"]);
+        let msg = "dom mismatch for zed_pr_57644_sequence: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `viewBox` mismatch upstream=`<n> <n> 796 1096` local=`<n> <n> 796 1126`)";
+
+        let summary = policy
+            .accept_or_summarize_failure("sequence", msg, None)
+            .expect("large sequence geometry drift must remain actionable");
+
+        assert!(summary.contains("zed_pr_57644_sequence"));
+        assert!(policy.accepted_summaries().is_empty());
+    }
+
+    #[test]
+    fn root_parity_policy_rejects_mindmap_zed_node_relayout() {
+        let mut policy = RootParityResidualPolicy::new(&["mindmap"]);
+        let msg = "dom mismatch for zed_pr_57644_mindmap: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 1199.75px; background-color: white;` local=`max-width: 1161.75px; background-color: white;`)";
+
+        let summary = policy
+            .accept_or_summarize_failure("mindmap", msg, None)
+            .expect("mindmap node relayout must remain actionable");
+
+        assert!(summary.contains("zed_pr_57644_mindmap"));
+        assert!(policy.accepted_summaries().is_empty());
+    }
+
+    #[test]
+    fn root_parity_policy_rejects_hidden_beyond_root_regression() {
+        let mut policy = RootParityResidualPolicy::new(&["mindmap"]);
+        let msg = "dom mismatch for upstream_docs_example_icons_br: upstream=a local=b (scope=parity-normalized-descendants-differ; root-viewport-also-differs=true; svg/g[0]: attr `transform` mismatch; svg: attr `style` mismatch upstream=`max-width: 756.25px; background-color: white;` local=`max-width: 756.75px; background-color: white;`)";
+
+        let summary = policy
+            .accept_or_summarize_failure("mindmap", msg, None)
+            .expect("a beyond-root regression must never be accepted as a root residual");
+
+        assert!(summary.contains("upstream_docs_example_icons_br"));
+        assert!(policy.accepted_summaries().is_empty());
     }
 }

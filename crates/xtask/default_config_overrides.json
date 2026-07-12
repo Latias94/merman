@@ -77,6 +77,86 @@
   },
   {
     "op": "remove",
+    "path": ["railroad", "fontSize"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "fontFamily"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "terminalFill"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "terminalStroke"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "terminalTextColor"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "nonTerminalFill"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "nonTerminalStroke"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "nonTerminalTextColor"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "lineColor"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "markerFill"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "commentFill"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "commentStroke"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "commentTextColor"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "specialFill"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "specialStroke"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
+    "path": ["railroad", "ruleNameColor"],
+    "reason": "Mermaid 11.16 leaves Railroad typography and colors undefined at runtime so they derive from the active themeVariables."
+  },
+  {
+    "op": "remove",
     "path": ["wardley-beta"],
     "reason": "Wardley config exists in Mermaid's schema, but the Wardley family is not admitted in the local inventory."
   }

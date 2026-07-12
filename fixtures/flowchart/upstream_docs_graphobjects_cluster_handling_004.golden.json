@@ -106,6 +106,7 @@
         "classes": [],
         "styles": [],
         "dir": null,
+        "hasExplicitDir": false,
         "labelType": "text"
       },
       {
@@ -117,6 +118,7 @@
         "classes": [],
         "styles": [],
         "dir": null,
+        "hasExplicitDir": false,
         "labelType": "text"
       }
     ],

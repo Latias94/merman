@@ -4,6 +4,7 @@ use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use std::collections::BTreeSet;
 
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
+const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 
 pub(crate) fn render_tree_view_diagram_svg(
     layout: &TreeViewDiagramLayout,
@@ -87,11 +88,11 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     out.push_str(r#"<g class="tree-view">"#);
     let mut next_node = 0usize;
     for line in &layout.lines {
-        if line.kind == "horizontal" {
-            if let Some(node) = layout.nodes.get(next_node) {
-                push_tree_view_node(&mut out, node, layout, diagram_id);
-                next_node += 1;
-            }
+        if line.kind == "horizontal"
+            && let Some(node) = layout.nodes.get(next_node)
+        {
+            push_tree_view_node(&mut out, node, layout, diagram_id);
+            next_node += 1;
         }
         let _ = write!(
             &mut out,
@@ -116,6 +117,7 @@ fn push_tree_view_node(
     layout: &TreeViewDiagramLayout,
     diagram_id: &str,
 ) {
+    out.push_str("<g>");
     let label_classes = tree_view_label_classes(node);
     if node
         .css_class
@@ -160,13 +162,14 @@ fn push_tree_view_node(
             escape_xml(description)
         );
     }
+    out.push_str("</g>");
 }
 
 fn tree_view_css(effective_config: &serde_json::Value) -> String {
     let theme = PresentationTheme::new(effective_config).tree_view();
 
     format!(
-        ".treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-size: {}; fill: {}; font-style: italic; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
+        ".treeView-node-label {{ font-size: {}; fill: {}; white-space: pre; }} .treeView-node-dir {{ font-weight: bold; }} .treeView-node-line {{ stroke: {}; }} .treeView-node-icon {{ color: {}; }} .treeView-node-description {{ font-size: {}; fill: {}; font-style: italic; white-space: pre; }} .treeView-highlight-bg {{ fill: {}; stroke: {}; stroke-width: 1; }}",
         theme.label_font_size_css,
         theme.label_color,
         theme.line_color,
@@ -180,6 +183,9 @@ fn tree_view_css(effective_config: &serde_json::Value) -> String {
 
 fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
     let mut classes = vec!["treeView-node-label".to_string()];
+    if node.node_type == TREE_VIEW_DIRECTORY_NODE_TYPE {
+        classes.push("treeView-node-dir".to_string());
+    }
     if let Some(css_class) = node.css_class.as_deref() {
         classes.extend(
             css_class

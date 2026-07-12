@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -168.047,
-        "min_y": -18.0,
+        "min_y": -20.0,
         "max_x": 658.0,
-        "max_y": 288.0
+        "max_y": 286.0
       },
       "direction": "LR",
       "rotate_commit_label": true,
@@ -59,7 +59,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "work on first release",
@@ -76,7 +76,7 @@
           "pos": 50.0,
           "pos_with_offset": 60.0,
           "x": 60.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "design freeze from here",
@@ -93,7 +93,7 @@
           "pos": 100.0,
           "pos_with_offset": 110.0,
           "x": 110.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "bugfix 1",
@@ -110,7 +110,7 @@
           "pos": 150.0,
           "pos_with_offset": 160.0,
           "x": 160.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "bigfix 2",
@@ -129,7 +129,7 @@
           "pos": 200.0,
           "pos_with_offset": 210.0,
           "x": 210.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "minor design changes for MDR",
@@ -148,7 +148,7 @@
           "pos": 250.0,
           "pos_with_offset": 260.0,
           "x": 260.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "7-<dynamic>",
@@ -166,7 +166,7 @@
           "pos": 300.0,
           "pos_with_offset": 310.0,
           "x": 310.0,
-          "y": 180.0
+          "y": 178.0
         },
         {
           "id": "new feature for v1.1â¦",
@@ -183,7 +183,7 @@
           "pos": 350.0,
           "pos_with_offset": 360.0,
           "x": 360.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "working on MDR",
@@ -200,7 +200,7 @@
           "pos": 400.0,
           "pos_with_offset": 410.0,
           "x": 410.0,
-          "y": 180.0
+          "y": 178.0
         },
         {
           "id": "finishing MDR",
@@ -217,7 +217,7 @@
           "pos": 450.0,
           "pos_with_offset": 460.0,
           "x": 460.0,
-          "y": 180.0
+          "y": 178.0
         },
         {
           "id": "brush up release",
@@ -236,7 +236,7 @@
           "pos": 500.0,
           "pos_with_offset": 510.0,
           "x": 510.0,
-          "y": 270.0
+          "y": 268.0
         },
         {
           "id": "bugfix without MDR",
@@ -253,7 +253,7 @@
           "pos": 550.0,
           "pos_with_offset": 560.0,
           "x": 560.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "work on v1.1",
@@ -270,7 +270,7 @@
           "pos": 600.0,
           "pos_with_offset": 610.0,
           "x": 610.0,
-          "y": 0.0
+          "y": -2.0
         }
       ],
       "arrows": [
@@ -278,79 +278,79 @@
           "from": "initial commit",
           "to": "work on first release",
           "class_index": 0.0,
-          "d": "M 10 0 L 60 0"
+          "d": "M 10 -2 L 60 -2"
         },
         {
           "from": "work on first release",
           "to": "design freeze from here",
           "class_index": 0.0,
-          "d": "M 60 0 L 110 0"
+          "d": "M 60 -2 L 110 -2"
         },
         {
           "from": "design freeze from here",
           "to": "bugfix 1",
           "class_index": 1.0,
-          "d": "M 110 0 L 110 70 A 20 20, 0, 0, 0, 130 90 L 160 90"
+          "d": "M 110 -2 L 110 68 A 20 20, 0, 0, 0, 130 88 L 160 88"
         },
         {
           "from": "bugfix 1",
           "to": "bigfix 2",
           "class_index": 1.0,
-          "d": "M 160 90 L 210 90"
+          "d": "M 160 88 L 210 88"
         },
         {
           "from": "bigfix 2",
           "to": "minor design changes for MDR",
           "class_index": 1.0,
-          "d": "M 210 90 L 260 90"
+          "d": "M 210 88 L 260 88"
         },
         {
           "from": "working on MDR",
           "to": "7-<dynamic>",
           "class_index": 2.0,
-          "d": "M 410 180 L 310 180"
+          "d": "M 410 178 L 310 178"
         },
         {
           "from": "minor design changes for MDR",
           "to": "7-<dynamic>",
           "class_index": 1.0,
-          "d": "M 260 90 L 290 90 A 20 20, 0, 0, 1, 310 110 L 310 180"
+          "d": "M 260 88 L 290 88 A 20 20, 0, 0, 1, 310 108 L 310 178"
         },
         {
           "from": "design freeze from here",
           "to": "new feature for v1.1â¦",
           "class_index": 0.0,
-          "d": "M 110 0 L 360 0"
+          "d": "M 110 -2 L 360 -2"
         },
         {
           "from": "7-<dynamic>",
           "to": "working on MDR",
           "class_index": 2.0,
-          "d": "M 310 180 L 410 180"
+          "d": "M 310 178 L 410 178"
         },
         {
           "from": "working on MDR",
           "to": "finishing MDR",
           "class_index": 2.0,
-          "d": "M 410 180 L 460 180"
+          "d": "M 410 178 L 460 178"
         },
         {
           "from": "finishing MDR",
           "to": "brush up release",
           "class_index": 3.0,
-          "d": "M 460 180 L 460 250 A 20 20, 0, 0, 0, 480 270 L 510 270"
+          "d": "M 460 178 L 460 248 A 20 20, 0, 0, 0, 480 268 L 510 268"
         },
         {
           "from": "minor design changes for MDR",
           "to": "bugfix without MDR",
           "class_index": 1.0,
-          "d": "M 260 90 L 560 90"
+          "d": "M 260 88 L 560 88"
         },
         {
           "from": "new feature for v1.1â¦",
           "to": "work on v1.1",
           "class_index": 0.0,
-          "d": "M 360 0 L 610 0"
+          "d": "M 360 -2 L 610 -2"
         }
       ]
     }

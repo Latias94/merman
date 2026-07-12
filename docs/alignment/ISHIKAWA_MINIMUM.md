@@ -2,7 +2,7 @@
 
 This document tracks the first local support slice for Mermaid `ishikawa`.
 
-Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
+Upstream references at locked commit `7c0cafcf42e76bfaf79d0cbbd12edb986612f014`:
 
 - Detector: `packages/mermaid/src/diagrams/ishikawa/ishikawaDetector.ts`
 - DB/model: `packages/mermaid/src/diagrams/ishikawa/ishikawaDb.ts`
@@ -28,15 +28,20 @@ Upstream references at locked commit `41646dfd43ac83f001b03c70605feb036afae46d`:
   - compatibility JSON from the same typed model
 - Layout:
   - ports the upstream spine, alternating cause, side-stat, and sub-branch geometry constants
+  - preserves the upstream `spine -> pair -> branch -> label/sub-group` ownership as typed layout
+    data instead of flattening lines, labels, and label boxes into unrelated arrays
   - supports `ishikawa.diagramPadding`, `ishikawa.useMaxWidth`, and top-level `fontSize`
 - SVG:
-  - Stage B renderer with `.ishikawa`, `.ishikawa-spine`, `.ishikawa-branch`, `.ishikawa-sub-branch`, `.ishikawa-head`, `.ishikawa-label-box`, and arrow marker DOM signals
+  - Stage B renderer with source-backed `.ishikawa-pair`, `.ishikawa-label-group`, and
+    `.ishikawa-sub-group` ownership in addition to the spine, branch, head, label-box, and arrow
+    marker DOM signals
   - uses `themeVariables.lineColor`, `mainBkg`, and `textColor`
 
 ## Known Gaps
 
-- `xtask compare-ishikawa-svgs --check-dom --dom-mode parity --dom-decimals 3` passes for the
-  current committed baseline corpus.
+- Both `structure` and `parity` DOM modes pass all 12 fixtures in the current committed baseline
+  corpus. The former 11-fixture wrapper residual was closed by retaining the renderer's typed group
+  ownership; no comparator normalization or fixture-specific policy is involved.
 - A committed upstream SVG baseline corpus exists under `fixtures/upstream-svgs/ishikawa/`.
 - Hand-drawn / rough.js mode is not implemented in local SVG output.
 - `look: "handDrawn"` remains a dedicated follow-up lane and should not be promoted in the

@@ -11,6 +11,93 @@ mod spectral;
 
 const GEOMETRY_EPSILON: f64 = 1e-9;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FcoseRandomSource {
+    #[default]
+    XorShift64Star,
+    Mulberry32,
+}
+
+/// Randomness policy for an FCoSE layout invocation.
+///
+/// This is separate from [`FcoseOptions`] and [`IndexedFcoseOptions`] so callers that construct
+/// those public option types with struct literals remain source-compatible as new random modes are
+/// added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct FcoseRandomPolicy {
+    source: FcoseRandomSource,
+    seed: Option<u64>,
+    seed_offset: Option<usize>,
+    reset_seed_each_run: bool,
+}
+
+impl FcoseRandomPolicy {
+    /// Use a deterministic seed for every layout invocation.
+    pub const fn seeded(source: FcoseRandomSource, seed: u64) -> Self {
+        Self {
+            source,
+            seed: Some(seed),
+            seed_offset: None,
+            reset_seed_each_run: false,
+        }
+    }
+
+    /// Use a best-effort ambient seed without requiring a browser or host callback.
+    pub const fn ambient(source: FcoseRandomSource) -> Self {
+        Self {
+            source,
+            seed: None,
+            seed_offset: None,
+            reset_seed_each_run: false,
+        }
+    }
+
+    /// Override the number of random values consumed before the first FCoSE draw.
+    pub const fn with_seed_offset(mut self, seed_offset: usize) -> Self {
+        self.seed_offset = Some(seed_offset);
+        self
+    }
+
+    /// Restart a deterministic random stream before each FCoSE rerun.
+    ///
+    /// Ambient streams remain continuous because there is no deterministic seed to restore.
+    pub const fn with_reset_seed_each_run(mut self, reset: bool) -> Self {
+        self.reset_seed_each_run = reset;
+        self
+    }
+
+    /// Return the configured PRNG implementation.
+    pub const fn source(self) -> FcoseRandomSource {
+        self.source
+    }
+
+    /// Return the deterministic seed, or `None` for ambient randomness.
+    pub const fn seed(self) -> Option<u64> {
+        self.seed
+    }
+
+    /// Return the explicit pre-layout draw offset, if one was configured.
+    pub const fn seed_offset(self) -> Option<usize> {
+        self.seed_offset
+    }
+
+    /// Return whether deterministic streams restart before each rerun.
+    pub const fn resets_seed_each_run(self) -> bool {
+        self.reset_seed_each_run
+    }
+
+    const fn legacy(seed: u64) -> Self {
+        Self::seeded(FcoseRandomSource::XorShift64Star, seed)
+    }
+}
+
+impl Default for FcoseRandomPolicy {
+    fn default() -> Self {
+        Self::legacy(0)
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 struct FcoseLayoutTimings {
     total: web_time::Duration,
@@ -201,10 +288,20 @@ pub struct IndexedFcoseRelocateDebug {
 }
 
 pub fn layout(graph: &Graph, opts: &FcoseOptions) -> Result<LayoutResult> {
+    layout_with_random_policy(graph, opts, FcoseRandomPolicy::legacy(opts.random_seed))
+}
+
+/// Lay out a graph with an explicit random policy while preserving [`FcoseOptions`]' stable
+/// struct-literal API.
+pub fn layout_with_random_policy(
+    graph: &Graph,
+    opts: &FcoseOptions,
+    random_policy: FcoseRandomPolicy,
+) -> Result<LayoutResult> {
     graph.validate()?;
 
     let (indexed_graph, indexed_opts) = graph_to_indexed(graph, opts);
-    let indexed = layout_indexed(&indexed_graph, &indexed_opts)?;
+    let indexed = layout_indexed_with_random_policy(&indexed_graph, &indexed_opts, random_policy)?;
 
     let mut positions: std::collections::BTreeMap<String, Point> =
         std::collections::BTreeMap::new();
@@ -226,6 +323,15 @@ pub fn layout_indexed(
     graph: &IndexedGraph,
     opts: &IndexedFcoseOptions,
 ) -> Result<IndexedLayoutResult> {
+    layout_indexed_with_random_policy(graph, opts, FcoseRandomPolicy::legacy(opts.random_seed))
+}
+
+/// Lay out an indexed graph with an explicit random policy.
+pub fn layout_indexed_with_random_policy(
+    graph: &IndexedGraph,
+    opts: &IndexedFcoseOptions,
+    random_policy: FcoseRandomPolicy,
+) -> Result<IndexedLayoutResult> {
     graph.validate()?;
 
     let timing_enabled = std::env::var("MANATEE_FCOSE_TIMING").ok().as_deref() == Some("1");
@@ -244,16 +350,12 @@ pub fn layout_indexed(
         timings.constraints = s.elapsed();
     }
 
-    let mut rng = XorShift64Star::new(opts.random_seed);
-    let random_seed_offset = opts
-        .random_seed_offset
+    let random_seed_offset = random_policy
+        .seed_offset
+        .or(opts.random_seed_offset)
         .unwrap_or(usize::from(opts.randomize));
-    for _ in 0..random_seed_offset {
-        // Mermaid upstream SVG baselines (ADR-0055) seed `Math.random()` at document start. Some
-        // render paths consume deterministic random values before the first FCoSE draw. Model that
-        // as a per-layout invocation offset (not per rerun).
-        let _ = rng.next_f64_unit();
-    }
+    let mut rng = new_fcose_random(random_policy);
+    advance_random(&mut rng, random_seed_offset);
     let run_count = if opts.rerun { 2 } else { 1 };
     let mut spring_stats = SpringStats::default();
     let collect_debug_trace =
@@ -267,6 +369,7 @@ pub fn layout_indexed(
     let mut owner_bounds = OwnerBounds::new(sim.nodes.len() + 1);
 
     for run_idx in 0..run_count {
+        reset_fcose_random_for_run(&mut rng, random_policy, random_seed_offset, run_idx);
         let rng_calls_before = rng.calls();
         // Mirror upstream component center bookkeeping (`eles.boundingBox()` before layout) by
         // ensuring compound rects wrap their current children before we compute `orig_center`.
@@ -299,8 +402,9 @@ pub fn layout_indexed(
         // on style). Using leaves-only centers creates deterministic root drift for group-heavy
         // diagrams (e.g. architecture groups-within-groups).
         //
-        // Mermaid Architecture runs Cytoscape FCoSE twice (`layout.run()` in `layoutstop`), so we
-        // repeat this per run while keeping the RNG stream continuous.
+        // Mermaid Architecture runs Cytoscape FCoSE twice (`layout.run()` in `layoutstop`). The
+        // selected random policy determines whether a deterministic stream restarts per run or
+        // remains continuous.
         // Upstream Cytoscape FCoSE keeps the final component aligned to the *pre-layout*
         // `options.eles.boundingBox()` center (nodes + edges + labels).
         //
@@ -874,7 +978,7 @@ impl ConstraintRuntime {
         disps: &mut [(f64, f64)],
         total_iterations: usize,
         _max_d: f64,
-        rng: &mut XorShift64Star,
+        rng: &mut FcoseRandom,
     ) {
         // Fixed nodes (not currently exposed by our public API).
         for &idx in &self.horizontal.fixed_nodes {
@@ -1037,7 +1141,7 @@ impl AxisConstraintRuntime {
         }
     }
 
-    fn shuffle_tail_third(&mut self, rng: &mut XorShift64Star) {
+    fn shuffle_tail_third(&mut self, rng: &mut FcoseRandom) {
         let len = self.nodes_in_relative.len();
         if len <= 1 {
             return;
@@ -2176,7 +2280,7 @@ impl SimGraph {
         &mut self,
         constraints: &Constraints,
         opts: &IndexedFcoseOptions,
-        rng: &mut XorShift64Star,
+        rng: &mut FcoseRandom,
         run_idx: usize,
         owner_bounds: &mut OwnerBounds,
         mut debug_stages: Option<&mut Vec<IndexedFcoseDebugStage>>,
@@ -3097,7 +3201,7 @@ impl SimGraph {
         }
     }
 
-    fn collapse_start_positions(&mut self, scale: f64, rng: &mut XorShift64Star) {
+    fn collapse_start_positions(&mut self, scale: f64, rng: &mut FcoseRandom) {
         if self.nodes.len() <= 2 {
             return;
         }
@@ -4268,6 +4372,100 @@ fn apply_constraints_to_displacements(
 }
 
 #[derive(Debug, Clone)]
+enum FcoseRandom {
+    XorShift64Star(XorShift64Star),
+    Mulberry32(Mulberry32),
+}
+
+impl FcoseRandom {
+    fn next_f64_signed(&mut self) -> f64 {
+        (self.next_f64_unit() * 2.0) - 1.0
+    }
+
+    fn next_f64_unit(&mut self) -> f64 {
+        match self {
+            Self::XorShift64Star(rng) => rng.next_f64_unit(),
+            Self::Mulberry32(rng) => rng.next_f64_unit(),
+        }
+    }
+
+    fn calls(&self) -> u64 {
+        match self {
+            Self::XorShift64Star(rng) => rng.calls(),
+            Self::Mulberry32(rng) => rng.calls(),
+        }
+    }
+
+    fn next_usize(&mut self, upper: usize) -> usize {
+        if upper <= 1 {
+            return 0;
+        }
+        let idx = (self.next_f64_unit() * (upper as f64)).floor() as usize;
+        idx.min(upper - 1)
+    }
+}
+
+fn new_fcose_random(policy: FcoseRandomPolicy) -> FcoseRandom {
+    let seed = policy.seed.unwrap_or_else(ambient_random_seed);
+    match policy.source {
+        FcoseRandomSource::XorShift64Star => FcoseRandom::XorShift64Star(XorShift64Star::new(seed)),
+        FcoseRandomSource::Mulberry32 => FcoseRandom::Mulberry32(Mulberry32::new(seed as u32)),
+    }
+}
+
+fn advance_random(rng: &mut FcoseRandom, count: usize) {
+    for _ in 0..count {
+        let _ = rng.next_f64_unit();
+    }
+}
+
+fn reset_fcose_random_for_run(
+    rng: &mut FcoseRandom,
+    policy: FcoseRandomPolicy,
+    seed_offset: usize,
+    run_idx: usize,
+) {
+    if run_idx == 0 || !policy.reset_seed_each_run || policy.seed.is_none() {
+        return;
+    }
+    *rng = new_fcose_random(policy);
+    advance_random(rng, seed_offset);
+}
+
+fn ambient_random_seed() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NONCE: AtomicU64 = AtomicU64::new(0);
+    mix_ambient_seed(
+        ambient_seed_entropy(),
+        NONCE.fetch_add(1, Ordering::Relaxed),
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn ambient_seed_entropy() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos() as u64)
+}
+
+#[cfg(target_arch = "wasm32")]
+const fn ambient_seed_entropy() -> u64 {
+    // Pure wasm builds have no clock or randomness import. The per-process nonce still gives
+    // opt-out calls distinct streams without calling the unsupported `SystemTime::now()` path.
+    0xa076_1d64_78bd_642f
+}
+
+fn mix_ambient_seed(entropy: u64, nonce: u64) -> u64 {
+    let mut value = entropy ^ nonce.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    value ^ (value >> 31)
+}
+
+#[derive(Debug, Clone)]
 struct XorShift64Star {
     state: u64,
     calls: u64,
@@ -4291,13 +4489,6 @@ impl XorShift64Star {
         x.wrapping_mul(0x2545F4914F6CDD1D_u64)
     }
 
-    fn next_f64_signed(&mut self) -> f64 {
-        // Map to [-1, 1) with the same 53-bit float path as the seeded browser prelude.
-        let u = self.next_u64() >> 11;
-        let v = (u as f64) / ((1u64 << 53) as f64);
-        (v * 2.0) - 1.0
-    }
-
     fn next_f64_unit(&mut self) -> f64 {
         // Map to [0, 1) with 53 bits of precision.
         let u = self.next_u64() >> 11;
@@ -4307,32 +4498,46 @@ impl XorShift64Star {
     fn calls(&self) -> u64 {
         self.calls
     }
+}
 
-    fn next_usize(&mut self, upper: usize) -> usize {
-        if upper <= 1 {
-            return 0;
+#[derive(Debug, Clone)]
+struct Mulberry32 {
+    state: u32,
+    calls: u64,
+}
+
+impl Mulberry32 {
+    fn new(seed: u32) -> Self {
+        Self {
+            state: seed,
+            calls: 0,
         }
-        // Match the seeded upstream baselines which override `Math.random()` with a 53-bit float
-        // derived from `nextU64() >> 11`, then select indices via
-        // `Math.floor(Math.random() * upper)`.
-        //
-        // Using `% upper` introduces modulo bias and (more importantly for parity) can yield a
-        // different first sample pivot for small graphs (e.g. upper=3), which cascades into a
-        // different spectral embedding orientation.
-        let v = self.next_f64_unit();
-        let idx = (v * (upper as f64)).floor() as usize;
-        idx.min(upper - 1)
+    }
+
+    fn next_f64_unit(&mut self) -> f64 {
+        self.calls = self.calls.wrapping_add(1);
+        self.state = self.state.wrapping_add(0x6d2b_79f5);
+        let mut value = self.state;
+        value = (value ^ (value >> 15)).wrapping_mul(value | 1);
+        value ^= value.wrapping_add((value ^ (value >> 7)).wrapping_mul(value | 61));
+        let output = value ^ (value >> 14);
+        f64::from(output) / 4_294_967_296.0
+    }
+
+    fn calls(&self) -> u64 {
+        self.calls
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        BoundsExtras, Constraints, IndexedAlignmentConstraint, IndexedCompound, IndexedEdge,
-        IndexedFcoseOptions, IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint,
-        RelConstraint, RepulsionGrid, SimGraph, SimNode, XorShift64Star,
-        apply_reflection_for_relative_placement, layout, layout_indexed,
-        procrustes_transform_for_alignments,
+        BoundsExtras, Constraints, FcoseRandom, FcoseRandomPolicy, FcoseRandomSource,
+        IndexedAlignmentConstraint, IndexedCompound, IndexedEdge, IndexedFcoseOptions,
+        IndexedGraph, IndexedNode, IndexedRelativePlacementConstraint, Mulberry32, RelConstraint,
+        RepulsionGrid, SimGraph, SimNode, XorShift64Star, apply_reflection_for_relative_placement,
+        layout, layout_indexed, new_fcose_random, procrustes_transform_for_alignments,
+        reset_fcose_random_for_run,
     };
     use crate::algo::{AlignmentConstraint, FcoseOptions, RelativePlacementConstraint};
     use crate::graph::{Anchor, Compound, Edge, Graph, Node, Point};
@@ -4691,8 +4896,68 @@ mod tests {
         // For seed=1, the first `Math.random()` value is ~0.2808 so `floor(r * 3) == 0`.
         // Using `% 3` on the underlying u64 yields `1`, which would diverge from the upstream
         // spectral sampling path for small graphs.
-        let mut rng = XorShift64Star::new(1);
+        let mut rng = FcoseRandom::XorShift64Star(XorShift64Star::new(1));
         assert_eq!(rng.next_usize(3), 0);
+    }
+
+    #[test]
+    fn mulberry32_next_f64_unit_matches_mermaid_11_16_architecture_seed() {
+        let mut rng = Mulberry32::new(1);
+        let expected = [
+            0.6270739405881613,
+            0.002735721180215478,
+            0.5274470399599522,
+            0.9810509674716741,
+            0.9683778982143849,
+        ];
+        for (i, &expected) in expected.iter().enumerate() {
+            let actual = rng.next_f64_unit();
+            assert!(
+                (actual - expected).abs() < f64::EPSILON,
+                "unexpected Mermaid 11.16 mulberry32 value at {i}: got {actual}, expected {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn deterministic_policy_restarts_the_second_run_from_the_same_seed_and_offset() {
+        let policy = FcoseRandomPolicy::seeded(FcoseRandomSource::Mulberry32, 42)
+            .with_seed_offset(2)
+            .with_reset_seed_each_run(true);
+        let mut rng = new_fcose_random(policy);
+        super::advance_random(&mut rng, policy.seed_offset().unwrap_or_default());
+        let first_run = [rng.next_f64_unit(), rng.next_f64_unit()];
+
+        reset_fcose_random_for_run(
+            &mut rng,
+            policy,
+            policy.seed_offset().unwrap_or_default(),
+            1,
+        );
+        let second_run = [rng.next_f64_unit(), rng.next_f64_unit()];
+
+        assert_eq!(second_run, first_run);
+    }
+
+    #[test]
+    fn ambient_policy_keeps_its_stream_continuous_between_runs() {
+        let policy = FcoseRandomPolicy::ambient(FcoseRandomSource::Mulberry32)
+            .with_reset_seed_each_run(true);
+        let mut rng = new_fcose_random(policy);
+        let _ = rng.next_f64_unit();
+        let calls_before_second_run = rng.calls();
+
+        reset_fcose_random_for_run(&mut rng, policy, 0, 1);
+
+        assert_eq!(rng.calls(), calls_before_second_run);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[test]
+    fn ambient_policy_is_clock_free_and_callable_on_wasm32() {
+        let first = super::ambient_random_seed();
+        let second = super::ambient_random_seed();
+        assert_ne!(first, second);
     }
 
     #[test]

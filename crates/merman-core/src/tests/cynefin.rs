@@ -108,6 +108,73 @@ fn parse_cynefin_accepts_colon_header_comments_single_quotes_and_escapes() {
 }
 
 #[test]
+fn parse_cynefin_decodes_common_string_escapes_like_langium() {
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_sync(
+            r#"cynefin-beta
+  complex
+    "Probe\nsense\trespond\bnow"
+  complex --> clear : 'Move\rnow\vsoon\0'
+"#,
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("cynefin parses escaped strings");
+
+    assert_eq!(
+        parsed.model["domains"][0]["items"][0]["label"],
+        json!("Probe\nsense\trespond\u{0008}now")
+    );
+    assert_eq!(
+        parsed.model["transitions"][0]["label"],
+        json!("Move\rnow\u{000b}soon\0")
+    );
+}
+
+#[test]
+fn parse_cynefin_transition_labels_follow_javascript_truthiness() {
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_sync(
+            "cynefin-beta\n  complex\n  complicated\n  clear\n  complex --> complicated : \"\"\n  complicated --> clear : \"   \"\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("cynefin parses");
+
+    assert!(parsed.model["transitions"][0].get("label").is_none());
+    assert_eq!(parsed.model["transitions"][1]["label"], json!("   "));
+}
+
+#[test]
+fn parse_cynefin_normalizes_common_fields_and_multiline_acc_descr() {
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_with_editor_facts_sync(
+            "cynefin-beta\n  title    Team\t\tPractices   Map  \n  accTitle:   Team\t\tMap  \n  accDescr {\n    First    line\n\n      Second\t\tline   \n  }\n  clear\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("cynefin parses multiline accessibility metadata");
+
+    assert_eq!(parsed.diagram.model["title"], json!("Team Practices Map"));
+    assert_eq!(parsed.diagram.model["accTitle"], json!("Team Map"));
+    assert_eq!(
+        parsed.diagram.model["accDescr"],
+        json!("First line\nSecond line")
+    );
+
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        panic!("cynefin should expose editor facts");
+    };
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.detail.as_deref() == Some("cynefin accessibility description")
+            && symbol.name == "First line\nSecond line"
+    }));
+}
+
+#[test]
 fn parse_cynefin_duplicate_domain_replaces_prior_items_like_upstream_map_set() {
     let engine = Engine::new();
     let parsed = engine

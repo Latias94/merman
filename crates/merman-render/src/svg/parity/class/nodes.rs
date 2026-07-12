@@ -453,6 +453,8 @@ fn render_class_split_edges_for_namespace(
             edge_ctx.content_ty
         },
         edge_use_html_labels: edge_ctx.edge_use_html_labels,
+        text_measurer: edge_ctx.text_measurer,
+        terminal_text_style: edge_ctx.terminal_text_style,
         look: edge_ctx.look,
         hand_drawn_seed: edge_ctx.hand_drawn_seed,
         timing_enabled: edge_ctx.timing_enabled,

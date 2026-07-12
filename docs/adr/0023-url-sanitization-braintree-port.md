@@ -1,4 +1,4 @@
-# ADR-0023: URL Sanitization Parity (`@braintree/sanitize-url@7.1.1`)
+# ADR-0023: URL Sanitization Parity (`@braintree/sanitize-url@7.1.2`)
 
 ## Status
 
@@ -22,9 +22,12 @@ rules).
 ## Decision
 
 - Implement `merman-core::utils::sanitize_url` as a Rust port of
-  `@braintree/sanitize-url@7.1.1`.
-- Drive parity with a direct test-vector port of the upstream `sanitize-url` suite (v7.1.1),
+  `@braintree/sanitize-url@7.1.2`.
+- Drive parity with a direct test-vector port of the upstream `sanitize-url` suite (v7.1.2),
   ensuring we match decoding and invalid-protocol handling.
+
+The 7.1.2 runtime source is identical to 7.1.1; the Mermaid 11.16 upgrade changes dependency
+provenance without requiring a behavior change in the Rust port.
 
 ## Consequences
 

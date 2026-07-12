@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -109.156,
-        "min_y": -18.0,
+        "min_y": -20.0,
         "max_x": 408.0,
-        "max_y": 198.0
+        "max_y": 196.0
       },
       "direction": "LR",
       "rotate_commit_label": true,
@@ -52,7 +52,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "1-<dynamic>",
@@ -69,7 +69,7 @@
           "pos": 50.0,
           "pos_with_offset": 60.0,
           "x": 60.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "2-<dynamic>",
@@ -86,7 +86,7 @@
           "pos": 100.0,
           "pos_with_offset": 110.0,
           "x": 110.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "3-<dynamic>",
@@ -104,7 +104,7 @@
           "pos": 150.0,
           "pos_with_offset": 160.0,
           "x": 160.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "4-<dynamic>",
@@ -121,7 +121,7 @@
           "pos": 200.0,
           "pos_with_offset": 210.0,
           "x": 210.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "5-<dynamic>",
@@ -138,7 +138,7 @@
           "pos": 250.0,
           "pos_with_offset": 260.0,
           "x": 260.0,
-          "y": 180.0
+          "y": 178.0
         },
         {
           "id": "6-<dynamic>",
@@ -155,7 +155,7 @@
           "pos": 300.0,
           "pos_with_offset": 310.0,
           "x": 310.0,
-          "y": 180.0
+          "y": 178.0
         },
         {
           "id": "7-<dynamic>",
@@ -173,7 +173,7 @@
           "pos": 350.0,
           "pos_with_offset": 360.0,
           "x": 360.0,
-          "y": 0.0
+          "y": -2.0
         }
       ],
       "arrows": [
@@ -181,55 +181,55 @@
           "from": "0-<dynamic>",
           "to": "1-<dynamic>",
           "class_index": 1.0,
-          "d": "M 10 0 L 10 70 A 20 20, 0, 0, 0, 30 90 L 60 90"
+          "d": "M 10 -2 L 10 68 A 20 20, 0, 0, 0, 30 88 L 60 88"
         },
         {
           "from": "1-<dynamic>",
           "to": "2-<dynamic>",
           "class_index": 1.0,
-          "d": "M 60 90 L 110 90"
+          "d": "M 60 88 L 110 88"
         },
         {
           "from": "0-<dynamic>",
           "to": "3-<dynamic>",
           "class_index": 0.0,
-          "d": "M 10 0 L 160 0"
+          "d": "M 10 -2 L 160 -2"
         },
         {
           "from": "2-<dynamic>",
           "to": "3-<dynamic>",
           "class_index": 1.0,
-          "d": "M 110 90 L 140 90 A 20 20, 0, 0, 0, 160 70 L 160 0"
+          "d": "M 110 88 L 140 88 A 20 20, 0, 0, 0, 160 68 L 160 -2"
         },
         {
           "from": "3-<dynamic>",
           "to": "4-<dynamic>",
           "class_index": 0.0,
-          "d": "M 160 0 L 210 0"
+          "d": "M 160 -2 L 210 -2"
         },
         {
           "from": "4-<dynamic>",
           "to": "5-<dynamic>",
           "class_index": 2.0,
-          "d": "M 210 0 L 210 160 A 20 20, 0, 0, 0, 230 180 L 260 180"
+          "d": "M 210 -2 L 210 158 A 20 20, 0, 0, 0, 230 178 L 260 178"
         },
         {
           "from": "5-<dynamic>",
           "to": "6-<dynamic>",
           "class_index": 2.0,
-          "d": "M 260 180 L 310 180"
+          "d": "M 260 178 L 310 178"
         },
         {
           "from": "4-<dynamic>",
           "to": "7-<dynamic>",
           "class_index": 0.0,
-          "d": "M 210 0 L 360 0"
+          "d": "M 210 -2 L 360 -2"
         },
         {
           "from": "6-<dynamic>",
           "to": "7-<dynamic>",
           "class_index": 2.0,
-          "d": "M 310 180 L 340 180 A 20 20, 0, 0, 0, 360 160 L 360 0"
+          "d": "M 310 178 L 340 178 A 20 20, 0, 0, 0, 360 158 L 360 -2"
         }
       ]
     }

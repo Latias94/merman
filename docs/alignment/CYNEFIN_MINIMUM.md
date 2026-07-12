@@ -4,9 +4,9 @@ This document tracks the first local support slice for Mermaid `cynefin-beta`.
 
 Upstream references at pinned Mermaid 11.16.0:
 
-- Detector: `packages/mermaid/src/diagrams/cynefin/detector.ts`
-- Parser adapter: `packages/mermaid/src/diagrams/cynefin/parser.ts`
-- DB/model: `packages/mermaid/src/diagrams/cynefin/db.ts`
+- Detector: `packages/mermaid/src/diagrams/cynefin/cynefinDetector.ts`
+- Parser adapter: `packages/mermaid/src/diagrams/cynefin/cynefinParser.ts`
+- DB/model: `packages/mermaid/src/diagrams/cynefin/cynefinDb.ts`
 - Renderer: `packages/mermaid/src/diagrams/cynefin/cynefinRenderer.ts`
 - Boundary helpers: `packages/mermaid/src/diagrams/cynefin/cynefinBoundaries.ts`
 - Styles: `packages/mermaid/src/diagrams/cynefin/styles.ts`
@@ -43,16 +43,14 @@ Upstream references at pinned Mermaid 11.16.0:
 
 ## Admission State
 
-`cynefin` is recorded as `CompatibilityOnly` in the admission inventory:
+`cynefin` is admitted to the primary SVG parity matrix:
 
 - semantic JSON fixtures are normalized under `fixtures/cynefin/`
 - layout goldens are normalized under `fixtures/cynefin/`
-- local SVG rendering is implemented
-- upstream SVG baselines and a family-local `compare-cynefin-svgs` command are deferred to the U7 Mermaid 11.16 baseline refresh
+- the Mermaid 11.16 SVG baseline includes per-file input/SVG hashes and pinned renderer provenance
+- `compare-cynefin-svgs --check-dom` passes against a freshly generated 11.16 baseline
 
 ## Known Gaps
 
-- No committed Cynefin upstream SVG corpus yet.
-- No dedicated `xtask compare-cynefin-svgs` command yet.
 - Browser `getBBox()` item width is approximated through the repository's deterministic text measurement path.
 - Boundary path number formatting is normalized for stable headless output rather than forced to exact browser stringification.

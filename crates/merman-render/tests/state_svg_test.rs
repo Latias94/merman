@@ -34,6 +34,49 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
     .expect("render svg")
 }
 
+#[test]
+fn state_svg_preserves_incomplete_self_loop_helper_segments() {
+    let text = "stateDiagram-v2\nA --> A: again\n";
+    let parsed =
+        futures::executor::block_on(Engine::new().parse_diagram(text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::StateDiagramV2(mut layout) = out.layout else {
+        panic!("expected StateDiagramV2 layout");
+    };
+
+    let logical = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "A" && edge.to == "A")
+        .cloned()
+        .expect("logical self-loop");
+    let mut first = logical.clone();
+    first.id = "A-cyclic-special-1".to_string();
+    first.points = logical.points[0..2].to_vec();
+    first.label = None;
+    let mut middle = logical.clone();
+    middle.id = "A-cyclic-special-mid".to_string();
+    middle.points = logical.points[1..3].to_vec();
+    layout.edges.retain(|edge| edge.id != logical.id);
+    layout.edges.extend([first, middle]);
+
+    let svg = render_state_diagram_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    assert!(svg.contains(r#"data-id="A-cyclic-special-1""#), "{svg}");
+    assert!(svg.contains(r#"data-id="A-cyclic-special-mid""#), "{svg}");
+}
+
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
     let init = serde_json::json!({
         "look": "handDrawn",

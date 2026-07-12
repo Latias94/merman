@@ -13,6 +13,7 @@ use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceInteractionRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
+    pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
@@ -63,12 +64,14 @@ pub(super) fn render_sequence_interaction_overlays(
     let block_ctx = SequenceBlockRenderContext {
         default_frame_x1: frame_x1,
         default_frame_x2: frame_x2,
+        block_widths_by_id: ctx.block_widths_by_id,
         msg_endpoints: &msg_endpoints,
         actor_nodes_by_id: &actor_nodes_by_id,
         edges_by_id: ctx.edges_by_id,
         nodes_by_id: ctx.nodes_by_id,
         label_box_height: ctx.settings.label_box_height,
         box_text_margin: ctx.settings.box_text_margin,
+        wrap_padding: ctx.settings.wrap_padding,
         measurer: ctx.measurer,
         loop_text_style: &ctx.settings.loop_text_style,
     };
@@ -112,12 +115,14 @@ pub(super) fn render_sequence_interaction_overlays(
                 }
                 SequenceBlock::Loop {
                     control_id,
+                    label_id,
                     raw_label,
                     message_ids,
                 } => {
                     render_simple_sequence_block(
                         out,
                         control_id,
+                        label_id,
                         "loop",
                         raw_label,
                         message_ids,
@@ -126,12 +131,14 @@ pub(super) fn render_sequence_interaction_overlays(
                 }
                 SequenceBlock::Opt {
                     control_id,
+                    label_id,
                     raw_label,
                     message_ids,
                 } => {
                     render_simple_sequence_block(
                         out,
                         control_id,
+                        label_id,
                         "opt",
                         raw_label,
                         message_ids,
@@ -140,12 +147,14 @@ pub(super) fn render_sequence_interaction_overlays(
                 }
                 SequenceBlock::Break {
                     control_id,
+                    label_id,
                     raw_label,
                     message_ids,
                 } => {
                     render_simple_sequence_block(
                         out,
                         control_id,
+                        label_id,
                         "break",
                         raw_label,
                         message_ids,

@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -134.922,
-        "min_y": -18.0,
+        "min_y": -20.0,
         "max_x": 758.0,
-        "max_y": 198.0
+        "max_y": 196.0
       },
       "direction": "LR",
       "rotate_commit_label": true,
@@ -52,7 +52,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Dallas",
@@ -69,7 +69,7 @@
           "pos": 50.0,
           "pos_with_offset": 60.0,
           "x": 60.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "LosAngeles",
@@ -86,7 +86,7 @@
           "pos": 100.0,
           "pos_with_offset": 110.0,
           "x": 110.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "Chicago",
@@ -103,7 +103,7 @@
           "pos": 150.0,
           "pos_with_offset": 160.0,
           "x": 160.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "Houston",
@@ -120,7 +120,7 @@
           "pos": 200.0,
           "pos_with_offset": 210.0,
           "x": 210.0,
-          "y": 90.0
+          "y": 88.0
         },
         {
           "id": "Phoenix",
@@ -137,7 +137,7 @@
           "pos": 250.0,
           "pos_with_offset": 260.0,
           "x": 260.0,
-          "y": 180.0
+          "y": 178.0
         },
         {
           "id": "Denver",
@@ -154,7 +154,7 @@
           "pos": 300.0,
           "pos_with_offset": 310.0,
           "x": 310.0,
-          "y": 180.0
+          "y": 178.0
         },
         {
           "id": "Atlanta",
@@ -171,7 +171,7 @@
           "pos": 350.0,
           "pos_with_offset": 360.0,
           "x": 360.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "9-<dynamic>",
@@ -189,7 +189,7 @@
           "pos": 400.0,
           "pos_with_offset": 410.0,
           "x": 410.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Miami",
@@ -206,7 +206,7 @@
           "pos": 450.0,
           "pos_with_offset": 460.0,
           "x": 460.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Washington",
@@ -223,7 +223,7 @@
           "pos": 500.0,
           "pos_with_offset": 510.0,
           "x": 510.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "12-<dynamic>",
@@ -243,7 +243,7 @@
           "pos": 550.0,
           "pos_with_offset": 560.0,
           "x": 560.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Boston",
@@ -260,7 +260,7 @@
           "pos": 600.0,
           "pos_with_offset": 610.0,
           "x": 610.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Detroit",
@@ -277,7 +277,7 @@
           "pos": 650.0,
           "pos_with_offset": 660.0,
           "x": 660.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "SanFrancisco",
@@ -294,7 +294,7 @@
           "pos": 700.0,
           "pos_with_offset": 710.0,
           "x": 710.0,
-          "y": 0.0
+          "y": -2.0
         }
       ],
       "arrows": [
@@ -302,97 +302,97 @@
           "from": "NewYork",
           "to": "Dallas",
           "class_index": 0.0,
-          "d": "M 10 0 L 60 0"
+          "d": "M 10 -2 L 60 -2"
         },
         {
           "from": "Dallas",
           "to": "LosAngeles",
           "class_index": 1.0,
-          "d": "M 60 0 L 60 70 A 20 20, 0, 0, 0, 80 90 L 110 90"
+          "d": "M 60 -2 L 60 68 A 20 20, 0, 0, 0, 80 88 L 110 88"
         },
         {
           "from": "LosAngeles",
           "to": "Chicago",
           "class_index": 1.0,
-          "d": "M 110 90 L 160 90"
+          "d": "M 110 88 L 160 88"
         },
         {
           "from": "Chicago",
           "to": "Houston",
           "class_index": 1.0,
-          "d": "M 160 90 L 210 90"
+          "d": "M 160 88 L 210 88"
         },
         {
           "from": "Houston",
           "to": "Phoenix",
           "class_index": 2.0,
-          "d": "M 210 90 L 210 160 A 20 20, 0, 0, 0, 230 180 L 260 180"
+          "d": "M 210 88 L 210 158 A 20 20, 0, 0, 0, 230 178 L 260 178"
         },
         {
           "from": "Phoenix",
           "to": "Denver",
           "class_index": 2.0,
-          "d": "M 260 180 L 310 180"
+          "d": "M 260 178 L 310 178"
         },
         {
           "from": "Dallas",
           "to": "Atlanta",
           "class_index": 0.0,
-          "d": "M 60 0 L 360 0"
+          "d": "M 60 -2 L 360 -2"
         },
         {
           "from": "Atlanta",
           "to": "9-<dynamic>",
           "class_index": 0.0,
-          "d": "M 360 0 L 410 0"
+          "d": "M 360 -2 L 410 -2"
         },
         {
           "from": "Boston",
           "to": "9-<dynamic>",
           "class_index": 0.0,
-          "d": "M 610 0 L 410 0"
+          "d": "M 610 -2 L 410 -2"
         },
         {
           "from": "9-<dynamic>",
           "to": "Miami",
           "class_index": 0.0,
-          "d": "M 410 0 L 460 0"
+          "d": "M 410 -2 L 460 -2"
         },
         {
           "from": "Miami",
           "to": "Washington",
           "class_index": 0.0,
-          "d": "M 460 0 L 510 0"
+          "d": "M 460 -2 L 510 -2"
         },
         {
           "from": "Washington",
           "to": "12-<dynamic>",
           "class_index": 0.0,
-          "d": "M 510 0 L 560 0"
+          "d": "M 510 -2 L 560 -2"
         },
         {
           "from": "Houston",
           "to": "12-<dynamic>",
           "class_index": 1.0,
-          "d": "M 210 90 L 540 90 A 20 20, 0, 0, 0, 560 70 L 560 0"
+          "d": "M 210 88 L 540 88 A 20 20, 0, 0, 0, 560 68 L 560 -2"
         },
         {
           "from": "12-<dynamic>",
           "to": "Boston",
           "class_index": 0.0,
-          "d": "M 560 0 L 610 0"
+          "d": "M 560 -2 L 610 -2"
         },
         {
           "from": "Boston",
           "to": "Detroit",
           "class_index": 0.0,
-          "d": "M 610 0 L 660 0"
+          "d": "M 610 -2 L 660 -2"
         },
         {
           "from": "Detroit",
           "to": "SanFrancisco",
           "class_index": 0.0,
-          "d": "M 660 0 L 710 0"
+          "d": "M 660 -2 L 710 -2"
         }
       ]
     }

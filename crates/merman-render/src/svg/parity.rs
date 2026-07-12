@@ -199,9 +199,14 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::BlockDiagram(layout) => {
             render_block_diagram_svg(layout, semantic, effective_config, options)
         }
-        LayoutDiagram::RequirementDiagram(layout) => {
-            render_requirement_diagram_svg(layout, semantic, effective_config, title, options)
-        }
+        LayoutDiagram::RequirementDiagram(layout) => render_requirement_diagram_svg_with_measurer(
+            layout,
+            semantic,
+            effective_config,
+            title,
+            measurer,
+            options,
+        ),
         #[cfg(feature = "cytoscape-layout")]
         LayoutDiagram::ArchitectureDiagram(layout) => {
             render_architecture_diagram_svg(layout, semantic, effective_config, options)
@@ -242,9 +247,13 @@ fn render_layout_svg_parts_raw(
         LayoutDiagram::CynefinDiagram(layout) => {
             render_cynefin_diagram_svg(layout, semantic, effective_config, options)
         }
-        LayoutDiagram::RailroadDiagram(layout) => {
-            render_railroad_diagram_svg(layout, semantic, effective_config, options)
-        }
+        LayoutDiagram::RailroadDiagram(layout) => render_railroad_diagram_svg_with_measurer(
+            layout,
+            semantic,
+            effective_config,
+            measurer,
+            options,
+        ),
         LayoutDiagram::StateDiagramV2(layout) => render_state_diagram_v2_svg(
             layout,
             semantic,
@@ -359,9 +368,14 @@ fn render_layout_svg_parts_with_config_raw(
         LayoutDiagram::BlockDiagram(layout) => {
             render_block_diagram_svg(layout, semantic, effective_config_value, options)
         }
-        LayoutDiagram::RequirementDiagram(layout) => {
-            render_requirement_diagram_svg(layout, semantic, effective_config_value, title, options)
-        }
+        LayoutDiagram::RequirementDiagram(layout) => render_requirement_diagram_svg_with_measurer(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
         #[cfg(feature = "cytoscape-layout")]
         LayoutDiagram::ArchitectureDiagram(layout) => {
             architecture::render_architecture_diagram_svg_with_config(
@@ -412,9 +426,13 @@ fn render_layout_svg_parts_with_config_raw(
         LayoutDiagram::CynefinDiagram(layout) => {
             render_cynefin_diagram_svg(layout, semantic, effective_config_value, options)
         }
-        LayoutDiagram::RailroadDiagram(layout) => {
-            render_railroad_diagram_svg(layout, semantic, effective_config_value, options)
-        }
+        LayoutDiagram::RailroadDiagram(layout) => render_railroad_diagram_svg_with_measurer(
+            layout,
+            semantic,
+            effective_config_value,
+            measurer,
+            options,
+        ),
         LayoutDiagram::StateDiagramV2(layout) => render_state_diagram_v2_svg(
             layout,
             semantic,
@@ -611,6 +629,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 layout,
                 model,
                 effective_config.as_value(),
+                measurer,
                 options,
             )
         }
@@ -713,6 +732,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 model,
                 effective_config.as_value(),
                 title,
+                measurer,
                 options,
             )
         }
@@ -932,7 +952,24 @@ pub fn render_railroad_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    railroad::render_railroad_diagram_svg(layout, semantic, effective_config, options)
+    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    render_railroad_diagram_svg_with_measurer(
+        layout,
+        semantic,
+        effective_config,
+        &measurer,
+        options,
+    )
+}
+
+pub fn render_railroad_diagram_svg_with_measurer(
+    layout: &RailroadDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    railroad::render_railroad_diagram_svg(layout, semantic, effective_config, measurer, options)
 }
 
 pub fn render_requirement_diagram_svg(
@@ -942,11 +979,31 @@ pub fn render_requirement_diagram_svg(
     diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    render_requirement_diagram_svg_with_measurer(
+        layout,
+        semantic,
+        effective_config,
+        diagram_title,
+        &measurer,
+        options,
+    )
+}
+
+pub fn render_requirement_diagram_svg_with_measurer(
+    layout: &RequirementDiagramLayout,
+    semantic: &serde_json::Value,
+    effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
+    options: &SvgRenderOptions,
+) -> Result<String> {
     requirement::render_requirement_diagram_svg(
         layout,
         semantic,
         effective_config,
         diagram_title,
+        measurer,
         options,
     )
 }

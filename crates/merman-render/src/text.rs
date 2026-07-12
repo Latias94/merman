@@ -51,8 +51,7 @@ pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use wrap::wrap_svg_text_lines_by_measurement;
 pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even, split_html_br_lines,
-    wrap_label_like_mermaid_lines, wrap_label_like_mermaid_lines_floored_bbox,
-    wrap_label_like_mermaid_lines_relaxed, wrap_text_lines_measurer, wrap_text_lines_px,
+    wrap_label_like_mermaid_lines, wrap_text_lines_measurer, wrap_text_lines_px,
 };
 
 #[cfg(test)]

@@ -8,8 +8,8 @@
     "accDescr": null,
     "classDefs": {},
     "tooltips": {
-      "URLTest2": "Visit <strong>mermaid docs</strong>",
-      "FunctionTest2": "Add a div"
+      "FunctionTest2": "Add a div",
+      "URLTest2": "Visit <strong>mermaid docs</strong>"
     },
     "edgeDefaults": {
       "style": [],

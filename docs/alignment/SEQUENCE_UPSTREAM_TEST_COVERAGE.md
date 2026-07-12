@@ -9,6 +9,37 @@ This document tracks which upstream Mermaid `sequenceDiagram` tests are covered 
 
 Scope: Mermaid tag `@11.16.0`.
 
+## Current 11.16 alignment status
+
+The complete structure-level matrix currently compares 321 renderable fixtures, with one additional
+fixture skipped because Mermaid 11.16 rejects its historical input. Of those 321 fixtures, 317 match
+the upstream SVG structure. The four remaining mismatches are bounded environment or upstream-runtime
+residuals, not parser, model, block-layout, or SVG-structure gaps:
+
+- `upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026`
+  and
+  `upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019`:
+  Chrome measures the note 3 px narrower than the vendored headless font metrics, crossing a wrap
+  boundary and producing eight lines upstream versus seven locally.
+- `upstream_docs_diagrams_mermaid_api_sequence`: browser-measured self-message widths make the first
+  `alt` block's title budget wide enough for two lines; the headless metrics produce three lines.
+  Both paths use Mermaid's `calculateLoopBounds` and `wrapLabel` semantics.
+- `upstream_docs_math_sequence_002`: Mermaid's synchronous participant renderer calls its async KaTeX
+  label renderer without awaiting it, so the exported upstream SVG intermittently omits footer
+  participant labels. Merman renders the complete deterministic footer.
+
+These cases must not be hidden with fixture overrides, text-measurement coefficients, broad DOM
+normalization, or slack constants. The browser-font fingerprint in upstream provenance is diagnostic
+evidence only. The source-backed block-width path is regression-tested by
+`sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16`, including a serialized
+layout roundtrip so the render-only width calculation does not leak into the public layout model.
+
+The unfiltered `compare-all-svgs --check-dom --dom-mode parity` gate accepts only the exact three
+deterministic DOM residuals above; the Math fixture is already excluded from ordinary DOM comparison
+because of the upstream async-render race. The policy fails if a recorded mismatch changes or
+disappears, or if any additional mismatch appears, and reports every accepted fixture explicitly.
+Filtered and direct Sequence compare commands remain diagnostic and do not apply this policy.
+
 ## External regression cases
 
 These fixtures are sourced from downstream renderer reports (outside Mermaid's own test suite) and

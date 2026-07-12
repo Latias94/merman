@@ -13,8 +13,51 @@ use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlowchartUpstreamTrust {
+    PinnedCanonical,
+    UntrustedCustom,
+}
+
+impl FlowchartUpstreamTrust {
+    fn provenance_label(self, filter: Option<&str>) -> &'static str {
+        match (self, filter) {
+            (Self::PinnedCanonical, None) => "pinned canonical (complete family validated)",
+            (Self::PinnedCanonical, Some(_)) => "pinned canonical (selected fixtures validated)",
+            (Self::UntrustedCustom, _) => "untrusted custom (debug only)",
+        }
+    }
+}
+
+fn classify_flowchart_upstream_dir(upstream_dir: &Path) -> FlowchartUpstreamTrust {
+    let canonical_dir = crate::cmd::fixtures_root()
+        .join("upstream-svgs")
+        .join("flowchart");
+    if upstream_dir == canonical_dir
+        || fs::canonicalize(upstream_dir)
+            .ok()
+            .zip(fs::canonicalize(canonical_dir).ok())
+            .is_some_and(|(upstream, canonical)| upstream == canonical)
+    {
+        FlowchartUpstreamTrust::PinnedCanonical
+    } else {
+        FlowchartUpstreamTrust::UntrustedCustom
+    }
+}
+
+fn write_flowchart_upstream_metadata(
+    report: &mut String,
+    upstream_dir: &Path,
+    filter: Option<&str>,
+) {
+    let upstream_glob = upstream_dir.join("*.svg");
+    let provenance = classify_flowchart_upstream_dir(upstream_dir).provenance_label(filter);
+    let _ = writeln!(report, "- Upstream: `{}`", upstream_glob.display());
+    let _ = writeln!(report, "- Upstream provenance: `{provenance}`");
+}
 
 pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
@@ -172,10 +215,12 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         fixtures_root_arg,
         upstream_root_arg,
         &mut state,
-        |_, report, _paths, options| {
+        |_, report, paths, options| {
+            let _ = writeln!(report, "# Flowchart SVG Comparison\n");
+            write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "# Flowchart SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/flowchart/*.svg` (pinned Mermaid baseline)\n- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Flowchart ELK backend: `{}`\n- Forced ELK fixtures: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
+                "- Local: `render_flowchart_v2_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Flowchart ELK backend: `{}`\n- Forced ELK fixtures: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
                 options.dom_mode,
                 options.dom_decimals,
                 text_measurer,
@@ -1085,9 +1130,60 @@ fn collect_flowchart_root_pin_ids() -> std::collections::BTreeSet<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_flowchart_elk_layout_body_key, collect_flowchart_elk_spec_snapshot_cases,
-        compare_flowchart_svgs,
+        FlowchartUpstreamTrust, canonical_flowchart_elk_layout_body_key,
+        classify_flowchart_upstream_dir, collect_flowchart_elk_spec_snapshot_cases,
+        compare_flowchart_svgs, write_flowchart_upstream_metadata,
     };
+
+    #[test]
+    fn flowchart_report_marks_canonical_upstream_as_provenance_validated() {
+        let canonical = crate::cmd::fixtures_root()
+            .join("upstream-svgs")
+            .join("flowchart");
+        let explicit = canonical.join(".");
+        let mut report = String::new();
+
+        assert_eq!(
+            classify_flowchart_upstream_dir(&explicit),
+            FlowchartUpstreamTrust::PinnedCanonical
+        );
+        assert_eq!(
+            FlowchartUpstreamTrust::PinnedCanonical.provenance_label(None),
+            "pinned canonical (complete family validated)"
+        );
+        write_flowchart_upstream_metadata(&mut report, &explicit, Some("fixture"));
+
+        assert!(report.contains(&format!(
+            "- Upstream: `{}`",
+            explicit.join("*.svg").display()
+        )));
+        assert!(
+            report.contains(
+                "- Upstream provenance: `pinned canonical (selected fixtures validated)`"
+            )
+        );
+        assert!(!report.contains("untrusted custom"));
+    }
+
+    #[test]
+    fn flowchart_report_marks_custom_upstream_as_untrusted() {
+        let custom = crate::cmd::target_root()
+            .join("compare")
+            .join("custom-upstream-svgs")
+            .join("flowchart");
+        let mut report = String::new();
+
+        assert_eq!(
+            classify_flowchart_upstream_dir(&custom),
+            FlowchartUpstreamTrust::UntrustedCustom
+        );
+        write_flowchart_upstream_metadata(&mut report, &custom, None);
+
+        assert!(report.contains(&format!("- Upstream: `{}`", custom.join("*.svg").display())));
+        assert!(report.contains("- Upstream provenance: `untrusted custom (debug only)`"));
+        assert!(!report.contains("pinned canonical"));
+        assert!(!report.contains("validated"));
+    }
 
     #[test]
     fn source_backed_elk_admission_matches_html_demo_fixture() {
