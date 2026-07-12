@@ -13,7 +13,6 @@ pub fn lookup_state_root_viewport_override(
         "stress_state_frontmatter_accessibility_012" => {
             Some(("-86.8125 -50 233.875 324", "233.875"))
         }
-        "stress_state_long_descriptions_and_aliases_006" => Some(("0 0 513.890625 541", "513.891")),
         "stress_state_three_way_concurrency_013" => Some(("0 0 573.27734375 1657", "573.277")),
         "stress_state_quoted_multiline_names_015" => {
             Some(("0 0 430.5703125 644.0999755859375", "430.57"))

@@ -20,12 +20,11 @@ What is done:
 - M4 large renderer decomposition is effectively complete.
 - Render numeric config parsing is centralized in `crates/merman-render/src/config.rs`; diagram
   modules no longer carry local `json_f64` / `config_f64` / CSS `px` parser copies.
-- Root viewport override no-growth is now `308` according to
-  `cargo run -p xtask -- report-overrides --check-no-growth`. The root-viewport derivation
-  workstream removed additional generated pins through the ER cleanup series, while later
-  EventModeling admission added 9 reviewed root guards for browser `getBBox()` max-width tails.
-  A current family-local check passes with those guards enabled and reproduces the 9 root-only
-  mismatches with root overrides disabled.
+- Root viewport override no-growth is now `183` according to
+  `cargo run -p xtask -- report-overrides --check-no-growth`. A 2026-07-12 disabled-root audit
+  removed 37 stale generated pins from C4, Flowchart, State, and Timeline, while retaining the
+  77 entries that still guard root drift. The exact 130 outside-table mismatch keys in those four
+  families stayed unchanged and remain separate parity work rather than override evidence.
 - Sequence layout has been split down to focused actor, activation, block-step, block-bounds,
   note, message, rect, root-bounds, and orchestration owners.
 - `cargo run -p xtask -- verify --strict` passes; the latest closeout run covered workspace
@@ -33,12 +32,8 @@ What is done:
   explicit nine-residual policy.
 - `cargo run -p xtask -- verify --strict` includes full `parity-root` coverage.
 - `cargo run -p xtask -- report-overrides --check-no-growth` passes.
-- A disabled-root cross-check after numeric config parser centralization found no newly stale root
-  viewport pins across generated root tables, so current root debt remains retained evidence rather
-  than cleanup-by-count work.
-- The latest root closeout keeps generated root pins stale-free and locks the nine accepted
-  outside-table root residuals to exact fixture/value pairs, so changed or additional residuals
-  fail the strict gate.
+- The latest targeted disabled-root audit keeps the affected generated root pins stale-free and
+  preserves the outside-table key set without widening comparator or residual policy.
 - `cargo bench -p merman --features render` has a fresh post-cleanup release gate record in
   `docs/performance/spotcheck_2026-05-14_flowchart_override_inventory_full_bench_gate.md`.
 - Root `CHANGELOG.md` now calls out the refactor release-readiness work.
@@ -65,9 +60,9 @@ It is mostly evidence-driven debt reduction:
 
 Largest remaining buckets:
 
-- root viewport: `pie` 58, `sequence` 49, `flowchart` 38, `mindmap` 39, `c4` 35, `state` 33,
-  `gitgraph` 23, `eventmodeling` 9, `timeline` 8, `requirement` 7, `er` 6, `sankey` 3
-- text lookup: `class` 277, `block` 123, `flowchart` 45, `state` 29, `er` 9
+- root viewport: `pie` 58, `flowchart` 36, `state` 32, `mindmap` 30, `eventmodeling` 9,
+  `timeline` 7, `er` 6, `sankey` 3, `c4` 2
+- text lookup: `class` 269, `c4` 201, `block` 120, `flowchart` 50, `state` 27, `er` 9
 
 ## Next Practical Slices
 

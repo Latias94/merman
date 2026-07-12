@@ -59,12 +59,8 @@ pub fn lookup_flowchart_root_viewport_override(
         | "upstream_html_demos_flowchart_flowchart_049" => {
             Some(("0 0 2007.41015625 1046", "2007.41"))
         }
-        "upstream_cypress_flowchart_icon_spec_example_002" => Some(("0 0 98.046875 70", "98.0469")),
         "upstream_cypress_flowchart_icon_spec_should_render_aws_icons_with_labels_and_rect_elements_005" => {
             Some(("0 0 104.6875 368", "104.688"))
-        }
-        "upstream_cypress_flowchart_shape_alias_spec_shape_alias_aliasset34_034" => {
-            Some(("0 0 609.140625 80", "609.141"))
         }
         "upstream_cypress_flowchart_spec_12_should_render_a_flowchart_with_long_names_and_class_definitio_012" => {
             Some(("0 0 1896.984375 452", "1896.98"))
