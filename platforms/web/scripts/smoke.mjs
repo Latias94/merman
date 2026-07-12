@@ -577,21 +577,30 @@ const fixtureNames = {
   zenuml: "zenuml_medium",
 };
 
+const repositoryFixturePaths = {
+  cynefin: ["fixtures", "cynefin", "basic_domains_transitions.mmd"],
+  railroad: ["fixtures", "railroad", "basic_ir.mmd"],
+  railroadAbnf: ["fixtures", "railroadAbnf", "repetition_optional_numval.mmd"],
+  railroadEbnf: ["fixtures", "railroadEbnf", "choice_optional_repetition.mmd"],
+  railroadPeg: ["fixtures", "railroadPeg", "prefix_suffix_any.mmd"],
+};
+
 if (capabilities.render) {
   for (const diagram of api.supportedDiagrams()) {
     const fixtureName = fixtureNames[diagram];
-    assert.ok(fixtureName, `missing fixture for ${diagram}`);
-    const fixture = await readFile(
-      path.join(
-        repoRoot,
-        "crates",
-        "merman",
-        "benches",
-        "fixtures",
-        `${fixtureName}.mmd`
-      ),
-      "utf8"
-    );
+    const repositoryFixturePath = repositoryFixturePaths[diagram];
+    assert.ok(fixtureName || repositoryFixturePath, `missing fixture for ${diagram}`);
+    const fixturePath = fixtureName
+      ? path.join(
+          repoRoot,
+          "crates",
+          "merman",
+          "benches",
+          "fixtures",
+          `${fixtureName}.mmd`
+        )
+      : path.join(repoRoot, ...repositoryFixturePath);
+    const fixture = await readFile(fixturePath, "utf8");
     assert.match(api.renderSvg(fixture, deterministicTime), /<svg/);
   }
 }
