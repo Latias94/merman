@@ -31,8 +31,10 @@ Scope: Mermaid tag `@11.16.0`.
 
 ## Upstream SVG Baselines
 
-Not admitted yet. The next admission step is to generate Mermaid `@11.16.0` SVG baselines in the
-Cynefin upstream SVG fixture directory and add a family-local compare command.
+Admitted to the primary SVG parity matrix. The normalized fixture has a complete Mermaid
+`@11.16.0` baseline under `fixtures/upstream-svgs/cynefin/`, with per-file input/SVG hashes and an
+explicit `adopted-existing` provenance attestation. `compare-cynefin-svgs --check-dom` and the
+ordinary `compare-all-svgs` structural DOM gate cover the committed corpus.
 
 ## Known Residuals
 

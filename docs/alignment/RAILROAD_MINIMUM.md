@@ -84,3 +84,6 @@ only with a source-backed browser measurement model.
 - The upstream renderer currently ignores `compactMode`, `showMarkers`, repetition separators, and
   repetition maximums during drawing; the local compatibility renderer follows that behavior rather
   than inventing extra semantics.
+- Mermaid accepts arbitrarily long ABNF repetition lexemes through JavaScript `parseInt`, which can
+  round or become `Infinity`. Merman preserves bounds through `u64::MAX` and reports larger values
+  with an exact source span rather than silently changing the public integer AST.

@@ -56,8 +56,11 @@ Scope: Mermaid tag `@11.16.0`.
 
 ## Upstream SVG Baselines
 
-Not admitted yet. The next admission step is to generate Mermaid `@11.16.0` SVG baselines for all
-four Railroad variants and add a family-local compare command.
+All four Railroad variants are admitted to the primary SVG parity matrix. Each normalized fixture
+has a complete Mermaid `@11.16.0` baseline under its `fixtures/upstream-svgs/railroad*/` directory,
+with per-file input/SVG hashes and an explicit `adopted-existing` provenance attestation. The four
+family-local compare commands and the ordinary `compare-all-svgs` structural DOM gate cover the
+committed corpus; browser-derived root-height differences remain in the exact root residual lane.
 
 ## Known Residuals
 
@@ -66,3 +69,6 @@ four Railroad variants and add a family-local compare command.
   consume them in drawing; the local compatibility renderer follows the upstream rendering behavior.
 - The upstream 11.16 renderer does not draw repetition separator or maximum cardinality metadata;
   the local layout keeps those parser facts in the model but does not invent extra SVG semantics.
+- ABNF repetition bounds through `u64::MAX` are preserved exactly. Larger bounds produce an exact
+  overflow diagnostic instead of copying JavaScript `parseInt` rounding (or `Infinity`) into the
+  public integer AST; this is an explicit parser-acceptance residual from Mermaid 11.16.

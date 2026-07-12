@@ -225,8 +225,8 @@ Imported (parity-gated with upstream SVG baselines):
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_011.mmd`
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_012.mmd`
 
-Deferred until rechecked against the current Mermaid CLI; the original upstream CLI failure was
-recorded at `@11.15.0`, so no SVG baseline is committed yet:
+Rechecked against the pinned Mermaid CLI at `@11.16.0` and still deferred because the upstream
+renderer fails, so no SVG baseline is committed:
 
 - `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`
 
@@ -253,8 +253,8 @@ Stage-B SVG DOM comparison (against upstream baselines):
 
 - `cargo run --release -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 - Exclusions (see `docs/rendering/UPSTREAM_SVG_BASELINES.md`):
-  - `fixtures/class/upstream_text_label_variants_spec.mmd` (upstream CLI failure first recorded at
-    11.15.0; re-check before admitting under newer baselines)
+  - `fixtures/class/upstream_text_label_variants_spec.mmd` (pinned Mermaid 11.16 fails on the
+    whitespace-only class label; re-check before admitting under a future baseline)
   - `fixtures/class/upstream_parser_class_spec.mmd` (upstream prototype-key rendering artifacts)
 
 ## Authored stress fixtures

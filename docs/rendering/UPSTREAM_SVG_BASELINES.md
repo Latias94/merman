@@ -60,9 +60,9 @@ Install:
 Every schema-v2 `_baseline-manifest.json` distinguishes between two provenance modes:
 
 - `generated`: the complete family was rendered in one measured environment. The manifest records
-  the CDP browser product/version/revision, Puppeteer version, OS identity, the versions reported by
-  both Mermaid's ESM and IIFE runtimes, SHA-256 tree fingerprints for the installed Mermaid and
-  Mermaid CLI packages, and a browser-font fingerprint.
+  the CDP browser product/version/revision, Chromium's resolved IANA timezone, Puppeteer version, OS
+  identity, the versions reported by both Mermaid's ESM and IIFE runtimes, SHA-256 tree fingerprints
+  for the installed Mermaid and Mermaid CLI packages, and a browser-font fingerprint.
 - `adopted-existing`: the corpus and hashes were validated, but its historical browser environment
   cannot be proved. Do not add a render environment to an adopted corpus after the fact.
 
@@ -85,6 +85,11 @@ The font probe hashes fixed SVG `getBBox`/`getComputedTextLength` and canvas `me
 It is an environment fingerprint only: the values must not be copied into `merman-render`, used to
 tune text coefficients, or turned into fixture-specific wrapping overrides.
 
+The browser-resolved timezone is part of the generated-corpus identity because Mermaid Gantt date
+geometry follows browser-local time and daylight-saving rules. A partial generation from a different
+timezone is rejected before SVG promotion; use a complete family generation when intentionally
+changing timezone.
+
 A filtered generation against the baseline corpus may extend only an existing `generated` manifest
 with the exact same measured environment. The isolated `--fresh-output` mode used by
 `check-upstream-svgs` is the exception: when the family output directory is empty,
@@ -99,9 +104,9 @@ reproducibility.
 
 Generation is transactional at the family batch boundary. Every SVG is rendered and validated in a
 temporary location before any baseline is promoted. The manifest is staged only after all outputs and
-provenance checks succeed. Promotion uses backups for both replacements and deletions, including the
-removal of a stale SVG when its fixture becomes excluded, and restores the previous SVGs and manifest
-if any file or metadata commit fails. A rejected partial environment therefore cannot leave new SVGs
+provenance checks succeed. Promotion uses backups for both replacements and deletions, including
+every stale SVG whose fixture was excluded, deleted, or renamed, and restores the previous SVGs and
+manifest if any file or metadata commit fails. A rejected partial environment cannot leave new SVGs
 paired with stale provenance. Generation and provenance adoption share the same per-family
 cross-process lock for final preflight, SVG promotion, and manifest commit. Baseline checks and
 pinned compare commands hold that lock while reading the manifest and SVG corpus, so they cannot
@@ -112,8 +117,10 @@ family instead of leaving a partial adoption.
 
 All generator invocations also hold one cross-process Mermaid CLI toolchain lock from the
 `node_modules` installation check through rendering and the final runtime-package fingerprint
-verification. This serializes `npm ci`/`npm install` against every renderer that reads the shared
-toolchain, including imports that already hold a family transaction lock.
+verification. Compare and audit readers hold the same lock while invoking Mermaid CLI or Node KaTeX.
+This serializes `npm ci`/`npm install` against every shared-toolchain reader, including imports that
+already hold a family transaction lock; nested import operations keep the `toolchain -> family`
+acquisition order and reuse their existing guards.
 
 To validate and honestly adopt historical schema-v1 baselines without inventing environment proof:
 
@@ -463,8 +470,8 @@ output (DOM signature comparison):
 
 Notes:
 
-- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure first
-  recorded at 11.15.0; re-check before admitting under newer baselines).
+- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded because pinned Mermaid 11.16
+  fails on its whitespace-only class label; re-check before admitting under a future baseline.
 - `fixtures/class/upstream_parser_class_spec.mmd` is excluded from Class DOM and canonical-XML
   compares because the upstream SVG contains prototype-key rendering artifacts (nested `g.root` /
   `translate(NaN, ...)` and missing prototype-key nodes), while `merman` renders deterministically.
