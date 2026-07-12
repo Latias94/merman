@@ -693,8 +693,9 @@ fn layout_choice(
         let elem_y = y;
         let elem_center_y = elem_y + child.up;
         let elem_x = arc_radius * 2.0 + (max_width - child.width) / 2.0;
-        let below_center = elem_center_y > center_y;
-        let left_path = if (elem_center_y - center_y).abs() < f64::EPSILON {
+        let is_center = same_layout_coordinate(elem_center_y, center_y);
+        let below_center = !is_center && elem_center_y > center_y;
+        let left_path = if is_center {
             PathBuilder::new()
                 .move_to(0.0, center_y)
                 .line_to(elem_x, elem_center_y)
@@ -742,7 +743,7 @@ fn layout_choice(
 
         let right_start = elem_x + child.width;
         let right_lane_x = total_width - arc_radius * 2.0;
-        let right_path = if (elem_center_y - center_y).abs() < f64::EPSILON {
+        let right_path = if is_center {
             PathBuilder::new()
                 .move_to(right_start, elem_center_y)
                 .line_to(total_width, center_y)
@@ -803,6 +804,11 @@ fn layout_choice(
     }
 
     out
+}
+
+fn same_layout_coordinate(left: f64, right: f64) -> bool {
+    // Distinct addition orders can drift while still producing the same emitted coordinate.
+    left.is_finite() && right.is_finite() && fmt_number(left) == fmt_number(right)
 }
 
 fn layout_optional(
@@ -1172,7 +1178,11 @@ fn fmt_number(value: f64) -> String {
     if !value.is_finite() || value.abs() < 0.0005 {
         return "0".to_string();
     }
-    let mut rounded = (value * 1000.0).round() / 1000.0;
+    let mut rounded = if value.abs() <= f64::MAX / 1000.0 {
+        (value * 1000.0).round() / 1000.0
+    } else {
+        value
+    };
     if rounded.abs() < 0.0005 {
         rounded = 0.0;
     }
@@ -1190,6 +1200,7 @@ fn fmt_number(value: f64) -> String {
 mod tests {
     use super::*;
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
+    use roughr::{PathParser, PathSegment};
 
     struct RailroadBBoxMeasurer;
 
@@ -1213,6 +1224,88 @@ mod tests {
         fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
             style.font_size * 1.1
         }
+    }
+
+    fn choice_branch_connector_paths(
+        source: &str,
+        effective_config: &serde_json::Value,
+        branch_label: &str,
+    ) -> (String, String) {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+            .unwrap()
+            .expect("railroad render model parses");
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model else {
+            panic!("expected railroad render model");
+        };
+
+        let style = railroad_style(effective_config);
+        let (render_node, _) = railroad_render_node(
+            &model.rules[0].definition,
+            &style,
+            &DeterministicTextMeasurer::default(),
+        );
+        let RailroadRenderNode::Group {
+            class, children, ..
+        } = render_node
+        else {
+            panic!("expected railroad choice render group");
+        };
+        assert_eq!(class, "railroad-choice");
+        let mut branches = children.chunks_exact(3);
+        assert!(
+            branches.remainder().is_empty(),
+            "choice render children must be branch/left-path/right-path triples"
+        );
+        let mut matching_branches = branches.by_ref().filter_map(|branch| {
+            let [
+                branch,
+                RailroadRenderNode::Path(left_path),
+                RailroadRenderNode::Path(right_path),
+            ] = branch
+            else {
+                panic!("choice render children must be branch/left-path/right-path triples");
+            };
+            matches!(
+                branch,
+                RailroadRenderNode::Element { layout, .. } if layout.label == branch_label
+            )
+            .then_some((left_path, right_path))
+        });
+        let (left_path, right_path) = matching_branches
+            .next()
+            .unwrap_or_else(|| panic!("choice branch render node: {branch_label}"));
+        assert!(
+            matching_branches.next().is_none(),
+            "choice branch label must be unique: {branch_label}"
+        );
+
+        (left_path.d.clone(), right_path.d.clone())
+    }
+
+    fn connector_segments(path: &str) -> Vec<PathSegment> {
+        PathParser::from(path)
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap_or_else(|error| panic!("valid connector path {path:?}: {error}"))
+    }
+
+    fn assert_straight_connector(path: &str) {
+        assert!(
+            matches!(
+                connector_segments(path).as_slice(),
+                [PathSegment::MoveTo { .. }, PathSegment::LineTo { .. }]
+            ),
+            "expected a straight connector: {path}"
+        );
+    }
+
+    fn assert_curved_connector(path: &str) {
+        assert!(
+            connector_segments(path)
+                .iter()
+                .any(|segment| matches!(segment, PathSegment::EllipticalArc { .. })),
+            "expected an arc connector: {path}"
+        );
     }
 
     #[test]
@@ -1258,6 +1351,49 @@ mod tests {
             serde_json::to_value(&ebnf_layout).unwrap()["diagram_type"],
             "railroadEbnf"
         );
+    }
+
+    #[test]
+    fn railroad_choice_keeps_center_branch_connectors_straight() {
+        let effective_config = serde_json::json!({
+            "themeVariables": { "fontSize": 16 }
+        });
+        let source = "railroad-ebnf-beta\nx = a | b | c | number | e | f | g ;\n";
+        let (left_path, right_path) =
+            choice_branch_connector_paths(source, &effective_config, "number");
+
+        assert_straight_connector(&left_path);
+        assert_straight_connector(&right_path);
+
+        let (upper_left_path, upper_right_path) =
+            choice_branch_connector_paths(source, &effective_config, "a");
+        assert_curved_connector(&upper_left_path);
+        assert_curved_connector(&upper_right_path);
+    }
+
+    #[test]
+    fn railroad_lane_coordinate_equality_matches_path_serialization() {
+        assert!(same_layout_coordinate(56.5004, 56.50049));
+        assert!(!same_layout_coordinate(56.5004, 56.5006));
+        assert!(!same_layout_coordinate(f64::INFINITY, f64::INFINITY));
+        assert!(!same_layout_coordinate(f64::NAN, f64::NAN));
+        assert_ne!(fmt_number(f64::MAX), "inf");
+    }
+
+    #[test]
+    fn railroad_choice_keeps_center_branch_connectors_straight_with_fractional_spacing() {
+        let effective_config = serde_json::json!({
+            "themeVariables": { "fontSize": 16 },
+            "railroad": { "verticalSeparation": 0.1 }
+        });
+        let (left_path, right_path) = choice_branch_connector_paths(
+            "railroad-ebnf-beta\nx = a | b | c ;\n",
+            &effective_config,
+            "b",
+        );
+
+        assert_straight_connector(&left_path);
+        assert_straight_connector(&right_path);
     }
 
     #[test]
