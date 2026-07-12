@@ -543,10 +543,32 @@
     "useMaxWidth": true,
     "width": 700,
     "xAxis": {
-      "$ref": "#/$defs/XYChartAxisConfig"
+      "axisLineWidth": 2,
+      "labelFontSize": 14,
+      "labelPadding": 5,
+      "labelRotation": 0,
+      "showAxisLine": true,
+      "showLabel": true,
+      "showTick": true,
+      "showTitle": true,
+      "tickLength": 5,
+      "tickWidth": 2,
+      "titleFontSize": 16,
+      "titlePadding": 5
     },
     "yAxis": {
-      "$ref": "#/$defs/XYChartAxisConfig"
+      "axisLineWidth": 2,
+      "labelFontSize": 14,
+      "labelPadding": 5,
+      "labelRotation": 0,
+      "showAxisLine": true,
+      "showLabel": true,
+      "showTick": true,
+      "showTitle": true,
+      "tickLength": 5,
+      "tickWidth": 2,
+      "titleFontSize": 16,
+      "titlePadding": 5
     }
   }
 }

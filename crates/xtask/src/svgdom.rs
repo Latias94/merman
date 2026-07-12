@@ -1445,26 +1445,28 @@ fn truncate(s: &str, max_len: usize) -> String {
     out
 }
 
-pub(crate) fn dom_diff_path(
+fn collect_dom_diffs_path(
     upstream: &SvgDomNode,
     local: &SvgDomNode,
     path: &mut Vec<String>,
-) -> Option<String> {
+    differences: &mut Vec<String>,
+) {
     if upstream.name != local.name {
-        return Some(format!(
+        differences.push(format!(
             "{}: element name mismatch upstream={} local={}",
             path.join("/"),
             upstream.name,
             local.name
         ));
+        return;
     }
 
     if upstream.attrs != local.attrs {
         for (k, v_up) in &upstream.attrs {
             match local.attrs.get(k) {
-                None => return Some(format!("{}: missing attr `{k}`", path.join("/"))),
+                None => differences.push(format!("{}: missing attr `{k}`", path.join("/"))),
                 Some(v_lo) if v_lo != v_up => {
-                    return Some(format!(
+                    differences.push(format!(
                         "{}: attr `{k}` mismatch upstream=`{}` local=`{}`",
                         path.join("/"),
                         truncate(v_up, 120),
@@ -1476,13 +1478,13 @@ pub(crate) fn dom_diff_path(
         }
         for k in local.attrs.keys() {
             if !upstream.attrs.contains_key(k) {
-                return Some(format!("{}: extra attr `{k}`", path.join("/")));
+                differences.push(format!("{}: extra attr `{k}`", path.join("/")));
             }
         }
     }
 
     if upstream.text != local.text {
-        return Some(format!(
+        differences.push(format!(
             "{}: text mismatch upstream=`{}` local=`{}`",
             path.join("/"),
             truncate(upstream.text.as_deref().unwrap_or(""), 120),
@@ -1493,27 +1495,50 @@ pub(crate) fn dom_diff_path(
     let n = upstream.children.len().min(local.children.len());
     for i in 0..n {
         path.push(format!("{}[{}]", upstream.children[i].name, i));
-        if let Some(d) = dom_diff_path(&upstream.children[i], &local.children[i], path) {
-            return Some(d);
-        }
+        collect_dom_diffs_path(&upstream.children[i], &local.children[i], path, differences);
         path.pop();
     }
 
     if upstream.children.len() != local.children.len() {
-        return Some(format!(
+        differences.push(format!(
             "{}: child count mismatch upstream={} local={}",
             path.join("/"),
             upstream.children.len(),
             local.children.len()
         ));
     }
-
-    None
 }
 
-pub(crate) fn dom_diff(upstream: &SvgDomNode, local: &SvgDomNode) -> Option<String> {
+/// Returns every structural, attribute, and text difference in deterministic traversal order.
+///
+/// A node with a different element name cannot be aligned with its counterpart, so that branch
+/// contributes one name mismatch and is not recursively expanded. All other differences on a
+/// node and its aligned descendants are retained instead of stopping at the first mismatch.
+pub(crate) fn dom_diffs(upstream: &SvgDomNode, local: &SvgDomNode) -> Vec<String> {
     let mut path = vec![upstream.name.clone()];
-    dom_diff_path(upstream, local, &mut path)
+    let mut differences = Vec::new();
+    collect_dom_diffs_path(upstream, local, &mut path, &mut differences);
+    differences
+}
+
+/// Marker included when a mismatch report contains more than its first detail.
+///
+/// Existing single-detail reports retain their exact spelling. The marker makes the complete
+/// difference set explicit and gives residual policies a stable way to reject a known first
+/// mismatch when a second mismatch was introduced for the same fixture.
+pub(crate) const ADDITIONAL_DOM_DIFFS_MARKER: &str = "additional DOM differences";
+
+pub(crate) fn format_dom_diffs(differences: &[String]) -> Option<String> {
+    let first = differences.first()?;
+    if differences.len() == 1 {
+        return Some(first.clone());
+    }
+
+    Some(format!(
+        "{first}; {ADDITIONAL_DOM_DIFFS_MARKER} ({}): {}",
+        differences.len() - 1,
+        differences[1..].join(" | "),
+    ))
 }
 
 pub(crate) const PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER: &str =
@@ -1573,7 +1598,7 @@ pub(crate) fn diagnose_parity_root_mismatch(
         return Ok(None);
     }
 
-    let primary_detail = dom_diff(upstream, local)
+    let primary_detail = format_dom_diffs(&dom_diffs(upstream, local))
         .ok_or_else(|| "parity-root signatures differ without a diagnostic".to_string())?;
     let upstream_without_root = dom_signature(upstream_svg, DomMode::Parity, decimals)
         .map_err(|err| format!("upstream parity fallback parse failed: {err}"))?;
@@ -1586,7 +1611,7 @@ pub(crate) fn diagnose_parity_root_mismatch(
         }));
     }
 
-    let detail = dom_diff(&upstream_without_root, &local_without_root)
+    let detail = format_dom_diffs(&dom_diffs(&upstream_without_root, &local_without_root))
         .ok_or_else(|| "parity signatures differ without a diagnostic".to_string())?;
     Ok(Some(ParityRootMismatch::NormalizedDescendantsDiffer {
         detail,
@@ -1792,6 +1817,41 @@ mod tests {
         assert!(rendered.contains("root-viewport-also-differs=true"));
         assert!(rendered.contains("svg/g[0]: attr `transform` mismatch"));
         assert!(!rendered.contains("max-width: 100px"));
+    }
+
+    #[test]
+    fn dom_diff_reports_all_differences_for_one_fixture() {
+        let upstream = dom_signature(
+            r#"<svg data-root="upstream"><g data-node="upstream">upstream</g></svg>"#,
+            DomMode::Strict,
+            3,
+        )
+        .unwrap();
+        let local = dom_signature(
+            r#"<svg data-root="local"><g data-node="local">local</g></svg>"#,
+            DomMode::Strict,
+            3,
+        )
+        .unwrap();
+
+        let differences = dom_diffs(&upstream, &local);
+
+        assert_eq!(differences.len(), 3);
+        assert!(differences.iter().any(|detail| {
+            detail.contains("svg: attr `data-root` mismatch upstream=`upstream` local=`local`")
+        }));
+        assert!(differences.iter().any(|detail| {
+            detail.contains("svg/g[0]: attr `data-node` mismatch upstream=`upstream` local=`local`")
+        }));
+        assert!(
+            differences
+                .iter()
+                .any(|detail| detail.contains("svg/g[0]: text mismatch"))
+        );
+
+        let rendered = format_dom_diffs(&differences).expect("differences should render");
+        assert!(rendered.contains(ADDITIONAL_DOM_DIFFS_MARKER));
+        assert!(rendered.contains("svg/g[0]: text mismatch"));
     }
 
     #[test]

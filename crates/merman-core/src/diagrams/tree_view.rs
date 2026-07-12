@@ -695,12 +695,7 @@ fn parse_node_content(
             if name_end == 0 {
                 return Err(parse_error(meta, "expected tree node name"));
             }
-            (
-                content[..name_end].to_string(),
-                0,
-                name_end,
-                annotation_start,
-            )
+            (content[..name_end].to_string(), 0, name_end, name_end)
         };
 
     let suffix = &content[suffix_start..];
@@ -755,7 +750,7 @@ fn parse_tree_view_annotations(
             break;
         }
 
-        if suffix[pos..].starts_with(":::") {
+        if suffix[pos..].starts_with(":::") && is_annotation_token_boundary(suffix, pos) {
             let value_start = skip_ascii_whitespace(suffix, pos + 3);
             let value_end =
                 find_next_tree_view_annotation_start(suffix, value_start).unwrap_or(suffix.len());
@@ -791,7 +786,7 @@ fn parse_tree_view_annotations(
             continue;
         }
 
-        if suffix[pos..].starts_with("##") {
+        if suffix[pos..].starts_with("##") && is_annotation_token_boundary(suffix, pos) {
             let value_start = skip_ascii_whitespace(suffix, pos + 2);
             let (trimmed_start, trimmed_end) = trim_ascii_span(suffix, value_start, suffix.len());
             if trimmed_start != trimmed_end {
@@ -935,9 +930,10 @@ fn is_tree_view_box_drawing_only(line: &str) -> bool {
 
 fn find_next_tree_view_annotation_start(s: &str, from: usize) -> Option<usize> {
     for (idx, _) in s.char_indices().filter(|(idx, _)| *idx >= from) {
-        if s[idx..].starts_with(":::")
+        if (s[idx..].starts_with(":::")
             || s[idx..].starts_with("##")
-            || (s[idx..].starts_with("icon(") && is_annotation_token_boundary(s, idx))
+            || s[idx..].starts_with("icon("))
+            && ((from == 0 && idx == 0) || is_annotation_token_boundary(s, idx))
         {
             return Some(idx);
         }
@@ -946,8 +942,8 @@ fn find_next_tree_view_annotation_start(s: &str, from: usize) -> Option<usize> {
 }
 
 fn is_annotation_token_boundary(s: &str, idx: usize) -> bool {
-    idx == 0
-        || s[..idx]
+    idx > 0
+        && s[..idx]
             .chars()
             .next_back()
             .is_some_and(char::is_whitespace)
@@ -1150,6 +1146,34 @@ plain file.ts ## entry point
         assert_eq!(nodes[5]["cssClass"], json!("important"));
         assert_eq!(nodes[6]["name"], json!("plain file.ts"));
         assert_eq!(nodes[6]["description"], json!("entry point"));
+    }
+
+    #[test]
+    fn annotation_markers_inside_bare_node_names_remain_literal() {
+        let semantic = parse_tree_view(
+            r#"treeView-beta
+foo:::bar
+file##notes
+"#,
+            &meta(),
+        )
+        .unwrap();
+        let nodes = semantic["nodes"].as_array().expect("nodes array");
+
+        assert_eq!(nodes[1]["name"], json!("foo:::bar"));
+        assert!(nodes[1].get("cssClass").is_none());
+        assert_eq!(nodes[2]["name"], json!("file##notes"));
+        assert!(nodes[2].get("description").is_none());
+    }
+
+    #[test]
+    fn annotation_tokens_cannot_replace_a_tree_node_name() {
+        for annotation in [":::highlight", "icon(file)", "## description"] {
+            let input = format!("treeView-beta\n{annotation}\n");
+            let err = parse_tree_view(&input, &meta()).expect_err("node name is required");
+
+            assert!(err.to_string().contains("expected tree node name"), "{err}");
+        }
     }
 
     #[test]

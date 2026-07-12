@@ -197,16 +197,9 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
     let workspace_root = crate::cmd::workspace_root();
 
-    let node_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
-        let node_cwd = crate::cmd::mermaid_cli_root();
-        if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
-            Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
-                node_cwd,
-            )))
-        } else {
-            None
-        }
-    };
+    let tools_root = crate::cmd::mermaid_cli_root();
+    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
+    let node_math_renderer = toolchain_read_guard.node_katex_math_renderer();
 
     // Mermaid gitGraph auto-generates commit ids using `Math.random()`. Upstream gitGraph SVGs in
     // this repo are generated with a seeded upstream renderer, so keep the local side seeded too

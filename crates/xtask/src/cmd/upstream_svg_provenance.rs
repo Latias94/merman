@@ -92,6 +92,56 @@ pub(crate) fn upstream_svg_fixture_exclusion_reason(
     Ok(None)
 }
 
+pub(crate) fn collect_upstream_svg_generation_deletions(
+    out_dir: &Path,
+    generated_fixtures: &[CapturedUpstreamSvgFixture],
+    excluded_fixtures: &[CapturedUpstreamSvgExclusion],
+    full_generation: bool,
+) -> Result<Vec<PathBuf>, XtaskError> {
+    if !full_generation {
+        return Ok(excluded_fixtures
+            .iter()
+            .map(|exclusion| out_dir.join(format!("{}.svg", exclusion.fixture().stem())))
+            .collect());
+    }
+
+    let renderable_stems = generated_fixtures
+        .iter()
+        .map(CapturedUpstreamSvgFixture::stem)
+        .collect::<BTreeSet<_>>();
+    let entries = fs::read_dir(out_dir).map_err(|source| XtaskError::ReadFile {
+        path: out_dir.display().to_string(),
+        source,
+    })?;
+    let mut deletions = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.map_err(|source| XtaskError::ReadFile {
+            path: out_dir.display().to_string(),
+            source,
+        })?;
+        let path = entry.path();
+        if !path.is_file()
+            || !path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("svg"))
+        {
+            continue;
+        }
+        let stem = fixture_stem(&path)?;
+        #[cfg(windows)]
+        let is_renderable = renderable_stems
+            .iter()
+            .any(|renderable| renderable.eq_ignore_ascii_case(stem));
+        #[cfg(not(windows))]
+        let is_renderable = renderable_stems.contains(stem);
+        if !is_renderable {
+            deletions.insert(path);
+        }
+    }
+    Ok(deletions.into_iter().collect())
+}
+
 fn collect_complete_corpus(
     diagram: &str,
     fixtures_dir: &Path,

@@ -1,5 +1,9 @@
 use super::super::*;
 use crate::model::TreeViewNodeLayout;
+use crate::tree_view::{
+    TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
+    is_tree_view_highlight_class,
+};
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
 use std::collections::BTreeSet;
 
@@ -87,11 +91,24 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
     let mut next_node = 0usize;
+    let highlighted_node_count = layout
+        .nodes
+        .iter()
+        .filter(|node| is_tree_view_highlight_class(node.css_class.as_deref()))
+        .count();
+    let mut width_before_highlight =
+        layout.total_width - highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     for line in &layout.lines {
         if line.kind == "horizontal"
             && let Some(node) = layout.nodes.get(next_node)
         {
-            push_tree_view_node(&mut out, node, layout, diagram_id);
+            push_tree_view_node(
+                &mut out,
+                node,
+                layout,
+                diagram_id,
+                &mut width_before_highlight,
+            );
             next_node += 1;
         }
         let _ = write!(
@@ -105,7 +122,13 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         );
     }
     for node in layout.nodes.iter().skip(next_node) {
-        push_tree_view_node(&mut out, node, layout, diagram_id);
+        push_tree_view_node(
+            &mut out,
+            node,
+            layout,
+            diagram_id,
+            &mut width_before_highlight,
+        );
     }
     out.push_str("</g></svg>\n");
     Ok(out)
@@ -116,15 +139,13 @@ fn push_tree_view_node(
     node: &TreeViewNodeLayout,
     layout: &TreeViewDiagramLayout,
     diagram_id: &str,
+    width_before_highlight: &mut f64,
 ) {
     out.push_str("<g>");
     let label_classes = tree_view_label_classes(node);
-    if node
-        .css_class
-        .as_deref()
-        .is_some_and(|class| class.split_whitespace().any(|part| part == "highlight"))
-    {
-        let rect_width = (layout.total_width - node.x + 8.0).max(0.0);
+    if is_tree_view_highlight_class(node.css_class.as_deref()) {
+        let rect_width =
+            (*width_before_highlight - node.x + TREE_VIEW_HIGHLIGHT_RECT_EXTENSION).max(0.0);
         let _ = write!(
             out,
             r#"<rect x="{}" y="{}" width="{}" height="{}" rx="3" class="treeView-highlight-bg"></rect>"#,
@@ -133,6 +154,7 @@ fn push_tree_view_node(
             fmt(rect_width),
             fmt((node.height - 2.0).max(0.0))
         );
+        *width_before_highlight += TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     }
     if let Some(icon) = &node.resolved_icon {
         let _ = write!(
@@ -210,10 +232,18 @@ fn push_tree_view_icon_defs(out: &mut String, layout: &TreeViewDiagramLayout, di
     for icon in used_icons {
         let _ = write!(
             out,
-            r#"<g id="{}">{}</g>"#,
-            tree_view_icon_symbol_id(diagram_id, icon),
-            tree_view_icon_body(icon).unwrap_or("")
+            r#"<g id="{}">"#,
+            tree_view_icon_symbol_id(diagram_id, icon)
         );
+        if let Some(body) = tree_view_icon_body(icon) {
+            let _ = write!(
+                out,
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 24 24">{body}</svg>"#,
+                fmt(TREE_VIEW_ICON_SIZE),
+                fmt(TREE_VIEW_ICON_SIZE)
+            );
+        }
+        out.push_str("</g>");
     }
     out.push_str("</defs>");
 }

@@ -245,7 +245,7 @@ fn render_layout_svg_parts_raw(
             render_flowchart_v2_svg(layout, semantic, effective_config, title, measurer, options)
         }
         LayoutDiagram::CynefinDiagram(layout) => {
-            render_cynefin_diagram_svg(layout, semantic, effective_config, options)
+            cynefin::render_cynefin_diagram_svg(layout, semantic, effective_config, title, options)
         }
         LayoutDiagram::RailroadDiagram(layout) => render_railroad_diagram_svg_with_measurer(
             layout,
@@ -423,9 +423,13 @@ fn render_layout_svg_parts_with_config_raw(
             measurer,
             options,
         ),
-        LayoutDiagram::CynefinDiagram(layout) => {
-            render_cynefin_diagram_svg(layout, semantic, effective_config_value, options)
-        }
+        LayoutDiagram::CynefinDiagram(layout) => cynefin::render_cynefin_diagram_svg(
+            layout,
+            semantic,
+            effective_config_value,
+            title,
+            options,
+        ),
         LayoutDiagram::RailroadDiagram(layout) => render_railroad_diagram_svg_with_measurer(
             layout,
             semantic,
@@ -621,6 +625,7 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
                 layout,
                 model,
                 effective_config.as_value(),
+                title,
                 options,
             )
         }
@@ -943,7 +948,7 @@ pub fn render_cynefin_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {
-    cynefin::render_cynefin_diagram_svg(layout, semantic, effective_config, options)
+    cynefin::render_cynefin_diagram_svg(layout, semantic, effective_config, None, options)
 }
 
 pub fn render_railroad_diagram_svg(

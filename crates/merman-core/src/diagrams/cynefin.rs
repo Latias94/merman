@@ -79,6 +79,14 @@ struct CommonField {
     value: SpannedText,
 }
 
+#[derive(Debug, Clone)]
+enum CynefinLinePart {
+    Common(CommonField),
+    Domain(SpannedText),
+    Item(SpannedText),
+    Transition(TransitionParts),
+}
+
 pub fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut model = parse_cynefin_model(code, meta)?;
     model.sanitize_common_db_fields(&meta.effective_config);
@@ -119,100 +127,100 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
             continue;
         }
 
-        if !saw_header {
-            if is_header(trimmed) {
-                saw_header = true;
-                continue;
-            }
-            facts.mark_recovered_with_diagnostic(
-                "expected cynefin-beta header",
-                Some(SourceSpan::new(line_start, line_start + trimmed.len())),
-            );
-            return facts;
-        }
-
-        if let Some((field, consumed)) =
-            parse_multiline_acc_descr_spanned(&code[line_start..], line_start)
-        {
-            offset = line_start + consumed;
-            current_domain = None;
-            push_common_field_fact(&mut facts, field);
-            continue;
-        }
-
-        if let Some(field) = parse_common_field_spanned(stripped, line_start) {
-            current_domain = None;
-            push_common_field_fact(&mut facts, field);
-            continue;
-        }
-
-        if let Some(domain) = parse_domain_line_spanned(stripped, line_start) {
-            current_domain = Some(domain.text.clone());
-            push_domain_fact(&mut facts, domain, "cynefin domain");
-            continue;
-        }
-
-        if let Some(item) = parse_quoted_line_spanned(stripped, line_start) {
-            if current_domain.is_some() {
-                push_payload_fact(
-                    &mut facts,
-                    item,
-                    "cynefin domain item",
-                    EditorSemanticKind::String,
-                );
-                continue;
-            }
-            facts.mark_recovered_with_diagnostic(
-                "cynefin item must follow a domain",
-                Some(SourceSpan::new(line_start, line_start + trimmed.len())),
-            );
-            return facts;
-        }
-
-        match parse_transition_spanned(stripped, line_start) {
-            Ok(Some(transition)) => {
-                current_domain = None;
-                push_domain_fact(
-                    &mut facts,
-                    transition.from.clone(),
-                    "cynefin transition source",
-                );
-                push_domain_fact(
-                    &mut facts,
-                    transition.to.clone(),
-                    "cynefin transition target",
-                );
-                if let Some(label) = transition.label {
-                    push_payload_fact(
-                        &mut facts,
-                        label,
-                        "cynefin transition label",
-                        EditorSemanticKind::String,
-                    );
-                }
-                if transition.from.text == transition.to.text {
-                    facts.push_diagnostic(
-                        format!(
-                            "cynefin self-loop transition on domain \"{}\" is skipped",
-                            transition.from.text
-                        ),
-                        Some(transition.from.span),
-                    );
-                }
-            }
-            Ok(None) => {
+        let (body, body_start) = if !saw_header {
+            let Some((body, body_offset)) = split_header(stripped) else {
                 facts.mark_recovered_with_diagnostic(
-                    "expected cynefin domain, quoted item, transition, or common directive",
+                    "expected cynefin-beta header",
                     Some(SourceSpan::new(line_start, line_start + trimmed.len())),
                 );
                 return facts;
-            }
+            };
+            saw_header = true;
+            (body, line_start + body_offset)
+        } else {
+            let body_start = line_start + line.find(stripped).unwrap_or_default();
+            (stripped, body_start)
+        };
+
+        if body.trim().is_empty() {
+            continue;
+        }
+
+        if let Some((field, consumed)) =
+            parse_multiline_acc_descr_spanned(&code[body_start..], body_start)
+        {
+            offset = body_start + consumed;
+            current_domain = None;
+            push_common_field_fact(&mut facts, field);
+            continue;
+        }
+
+        let parts = match parse_cynefin_line_parts(body, body_start) {
+            Ok(parts) => parts,
             Err(err) => {
                 facts.mark_recovered_with_diagnostic(
                     format!("cynefin parser recovered after parse error: {err}"),
                     Some(SourceSpan::new(line_start, line_start + trimmed.len())),
                 );
                 return facts;
+            }
+        };
+        for part in parts {
+            match part {
+                CynefinLinePart::Common(field) => {
+                    current_domain = None;
+                    push_common_field_fact(&mut facts, field);
+                }
+                CynefinLinePart::Domain(domain) => {
+                    current_domain = Some(domain.text.clone());
+                    push_domain_fact(&mut facts, domain, "cynefin domain");
+                }
+                CynefinLinePart::Item(item) => {
+                    if current_domain.is_some() {
+                        push_payload_fact(
+                            &mut facts,
+                            item,
+                            "cynefin domain item",
+                            EditorSemanticKind::String,
+                        );
+                    } else {
+                        facts.mark_recovered_with_diagnostic(
+                            "cynefin item must follow a domain",
+                            Some(SourceSpan::new(line_start, line_start + trimmed.len())),
+                        );
+                        return facts;
+                    }
+                }
+                CynefinLinePart::Transition(transition) => {
+                    current_domain = None;
+                    push_domain_fact(
+                        &mut facts,
+                        transition.from.clone(),
+                        "cynefin transition source",
+                    );
+                    push_domain_fact(
+                        &mut facts,
+                        transition.to.clone(),
+                        "cynefin transition target",
+                    );
+                    if let Some(label) = transition.label {
+                        push_payload_fact(
+                            &mut facts,
+                            label,
+                            "cynefin transition label",
+                            EditorSemanticKind::String,
+                        );
+                    }
+                    if transition.from.text == transition.to.text {
+                        facts.push_diagnostic(
+                            format!(
+                                "cynefin self-loop transition on domain \"{}\" is skipped",
+                                transition.from.text
+                            ),
+                            Some(transition.from.span),
+                        );
+                    }
+                }
             }
         }
     }
@@ -244,67 +252,64 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
             continue;
         }
 
-        if !saw_header {
-            if is_header(trimmed) {
-                saw_header = true;
-                continue;
-            }
-            return Err(parse_error(meta, "expected cynefin-beta header"));
+        let (body, body_start) = if !saw_header {
+            let Some((body, body_offset)) = split_header(stripped) else {
+                return Err(parse_error(meta, "expected cynefin-beta header"));
+            };
+            saw_header = true;
+            (body, line_start + body_offset)
+        } else {
+            let body_start = line_start + line.find(stripped).unwrap_or_default();
+            (stripped, body_start)
+        };
+
+        if body.trim().is_empty() {
+            continue;
         }
 
         if let Some((field, consumed)) =
-            parse_multiline_acc_descr_spanned(&code[line_start..], line_start)
+            parse_multiline_acc_descr_spanned(&code[body_start..], body_start)
         {
-            offset = line_start + consumed;
+            offset = body_start + consumed;
             current_domain = None;
             model.acc_descr = Some(field.value.text);
             continue;
         }
 
-        if let Some(field) = parse_common_field_spanned(stripped, 0) {
-            current_domain = None;
-            match field.kind {
-                CommonFieldKind::Title => model.title = Some(field.value.text),
-                CommonFieldKind::AccTitle => model.acc_title = Some(field.value.text),
-                CommonFieldKind::AccDescr => model.acc_descr = Some(field.value.text),
-            }
-            continue;
-        }
-
-        if let Some(domain) = parse_domain_line_spanned(stripped, 0) {
-            current_domain = Some(start_domain(&mut model.domains, domain.text));
-            continue;
-        }
-
-        if let Some(item) = parse_quoted_line_spanned(stripped, 0) {
-            let Some(domain_idx) = current_domain else {
-                return Err(parse_error(meta, "cynefin item must follow a domain"));
-            };
-            model.domains[domain_idx]
-                .items
-                .push(CynefinItemModel { label: item.text });
-            continue;
-        }
-
-        match parse_transition_spanned(stripped, 0)? {
-            Some(transition) => {
-                current_domain = None;
-                if transition.from.text != transition.to.text {
-                    model.transitions.push(CynefinTransitionModel {
-                        from: transition.from.text,
-                        to: transition.to.text,
-                        label: transition
-                            .label
-                            .map(|label| label.text)
-                            .filter(|label| !label.is_empty()),
-                    });
+        for part in parse_cynefin_line_parts(body, body_start)? {
+            match part {
+                CynefinLinePart::Common(field) => {
+                    current_domain = None;
+                    match field.kind {
+                        CommonFieldKind::Title => model.title = Some(field.value.text),
+                        CommonFieldKind::AccTitle => model.acc_title = Some(field.value.text),
+                        CommonFieldKind::AccDescr => model.acc_descr = Some(field.value.text),
+                    }
                 }
-            }
-            None => {
-                return Err(parse_error(
-                    meta,
-                    "expected cynefin domain, quoted item, transition, or common directive",
-                ));
+                CynefinLinePart::Domain(domain) => {
+                    current_domain = Some(start_domain(&mut model.domains, domain.text));
+                }
+                CynefinLinePart::Item(item) => {
+                    let Some(domain_idx) = current_domain else {
+                        return Err(parse_error(meta, "cynefin item must follow a domain"));
+                    };
+                    model.domains[domain_idx]
+                        .items
+                        .push(CynefinItemModel { label: item.text });
+                }
+                CynefinLinePart::Transition(transition) => {
+                    current_domain = None;
+                    if transition.from.text != transition.to.text {
+                        model.transitions.push(CynefinTransitionModel {
+                            from: transition.from.text,
+                            to: transition.to.text,
+                            label: transition
+                                .label
+                                .map(|label| label.text)
+                                .filter(|label| !label.is_empty()),
+                        });
+                    }
+                }
             }
         }
     }
@@ -316,8 +321,61 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
     Ok(model)
 }
 
-fn is_header(trimmed: &str) -> bool {
-    trimmed == HEADER || trimmed == "cynefin-beta:"
+fn split_header(line: &str) -> Option<(&str, usize)> {
+    let leading = line.len() - line.trim_start().len();
+    let rest = &line[leading..];
+    let after_header = rest.strip_prefix(HEADER)?;
+    let next = after_header.chars().next();
+    if next.is_some_and(|ch| ch != ':' && !ch.is_whitespace()) {
+        return None;
+    }
+
+    let colon_len = after_header.starts_with(':') as usize;
+    let body_offset = leading + HEADER.len() + colon_len;
+    Some((&line[body_offset..], body_offset))
+}
+
+fn parse_cynefin_line_parts(line: &str, line_start: usize) -> Result<Vec<CynefinLinePart>> {
+    let mut cursor = CynefinCursor::new(line, line_start);
+    let mut parts = Vec::new();
+
+    loop {
+        cursor.skip_ws();
+        if cursor.is_eof() {
+            break;
+        }
+
+        let part_start = cursor.pos;
+        let remaining = cursor.remaining();
+        if let Some(field) = parse_common_field_spanned(remaining, line_start + part_start) {
+            cursor.pos = line.len();
+            parts.push(CynefinLinePart::Common(field));
+            continue;
+        }
+
+        if let Some(transition) = parse_transition_spanned(remaining, line_start + part_start)? {
+            cursor.pos = line.len();
+            parts.push(CynefinLinePart::Transition(transition));
+            continue;
+        }
+
+        if let Some(domain) = cursor.take_domain() {
+            parts.push(CynefinLinePart::Domain(domain));
+            continue;
+        }
+
+        if let Some(item) = cursor.take_quoted_string() {
+            parts.push(CynefinLinePart::Item(item));
+            continue;
+        }
+
+        return Err(Error::diagram_parse_fallback(
+            "cynefin",
+            "expected cynefin domain, quoted item, transition, or common directive",
+        ));
+    }
+
+    Ok(parts)
 }
 
 fn physical_line_at(code: &str, start: usize) -> (&str, usize) {
@@ -337,19 +395,6 @@ fn start_domain(domains: &mut Vec<CynefinDomainModel>, name: String) -> usize {
         });
         domains.len() - 1
     }
-}
-
-fn parse_domain_line_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
-    let trimmed = line.trim();
-    if !DOMAINS.contains(&trimmed) {
-        return None;
-    }
-    let rel = line.find(trimmed)?;
-    Some(SpannedText {
-        text: trimmed.to_string(),
-        span: SourceSpan::new(line_start + rel, line_start + rel + trimmed.len()),
-        selection: SourceSpan::new(line_start + rel, line_start + rel + trimmed.len()),
-    })
 }
 
 fn parse_transition_spanned(line: &str, line_start: usize) -> Result<Option<TransitionParts>> {
@@ -394,14 +439,6 @@ fn parse_transition_spanned(line: &str, line_start: usize) -> Result<Option<Tran
     }
 
     Ok(Some(TransitionParts { from, to, label }))
-}
-
-fn parse_quoted_line_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
-    let mut cursor = CynefinCursor::new(line, line_start);
-    cursor.skip_ws();
-    let value = cursor.take_quoted_string()?;
-    cursor.skip_ws();
-    cursor.is_eof().then_some(value)
 }
 
 fn parse_common_field_spanned(line: &str, line_start: usize) -> Option<CommonField> {
@@ -799,7 +836,11 @@ mod tests {
 
     #[test]
     fn parses_escaped_quoted_string_payload() {
-        let value = parse_quoted_line_spanned("  \"Probe \\\"quoted\\\" value\"", 10).unwrap();
+        let mut cursor = CynefinCursor::new("  \"Probe \\\"quoted\\\" value\"", 10);
+        cursor.skip_ws();
+        let value = cursor.take_quoted_string().unwrap();
+        cursor.skip_ws();
+        assert!(cursor.is_eof());
         assert_eq!(value.text, "Probe \"quoted\" value");
         assert_eq!(value.selection, SourceSpan::new(13, 35));
     }

@@ -15,8 +15,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Added parser and editor facts, typed layout, and SVG rendering for `cynefin-beta` and all four Railroad dialects: `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, and `railroad-peg-beta`.
 - Added parse-only support for `swimlane-beta` through shared Flowchart semantics and Mermaid 11.16 configuration defaults; dedicated Swimlane layout and SVG admission remain deferred.
 - Aligned Mermaid 11.16 behavior across existing diagrams, including Flowchart and State self-loops, Sequence blocks and wrapping, Ishikawa recursive DOM structure, TreeView ordering, XYChart point labels, Architecture hints, Pie highlighting, Gantt timing, and config/frontmatter handling.
-- Upstream SVG tooling now verifies pinned source, renderer runtime, browser/font, input, and SVG provenance and promotes complete family batches transactionally under cross-process locks.
-- Parity gates now encode narrow, exact policies for documented browser-only Sequence and Railroad residuals while still rejecting changed or additional mismatches.
+- Upstream SVG tooling now verifies pinned source, renderer runtime, browser timezone and fonts, input, and SVG provenance and promotes complete family batches transactionally under cross-process locks.
+- Parity gates now compare the complete mismatch set against narrow policies for documented browser-only Sequence and Railroad residuals, so changed or additional mismatches still fail.
+
+### Fixes and polish
+
+- Fixed Mermaid 11.16 edge cases in TreeView annotation boundaries, 14px built-in icons, and highlight bounds; Cynefin inline syntax, frontmatter titles, and global fonts; Architecture reserved IDs; exact Railroad ABNF overflow diagnostics; and generated XYChart axis defaults. #21
+- Hardened upstream SVG maintenance so full-family generation removes obsolete fixture baselines transactionally, compare/audit readers cannot race shared Mermaid CLI installs, and root-override audits consume root attributes captured from the locked compare generation. #21
+- Unified fixture importer reject/defer rollback handling so all import sources restore the same transaction state after a failed baseline or deferred-fixture operation. #21
 
 ## [0.8.0-alpha.3] - 2026-07-09
 

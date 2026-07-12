@@ -40,6 +40,7 @@ pub(crate) struct UpstreamSvgBrowserEnvironment {
     pub(crate) product: String,
     pub(crate) version: String,
     pub(crate) revision: String,
+    pub(crate) timezone: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -83,6 +84,7 @@ impl UpstreamSvgRenderEnvironment {
             ("browser.product", self.browser.product.as_str()),
             ("browser.version", self.browser.version.as_str()),
             ("browser.revision", self.browser.revision.as_str()),
+            ("browser.timezone", self.browser.timezone.as_str()),
             ("puppeteer.version", self.puppeteer.version.as_str()),
             (
                 "operating_system.platform",

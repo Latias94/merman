@@ -42,6 +42,7 @@ pub(crate) struct CynefinLayoutSettings {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CynefinTheme {
+    pub font_family: String,
     pub complex_bg: String,
     pub complicated_bg: String,
     pub chaotic_bg: String,
@@ -116,6 +117,7 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
     }
 
     CynefinTheme {
+        font_family: crate::config::config_font_family_css(effective_config),
         complex_bg: color(effective_config, "complexBg", "#E8F5E9"),
         complicated_bg: color(effective_config, "complicatedBg", "#E3F2FD"),
         chaotic_bg: color(effective_config, "chaoticBg", "#FBE9E7"),
@@ -410,6 +412,7 @@ fn layout_items(
     measurer: &dyn TextMeasurer,
 ) -> Vec<CynefinItemLayout> {
     let style = TextStyle {
+        font_family: Some(theme.font_family.clone()),
         font_size: theme.item_font_size,
         ..Default::default()
     };

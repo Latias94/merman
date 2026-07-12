@@ -108,6 +108,66 @@ fn parse_cynefin_accepts_colon_header_comments_single_quotes_and_escapes() {
 }
 
 #[test]
+fn parse_cynefin_accepts_header_domains_and_items_on_the_same_line() {
+    let engine = Engine::new();
+    let text = r#"cynefin-beta complex "A" "B" complicated "C"
+complicated --> clear : "Standardize""#;
+    let parsed = engine
+        .parse_diagram_with_editor_facts_sync(text, ParseOptions::strict())
+        .unwrap()
+        .expect("cynefin parses tokens separated only by hidden whitespace");
+
+    assert_eq!(
+        parsed.diagram.model["domains"],
+        json!([
+            {
+                "name": "complex",
+                "items": [{ "label": "A" }, { "label": "B" }]
+            },
+            {
+                "name": "complicated",
+                "items": [{ "label": "C" }]
+            }
+        ])
+    );
+    assert_eq!(
+        parsed.diagram.model["transitions"],
+        json!([{
+            "from": "complicated",
+            "to": "clear",
+            "label": "Standardize"
+        }])
+    );
+
+    let ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        panic!("cynefin should expose editor facts");
+    };
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "A" && symbol.detail.as_deref() == Some("cynefin domain item")
+    }));
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.name == "complicated" && symbol.detail.as_deref() == Some("cynefin domain")
+    }));
+}
+
+#[test]
+fn parse_cynefin_accepts_multiline_accessibility_directive_after_inline_header() {
+    let engine = Engine::new();
+    let text = r#"cynefin-beta accDescr {
+  Inline header description
+}
+complex "A""#;
+    let parsed = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .unwrap()
+        .expect("cynefin parses inline header before multiline common directive");
+
+    assert_eq!(parsed.model["accDescr"], json!("Inline header description"));
+    assert_eq!(parsed.model["domains"][0]["name"], json!("complex"));
+    assert_eq!(parsed.model["domains"][0]["items"][0]["label"], json!("A"));
+}
+
+#[test]
 fn parse_cynefin_decodes_common_string_escapes_like_langium() {
     let engine = Engine::new();
     let parsed = engine

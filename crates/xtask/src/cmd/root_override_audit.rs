@@ -1,6 +1,9 @@
 //! Global root viewport override governance audit.
 
-use crate::cmd::compare::diagram_supports_root_delta_report;
+use crate::cmd::compare::{
+    ROOT_ATTRS_SNAPSHOT_PATH_ENV, RootAttrsSnapshot, RootAttrsSnapshotEntry,
+    diagram_supports_root_delta_report,
+};
 use crate::{XtaskError, cmd};
 use merman_core::baseline::{
     LEGACY_GENERATED_BASELINE_SUFFIX, PINNED_MERMAID_BASELINE_VERSION_SUFFIX,
@@ -12,8 +15,61 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const HISTORICAL_ROOT_OVERRIDE_SUFFIXES: &[&str] = &["11_15_0"];
+static ROOT_ATTRS_SNAPSHOT_NONCE: AtomicU64 = AtomicU64::new(0);
+
+struct EphemeralRootAttrsSnapshot {
+    path: PathBuf,
+}
+
+impl EphemeralRootAttrsSnapshot {
+    fn reserve(report_path: &Path) -> Result<Self, XtaskError> {
+        let parent = report_path.parent().unwrap_or_else(|| Path::new("."));
+        let report_name = report_path
+            .file_name()
+            .map(|name| name.to_string_lossy())
+            .unwrap_or_else(|| "compare-report".into());
+
+        for _ in 0..100 {
+            let nonce = ROOT_ATTRS_SNAPSHOT_NONCE.fetch_add(1, Ordering::Relaxed);
+            let path = parent.join(format!(
+                ".{report_name}.root-attrs-{}-{nonce}.json",
+                std::process::id()
+            ));
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => return Ok(Self { path }),
+                Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(source) => {
+                    return Err(XtaskError::WriteFile {
+                        path: path.display().to_string(),
+                        source,
+                    });
+                }
+            }
+        }
+
+        Err(XtaskError::SvgCompareFailed(format!(
+            "failed to reserve a root attrs snapshot beside {}",
+            report_path.display()
+        )))
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for EphemeralRootAttrsSnapshot {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
 
 #[derive(Debug, Clone)]
 struct RootOverrideTable {
@@ -292,6 +348,7 @@ fn run_disabled_root_compare(
     fixture_keys: &BTreeSet<String>,
     dom_decimals: u32,
 ) -> Result<CompareRun, XtaskError> {
+    let root_attrs_snapshot = EphemeralRootAttrsSnapshot::reserve(report_path)?;
     let exe = std::env::current_exe().map_err(|source| XtaskError::ReadFile {
         path: "current executable".to_string(),
         source,
@@ -299,6 +356,7 @@ fn run_disabled_root_compare(
     let mut command = Command::new(exe);
     command.current_dir(cmd::workspace_root());
     command.env("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES", "1");
+    command.env(ROOT_ATTRS_SNAPSHOT_PATH_ENV, root_attrs_snapshot.path());
     command.arg(format!("compare-{family}-svgs"));
     command.arg("--check-dom");
     command.arg("--dom-mode");
@@ -324,7 +382,7 @@ fn run_disabled_root_compare(
     let combined = format!("{stdout}\n{stderr}\n{report_text}");
     let dom_mismatch_keys = collect_dom_mismatch_keys(&combined);
     let (root_delta_keys, root_delta_issues) =
-        collect_table_root_delta_keys(family, report_path, fixture_keys);
+        collect_table_root_delta_keys(family, root_attrs_snapshot.path(), fixture_keys);
     let mut runner_issues = collect_runner_issues(&combined);
     runner_issues.extend(root_delta_issues);
     if !output.status.success() && dom_mismatch_keys.is_empty() {
@@ -344,60 +402,51 @@ fn run_disabled_root_compare(
 
 fn collect_table_root_delta_keys(
     family: &str,
-    report_path: &Path,
+    snapshot_path: &Path,
     fixture_keys: &BTreeSet<String>,
 ) -> (BTreeSet<String>, Vec<String>) {
     let mut keys = BTreeSet::new();
     let mut issues = Vec::new();
-    let local_dir = report_path
-        .parent()
-        .map(|parent| parent.join(family))
-        .unwrap_or_else(|| cmd::target_root().join("compare").join(family));
-    let upstream_dir = cmd::fixtures_root().join("upstream-svgs").join(family);
+    let snapshot = match RootAttrsSnapshot::read(snapshot_path) {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+            issues.push(format!(
+                "failed to read locked root attrs snapshot for {family}: {err}"
+            ));
+            return (keys, issues);
+        }
+    };
+    let mut entries = BTreeMap::new();
+    for entry in snapshot.entries {
+        let stem = match &entry {
+            RootAttrsSnapshotEntry::Compared { stem, .. }
+            | RootAttrsSnapshotEntry::Failed { stem, .. } => stem.clone(),
+        };
+        if entries.insert(stem.clone(), entry).is_some() {
+            issues.push(format!(
+                "locked root attrs snapshot contains duplicate fixture {family}/{stem}"
+            ));
+        }
+    }
 
     for fixture in fixture_keys {
-        let upstream_path = upstream_dir.join(format!("{fixture}.svg"));
-        let local_path = local_dir.join(format!("{fixture}.svg"));
-        let upstream_svg = match fs::read_to_string(&upstream_path) {
-            Ok(svg) => svg,
-            Err(err) => {
-                issues.push(format!(
-                    "failed to read upstream root attrs for {family}/{fixture}: {} ({err})",
-                    upstream_path.display()
-                ));
-                continue;
+        match entries.get(fixture) {
+            Some(RootAttrsSnapshotEntry::Compared {
+                upstream, local, ..
+            }) if root_attrs_differ(upstream, local) => {
+                keys.insert(fixture.clone());
             }
-        };
-        let local_svg = match fs::read_to_string(&local_path) {
-            Ok(svg) => svg,
-            Err(err) => {
+            Some(RootAttrsSnapshotEntry::Compared { .. }) => {}
+            Some(RootAttrsSnapshotEntry::Failed { error, .. }) => {
                 issues.push(format!(
-                    "failed to read local root attrs for {family}/{fixture}: {} ({err})",
-                    local_path.display()
+                    "failed to capture locked root attrs for {family}/{fixture}: {error}"
                 ));
-                continue;
             }
-        };
-        let upstream = match crate::cmd::compare::parse_root_attrs(&upstream_svg) {
-            Ok(attrs) => attrs,
-            Err(err) => {
+            None => {
                 issues.push(format!(
-                    "failed to parse upstream root attrs for {family}/{fixture}: {err}"
+                    "locked root attrs snapshot is missing rendered fixture {family}/{fixture}"
                 ));
-                continue;
             }
-        };
-        let local = match crate::cmd::compare::parse_root_attrs(&local_svg) {
-            Ok(attrs) => attrs,
-            Err(err) => {
-                issues.push(format!(
-                    "failed to parse local root attrs for {family}/{fixture}: {err}"
-                ));
-                continue;
-            }
-        };
-        if root_attrs_differ(&upstream, &local) {
-            keys.insert(fixture.clone());
         }
     }
 
@@ -745,10 +794,26 @@ fn fail_status_re() -> &'static Regex {
 mod tests {
     use super::{
         FamilyAudit, RootOverrideTable, collect_dom_mismatch_keys,
-        collect_root_override_fixture_keys, collect_runner_issues, count_root_viewport_entries,
-        render_global_root_override_audit, root_override_family_from_file_name,
+        collect_root_override_fixture_keys, collect_runner_issues, collect_table_root_delta_keys,
+        count_root_viewport_entries, render_global_root_override_audit, root_attrs_differ,
+        root_override_family_from_file_name,
     };
+    use crate::cmd::compare::{RootAttrsSnapshot, parse_root_attrs};
     use std::collections::BTreeSet;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_root(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        crate::cmd::target_root()
+            .join("compare")
+            .join("root-override-audit-tests")
+            .join(format!("{name}-{}-{nonce}", std::process::id()))
+    }
 
     #[test]
     fn collects_all_fixture_keys_from_or_pattern_root_arms() {
@@ -836,5 +901,52 @@ match diagram_id {
         assert!(!report.contains(
             "`timeline`: mismatch cross-check only; per-family root delta table not yet wired"
         ));
+    }
+
+    #[test]
+    fn locked_root_snapshot_survives_post_compare_generation_replacement() {
+        let root = unique_test_root("same-generation-snapshot");
+        fs::create_dir_all(&root).expect("create test directory");
+        let upstream_path = root.join("fixture-upstream.svg");
+        let local_path = root.join("fixture-local.svg");
+        let snapshot_path = root.join("root-attrs.json");
+        let old_upstream = r#"<svg viewBox="0 0 100 100" style="max-width: 100px;"><g/></svg>"#;
+        let old_local = r#"<svg viewBox="0 0 110 100" style="max-width: 110px;"><g/></svg>"#;
+        fs::write(&upstream_path, old_upstream).expect("write old upstream generation");
+        fs::write(&local_path, old_local).expect("write old local generation");
+
+        let mut snapshot = RootAttrsSnapshot::default();
+        snapshot.capture("fixture", old_upstream, old_local);
+        snapshot
+            .write(&snapshot_path)
+            .expect("write locked root snapshot");
+
+        let new_generation = r#"<svg viewBox="0 0 200 100" style="max-width: 200px;"><g/></svg>"#;
+        fs::write(&upstream_path, new_generation).expect("replace upstream generation");
+        fs::write(&local_path, new_generation).expect("replace local generation");
+        let disk_upstream = parse_root_attrs(
+            &fs::read_to_string(&upstream_path).expect("read replaced upstream generation"),
+        )
+        .expect("parse replaced upstream root attrs");
+        let disk_local = parse_root_attrs(
+            &fs::read_to_string(&local_path).expect("read replaced local generation"),
+        )
+        .expect("parse replaced local root attrs");
+        assert!(
+            !root_attrs_differ(&disk_upstream, &disk_local),
+            "a post-compare disk reread would incorrectly classify the old root delta as stale"
+        );
+
+        let fixture_keys = BTreeSet::from(["fixture".to_string()]);
+        let (root_delta_keys, issues) =
+            collect_table_root_delta_keys("probe", &snapshot_path, &fixture_keys);
+
+        assert!(issues.is_empty(), "unexpected snapshot issues: {issues:?}");
+        assert_eq!(root_delta_keys, fixture_keys);
+
+        fs::remove_file(snapshot_path).expect("remove root snapshot");
+        fs::remove_file(upstream_path).expect("remove upstream fixture");
+        fs::remove_file(local_path).expect("remove local fixture");
+        fs::remove_dir(root).expect("remove test directory");
     }
 }

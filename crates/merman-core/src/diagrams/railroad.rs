@@ -758,7 +758,15 @@ impl<'a> RailroadParser<'a> {
             return Ok(primary);
         };
 
-        let (min, max) = parse_abnf_repeat_bounds(&repeat.text);
+        let (min, max) = parse_abnf_repeat_bounds(&repeat.text).map_err(|overflow| {
+            self.error_at_span(
+                SourceSpan::new(
+                    repeat.span.start + overflow.start,
+                    repeat.span.start + overflow.end,
+                ),
+                ABNF_REPEAT_BOUND_OVERFLOW_MESSAGE,
+            )
+        })?;
         let span = SourceSpan::new(repeat.span.start, primary.span().end);
         if min == 0 && max == Some(1) {
             return Ok(RailroadAstNode::Optional {
@@ -1871,23 +1879,41 @@ fn strip_inline_comment_aware(line: &str) -> &str {
     line
 }
 
-fn parse_abnf_repeat_bounds(repeat: &str) -> (u64, Option<u64>) {
+const ABNF_REPEAT_BOUND_OVERFLOW_MESSAGE: &str =
+    "ABNF repetition bound exceeds the supported integer range";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct AbnfRepeatBoundOverflow {
+    start: usize,
+    end: usize,
+}
+
+fn parse_abnf_repeat_bounds(
+    repeat: &str,
+) -> std::result::Result<(u64, Option<u64>), AbnfRepeatBoundOverflow> {
+    let parse_bound = |bound: &str, start: usize| {
+        bound.parse::<u64>().map_err(|_| AbnfRepeatBoundOverflow {
+            start,
+            end: start + bound.len(),
+        })
+    };
+
     if let Some((min, max)) = repeat.split_once('*') {
         let min = if min.is_empty() {
             0
         } else {
-            min.parse().unwrap_or(0)
+            parse_bound(min, 0)?
         };
         let max = if max.is_empty() {
             None
         } else {
-            Some(max.parse().unwrap_or(min))
+            Some(parse_bound(max, repeat.len() - max.len())?)
         };
-        return (min, max);
+        return Ok((min, max));
     }
 
-    let exact = repeat.parse().unwrap_or(1);
-    (exact, Some(exact))
+    let exact = parse_bound(repeat, 0)?;
+    Ok((exact, Some(exact)))
 }
 
 fn collapse_sequence(elements: Vec<RailroadAstNode>, span: SourceSpan) -> RailroadAstNode {
@@ -2154,10 +2180,66 @@ mod tests {
 
     #[test]
     fn parses_repeat_bounds() {
-        assert_eq!(parse_abnf_repeat_bounds("*"), (0, None));
-        assert_eq!(parse_abnf_repeat_bounds("1*"), (1, None));
-        assert_eq!(parse_abnf_repeat_bounds("*2"), (0, Some(2)));
-        assert_eq!(parse_abnf_repeat_bounds("1*2"), (1, Some(2)));
-        assert_eq!(parse_abnf_repeat_bounds("3"), (3, Some(3)));
+        assert_eq!(parse_abnf_repeat_bounds("*"), Ok((0, None)));
+        assert_eq!(parse_abnf_repeat_bounds("1*"), Ok((1, None)));
+        assert_eq!(parse_abnf_repeat_bounds("*2"), Ok((0, Some(2))));
+        assert_eq!(parse_abnf_repeat_bounds("1*2"), Ok((1, Some(2))));
+        assert_eq!(parse_abnf_repeat_bounds("3"), Ok((3, Some(3))));
+        assert_eq!(
+            parse_abnf_repeat_bounds("18446744073709551615"),
+            Ok((u64::MAX, Some(u64::MAX)))
+        );
+        assert_eq!(
+            parse_abnf_repeat_bounds("00000000000000000002*00000000000000000003"),
+            Ok((2, Some(3)))
+        );
+    }
+
+    fn assert_abnf_repeat_overflow(repeat: &str, bound_start: usize, bound_end: usize) {
+        let source = format!("railroad-abnf-beta\nrule = {repeat}\"a\" ;\n");
+        let tokens = Lexer::new(&source, RailroadDialect::Abnf, "railroadAbnf")
+            .tokenize()
+            .expect("ABNF source should tokenize");
+        let error =
+            RailroadParser::new(tokens, source.len(), "railroadAbnf", RailroadDialect::Abnf)
+                .parse()
+                .expect_err("overflowing repetition bound should be rejected");
+        let Error::DiagramParse {
+            diagram_type,
+            diagnostic,
+        } = error
+        else {
+            panic!("expected railroad parse error");
+        };
+
+        let repeat_start = source.find(repeat).expect("source should contain repeat");
+        assert_eq!(diagram_type, "railroadAbnf");
+        assert_eq!(diagnostic.message(), ABNF_REPEAT_BOUND_OVERFLOW_MESSAGE);
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(
+                repeat_start + bound_start,
+                repeat_start + bound_end,
+            ))
+        );
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+    }
+
+    #[test]
+    fn rejects_overflowing_exact_abnf_repeat_bound() {
+        assert_abnf_repeat_overflow("18446744073709551616", 0, 20);
+    }
+
+    #[test]
+    fn rejects_overflowing_minimum_abnf_repeat_bound() {
+        assert_abnf_repeat_overflow("18446744073709551616*", 0, 20);
+    }
+
+    #[test]
+    fn rejects_overflowing_maximum_abnf_repeat_bound() {
+        assert_abnf_repeat_overflow("1*18446744073709551616", 2, 22);
     }
 }

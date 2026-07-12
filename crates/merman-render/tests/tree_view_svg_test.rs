@@ -151,6 +151,225 @@ src/ :::highlight icon(folder) ## source directory
 }
 
 #[test]
+fn tree_view_builtin_icons_render_at_fourteen_pixels_without_overlapping_labels() {
+    let input = r##"treeView-beta
+src/ icon(folder)
+file.txt icon(file)
+App.tsx icon(logos:react)
+"##;
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let svg = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        LayoutOptions::default().text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("tree-view-icon-size-test".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
+
+    for (icon, label) in [("folder", "src"), ("file", "file.txt")] {
+        let symbol_id = format!("tv-icon-tree-view-icon-size-test-mermaid-treeview-{icon}");
+        let symbol = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(symbol_id.as_str()))
+            .expect("built-in icon definition");
+        let icon_svg = symbol
+            .children()
+            .find(|node| node.is_element() && node.tag_name().name() == "svg")
+            .expect("built-in icon uses a size-constrained SVG viewport");
+
+        assert_eq!(icon_svg.attribute("width"), Some("14"));
+        assert_eq!(icon_svg.attribute("height"), Some("14"));
+        assert_eq!(icon_svg.attribute("viewBox"), Some("0 0 24 24"));
+
+        let href = format!("#{symbol_id}");
+        let icon_use = document
+            .descendants()
+            .find(|node| {
+                node.tag_name().name() == "use"
+                    && node.attribute(("http://www.w3.org/1999/xlink", "href"))
+                        == Some(href.as_str())
+            })
+            .expect("icon use node");
+        let label_node = document
+            .descendants()
+            .find(|node| node.tag_name().name() == "text" && node.text() == Some(label))
+            .expect("icon label node");
+        let icon_right = icon_use
+            .attribute("x")
+            .expect("icon x")
+            .parse::<f64>()
+            .expect("numeric icon x")
+            + 14.0;
+        let label_x = label_node
+            .attribute("x")
+            .expect("label x")
+            .parse::<f64>()
+            .expect("numeric label x");
+
+        assert_eq!(label_x - icon_right, 4.0);
+    }
+
+    let third_party_symbol = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("tv-icon-tree-view-icon-size-test-logos-react"))
+        .expect("third-party residual icon definition");
+    assert_eq!(
+        third_party_symbol
+            .children()
+            .filter(|node| node.is_element())
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn tree_view_root_highlight_visual_bounds_fit_inside_viewbox() {
+    let input = r##"treeView-beta
+root/ :::highlight
+"##;
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let LayoutDiagram::TreeViewDiagram(tree_view) = &layout else {
+        panic!("expected TreeView layout");
+    };
+    let content_width = tree_view
+        .nodes
+        .iter()
+        .map(|node| node.x + node.width)
+        .fold(0.0, f64::max);
+
+    assert_eq!(tree_view.total_width, content_width + 10.0);
+
+    let svg = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        LayoutOptions::default().text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("tree-view-root-highlight-test".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_tree_view_highlights_fit_viewbox(&svg);
+}
+
+#[test]
+fn tree_view_multiple_highlights_follow_upstream_width_growth() {
+    let input = r##"treeView-beta
+root/ :::highlight
+    child/ :::highlight
+        leaf.txt
+"##;
+
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let LayoutDiagram::TreeViewDiagram(tree_view) = &layout else {
+        panic!("expected TreeView layout");
+    };
+    let content_width = tree_view
+        .nodes
+        .iter()
+        .map(|node| node.x + node.width)
+        .fold(0.0, f64::max);
+    let highlighted_nodes = tree_view
+        .nodes
+        .iter()
+        .filter(|node| {
+            node.css_class
+                .as_deref()
+                .is_some_and(|class| class.split_whitespace().any(|part| part == "highlight"))
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(highlighted_nodes.len(), 2);
+    assert_eq!(tree_view.total_width, content_width + 20.0);
+
+    let svg = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        LayoutOptions::default().text_measurer.as_ref(),
+        &SvgRenderOptions {
+            diagram_id: Some("tree-view-multiple-highlights-test".to_string()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
+    let highlight_rects = document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("treeView-highlight-bg"))
+        .collect::<Vec<_>>();
+    let mut width_before_highlight = content_width;
+    for (node, rect) in highlighted_nodes.into_iter().zip(highlight_rects) {
+        let actual_width = rect
+            .attribute("width")
+            .expect("highlight width")
+            .parse::<f64>()
+            .expect("numeric highlight width");
+        let expected_width = width_before_highlight - node.x + 8.0;
+        assert!((actual_width - expected_width).abs() < 1e-9);
+        width_before_highlight += 10.0;
+    }
+    assert_eq!(width_before_highlight, tree_view.total_width);
+    assert_tree_view_highlights_fit_viewbox(&svg);
+}
+
+fn assert_tree_view_highlights_fit_viewbox(svg: &str) {
+    let document = roxmltree::Document::parse(svg).expect("valid TreeView SVG");
+    let view_box = document
+        .root_element()
+        .attribute("viewBox")
+        .expect("TreeView viewBox")
+        .split_whitespace()
+        .map(|part| part.parse::<f64>().expect("numeric viewBox component"))
+        .collect::<Vec<_>>();
+    let view_box_right = view_box[0] + view_box[2];
+
+    for rect in document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("treeView-highlight-bg"))
+    {
+        let x = rect
+            .attribute("x")
+            .expect("highlight x")
+            .parse::<f64>()
+            .expect("numeric highlight x");
+        let width = rect
+            .attribute("width")
+            .expect("highlight width")
+            .parse::<f64>()
+            .expect("numeric highlight width");
+        let visual_right = x + width + 0.5;
+        assert!(
+            visual_right <= view_box_right,
+            "highlight right edge {visual_right} exceeds viewBox right edge {view_box_right}"
+        );
+    }
+}
+
+#[test]
 fn tree_view_trailing_slash_only_marks_directory_labels() {
     let input = r##"treeView-beta
 src/ :::directory-probe

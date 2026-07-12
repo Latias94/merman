@@ -910,6 +910,23 @@ impl<'a> SpanParser<'a> {
     }
 }
 
+fn parse_architecture_editor_id(
+    parser: &mut SpanParser<'_>,
+    facts: &mut EditorSemanticFacts,
+) -> std::result::Result<SpannedText, ()> {
+    let Some(id) = parser.parse_id() else {
+        return Err(());
+    };
+    if is_architecture_reserved_id(&id.text) {
+        facts.mark_recovered_with_diagnostic(
+            architecture_reserved_id_message(&id.text),
+            Some(id.span),
+        );
+        return Err(());
+    }
+    Ok(id)
+}
+
 fn push_architecture_entity(
     facts: &mut EditorSemanticFacts,
     text: SpannedText,
@@ -1045,9 +1062,7 @@ fn parse_architecture_stmt_facts(
 
     let mut parser = SpanParser::new(stmt, stmt_start);
     if parser.consume_keyword("group") {
-        let Some(id) = parser.parse_id() else {
-            return Err(());
-        };
+        let id = parse_architecture_editor_id(&mut parser, facts)?;
         push_architecture_entity(
             facts,
             id,
@@ -1071,9 +1086,7 @@ fn parse_architecture_stmt_facts(
             );
         }
         if parser.consume_keyword("in") {
-            let Some(parent) = parser.parse_id() else {
-                return Err(());
-            };
+            let parent = parse_architecture_editor_id(&mut parser, facts)?;
             push_architecture_entity(
                 facts,
                 parent,
@@ -1086,9 +1099,7 @@ fn parse_architecture_stmt_facts(
 
     let mut parser = SpanParser::new(stmt, stmt_start);
     if parser.consume_keyword("service") {
-        let Some(id) = parser.parse_id() else {
-            return Err(());
-        };
+        let id = parse_architecture_editor_id(&mut parser, facts)?;
         push_architecture_entity(
             facts,
             id,
@@ -1119,9 +1130,7 @@ fn parse_architecture_stmt_facts(
             );
         }
         if parser.consume_keyword("in") {
-            let Some(parent) = parser.parse_id() else {
-                return Err(());
-            };
+            let parent = parse_architecture_editor_id(&mut parser, facts)?;
             push_architecture_entity(
                 facts,
                 parent,
@@ -1134,9 +1143,7 @@ fn parse_architecture_stmt_facts(
 
     let mut parser = SpanParser::new(stmt, stmt_start);
     if parser.consume_keyword("junction") {
-        let Some(id) = parser.parse_id() else {
-            return Err(());
-        };
+        let id = parse_architecture_editor_id(&mut parser, facts)?;
         push_architecture_entity(
             facts,
             id,
@@ -1144,9 +1151,7 @@ fn parse_architecture_stmt_facts(
             EditorSemanticKind::Object,
         );
         if parser.consume_keyword("in") {
-            let Some(parent) = parser.parse_id() else {
-                return Err(());
-            };
+            let parent = parse_architecture_editor_id(&mut parser, facts)?;
             push_architecture_entity(
                 facts,
                 parent,
@@ -1173,9 +1178,7 @@ fn parse_architecture_stmt_facts(
         );
         let mut count = 0usize;
         while !parser.is_eof() {
-            let Some(member) = parser.parse_id() else {
-                return Err(());
-            };
+            let member = parse_architecture_editor_id(&mut parser, facts)?;
             push_architecture_entity(
                 facts,
                 member,
@@ -1188,9 +1191,7 @@ fn parse_architecture_stmt_facts(
     }
 
     let mut parser = SpanParser::new(stmt, stmt_start);
-    let Some(lhs) = parser.parse_id() else {
-        return Err(());
-    };
+    let lhs = parse_architecture_editor_id(&mut parser, facts)?;
     push_architecture_entity(
         facts,
         lhs,
@@ -1246,9 +1247,7 @@ fn parse_architecture_stmt_facts(
     if parser.peek_char() == Some(':') {
         parser.bump();
     }
-    let Some(rhs) = parser.parse_id() else {
-        return Err(());
-    };
+    let rhs = parse_architecture_editor_id(&mut parser, facts)?;
     push_architecture_entity(
         facts,
         rhs,
@@ -1328,6 +1327,14 @@ fn take_id_prefix(input: &str) -> Option<(&str, &str)> {
     Some((&input[..end], &input[end..]))
 }
 
+fn is_architecture_reserved_id(id: &str) -> bool {
+    matches!(id, "align" | "row" | "column")
+}
+
+fn architecture_reserved_id_message(id: &str) -> String {
+    format!("reserved architecture keyword [{id}] cannot be used as an id")
+}
+
 fn take_bracketed(input: &str, open: char, close: char) -> Option<(String, &str)> {
     let mut it = input.char_indices();
     let (_, first) = it.next()?;
@@ -1393,12 +1400,20 @@ fn architecture_id_from_suffix(
     line_start: usize,
     id: &str,
     suffix: &str,
-) -> ArchitectureIdentifier {
+) -> Result<ArchitectureIdentifier> {
     let suffix_start = architecture_suffix_start(line, line_start, suffix);
-    ArchitectureIdentifier {
-        text: id.to_string(),
-        span: SourceSpan::new(suffix_start, suffix_start + id.len()),
+    let span = SourceSpan::new(suffix_start, suffix_start + id.len());
+    if is_architecture_reserved_id(id) {
+        return Err(Error::diagram_parse_exact(
+            "architecture",
+            architecture_reserved_id_message(id),
+            span,
+        ));
     }
+    Ok(ArchitectureIdentifier {
+        text: id.to_string(),
+        span,
+    })
 }
 
 fn parse_group_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> Result<bool> {
@@ -1415,7 +1430,7 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> R
             rest,
         ));
     };
-    let id = architecture_id_from_suffix(line, line_start, id, rest);
+    let id = architecture_id_from_suffix(line, line_start, id, rest)?;
     rest = tail.trim_start();
 
     let mut icon = None;
@@ -1441,7 +1456,7 @@ fn parse_group_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> R
                 rest,
             ));
         };
-        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest));
+        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest)?);
         rest = tail.trim_start();
     }
 
@@ -1491,7 +1506,7 @@ fn parse_service_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) ->
             rest,
         ));
     };
-    let id = architecture_id_from_suffix(line, line_start, id, rest);
+    let id = architecture_id_from_suffix(line, line_start, id, rest)?;
     rest = tail.trim_start();
 
     let mut icon = None;
@@ -1521,7 +1536,7 @@ fn parse_service_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) ->
                 rest,
             ));
         };
-        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest));
+        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest)?);
         rest = tail.trim_start();
     }
 
@@ -1547,7 +1562,7 @@ fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -
             rest,
         ));
     };
-    let id = architecture_id_from_suffix(line, line_start, id, rest);
+    let id = architecture_id_from_suffix(line, line_start, id, rest)?;
     rest = tail.trim_start();
 
     let mut in_group = None;
@@ -1561,7 +1576,7 @@ fn parse_junction_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -
                 rest,
             ));
         };
-        in_group = Some(parent.to_string());
+        in_group = Some(architecture_id_from_suffix(line, line_start, parent, rest)?.text);
         rest = tail.trim_start();
     }
 
@@ -1594,7 +1609,7 @@ fn parse_id_with_optional_group_modifier<'a>(
         rest = &rest["{group}".len()..];
     }
     Ok((
-        architecture_id_from_suffix(line, line_start, id, input),
+        architecture_id_from_suffix(line, line_start, id, input)?,
         group,
         rest,
     ))
@@ -1768,7 +1783,7 @@ fn parse_align_stmt(db: &mut ArchitectureDb, line: &str, line_start: usize) -> R
                 rest,
             ));
         };
-        members.push(architecture_id_from_suffix(line, line_start, member, rest));
+        members.push(architecture_id_from_suffix(line, line_start, member, rest)?);
         rest = tail.trim_start();
     }
 
@@ -2106,7 +2121,9 @@ pub fn parse_architecture_model_for_render(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseOptions};
+    use crate::{
+        EditorSemanticCompleteness, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseOptions,
+    };
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -2153,6 +2170,132 @@ mod tests {
         let model = parse("architecture-beta\n  service db\n");
         assert_eq!(model["services"].as_array().unwrap().len(), 1);
         assert_eq!(model["services"][0]["id"].as_str().unwrap(), "db");
+    }
+
+    #[test]
+    fn architecture_rejects_reserved_keywords_as_entity_ids_with_exact_spans() {
+        for (entity, suffix) in [
+            ("service", "(server)[X]"),
+            ("group", "(cloud)[X]"),
+            ("junction", ""),
+        ] {
+            for reserved in ["align", "row", "column"] {
+                let text = format!("architecture-beta\n  {entity} {reserved}{suffix}\n");
+                let diagnostic = parse_err(&text);
+                let offset = text.find(reserved).unwrap();
+
+                assert_eq!(
+                    diagnostic.message(),
+                    format!("reserved architecture keyword [{reserved}] cannot be used as an id")
+                );
+                assert_eq!(
+                    diagnostic.span(),
+                    Some(SourceSpan::new(offset, offset + reserved.len()))
+                );
+                assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+            }
+        }
+    }
+
+    #[test]
+    fn architecture_rejects_reserved_keywords_in_id_reference_positions() {
+        for (text, reserved) in [
+            (
+                "architecture-beta\n  group root\n  service child in row\n",
+                "row",
+            ),
+            (
+                "architecture-beta\n  service source\n  source:L -- R:column\n",
+                "column",
+            ),
+            (
+                "architecture-beta\n  service source\n  align row source align\n",
+                "align",
+            ),
+        ] {
+            let diagnostic = parse_err(text);
+            let offset = text.rfind(reserved).unwrap();
+
+            assert_eq!(
+                diagnostic.message(),
+                format!("reserved architecture keyword [{reserved}] cannot be used as an id")
+            );
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(offset, offset + reserved.len()))
+            );
+            assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+        }
+    }
+
+    #[test]
+    fn architecture_accepts_ids_that_only_start_with_reserved_keywords() {
+        let model = parse(
+            "architecture-beta\n  service rowspan(server)[Rowspan]\n  group columnar(cloud)[Columnar]\n  junction alignment\n",
+        );
+
+        assert_eq!(model["services"][0]["id"], "rowspan");
+        assert_eq!(model["groups"][0]["id"], "columnar");
+        assert_eq!(model["junctions"][0]["id"], "alignment");
+    }
+
+    #[test]
+    fn architecture_editor_facts_report_reserved_entity_ids() {
+        for (entity, suffix) in [
+            ("service", "(server)[X]"),
+            ("group", "(cloud)[X]"),
+            ("junction", ""),
+        ] {
+            for reserved in ["align", "row", "column"] {
+                let text = format!("architecture-beta\n  {entity} {reserved}{suffix}\n");
+                let offset = text.find(reserved).unwrap();
+                let facts = parse_architecture_editor_facts(&text, &test_meta());
+
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert_eq!(facts.diagnostics.len(), 1);
+                assert_eq!(
+                    facts.diagnostics[0].message,
+                    format!("reserved architecture keyword [{reserved}] cannot be used as an id")
+                );
+                assert_eq!(
+                    facts.diagnostics[0].span,
+                    Some(SourceSpan::new(offset, offset + reserved.len()))
+                );
+                assert!(!facts.symbols.iter().any(|symbol| symbol.name == reserved));
+            }
+        }
+    }
+
+    #[test]
+    fn architecture_editor_facts_report_reserved_id_references() {
+        for (text, reserved) in [
+            (
+                "architecture-beta\n  group root\n  service child in row\n",
+                "row",
+            ),
+            (
+                "architecture-beta\n  service source\n  source:L -- R:column\n",
+                "column",
+            ),
+            (
+                "architecture-beta\n  service source\n  align row source align\n",
+                "align",
+            ),
+        ] {
+            let offset = text.rfind(reserved).unwrap();
+            let facts = parse_architecture_editor_facts(text, &test_meta());
+
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert_eq!(facts.diagnostics.len(), 1);
+            assert_eq!(
+                facts.diagnostics[0].message,
+                format!("reserved architecture keyword [{reserved}] cannot be used as an id")
+            );
+            assert_eq!(
+                facts.diagnostics[0].span,
+                Some(SourceSpan::new(offset, offset + reserved.len()))
+            );
+        }
     }
 
     #[test]

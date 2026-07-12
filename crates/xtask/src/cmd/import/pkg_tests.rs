@@ -892,10 +892,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
     }
 
     fn reject_fixture(f: &CreatedFixture) -> Result<(), XtaskError> {
-        match &f.rollback {
-            Some(snapshot) => restore_imported_fixture_snapshot(snapshot),
-            None => cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path),
-        }
+        reject_imported_fixture_transaction(&f.diagram_dir, &f.stem, &f.path, f.rollback.as_ref())
     }
 
     fn defer_fixture(
@@ -903,25 +900,14 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         keep_upstream_svg: bool,
         replace_existing: bool,
     ) -> Result<PathBuf, XtaskError> {
-        let deferred_path = match defer_fixture_files_with_replace_existing(
+        defer_imported_fixture_transaction(
             &f.diagram_dir,
             &f.stem,
             &f.path,
+            f.rollback.as_ref(),
             keep_upstream_svg,
             replace_existing,
-        ) {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(rollback_imported_fixture_snapshots(
-                    error,
-                    f.rollback.iter(),
-                ));
-            }
-        };
-        if let Some(snapshot) = &f.rollback {
-            restore_imported_fixture_snapshot_preserving_deferred(snapshot)?;
-        }
-        Ok(deferred_path)
+        )
     }
 
     let mut created: Vec<CreatedFixture> = Vec::new();
@@ -1142,7 +1128,7 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         }
 
         // Parity gate (matches `xtask verify`): keep only fixtures that pass SVG DOM parity.
-        if let Err(error) = super::super::compare_all_svgs_with_family_lock(
+        if let Err(error) = super::super::compare_all_svgs_with_transaction_locks(
             vec![
                 "--check-dom".to_string(),
                 "--dom-mode".to_string(),
@@ -1158,6 +1144,10 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 .as_ref()
                 .expect("baseline import transaction must hold a family lock")
                 .family_lock(),
+            transaction_locks
+                .as_ref()
+                .expect("baseline import transaction must hold a toolchain lock")
+                .toolchain_lock(),
         ) {
             let message = match candidate_svg_compare_failure(error, &f.path, &f.stem) {
                 Ok(message) => message,

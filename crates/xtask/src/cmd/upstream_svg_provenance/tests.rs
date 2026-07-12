@@ -46,6 +46,7 @@ fn test_render_environment() -> UpstreamSvgRenderEnvironment {
             product: "Chrome".to_string(),
             version: "131.0.6778.204".to_string(),
             revision: "131.0.6778.204".to_string(),
+            timezone: "UTC".to_string(),
         },
         puppeteer: UpstreamSvgPuppeteerEnvironment {
             version: "23.11.1".to_string(),
@@ -163,6 +164,30 @@ fn generated_attestation_without_render_environment_is_rejected() {
 }
 
 #[test]
+fn generated_attestation_without_browser_timezone_is_rejected() {
+    let mut render_environment =
+        serde_json::to_value(test_render_environment()).expect("serialize render environment");
+    render_environment["browser"]
+        .as_object_mut()
+        .expect("browser environment object")
+        .remove("timezone");
+    let err = serde_json::from_value::<UpstreamSvgManifest>(serde_json::json!({
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "source": test_source(),
+        "attestation": {
+            "mode": "generated",
+            "render_environment": render_environment
+        },
+        "complete": false,
+        "fixtures": {},
+        "excluded": {}
+    }))
+    .expect_err("generated provenance requires a browser timezone");
+
+    assert!(err.to_string().contains("timezone"), "{err}");
+}
+
+#[test]
 fn adopted_existing_attestation_cannot_carry_a_render_environment() {
     let err = serde_json::from_value::<UpstreamSvgManifest>(serde_json::json!({
         "schema_version": MANIFEST_SCHEMA_VERSION,
@@ -197,6 +222,11 @@ fn render_environment_equality_covers_every_recorded_field() {
         {
             let mut changed = environment.clone();
             changed.browser.revision.push_str("-changed");
+            changed
+        },
+        {
+            let mut changed = environment.clone();
+            changed.browser.timezone = "America/Los_Angeles".to_string();
             changed
         },
         {
@@ -265,6 +295,16 @@ fn render_environment_rejects_empty_fields_and_invalid_digests() {
     empty.browser.product.clear();
     let empty_error = empty.validate().expect_err("empty fields must fail");
     assert!(empty_error.to_string().contains("browser.product"));
+
+    let mut missing_timezone = test_render_environment();
+    missing_timezone.browser.timezone.clear();
+    let timezone_error = missing_timezone
+        .validate()
+        .expect_err("empty browser timezone must fail");
+    assert!(
+        timezone_error.to_string().contains("browser.timezone"),
+        "{timezone_error}"
+    );
 
     let mut invalid = test_render_environment();
     invalid.mermaid_runtime.mermaid_package_sha256 = "not-a-digest".to_string();
@@ -345,7 +385,7 @@ fn partial_generation_requires_matching_generated_attestation() {
     assert!(adopted.to_string().contains("adopted-existing"));
 
     let mut different_environment = environment.clone();
-    different_environment.browser.version.push_str("-different");
+    different_environment.browser.timezone = "America/Los_Angeles".to_string();
     let generated = UpstreamSvgManifest::empty(
         source.clone(),
         UpstreamSvgAttestation::generated(environment.clone()),
@@ -355,7 +395,7 @@ fn partial_generation_requires_matching_generated_attestation() {
         &source,
         &different_environment,
     )
-    .expect_err("different render environments cannot be mixed");
+    .expect_err("different browser timezones cannot be mixed");
     assert!(different.to_string().contains("render environment differs"));
 
     let mut legacy = generated.clone();
@@ -975,6 +1015,60 @@ fn complete_corpus_ignores_svg_files_in_the_out_root_staging_directory() {
 
     assert_eq!(manifest.fixtures.len(), 1);
     assert!(manifest.fixtures.contains_key("basic"));
+}
+
+#[test]
+fn full_generation_deletions_remove_excluded_and_orphan_svg_outputs() {
+    let root = TestDir::new("full-generation-deletions");
+    let fixtures_dir = root.path().join("fixtures");
+    let upstream_dir = root.path().join("upstream");
+    write_fixture(&fixtures_dir, "current");
+    write_fixture(&fixtures_dir, "excluded_parser_only_spec");
+    let current_svg = write_svg(&upstream_dir, "current", "current", true);
+    let excluded_svg = write_svg(
+        &upstream_dir,
+        "excluded_parser_only_spec",
+        "excluded_parser_only_spec",
+        true,
+    );
+    let orphan_svg = write_svg(&upstream_dir, "renamed-away", "renamed-away", true);
+    fs::write(upstream_dir.join("notes.txt"), "keep").expect("write unrelated output");
+    let mut snapshots = capture_upstream_svg_fixture_selection(
+        &root.path().join("staging"),
+        "probe",
+        &fixtures_dir,
+        None,
+    )
+    .expect("capture complete fixture selection");
+
+    let full = collect_upstream_svg_generation_deletions(
+        &upstream_dir,
+        snapshots.renderable(),
+        snapshots.excluded(),
+        true,
+    )
+    .expect("collect full-generation deletions")
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    assert_eq!(
+        full,
+        BTreeSet::from([excluded_svg.clone(), orphan_svg.clone()])
+    );
+    assert!(!full.contains(&current_svg));
+
+    let filtered = collect_upstream_svg_generation_deletions(
+        &upstream_dir,
+        snapshots.renderable(),
+        snapshots.excluded(),
+        false,
+    )
+    .expect("collect filtered-generation deletions")
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    assert_eq!(filtered, BTreeSet::from([excluded_svg]));
+    assert!(!filtered.contains(&orphan_svg));
+
+    snapshots.cleanup().expect("clean fixture snapshots");
 }
 
 #[test]

@@ -15,9 +15,14 @@ use config::{TreeViewConfigView, TreeViewLayoutSettings};
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 const TREE_VIEW_FILE_NODE_TYPE: &str = "file";
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
-const TREE_VIEW_ICON_SIZE: f64 = 14.0;
+pub(crate) const TREE_VIEW_ICON_SIZE: f64 = 14.0;
 const TREE_VIEW_ICON_GAP: f64 = 4.0;
 const TREE_VIEW_DESCRIPTION_GAP: f64 = 16.0;
+// Mermaid extends each highlight past the current tree width, then reserves room for its stroke.
+pub(crate) const TREE_VIEW_HIGHLIGHT_RECT_EXTENSION: f64 = 8.0;
+pub(crate) const TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE: f64 = 2.0;
+pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
+    TREE_VIEW_HIGHLIGHT_RECT_EXTENSION + TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE;
 
 pub fn layout_tree_view_diagram(
     semantic: &Value,
@@ -53,7 +58,13 @@ pub fn layout_tree_view_diagram_typed(
 
     let min_x = -ctx.cfg.line_thickness / 2.0;
     align_tree_view_descriptions(&mut ctx);
-    let total_width = ctx.total_width.max(1.0);
+    let highlighted_node_count = ctx
+        .nodes
+        .iter()
+        .filter(|node| is_tree_view_highlight_class(node.css_class.as_deref()))
+        .count();
+    let total_width =
+        ctx.total_width.max(1.0) + highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     let total_height = ctx.total_height.max(1.0);
     Ok(TreeViewDiagramLayout {
         bounds: Some(Bounds {
@@ -312,4 +323,8 @@ fn qualify_tree_view_icon(icon: &str, default_icon_pack: &str) -> String {
         return format!("{TREE_VIEW_ICON_PREFIX}:{icon}");
     }
     format!("{default_icon_pack}:{icon}")
+}
+
+pub(crate) fn is_tree_view_highlight_class(css_class: Option<&str>) -> bool {
+    css_class.is_some_and(|class| class.split_whitespace().any(|part| part == "highlight"))
 }

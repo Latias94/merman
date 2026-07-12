@@ -197,6 +197,11 @@ where
         &upstream_dir,
         validate_pinned_upstream,
     )?;
+    let root_attrs_snapshot_path =
+        std::env::var_os(super::ROOT_ATTRS_SNAPSHOT_PATH_ENV).map(PathBuf::from);
+    let mut root_attrs_snapshot = root_attrs_snapshot_path
+        .as_ref()
+        .map(|_| super::RootAttrsSnapshot::default());
     let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, options.filter, true);
     if mmd_files.is_empty() {
         return Err(XtaskError::SvgCompareFailed(format!(
@@ -293,6 +298,9 @@ where
                 issues,
                 notes: fixture_notes,
             } => {
+                if let Some(snapshot) = &mut root_attrs_snapshot {
+                    snapshot.capture(stem, &upstream_svg, &local_svg);
+                }
                 write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
@@ -317,6 +325,9 @@ where
                 issues,
                 notes: fixture_notes,
             } => {
+                if let Some(snapshot) = &mut root_attrs_snapshot {
+                    snapshot.capture(stem, &upstream_svg, &local_svg);
+                }
                 write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
@@ -368,6 +379,11 @@ where
         path: compare_paths.out_path.display().to_string(),
         source,
     })?;
+    // The family lock guard remains in scope through this write, so the parent audit never needs
+    // to reread canonical or local SVG files after the compare process releases the lock.
+    if let (Some(path), Some(snapshot)) = (&root_attrs_snapshot_path, &root_attrs_snapshot) {
+        snapshot.write(path)?;
+    }
 
     if failures.is_empty() {
         Ok(())
@@ -462,7 +478,7 @@ fn compare_dom_signatures(
             .ok_or_else(|| format!("parity-root diagnosis unexpectedly matched for {stem}"))?;
             format!(" ({mismatch})")
         } else {
-            svgdom::dom_diff(&upstream, &local)
+            svgdom::format_dom_diffs(&svgdom::dom_diffs(&upstream, &local))
                 .map(|d| format!(" ({d})"))
                 .unwrap_or_default()
         };
@@ -537,6 +553,8 @@ mod tests {
 
         assert!(failure.contains(svgdom::PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER));
         assert!(failure.contains("svg: attr `style` mismatch"));
+        assert!(failure.contains(svgdom::ADDITIONAL_DOM_DIFFS_MARKER));
+        assert!(failure.contains("svg: attr `viewBox` mismatch"));
         assert_eq!(failure.lines().count(), 1);
     }
 
@@ -560,6 +578,29 @@ mod tests {
         assert!(failure.contains("root-viewport-also-differs=true"));
         assert!(failure.contains("svg/g[0]: attr `transform` mismatch"));
         assert!(!failure.contains("max-width: 100px"));
+        assert_eq!(failure.lines().count(), 1);
+    }
+
+    #[test]
+    fn dom_failure_reports_all_same_fixture_differences() {
+        let upstream = r#"<svg data-root="upstream"><g data-node="upstream">upstream</g></svg>"#;
+        let local = r#"<svg data-root="local"><g data-node="local">local</g></svg>"#;
+
+        let failure = compare_dom_signatures(
+            "multiple-differences",
+            upstream,
+            local,
+            Path::new("upstream.svg"),
+            Path::new("local.svg"),
+            svgdom::DomMode::Strict,
+            3,
+        )
+        .expect_err("three same-fixture differences should fail");
+
+        assert!(failure.contains("svg: attr `data-root` mismatch"));
+        assert!(failure.contains(svgdom::ADDITIONAL_DOM_DIFFS_MARKER));
+        assert!(failure.contains("svg/g[0]: attr `data-node` mismatch"));
+        assert!(failure.contains("svg/g[0]: text mismatch"));
         assert_eq!(failure.lines().count(), 1);
     }
 

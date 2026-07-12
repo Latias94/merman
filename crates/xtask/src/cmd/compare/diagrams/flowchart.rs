@@ -14,7 +14,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FlowchartUpstreamTrust {
@@ -179,16 +178,9 @@ pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError
         layout_opts.text_measurer =
             std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
     }
-    let flowchart_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
-        let node_cwd = crate::cmd::mermaid_cli_root();
-        if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
-            Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
-                node_cwd,
-            )))
-        } else {
-            None
-        }
-    };
+    let tools_root = crate::cmd::mermaid_cli_root();
+    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
+    let flowchart_math_renderer = toolchain_read_guard.node_katex_math_renderer();
     if let Some(renderer) = flowchart_math_renderer.clone() {
         layout_opts.math_renderer = Some(renderer);
     }

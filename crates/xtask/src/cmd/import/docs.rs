@@ -685,10 +685,7 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
     }
 
     fn reject_fixture(f: &CreatedFixture) -> Result<(), XtaskError> {
-        match &f.rollback {
-            Some(snapshot) => restore_imported_fixture_snapshot(snapshot),
-            None => crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path),
-        }
+        reject_imported_fixture_transaction(&f.diagram_dir, &f.stem, &f.path, f.rollback.as_ref())
     }
 
     fn defer_fixture_files(
@@ -696,25 +693,14 @@ pub(crate) fn import_upstream_docs(args: Vec<String>) -> Result<(), XtaskError> 
         keep_upstream_svg: bool,
         replace_existing: bool,
     ) -> Result<PathBuf, XtaskError> {
-        let deferred_path = match crate::cmd::import::defer_fixture_files_with_replace_existing(
+        defer_imported_fixture_transaction(
             &f.diagram_dir,
             &f.stem,
             &f.path,
+            f.rollback.as_ref(),
             keep_upstream_svg,
             replace_existing,
-        ) {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(rollback_imported_fixture_snapshots(
-                    error,
-                    f.rollback.iter(),
-                ));
-            }
-        };
-        if let Some(snapshot) = &f.rollback {
-            restore_imported_fixture_snapshot_preserving_deferred(snapshot)?;
-        }
-        Ok(deferred_path)
+        )
     }
 
     let report_path = crate::cmd::target_root().join("import-upstream-docs.report.txt");

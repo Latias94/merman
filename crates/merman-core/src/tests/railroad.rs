@@ -137,6 +137,40 @@ rule = 1*2"hello" / [ other-rule ] / %x41 ;
 }
 
 #[test]
+fn parse_railroad_abnf_preserves_supported_repeat_bound_extremes() {
+    let parsed = Engine::new()
+        .parse_diagram_sync(
+            r#"railroad-abnf-beta
+rule = 18446744073709551615*"a" / 00000000000000000002"b" ;
+"#,
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .expect("ABNF repetition bounds through u64::MAX should parse");
+
+    assert_eq!(
+        parsed.model["rules"][0]["definition"],
+        json!({
+            "type": "choice",
+            "alternatives": [
+                {
+                    "type": "repetition",
+                    "element": { "type": "terminal", "value": "a" },
+                    "min": u64::MAX,
+                    "max": null
+                },
+                {
+                    "type": "repetition",
+                    "element": { "type": "terminal", "value": "b" },
+                    "min": 2,
+                    "max": 2
+                }
+            ]
+        })
+    );
+}
+
+#[test]
 fn parse_railroad_peg_prefix_suffix_any_and_editor_facts() {
     let engine = Engine::new();
     let text = r#"railroad-peg-beta

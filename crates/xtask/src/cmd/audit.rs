@@ -271,6 +271,7 @@ fn check_upstream_renderability_for_parser_only(
     mmd_path: &Path,
     out_root: &Path,
     timeout: Duration,
+    toolchain_read_guard: &crate::cmd::UpstreamSvgToolchainReadGuard,
 ) -> Result<UpstreamRenderCheck, XtaskError> {
     let fixture_rel = mmd_path
         .strip_prefix(workspace_root)
@@ -278,10 +279,10 @@ fn check_upstream_renderability_for_parser_only(
         .display()
         .to_string();
 
-    let tools_root = crate::cmd::mermaid_cli_root();
-    let mmdc = crate::cmd::validate_mermaid_cli_install(&tools_root)?;
+    let tools_root = toolchain_read_guard.tools_root();
+    let mmdc = crate::cmd::validate_mermaid_cli_install(tools_root)?;
 
-    let node_cwd = tools_root.clone();
+    let node_cwd = tools_root.to_path_buf();
     let pinned_config = node_cwd.join("mermaid-config.json");
     let puppeteer_config = ensure_upstream_svg_puppeteer_config()?;
 
@@ -590,6 +591,9 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if check_upstream_render && parser_only_total > 0 {
+        let tools_root = crate::cmd::mermaid_cli_root();
+        let toolchain_read_guard =
+            crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
         let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
         let out_root = crate::cmd::target_root()
             .join("audit")
@@ -614,6 +618,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                     p,
                     &out_root,
                     timeout,
+                    &toolchain_read_guard,
                 )?;
                 results_by_diagram
                     .entry(diagram.clone())
@@ -892,6 +897,9 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if check_upstream_render_deferred_ok && !deferred_ok.is_empty() {
+        let tools_root = crate::cmd::mermaid_cli_root();
+        let toolchain_read_guard =
+            crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
         let timeout = Duration::from_secs(upstream_timeout_secs.max(1));
         let out_root = crate::cmd::target_root()
             .join("audit")
@@ -916,6 +924,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
                 &ok.path,
                 &out_root,
                 timeout,
+                &toolchain_read_guard,
             )?;
             results_by_group
                 .entry(ok.expected_group.clone())

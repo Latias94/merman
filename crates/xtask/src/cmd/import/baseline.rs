@@ -314,6 +314,40 @@ pub(crate) fn restore_imported_fixture_snapshot_preserving_deferred(
     restore_snapshot_errors(errors)
 }
 
+pub(crate) fn reject_imported_fixture_transaction(
+    diagram_dir: &str,
+    stem: &str,
+    fixture_path: &Path,
+    snapshot: Option<&super::ImportedFixtureSnapshot>,
+) -> Result<(), XtaskError> {
+    match snapshot {
+        Some(snapshot) => restore_imported_fixture_snapshot(snapshot),
+        None => super::cleanup_fixture_files(diagram_dir, stem, fixture_path),
+    }
+}
+
+pub(crate) fn defer_imported_fixture_transaction(
+    diagram_dir: &str,
+    stem: &str,
+    fixture_path: &Path,
+    snapshot: Option<&super::ImportedFixtureSnapshot>,
+    keep_upstream_svg: bool,
+    replace_existing: bool,
+) -> Result<PathBuf, XtaskError> {
+    let deferred_path = super::defer_fixture_files_with_replace_existing(
+        diagram_dir,
+        stem,
+        fixture_path,
+        keep_upstream_svg,
+        replace_existing,
+    )
+    .map_err(|error| rollback_imported_fixture_snapshots(error, snapshot))?;
+    if let Some(snapshot) = snapshot {
+        restore_imported_fixture_snapshot_preserving_deferred(snapshot)?;
+    }
+    Ok(deferred_path)
+}
+
 // Batch importers pass snapshots newest-first so repeated paths and config updates unwind safely.
 pub(crate) fn rollback_imported_fixture_snapshots<'a>(
     error: XtaskError,

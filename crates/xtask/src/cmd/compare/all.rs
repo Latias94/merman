@@ -17,15 +17,16 @@ pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     compare_selected_diagram_svgs(options, diagram_selection)
 }
 
-pub(crate) fn compare_all_svgs_with_family_lock(
+pub(crate) fn compare_all_svgs_with_transaction_locks(
     args: Vec<String>,
     family_lock: &crate::cmd::UpstreamSvgFamilyLock,
+    toolchain_lock: &crate::cmd::UpstreamSvgToolchainLock,
 ) -> Result<(), XtaskError> {
     let options = CompareAllOptions::parse(args)?;
     let diagram_selection = CompareAllDiagramSelection::from_options(&options)?;
     let [diagram] = diagram_selection.diagrams.as_slice() else {
         return Err(XtaskError::SvgCompareFailed(format!(
-            "compare-all with a borrowed upstream SVG family lock requires exactly one diagram, selected {}",
+            "compare-all with borrowed upstream SVG transaction locks requires exactly one diagram, selected {}",
             diagram_selection.diagrams.len()
         )));
     };
@@ -33,10 +34,14 @@ pub(crate) fn compare_all_svgs_with_family_lock(
     let upstream_dir =
         crate::cmd::compare_diagram_paths_with_roots(diagram, None, None, None).upstream_dir;
 
-    family_lock.validate_target(&upstream_dir)?;
-    super::with_borrowed_upstream_svg_family_lock(family_lock, &upstream_dir, || {
-        compare_selected_diagram_svgs(options, diagram_selection)
-    })
+    let tools_root = crate::cmd::mermaid_cli_root();
+    super::with_borrowed_upstream_svg_transaction_locks(
+        toolchain_lock,
+        &tools_root,
+        family_lock,
+        &upstream_dir,
+        || compare_selected_diagram_svgs(options, diagram_selection),
+    )
 }
 
 fn compare_selected_diagram_svgs(
@@ -666,7 +671,7 @@ mod tests {
         failures.record(
             "gitgraph",
             Err(XtaskError::SvgCompareFailed(
-                "dom mismatch for zed_pr_57644_gitgraph: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 845.25px; background-color: white;` local=`max-width: 845px; background-color: white;`)"
+                "dom mismatch for zed_pr_57644_gitgraph: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 845.25px; background-color: white;` local=`max-width: 845px; background-color: white;`; additional DOM differences (1): svg: attr `viewBox` mismatch upstream=`<n> <n> 845.25 370.5` local=`<n> <n> 845 370.25`)"
                     .to_string(),
             )),
             None,
@@ -685,7 +690,7 @@ mod tests {
         let mut failures = CompareAllFailures::new(&options, &["sequence"]);
         let msg = "dom mismatch for upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026: upstream=a local=b (svg/g[16]: child count mismatch upstream=9 local=8)\n\
 dom mismatch for upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019: upstream=a local=b (svg/g[20]: child count mismatch upstream=9 local=8)\n\
-dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b (svg/g[61]/text[9]: attr `class` mismatch upstream=`sectionTitle` local=`loopText`)";
+dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b (svg/g[61]/text[9]: attr `class` mismatch upstream=`sectionTitle` local=`loopText`; additional DOM differences (2): svg/g[61]/text[9]: child count mismatch upstream=0 local=1 | svg/g[61]: child count mismatch upstream=10 local=11)";
 
         failures.record(
             "sequence",

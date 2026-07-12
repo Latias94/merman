@@ -5,16 +5,18 @@ pub(crate) fn render_cynefin_diagram_svg(
     layout: &CynefinDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: CynefinDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_cynefin_diagram_svg_model(layout, &model, effective_config, options)
+    render_cynefin_diagram_svg_model(layout, &model, effective_config, diagram_title, options)
 }
 
 pub(crate) fn render_cynefin_diagram_svg_model(
     layout: &CynefinDiagramLayout,
     model: &CynefinDiagramRenderModel,
     effective_config: &serde_json::Value,
+    diagram_title: Option<&str>,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("cynefin");
@@ -27,6 +29,11 @@ pub(crate) fn render_cynefin_diagram_svg_model(
         root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.total_width, layout.total_height);
     let viewport_plan = root_svg::build_root_viewport_plan(root_bounds, None, layout.use_max_width);
     let theme = crate::cynefin::cynefin_theme(effective_config);
+    let title = model
+        .title
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .or_else(|| diagram_title.filter(|value| !value.is_empty()));
     let seed = crate::cynefin::resolve_seed(layout.seed, diagram_id);
     let marker_id = format!("cynefin-arrow-{diagram_id}");
 
@@ -62,7 +69,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     let _ = write!(
         &mut out,
         "<style>{}</style>",
-        cynefin_css(diagram_id, &theme)
+        cynefin_css(diagram_id, effective_config, &theme)
     );
     out.push_str("<g/>");
     if let Some(title) = acc_title {
@@ -86,7 +93,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     }
     push_items(&mut out, layout, &theme);
     push_transitions(&mut out, layout, &marker_id);
-    if let Some(title) = model.title.as_deref().filter(|value| !value.is_empty()) {
+    if let Some(title) = title {
         let _ = write!(
             &mut out,
             r#"<text class="cynefinTitle" x="{}" y="{}" text-anchor="middle" dominant-baseline="middle">{}</text>"#,
@@ -315,9 +322,16 @@ fn push_transitions(out: &mut String, layout: &CynefinDiagramLayout, marker_id: 
     out.push_str("</g>");
 }
 
-fn cynefin_css(diagram_id: &str, theme: &crate::cynefin::CynefinTheme) -> String {
+fn cynefin_css(
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+    theme: &crate::cynefin::CynefinTheme,
+) -> String {
     let id = escape_xml(diagram_id);
-    format!(
+    let parts = info_css_parts_with_config(diagram_id, effective_config);
+    let mut out = parts.css_prefix;
+    let _ = write!(
+        &mut out,
         "#{id} .cynefinDomain{{stroke:none;}}\
 #{id} .cynefinDomainLabel{{font-size:{}px;font-weight:bold;fill:{};}}\
 #{id} .cynefinSubtitle{{font-size:{}px;fill:{};font-style:italic;}}\
@@ -351,5 +365,7 @@ fn cynefin_css(diagram_id: &str, theme: &crate::cynefin::CynefinTheme) -> String
         theme.text_color,
         fmt(theme.domain_font_size + 2.0),
         theme.label_color
-    )
+    );
+    out.push_str(&parts.root_rule);
+    out
 }

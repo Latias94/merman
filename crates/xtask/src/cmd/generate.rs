@@ -1042,10 +1042,11 @@ fn gen_upstream_svgs_impl(
     let puppeteer_config = ensure_upstream_svg_puppeteer_config()?;
     let render_probe = probe_upstream_svg_render_environment(&tools_root)?;
     println!(
-        "upstream SVG render environment: {}/{} (revision {}), Puppeteer {}, font probe {}",
+        "upstream SVG render environment: {}/{} (revision {}, timezone {}), Puppeteer {}, font probe {}",
         render_probe.render_environment.browser.product,
         render_probe.render_environment.browser.version,
         render_probe.render_environment.browser.revision,
+        render_probe.render_environment.browser.timezone,
         render_probe.render_environment.puppeteer.version,
         render_probe.render_environment.font_probe.sha256
     );
@@ -1154,10 +1155,6 @@ fn gen_upstream_svgs_impl(
         let mmd_files = fixture_snapshots.renderable();
         let excluded_fixtures = fixture_snapshots.excluded();
         let excluded_count = excluded_fixtures.len();
-        let excluded_svg_paths = excluded_fixtures
-            .iter()
-            .map(|exclusion| out_dir.join(format!("{}.svg", exclusion.fixture().stem())))
-            .collect::<Vec<_>>();
 
         if mmd_files.is_empty() {
             if !excluded_fixtures.is_empty() {
@@ -1177,6 +1174,12 @@ fn gen_upstream_svgs_impl(
                     )));
                 }
                 fixture_snapshots.validate_live_selection_and_hashes()?;
+                let deletion_svg_paths = crate::cmd::collect_upstream_svg_generation_deletions(
+                    &out_dir,
+                    fixture_snapshots.renderable(),
+                    fixture_snapshots.excluded(),
+                    full_generation,
+                )?;
                 let verified_environment = render_probe.verified_render_environment()?;
                 let commit = || {
                     fixture_snapshots
@@ -1197,7 +1200,7 @@ fn gen_upstream_svgs_impl(
                     )
                     .map_err(|err| err.to_string())
                 };
-                let promotion = promote_upstream_svg_batch(&[], &excluded_svg_paths, commit);
+                let promotion = promote_upstream_svg_batch(&[], &deletion_svg_paths, commit);
                 drop(family_lock);
                 let snapshot_cleanup = fixture_snapshots.cleanup();
                 if let Err(message) = promotion {
@@ -1444,6 +1447,22 @@ fn gen_upstream_svgs_impl(
             let _ = fs::write(&failures_path, &message);
             return Err(XtaskError::UpstreamSvgFailed(message));
         }
+        let deletion_svg_paths = match crate::cmd::collect_upstream_svg_generation_deletions(
+            &out_dir,
+            fixture_snapshots.renderable(),
+            fixture_snapshots.excluded(),
+            full_generation,
+        ) {
+            Ok(paths) => paths,
+            Err(err) => {
+                let message = with_batch_cleanup_errors(
+                    err.to_string(),
+                    cleanup_pending_upstream_svg_temps(&pending),
+                );
+                let _ = fs::write(&failures_path, &message);
+                return Err(XtaskError::UpstreamSvgFailed(message));
+            }
+        };
         let verified_environment = match render_probe.verified_render_environment() {
             Ok(environment) => environment,
             Err(err) => {
@@ -1475,7 +1494,7 @@ fn gen_upstream_svgs_impl(
             )
             .map_err(|err| err.to_string())
         };
-        let promotion = promote_upstream_svg_batch(&pending, &excluded_svg_paths, commit);
+        let promotion = promote_upstream_svg_batch(&pending, &deletion_svg_paths, commit);
         drop(family_lock);
         let snapshot_cleanup = fixture_snapshots.cleanup();
         match promotion {
@@ -2015,6 +2034,21 @@ async function fingerprintFonts(browser) {
   }
 }
 
+async function resolveBrowserTimezone(browser) {
+  const page = await browser.newPage();
+  try {
+    const timezone = await page.evaluate(
+      () => Intl.DateTimeFormat().resolvedOptions().timeZone
+    );
+    if (typeof timezone !== 'string' || timezone.trim().length === 0) {
+      throw new Error(`browser returned an invalid resolved timezone: ${JSON.stringify(timezone)}`);
+    }
+    return timezone;
+  } finally {
+    await page.close();
+  }
+}
+
 (async () => {
   let browser;
   try {
@@ -2037,6 +2071,7 @@ async function fingerprintFonts(browser) {
     if (separator <= 0) {
       throw new Error(`CDP returned an invalid browser product: ${JSON.stringify(browserVersion.product)}`);
     }
+    const timezone = await resolveBrowserTimezone(browser);
 
     const output = {
       render_environment: {
@@ -2044,6 +2079,7 @@ async function fingerprintFonts(browser) {
           product: browserVersion.product.slice(0, separator),
           version: browserVersion.product.slice(separator + 1),
           revision: String(browserVersion.revision || ''),
+          timezone,
         },
         puppeteer: {
           version: JSON.parse(fs.readFileSync(puppeteerPackagePath, 'utf8')).version,
@@ -3514,16 +3550,17 @@ mod tests {
         REQUIREMENT_FONT_PRECEDENCE_FIXTURE, UPSTREAM_SVG_DIAGRAMS, UpstreamSvgRenderProbe,
         UpstreamSvgRuntimePackageRoots, absolutize_workspace_path, apply_default_config_overrides,
         create_upstream_svg_check_output_root, ensure_content_addressed_js_script,
-        ensure_fresh_upstream_svg_output_is_empty, map_bounded_in_order,
-        parse_gen_upstream_svgs_options, parse_upstream_svg_jobs, partition_upstream_svg_fixtures,
-        promote_upstream_svg_batch, read_bounded_child_pipe, render_dompurify_defaults_rs,
-        select_upstream_svg_diagrams, sort_json_value_keys, spawn_timeout_managed_child,
-        unique_upstream_svg_failure_report_path, unique_upstream_svg_temp_path,
-        upstream_svg_check_dom_mode, upstream_svg_filter_matches, upstream_svg_package_tree_sha256,
-        use_or_acquire_upstream_svg_family_lock, validate_and_promote_upstream_svg_temp,
-        validate_external_upstream_svg_family_lock, validate_mermaid_cli_install,
-        validate_upstream_svg_filter_selection, validate_upstream_svg_render_probe,
-        wait_with_bounded_output, wait_with_timeout,
+        ensure_fresh_upstream_svg_output_is_empty,
+        ensure_upstream_svg_render_environment_probe_script, gen_default_config,
+        map_bounded_in_order, parse_gen_upstream_svgs_options, parse_upstream_svg_jobs,
+        partition_upstream_svg_fixtures, promote_upstream_svg_batch, read_bounded_child_pipe,
+        render_dompurify_defaults_rs, select_upstream_svg_diagrams, sort_json_value_keys,
+        spawn_timeout_managed_child, unique_upstream_svg_failure_report_path,
+        unique_upstream_svg_temp_path, upstream_svg_check_dom_mode, upstream_svg_filter_matches,
+        upstream_svg_package_tree_sha256, use_or_acquire_upstream_svg_family_lock,
+        validate_and_promote_upstream_svg_temp, validate_external_upstream_svg_family_lock,
+        validate_mermaid_cli_install, validate_upstream_svg_filter_selection,
+        validate_upstream_svg_render_probe, wait_with_bounded_output, wait_with_timeout,
     };
     use crate::cmd::{
         acquire_upstream_svg_family_lock, acquire_upstream_svg_family_lock_with_timeout,
@@ -3674,6 +3711,44 @@ mod tests {
         apply_default_config_overrides(&mut root, &overrides).expect("overrides apply");
 
         assert_eq!(root, json!({ "sankey": { "nodeColors": {} } }));
+    }
+
+    #[test]
+    fn default_config_expands_xychart_axis_reference_defaults() {
+        let root = unique_test_root("default-config-xychart-axis-defaults");
+        let output = root.join("default_config.json");
+        gen_default_config(vec![
+            "--schema".to_string(),
+            crate::cmd::default_config_schema_path()
+                .display()
+                .to_string(),
+            "--out".to_string(),
+            output.display().to_string(),
+            "--no-local-overrides".to_string(),
+        ])
+        .expect("generate defaults from the pinned Mermaid schema");
+
+        let generated: serde_json::Value =
+            serde_json::from_slice(&fs::read(&output).expect("read generated default config"))
+                .expect("parse generated default config");
+        let expected_axis = json!({
+            "axisLineWidth": 2,
+            "labelFontSize": 14,
+            "labelPadding": 5,
+            "labelRotation": 0,
+            "showAxisLine": true,
+            "showLabel": true,
+            "showTick": true,
+            "showTitle": true,
+            "tickLength": 5,
+            "tickWidth": 2,
+            "titleFontSize": 16,
+            "titlePadding": 5
+        });
+
+        assert_eq!(generated["xyChart"]["xAxis"], expected_axis);
+        assert_eq!(generated["xyChart"]["yAxis"], expected_axis);
+        remove_test_root(&root);
     }
 
     #[test]
@@ -4068,6 +4143,22 @@ mod tests {
     }
 
     #[test]
+    fn render_environment_probe_records_the_browser_resolved_timezone() {
+        let script_path = ensure_upstream_svg_render_environment_probe_script()
+            .expect("install render-environment probe script");
+        let script = fs::read_to_string(script_path).expect("read render-environment probe script");
+
+        assert!(
+            script.contains("Intl.DateTimeFormat().resolvedOptions().timeZone"),
+            "the probe must read Chromium's timezone instead of Node's host timezone"
+        );
+        assert!(
+            script.contains("timezone,"),
+            "the resolved timezone must be emitted in the browser attestation"
+        );
+    }
+
+    #[test]
     fn missing_or_invalid_temporary_svg_never_reuses_the_existing_output() {
         let root = unique_test_root("upstream-svg-temp-reuse");
         fs::create_dir_all(&root).expect("create test root");
@@ -4135,6 +4226,151 @@ mod tests {
                 .to_string_lossy()
                 .ends_with(".backup")
         }));
+        remove_test_root(&root);
+    }
+
+    #[test]
+    fn full_generation_deletes_orphan_svg_before_metadata_commit() {
+        let root = unique_test_root("upstream-svg-full-orphan-commit");
+        let fixtures_dir = root.join("fixtures");
+        let out_dir = root.join("upstream");
+        fs::create_dir_all(&fixtures_dir).expect("create fixture directory");
+        fs::create_dir_all(&out_dir).expect("create output directory");
+        fs::write(
+            fixtures_dir.join("current.mmd"),
+            "flowchart TD\n  A --> B\n",
+        )
+        .expect("write current fixture");
+        fs::write(
+            fixtures_dir.join("excluded_parser_only_spec.mmd"),
+            "flowchart TD\n  A --> B\n",
+        )
+        .expect("write excluded fixture");
+        let mut snapshots = crate::cmd::capture_upstream_svg_fixture_selection(
+            &root.join("snapshot-staging"),
+            "probe",
+            &fixtures_dir,
+            None,
+        )
+        .expect("capture complete fixture selection");
+
+        let current_out = out_dir.join("current.svg");
+        let excluded_out = out_dir.join("excluded_parser_only_spec.svg");
+        let orphan_out = out_dir.join("deleted-fixture.svg");
+        fs::write(&current_out, r#"<svg id="current-old"/>"#).expect("write current baseline");
+        fs::write(&excluded_out, r#"<svg id="excluded-old"/>"#).expect("write excluded baseline");
+        fs::write(&orphan_out, r#"<svg id="orphan-old"/>"#).expect("write orphan baseline");
+        let current_temp = unique_test_svg_temp_path(&root, &current_out);
+        fs::write(&current_temp, r#"<svg id="current-new"/>"#).expect("write replacement baseline");
+        let pending = [PendingUpstreamSvg {
+            temp_path: current_temp,
+            out_path: current_out.clone(),
+        }];
+        let deletions = crate::cmd::collect_upstream_svg_generation_deletions(
+            &out_dir,
+            snapshots.renderable(),
+            snapshots.excluded(),
+            true,
+        )
+        .expect("collect full-generation deletions");
+
+        promote_upstream_svg_batch(&pending, &deletions, || {
+            assert!(!excluded_out.exists(), "excluded output must be staged");
+            assert!(!orphan_out.exists(), "orphan output must be staged");
+            assert_eq!(
+                fs::read_to_string(&current_out).expect("read promoted baseline"),
+                r#"<svg id="current-new"/>"#
+            );
+            Ok(())
+        })
+        .expect("metadata commit accepts the exact full corpus");
+
+        assert!(!excluded_out.exists());
+        assert!(!orphan_out.exists());
+        snapshots.cleanup().expect("clean fixture snapshots");
+        remove_test_root(&root);
+    }
+
+    #[test]
+    fn full_generation_restores_orphan_svg_when_metadata_commit_fails() {
+        let root = unique_test_root("upstream-svg-full-orphan-rollback");
+        let fixtures_dir = root.join("fixtures");
+        let out_dir = root.join("upstream");
+        fs::create_dir_all(&fixtures_dir).expect("create fixture directory");
+        fs::create_dir_all(&out_dir).expect("create output directory");
+        fs::write(
+            fixtures_dir.join("renamed.mmd"),
+            "flowchart TD\n  A --> B\n",
+        )
+        .expect("write renamed fixture");
+        let mut snapshots = crate::cmd::capture_upstream_svg_fixture_selection(
+            &root.join("snapshot-staging"),
+            "probe",
+            &fixtures_dir,
+            None,
+        )
+        .expect("capture complete fixture selection");
+
+        let current_out = out_dir.join("renamed.svg");
+        let orphan_out = out_dir.join("old-name.svg");
+        let manifest_path = out_dir.join("_baseline-manifest.json");
+        fs::write(&current_out, r#"<svg id="current-old"/>"#).expect("write current baseline");
+        fs::write(&orphan_out, r#"<svg id="orphan-old"/>"#).expect("write orphan baseline");
+        fs::write(&manifest_path, "previous manifest\n").expect("write previous manifest");
+        let current_temp = unique_test_svg_temp_path(&root, &current_out);
+        fs::write(&current_temp, r#"<svg id="current-new"/>"#).expect("write replacement baseline");
+        let pending = [PendingUpstreamSvg {
+            temp_path: current_temp.clone(),
+            out_path: current_out.clone(),
+        }];
+        let deletions = crate::cmd::collect_upstream_svg_generation_deletions(
+            &out_dir,
+            snapshots.renderable(),
+            snapshots.excluded(),
+            true,
+        )
+        .expect("collect full-generation deletions");
+
+        let error = promote_upstream_svg_batch(&pending, &deletions, || {
+            assert!(!orphan_out.exists(), "orphan deletion precedes metadata");
+            assert_eq!(
+                fs::read_to_string(&current_out).expect("read promoted baseline"),
+                r#"<svg id="current-new"/>"#
+            );
+            assert_eq!(
+                fs::read_to_string(&manifest_path).expect("read previous manifest"),
+                "previous manifest\n"
+            );
+            Err("metadata commit rejected orphan cleanup".to_string())
+        })
+        .expect_err("metadata failure must roll back SVG promotion and deletion");
+
+        assert!(error.contains("metadata commit rejected orphan cleanup"));
+        assert_eq!(
+            fs::read_to_string(&current_out).expect("read restored current baseline"),
+            r#"<svg id="current-old"/>"#
+        );
+        assert_eq!(
+            fs::read_to_string(&orphan_out).expect("read restored orphan baseline"),
+            r#"<svg id="orphan-old"/>"#
+        );
+        assert_eq!(
+            fs::read_to_string(&manifest_path).expect("read unchanged manifest"),
+            "previous manifest\n"
+        );
+        assert!(!current_temp.exists());
+        assert!(
+            fs::read_dir(&out_dir)
+                .expect("read output directory")
+                .all(|entry| {
+                    !entry
+                        .expect("read output entry")
+                        .file_name()
+                        .to_string_lossy()
+                        .ends_with(".backup")
+                })
+        );
+        snapshots.cleanup().expect("clean fixture snapshots");
         remove_test_root(&root);
     }
 
@@ -4693,6 +4929,7 @@ mod tests {
                 product: "Chrome".to_string(),
                 version: "131.0.6778.204".to_string(),
                 revision: "@revision".to_string(),
+                timezone: "UTC".to_string(),
             },
             puppeteer: crate::cmd::UpstreamSvgPuppeteerEnvironment {
                 version: "23.11.1".to_string(),
@@ -4790,6 +5027,7 @@ mod tests {
                 product: "Chrome".to_string(),
                 version: "131.0.6778.204".to_string(),
                 revision: "@revision".to_string(),
+                timezone: "UTC".to_string(),
             },
             puppeteer: crate::cmd::UpstreamSvgPuppeteerEnvironment {
                 version: "23.11.1".to_string(),

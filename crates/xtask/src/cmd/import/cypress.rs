@@ -3062,10 +3062,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     }
 
     fn reject_fixture(f: &CreatedFixture) -> Result<(), XtaskError> {
-        match &f.rollback {
-            Some(snapshot) => restore_imported_fixture_snapshot(snapshot),
-            None => crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path),
-        }
+        reject_imported_fixture_transaction(&f.diagram_dir, &f.stem, &f.path, f.rollback.as_ref())
     }
 
     fn cleanup_deferred_fixture_files(f: &CreatedFixture) -> Result<(), XtaskError> {
@@ -3077,25 +3074,14 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         keep_upstream_svg: bool,
         replace_existing: bool,
     ) -> Result<PathBuf, XtaskError> {
-        let deferred_path = match defer_fixture_files_with_replace_existing(
+        defer_imported_fixture_transaction(
             &f.diagram_dir,
             &f.stem,
             &f.path,
+            f.rollback.as_ref(),
             keep_upstream_svg,
             replace_existing,
-        ) {
-            Ok(path) => path,
-            Err(error) => {
-                return Err(rollback_imported_fixture_snapshots(
-                    error,
-                    f.rollback.iter(),
-                ));
-            }
-        };
-        if let Some(snapshot) = &f.rollback {
-            restore_imported_fixture_snapshot_preserving_deferred(snapshot)?;
-        }
-        Ok(deferred_path)
+        )
     }
 
     let mut created: Vec<CreatedFixture> = Vec::new();
@@ -3507,12 +3493,16 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 "--include-elk-probes".to_string(),
             ]);
         }
-        if let Err(error) = super::super::compare_all_svgs_with_family_lock(
+        if let Err(error) = super::super::compare_all_svgs_with_transaction_locks(
             compare_args,
             transaction_locks
                 .as_ref()
                 .expect("baseline import transaction must hold a family lock")
                 .family_lock(),
+            transaction_locks
+                .as_ref()
+                .expect("baseline import transaction must hold a toolchain lock")
+                .toolchain_lock(),
         ) {
             let msg = match candidate_svg_compare_failure(error, &f.path, &f.stem) {
                 Ok(message) => message,

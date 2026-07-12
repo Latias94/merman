@@ -15,9 +15,10 @@ mod pkg_tests;
 pub(crate) use baseline::{
     acquire_imported_fixture_family_locks, acquire_imported_fixture_transaction_locks,
     acquire_imported_fixture_workspace_lock, candidate_snapshot_failure,
-    candidate_svg_compare_failure, candidate_upstream_svg_failure, load_existing_imported_fixtures,
-    restore_imported_fixture_snapshot, restore_imported_fixture_snapshot_preserving_deferred,
-    rollback_imported_fixture_snapshots, validate_exact_import_candidate_filter,
+    candidate_svg_compare_failure, candidate_upstream_svg_failure,
+    defer_imported_fixture_transaction, load_existing_imported_fixtures,
+    reject_imported_fixture_transaction, rollback_imported_fixture_snapshots,
+    validate_exact_import_candidate_filter,
 };
 pub(crate) use cypress::import_upstream_cypress;
 pub(crate) use docs::import_upstream_docs;
