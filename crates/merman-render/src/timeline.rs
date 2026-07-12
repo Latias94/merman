@@ -38,18 +38,6 @@ fn timeline_uses_fira_sans_browser_fallback(style: &TextStyle) -> bool {
     timeline_font_key(style) == "firasans"
 }
 
-fn timeline_measurement_style(style: &TextStyle) -> Cow<'_, TextStyle> {
-    if timeline_uses_fira_sans_browser_fallback(style) {
-        // Edge/Chromium in the pinned Mermaid CLI environment resolves bare `Fira Sans` to the
-        // generic sans-serif face. Use the same metrics for Timeline's SVG getBBox probes.
-        let mut style = style.clone();
-        style.font_family = Some("sans-serif".to_string());
-        Cow::Owned(style)
-    } else {
-        Cow::Borrowed(style)
-    }
-}
-
 fn section_index(full_section: i64) -> i64 {
     (full_section % MAX_SECTIONS) - 1
 }
@@ -166,18 +154,14 @@ fn wrap_lines(
 
     let mut lines: Vec<String> = Vec::new();
     let mut cur: Vec<String> = Vec::new();
-    let measurement_style = timeline_measurement_style(style);
-
     for tok in tokens {
         cur.push(tok.clone());
         let candidate = join_trim(&cur);
         let candidate = svg_collapse_whitespace_for_measure(&candidate);
-        // Mermaid uses `getComputedTextLength()` here, but our headless measurer cannot reproduce
-        // the exact font fallback behavior of the Puppeteer baselines. Empirically, the single-run
-        // SVG `getBBox().width` probe is a closer and more stable approximation for wrap
-        // boundaries in timeline fixtures.
-        let candidate_width =
-            measurer.measure_svg_simple_text_bbox_width_px(&candidate, measurement_style.as_ref());
+        // Mermaid Timeline's family-local `wrap()` helper probes
+        // `<tspan>.getComputedTextLength()`. Keep this distinct from `getBBox().width`: glyph
+        // overhang can otherwise move a word to an extra line at a wrapping boundary.
+        let candidate_width = measurer.measure_svg_text_computed_length_px(&candidate, style);
         if candidate_width > max_width || tok == "<br>" {
             cur.pop();
             lines.push(join_trim(&cur));
@@ -752,7 +736,7 @@ mod tests {
     }
 
     #[test]
-    fn fira_sans_17_timeline_metrics_match_mermaid_browser_wrap() {
+    fn fira_sans_17_timeline_metrics_match_mermaid_11_16_computed_length_wrap() {
         let style = TextStyle {
             font_family: Some("Fira Sans".to_string()),
             font_size: 17.0,
@@ -769,10 +753,10 @@ mod tests {
             &measurer,
         );
 
-        assert_eq!(lines, ["Quality", "Management", "System   (4)"]);
+        assert_eq!(lines, ["Quality   Management", "System   (4)"]);
         assert!(
-            (height - 91.2).abs() < 0.001,
-            "expected Fira/Sans browser Timeline height to be 91.2px, got {height}"
+            (height - 72.5).abs() < 0.001,
+            "expected Fira/Sans browser Timeline height to be 72.5px, got {height}"
         );
     }
 

@@ -401,6 +401,7 @@
         "rhsGroup": true,
         "title": "responses"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

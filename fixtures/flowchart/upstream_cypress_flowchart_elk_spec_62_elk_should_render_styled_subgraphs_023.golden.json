@@ -423,6 +423,7 @@
           "color:darkred"
         ],
         "dir": null,
+        "hasExplicitDir": false,
         "labelType": "text"
       },
       {
@@ -440,6 +441,7 @@
           "color:blue"
         ],
         "dir": null,
+        "hasExplicitDir": false,
         "labelType": "text"
       }
     ]

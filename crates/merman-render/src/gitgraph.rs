@@ -15,8 +15,24 @@ const LAYOUT_OFFSET: f64 = 10.0;
 const COMMIT_STEP: f64 = 40.0;
 const DEFAULT_POS: f64 = 30.0;
 const THEME_COLOR_LIMIT: usize = 8;
+pub(crate) const REDUX_BRANCH_LABEL_PADDING_Y: f64 = 12.0;
 
 const COMMIT_TYPE_MERGE: i64 = 3;
+
+pub(crate) fn gitgraph_theme_is_redux_geometry(theme: &str) -> bool {
+    matches!(
+        theme.trim(),
+        "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+    )
+}
+
+pub(crate) fn gitgraph_lr_branch_spine_y(branch_pos: f64, use_redux_geometry: bool) -> f64 {
+    if use_redux_geometry {
+        branch_pos + REDUX_BRANCH_LABEL_PADDING_Y / 2.0 + 1.0
+    } else {
+        branch_pos - 2.0
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct CommitPosition {
@@ -578,6 +594,9 @@ pub fn layout_gitgraph_diagram_typed(
         .max(0.0);
     let parallel_commits =
         cfg_bool(effective_config, &["gitGraph", "parallelCommits"]).unwrap_or(false);
+    let use_redux_geometry = cfg_string(effective_config, &["theme"])
+        .as_deref()
+        .is_some_and(gitgraph_theme_is_redux_geometry);
 
     // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths while the
     // `drawText(...)` nodes inherit Mermaid's global font config.
@@ -684,7 +703,10 @@ pub fn layout_gitgraph_diagram_typed(
         let (x, y) = if direction == "TB" || direction == "BT" {
             (branch_lane, pos_with_offset)
         } else {
-            (pos_with_offset, branch_lane)
+            (
+                pos_with_offset,
+                gitgraph_lr_branch_spine_y(branch_lane, use_redux_geometry),
+            )
         };
         commit_pos.insert(commit.id.as_str(), CommitPosition { x, y });
 
@@ -728,7 +750,16 @@ pub fn layout_gitgraph_diagram_typed(
     }
 
     let mut lanes: Vec<f64> = if show_branches {
-        branches.iter().map(|b| b.pos).collect()
+        branches
+            .iter()
+            .map(|branch| {
+                if direction == "TB" || direction == "BT" {
+                    branch.pos
+                } else {
+                    gitgraph_lr_branch_spine_y(branch.pos, use_redux_geometry)
+                }
+            })
+            .collect()
     } else {
         Vec::new()
     };
@@ -767,8 +798,9 @@ pub fn layout_gitgraph_diagram_typed(
             min_y = min_y.min(DEFAULT_POS.min(max_pos));
             max_y = max_y.max(DEFAULT_POS.max(max_pos));
         } else {
-            min_y = min_y.min(b.pos);
-            max_y = max_y.max(b.pos);
+            let spine_y = gitgraph_lr_branch_spine_y(b.pos, use_redux_geometry);
+            min_y = min_y.min(spine_y);
+            max_y = max_y.max(spine_y);
             min_x = min_x.min(0.0);
             max_x = max_x.max(max_pos);
             let label_left =
@@ -778,11 +810,7 @@ pub fn layout_gitgraph_diagram_typed(
     }
 
     for c in &commits {
-        let r = if c.custom_type.unwrap_or(c.commit_type) == COMMIT_TYPE_MERGE {
-            9.0
-        } else {
-            10.0
-        };
+        let r = if use_redux_geometry { 7.0 } else { 10.0 };
         min_x = min_x.min(c.x - r);
         min_y = min_y.min(c.y - r);
         max_x = max_x.max(c.x + r);
@@ -898,6 +926,42 @@ mod tests {
             branch_label_bbox_width_px("LR", "branch4", &style, &measurer),
             57.359375
         );
+    }
+
+    #[test]
+    fn lr_layout_uses_mermaid_11_16_branch_spine_geometry() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+
+        for (theme, expected_y) in [("default", -2.0), ("redux", 7.0)] {
+            let model = GitGraphRenderModel {
+                diagram_type: "gitGraph".to_string(),
+                branches: vec![GitGraphBranchRenderModel {
+                    name: "main".to_string(),
+                }],
+                commits: vec![commit("1", 0, &[], "main"), commit("2", 1, &["1"], "main")],
+                current_branch: "main".to_string(),
+                direction: "LR".to_string(),
+                acc_title: None,
+                acc_descr: None,
+                warning_facts: Vec::new(),
+            };
+            let cfg = json!({
+                "theme": theme,
+                "gitGraph": {
+                    "rotateCommitLabel": false
+                }
+            });
+
+            let layout = layout_gitgraph_diagram_typed(&model, &cfg, &measurer).unwrap();
+
+            assert_eq!(layout.commits[0].y, expected_y, "theme={theme}");
+            assert_eq!(layout.commits[1].y, expected_y, "theme={theme}");
+            assert_eq!(
+                layout.arrows[0].d,
+                format!("M 10 {expected_y} L 60 {expected_y}"),
+                "theme={theme}"
+            );
+        }
     }
 
     #[test]

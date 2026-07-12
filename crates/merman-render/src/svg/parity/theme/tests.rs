@@ -107,7 +107,11 @@ fn presentation_theme_tree_view_resolves_tree_view_roles() {
             "treeView": {
                 "labelFontSize": "20px",
                 "labelColor": "#FF0000",
-                "lineColor": "#00FF00"
+                "lineColor": "#00FF00",
+                "iconColor": "#111111",
+                "descriptionColor": "#222222",
+                "highlightBg": "rgba(1, 2, 3, 0.4)",
+                "highlightStroke": "#333333"
             }
         }
     });
@@ -118,6 +122,10 @@ fn presentation_theme_tree_view_resolves_tree_view_roles() {
     assert_eq!(tree_view.label_font_size_css, "20px");
     assert_eq!(tree_view.label_color, "#FF0000");
     assert_eq!(tree_view.line_color, "#00FF00");
+    assert_eq!(tree_view.icon_color, "#111111");
+    assert_eq!(tree_view.description_color, "#222222");
+    assert_eq!(tree_view.highlight_bg, "rgba(1, 2, 3, 0.4)");
+    assert_eq!(tree_view.highlight_stroke, "#333333");
 }
 
 #[test]
@@ -130,6 +138,10 @@ fn presentation_theme_tree_view_uses_default_tree_view_roles() {
     assert_eq!(tree_view.label_font_size_css, "16px");
     assert_eq!(tree_view.label_color, "black");
     assert_eq!(tree_view.line_color, "black");
+    assert_eq!(tree_view.icon_color, "#546e7a");
+    assert_eq!(tree_view.description_color, "#6a9955");
+    assert_eq!(tree_view.highlight_bg, "rgba(255, 193, 7, 0.15)");
+    assert_eq!(tree_view.highlight_stroke, "#ffc107");
 }
 
 #[test]

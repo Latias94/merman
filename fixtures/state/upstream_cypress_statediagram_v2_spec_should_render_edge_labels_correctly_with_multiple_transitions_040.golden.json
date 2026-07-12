@@ -20,7 +20,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -58,7 +59,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -96,7 +98,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -134,7 +137,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -172,7 +176,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -210,7 +215,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -248,7 +254,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -286,7 +293,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -324,7 +332,8 @@
         "ry": 10,
         "look": "default",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",

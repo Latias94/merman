@@ -992,6 +992,16 @@ pub struct TreeViewNodeLayout {
     pub id: i64,
     pub level: i64,
     pub name: String,
+    #[serde(rename = "nodeType")]
+    pub node_type: String,
+    #[serde(default, rename = "cssClass", skip_serializing_if = "Option::is_none")]
+    pub css_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub depth: usize,
     pub x: f64,
     pub y: f64,
@@ -1001,6 +1011,10 @@ pub struct TreeViewNodeLayout {
     pub label_y: f64,
     pub label_width: f64,
     pub label_height: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_x: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_width: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1060,6 +1074,31 @@ pub struct IshikawaLabelBoxLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IshikawaCauseLabelGroupLayout {
+    pub label_box: IshikawaLabelBoxLayout,
+    pub label: IshikawaTextLayout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IshikawaSubGroupLayout {
+    pub line: IshikawaLineLayout,
+    pub label: IshikawaTextLayout,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IshikawaBranchLayout {
+    pub line: IshikawaLineLayout,
+    pub label_group: IshikawaCauseLabelGroupLayout,
+    pub sub_groups: Vec<IshikawaSubGroupLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IshikawaPairLayout {
+    pub upper: IshikawaBranchLayout,
+    pub lower: Option<IshikawaBranchLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IshikawaHeadLayout {
     pub x: f64,
     pub y: f64,
@@ -1080,9 +1119,9 @@ pub struct IshikawaDiagramLayout {
     pub use_max_width: bool,
     pub font_size: f64,
     pub head: Option<IshikawaHeadLayout>,
-    pub lines: Vec<IshikawaLineLayout>,
-    pub labels: Vec<IshikawaTextLayout>,
-    pub label_boxes: Vec<IshikawaLabelBoxLayout>,
+    pub spine: Option<IshikawaLineLayout>,
+    #[serde(default)]
+    pub pairs: Vec<IshikawaPairLayout>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1136,6 +1175,109 @@ pub struct EventModelingDiagramLayout {
     pub swimlanes: Vec<EventModelingSwimlaneLayout>,
     pub boxes: Vec<EventModelingBoxLayout>,
     pub relations: Vec<EventModelingRelationLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CynefinDomainLayout {
+    pub name: String,
+    pub cx: f64,
+    pub cy: f64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CynefinItemLayout {
+    pub domain: String,
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub text_x: f64,
+    pub text_y: f64,
+    pub overflow: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CynefinTransitionLayout {
+    pub from: String,
+    pub to: String,
+    pub label: Option<String>,
+    pub x1: f64,
+    pub y1: f64,
+    pub x2: f64,
+    pub y2: f64,
+    pub cpx: f64,
+    pub cpy: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CynefinDiagramLayout {
+    pub bounds: Option<Bounds>,
+    pub width: f64,
+    pub height: f64,
+    pub padding: f64,
+    pub total_width: f64,
+    pub total_height: f64,
+    pub use_max_width: bool,
+    pub show_domain_descriptions: bool,
+    pub boundary_amplitude: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<i32>,
+    pub domain_layouts: Vec<CynefinDomainLayout>,
+    pub items: Vec<CynefinItemLayout>,
+    pub transitions: Vec<CynefinTransitionLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RailroadDiagramLayout {
+    pub bounds: Option<Bounds>,
+    pub diagram_type: String,
+    pub width: f64,
+    pub height: f64,
+    pub use_max_width: bool,
+    pub rules: Vec<RailroadRuleLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RailroadRuleLayout {
+    pub name: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub baseline_y: f64,
+    pub name_width: f64,
+    pub definition_x: f64,
+    pub start_marker_x: f64,
+    pub end_marker_x: f64,
+    pub marker_radius: f64,
+    pub elements: Vec<RailroadElementLayout>,
+    pub paths: Vec<RailroadPathLayout>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RailroadElementLayout {
+    pub kind: String,
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub text_x: f64,
+    pub text_y: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RailroadPathLayout {
+    #[serde(default)]
+    pub x: f64,
+    #[serde(default)]
+    pub y: f64,
+    pub d: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1375,6 +1517,8 @@ pub enum LayoutDiagram {
     TreeViewDiagram(Box<TreeViewDiagramLayout>),
     IshikawaDiagram(Box<IshikawaDiagramLayout>),
     EventModelingDiagram(Box<EventModelingDiagramLayout>),
+    CynefinDiagram(Box<CynefinDiagramLayout>),
+    RailroadDiagram(Box<RailroadDiagramLayout>),
     GanttDiagram(Box<GanttDiagramLayout>),
     C4Diagram(Box<C4DiagramLayout>),
     ErrorDiagram(Box<ErrorDiagramLayout>),

@@ -85,7 +85,8 @@
         "title": "A",
         "classes": [],
         "styles": [],
-        "dir": "TB",
+        "dir": "TD",
+        "hasExplicitDir": true,
         "labelType": "text"
       }
     ]

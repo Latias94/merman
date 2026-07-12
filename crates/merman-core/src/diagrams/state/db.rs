@@ -683,8 +683,66 @@ struct NodeScratch {
     css_styles: Vec<String>,
     node_type: Option<String>,
     dir: Option<String>,
+    explicit_dir: Option<bool>,
     is_group: bool,
     parent_id: Option<String>,
+}
+
+fn apply_state_descriptions(
+    entry: &mut NodeScratch,
+    item_id: &str,
+    primary_description: Option<&str>,
+    additional_descriptions: &[String],
+    config: &MermaidConfig,
+) {
+    // Mermaid's compact form can produce a primary display label plus an additional description:
+    // `state "Some long name" as S1: The description`.
+    let mut descriptions = primary_description
+        .into_iter()
+        .chain(additional_descriptions.iter().map(String::as_str))
+        .filter(|description| !description.trim().is_empty())
+        .peekable();
+    if descriptions.peek().is_none() {
+        return;
+    }
+
+    let base_label = sanitize_text(item_id, config);
+    for description in descriptions {
+        match &mut entry.label {
+            Value::Array(labels) => {
+                entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                labels.push(Value::String(description.to_string()));
+            }
+            Value::String(label) if !label.is_empty() => {
+                entry.shape = SHAPE_STATE_WITH_DESC.to_string();
+                if *label == base_label {
+                    entry.label = Value::Array(vec![Value::String(description.to_string())]);
+                } else {
+                    entry.label = Value::Array(vec![
+                        Value::String(label.clone()),
+                        Value::String(description.to_string()),
+                    ]);
+                }
+            }
+            _ => {
+                entry.shape = SHAPE_STATE.to_string();
+                entry.label = Value::String(description.to_string());
+            }
+        }
+    }
+
+    entry.label = sanitize_text_or_array(&entry.label, config);
+
+    if entry.shape == SHAPE_STATE_WITH_DESC
+        && let Some(labels) = entry.label.as_array()
+        && labels.len() == 1
+    {
+        entry.shape = if entry.node_type.as_deref() == Some("group") {
+            SHAPE_GROUP.to_string()
+        } else {
+            SHAPE_STATE.to_string()
+        };
+    }
 }
 
 fn get_dir_for_doc(doc: &[Stmt], default_dir: &str) -> String {
@@ -898,51 +956,19 @@ fn build_layout_data_typed(
                 css_styles: styles.clone(),
                 node_type: None,
                 dir: None,
+                explicit_dir: None,
                 is_group: false,
                 parent_id: None,
             }
         });
 
-        // Apply description statements like Mermaid's `dataFetcher.ts`.
-        if let Some(descr) = parsed_item.description.as_deref() {
-            let base_label = sanitize_text(&item_id, config);
-
-            match &mut entry.label {
-                Value::Array(arr) => {
-                    entry.shape = SHAPE_STATE_WITH_DESC.to_string();
-                    arr.push(Value::String(descr.to_string()));
-                }
-                Value::String(s) if !s.is_empty() => {
-                    entry.shape = SHAPE_STATE_WITH_DESC.to_string();
-                    if *s == base_label {
-                        entry.label = Value::Array(vec![Value::String(descr.to_string())]);
-                    } else {
-                        entry.label = Value::Array(vec![
-                            Value::String(s.clone()),
-                            Value::String(descr.to_string()),
-                        ]);
-                    }
-                }
-                _ => {
-                    entry.shape = SHAPE_STATE.to_string();
-                    entry.label = Value::String(descr.to_string());
-                }
-            }
-
-            entry.label = sanitize_text_or_array(&entry.label, config);
-        }
-
-        // If there's only 1 description entry, just use a regular state shape.
-        if entry.shape == SHAPE_STATE_WITH_DESC
-            && let Some(arr) = entry.label.as_array()
-            && arr.len() == 1
-        {
-            entry.shape = if entry.node_type.as_deref() == Some("group") {
-                SHAPE_GROUP.to_string()
-            } else {
-                SHAPE_STATE.to_string()
-            };
-        }
+        apply_state_descriptions(
+            entry,
+            &item_id,
+            parsed_item.description.as_deref(),
+            &parsed_item.descriptions,
+            config,
+        );
 
         // Group handling (composite states)
         if entry.node_type.is_none()
@@ -952,6 +978,7 @@ fn build_layout_data_typed(
             entry.is_group = true;
             let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
             entry.dir = Some(dir);
+            entry.explicit_dir = Some(doc.iter().any(|stmt| matches!(stmt, Stmt::Direction(_))));
             entry.shape = if parsed_item.ty == "divider" {
                 SHAPE_DIVIDER.to_string()
             } else {
@@ -992,6 +1019,7 @@ fn build_layout_data_typed(
             css_compiled_styles: Vec::new(),
             css_styles: entry.css_styles.clone(),
             dir: entry.dir.clone(),
+            explicit_dir: entry.explicit_dir,
             padding: Some(8.0),
             rx: Some(10.0),
             ry: Some(10.0),
@@ -1029,6 +1057,7 @@ fn build_layout_data_typed(
                 css_compiled_styles: Vec::new(),
                 css_styles: Vec::new(),
                 dir: None,
+                explicit_dir: None,
                 padding: Some(16.0),
                 rx: None,
                 ry: None,
@@ -1049,6 +1078,7 @@ fn build_layout_data_typed(
                 css_compiled_styles: Vec::new(),
                 css_styles: Vec::new(),
                 dir: None,
+                explicit_dir: None,
                 padding: flowchart_padding,
                 rx: None,
                 ry: None,
@@ -1269,75 +1299,19 @@ fn build_layout_data(
                 css_styles: styles.clone(),
                 node_type: None,
                 dir: None,
+                explicit_dir: None,
                 is_group: false,
                 parent_id: None,
             }
         });
 
-        // Apply description statements like Mermaid's `dataFetcher.ts`.
-        //
-        // Note: Mermaid supports a compact form that combines a quoted label and a trailing `: ...`
-        // description on the same line:
-        //
-        //   state "Some long name" as S1: The description
-        //
-        // The lexer captures `S1: The description` as a single `Id` token, which the grammar splits
-        // into `id="S1"` + `descriptions=["The description"]`. Apply both the primary `description`
-        // and any extra `descriptions` in order so the resulting `label` array becomes:
-        //   ["Some long name", "The description"]
-        // which later converts to (label, description[]) via `StateDB.extract()`.
-        let mut descrs: Vec<&str> = Vec::new();
-        if let Some(d) = parsed_item.description.as_deref()
-            && !d.trim().is_empty()
-        {
-            descrs.push(d);
-        }
-        for d in &parsed_item.descriptions {
-            if !d.trim().is_empty() {
-                descrs.push(d);
-            }
-        }
-
-        if !descrs.is_empty() {
-            let base_label = sanitize_text(&item_id, config);
-            for descr in descrs {
-                match &mut entry.label {
-                    Value::Array(arr) => {
-                        entry.shape = SHAPE_STATE_WITH_DESC.to_string();
-                        arr.push(Value::String(descr.to_string()));
-                    }
-                    Value::String(s) if !s.is_empty() => {
-                        entry.shape = SHAPE_STATE_WITH_DESC.to_string();
-                        if *s == base_label {
-                            entry.label = Value::Array(vec![Value::String(descr.to_string())]);
-                        } else {
-                            entry.label = Value::Array(vec![
-                                Value::String(s.clone()),
-                                Value::String(descr.to_string()),
-                            ]);
-                        }
-                    }
-                    _ => {
-                        entry.shape = SHAPE_STATE.to_string();
-                        entry.label = Value::String(descr.to_string());
-                    }
-                }
-            }
-
-            entry.label = sanitize_text_or_array(&entry.label, config);
-
-            // If there's only 1 description entry, just use a regular state shape.
-            if entry.shape == SHAPE_STATE_WITH_DESC
-                && let Some(arr) = entry.label.as_array()
-                && arr.len() == 1
-            {
-                entry.shape = if entry.node_type.as_deref() == Some("group") {
-                    SHAPE_GROUP.to_string()
-                } else {
-                    SHAPE_STATE.to_string()
-                };
-            }
-        }
+        apply_state_descriptions(
+            entry,
+            &item_id,
+            parsed_item.description.as_deref(),
+            &parsed_item.descriptions,
+            config,
+        );
 
         // Group handling (composite states)
         if entry.node_type.is_none()
@@ -1347,6 +1321,7 @@ fn build_layout_data(
             entry.is_group = true;
             let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
             entry.dir = Some(dir);
+            entry.explicit_dir = Some(doc.iter().any(|stmt| matches!(stmt, Stmt::Direction(_))));
             entry.shape = if parsed_item.ty == "divider" {
                 SHAPE_DIVIDER.to_string()
             } else {
@@ -1388,6 +1363,12 @@ fn build_layout_data(
             "parentId": entry.parent_id,
             "centerLabel": true,
         });
+
+        if let Some(explicit_dir) = entry.explicit_dir
+            && let Some(obj) = node_data.as_object_mut()
+        {
+            obj.insert("explicitDir".to_string(), json!(explicit_dir));
+        }
 
         if node_data["shape"].as_str() == Some(SHAPE_DIVIDER) {
             node_data["label"] = json!("");

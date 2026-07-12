@@ -110,6 +110,15 @@ pub(crate) fn extract_defaults(schema: &JsonValue, root: &JsonValue) -> Option<J
     let schema = expand_schema(schema, root);
 
     if let Some(default) = schema.as_object().and_then(|m| m.get("default")).cloned() {
+        if default.as_object().is_some_and(|value| {
+            value.len() == 1
+                && value
+                    .get("$ref")
+                    .and_then(JsonValue::as_str)
+                    .is_some_and(|reference| reference.starts_with("#/"))
+        }) {
+            return extract_defaults(&default, root).or(Some(default));
+        }
         return Some(default);
     }
 
@@ -287,6 +296,55 @@ properties:
                 "ishikawa": {
                     "diagramPadding": 20,
                     "useMaxWidth": false
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn extract_defaults_expands_reference_stored_as_object_default() {
+        let schema = json!({
+            "$defs": {
+                "AxisConfig": {
+                    "type": "object",
+                    "properties": {
+                        "labelRotation": {
+                            "type": "number",
+                            "default": 0
+                        },
+                        "showLabel": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                }
+            },
+            "type": "object",
+            "properties": {
+                "xyChart": {
+                    "type": "object",
+                    "properties": {
+                        "xAxis": {
+                            "type": "object",
+                            "default": {
+                                "$ref": "#/$defs/AxisConfig"
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let defaults = extract_defaults(&schema, &schema).expect("schema should produce defaults");
+
+        assert_eq!(
+            defaults,
+            json!({
+                "xyChart": {
+                    "xAxis": {
+                        "labelRotation": 0,
+                        "showLabel": true
+                    }
                 }
             })
         );

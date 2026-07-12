@@ -781,6 +781,7 @@ fn markdown_word_line_plain_text_and_delta_px(
     let mut prev_is_strong = false;
 
     for (word_idx, (word, ty)) in words.iter().enumerate() {
+        let visible_word = merman_core::entities::decode_html_entities_to_unicode(word);
         let is_strong = *ty == MermaidMarkdownWordType::Strong;
         let is_em = *ty == MermaidMarkdownWordType::Em;
         let bold_override_em = if is_flowchart_default_font(style) && is_strong {
@@ -818,7 +819,7 @@ fn markdown_word_line_plain_text_and_delta_px(
         if word_idx > 0 {
             push_char(' ');
         }
-        for ch in word.chars() {
+        for ch in visible_word.chars() {
             push_char(ch);
         }
 
@@ -842,7 +843,7 @@ fn markdown_word_line_plain_text_and_delta_px(
             {
                 delta_px += delta_em * font_size;
             } else {
-                for ch in word.chars() {
+                for ch in visible_word.chars() {
                     delta_px += flowchart_default_italic_delta_em(ch, wrap_mode) * font_size;
                 }
             }

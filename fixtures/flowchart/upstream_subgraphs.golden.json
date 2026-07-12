@@ -257,6 +257,7 @@
         "classes": [],
         "styles": [],
         "dir": null,
+        "hasExplicitDir": false,
         "labelType": "text"
       },
       {
@@ -269,6 +270,7 @@
         "classes": [],
         "styles": [],
         "dir": null,
+        "hasExplicitDir": false,
         "labelType": "text"
       },
       {
@@ -281,6 +283,7 @@
         "classes": [],
         "styles": [],
         "dir": "RL",
+        "hasExplicitDir": true,
         "labelType": "text"
       },
       {
@@ -293,6 +296,7 @@
         "classes": [],
         "styles": [],
         "dir": "BT",
+        "hasExplicitDir": true,
         "labelType": "string"
       },
       {
@@ -304,6 +308,7 @@
         "classes": [],
         "styles": [],
         "dir": null,
+        "hasExplicitDir": false,
         "labelType": "string"
       }
     ]

@@ -146,6 +146,7 @@
         "classes": [],
         "styles": [],
         "dir": "TB",
+        "hasExplicitDir": true,
         "labelType": "string"
       }
     ]

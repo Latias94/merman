@@ -1,7 +1,7 @@
-# Phase 2 Parity Backlog (Mermaid@11.15.0)
+# Phase 2 Parity Backlog (historical Mermaid@11.15.0 admission)
 
 Status: Complete
-Baseline: pinned Mermaid `11.15.0`
+Historical admission baseline: pinned Mermaid `11.15.0`
 Pinned commit: `41646dfd43ac83f001b03c70605feb036afae46d`
 Last updated: 2026-06-08
 

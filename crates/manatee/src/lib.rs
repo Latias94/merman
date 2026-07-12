@@ -14,7 +14,8 @@ pub mod graph;
 mod host_time;
 
 pub use algo::{
-    Algorithm, AlignmentConstraint, CoseBilkentOptions, FcoseOptions, RelativePlacementConstraint,
+    Algorithm, AlignmentConstraint, CoseBilkentOptions, FcoseOptions, FcoseRandomPolicy,
+    FcoseRandomSource, RelativePlacementConstraint,
 };
 pub use error::{Error, Result};
 pub use graph::{

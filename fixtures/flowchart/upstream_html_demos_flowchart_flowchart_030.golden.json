@@ -8,11 +8,11 @@
     "accDescr": null,
     "classDefs": {},
     "tooltips": {
-      "A": "link test (open in same tab)",
       "B": "link test (open in new tab)",
-      "F": "script test",
       "D": "mailto test",
-      "E": "other protocol test"
+      "E": "other protocol test",
+      "F": "script test",
+      "A": "link test (open in same tab)"
     },
     "edgeDefaults": {
       "style": [],

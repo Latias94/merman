@@ -242,6 +242,32 @@ BOOK {
 }
 
 #[test]
+fn parse_diagram_er_supports_mermaid_11_16_attribute_tokens() {
+    let engine = Engine::new();
+    let text = r#"erDiagram
+PLACE {
+  public.geometry(point,4326) location
+  string? nickname
+  `custom type` `display name` UK
+}
+"#;
+    let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    let attrs = res.model["entities"]["PLACE"]["attributes"]
+        .as_array()
+        .unwrap();
+
+    assert_eq!(attrs[0]["type"], json!("public.geometry(point,4326)"));
+    assert_eq!(attrs[0]["name"], json!("location"));
+    assert_eq!(attrs[1]["type"], json!("string?"));
+    assert_eq!(attrs[1]["name"], json!("nickname"));
+    assert_eq!(attrs[2]["type"], json!("custom type"));
+    assert_eq!(attrs[2]["name"], json!("display name"));
+    assert_eq!(attrs[2]["keys"], json!(["UK"]));
+}
+
+#[test]
 fn parse_diagram_er_parses_many_constraints_and_comments() {
     let engine = Engine::new();
     let text = r#"erDiagram
@@ -846,6 +872,55 @@ style ORDER fill:#eee
     assert!(facts.directive_prefixes.iter().any(|p| p == "class"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "classDef"));
     assert!(facts.directive_prefixes.iter().any(|p| p == "style"));
+}
+
+#[test]
+fn parse_er_editor_facts_preserve_mermaid_11_16_attribute_spans() {
+    let engine = Engine::new();
+    let text = r#"erDiagram
+PLACE {
+  `public.geometry(point,4326)` `display name`
+  string? nickname
+}
+"#;
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("er editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+
+    let symbol_at = |name: &str, start: usize| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.selection.start == start)
+            .unwrap_or_else(|| panic!("missing symbol {name} at {start}"))
+    };
+
+    let geometry_start = text.find("public.geometry").unwrap();
+    let geometry = symbol_at("public.geometry(point,4326)", geometry_start);
+    assert_eq!(geometry.detail.as_deref(), Some("er attribute type"));
+    assert_eq!(
+        geometry.selection.end,
+        geometry_start + "public.geometry(point,4326)".len()
+    );
+
+    let display_name_start = text.find("display name").unwrap();
+    let display_name = symbol_at("display name", display_name_start);
+    assert_eq!(display_name.detail.as_deref(), Some("er attribute"));
+    assert_eq!(
+        display_name.selection.end,
+        display_name_start + "display name".len()
+    );
+
+    let nullable_type_start = text.find("string?").unwrap();
+    let nullable_type = symbol_at("string", nullable_type_start);
+    assert_eq!(nullable_type.detail.as_deref(), Some("er attribute type"));
+
+    let nickname_start = text.find("nickname").unwrap();
+    let nickname = symbol_at("nickname", nickname_start);
+    assert_eq!(nickname.detail.as_deref(), Some("er attribute"));
 }
 
 #[test]

@@ -201,6 +201,7 @@
         "rhsGroup": true,
         "title": "out"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

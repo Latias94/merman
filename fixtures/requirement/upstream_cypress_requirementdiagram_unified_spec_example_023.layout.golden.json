@@ -7,14 +7,14 @@
           "id": "test_req",
           "x": 8.0,
           "y": 8.0,
-          "width": 411.52,
-          "height": 184.0,
+          "width": 411.516,
+          "height": 208.0,
           "is_cluster": false
         },
         {
           "id": "test_entity_name_that_is_extra_long",
-          "x": 469.52,
-          "y": 66.0,
+          "x": 469.516,
+          "y": 78.0,
           "width": 251.516,
           "height": 68.0,
           "is_cluster": false
@@ -24,8 +24,8 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 721.036,
-        "max_y": 192.0
+        "max_x": 721.031,
+        "max_y": 216.0
       }
     }
   }

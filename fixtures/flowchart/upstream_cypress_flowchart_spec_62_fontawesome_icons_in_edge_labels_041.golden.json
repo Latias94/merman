@@ -53,6 +53,7 @@
           "color:blue"
         ],
         "dir": null,
+        "hasExplicitDir": false,
         "labelType": "text"
       }
     ]

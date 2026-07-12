@@ -44,6 +44,8 @@ pub struct XyChartPlotRenderModel {
     pub title: Option<String>,
     pub values: Vec<f64>,
     pub data: Vec<(String, Option<f64>)>,
+    #[serde(rename = "pointLabels", default, skip_serializing_if = "Vec::is_empty")]
+    pub point_labels: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -230,6 +232,18 @@ fn plot_value(plot: &XyChartPlotRenderModel) -> Value {
         Value::Array(plot.values.iter().copied().map(f64_value).collect()),
     );
     out.insert("data".to_string(), plot_data_value(&plot.data));
+    if !plot.point_labels.is_empty() {
+        out.insert(
+            "pointLabels".to_string(),
+            Value::Array(
+                plot.point_labels
+                    .iter()
+                    .cloned()
+                    .map(Value::String)
+                    .collect(),
+            ),
+        );
+    }
     Value::Object(out)
 }
 
@@ -272,6 +286,13 @@ struct Plot {
     title: Option<String>,
     values: Vec<f64>,
     data: Vec<(String, Option<f64>)>,
+    point_labels: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ParsedDataPoint {
+    value: f64,
+    label: String,
 }
 
 #[derive(Debug, Clone)]
@@ -382,9 +403,12 @@ impl XyChartState {
         };
     }
 
-    fn transform_data_without_category(&mut self, data: &[f64]) -> Vec<(String, Option<f64>)> {
+    fn transform_data_without_category(
+        &mut self,
+        mut data: Vec<f64>,
+    ) -> (Vec<f64>, Vec<(String, Option<f64>)>) {
         if data.is_empty() {
-            return Vec::new();
+            return (data, Vec::new());
         }
 
         if !self.has_set_x_axis {
@@ -395,11 +419,15 @@ impl XyChartState {
             self.set_x_axis_range(prev_min.min(1.0), prev_max.max(data.len() as f64));
         }
 
-        if !self.has_set_y_axis {
-            self.set_y_axis_range_from_plot_data(data);
+        if let AxisData::Band { categories, .. } = &self.x_axis {
+            data.truncate(categories.len());
         }
 
-        match &self.x_axis {
+        if !self.has_set_y_axis {
+            self.set_y_axis_range_from_plot_data(&data);
+        }
+
+        let plot_data = match &self.x_axis {
             AxisData::Band { categories, .. } => categories
                 .iter()
                 .enumerate()
@@ -422,26 +450,49 @@ impl XyChartState {
                     .map(|(idx, c)| (c, data.get(idx).copied()))
                     .collect()
             }
-        }
+        };
+        (data, plot_data)
     }
 
-    fn add_line_data(&mut self, title: Option<String>, data: Vec<f64>) {
-        let pairs = self.transform_data_without_category(&data);
+    fn add_line_data(
+        &mut self,
+        title: Option<String>,
+        data: Vec<ParsedDataPoint>,
+        meta: &ParseMetadata,
+    ) {
+        let values = data.iter().map(|point| point.value).collect::<Vec<_>>();
+        let mut point_labels = data
+            .iter()
+            .map(|point| {
+                if point.label.is_empty() {
+                    String::new()
+                } else {
+                    sanitize_text(&point.label, &meta.effective_config)
+                }
+            })
+            .collect::<Vec<_>>();
+        let (values, pairs) = self.transform_data_without_category(values);
+        if point_labels.iter().all(String::is_empty) {
+            point_labels.clear();
+        }
         self.plots.push(Plot {
             plot_type: XyChartPlotType::Line,
             title,
-            values: data,
+            values,
             data: pairs,
+            point_labels,
         });
     }
 
-    fn add_bar_data(&mut self, title: Option<String>, data: Vec<f64>) {
-        let pairs = self.transform_data_without_category(&data);
+    fn add_bar_data(&mut self, title: Option<String>, data: Vec<ParsedDataPoint>) {
+        let values = data.iter().map(|point| point.value).collect::<Vec<_>>();
+        let (values, pairs) = self.transform_data_without_category(values);
         self.plots.push(Plot {
             plot_type: XyChartPlotType::Bar,
             title,
-            values: data,
+            values,
             data: pairs,
+            point_labels: Vec::new(),
         });
     }
 
@@ -467,6 +518,7 @@ impl XyChartState {
                     title: p.title,
                     values: p.values,
                     data: p.data,
+                    point_labels: p.point_labels,
                 })
                 .collect(),
             display: XyChartDisplayPolicy::from_config(&meta.effective_config),
@@ -679,7 +731,7 @@ fn parse_xychart_model(
         if let Some(rest) = strip_keyword(stmt, "line") {
             let rest_start = stmt_start + stmt.len().saturating_sub(rest.len());
             let (plot_title, data) = parse_plot_stmt_spanned(rest, rest_start)?;
-            state.add_line_data(plot_title_value(&plot_title, meta), data);
+            state.add_line_data(plot_title_value(&plot_title, meta), data, meta);
             continue;
         }
         if let Some(rest) = strip_keyword(stmt, "bar") {
@@ -941,7 +993,44 @@ fn push_xychart_plot_facts(
                     EditorSemanticKind::String,
                 );
             }
+            push_xychart_point_label_facts(facts, line, line_start, open + 1, close, detail);
         }
+    }
+}
+
+fn push_xychart_point_label_facts(
+    facts: &mut EditorSemanticFacts,
+    line: &str,
+    line_start: usize,
+    inner_start: usize,
+    inner_end: usize,
+    detail: &'static str,
+) {
+    let mut idx = inner_start;
+    while idx < inner_end {
+        let Some(open_rel) = line[idx..inner_end].find('"') else {
+            break;
+        };
+        let open = idx + open_rel;
+        let body_start = open + 1;
+        let Some(close_rel) = line[body_start..inner_end].find('"') else {
+            break;
+        };
+        let close = body_start + close_rel;
+        let label = &line[body_start..close];
+        let span = SourceSpan::new(line_start + body_start, line_start + close);
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
+            span,
+        ));
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            label.to_string(),
+            Some(format!("{detail} data label")),
+            EditorSemanticKind::String,
+            span,
+            span,
+        ));
+        idx = close + 1;
     }
 }
 
@@ -1158,7 +1247,10 @@ fn parse_y_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> R
     ))
 }
 
-fn parse_plot_stmt_spanned(rest: &str, rest_start: usize) -> Result<(String, Vec<f64>)> {
+fn parse_plot_stmt_spanned(
+    rest: &str,
+    rest_start: usize,
+) -> Result<(String, Vec<ParsedDataPoint>)> {
     let leading = rest.len().saturating_sub(rest.trim_start().len());
     let t = rest.trim_start();
     let t_start = rest_start + leading;
@@ -1170,7 +1262,7 @@ fn parse_plot_stmt_spanned(rest: &str, rest_start: usize) -> Result<(String, Vec
     }
 
     if t.starts_with('[') {
-        let data = parse_number_list_in_brackets_spanned(t, t_start)?;
+        let data = parse_data_point_list_in_brackets_spanned(t, t_start)?;
         if data.is_empty() {
             return Err(Error::diagram_parse_fallback(
                 "xychart".to_string(),
@@ -1191,7 +1283,7 @@ fn parse_plot_stmt_spanned(rest: &str, rest_start: usize) -> Result<(String, Vec
             "plot data missing".to_string(),
         ));
     }
-    let data = parse_number_list_in_brackets_spanned(tail, tail_start)?;
+    let data = parse_data_point_list_in_brackets_spanned(tail, tail_start)?;
     if data.is_empty() {
         return Err(Error::diagram_parse_fallback(
             "xychart".to_string(),
@@ -1310,7 +1402,10 @@ fn parse_text_list_in_brackets(input: &str) -> Result<Vec<String>> {
     Ok(out)
 }
 
-fn parse_number_list_in_brackets_spanned(input: &str, input_start: usize) -> Result<Vec<f64>> {
+fn parse_data_point_list_in_brackets_spanned(
+    input: &str,
+    input_start: usize,
+) -> Result<Vec<ParsedDataPoint>> {
     let leading = input.len().saturating_sub(input.trim_start().len());
     let t = input.trim_start();
     let t_start = input_start + leading;
@@ -1326,16 +1421,76 @@ fn parse_number_list_in_brackets_spanned(input: &str, input_start: usize) -> Res
                 trimmed.start,
             ));
         }
-        let n = parse_number(trimmed.text).ok_or_else(|| {
-            Error::diagram_parse_exact(
-                "xychart".to_string(),
-                format!("invalid number: {}", trimmed.text),
-                SourceSpan::new(trimmed.start, trimmed.end),
-            )
-        })?;
-        out.push(n);
+        out.push(parse_data_point_spanned(trimmed)?);
     }
     Ok(out)
+}
+
+fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
+    if let Some(quote_rel) = part.text.find('"') {
+        let number_part = part.text[..quote_rel].trim();
+        if number_part.is_empty() {
+            return Err(Error::diagram_parse_insertion_point(
+                "xychart".to_string(),
+                "expected number".to_string(),
+                part.start,
+            ));
+        }
+        let number_rel = part.text[..quote_rel].find(number_part).unwrap_or(0);
+        let number_start = part.start + number_rel;
+        let value = parse_number(number_part).ok_or_else(|| {
+            Error::diagram_parse_exact(
+                "xychart".to_string(),
+                format!("invalid number: {number_part}"),
+                SourceSpan::new(number_start, number_start + number_part.len()),
+            )
+        })?;
+        let label =
+            parse_data_point_label_spanned(&part.text[quote_rel..], part.start + quote_rel)?;
+        return Ok(ParsedDataPoint { value, label });
+    }
+
+    let value = parse_number(part.text).ok_or_else(|| {
+        Error::diagram_parse_exact(
+            "xychart".to_string(),
+            format!("invalid number: {}", part.text),
+            SourceSpan::new(part.start, part.end),
+        )
+    })?;
+    Ok(ParsedDataPoint {
+        value,
+        label: String::new(),
+    })
+}
+
+fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<String> {
+    let Some(body) = input.strip_prefix('"') else {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "expected data label".to_string(),
+            input_start,
+        ));
+    };
+    let Some(end) = body.find('"') else {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "unterminated data label".to_string(),
+            input_start,
+        ));
+    };
+    let rest = &body[end + 1..];
+    if !rest.trim().is_empty() {
+        let leading = rest.len().saturating_sub(rest.trim_start().len());
+        return Err(Error::diagram_parse_exact(
+            "xychart".to_string(),
+            "unexpected trailing tokens after data label".to_string(),
+            SourceSpan::new(
+                input_start + 1 + end + 1 + leading,
+                input_start + input.len(),
+            ),
+        ));
+    }
+    Ok(body[..end].to_string())
 }
 
 fn extract_bracket_inner(input: &str) -> Result<&str> {
@@ -1765,6 +1920,45 @@ line lineTitle1 [11, 45.5, 67, 23]
         assert_eq!(model["yAxis"]["min"], json!(10.0));
         assert_eq!(model["yAxis"]["max"], json!(150.0));
         assert_eq!(model["plots"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn xychart_line_points_accept_optional_labels() {
+        let model = parse(
+            r#"xychart
+x-axis [A, B, C]
+y-axis 0 --> 10
+line [1 "low", 5, 9 "high"]
+bar [2 "ignored", 4, 6]
+"#,
+        );
+
+        assert_eq!(model["plots"][0]["type"], json!("line"));
+        assert_eq!(model["plots"][0]["values"], json!([1.0, 5.0, 9.0]));
+        assert_eq!(model["plots"][0]["pointLabels"], json!(["low", "", "high"]));
+        assert!(model["plots"][1].get("pointLabels").is_none());
+    }
+
+    #[test]
+    fn xychart_band_axis_truncates_points_but_preserves_labels_before_auto_y_range() {
+        let model = parse(
+            r#"xychart
+x-axis [Q1, Q2]
+line [10 "first", 50 "second", 999 "orphan", 800 "ignored"]
+"#,
+        );
+
+        assert_eq!(model["yAxis"]["min"], json!(10.0));
+        assert_eq!(model["yAxis"]["max"], json!(50.0));
+        assert_eq!(model["plots"][0]["values"], json!([10.0, 50.0]));
+        assert_eq!(
+            model["plots"][0]["data"],
+            json!([["Q1", 10.0], ["Q2", 50.0]])
+        );
+        assert_eq!(
+            model["plots"][0]["pointLabels"],
+            json!(["first", "second", "orphan", "ignored"])
+        );
     }
 
     #[test]

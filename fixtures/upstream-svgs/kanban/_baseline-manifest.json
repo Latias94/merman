@@ -1,0 +1,455 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "basic": {
+      "input_sha256": "50c8d344787a2a8a3e2d9fa1ccaf0c23ad55d13d65ff9d8afd1650528c73916a",
+      "svg_sha256": "6ab933632f86d0a4e8264f3e254bebedea9fe80f002bb9fd8472b43a453c4d9f",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_assigned_names_with_spaces": {
+      "input_sha256": "d5052d80aeaa69234c34876a5cc25dcfdcc2ea76885f84c1e673b6abeb952ccf",
+      "svg_sha256": "732f5259eb1c66772d9108f22c1f10b341d55311838d2676f2a9698c02671a9b",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_columns_mixed_id_and_brackets": {
+      "input_sha256": "e6e1a91ea9a5262e72de0435dfa36a053799752596cd1123491b38e4a4dd39a5",
+      "svg_sha256": "302ec2f4c68c629b1bb2b8576cf0e4885a75e3059b740b43154243b959b3caf0",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_dense_board_three_columns": {
+      "input_sha256": "4c081672212ab7ae3abe38a9b9ac2c99179e8498194946909c5ced5bc1bbdb62",
+      "svg_sha256": "e9111d63ddf63173ebac06db56ed0092d57755a914a63753401bf9a646a826a0",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_long_column_titles_wrapping": {
+      "input_sha256": "7658de49e56d93c3f1c583e8b43f43c1daa3daab8009f5ad404eb61717ed5ee9",
+      "svg_sha256": "d99f6bf8938f6a35aa1fc647be8512fffc77c19c09da649e0d3fcbbdc2ebdd1b",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_metadata_order_variants": {
+      "input_sha256": "3e97257c63edef0b913f2d00242711de8f2c6242b812f959248d08984756c704",
+      "svg_sha256": "00a2f8a4687ffde4904db4d39ab29e0fc86a59565107f9118b36b66c920d31e7",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_mixed_shapes_and_quotes": {
+      "input_sha256": "2e957a3884e0f81803a7a59dfe636ba09743fbb5161090a0f578ab30f93a5e26",
+      "svg_sha256": "0748c53239cbf7fef0e4e5dc7d65afcb608a3d6a78d1883da325995b1f7ccff8",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_multiple_roots_and_sections_mixed_indent": {
+      "input_sha256": "0936d816f39ca348d01b4c3a8df7d264ce993844fc9f35615c441c8dbb2f5343",
+      "svg_sha256": "e6781e9829fe8246c3e490bd0ad912ef28c2fc43be74494d7f5157efdec598c0",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_priority_case_variants": {
+      "input_sha256": "6bfa025f3b2ae326619a16f41286bd76e8e1005d4a0b466578f4b0d68b394f3e",
+      "svg_sha256": "7def27be62043ef4cc5324c2cc88796adcce0fd57da545af2d3280a9bcd4350a",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_task_after_decorations_and_comment": {
+      "input_sha256": "8432587dcbcf5c73468e435fb18fedf4fdd8d2933566de83586213141e6a4808",
+      "svg_sha256": "5cc832fe1faf5e54f880c51c676d41530b2750c27437e87036152c7b2747f55b",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_ticket_base_url_special_ticket": {
+      "input_sha256": "2160b45fed073c54683fa29f662fd5f2569d1d4f9fc486abc4cd9fe363f3b637",
+      "svg_sha256": "24d523716f0dfaf75eff95143183198135160b4a790489ccda3856d7f7321069",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_ticket_without_base_url": {
+      "input_sha256": "d6aff46a182b8c114075fe4744be920695057afb005a72c411a63529343e1c77",
+      "svg_sha256": "42dd58e7585b51e47f1df24405ce06961db622dd416f74da1f546c1e04ca95c6",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common2_wide_board_many_columns_and_items": {
+      "input_sha256": "65c3024059d40789303fe6365e78dad9472f44e4d288cbe82f495ba767ea19e7",
+      "svg_sha256": "b41b3f0d37c7b1b8afe73e9e68909c8a7abca29cd35e52ce36ec26033b694f83",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_comments_blank_rows": {
+      "input_sha256": "52d985aa14397bdfeb922dcec3d3fe8ad1ab292647bf7d2636cfe167bfd8a6b4",
+      "svg_sha256": "643ad7ec32bfa06d262bc9cd9a35d739cc75431dc4ccab1f1f9563c6ec6f56df",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_decorations_icon_classes_columns": {
+      "input_sha256": "8bbdb2486c482be7c821f81598e55b7598b81173efff77c15439e2694b23bf5c",
+      "svg_sha256": "b8d5430d726237bde75dba8b948a09d06460828d704caf1a8e4cd240277833cd",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_deep_hierarchy_flatten": {
+      "input_sha256": "f2e656013de328f3cd1cc606962b3691f9692ad471b1842e3a023a0dc6fb5b1f",
+      "svg_sha256": "7a8cddac29e2866128ff7c054a877c82e7ab09646af049fe77c0e0d21f2a8537",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_leading_rows_before_kanban": {
+      "input_sha256": "8c6db96e7921b9edbaf8b0cd3016c3a17b3a2b8cfe543c477cfa1065e5986941",
+      "svg_sha256": "8bfc44892db706c53ce09ced2c29048640c9d4f86f0da6e9cad54a6f7bc95d5e",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_long_wrapping_nodes_height": {
+      "input_sha256": "20b75780febefb7913dac0544b599f5893971f72f4037adbcb7a2dd304b8296e",
+      "svg_sha256": "5baf5e7caddd9cf5a344687bb912544293d9630fb561c6020b4f2febbbbf2404",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_metadata_spacing_variants": {
+      "input_sha256": "1a37e72ae65652d63c7ebbb5cb3356ac540a18fe8207660f6f815f26408d040d",
+      "svg_sha256": "5fd79ea8ae763a38ee1c8fabf3a27722e0db5b3a1ff94a90215e86bf761ad985",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_multiline_metadata_label_override": {
+      "input_sha256": "6c1d602a4e612b1e54b2f4c6b26703f60d55ebebf56ec610ee7611de95b5aa4b",
+      "svg_sha256": "a57842823fd43ad8602c92066be470ad063c2f3c2427a4c1aa791c0f2a2eaf35",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_priority_matrix": {
+      "input_sha256": "6a227b57b37d6dc9b2cedf3088ceb81334aede8b38d9dc0397ec7c6eda29af3a",
+      "svg_sha256": "b23c1161be1a3071007222a0cdc53e5ac94b4c1b7e3dfe87107a9b51960bd5d4",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_shape_syntax_and_ids": {
+      "input_sha256": "a7140e997e46498169de6f94fcdc3473bca26c91569ef425d8f21aa512803e47",
+      "svg_sha256": "d13cb2f32fa04c477f5ff20d3a0a794dac0533e59de6b30e04c42e2ceec6fd98",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_strings_with_brackets_parens_quotes": {
+      "input_sha256": "1b77ed1293ffe1d38022ee777e6ca6b775d9deec7e721ab93b0b40111d078276",
+      "svg_sha256": "0d02db8f290bdabbb9710e4af91ae92780c0373333d1ade52ab6e12d9a40a015",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_ticket_base_url_external": {
+      "input_sha256": "b4e0297250dc7245dc61a03dbdd5e43a775713ab7d1a95a94cc289d1b4c42d1d",
+      "svg_sha256": "0791fa161aa9919f3d6b9d9c0dbba8372a9f84bf23750e5ea01bd90901d98ab6",
+      "renderer_profile": "mmdc-default"
+    },
+    "kanban_stress_common_wide_board_many_columns": {
+      "input_sha256": "64aec19ef1f08a63c3589f4a3c7c02d1223c15e48af75666ad9033dece1b3e91",
+      "svg_sha256": "9c387c21b7c4b47c64275d314097317f33b76f7626771ba62338d135877a7057",
+      "renderer_profile": "mmdc-default"
+    },
+    "metadata": {
+      "input_sha256": "51fcff0d6dd3ab0d8a0884da746724b97e87ea69c3d4e3862e9cb65cbc3f1ae2",
+      "svg_sha256": "d2e7990eaeb3e87c6c595514a92eaf9182e0e06bd0271662aaeebf46f423bfca",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_kanban_font_size_097": {
+      "input_sha256": "01456ca79a6533f6984bcc51ef427e8859f633ba752f24d86c5fc2d3001d2622",
+      "svg_sha256": "3fe3efe644905f164b1dcf799c1006c43c1c30462feed9051545b5cae8c0ac64",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_kanban_font_size_precedence_098": {
+      "input_sha256": "f9c1c9283ff40b0bdcf43d61a694469d5d3b6333aa4907adee152494953eb4ae",
+      "svg_sha256": "1907367377861130a025d1dae6f7cbf44f57c022ed255f06b769b7e4b98e9039",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_child_after_class_assignment": {
+      "input_sha256": "c452e04494f5100cb03a6ef40f3ba77654105d4262b1399f586a3600ddfb74ee",
+      "svg_sha256": "27015715a68cb2367b850015ff1d7a116e9f43efb357c1c60df534f525e91730",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_10_full_example_011": {
+      "input_sha256": "951f070510fbfcfa67c6cdb7bb6906a2a7b9a62cf7d7c723815fa660a6a232fe",
+      "svg_sha256": "b99f542e0e65afff84b52c802d6e0fd19ff3c35af504f72e5341cc9b571261d3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_1_should_render_a_kanban_with_a_single_section_001": {
+      "input_sha256": "1c2cb053693225cfab771925ba9f17e80cc394f6f99767e0b20ebafc11cfca8a",
+      "svg_sha256": "f6d2a46efceeafcd9e402032ed3ea8959d8ca5f2ee9748eebad4c5cfbc99ffba",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_2_should_render_a_kanban_with_multiple_sections_002": {
+      "input_sha256": "82280d293ed7a85b2dac7bd63d5dd48c2a2b8e1ee1ef60018a1c15e700262104",
+      "svg_sha256": "ddf96cfc6618159e7d485896e73aa6fa72d37e30d490e46de584c3f4c1d21a99",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_3_should_render_a_kanban_with_a_single_wrapping_node_003": {
+      "input_sha256": "b89a46a50ecf53644f1c6571d14ee8f28a045c196f0c21f316515ee30689bad9",
+      "svg_sha256": "ff03e9ee19f282a6755039de7319ad42f237d5d5ccca3ad771962bce80f3e721",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_4_should_handle_the_height_of_a_section_with_a_wrapping_node_at_004": {
+      "input_sha256": "02fa1e5a693c4ef89e4bce7e75c605301a5c9d17cc4af2c7c983d5d582342872",
+      "svg_sha256": "530d39f6c1560f2df0cb12e225f6fbd014762e9841aba4f608b051514da91ad5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_5_should_handle_the_height_of_a_section_with_a_wrapping_node_at_005": {
+      "input_sha256": "4c5d1b1d6d991616bd938928f070855467de67bf1a20acbe2fd8ed909d413cf1",
+      "svg_sha256": "0124438a63d908516ab8f2c0c0cea935bf3c955fe7b87b7ab43f3bd3cb990fc3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_6_should_handle_assignments_007": {
+      "input_sha256": "11be6b5939e2268594d75335eb7fbb2e869a7b39ef0e1c5b64ecae40d1c90b24",
+      "svg_sha256": "5bb1ae6cb02da562b9f6483fe65de8e70dfbc72105668f696ac21703716f9652",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_6_should_handle_the_height_of_a_section_with_a_wrapping_node_in_006": {
+      "input_sha256": "beb270548bc13601a16958f89055aa37c8542ca8d39da24d3db1f7d88abccbed",
+      "svg_sha256": "09b034e5622876259b9d7de7b20baa59fb40dafb3dbc797e0922e4a3fdde0de2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_7_should_handle_external_tickets_009": {
+      "input_sha256": "b6400d25da2fb0f86c631af00525faf3033d90d7dd94d8e247da7ff88ee17f51",
+      "svg_sha256": "12d829b7908e1a6218933793ab395c835d4eac9c77d68cc48740353eacd8f71c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_7_should_handle_prioritization_008": {
+      "input_sha256": "d04b8bbd3be08bc22aa5d55d9b926341623eb8e69bed7b4a05da4287ba5c788f",
+      "svg_sha256": "075e4af4b686a95012b787bd8e7e954ac549a6c2234c174cbb1a99d4183e259d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_kanban_spec_8_should_handle_assignments_prioritization_and_tickets_ids_in_th_010": {
+      "input_sha256": "3cfc22739c689ceae1333d92c115ef0af626cdcce1c9535b254a60a4abc02dfd",
+      "svg_sha256": "b24decba59bc49bc6da32747ce87aa7dffa5b4f182e39975bbee6bc9d49e4e24",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_decorations_icon_classes": {
+      "input_sha256": "6b520b7fb9dede26327a9e206d4e62ce12397cb141235447e139af64c273939b",
+      "svg_sha256": "5dd14a52b8ed4941c4a726356e2fa6ff187449ec753d19a582c56a3872fc3be3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_deeper_hierarchy_flattened": {
+      "input_sha256": "e564993d0ec65786da47e7cd7a8be035dd2f08a49dba9f553d249ef3dc57302f",
+      "svg_sha256": "1c408be592c8a7c066aed0474722853ca0af9e8dd9536354ec7efa8ab4ae1e41",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_descriptions_with_delimiters": {
+      "input_sha256": "615333dd5935a6cf8920e91f98da6638ceba05cab82a3106dbaa380c92706d78",
+      "svg_sha256": "e29a1b6793c9b3d5436f18c370d2c67fbdfbf026c581cd9e1e6180ef481f823c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_kanban_full_example_012": {
+      "input_sha256": "1463e787daaa07b25d3c55218d958a02fb0f7cf9fdec59a5aacdffb1758521e0",
+      "svg_sha256": "65926a1437b795bafb26269e317f989526c869b78a5ee2fc9f148b4c2b8c4b30",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_kanban_overview_001": {
+      "input_sha256": "64d471958b3a3c6b8956c05f7f063ed9faaafec919683c3cbee90cd4a309ee5b",
+      "svg_sha256": "40410a843382559d2e8fb21f5fdb5ebc9af65bdb88589530c3fafd87719cc843",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_kanban_supported_metadata_keys_008": {
+      "input_sha256": "6a07fd6d17bc2fccd049c7416db6a68bd83421271ded108812d17776373b7702",
+      "svg_sha256": "acc44a6fc28abec37282bb27af6d665f6bc1f776b4fac4f2d71bc286fc4468c6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_samples_example_001": {
+      "input_sha256": "86e34b680f828fa680eca02298e077cf434a662d3f9fe13dc90bf272f9c60fdb",
+      "svg_sha256": "1d85f8bf05e3f97c8176da786758ccb2fde45713ceed767c76e8943ccd124ed6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_samples_example_002": {
+      "input_sha256": "5ca8a8bfdf17cd3846475288e4452e4034ef372eb39e116e76c698a25c37e695",
+      "svg_sha256": "a45394d180815a252e7167439b1c595d8279220ef2c414d1c285cd0d4c7252cb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_samples_example_003": {
+      "input_sha256": "89a4fa5cc22418f6533a7eb8fc986fe9a8ebac6b730c6e0f728191c30846b79b",
+      "svg_sha256": "8968ddd58e4190c32666e084f87208d1c70515008ad132f0d5bca78239b9350d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_samples_example_004": {
+      "input_sha256": "98eac9aae00c02b0b49b575aeff112a8b713737fa7bb63e6aa6847626b0d87ee",
+      "svg_sha256": "793d670e538b4ca2becc319492c28e1a3d9ae399719f1721cf77febfa95e6d63",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_samples_example_005": {
+      "input_sha256": "410821dd587b30ca2223c3738b1883adee237ad77bbd0f058e093068ce1720ea",
+      "svg_sha256": "22833568d6983409d7ba60855c82bf174528f0de5ab9b746a1dc8bd4d2a2ba33",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_examples_kanban_kanban_diagram_001": {
+      "input_sha256": "9164c4747a7727e5c4322785486acc99109a12d28e4ea11cb740e3317929a2f3",
+      "svg_sha256": "4070ac1176c15a0121f35f8d522e89142e52bf78405fbd4d400e0a8ac6c84f36",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_hierarchy_children": {
+      "input_sha256": "1142a645e0dce241954e707b2d6ca15badcb86a72f6b251cf4e7b39296368098",
+      "svg_sha256": "8eb75db9991c7bf7c509b388023164aa6cec55e6f0c9294d1fb620d67d43f7a5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_hierarchy_simple_root": {
+      "input_sha256": "203eeb07462a9b8bbf187919d81259f043fb6168387656d62aa85b153d15c42c",
+      "svg_sha256": "b7cefc6995b836e728510240f12ec93fcdb611e94eda2a0ff9998d557d0146ad",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_metadata_variants": {
+      "input_sha256": "dfe5eb87bda9b3f952617f0a1582973ef54e8b9f8c56ca63fa9b70ce061f1b9b",
+      "svg_sha256": "965b68cf8e399ec82256990cd5ffc51d08dbf3895c1176dc4e031fed7de3b3c9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_multiple_sections": {
+      "input_sha256": "5f53fe182988c725c8627a4638d1d0b516c633adabf1be2af27a4c5c9a568a30",
+      "svg_sha256": "90a5a07ebb1699a86d5ce276e8dcc772b86a421828fbf21875f1de7ad12f0f26",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_node_id_and_label": {
+      "input_sha256": "69e4f8e62b0ac90aec34d3330b1b101036ee9f133ffcd0cee89ed8c0a9a447f9",
+      "svg_sha256": "8161231e381e29e0b0bc1012cca70ca857aaa8244d6a0cf6e60c413f0484b6f8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_node_id_and_paren_child": {
+      "input_sha256": "d355139fc20221048bd82bfa051bdb966827f6148984911c92765427e9b23318",
+      "svg_sha256": "4dfb713f7cad829afd0daa2ec8a9174e50e3847832496f03c2635f20f4e6a1b8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_001": {
+      "input_sha256": "5993e4573d5265ee747aa2b552d96b47df7f19b02ba85c2d86053d14f40ba9f3",
+      "svg_sha256": "6dbb74b2a8e38c5e98c64ea342277cbbfb9977a82c6aff94e481df3dc80f533d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_002": {
+      "input_sha256": "b9970efcf335b814c2a6f90aa0bec05c716239639fc05a1ca58ab044f6c02340",
+      "svg_sha256": "61e6c7d4e2e11b0ae188a169f3a09b5fe6872d4b2a7a8e25b98e7909272b818e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_003": {
+      "input_sha256": "e1455a557b995f4ff94e40f1138af84ad125b034debbc4ea49a1e0313ec5c973",
+      "svg_sha256": "26c4d6a4fa0d789ec5fefd90b5a3c1e115d79bd80ed07154b7511533fe3bf1ea",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_004": {
+      "input_sha256": "4d6ebc7bfd8b69d2f281420b3c5afcd1f7202b928337f7d514bab305cd2578c7",
+      "svg_sha256": "2fbd4db4dd78d69d2581bd25e73f63a5bd36e19baafbcc7e5ef5b203adb09978",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_005": {
+      "input_sha256": "33ea1bfdef659daf6c1ba55e87d91d4cbca564719196a0c7fab72a98d231fd70",
+      "svg_sha256": "30670992fc9c6468ed1a6fc05f1f308767ce92e735f14054e2e244de8604155c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_007": {
+      "input_sha256": "e653a030049330bca04a6f7d9e88658078b29af4299af13d16a95e0659e8ffc6",
+      "svg_sha256": "4eb97930c22b3f67c327ef0e9c74179fe24be9f1d89630047e5e1836154385ba",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_008": {
+      "input_sha256": "2cbbad940823a92fbe0cf461df3f4bb05b2b14b6b68cb518fabc667ae2be857f",
+      "svg_sha256": "311a60c02dcf270aa902a33db6b92449f327d50459c6c4b4bf6b0b497e859515",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_010": {
+      "input_sha256": "1f4085c559f0c36460e4761c9d29c265b0787e8a160062ff57e2bfa3a056d9bb",
+      "svg_sha256": "01d33dacf2c733fae258e3836d53652d1cbc80d604cd15033433d79c96a4c0c9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_011": {
+      "input_sha256": "bebb1136760ce81cead6267e839d1994a546c7bd5f735f0241444bff3d9b3ea8",
+      "svg_sha256": "068368c0d26e6f9ca541ed1482abe73705734f7a4cb05d67e93ea86eaa7e5d92",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_012": {
+      "input_sha256": "b7d808b2e0bd6efaa6fb3990d1097ed9ac065f16092ea9cc01c9627df5a593f6",
+      "svg_sha256": "c5dce07a3da0e94d647a872638fdfedc859fdc286d3651374d12c5ac02ceb8e7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_013": {
+      "input_sha256": "e64cd2768d363f96a35e8857563c42e5bb8d734ac9a471640c6e21e7e485e65d",
+      "svg_sha256": "61c401f2d4cf0221169770c0eec3f27eef91b622a82690f46d1e1ac753199755",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_014": {
+      "input_sha256": "76e41a77fe38f3ffe8f14e3bd3a00a245c61cc28af7b06a56a772a997d876864",
+      "svg_sha256": "0d0a4dc7887f9ae4c9fe359ded14275cf7c63dbd479a38a2b6db4d1184665ba4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_015": {
+      "input_sha256": "562eb2dce611cbb53e3c083af23dc5b8b0af36007b8214bbf013ed8a15eedfbf",
+      "svg_sha256": "bf4937e2662ece619114f53ea43c31c69459aeec336f99325fbd07f680e81495",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_017": {
+      "input_sha256": "482bed0225f6166b916cd19fc67e20dca8c8808e05d47b6c8416c5e14e2bd96d",
+      "svg_sha256": "e7c8d31f4226437347d26d4eb5f0f0850b5fe18b59f5631927fea52a968e9ef7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_018": {
+      "input_sha256": "b8b1139e9bdf17180f2b37c089ec054d1eca11aec2dd6694bcc037433d2172cd",
+      "svg_sha256": "a5047c27c473da5c2c4ceb62f8505819c3da53eadc0da8c00ba134349d62194a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_019": {
+      "input_sha256": "2f0bba9530cd517b23492a232bedc1a09693f24459f58257c60b77d28827c4f6",
+      "svg_sha256": "4dba6c74c3430153e95f69c7285049504b10b029eefa7f10354303899e8ff4e3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_020": {
+      "input_sha256": "8091d41e7e7c61184ab339dc70a9722f40ef81a7633bb0859f84cab8cf6725d3",
+      "svg_sha256": "652e328d01eaf01ebcafe20fd563c73ba9b4e6067c348c3593143a0b57ce1ac8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_021": {
+      "input_sha256": "c998259c8bf32740c32144c64e1a51773eeb6533af6d080458533edaf57ba21f",
+      "svg_sha256": "131d7f9ae451a460a1586bcc1b67d6654a26d6aa332efc4bd954fe7feed11543",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_022": {
+      "input_sha256": "6a4f5dd5e800eec43401978e52f8027466e4dbf8280429d35fc3f9a0e9432354",
+      "svg_sha256": "6d91c23d1a59250b23b57a2c6c4cb12421864ef4cbdc4aaea39c491111e80149",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_023": {
+      "input_sha256": "d0e928a422ddac056c0a906eb88a3ae47a31520a36af1bd2e7b50fdad6eee275",
+      "svg_sha256": "cbb3331ca42fa57db3efa5c836fe44353d93ea5230253b362bd3e33b68f5e0c0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_025": {
+      "input_sha256": "52b399e6f327fe73ba5afa5fd0d54531cfef47009f600372f58b50a05daa486c",
+      "svg_sha256": "630f9a1d38daa73b399d32c95824ee78612eb7675a40c0fa4e74756980c8875c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_026": {
+      "input_sha256": "c26e5ffe14219f6d49cc8161efc3407b9d6f2af59af8ff66d0419376d55e0424",
+      "svg_sha256": "62dbf23af182f79b885682faa2004d2f462e73409d691aacceb0d89928251575",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_027": {
+      "input_sha256": "5ff9a58731c07a637ddcbe25559005e0eaf6b148b2030cd15ab7f12e02cabf64",
+      "svg_sha256": "8874c742ec0af938714e015a53b9e719cbdae20d7aa80196317623d9c181a9f9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_028": {
+      "input_sha256": "2c320f974bcfe13db1b0cf54e31427703729595e335a59e2ffbe7ee0f9714760",
+      "svg_sha256": "703e049f5c51045d23420aeeb68a377563e02bd227e7bbf991c0be83328af1f7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_114": {
+      "input_sha256": "f4318c22cf91be98e25ea520c63d6b0e931a89de3d3917267ba18cc8ca6ce062",
+      "svg_sha256": "0da2d51b374edaf24168baee5e65574ce5b9fdf2f47d4fc80f027459d624f596",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_kanban_spec_119": {
+      "input_sha256": "c9c5f395ebb2ca141c2de2693ac37e5294cb698a8eb7c77c6ed774195ed27ad1",
+      "svg_sha256": "44dff5b70b7beb1eba9bd0d17a21d9551196b31189da2ea7ac68f3892abc2d65",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_root_no_indent_child_with_indent": {
+      "input_sha256": "a2475bb02ee5a6419f44529442927fc4d1adab0bbac201f6a2c5cff32d601ce7",
+      "svg_sha256": "5d8784b80e0fee7f41ec930f848d97a2639c76e082af5903e3a66a9292397b23",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_shaped_root_without_id": {
+      "input_sha256": "9322b1f2c0ec2d451c132694d6941b0c7550f7573020d42f1b08d684e42c46b9",
+      "svg_sha256": "e839881e7f498ad43491d06d2b0aab74b5d8357aa5d68f45fd120d06ec0dd738",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_whitespace_and_comments": {
+      "input_sha256": "1bd49845c355f06323edbba124c9f6393f627811e32c875b44cdbe249b393c88",
+      "svg_sha256": "2471ae8631e931ba752d44bc1e09234301310d54174fdae9c541d163f48ebb38",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

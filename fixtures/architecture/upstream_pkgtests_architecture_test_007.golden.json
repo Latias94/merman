@@ -9,6 +9,7 @@
     "nodes": [],
     "services": [],
     "junctions": [],
-    "edges": []
+    "edges": [],
+    "layoutHints": []
   }
 }

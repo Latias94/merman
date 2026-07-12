@@ -1,7 +1,13 @@
 //! Shared root SVG viewport reporting helpers for compare commands.
 
 use crate::XtaskError;
+use serde::{Deserialize, Serialize};
 use std::fmt::Write as _;
+use std::fs;
+use std::path::Path;
+
+pub(crate) const ROOT_ATTRS_SNAPSHOT_PATH_ENV: &str = "MERMAN_ROOT_OVERRIDE_AUDIT_SNAPSHOT_PATH";
+const ROOT_ATTRS_SNAPSHOT_FORMAT_VERSION: u32 = 1;
 
 pub(crate) const DEFAULT_ROOT_DELTA_REPORT_LIMIT: RootDeltaReportLimit =
     RootDeltaReportLimit::Top(25);
@@ -21,10 +27,80 @@ impl RootDeltaReportLimit {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RootAttrs {
     pub(crate) viewbox: Option<(f64, f64, f64, f64)>,
     pub(crate) max_width_px: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct RootAttrsSnapshot {
+    format_version: u32,
+    pub(crate) entries: Vec<RootAttrsSnapshotEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "kebab-case")]
+pub(crate) enum RootAttrsSnapshotEntry {
+    Compared {
+        stem: String,
+        upstream: RootAttrs,
+        local: RootAttrs,
+    },
+    Failed {
+        stem: String,
+        error: String,
+    },
+}
+
+impl Default for RootAttrsSnapshot {
+    fn default() -> Self {
+        Self {
+            format_version: ROOT_ATTRS_SNAPSHOT_FORMAT_VERSION,
+            entries: Vec::new(),
+        }
+    }
+}
+
+impl RootAttrsSnapshot {
+    pub(crate) fn capture(&mut self, stem: &str, upstream_svg: &str, local_svg: &str) {
+        let entry = match collect_root_delta(stem, upstream_svg, local_svg) {
+            Ok(delta) => RootAttrsSnapshotEntry::Compared {
+                stem: delta.stem,
+                upstream: delta.upstream,
+                local: delta.local,
+            },
+            Err(error) => RootAttrsSnapshotEntry::Failed {
+                stem: stem.to_string(),
+                error,
+            },
+        };
+        self.entries.push(entry);
+    }
+
+    pub(crate) fn read(path: &Path) -> Result<Self, XtaskError> {
+        let bytes = fs::read(path).map_err(|source| XtaskError::ReadFile {
+            path: path.display().to_string(),
+            source,
+        })?;
+        let snapshot: Self = serde_json::from_slice(&bytes)?;
+        if snapshot.format_version != ROOT_ATTRS_SNAPSHOT_FORMAT_VERSION {
+            return Err(XtaskError::SvgCompareFailed(format!(
+                "unsupported root attrs snapshot format version {} in {}",
+                snapshot.format_version,
+                path.display()
+            )));
+        }
+        Ok(snapshot)
+    }
+
+    pub(crate) fn write(&self, path: &Path) -> Result<(), XtaskError> {
+        let bytes = serde_json::to_vec_pretty(self)?;
+        fs::write(path, bytes).map_err(|source| XtaskError::WriteFile {
+            path: path.display().to_string(),
+            source,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]

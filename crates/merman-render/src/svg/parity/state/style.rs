@@ -105,14 +105,21 @@ pub(super) fn state_markers(
             r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"/></marker></defs><defs><marker id="{diagram_id}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"/></marker></defs>"#,
             escape_xml(transition_color)
         );
-        state_shadow_defs(out, diagram_id.as_str(), effective_config);
-        state_gradient_defs(out, diagram_id.as_str(), effective_config);
     } else {
         let _ = write!(
             out,
             r#"<defs><marker id="{diagram_id}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"/></marker></defs>"#
         );
     }
+}
+
+pub(super) fn state_root_defs(
+    out: &mut String,
+    diagram_id: &str,
+    effective_config: &serde_json::Value,
+) {
+    state_shadow_defs(out, diagram_id, effective_config);
+    state_gradient_defs(out, diagram_id, effective_config);
 }
 
 pub(super) fn state_css(
@@ -478,6 +485,11 @@ pub(super) fn state_css(
     );
     let _ = write!(
         &mut css,
+        r#"#{} [id$="-dependencyStart"],#{} [id$="-dependencyEnd"]{{fill:{};stroke:{};stroke-width:1;}}"#,
+        id, id, line_color, line_color
+    );
+    let _ = write!(
+        &mut css,
         r#"#{} .statediagramTitleText{{text-anchor:middle;font-size:18px;fill:{};}}"#,
         id, text_color
     );
@@ -493,6 +505,56 @@ pub(super) fn state_css(
         fmt(neo_radius),
         fmt(neo_radius),
         neo_drop_shadow
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} .node .neo-node{{stroke:{};}}"#,
+        id, state_border
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].node rect,#{} [data-look="neo"].cluster rect,#{} [data-look="neo"].node polygon{{stroke:{};filter:{};}}"#,
+        id, id, id, state_border, neo_drop_shadow
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].swimlane.cluster rect{{filter:none;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].node path{{stroke:{};stroke-width:{};}}"#,
+        id, state_border, stroke_width_px
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].node .outer-path{{filter:{};}}"#,
+        id, neo_drop_shadow
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].node .neo-line path{{stroke:{};filter:none;}}"#,
+        id, state_border
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].node circle{{stroke:{};filter:{};}}"#,
+        id, state_border, neo_drop_shadow
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].node circle .state-start{{fill:#000000;}}"#,
+        id
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].icon-shape .icon{{fill:{};filter:{};}}"#,
+        id, state_border, neo_drop_shadow
+    );
+    let _ = write!(
+        &mut css,
+        r#"#{} [data-look="neo"].icon-shape .icon-neo path{{stroke:{};filter:{};}}"#,
+        id, state_border, neo_drop_shadow
     );
     let _ = write!(
         &mut css,
@@ -613,7 +675,7 @@ pub(super) fn state_node_label_html_with_style(raw: &str, span_style: Option<&st
         .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
         .unwrap_or_default();
     format!(
-        r#"<span{} class="nodeLabel">{}</span>"#,
+        r#"<span{} class="nodeLabel markdown-node-label">{}</span>"#,
         style_attr,
         html_paragraph_with_br(raw)
     )
@@ -734,21 +796,17 @@ fn html_paragraph_with_br(raw: &str) -> String {
     state_html_with_br(raw, true)
 }
 
-fn html_inline_with_br(raw: &str) -> String {
-    state_html_with_br(raw, false)
-}
-
 pub(super) fn state_node_label_html(raw: &str) -> String {
     format!(
-        r#"<span class="nodeLabel">{}</span>"#,
+        r#"<span class="nodeLabel markdown-node-label">{}</span>"#,
         html_paragraph_with_br(raw)
     )
 }
 
-pub(super) fn state_node_label_inline_html(raw: &str) -> String {
+pub(super) fn state_node_label_plain_html(raw: &str) -> String {
     format!(
         r#"<span class="nodeLabel">{}</span>"#,
-        html_inline_with_br(raw)
+        html_paragraph_with_br(raw)
     )
 }
 
@@ -797,7 +855,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn state_css_honors_mermaid_11_15_theme_options() {
+    fn state_css_honors_mermaid_11_16_theme_options() {
         let cfg = json!({
             "themeVariables": {
                 "fontFamily": "Inter, Arial",
@@ -858,10 +916,9 @@ mod tests {
         assert!(css.contains(
             r#"#st .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#101010;}"#
         ));
-        assert!(
-            !css.contains("dependencyStart"),
-            "local State SVG does not emit dependency markers, so CSS should not advertise them"
-        );
+        assert!(css.contains(
+            r##"#st [id$="-dependencyStart"],#st [id$="-dependencyEnd"]{fill:#303030;stroke:#303030;stroke-width:1;}"##
+        ));
     }
 
     #[test]

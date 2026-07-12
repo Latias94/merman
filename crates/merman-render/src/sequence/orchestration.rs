@@ -1,16 +1,17 @@
+use super::SEQUENCE_FRAME_SIDE_PAD_PX;
 use super::activation::SequenceActivationState;
 use super::actors::{
     SequenceActorLifecycle, SequenceActorLifecycleContext, SequenceFooterActorContext,
     SequenceTopActorContext, append_sequence_footer_actors, append_sequence_top_actors,
     sequence_actor_is_type_width_limited,
 };
-use super::block_steps::{BlockStepPlanContext, plan_sequence_directive_steps};
+use super::block_steps::{
+    BlockStepPlanContext, SequenceBlockPlan, is_block_end, is_block_section, is_block_start,
+    plan_sequence_blocks,
+};
 use super::messages::{SequenceMessageLayoutContext, layout_sequence_message};
 use super::notes::{SequenceNoteLayoutContext, layout_sequence_note};
 use super::rect::SequenceRectOpen;
-use super::{
-    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX,
-};
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle};
@@ -26,19 +27,16 @@ pub(super) struct SequenceLayoutGraphContext<'a> {
     pub(super) actor_base_heights: &'a [f64],
     pub(super) actor_top_offset_y: f64,
     pub(super) max_actor_layout_height: f64,
-    pub(super) actor_width_min: f64,
     pub(super) sequence_default_width: f64,
     pub(super) actor_height: f64,
-    pub(super) message_margin: f64,
+    pub(super) actor_margin: f64,
     pub(super) box_margin: f64,
+    pub(super) note_margin: f64,
     pub(super) box_text_margin: f64,
-    pub(super) bottom_margin_adj: f64,
     pub(super) label_box_height: f64,
-    pub(super) message_step: f64,
-    pub(super) message_text_line_height: f64,
-    pub(super) msg_label_offset: f64,
-    pub(super) message_font_size: f64,
-    pub(super) message_width_scale: f64,
+    pub(super) label_box_width: f64,
+    pub(super) right_angles: bool,
+    pub(super) is_neo: bool,
     pub(super) wrap_padding: f64,
     pub(super) mirror_actors: bool,
     pub(super) activation_width: f64,
@@ -57,8 +55,9 @@ pub(super) struct SequenceLayoutGraph {
 
 struct SequenceLayoutLoopState<'a> {
     cursor_y: f64,
+    block_stopy_stack: Vec<Option<f64>>,
     rect_stack: Vec<SequenceRectOpen>,
-    activation_state: SequenceActivationState<'a>,
+    activation_state: SequenceActivationState,
     actor_lifecycle: SequenceActorLifecycle<'a>,
 }
 
@@ -74,12 +73,49 @@ impl<'a> SequenceLayoutLoopState<'a> {
         });
 
         Self {
-            cursor_y: ctx.actor_top_offset_y + ctx.max_actor_layout_height + ctx.message_step,
+            cursor_y: ctx.actor_top_offset_y + ctx.max_actor_layout_height,
+            block_stopy_stack: Vec::new(),
             rect_stack: Vec::new(),
             activation_state,
             actor_lifecycle,
         }
     }
+
+    fn open_block(&mut self) {
+        self.block_stopy_stack.push(None);
+    }
+
+    fn include_inserted_bottom(&mut self, inserted_bottom_y: f64, box_margin: f64) {
+        include_block_stopy(&mut self.block_stopy_stack, inserted_bottom_y, box_margin);
+    }
+
+    fn close_block(&mut self, box_margin: f64) {
+        self.cursor_y = close_block_cursor(&mut self.block_stopy_stack, self.cursor_y, box_margin);
+    }
+}
+
+fn include_block_stopy(
+    block_stopy_stack: &mut [Option<f64>],
+    inserted_bottom_y: f64,
+    box_margin: f64,
+) {
+    let depth = block_stopy_stack.len();
+    for (index, stopy) in block_stopy_stack.iter_mut().enumerate() {
+        let nested_margin = (depth - index) as f64 * box_margin;
+        let candidate = inserted_bottom_y + nested_margin;
+        *stopy = Some(stopy.map_or(candidate, |current| current.max(candidate)));
+    }
+}
+
+fn close_block_cursor(
+    block_stopy_stack: &mut Vec<Option<f64>>,
+    cursor_y: f64,
+    box_margin: f64,
+) -> f64 {
+    block_stopy_stack
+        .pop()
+        .flatten()
+        .unwrap_or(cursor_y + box_margin)
 }
 
 fn handle_sequence_directive<'a>(
@@ -95,20 +131,35 @@ fn handle_sequence_directive<'a>(
         return true;
     }
 
-    if let Some(step) = directive_steps.get(msg.id.as_str()).copied() {
-        state.cursor_y += step;
-        return true;
+    match msg.message_type {
+        message_type if is_block_start(message_type) => {
+            state.cursor_y += directive_steps
+                .get(msg.id.as_str())
+                .copied()
+                .unwrap_or_default();
+            state.open_block();
+            true
+        }
+        message_type if is_block_end(message_type) => {
+            state.close_block(ctx.box_margin);
+            true
+        }
+        message_type if is_block_section(message_type) => {
+            state.cursor_y += directive_steps
+                .get(msg.id.as_str())
+                .copied()
+                .unwrap_or_default();
+            true
+        }
+        _ => false,
     }
-
-    false
 }
 
 fn handle_sequence_rect(
     msg: &SequenceMessage,
     state: &mut SequenceLayoutLoopState<'_>,
-    note_top_offset: f64,
+    box_margin: f64,
     rect_step_start: f64,
-    rect_step_end: f64,
     actor_centers_x: &[f64],
     nodes: &mut Vec<LayoutNode>,
 ) -> bool {
@@ -116,12 +167,14 @@ fn handle_sequence_rect(
         22 => {
             state.rect_stack.push(SequenceRectOpen::new(
                 msg.id.clone(),
-                state.cursor_y - note_top_offset,
+                state.cursor_y + box_margin,
             ));
             state.cursor_y += rect_step_start;
+            state.open_block();
             true
         }
         23 => {
+            state.close_block(box_margin);
             if let Some(open) = state.rect_stack.pop() {
                 let closed = open.close(actor_centers_x);
                 nodes.push(closed.node);
@@ -134,7 +187,6 @@ fn handle_sequence_rect(
                     );
                 }
             }
-            state.cursor_y += rect_step_end;
             true
         }
         _ => false,
@@ -146,15 +198,10 @@ fn handle_sequence_note(
     state: &mut SequenceLayoutLoopState<'_>,
     ctx: &SequenceLayoutGraphContext<'_>,
     nodes: &mut Vec<LayoutNode>,
-    note_default_width: f64,
-    note_top_offset: f64,
 ) -> bool {
     if msg.message_type != 2 {
         return false;
     }
-
-    let note_gap = SEQUENCE_FRAME_GEOM_PAD_PX;
-    let note_text_pad_total = 2.0 * note_gap;
 
     let Some(note) = layout_sequence_note(
         msg,
@@ -162,10 +209,11 @@ fn handle_sequence_note(
             actor_index: ctx.actor_index,
             actor_centers_x: ctx.actor_centers_x,
             actor_widths: ctx.actor_widths,
-            note_default_width,
-            note_text_pad_total,
-            note_top_offset,
-            note_gap,
+            actor_margin: ctx.actor_margin,
+            note_default_width: ctx.sequence_default_width,
+            note_margin: ctx.note_margin,
+            wrap_padding: ctx.wrap_padding,
+            box_margin: ctx.box_margin,
             cursor_y: state.cursor_y,
             measurer: ctx.measurer,
             note_text_style: ctx.note_text_style,
@@ -182,6 +230,7 @@ fn handle_sequence_note(
         note.rect_max_x,
         note.rect_max_y,
     );
+    state.include_inserted_bottom(note.rect_max_y, ctx.box_margin);
 
     nodes.push(note.node);
     state.cursor_y += note.cursor_step;
@@ -204,14 +253,12 @@ fn handle_sequence_message(
             actor_widths: ctx.actor_widths,
             activation_state: &state.activation_state,
             msg_idx,
-            actor_width_min: ctx.actor_width_min,
+            actor_width_min: ctx.sequence_default_width,
             box_margin: ctx.box_margin,
             wrap_padding: ctx.wrap_padding,
-            message_text_line_height: ctx.message_text_line_height,
-            message_step: ctx.message_step,
-            msg_label_offset: ctx.msg_label_offset,
-            message_font_size: ctx.message_font_size,
-            message_width_scale: ctx.message_width_scale,
+            is_neo: ctx.is_neo,
+            right_angles: ctx.right_angles,
+            message_font_size: ctx.msg_text_style.font_size,
             cursor_y: state.cursor_y,
             measurer: ctx.measurer,
             msg_text_style: ctx.msg_text_style,
@@ -234,26 +281,28 @@ fn handle_sequence_message(
     ) else {
         return false;
     };
+    let super::messages::SequenceMessageLayout {
+        edge,
+        from_x,
+        to_x,
+        line_y,
+        inserted_bottom_y,
+        cursor_step,
+    } = message;
 
     include_rect_stack_bounds(
         &mut state.rect_stack,
-        message.from_x.min(message.to_x) - SEQUENCE_FRAME_SIDE_PAD_PX,
-        message.from_x.max(message.to_x) + SEQUENCE_FRAME_SIDE_PAD_PX,
-        message.line_y,
+        from_x.min(to_x) - SEQUENCE_FRAME_SIDE_PAD_PX,
+        from_x.max(to_x) + SEQUENCE_FRAME_SIDE_PAD_PX,
+        inserted_bottom_y,
     );
+    state.include_inserted_bottom(inserted_bottom_y, ctx.box_margin);
 
-    let from = message.from;
-    let to = message.to;
-    let line_y = message.line_y;
-    state.cursor_y += message.cursor_step;
-    if message.is_self {
-        // Mermaid adds extra space for self-messages so the loop curve can fit cleanly.
-        state.cursor_y += SEQUENCE_SELF_MESSAGE_FRAME_EXTRA_Y_PX / 2.0;
-    }
+    state.cursor_y += cursor_step;
     state.cursor_y += state
         .actor_lifecycle
-        .apply_message_y_adjustment(msg_idx, from, to, line_y);
-    edges.push(message.edge);
+        .apply_message_y_adjustment(msg_idx, &edge.from, &edge.to, line_y);
+    edges.push(edge);
     true
 }
 
@@ -276,29 +325,29 @@ pub(super) fn build_sequence_layout_graph(
         },
     );
 
-    let directive_steps = plan_sequence_directive_steps(BlockStepPlanContext {
+    let SequenceBlockPlan { directive_steps } = plan_sequence_blocks(BlockStepPlanContext {
         model: ctx.model,
         actor_index: ctx.actor_index,
         actor_centers_x: ctx.actor_centers_x,
         actor_widths: ctx.actor_widths,
-        message_margin: ctx.message_margin,
+        actor_margin: ctx.actor_margin,
+        activation_width: ctx.activation_width,
         box_margin: ctx.box_margin,
         box_text_margin: ctx.box_text_margin,
-        bottom_margin_adj: ctx.bottom_margin_adj,
         label_box_height: ctx.label_box_height,
-        message_font_size: ctx.message_font_size,
+        label_box_width: ctx.label_box_width,
+        sequence_default_width: ctx.sequence_default_width,
+        wrap_padding: ctx.wrap_padding,
+        note_margin: ctx.note_margin,
+        is_neo: ctx.is_neo,
         measurer: ctx.measurer,
         msg_text_style: ctx.msg_text_style,
+        note_text_style: ctx.note_text_style,
         math_config: ctx.math_config,
         math_renderer: ctx.math_renderer,
-        message_width_scale: ctx.message_width_scale,
     });
 
-    let note_default_width = ctx.sequence_default_width;
-    let rect_step_start = 2.0 * SEQUENCE_FRAME_GEOM_PAD_PX;
-    let rect_step_end = SEQUENCE_FRAME_GEOM_PAD_PX;
-    let note_gap = SEQUENCE_FRAME_GEOM_PAD_PX;
-    let note_top_offset = ctx.message_step - note_gap;
+    let rect_step_start = 2.0 * ctx.box_margin;
     let mut state = SequenceLayoutLoopState::new(&ctx);
     let actor_is_type_width_limited = |actor_id: &str| -> bool {
         sequence_actor_is_type_width_limited(&ctx.model.actors, actor_id)
@@ -312,23 +361,15 @@ pub(super) fn build_sequence_layout_graph(
         if handle_sequence_rect(
             msg,
             &mut state,
-            note_top_offset,
+            ctx.box_margin,
             rect_step_start,
-            rect_step_end,
             ctx.actor_centers_x,
             &mut nodes,
         ) {
             continue;
         }
 
-        if handle_sequence_note(
-            msg,
-            &mut state,
-            &ctx,
-            &mut nodes,
-            note_default_width,
-            note_top_offset,
-        ) {
+        if handle_sequence_note(msg, &mut state, &ctx, &mut nodes) {
             continue;
         }
 
@@ -345,7 +386,7 @@ pub(super) fn build_sequence_layout_graph(
     }
 
     let bottom_margin = 2.0 * ctx.box_margin;
-    let bottom_box_top_y = (state.cursor_y - ctx.message_step) + bottom_margin;
+    let bottom_box_top_y = state.cursor_y + bottom_margin;
 
     state
         .actor_lifecycle
@@ -384,5 +425,39 @@ fn include_rect_stack_bounds(
 ) {
     for open in rect_stack.iter_mut() {
         open.include_min_max(min_x, max_x, max_y);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{close_block_cursor, include_block_stopy};
+
+    #[test]
+    fn block_stopy_uses_configured_margin_and_self_message_bounds() {
+        let mut ordinary = vec![None];
+        include_block_stopy(&mut ordinary, 100.0, 7.0);
+        assert_eq!(close_block_cursor(&mut ordinary, 100.0, 7.0), 107.0);
+
+        let mut self_message = vec![None];
+        include_block_stopy(&mut self_message, 160.0, 7.0);
+        assert_eq!(close_block_cursor(&mut self_message, 130.0, 7.0), 167.0);
+    }
+
+    #[test]
+    fn nested_blocks_keep_numeric_depth_margins() {
+        let mut stack = vec![None, None];
+        include_block_stopy(&mut stack, 160.0, 7.0);
+
+        assert_eq!(close_block_cursor(&mut stack, 130.0, 7.0), 167.0);
+        assert_eq!(close_block_cursor(&mut stack, 167.0, 7.0), 174.0);
+    }
+
+    #[test]
+    fn later_content_consumes_an_earlier_self_message_overhang() {
+        let mut stack = vec![None];
+        include_block_stopy(&mut stack, 160.0, 10.0);
+        include_block_stopy(&mut stack, 220.0, 10.0);
+
+        assert_eq!(close_block_cursor(&mut stack, 220.0, 10.0), 230.0);
     }
 }

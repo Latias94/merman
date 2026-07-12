@@ -99,6 +99,7 @@ fn print_help(topic: Option<&str>) {
     println!("  update-snapshots");
     println!("  update-layout-snapshots   (alias: gen-layout-goldens)");
     println!("  gen-upstream-svgs");
+    println!("  adopt-upstream-svg-provenance");
     println!("  check-upstream-svgs");
     println!("  compare-all-svgs");
     println!("  compare-svg-xml");
@@ -147,6 +148,11 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-ishikawa-svgs");
     println!("  compare-eventmodeling-svgs");
     println!("  compare-venn-svgs");
+    println!("  compare-cynefin-svgs");
+    println!("  compare-railroad-svgs");
+    println!("  compare-railroad-ebnf-svgs");
+    println!("  compare-railroad-abnf-svgs");
+    println!("  compare-railroad-peg-svgs");
     println!();
     println!("Tips:");
     println!("  - `cargo run -p xtask -- verify`");
@@ -157,6 +163,9 @@ fn print_help(topic: Option<&str>) {
     );
     println!("  - `cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst <path>`");
     println!("  - `cargo run -p xtask -- gen-upstream-svgs --diagram <name>`");
+    println!(
+        "  - `cargo run -p xtask -- adopt-upstream-svg-provenance --diagram <name|all> [--check-only | --allow-downgrade]`"
+    );
     println!();
     println!("Topics:");
     println!("  xtask help <command>");
@@ -211,6 +220,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-svg-overrides" => cmd::gen_svg_overrides(args.collect()),
         "measure-text" => cmd::measure_text(args.collect()),
         "gen-upstream-svgs" => cmd::gen_upstream_svgs(args.collect()),
+        "adopt-upstream-svg-provenance" => cmd::adopt_upstream_svg_provenance(args.collect()),
         "check-upstream-svgs" => cmd::check_upstream_svgs(args.collect()),
         "compare-er-svgs" => cmd::compare_er_svgs(args.collect()),
         "compare-flowchart-svgs" => cmd::compare_flowchart_svgs(args.collect()),
@@ -263,6 +273,11 @@ fn main() -> Result<(), XtaskError> {
         "compare-ishikawa-svgs" => cmd::compare_ishikawa_svgs(args.collect()),
         "compare-eventmodeling-svgs" => cmd::compare_eventmodeling_svgs(args.collect()),
         "compare-venn-svgs" => cmd::compare_venn_svgs(args.collect()),
+        "compare-cynefin-svgs" => cmd::compare_cynefin_svgs(args.collect()),
+        "compare-railroad-svgs" => cmd::compare_railroad_svgs(args.collect()),
+        "compare-railroad-ebnf-svgs" => cmd::compare_railroad_ebnf_svgs(args.collect()),
+        "compare-railroad-abnf-svgs" => cmd::compare_railroad_abnf_svgs(args.collect()),
+        "compare-railroad-peg-svgs" => cmd::compare_railroad_peg_svgs(args.collect()),
         "compare-all-svgs" => cmd::compare_all_svgs(args.collect()),
         "compare-svg-xml" => cmd::compare_svg_xml(args.collect()),
         "canon-svg-xml" => cmd::canon_svg_xml(args.collect()),

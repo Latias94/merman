@@ -1,6 +1,6 @@
-# TreeView Upstream Test Coverage (Mermaid@11.15.0)
+# TreeView Upstream Test Coverage (Mermaid@11.16.0)
 
-Scope: locked Mermaid commit `41646dfd43ac83f001b03c70605feb036afae46d`.
+Scope: Mermaid tag `@11.16.0`.
 
 Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
@@ -29,6 +29,23 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
     `fixtures/treeView/upstream_parser_treeview_title_accessibility_spec.mmd`
 - Cypress custom config example:
   - `crates/merman-render/tests/tree_view_svg_test.rs`
+- Mermaid 11.16 TreeView parser additions:
+  - bare labels, dotfiles, file names with spaces, single/double quoted labels, and empty quoted
+    labels are covered by `parses_mermaid_11_16_node_annotations_and_bare_names`
+  - trailing slash directory detection strips the slash and emits `nodeType: "directory"`
+  - `:::class`, `icon(...)`, `icon(none)`, empty `icon()`, and `## description` annotations are
+    parsed into the typed render model and semantic JSON
+  - box-drawing input (`├──`, `└──`, `│`, plus heavy variants through the shared scanner) is parsed
+    as indentation-equivalent tree input; mixed indentation in box-drawing mode is rejected
+  - editor facts preserve original-source spans for box-drawing node names and annotation payloads
+- Mermaid 11.16 TreeView render/config additions:
+  - `showIcons`, `defaultIconPack`, `filenameIcons`, and `extensionIcons` are read by the TreeView
+    layout config and resolved with Mermaid's explicit-icon-first priority
+  - SVG output includes `treeView-node-dir`, custom class propagation, `treeView-node-icon`,
+    `treeView-node-description`, and `treeView-highlight-bg` DOM/CSS coverage
+  - theme roles `iconColor`, `descriptionColor`, `highlightBg`, and `highlightStroke` are covered by
+    `PresentationTheme` tests; full config-pipeline admission for those newer theme fields remains
+    tracked separately from TreeView parser/model parity
 
 ## Fixture Coverage
 
@@ -101,3 +118,10 @@ Classification:
 
 - Exact Langium diagnostics and offsets.
 - Full strict DOM parity for the current Cypress image snapshot corpus.
+- Full browser/Iconify parity for third-party icon packs. Local SVG emits deterministic `<use>`
+  references and built-in `file`/`folder` icon bodies; external pack SVG body replacement remains a
+  bounded renderer residual unless fixture comparison exposes a source-backed requirement.
+- Golden refresh for the new 11.16 TreeView model fields and annotation/icon DOM. Refresh semantic,
+  layout, and upstream SVG baselines after U4 semantic/render code lands, not before. Semantic and
+  layout goldens are refreshed for the local 11.16 model; upstream SVG refresh was attempted but is
+  pending because the local Puppeteer Chrome cache is missing Chrome `131.0.6778.204`.

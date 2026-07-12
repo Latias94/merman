@@ -144,31 +144,9 @@ impl DetectorRegistry {
 }
 
 fn remove_frontmatter(text: &str) -> Cow<'_, str> {
-    let leading_len = text.len() - text.trim_start().len();
-    let trimmed = &text[leading_len..];
-    let Some(after_marker) = trimmed.strip_prefix("---") else {
-        return Cow::Borrowed(text);
-    };
-    let Some(open_line_end) = after_marker.find('\n') else {
-        return Cow::Borrowed(text);
-    };
-    if !after_marker[..open_line_end].trim().is_empty() {
-        return Cow::Borrowed(text);
-    }
-
-    let body_start = leading_len + 3 + open_line_end + 1;
-    let rest = &text[body_start..];
-    let mut offset = 0usize;
-
-    for line in rest.split_inclusive('\n') {
-        let without_newline = line.trim_end_matches(['\r', '\n']);
-        if without_newline.trim() == "---" {
-            return Cow::Borrowed(&rest[offset + line.len()..]);
-        }
-        offset += line.len();
-    }
-
-    Cow::Borrowed(text)
+    crate::preprocess::split_frontmatter_block(text)
+        .map(|block| Cow::Borrowed(block.stripped))
+        .unwrap_or(Cow::Borrowed(text))
 }
 
 fn remove_directives(text: &str) -> Cow<'_, str> {
@@ -259,6 +237,10 @@ pub(crate) fn detector_requirement(txt: &str, _config: &mut MermaidConfig) -> bo
 
 pub(crate) fn detector_sequence(txt: &str, _config: &mut MermaidConfig) -> bool {
     txt.trim_start().starts_with("sequenceDiagram")
+}
+
+pub(crate) fn detector_swimlane(txt: &str, _config: &mut MermaidConfig) -> bool {
+    starts_with_js_word_boundary(txt.trim_start(), "swimlane-beta")
 }
 
 pub(crate) fn detector_flowchart_elk(txt: &str, config: &mut MermaidConfig) -> bool {
@@ -361,6 +343,35 @@ pub(crate) fn detector_eventmodeling(txt: &str, _config: &mut MermaidConfig) -> 
     txt.trim_start().starts_with("eventmodeling")
 }
 
+pub(crate) fn detector_railroad(txt: &str, _config: &mut MermaidConfig) -> bool {
+    starts_with_case_insensitive_prefix(txt.trim_start(), "railroad-beta")
+}
+
+pub(crate) fn detector_railroad_ebnf(txt: &str, _config: &mut MermaidConfig) -> bool {
+    starts_with_case_insensitive_prefix(txt.trim_start(), "railroad-ebnf-beta")
+}
+
+pub(crate) fn detector_railroad_abnf(txt: &str, _config: &mut MermaidConfig) -> bool {
+    starts_with_case_insensitive_prefix(txt.trim_start(), "railroad-abnf-beta")
+}
+
+pub(crate) fn detector_railroad_peg(txt: &str, _config: &mut MermaidConfig) -> bool {
+    starts_with_case_insensitive_prefix(txt.trim_start(), "railroad-peg-beta")
+}
+
+pub(crate) fn detector_wardley(txt: &str, _config: &mut MermaidConfig) -> bool {
+    starts_with_case_insensitive_prefix(txt.trim_start(), "wardley-beta")
+}
+
+pub(crate) fn detector_cynefin(txt: &str, _config: &mut MermaidConfig) -> bool {
+    let Some(rest) = txt.trim_start().strip_prefix("cynefin-beta") else {
+        return false;
+    };
+    rest.chars()
+        .next()
+        .is_none_or(|c| c.is_whitespace() || c == ':')
+}
+
 fn starts_with_header_case_insensitive(text: &str, header: &str) -> bool {
     let Some(actual) = text.get(..header.len()) else {
         return false;
@@ -372,6 +383,19 @@ fn starts_with_header_case_insensitive(text: &str, header: &str) -> bool {
         .chars()
         .next()
         .is_none_or(|c| c.is_whitespace() || c == ';')
+}
+
+fn starts_with_case_insensitive_prefix(text: &str, prefix: &str) -> bool {
+    text.get(..prefix.len())
+        .is_some_and(|actual| actual.eq_ignore_ascii_case(prefix))
+}
+
+fn starts_with_js_word_boundary(text: &str, header: &str) -> bool {
+    text.strip_prefix(header).is_some_and(|rest| {
+        rest.chars()
+            .next()
+            .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_')
+    })
 }
 
 pub(crate) fn detector_radar(txt: &str, _config: &mut MermaidConfig) -> bool {

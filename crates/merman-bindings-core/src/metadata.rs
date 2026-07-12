@@ -427,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn diagram_family_capabilities_expose_parser_and_render_surface() {
+    fn diagram_family_capabilities_expose_detector_parser_and_render_surface() {
         let capabilities = diagram_family_capabilities();
         assert_eq!(
             capabilities.len(),
@@ -441,6 +441,40 @@ mod tests {
         assert_eq!(flowchart.metadata_id, Some("flowchart"));
         assert!(flowchart.has_semantic_parser);
         assert!(flowchart.has_render_parser);
+
+        let swimlane = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "swimlane")
+            .expect("parser-only 11.16 swimlane capability should be present");
+        assert_eq!(swimlane.metadata_id, None);
+        assert!(swimlane.has_semantic_parser);
+        assert!(!swimlane.has_render_parser);
+
+        let cynefin = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "cynefin")
+            .expect("11.16 cynefin capability should be present");
+        assert_eq!(cynefin.metadata_id, Some("cynefin"));
+        assert!(cynefin.has_semantic_parser);
+        assert!(cynefin.has_render_parser);
+
+        let railroad = capabilities
+            .iter()
+            .find(|capability| capability.diagram_type == "railroad")
+            .expect("11.16 railroad capability should be present");
+        assert_eq!(railroad.metadata_id, Some("railroad"));
+        assert!(railroad.has_semantic_parser);
+        assert!(railroad.has_render_parser);
+
+        for diagram_type in ["railroadEbnf", "railroadAbnf", "railroadPeg"] {
+            let railroad_variant = capabilities
+                .iter()
+                .find(|capability| capability.diagram_type == diagram_type)
+                .unwrap_or_else(|| panic!("11.16 {diagram_type} capability should be present"));
+            assert_eq!(railroad_variant.metadata_id, Some(diagram_type));
+            assert!(railroad_variant.has_semantic_parser);
+            assert!(railroad_variant.has_render_parser);
+        }
 
         let has_mindmap = capabilities
             .iter()

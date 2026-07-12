@@ -111,6 +111,163 @@ __proto__ --> [*]"#,
 }
 
 #[test]
+fn parse_diagram_state_v2_tracks_explicit_composite_direction() {
+    let res = block_on(Engine::new().parse_diagram(
+        r#"stateDiagram-v2
+state Implicit {
+  A
+}
+state Explicit {
+  direction LR
+  B
+}
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    let nodes = res.model["nodes"].as_array().expect("state render nodes");
+    let node = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["id"] == id)
+            .unwrap_or_else(|| panic!("missing state node {id}"))
+    };
+
+    assert_eq!(node("Implicit")["dir"], json!("TB"));
+    assert_eq!(node("Implicit")["explicitDir"], json!(false));
+    assert_eq!(node("Explicit")["dir"], json!("LR"));
+    assert_eq!(node("Explicit")["explicitDir"], json!(true));
+    assert!(node("A").get("explicitDir").is_none());
+    assert!(node("B").get("explicitDir").is_none());
+}
+
+#[test]
+fn parse_state_render_model_preserves_alias_trailing_description() {
+    let input = r#"stateDiagram-v2
+state "Display label" as S1: Trailing description
+"#;
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::State(model) = parsed.model else {
+        panic!("expected typed state render model");
+    };
+    let node = model
+        .nodes
+        .iter()
+        .find(|node| node.id == "S1")
+        .expect("state render node S1");
+
+    assert_eq!(node.label, Some(json!("Display label")));
+    assert_eq!(
+        node.description.as_deref(),
+        Some(["Trailing description".to_string()].as_slice())
+    );
+    assert_eq!(node.shape, "rectWithTitle");
+
+    let parsed = block_on(Engine::new().parse_diagram(input, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+    let json_node = parsed.model["nodes"]
+        .as_array()
+        .expect("JSON state render nodes")
+        .iter()
+        .find(|node| node["id"] == "S1")
+        .expect("JSON state render node S1");
+
+    assert_eq!(json_node.get("label"), node.label.as_ref());
+    assert_eq!(
+        json_node["description"],
+        json!(node.description.as_ref().expect("typed descriptions"))
+    );
+    assert_eq!(json_node["shape"].as_str(), Some(node.shape.as_str()));
+}
+
+#[test]
+fn parse_state_render_model_tracks_explicit_composite_direction() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            r#"stateDiagram-v2
+state Implicit {
+  A
+}
+state Explicit {
+  direction LR
+  B
+}
+"#,
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::State(model) = parsed.model else {
+        panic!("expected typed state render model");
+    };
+    let node = |id: &str| {
+        model
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing state render node {id}"))
+    };
+
+    assert_eq!(node("Implicit").dir.as_deref(), Some("TB"));
+    assert_eq!(node("Implicit").explicit_dir, Some(false));
+    assert_eq!(node("Explicit").dir.as_deref(), Some("LR"));
+    assert_eq!(node("Explicit").explicit_dir, Some(true));
+    assert_eq!(node("A").explicit_dir, None);
+    assert_eq!(node("B").explicit_dir, None);
+}
+
+#[test]
+fn parse_diagram_state_rejects_same_line_multi_word_composite_state_name() {
+    let engine = Engine::new();
+    let text = r#"stateDiagram-v2
+state Invalid Name {
+  Idle
+}
+"#;
+    let Error::DiagramParse { diagnostic, .. } =
+        block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err()
+    else {
+        panic!("expected state parse error");
+    };
+    let offset = text.find("Name").unwrap();
+
+    assert!(
+        diagnostic
+            .message()
+            .contains("State name must be a single word")
+    );
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(offset, offset + "Name".len()))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+}
+
+#[test]
+fn parse_diagram_state_keeps_newline_composite_block_compatibility() {
+    let engine = Engine::new();
+    let res = block_on(engine.parse_diagram(
+        r#"stateDiagram-v2
+state Valid
+{
+  Idle
+}
+"#,
+        ParseOptions::default(),
+    ))
+    .unwrap()
+    .unwrap();
+
+    assert_eq!(res.model["states"]["Valid"]["doc"][0]["id"], json!("Idle"));
+}
+
+#[test]
 fn parse_diagram_state_v2_classdef_class_and_shorthand() {
     let engine = Engine::new();
 

@@ -493,14 +493,12 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     if !is_empty {
         out = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
             out,
-            diagram_id,
             model,
             root_open: root_open.expect("architecture root placeholders missing"),
             content_bounds,
             padding_px,
             icon_size_px,
             use_max_width,
-            apply_root_overrides: options.apply_root_overrides,
             trust_content_bounds: options.icon_registry.is_none(),
         });
     }

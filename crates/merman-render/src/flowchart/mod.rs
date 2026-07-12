@@ -22,7 +22,7 @@ pub(crate) use label::{
     flowchart_whole_label_font_style_requests_italic,
 };
 pub(crate) use node::flowchart_node_render_dimensions;
-pub(crate) use self_loop::{FlowchartSelfLoopEdgeOptions, flowchart_self_loop_helper_edges};
+pub(crate) use self_loop::flowchart_self_loop_helper_edges;
 pub(crate) use style::{
     flowchart_effective_font_style_for_classes, flowchart_effective_font_style_for_node_classes,
     flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,

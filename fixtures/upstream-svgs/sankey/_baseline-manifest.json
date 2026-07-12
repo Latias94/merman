@@ -1,0 +1,194 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "stress_sankey_batch1_csv_empty_lines_and_spaces_006": {
+      "input_sha256": "c3e6aed72082dfb20882168395b47ef1ac343dd52fc962ba420616de4a097c6d",
+      "svg_sha256": "3ed80393d0babaf316010f7331fb01581dd623783515ffaa94ddc729028437bb",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_csv_quoted_commas_quotes_unicode_005": {
+      "input_sha256": "d4539523edf0fa5f40715dfaaedae080583fcef5043e00518883936937abd03d",
+      "svg_sha256": "a6b81b686c20023c5231950aa74aaa9b41bf089b6d2838dcf645872a5aba1a8a",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_dense_shared_nodes_007": {
+      "input_sha256": "89746b5ae5558bf7f2c7a37b036ce6d1a7290e4df32212277a73a3a1139e6d0d",
+      "svg_sha256": "776f8012f9fbad3d4b3d2f3e63d9a7b045c862eb0cd224d11fa7d9e60fab359a",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_duplicate_links_accumulation_010": {
+      "input_sha256": "050159bbf1d321aabb4f831711bfab7efce5f4ea4268d997a85376cd2fa16413",
+      "svg_sha256": "2b16e8855d1ad9688b82e1c819bd0f6d2f2b68c2398fb79308f9ab0c8973b49e",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_linkcolor_gradient_values_prefix_suffix_001": {
+      "input_sha256": "f911f669d94a0c8cc7d46ce803a04d0867e2b67983ddf6a57cf9ef4de9b3b0f2",
+      "svg_sha256": "867d8a0e6cb1df3adcc0422edaaa811d1b95272fdee50e940f76587917feaae0",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_linkcolor_hex_center_align_003": {
+      "input_sha256": "8278d4501d6b8dd7e9d829a4b154ce61649e1d4be55f846984542adad0d72464",
+      "svg_sha256": "f8338d4f3a59c0c76bf3d8e99b4526f0ae21fe36160a193d60a5b9e0216165fb",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_linkcolor_target_values_false_right_align_002": {
+      "input_sha256": "640b8e3eb095c1f4d220b407b865313e0ac2b596ba7ec95d6d76a2cc58bd922f",
+      "svg_sha256": "49bd97f62e193221198f4252b210a13d76888417b56abf037fba04aaf5ec270a",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_long_labels_measurement_008": {
+      "input_sha256": "990c5d0de6d1a8d30926f7ffae2c0847d8da52b401d73ebc4a9725c444dcd884",
+      "svg_sha256": "0d4cb7177c81a923944cfb641083ce46f815d71473f61c8ba081c6b202af54a8",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_node_alignment_matrix_012": {
+      "input_sha256": "3a241c08ee9d476e6bcfed6068427545f71b2fb2899121e145956f4d3478b771",
+      "svg_sha256": "9484c7608194396bc4214c75d3636054bbb0506420820a52b4c6ca0a71fa4387",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_small_values_and_precision_009": {
+      "input_sha256": "875a209a88ab0816bfdb5e87feb764e10036c4bb8847ff62cda4e7d83e7eefb6",
+      "svg_sha256": "64976742c6611f163a4adeb67486d2f1b3731c616de80b607fc95e7649621e9d",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_usemaxwidth_false_fixed_size_004": {
+      "input_sha256": "19be7ea43d152f4fc65ab81b1acff2761672da24a662593203547f89fd25bc18",
+      "svg_sha256": "707378ac0668c0e898c6544e1590f0c2e080d965d62f197e0fd72733275163a6",
+      "renderer_profile": "mmdc-default"
+    },
+    "stress_sankey_batch1_values_hidden_and_custom_suffix_011": {
+      "input_sha256": "1b3f0a653975b5d371d4bd42e97e6e08ae25dce09928969b86956a30a9478b27",
+      "svg_sha256": "dd1f2c553e66c441e69aad74ba67de5be0a20fdfc15801f8fd13c6764d360099",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_example_001": {
+      "input_sha256": "8f91743da69d73531d406148ab82504ae64694c0a62d1218c790ebf088693af6",
+      "svg_sha256": "c45d5d4f2bd0550a509db33110707702eb06b08e87cab504fa398cc982b02af0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_links_must_be_gradient_005": {
+      "input_sha256": "eb8404e67097cfb426a915000b54d54b38e7d23d3393eb410492ee9f56840315",
+      "svg_sha256": "9f5efb8aafa423a30227a5643d4df33e0151658f2ef6b0e0851662fb081c5ae7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_links_should_be_the_same_color_as_source_node_003": {
+      "input_sha256": "17d94c245787670bc622f6c62fa7f1eade36dc327a75650e0b0629ad2cd775c3",
+      "svg_sha256": "5f77c2c26a92eedbf5a40515a1316709f79a5961df2052f1c36988d95029ae4d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_links_should_be_the_same_color_as_target_node_004": {
+      "input_sha256": "bd3ce397a8497d158f50ae5e77aed7a6d8308173524249a8832e2bd250803e7e",
+      "svg_sha256": "321e838fce190e36be2cb9b52fa743ed918700552bc10c085065efa0258fbe02",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_links_should_use_hex_color_002": {
+      "input_sha256": "32d5cfad7efd88ae683040981d55aa0bc2d048f777276e6aad28f7b34b26cd1f",
+      "svg_sha256": "a8221b653b121424441b2845163bef5f81ce810d0a255fcc17acb3201e4b67a0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_should_align_nodes_left_007": {
+      "input_sha256": "06f061875ce8b1c86a0fedd14708deef1187956433a1bddeaa6647ca4cde552a",
+      "svg_sha256": "21d4772afff3c68165c3877abad389fbaabe67800c7eb7448ddad72bb803a8fe",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_should_align_nodes_right_008": {
+      "input_sha256": "f82710bed4b86c7f4e293a4addcdfd6e8953ca24ef4b7162601e2d1c0970e128",
+      "svg_sha256": "f4b58484376b83289608d108a7565d1f8f5d938774b6e332d1091a5a7c067ab6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_should_center_nodes_009": {
+      "input_sha256": "e1d8f82baf647d69aabda28b07633f8cca7a8c1096a98f3b12daaa357aa0767b",
+      "svg_sha256": "713f537c0c5dfbcece4038868c229880b6583c12111f34cfee78a96a019b7f6b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_sankey_spec_should_justify_nodes_006": {
+      "input_sha256": "1930df0978d9b2bc4ebef9ca6348409d19cf95f4d36c3aca7d64876d45caf396",
+      "svg_sha256": "4c29019bd4094c33e179ce3b956d2d86567effcf7128a41b4a4361f088ddb850",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_sankey_basic_004": {
+      "input_sha256": "9c049429c8fe41b167a6425ed901596cede800f4a46a3f9eb53b0bdd3373265a",
+      "svg_sha256": "807a554b3580d63f4ac111ce7d7468f07c6ace7efa0f54dd13b41407405719cc",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_sankey_example_002": {
+      "input_sha256": "c6739c6a83029fbe481d653c74d1e302c8226bc89edcbebec88062125baa78d3",
+      "svg_sha256": "76951b942f15411ae44bb1a12400aaa3eecb518b63bf7334c0b9b03020d10cda",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_examples_sankey_energy_flow_001": {
+      "input_sha256": "cf7b4020847c79750bd2f9d8cb9630f5c7f605fd207366c93d389f70701eeb4f",
+      "svg_sha256": "1db31c9ddf81ecbafd2a669dab4f05fed775aaa25bcd18edb248c6adda6a622b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_sankey_energy_flow_002": {
+      "input_sha256": "1d2f06058df8a6eeceed1b1500f30d25b6d9afee8808830e3882364af1b963c8",
+      "svg_sha256": "23a6cb839dec4786f7a8be061ffb4f884c9ddb5f65795aa2d6244ae04cb2d022",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_sankey_fy20_21_performance_001": {
+      "input_sha256": "657961d6f93fc17cb7f3fc5b766d50e6a60adf5809a9776cc8e30814a333b750",
+      "svg_sha256": "bc6baeb6fea08f2277d5f6f43a58ce7131a76f834f70cf154914bc639f8597b4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_sankey_beta_docs_commas_spec": {
+      "input_sha256": "126cfbfd7b2b29fa79177e89995527e5871c6194c7254f4ea4b75e7c1951b582",
+      "svg_sha256": "42625e28a54842b9f7baa17d75ac6f505f02105f57626bc6bdfdc61d2a4d2b39",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_sankey_beta_energy_csv_spec": {
+      "input_sha256": "148e9b32c8ec591eec1f0e00a9d2d4ad926a8a9920c40cf233e56dec6fedcede",
+      "svg_sha256": "d165f3e4235a032695fc3ea041681962cbeac415f60caecaf1c6fab9cead3471",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_sankey_docs_commas_spec": {
+      "input_sha256": "3973ed40c63348a839b000e5d1b3f0c7bd525326c5a58aab07820a232cdb4ab6",
+      "svg_sha256": "740658019d37d513c90ba0ec108cb22d5f7e62bd9aaf38cbff598b68b1b04bf8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_sankey_docs_config_linkcolor_source_showvalues_false_spec": {
+      "input_sha256": "6f3e4e24afbbbc7b17ae4bd12c2871a59571e6c36e6efecdc42ec050d3ee2d21",
+      "svg_sha256": "cb70294bf307ebab06e994e2937a6bf81789adacdbe080e5d8995a4e318b6945",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_sankey_docs_double_quotes_spec": {
+      "input_sha256": "faf4da43a8fd6e155699f4a358146caab78240d9a53738a385f30e3bb1a24851",
+      "svg_sha256": "d3accfa2a8b5ab03732e11a5bf043d234162faa07d9899ab395c1188e00b34f2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_sankey_docs_empty_lines_spec": {
+      "input_sha256": "b515f37ac5673272fbbfd7dc4df799c288375569e759da88ab7fa52c98861d4c",
+      "svg_sha256": "689691d85c8be6f8ed4194148d879a5527c128c40de7758064af252fc6778216",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_sankey_header_energy_csv_spec": {
+      "input_sha256": "599aca2d96a40f7612c10b3a87a065922584ea11fa03715ce3c2880a9ba35b95",
+      "svg_sha256": "f72baa3e38abef9409c916e5a0c3f7e7f0f9f3923861426672f15eca1f915646",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {
+    "upstream_sankey_allows_proto_id_parser_only_spec": {
+      "input_sha256": "7d3277247589a91d7d2196b85716a8a7429d435e1a4ec5866858eb29933bef60",
+      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
+    },
+    "upstream_sankey_allows_proto_id_sankey_header_parser_only_spec": {
+      "input_sha256": "6da1b74ba5d4b6c54e2b8ea821417b748c49b80479c36f5d20bbebc3e0fab5fb",
+      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
+    }
+  }
+}

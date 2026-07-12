@@ -155,6 +155,10 @@ pub(crate) struct TreeViewTheme {
     pub(crate) label_font_size_css: String,
     pub(crate) label_color: String,
     pub(crate) line_color: String,
+    pub(crate) icon_color: String,
+    pub(crate) description_color: String,
+    pub(crate) highlight_bg: String,
+    pub(crate) highlight_stroke: String,
 }
 
 #[derive(Debug, Clone)]

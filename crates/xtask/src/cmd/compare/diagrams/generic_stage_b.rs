@@ -60,6 +60,61 @@ pub(crate) fn compare_venn_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     )
 }
 
+pub(crate) fn compare_cynefin_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    compare_stage_b_svgs(
+        args,
+        StageBCompareSpec {
+            diagram_dir: "cynefin",
+            report_title: "Cynefin",
+            local_renderer: "render_layouted_svg cynefin dispatch (Stage B)",
+        },
+    )
+}
+
+pub(crate) fn compare_railroad_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    compare_stage_b_svgs(
+        args,
+        StageBCompareSpec {
+            diagram_dir: "railroad",
+            report_title: "Railroad",
+            local_renderer: "render_layouted_svg railroad dispatch (Stage B)",
+        },
+    )
+}
+
+pub(crate) fn compare_railroad_ebnf_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    compare_stage_b_svgs(
+        args,
+        StageBCompareSpec {
+            diagram_dir: "railroadEbnf",
+            report_title: "Railroad EBNF",
+            local_renderer: "render_layouted_svg railroad EBNF dispatch (Stage B)",
+        },
+    )
+}
+
+pub(crate) fn compare_railroad_abnf_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    compare_stage_b_svgs(
+        args,
+        StageBCompareSpec {
+            diagram_dir: "railroadAbnf",
+            report_title: "Railroad ABNF",
+            local_renderer: "render_layouted_svg railroad ABNF dispatch (Stage B)",
+        },
+    )
+}
+
+pub(crate) fn compare_railroad_peg_svgs(args: Vec<String>) -> Result<(), XtaskError> {
+    compare_stage_b_svgs(
+        args,
+        StageBCompareSpec {
+            diagram_dir: "railroadPeg",
+            report_title: "Railroad PEG",
+            local_renderer: "render_layouted_svg railroad PEG dispatch (Stage B)",
+        },
+    )
+}
+
 fn compare_stage_b_svgs(args: Vec<String>, spec: StageBCompareSpec) -> Result<(), XtaskError> {
     let mut out_path: Option<PathBuf> = None;
     let mut filter: Option<String> = None;

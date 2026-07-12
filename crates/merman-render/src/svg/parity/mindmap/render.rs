@@ -306,7 +306,7 @@ fn push_mindmap_shadow_defs(
 }
 
 fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    // Mirrors Mermaid@11.15.0 `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
+    // Mirrors pinned Mermaid `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);

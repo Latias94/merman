@@ -1,0 +1,945 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "probe_architecture_icontext_anchor_b_mix_992": {
+      "input_sha256": "3bf1d1ac295dc82d6ce49e4db5c125697ca794791c8f82483c40eb2b73635962",
+      "svg_sha256": "8bd5607997ebbca56e4bebf6a069fc462a449c9f29a7811076e4498687397d60",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "probe_architecture_icontext_anchor_code_span_996": {
+      "input_sha256": "6592041981139078d801a398422d94ae6ae754473ea78f37c9f02066f3e9b924",
+      "svg_sha256": "787c1fea3d8dc79954690a2af7363dd0ae0bfb7cd8a955d629c41a260c7a07fb",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "probe_architecture_icontext_anchor_img_993": {
+      "input_sha256": "9a602743dafecdad6c178bee0e968331309c7692b2481ec40e4865575e91f6d3",
+      "svg_sha256": "a19360cbbaf84f715d7cfcccffb4fa7daf6e07c062438d8f9119182316e1d9dd",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "probe_architecture_icontext_anchor_nested_svg_text_998": {
+      "input_sha256": "9c589d55c04c75132262452da231beba448bde4f3bd5e79a05baa9d658b7b512",
+      "svg_sha256": "0352ebe54e370e5c8a82132da4d590b239b27f528d710937a887018b5406b960",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "probe_architecture_icontext_anchor_span_991": {
+      "input_sha256": "8696cd076521bcea3e2d1560e8d884100f0363164c12dbbd451fe84546cfe1fb",
+      "svg_sha256": "c2c6724ed5d9f5df90ef3162c751ccbc10a6d29733061f3a2c88b03c6138b2ef",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "probe_architecture_icontext_anchor_svg_994": {
+      "input_sha256": "9e8ad22c2b4b30e8b913b15bb73ec6967baf890da7abcbdf7f2634b8c5980e30",
+      "svg_sha256": "61836874c47add98e67293e607b7cb712811d539e92aa4b9e824fd80b73d53a3",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "probe_architecture_icontext_anchor_text_code_997": {
+      "input_sha256": "fdb0b68a0534be1834af9b74f26a4c56bede2f023f282044cf99c324f892ce70",
+      "svg_sha256": "b390dae301192614d2e19ec34f1bcdf5a0c038fb9c10d9432087e3b50aeec92d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "probe_architecture_icontext_span_anchor_code_995": {
+      "input_sha256": "6f9a77b9cd9c1ee88bc8f6ec97c5f0c8a28f19f97d3bf82720982d8ba079ec02",
+      "svg_sha256": "bccc018467e7b686af26030e9995041cdd495bf66b15c1cd5d7c3f0281191ee3",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_bidirectional_and_mixed_arrows_054": {
+      "input_sha256": "a304e26da676f9e0595c604147e34f1e9a76d6bbec70f376ba30b6b4a49556b0",
+      "svg_sha256": "1d0f6b8b688e8d70ee4740b1a275e954b03f2e737447c3924f3333e9f30810f2",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_deep_group_chain_050": {
+      "input_sha256": "35da38c557b88455b45f589ab49488a46b69982ab85e9d03d9115c2e19672d10",
+      "svg_sha256": "1f1912b208536ea5f3daaff8d4a1e0dd723126e963dd81bde053fc3a2a09e320",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_disconnected_components_056": {
+      "input_sha256": "b7356e64cf6fc2df12b535cf9ca891e519606e60cfdead4b72b0ee774d85d30e",
+      "svg_sha256": "0dce45eb6ff61dcd0a1b7224c3b9057171f9e11786e4beac5bae6b58ea45c50e",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_icontext_and_fallback_mix_053": {
+      "input_sha256": "d63737babd14d097436a9c6831eee6c6c83161d95d0d3f1aefa9804619c83164",
+      "svg_sha256": "baac7e5fe157fc16bb7138e06288c2fcdeb9a96d5aa0efdf99ba3f71738bed10",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_junction_fanout_group_edges_051": {
+      "input_sha256": "93222b43c3932439cf94b3cdfb8b43da2cea6d6ece652e374ee8b6dfdba6739d",
+      "svg_sha256": "bdadf1242e9a0e46aec23ca1c635403ed89dd8136764c9ad6c72310cf82add2f",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_long_group_titles_wrapping_055": {
+      "input_sha256": "405393ce844f1f1607a197a809de62c8d35abacd6e0115b0c0cc042980bc7901",
+      "svg_sha256": "dafb2c09bc6445d13bc2e6fe29c9ab35bd7c6105238e690642b0c05b48ca906f",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_many_services_one_group_059": {
+      "input_sha256": "656db094c45b198c33cfc1291a7f91df15f0c936e699e922598af7f614e536d6",
+      "svg_sha256": "af2debe575c816cb9cbae35c4e46e8c67a8e802b34473e79f43e492395b99ed5",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_nested_junctions_routing_060": {
+      "input_sha256": "8ed55400a765e73ead0e1c72c85eea9eedaa063ee6d5a41baf44e3e63518fced",
+      "svg_sha256": "6ed7a80200c3d2fa42b1a63230bbf5aebfef1051ae3b4692b99d60ace14f7d0b",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_parallel_edges_and_labels_057": {
+      "input_sha256": "855b615e05d77a3fdebf0eb28561ba977ce1bee3cec16876c3aa85ab51f9788b",
+      "svg_sha256": "3e43be474043533971840f389f7402669a5b8ad8498d770bd0d71f7d30f1e9ce",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_port_matrix_and_labels_049": {
+      "input_sha256": "89b5db4e2cafd1d8c5b07fafe925f9bbb6ddd795bb56621f67abca8d140ca0b2",
+      "svg_sha256": "53d19816c849ba6e5751e209d3a8ad1317ff68cccb6fd1a10d38bd8f0134eea3",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_port_pairs_corner_cases_058": {
+      "input_sha256": "ddc6383edd5597eb4d7c8af4f58c6444956e8a00761d99ea74be139b12517039",
+      "svg_sha256": "a697cd4955386948732f8105e581c4b037bd6c47eab7b557f39107c14b575a2c",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch3_unicode_titles_and_services_052": {
+      "input_sha256": "b1428b5b59888938394e34d7ff0e8aa2c7ea9366095924e5e95da4dc38e53289",
+      "svg_sha256": "22fc31f1bac5c6cc591e2e06487292bedae426eaea75df72ccf35573a11c4666",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_i18n_accessibility_071": {
+      "input_sha256": "f1098209a7af21fc75dbb11ae9788003dc8cb7bb393fd75d6a96bffce154ea7c",
+      "svg_sha256": "e3752a9819949e24fd9d03e23e58b15beff19ecde7ed88aa2457352a9d023093",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_icontext_xml_escapes_064": {
+      "input_sha256": "9f6c31a9daf1f31da50eab47587ba9a7feaa97994a4ecee8050c3c4eaac157e1",
+      "svg_sha256": "0ea2122647fa55e562c806a160da3abd7c7071d3b0854ba1b6fbbab3b2ed5388",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_init_fontsize_wrap_063": {
+      "input_sha256": "11e0373973c152e48662c005cd05d0b34bf6db3fb9fb6955bc6199c48cf47556",
+      "svg_sha256": "ec7c2355a081d2c7823fa4cce6da09fb27d8d1b64ef5968a1349067474e7a2de",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_init_large_icons_062": {
+      "input_sha256": "4dc1de470649f251ce82f056241c7ae66ee5b3d43a930cdfb247562d0754ee2d",
+      "svg_sha256": "9696aef978ca0b0e9e96b86df1c5ff22f5a9a939358b0886b5b9b389b15724b6",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_init_small_icons_061": {
+      "input_sha256": "1600c44dd35f9434c9c4b2291a7b62c5662c33d25a1fa1b79a2cac99e0976399",
+      "svg_sha256": "b0306a918b97fabf718cdb8e9807c85cd19637def94d6c024f4679b9a763c3a5",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_many_groups_sparse_services_069": {
+      "input_sha256": "4486b090c779a6237cea193e2d0be35571713f43357235568371204321d04df1",
+      "svg_sha256": "8f64e05e6d1bf50d31a241783e311b4aa65032b7522c646c4a36c5f1cc632cf1",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_mixed_arrows_xy_labels_068": {
+      "input_sha256": "14deea3b4e80551ed936ed0ed6e93cc1148ee66b91d5e075c7855a42468d1fe9",
+      "svg_sha256": "589d85aaa78bfa76dce4ecdf0ff7e83331278d593604bf419d63b2fb5c1d97e9",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_nested_groups_junction_fanout_067": {
+      "input_sha256": "14fa20c6570d1b40581662617767c67cf518f33fc7cd64ae102b9d83d9456b72",
+      "svg_sha256": "633d2dc6438003d4bf6a213039c73527ebc8bbbf7b78093fa3835cff1def3176",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_ports_matrix_072": {
+      "input_sha256": "d8a7edcfca014387d43b18122b098875c3ed8b87cd480427a3697a0cbf0aacc9",
+      "svg_sha256": "38c99bded46a18b312104319f72067a6188e1b7cf04f96394c9436d1b6807d3a",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_three_level_groups_crosslinks_066": {
+      "input_sha256": "8b131c7788329486bbe75eab22b617ea92784f3c6eb89025f97343c527b7e457",
+      "svg_sha256": "bbcba5638a399dffd647e0ec660ce6d3b8e50cc5161ec3a344653c757e209178",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_title_accdescr_multiline_065": {
+      "input_sha256": "0a5039d32f25cf62bde4da66ca617670a3d3435fbcc8158ab71793263acd57a7",
+      "svg_sha256": "f2ac7b8d1774939fa7464fd4c8c4a72f8710ac149a3965ec5355ca1c7b8a51b4",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch4_weird_ids_numbers_070": {
+      "input_sha256": "816aac0c5fc200332fe19bdd3fef71fd74dac4a8e41c735542b2e91ca5e6147d",
+      "svg_sha256": "3bfc407d89448a07b14278296c5bc7000cd6094df9fb246e825969b32873151c",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_bidirectional_arrows_group_modifier_080": {
+      "input_sha256": "f09e8f1a924ac0cb3c7b1a28fcfbf5e9cd09f0f428da57f0ec9d878bbdfc30d7",
+      "svg_sha256": "5e3f396aaf048d2dc55d38675329d088c47e5cfc44a7bb12d64602de76fb07ba",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_dense_group_services_073": {
+      "input_sha256": "f9f3824137bdc6aa79b46c61e4a9be6467f77b9bf3514028ea6b44a8bfc60690",
+      "svg_sha256": "232bcbbb46f4cca8528e63c511d938505849172655a967333d5c423d9dc7eb7b",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_disconnected_components_083": {
+      "input_sha256": "28a722014b9e6907a2d762dc63684f950ff763e84329e6f2b72195d58b8dd574",
+      "svg_sha256": "09fa032156241d6d1aec5bad956f4fd80d84fdd95ae6b29f1f0ff0aff3a1ddc6",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_group_edges_across_nested_groups_075": {
+      "input_sha256": "72397f0b60a8c10bfcd5713fb25e18794085dc408eac569816120a734bfebca9",
+      "svg_sha256": "882acb9d6326890591fa289736b6439e1e40e2d7fd07b1a582c79658b2b94d36",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_junction_fanout_grid_074": {
+      "input_sha256": "495eabcea6b63688bdb00ad6d6798787f14e23e2a4176a5db8fd91f50f603639",
+      "svg_sha256": "a0c413c2996c14255bf8ba9ba8338caeadfb731eb2089bbc2182f2525e471b44",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_long_titles_and_punct_076": {
+      "input_sha256": "5c62033a5bb8afe856358da051353623621105676cabde372adb97bf11d1da46",
+      "svg_sha256": "fa294ad16bdf36f48fbe59a9f4903923668a9be8d830d10b7e18952afd04896d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_multi_edges_same_ports_079": {
+      "input_sha256": "fc38f090537b2da7051599ac45f8b83ead2d6ee654dda5461273c504af3d5924",
+      "svg_sha256": "ffa423c94483220bb646ba2543ff9fe6f08e712b1cc6be6dd01d7e5bd9781679",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_nested_groups_many_levels_081": {
+      "input_sha256": "bcf4cec417fe879f6e253808b13a1af9d4684df1e3c19f3efda2755f0874fc38",
+      "svg_sha256": "a4dfb2ee44b10db7234a6fee9b49d14ee1e51f70b9fe932b98a150ca54a95cea",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_ports_matrix_stress_082": {
+      "input_sha256": "ac8173feebe4f06b3b17901bbcef5b9bf04d695d72ccc6e7fda1ec890364736a",
+      "svg_sha256": "43e98432e9e9b68465af6baba3fafa449aa25e571280d3aa6b44f0eb9c236ed9",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_services_outside_groups_crosslinks_078": {
+      "input_sha256": "bd99413f3bb1dd0898a745421b3f10d1dda424eb59b21fa19a38f4fcb5e105db",
+      "svg_sha256": "7adcc2698e37f52769a5ae244ad8bffea8bf420c7e88b5246dba2254e5faf295",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_title_accdescr_frontmatter_084": {
+      "input_sha256": "6da8d05bb95827277106b9d2085b712922fd0e9c3ea1042e8f9f3056a8b96aa7",
+      "svg_sha256": "6d6e6d15c6b1b6002a3d8ac2c39e69c201c6e3d88517358c432afdb20af62e25",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch5_weird_ids_numbers_077": {
+      "input_sha256": "4898d09e6cf4469545b574d20e0bcf9680d8f9edad9d4899f6fe05e1a92d8a8d",
+      "svg_sha256": "f0da6bfd7de5e2b9610db4c5af1a96f72fada29915588684699d79f740b7754d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_deep_group_chain_crosslinks_094": {
+      "input_sha256": "a203389cc110320df8ec7061541d5dc8a02f6e2837fe84240c935d70c4b366c3",
+      "svg_sha256": "2896d8166188e2d47291bab73ea6fee60e6bbe15a1ef004a87e7e66d96b1221c",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_disconnected_components_with_titles_089": {
+      "input_sha256": "90dc21047272ebf4e34a27229bed78c64c707f637bb9d5690be80a891739e499",
+      "svg_sha256": "10ce7984726f29f0ba050b1c4c7a8aa03df45b4a46212a7f72ecd80570f1e39b",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_edge_label_wrapping_punct_unicode_085": {
+      "input_sha256": "bda86c166019beb24d3207327b8a76a82e6c5ca73dcc287a47b768fe6cb49b0a",
+      "svg_sha256": "6423a503673c7d4e98e11b8b8b6c573b0b3552f396b90f4c0603e4296a26e2b2",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_edge_labels_with_xml_like_text_096": {
+      "input_sha256": "b886f3a27cf3b08d69941645d53f5d2be339150b1470d080e4ff1d05e34bf9e1",
+      "svg_sha256": "41945b380670820afa78bd2307d0767184e42401684fed689eda98fa2fe7ced7",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_iconify_icontext_html_entities_088": {
+      "input_sha256": "5cad6baabe0be3a82944e24956a86708be3d48d48c49ca4a16e1fa016ea807fa",
+      "svg_sha256": "7c30deef273a1b82805b523504fd4315220bec83cbefb27b5202bc4a1dc1f203",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_init_fontsize_icon_size_wrap_093": {
+      "input_sha256": "791d561fb7423a14bd6ee0d78a48afc6114ee5545bd614f7d96df68e12db6d3a",
+      "svg_sha256": "ddcefda767f428a68b483660d8577fae846b73feb416c7b1c99899e9f0687888",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_junctions_multi_split_with_group_edges_087": {
+      "input_sha256": "b0d450f0a6cb50ef1c50adff9b4c3d99af5ff28e52057cc448e89935ffc997dc",
+      "svg_sha256": "f502063509a97ecd76682c2da47919334569eebcce6eac1f88bba328bfc766b0",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_long_group_titles_wrapping_extreme_095": {
+      "input_sha256": "1ee82cdd1baf22c01f8911da01f727f81ed51afcf34dbf46d1fb0deb846b8f37",
+      "svg_sha256": "2204ac9b572f0a57353a80217f33cdff8b91576ce59393fed993117746b6fd41",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_mixed_arrow_styles_and_labels_092": {
+      "input_sha256": "5f278a3a1f20798e7815fdabd2391cbc0f4ce18de280b9566a1de41ba65d40ec",
+      "svg_sha256": "8f6575f634dd413d4be8d4997d2c733c2dab71381874d0ab47b0caf00dbefc8f",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_nested_groups_group_edges_and_ports_086": {
+      "input_sha256": "2222c6daa73a3c00b8ed9353667f5caaf8b31d3cc2deba6ce21adeeeed6e953e",
+      "svg_sha256": "ba27e00a686182fd37dc03e35a89e5d2fee0da7d29d474a4e60f864bd45121c8",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_ordering_declarations_and_in_keyword_091": {
+      "input_sha256": "ded2dd1f6eda1378aee1bfeb3cddec88a8acf25072a4df0dd281db0a211b6789",
+      "svg_sha256": "b2b9f5237291e955685fc06e20d633ccd8f6e1c968bff36f34382e4da7323b93",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_batch6_port_matrix_stress_090": {
+      "input_sha256": "a4fd3a5b6d3de9bb31f7aa4c7f555487357c94595689d4a70b43d677ab0092a7",
+      "svg_sha256": "751703df0e088a3fe6356ce36ee147bab3bb35f6afdb8d98c8add350ed89cdc7",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_bidirectional_arrows_031": {
+      "input_sha256": "bfa880d48167ccc21cddfb5daf32072460e9fce0d5826462d4402ab27b71d494",
+      "svg_sha256": "a723f8cbc7412b00e401a5fa22e186b0f73368c4d246be78b6444cd89f0dcf71",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_bidirectional_boundary_traversal_020": {
+      "input_sha256": "527ef0db49ef4594e83b59e0e713742bfb7eeda8f8b339d35fcba0c99c721b88",
+      "svg_sha256": "f33171f21461b8cf938782563021ed056ff135d0e0c157c6a45867aeeddc6607",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_cross_group_multi_edges_045": {
+      "input_sha256": "9041c726fccbb89acccb0138e416d5aacda08f9495a137f8ba3c8e831210dc3d",
+      "svg_sha256": "e5589a458c03fdbf4746e79d5bdfa3e38764c2d0d512f3f880dbf758c161f582",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_crossing_edges_ring_028": {
+      "input_sha256": "0aa4452a768fbd440a149e0c46d296e30307b56c8367cfe7bccb5af97c0d1e5e",
+      "svg_sha256": "70157a2a26803cfea7bd2e205069da74c6a8355bbaa97a7f48f3673d8efeb5bd",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_cycle_with_junctions_024": {
+      "input_sha256": "c3eb6a330f6a4cb0ddce2778393675c2151970d22803d47e163caa02b0e453ff",
+      "svg_sha256": "eebb9d0965b0252fe37d0c9b38e993ccab655dfe59aa8f59b9ac87866933308e",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_deep_boundary_edges_with_labels_047": {
+      "input_sha256": "35bdcc1643fb5aec1b982bb58f7094879efa866f7ed09e6ddb6c1af03845f118",
+      "svg_sha256": "bd4a2827793fa79060f9babb43f543e96c86d7419d7a8ed88fbfc71ae42ef3f5",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_deep_group_chain_027": {
+      "input_sha256": "cd591174802ae9b2e9aaaffa8943713d7229bcfdf859d1b0b799e33cc732318e",
+      "svg_sha256": "fa0ab10cc19af61848bff1eea7c25ea7318994f1e5e0f30fc9c94143f2eea786",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_deep_nesting_013": {
+      "input_sha256": "a0d6790bf7b9fe6cc717e63dd53f5e12bcc1b4042c55729703c60213b9e46a5a",
+      "svg_sha256": "5a119fe2f089329b377b820521e83420955f5001b568309a3eaf2f2206273ff1",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_dense_junction_grid_035": {
+      "input_sha256": "06f0123007dd9b75571780d2dd07a5ed05e1f6a256e581135af7e3a18874b682",
+      "svg_sha256": "fea3485e515533da908ade1f4f4f7c9b5a42900e120c0a466d5f531e7fef3ae4",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_dense_mesh_001": {
+      "input_sha256": "115a274ca1af81d16168b1dcafc9d85c3c3766406a6073de3083701e76b5abb1",
+      "svg_sha256": "e5f83cac4b54d91212945175e16813da1b998f5c4c81166c99c7f1f53153d448",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_dense_ports_star_044": {
+      "input_sha256": "8d0f431ae065ce9e79fa6d8ba55a5549007d3ae009549577b1c2fa2e996747e7",
+      "svg_sha256": "63b3c33af758910b262fe6ad8dcd9508047efe283cd5c3143cdc8613282e6cef",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_disconnected_components_015": {
+      "input_sha256": "0948af00bbe353f8d1f0f90a6edf34f023f82717202288b9d653c171bc19e9fd",
+      "svg_sha256": "bc65cf585cc62186e4bbb7ad19ce5d50fb1b6fbce560f9c4f871e16c90524174",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_disconnected_group_edges_032": {
+      "input_sha256": "3a8ac1d9b9d9c4d2eb455c83f8dd2cb9827e716318e09fe690e72836f83cf7b2",
+      "svg_sha256": "3a86d273d385a1c5c967d234895e974dffd98283e1f072e65f33e7a1b206548b",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_disconnected_islands_046": {
+      "input_sha256": "374325f3f136018cef51c2895741197cc723f1de43a5ff359348113da55d684c",
+      "svg_sha256": "c20cdde9210cb24f0a7cbc049c1dd4ca7f97a174182e8e1f50e27405646e6cba",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_edge_label_corner_cases_012": {
+      "input_sha256": "6cdc8f076df5969406c993377b2b6fd598b6f0bc91d641943de4d8773ed3ab77",
+      "svg_sha256": "3bb0c80e91ad581448b1eac88de2269ca6fe21f3ce8df767b6cf6e9ab3015522",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_edge_labels_quotes_and_urls_037": {
+      "input_sha256": "d46cdee48b6a2f6421720fdf9d633852471ae4a8752217f8fcdc918c3f2e5668",
+      "svg_sha256": "0d1cd57f7df2ff0921fc9614b903b8be415a16ffae5ba62dddfd7dbcea7ca2a5",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_edge_titles_oneword_036": {
+      "input_sha256": "e7527f843e79f5adf578dd00ce2cdf300fc03ecfdd5cfec7d1c7c0ff4eb4b1fe",
+      "svg_sha256": "d05315afeb6af1c817e3c2169110abce3af31c2d6e9f5a33d7399d3196c27c39",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_external_icons_005": {
+      "input_sha256": "1f6e05635c4121a63dd5cdf33682e2f65c9740bbe74464be7f6f6bd587340e64",
+      "svg_sha256": "f8e5e3dd2a43e2d7d3c360c3760ecf41df60c480f2080d811339023105734cab",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_fan_in_out_021": {
+      "input_sha256": "e383171c616aa87b10fc3145fdd4dd3ba670cf3abc61ed2c0f42d91f1124ec66",
+      "svg_sha256": "7ddc504a0e911ac7b8d9f0835b4e2ed23c7cb359d90b44643cd1fee9e3612d79",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_font_and_theme_097": {
+      "input_sha256": "0447e14107a71d7d103dc0fd19cc1fe9f2a4f35b4dff7aff0919dd59bd465376",
+      "svg_sha256": "d5814997a051a9296b46a92b1b0189f1fa593b97917f6a00ceae35eb2d8643cd",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_group_boundary_traversal_004": {
+      "input_sha256": "4570f68a3e4511e9d44119abb30e00db1b078761a27c7788f6edf4c7d427861f",
+      "svg_sha256": "4eb4d040e294e0d5b52d1c4585f6d36d9b47538834a5c738547d9d9ae4c40d15",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_group_port_edges_017": {
+      "input_sha256": "553bab33427da11d3eb6c967bae28b32b8e17bcb137cbf140001f9351f0a6e4e",
+      "svg_sha256": "f40b11c675c6057edd5c7b1c3aeaeb7ddd979b873e012993029f6199019d82be",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_group_to_group_labeled_ports_039": {
+      "input_sha256": "fa153b5952522407b83bfbdebff01cf95803340a5881d05a730237ebe7c483aa",
+      "svg_sha256": "e02cc6295c461c9f476069a91444a798e295fb17e9cff22662069c8fb9b8c882",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_group_to_group_multi_034": {
+      "input_sha256": "cdd23aa7391b58cc9b0ef90534525982254dbb2928534ff178bb2955f4ea7835",
+      "svg_sha256": "65fcd8f15bcf43fefd71d686165891e37a1b7f3dcd5376f35d3026dbe48013ed",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_grouped_junctions_008": {
+      "input_sha256": "e732f488f0d9aa679386637cb0cb7a4f85d7281d62a66bad9590c43a64b1689e",
+      "svg_sha256": "2dbf0d6aca597c0183d32b9ed54167368d4b98a866511908a0eb2a87d7c2f920",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_html_titles_and_escapes_041": {
+      "input_sha256": "2233a34c2d3d4f7820984a903ba6086737252ed077b448623161c7f7cac32886",
+      "svg_sha256": "8463d5bf04177ed72dbca2579a5a08c93e6b2fbe3b40fed74a6c7ef6038f76ef",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_icon_text_and_fallbacks_042": {
+      "input_sha256": "4eff88f17ad426f9262f4cff9198fc65f1dfc3d163b229408dfe9e32eee1d6b5",
+      "svg_sha256": "4a7077bf41269e6eed478c0892b637a5c8caa18f6e8dc0f4f941c95c4c0d6cdc",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_icontext_anchor_code_044": {
+      "input_sha256": "7e64a5d8171f7babc304be7eabd3e5119bdc941d9d4ca8301cfd4f4079cc4e4b",
+      "svg_sha256": "875c87ae11e6563df8323d46d4622d1a26535d259a72959ae1b6b4d95863bced",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_junction_fork_join_026": {
+      "input_sha256": "7dc0135941ec2054820d1ff25947cbccb4b9513064e7330613bf0ef6786976f0",
+      "svg_sha256": "1d1e5740be326ef7156fb94e21b763ca6899bdcce15486928a039eee82e70381",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_junction_mesh_014": {
+      "input_sha256": "c58abf872afa9952242f2952e9bd4b5c8e1658cd95679fb1d882a7810fb019ee",
+      "svg_sha256": "8415cb0af25977be0b6a7c07dc07631ab36d7cbe82cab8e9be6f003a5cee146f",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_junction_star_003": {
+      "input_sha256": "30919f436b1b3d2d4e04d0f0538c00dee6188ec1fb7ca32c8935f2d50334519a",
+      "svg_sha256": "a10b7857a7ba0e73beff5972fc1833644a0a9df30dc1b66f32ec73a401b3cb15",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_junctions_in_groups_040": {
+      "input_sha256": "ef61d6e60519eef38a124b9965d3d4e414312f50d475dfcae20bce4d661f6d13",
+      "svg_sha256": "396db925dacec55ae6029f9e0d1831c5e845e55a94e8897c28867890f08a1711",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_long_edge_labels_wrap_048": {
+      "input_sha256": "4d2e09636a55f4307669a1258b6c4ac7bf1415b99bba8ce676de60b13dd218e5",
+      "svg_sha256": "678239ae2c794ce21e46e4de12617e2b0b4067a8b7dfcd8cbaed5756b82ecad4",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_long_group_titles_018": {
+      "input_sha256": "7ac8bff26f659a649a4a177f5fcd059c1689459fed359b46ffdcb370f39577d6",
+      "svg_sha256": "9941ffefdc7ad13e0311b8ecdb9a7ec50588a2b09821129ad13760435a3ca2a7",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_long_ids_030": {
+      "input_sha256": "461d82085eb83a36516cd2634c59866645406f8753c74b6911ff6181b40cfe9c",
+      "svg_sha256": "07f95400c61672d3ef523053ca8c019f96a7f4a58f23b1a8aa349e55fe5eda10",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_long_labels_006": {
+      "input_sha256": "2bb152d63e70170387e4948d8ea808a3bb80573d4d608729c3acbe61b8069c72",
+      "svg_sha256": "82003e1e6a8bbbc1aa02a3d9f4d662a9b7e2581e1001a3a671a05732e0636e04",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_many_small_groups_025": {
+      "input_sha256": "807fda70f2fa07158133c68fb229875826a6345015e0a4d18e290a5ff6e62738",
+      "svg_sha256": "89a38c674bcd58bbc402be3cb03992829b83527f939a125470d9e1e2a268c65c",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_mixed_icons_and_text_033": {
+      "input_sha256": "140d7dbf16b53ef43ea4bee0bc9eddc995d4d9f5ad2ff07b9c1638a5f747c5a8",
+      "svg_sha256": "31ed9ef995ceca63e8c283f11342ef1fc6c5830265d3b401cd500f4092bfc882",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_mixed_service_forms_009": {
+      "input_sha256": "a46664748a536c139f2d9a5af12e82d8f525dec32db6a21bc02cec7107569174",
+      "svg_sha256": "b86f420d4e11cfb7144545efc8b39aed2af718a7e8e97d87445f47fb50d93aac",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_multi_group_crosslinks_022": {
+      "input_sha256": "780467c03a9d5a183710aec923f23f3258e4b346e6e422cc44db44afffbe1ff1",
+      "svg_sha256": "10774a1a69e559520b1c730389b31bad4e668e7167b6941079c784807cb20821",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_multi_level_groups_010": {
+      "input_sha256": "085e23e8f1186ec2dae99e3b2258a241ccc87f857f07aee8e301db3736da50de",
+      "svg_sha256": "9aa01d6eb9cf381086420cf2235a718eefb4759543438c2d36a07b86c3a0c07d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_nested_groups_002": {
+      "input_sha256": "f19a3e81df73a7d1bdae2a1925f2752d14ffaf831e526e807f93a73b81c01b36",
+      "svg_sha256": "3c53054c93de86ec796fa5ab0bbc503dfb926fa89447632fb4d3053056fc65b3",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_nested_junctions_023": {
+      "input_sha256": "1c5f671e1952487c361b6e28b05fb6cc808b4723ae5e3522595c213220fb228e",
+      "svg_sha256": "a0e8a2d350882104f186b3387b239364353a6ba6d19c420578ea0c9eb841aab6",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_parallel_edges_016": {
+      "input_sha256": "f67c6c2e57a588cbba3ab48300eba48ce58c015206eb171500e853db5185bc86",
+      "svg_sha256": "ee5cc914cf7bf1c86e009c355e07ea083b58b544516129ad486e84f99bb90ff4",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_parallel_labeled_edges_038": {
+      "input_sha256": "d8642fbcd331cc6e32432611693cf3a5c90c6c93b7a7fe9da23e2e9a3f32812e",
+      "svg_sha256": "fa10ab2a2a0c8514d3ecd2a504dd0f1722a9eeb203bf51fe53fcb4f7a4a6d67e",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_ports_and_arrows_007": {
+      "input_sha256": "8d5a7e0e8d6d0a2adbb09951ee1d1197ace95bb86acf254ae54676640b6fbb1b",
+      "svg_sha256": "84049680d98e391dc89c21ce6a6ad51996753ba3fda97c76fdf4c5e2996a4800",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_ports_matrix_029": {
+      "input_sha256": "8dee5de6a3096a0c0886ee57de0e0fff181a751101b6441ce71010552cd512fa",
+      "svg_sha256": "3e8565894a67a33319d7f3fb5d8238dca3b628a046448b5dfbfc5ab807b97efb",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_unicode_and_xml_escapes_019": {
+      "input_sha256": "013fc9f64aae7d63ef3a4079175230feec86e4cb87edef1292da9081320457e5",
+      "svg_sha256": "ded7554b3257cf3ceab5e118754522bf0c126fa2aa7e41e0324a90472306d5cc",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_weird_ids_and_nested_groups_043": {
+      "input_sha256": "640001524d5fa6c6b341a6ddf0c0a2c0335eb194fbb787ffc214280502c9658c",
+      "svg_sha256": "2d0db5c5de2b8c7bef6a386ce0d6d80e4b4e33369378643139085d8547e26c35",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "stress_architecture_wide_graph_011": {
+      "input_sha256": "e27acf83ef1539efbcbead9c77bccdee588e625c9ca9dbb6b7e821a52e07ef66",
+      "svg_sha256": "4e92d90ad87871fbda2c4d37fa7a4f68ac4ec3b0eb84cc522d407acb02a46fa8",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_acc_title_and_descr_spec": {
+      "input_sha256": "1579862c9b0ef3d9878ffe4f9713ceca9a112c0307f51161c4cc2cf0b095edb2",
+      "svg_sha256": "27cd2e30a6a941d38706b3749d28e67dec179d33ae20bfb8bd6adb96245742d1",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_complex_junction_edges_normalized": {
+      "input_sha256": "78b8e8bfa47f97ef42d8742971011ac89d81e6ace94db1df44f0a4df46c3047d",
+      "svg_sha256": "c3424d0ea1b07b43a672fd8007e877b5d3c9c4adb6a6aba9fdae9d8766d8e71f",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_directional_arrows_normalized": {
+      "input_sha256": "517c80ccdc18dfb8571214a301015fc1c94542b2ef6b0fb180fcf8ec4e9d333c",
+      "svg_sha256": "f55634841a48558058a4d5c6c795f8cc6cfb4a980b25165cda0d103afb4ae093",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_edge_labels_normalized": {
+      "input_sha256": "eed67211c2f2e4ac49abaa688a247a387c93d52e5b64f9bb373a931e83e3147b",
+      "svg_sha256": "6e78433b9378a85622db833eee8ef3fcd4e71c288373c458993904aaa179088d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_fallback_icon": {
+      "input_sha256": "bee88b22a5b38e572f203cb6693fd58f512e362160637519244f80d88d0ebd50",
+      "svg_sha256": "3f75d3af1bcb095feebd4def104a566af19c0aaafa91eb161af49edf2cb6f110",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_group_edges_normalized": {
+      "input_sha256": "2573ae4ed4c2f67a733eb8aca9ebe3183a871d209a5ac4507261e95d31af39de",
+      "svg_sha256": "c8c93c23d2e029aa3fdcc7e7b767817115f40d6bdf677d0590ceb6c627f6dfb0",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_groups_normalized": {
+      "input_sha256": "9f2c4c2933a8fa5e668f5defaabd072b4f180b3c51d22d188311dab65618d9ff",
+      "svg_sha256": "19294e390ccc97703e12c81f04c082405e84ddd7775a49c67ca7690d150166aa",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_groups_within_groups_normalized": {
+      "input_sha256": "86e28171e0117c8bf708853edb500cb9ff9d786872009559e0fb81a24846329d",
+      "svg_sha256": "b867d94228a56e387a4ca388fbaddf3cb0bc918a99b24b809bdc87dc0c99e3dd",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_reasonable_height": {
+      "input_sha256": "0a3eb815c65e82d33e081557875cf89df9f8313dfc02829066975c53de6b6d3e",
+      "svg_sha256": "e25e18e054cce4b9f1fd3e5e1d4e1e45755a6551fb532b399c6ffc6ca21453fb",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_simple_junction_edges_normalized": {
+      "input_sha256": "849c1d5f65cc3f0244fcfc66d34d4e82d19eeb9231130788573d75c250d60250",
+      "svg_sha256": "2116bec277044a778f8dfb5344309675608dd7a5b470634273bc303997989fd5",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_split_directioning_normalized": {
+      "input_sha256": "1d05aeaea475751b15bd35387bf1a0583a53ddd9eeb8d7a09501b14ed0e8b6e2",
+      "svg_sha256": "f766b152714cedf989bb74122c3072f3dd965b9e47e5cf2c5e9b0640044417f2",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_cypress_title_and_accessibilities": {
+      "input_sha256": "e66a690ad7af21a7fa5f9eb7f36851fda74ae1a319bb470d2c8329a600147c10",
+      "svg_sha256": "3336b7ac00461261dd1789d007f7f1ac06e3aa4f91692ca7cdc538e6a3de1d77",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_demo_arrow_mesh_bidirectional": {
+      "input_sha256": "1f023020a03447084af54f6e6e71aa53835e30fca02c26ca84f1398e92ce23a3",
+      "svg_sha256": "951c062f31978faa41b554c4375b057b82bc01cfcaaa407d45f785b75e4132b6",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_demo_arrow_mesh_bidirectional_inverse": {
+      "input_sha256": "ff324677df4b35a1a1196acc9bda98b7e0f31f64f9301cbdc1c46ebdb0eeec7a",
+      "svg_sha256": "45720e19bc20f1637d8dfd25180e1a5a1a7957aa3ec82e85314571c12c9eacd9",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_demo_edge_label_long": {
+      "input_sha256": "f5165a02141e182775cd1eb98a3535dc62a4e102bfa31c9bcd68c3f866fe2c4e",
+      "svg_sha256": "1407c558b73ad78687e2e0044f3b6ac905aa81dcd9772e47f68dbab39ef216b8",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_demo_edge_label_short": {
+      "input_sha256": "99d17ddfec5a58ec5d54761be47109aae805ead5c31ff29326990b8bb59623e2",
+      "svg_sha256": "33cec477b52fd1e25a3d4a29f1d666cce12893a3eeaba258277e07e53bd306e0",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_demo_group_edges_bidirectional": {
+      "input_sha256": "f067f3070a8a82b8e701bdd1e7fc3be6d25775e5d4baf583f9fee0bf736e743e",
+      "svg_sha256": "bcd7d3f36bf7b235f4cd9b1e212c1ef898aec1fb9ecef04071ccfb268399b57f",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_demo_junction_basic": {
+      "input_sha256": "30c2a560fe84bdf2fa9633e6c2f6e89e6f4cdb4a329fde698c09a2308994bc85",
+      "svg_sha256": "095b895bcb7ecedd755baf714ee66219fe59def3726f85c484b158973c59d917",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_demo_junction_groups_arrows": {
+      "input_sha256": "f2e26cffd3815363a1ea30be862baa2e61e455191f2edcbe7cec02e2d2b0ee03",
+      "svg_sha256": "539ae82e0f2ffc267c15153c2c1e5a1f21ea6b3f4ce1c9261a832f1110560b3c",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_docs_edge_arrows": {
+      "input_sha256": "204bc13a1692dccfdbc34bac649cf2707478a78a652d286a26a9a88c96ebc204",
+      "svg_sha256": "de20c9850bf0a546b271cf141c3965aab1ebe2e67c6a6a542d08958f19567fc9",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_docs_edge_titles": {
+      "input_sha256": "9669b3fd076542be4f68edf5db7a1ded2ca7731cb551d3a159b7831d43ad25c3",
+      "svg_sha256": "8a673fb28e8edfacf681b69d6ea93dfe261197ed381bc9aa2d872cfbb4ba9635",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_docs_example": {
+      "input_sha256": "1706e135fcc827553a22a1038c75b10bcbf194ebe31aa3c59fc62388e4b1c40c",
+      "svg_sha256": "ebe959d164bf1d45eb12814d43f0430d9b2c8f2682048eea7f6ebac4f59e4e42",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_docs_group_edges": {
+      "input_sha256": "284894b2267705ff822320da2b1f7cc3e604ed681322ba7d4fe61e226254e893",
+      "svg_sha256": "e7c6ca642002d59bd5cc4ff6b11d003db12ee5ec274d3b4dcc04936c3b996d84",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_docs_groups_within_groups": {
+      "input_sha256": "f9c7b2637e03e460ecc55439d6d5d34cf17715471b6993c8669f41471a02d8e8",
+      "svg_sha256": "1800517f7d84fe292821fb5ee61be59c80b95315afae4221caa7967b8f2a7fd4",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_docs_icons_example": {
+      "input_sha256": "b2eea5f8261350ab888105b56ca6f60c31a655eb68a687338872e6f7c117f4a7",
+      "svg_sha256": "c09596c7ed54008507dd47729b46fb668a25abff566fc0f8daa839ed1a08bb59",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_docs_junctions": {
+      "input_sha256": "1b061069afe28e72900616cec02513893e4d7ef6be5e9aa25750875597259272",
+      "svg_sha256": "d1a25619560439cddec7f28617e7eb2ea676524b6e00c892c7c7b2643ca32747",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_docs_service_icon_text": {
+      "input_sha256": "b5343d2651f5c3cc98493799111a6e87c8a7dd303f94c745f720ab61ae59d678",
+      "svg_sha256": "5e1a2579831a1c80eff8930394e8a4aa61011ed2bd3be9f1121d10e764c86fa9",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_header_only_spec": {
+      "input_sha256": "e686f7661a217d081d29ec64cffccd189a4ee15c3a0b74e4f4eff1b8a02527f1",
+      "svg_sha256": "f03cab0349a7bfafe3aba8297aee6ac3cacf4764e7707deff0232190b38249d2",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_layout_reasonable_height": {
+      "input_sha256": "dd0814e3a25febec6886ce6a045d3c9ebcbc0c245f8a569a9b265d36f3100cec",
+      "svg_sha256": "0c2b08cf50a4a83debfab6ebc8ce7e80c3e9d31207fe7d2fb6483e031451acf8",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_multiline_acc_descr_spec": {
+      "input_sha256": "c4b1692049fe7f257451313f566350d836da62d649469241346bdc64095df56d",
+      "svg_sha256": "d001df3889ec4129a9e1fa7dc108ed9989761314cf7ee86ef1d47138f73dd862",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_simple_service_spec": {
+      "input_sha256": "fc128f0ce65746dadad0e47fffce187633c37d4d1bc4f179f27bff9cd6f06d9a",
+      "svg_sha256": "da4c41598dd19124d38a1aa4b65653215f910ea9fc615d2fbf985d87cf3aa128",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_svgdraw_ids_spec": {
+      "input_sha256": "89d5f1b2ceffd63b8cb5d3064bf24ec40681fcf8883f85e4dd83f5b9378a0225",
+      "svg_sha256": "d957c28c6c665e7e64b22078a157bd1dbe14d0185268771a543a545669240138",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_title_first_line_spec": {
+      "input_sha256": "9aaf199c7e8d92e127156dcb87068c23bb2654c9d82bd90be412b8889b4e33b7",
+      "svg_sha256": "c9e9f7c368fc5486663d53dcc798c6aa66749e27f85a5341fd952684a0da3f6d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_architecture_title_other_line_spec": {
+      "input_sha256": "a493c3d06d512123203fce8ee5edfc3c26257a01b8c4c1e176c9144ef2cbc786",
+      "svg_sha256": "266a2878dbc3d111d2b4eb2d1018a1715f10141fc7e5c1f73a66f186528cb442",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_example_001": {
+      "input_sha256": "f94cabaf2fc4c6c73d6fa4b4e4fa0881063ad75d5e6f4fb1e13e7ba88cbcd566",
+      "svg_sha256": "028f69fb5916bcd0af0bf4b2d3b3f4f66327aeff80ffcd428e96183292b7b6b8",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_a_simple_architecture_diagram_with_titleandaccessi_002": {
+      "input_sha256": "0833352668e67be33184e1d3f5f5dee4cb847e56ce32ffa00307aa1592516d7f",
+      "svg_sha256": "0977050e3fc414d6147af55dffa22d73696634af978d3a381229bb4a6961e32c",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_a_reasonable_height_011": {
+      "input_sha256": "4f497b14ea38836792bd0757caedfc18e4f492a17b2de1e1e8821f279f5017f8",
+      "svg_sha256": "6b1b9d780e3dc6dbf0d1b4b7add339ebaa21386d7ea23fa8ac2dee22b73e755b",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_complex_junction_edge_010": {
+      "input_sha256": "0e2e3f74040ab0f8e4fa21435d71faae4ae64a2c3187219615a72bbeb6fd3051",
+      "svg_sha256": "3ad59c0788012670e9d496345102274c3923469f4cde8faab72a6b1f9bfd9c53",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_directional_arrows_006": {
+      "input_sha256": "b13da30e1c41ef8497c0ac1df2205ef85a9bf45b46b4b6356164e0a50d1ecc08",
+      "svg_sha256": "0f9ecb42458534a3003843658e695f29dc08dc1d4743a794a0c2a9dfaf4dc571",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_edge_labels_008": {
+      "input_sha256": "2871c7925e46a9745b986997eb35328326d41d8dbbc3c8047cfdccd62b32f518",
+      "svg_sha256": "19645ccfb04998cb62271b9630d7ce06e1c9dc045da37019846ccf8e1ffcc8f4",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_group_edges_007": {
+      "input_sha256": "12eb6ccb306cf16244b7703afda499c6d98f0610fc9e902ee1a1b61a89c83eb2",
+      "svg_sha256": "57b46d949067aff29bd748ec50c29fbcfc29e7b891293fafba962c905fd49ec7",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_groups_within_groups_003": {
+      "input_sha256": "ea1fe4185b7c09496906280058067594d3a28381e483311e175c310027dc1626",
+      "svg_sha256": "daffb684b195d8d96f9091520c9fe7489c90341c4836ee17de2cc8b756a0cbfd",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_simple_junction_edges_009": {
+      "input_sha256": "a46f23437f473148c9d3a2e7ff543a3e35951b4ec802de40c63af8c33c72a728",
+      "svg_sha256": "8ddfc3bdfe00eb0c127b0a860f308a71620fb37da35010be56cb770d2d899c15",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_split_directioning_005": {
+      "input_sha256": "d7c764184dc5c1d00f6ce0fe4075e4ac6aa6e381edb52e0d6a39d38d925ebce6",
+      "svg_sha256": "4d73c755f86eb1c61b5e688935c229f56d391129583952127ad272dfcaf69161",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_architecture_spec_should_render_an_architecture_diagram_with_the_fallback_icon_004": {
+      "input_sha256": "43ad4c6eb7adc3eba813cb32910dd12d686c4257ed4d4d10c0223bddc9570eea",
+      "svg_sha256": "10060cf41e2a690f919f5c7eb8b2332454231a617d4ff4cbfcfd6f3d2a40f4f0",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_cypress_other_xss_spec_icon_labels_architecture_001": {
+      "input_sha256": "120f845705388de1aacbd98eb3c95756e5c600c1bad08aec17d5c14616b9fbc5",
+      "svg_sha256": "4f474396a62e14d138aa99577605f89c459cdcb35e2010b1d97da0afe54a7be4",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_docs_architecture_example_002": {
+      "input_sha256": "bc2e0b86f311454480f0bc4d1ccdd5dcc7c268555254f0c94aa62226b488ea65",
+      "svg_sha256": "a193e08d8df56f761b1da0c6056459f5403251d6e63c8995c8824dc30c129f2d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_docs_architecture_icons_018": {
+      "input_sha256": "3ed71c734c4a703143644f85ae3bdab5979c1f1dd7a08b682be86d13b0423fac",
+      "svg_sha256": "efbcc43c7b0cd03a3718d3a976dc7171a419af15ad4097505aa591b1ffd03d18",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_docs_architecture_junctions_016": {
+      "input_sha256": "9d6b42afa3299dfefb29d0b9702fe733903b2e6c964c3b634b612fa47e233359",
+      "svg_sha256": "c8f91669c8242db602229f409e3c3710d62138a724a160ffcf2fde61807a2f9d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_examples_architecture_basic_system_architecture_001": {
+      "input_sha256": "0fc959e881a5236ab0fe12436dc45ebe96fbdb511e841dcae0c63231f3ed8e90",
+      "svg_sha256": "9191dc9cb8c0265a4ec9cf6a3b35c1a6335cd5f7f035b59b4c1864e89f26942e",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_arrow_tests_005": {
+      "input_sha256": "b07c6d1a3343f8bff807e11b175a4abe9da5703f6d7b569e9d249b47a76be356",
+      "svg_sha256": "39c9e55d698a15cacd04bc7dd751cdfee9fdf458e1479467bbf5e1905b0e95d3",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_arrow_tests_006": {
+      "input_sha256": "4103c67c8c2bc3fcc51525e37388a540b78cc85f83df924bc77af3b0f9951c2f",
+      "svg_sha256": "a515bcf2d631ff330ad2d9307224b0f6468b7ca12a7405151426b9dbe2bd930d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_default_icon_from_unknown_icon_name_003": {
+      "input_sha256": "0c67dfaa58b8d6a2d7bf09a7a5bd189deff38fedf3f162b6012702a849a5a90e",
+      "svg_sha256": "f579344c05c656ecbd0b6283c24f6af2b8e2d2968dc59f34028cdbc05d31cae3",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_edge_label_test_008": {
+      "input_sha256": "4921b2d8a555b75388e6bf8b9028122f9b1dd635a3bf0dd57c03fc3e6df6daeb",
+      "svg_sha256": "48395b9653127de42a57abb95a15411fa3ef018711a01af0a990efb283176000",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_edge_label_test_009": {
+      "input_sha256": "1d1d960bb4d6bbb106ade24938f3ea27dc2b2349196f54c1263a1ddc9dca5f13",
+      "svg_sha256": "dfd80625dc899f954b8f5dff6a0fbefc438c523ffeca5b3df4e7a80ef1bce822",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_external_icons_demo_012": {
+      "input_sha256": "2ffd9a729b2dc284aa4a4f138c7604b40272901fadbc7c0ad9be012e157b5946",
+      "svg_sha256": "8a10bb60585def770e5b377dbbaae6001d9e6cd5dfcc15bf37a899a9072280c2",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_group_edges_007": {
+      "input_sha256": "fa6b5168c8d671f539f6cf3431ba0a8fead8613e1c655c80f0d475bef665b39f",
+      "svg_sha256": "03b6c1ace4809b928eb52abf03bbe0bc7b8e54729989bae998dd11366ae5bcd7",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_groups_within_groups_002": {
+      "input_sha256": "3195d1a17363ca354cd336b9dfce9063c350237919751e03461e15a508873cde",
+      "svg_sha256": "5bdbae94e2f27fd77bf1945f206f2d018af018c3f335fafd38afaa5a3f41f298",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_junction_demo_010": {
+      "input_sha256": "a78bc2ae51b2d954f4942fb3db1d6eace216a3b14039f4301fecd40136b41b35",
+      "svg_sha256": "979b856c83a5abb957bb4b65be1e7fce113552b6bb7a8fab2d7c34b7fe4525a8",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_junction_demo_groups_011": {
+      "input_sha256": "3194b4053aa90aa2acccc9ac9cdec7de6f564d78af49793b9c6fefdb9524bf15",
+      "svg_sha256": "a845f33216564b4f6ad86084194cacdfb7cbc0451671f1884da07356c70901b9",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_simple_diagram_with_groups_001": {
+      "input_sha256": "6e63fa596cdd45ce8acdd8acf579d7550b23b610b5d3b66f10031376618cd974",
+      "svg_sha256": "62f2e0cf2b8677d7defd33b579a5258448238663c1b38ec975f2b1d389494696",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_html_demos_architecture_split_direction_004": {
+      "input_sha256": "7b045dfb594877ae07d33c4aa7a16021473e0ddc4e89734fafcc0aaffd67c53f",
+      "svg_sha256": "841db676accd68d86a42b253e23dfe6108aa50559b301a82df3051eeaea8b807",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_spec_002": {
+      "input_sha256": "0fdea3ea4b0d9ab5e3a159031c497aa1988c4e4e7165105b2f6f7d0cec81ecd9",
+      "svg_sha256": "ab75909ed6a7a0fc10a15748a664286bb5b185f5ee1c4951da3703159e4f50c3",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_spec_004": {
+      "input_sha256": "ee4adc53745146b8aed75e2a0cc4111887c4371f2b7b3c1fb08dcac5db1cf88d",
+      "svg_sha256": "b0d47e663cb65bd01a543f93ee26b6ef202aeea4c35b337985719b32df1ee96b",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_spec_005": {
+      "input_sha256": "e99c2eb02c810ec4bd7f014a57b593b98f50d2c419ef2c88f100708797ad1ec7",
+      "svg_sha256": "7ad95bd3874c89b274b478a577afbff2833e0e6fbc3011b0371e401501291397",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_spec_006": {
+      "input_sha256": "da078487335cc441cfc3594a442d12d077d9d1c4487ad4b6d63a6886fdfbedc5",
+      "svg_sha256": "1dd99823f3b7d0afabbde2b92b6a8aa01a155d7fce4dad5a73285fc5d4398be8",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_spec_007": {
+      "input_sha256": "f4e6cf2849b73826d192f84998dbced52f8e1c7c9b998bf24110b6e5663064a7",
+      "svg_sha256": "2251e723ec5c9dc5f50a369ff605bf8855dd23870abda60e20e8d89b7e046970",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_002": {
+      "input_sha256": "6c10dee94544e1dfb97bf723d1b1836928f5d7fddf7df4f79827793c6db02981",
+      "svg_sha256": "67d0ccdda52e6d9f9da124b12edcf2582537ca94465c3ad6477d1df64c29db65",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_003": {
+      "input_sha256": "9cbff99db8ff4b861452c8a180f15ab7882fa2120d6712ac5365c808e7868a8f",
+      "svg_sha256": "201a97207604c70c9fc31fb6073db6c96d2bb1a3df12ccb327346fac3711ae83",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_004": {
+      "input_sha256": "8c871b0690c912de6f77dd4a38d3a07e5dfb5afb540ba1667dc2e8be6ef6e33c",
+      "svg_sha256": "122af3d009e4c6869d24ecad6ab17495dd4ebe726343d14c570c1b7b23b36aac",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_005": {
+      "input_sha256": "e8cbfdfe2d655cf79119ac36d6a669ccf1ee6b067f8832d411f39bd8dfeb1d3f",
+      "svg_sha256": "efff41da2acb1a21da1bfc0d428794fb6ea1d811691fd0f788d94ad94babb72b",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_006": {
+      "input_sha256": "2869556f5c7ab15e32856a9a94f3978cb3d78f0535c3ad72647a115d080ba0be",
+      "svg_sha256": "44911e95339c55b4b8eda3fc069928a92b5cf68b1332bfa9c932c95de15928a5",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_007": {
+      "input_sha256": "98ba05b2de29aa91be8dd58d575937980a7bd354f07a1344551ce4c606183237",
+      "svg_sha256": "56b60292a9c7d187ea1c607246ca10ef969f231d8649a75eb49abbb63300d0f9",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_008": {
+      "input_sha256": "ee883b34008b0f2353f7b65f2cca4f14816ea2b75d50e97d73810ba47f1d2a0b",
+      "svg_sha256": "d024b00118248faec5d63d2109fcac4c4d98f13e24af850fc6faf310d1d8bb86",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_009": {
+      "input_sha256": "7f0d7a014fbd298664bbe21221f12859af28fedb78fcc631beffad2c28c3204d",
+      "svg_sha256": "bcb6fa416bce345afc0db47eb3c8ce51aabd9c66821221281eef02ba2a9a0777",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_010": {
+      "input_sha256": "a9941dff880c7f2f4e175bc78c16454a60e24521d12de5ef3dc2646f4ee2f9b3",
+      "svg_sha256": "9e1958767c33267bcde84674c8c166a16190bafe7ac028560d80766602d5a22d",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_011": {
+      "input_sha256": "996b2108f5021731a0a4d7140fb8e7977a7ec0ac3ef7e37d2a90416bf23b1b5a",
+      "svg_sha256": "1baf075dce24d2fc11a1ca49df0a305169d756e5258ad4061b2a989e67ac1b7a",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_architecture_test_012": {
+      "input_sha256": "f5db5963d47531ce668d71c482260dc9957694d76077a75d34fa925585b5e63d",
+      "svg_sha256": "b47b2446945cce968d5d0b527380eaf6ca9207c52dfff3a687746a0a049571bc",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    },
+    "upstream_pkgtests_svgdraw_spec_001": {
+      "input_sha256": "ebd50b3eaba74c89434068aeda7e602573c75f1eaf06b21b4552709823d941c6",
+      "svg_sha256": "e34d8ea3a255a75273eab373263e5b8353ace287f1fd286600a28a6814333346",
+      "renderer_profile": "seeded-puppeteer-seed-1"
+    }
+  },
+  "excluded": {}
+}

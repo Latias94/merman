@@ -139,6 +139,52 @@ fn detects_venn_beta_as_venn() {
 }
 
 #[test]
+fn detects_11_16_new_family_headers_for_metadata() {
+    let engine = Engine::new();
+
+    for (source, expected_type) in [
+        ("swimlane-beta\nA --> B", "swimlane"),
+        ("cynefin-beta:\nDomain: clear", "cynefin"),
+        ("railroad-beta\nA ::= B", "railroad"),
+        ("RAILROAD-EBNF-BETA\nrule ::= term", "railroadEbnf"),
+        ("railroad-abnf-beta\nrule = term", "railroadAbnf"),
+        ("railroad-peg-beta\nrule <- term", "railroadPeg"),
+        ("wardley-beta\ncomponent A", "wardley"),
+    ] {
+        let res = engine
+            .parse_metadata_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(res.diagram_type, expected_type, "source: {source:?}");
+    }
+}
+
+#[test]
+fn detects_11_16_new_family_headers_with_upstream_boundaries() {
+    let registry = DetectorRegistry::pinned_mermaid_baseline_full();
+    let mut config = MermaidConfig::empty_object();
+
+    let cynefin = registry
+        .detect_type_precleaned("cynefin-beta:\nClear", &mut config)
+        .expect("cynefin colon boundary should match");
+    assert_eq!(cynefin, "cynefin");
+
+    let railroad_prefix = registry
+        .detect_type_precleaned("railroad-betatron", &mut config)
+        .expect("railroad upstream regex has no trailing boundary");
+    assert_eq!(railroad_prefix, "railroad");
+
+    let err = registry
+        .detect_type_precleaned("swimlane-betatron", &mut config)
+        .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("No diagram type detected matching given configuration"),
+        "swimlane-beta uses JS word-boundary semantics: {err}"
+    );
+}
+
+#[test]
 fn c4_detector_preserves_upstream_ungrouped_regex_shape() {
     let engine = Engine::new();
 
@@ -265,6 +311,38 @@ fn detector_registry_strips_deep_frontmatter_with_small_stack() {
     handle
         .join()
         .expect("detector frontmatter stripping should finish without stack overflow");
+}
+
+#[test]
+fn detector_registry_requires_matching_frontmatter_indentation() {
+    let registry = DetectorRegistry::for_pinned_mermaid_baseline();
+
+    let mut config = MermaidConfig::empty_object();
+    let detected = registry
+        .detect_type(
+            "   ---\n   title: Flow\n   ---\n   sequenceDiagram\n   Alice->Bob: Hi\n",
+            &mut config,
+        )
+        .expect("matching indented frontmatter should be stripped before detection");
+    assert_eq!(detected, "sequence");
+
+    let mut config = MermaidConfig::empty_object();
+    let detected = registry
+        .detect_type(
+            "   ---\ntitle: Flow\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
+            &mut config,
+        )
+        .expect("mismatched frontmatter should remain visible to the pseudo detector");
+    assert_eq!(detected, "---");
+
+    let mut config = MermaidConfig::empty_object();
+    let detected = registry
+        .detect_type(
+            "---\ntitle: Flow\n   ---\nsequenceDiagram\nAlice->Bob: Hi\n",
+            &mut config,
+        )
+        .expect("indented closing delimiter must not close column-zero frontmatter");
+    assert_eq!(detected, "---");
 }
 
 #[test]

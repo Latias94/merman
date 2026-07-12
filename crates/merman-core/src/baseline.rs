@@ -5,13 +5,13 @@
 //! [`LEGACY_GENERATED_BASELINE_SUFFIX`] only when matching those existing file/module names.
 
 /// Upstream Mermaid tag pinned by this repository.
-pub const PINNED_MERMAID_BASELINE_TAG: &str = "mermaid@11.15.0";
+pub const PINNED_MERMAID_BASELINE_TAG: &str = "mermaid@11.16.0";
 
 /// Upstream Mermaid semver pinned by this repository.
-pub const PINNED_MERMAID_BASELINE_VERSION: &str = "11.15.0";
+pub const PINNED_MERMAID_BASELINE_VERSION: &str = "11.16.0";
 
 /// Filesystem/module-name-safe form of [`PINNED_MERMAID_BASELINE_VERSION`].
-pub const PINNED_MERMAID_BASELINE_VERSION_SUFFIX: &str = "11_15_0";
+pub const PINNED_MERMAID_BASELINE_VERSION_SUFFIX: &str = "11_16_0";
 
 // Generated override/file names still carry the old suffix in many places.
 // Keep that fact explicit instead of pretending it is the active baseline.

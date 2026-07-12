@@ -1,11 +1,10 @@
 {
   "diagramType": "xychart",
   "model": {
-    "type": "xychart",
+    "orientation": "vertical",
     "title": "Different Colors in xyChart",
     "accTitle": null,
     "accDescr": null,
-    "orientation": "vertical",
     "xAxis": {
       "type": "band",
       "title": "categoriesX",
@@ -131,6 +130,7 @@
           ]
         ]
       }
-    ]
+    ],
+    "type": "xychart"
   }
 }

@@ -1,345 +1,93 @@
-use super::constants::{
-    SEQUENCE_FRAME_GEOM_PAD_PX, SEQUENCE_FRAME_SIDE_PAD_PX, sequence_text_line_step_px,
+use super::activation::SequenceActivationState;
+use super::messages::{
+    SequenceMessageHorizontalContext, SequenceMessageHorizontalModel,
+    sequence_message_horizontal_model,
 };
-use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
+use super::metrics::measure_svg_like_with_html_br;
+use super::notes::{SequenceNoteHorizontalContext, sequence_note_horizontal_model};
+use super::{bracketize_sequence_block_label, sequence_block_label_wrap_width};
 use crate::math::MathRenderer;
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextStyle, wrap_label_like_mermaid_lines};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use std::collections::HashMap;
 
+#[derive(Clone, Copy)]
 pub(super) struct BlockStepPlanContext<'a> {
     pub(super) model: &'a SequenceDiagramRenderModel,
     pub(super) actor_index: &'a HashMap<&'a str, usize>,
     pub(super) actor_centers_x: &'a [f64],
     pub(super) actor_widths: &'a [f64],
-    pub(super) message_margin: f64,
+    pub(super) actor_margin: f64,
+    pub(super) activation_width: f64,
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
-    pub(super) bottom_margin_adj: f64,
     pub(super) label_box_height: f64,
-    pub(super) message_font_size: f64,
+    pub(super) label_box_width: f64,
+    pub(super) sequence_default_width: f64,
+    pub(super) wrap_padding: f64,
+    pub(super) note_margin: f64,
+    pub(super) is_neo: bool,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
+    pub(super) note_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    pub(super) message_width_scale: f64,
 }
 
-pub(super) fn plan_sequence_directive_steps(ctx: BlockStepPlanContext<'_>) -> HashMap<String, f64> {
-    // Mermaid advances the "cursor" for sequence blocks (loop/alt/opt/par/break/critical) even
-    // though these directives are not message edges. The cursor increment depends on the wrapped
-    // block label height; precompute these increments per directive message id.
-    // `adjustLoopHeightForWrap(...)` advances the Mermaid bounds cursor by:
-    // - `preMargin` (either `boxMargin` or `boxMargin + boxTextMargin`)
-    // - plus `heightAdjust`, where `heightAdjust` is:
-    //   - `postMargin` when the block label is empty
-    //   - `postMargin + max(labelTextHeight, labelBoxHeight)` when the label is present
-    //
-    // For the common 1-line label case, this reduces to:
-    //   preMargin + postMargin + labelBoxHeight
-    //
-    // We model this as a base step and subtract `labelBoxHeight` for empty labels.
-    let block_base_step =
-        (2.0 * ctx.box_margin + ctx.box_text_margin + ctx.label_box_height).max(0.0);
-    let block_base_step_empty = (block_base_step - ctx.label_box_height).max(0.0);
-    let line_step = sequence_text_line_step_px(ctx.message_font_size);
-    let block_extra_per_line = (line_step - ctx.box_text_margin).max(0.0);
-    let block_end_step = SEQUENCE_FRAME_GEOM_PAD_PX;
+pub(super) struct SequenceBlockPlan {
+    pub(super) directive_steps: HashMap<String, f64>,
+}
 
-    let mut msg_by_id: HashMap<&str, &SequenceMessage> = HashMap::new();
-    for msg in &ctx.model.messages {
-        msg_by_id.insert(msg.id.as_str(), msg);
-    }
-
-    let frame_ctx = BlockFrameWidthContext {
-        msg_by_id: &msg_by_id,
-        actor_index: ctx.actor_index,
-        actor_centers_x: ctx.actor_centers_x,
-        actor_widths: ctx.actor_widths,
-        message_margin: ctx.message_margin,
-        box_text_margin: ctx.box_text_margin,
-        bottom_margin_adj: ctx.bottom_margin_adj,
-        measurer: ctx.measurer,
-        msg_text_style: ctx.msg_text_style,
-        math_config: ctx.math_config,
-        math_renderer: ctx.math_renderer,
-        message_width_scale: ctx.message_width_scale,
-    };
+pub(super) fn plan_sequence_blocks(ctx: BlockStepPlanContext<'_>) -> SequenceBlockPlan {
+    let frame_ctx = ctx.frame_width_context();
+    let widths_by_id = calculate_sequence_block_widths(ctx);
     let step_ctx = BlockStepContext {
-        block_base_step,
-        block_base_step_empty,
-        block_extra_per_line,
-        block_end_step,
+        block_base_step_empty: (2.0 * ctx.box_margin + ctx.box_text_margin).max(0.0),
+        label_box_height: ctx.label_box_height,
+        wrap_padding: ctx.wrap_padding,
     };
 
-    let mut directive_steps: HashMap<String, f64> = HashMap::new();
-    let mut stack: Vec<BlockStackEntry> = Vec::new();
-
-    for msg in &ctx.model.messages {
-        let raw_label = msg.message_text();
-        match msg.message_type {
-            // loop start/end
-            10 => stack.push(BlockStackEntry::Loop {
-                start_id: msg.id.clone(),
-                raw_label: raw_label.to_string(),
-                messages: Vec::new(),
-            }),
-            11 => {
-                if let Some(BlockStackEntry::Loop {
-                    start_id,
-                    raw_label,
-                    messages,
-                }) = stack.pop()
-                {
-                    let end_step = finish_single_block(
-                        &mut directive_steps,
-                        start_id,
-                        raw_label,
-                        messages,
-                        frame_ctx,
-                        step_ctx,
-                    );
-                    directive_steps.insert(msg.id.clone(), end_step);
-                }
-            }
-            // opt start/end
-            15 => stack.push(BlockStackEntry::Opt {
-                start_id: msg.id.clone(),
-                raw_label: raw_label.to_string(),
-                messages: Vec::new(),
-            }),
-            16 => {
-                let mut end_step = block_end_step;
-                if let Some(BlockStackEntry::Opt {
-                    start_id,
-                    raw_label,
-                    messages,
-                }) = stack.pop()
-                {
-                    end_step = finish_single_block(
-                        &mut directive_steps,
-                        start_id,
-                        raw_label,
-                        messages,
-                        frame_ctx,
-                        step_ctx,
-                    );
-                }
-                directive_steps.insert(msg.id.clone(), end_step);
-            }
-            // break start/end
-            30 => stack.push(BlockStackEntry::Break {
-                start_id: msg.id.clone(),
-                raw_label: raw_label.to_string(),
-                messages: Vec::new(),
-            }),
-            31 => {
-                let mut end_step = block_end_step;
-                if let Some(BlockStackEntry::Break {
-                    start_id,
-                    raw_label,
-                    messages,
-                }) = stack.pop()
-                {
-                    end_step = finish_single_block(
-                        &mut directive_steps,
-                        start_id,
-                        raw_label,
-                        messages,
-                        frame_ctx,
-                        step_ctx,
-                    );
-                }
-                directive_steps.insert(msg.id.clone(), end_step);
-            }
-            // alt start/else/end
-            12 => stack.push(BlockStackEntry::Alt {
-                section_directives: vec![(msg.id.clone(), raw_label.to_string())],
-                sections: vec![Vec::new()],
-            }),
-            13 => {
-                if let Some(BlockStackEntry::Alt {
-                    section_directives,
-                    sections,
-                }) = stack.last_mut()
-                {
-                    section_directives.push((msg.id.clone(), raw_label.to_string()));
-                    sections.push(Vec::new());
-                }
-            }
-            14 => {
-                let mut end_step = block_end_step;
-                if let Some(BlockStackEntry::Alt {
-                    section_directives,
-                    sections,
-                }) = stack.pop()
-                {
-                    end_step = finish_sectioned_block(
-                        &mut directive_steps,
-                        section_directives,
-                        sections,
-                        frame_ctx,
-                        step_ctx,
-                    );
-                }
-                directive_steps.insert(msg.id.clone(), end_step);
-            }
-            // par start/and/end
-            19 | 32 => stack.push(BlockStackEntry::Par {
-                section_directives: vec![(msg.id.clone(), raw_label.to_string())],
-                sections: vec![Vec::new()],
-            }),
-            20 => {
-                if let Some(BlockStackEntry::Par {
-                    section_directives,
-                    sections,
-                }) = stack.last_mut()
-                {
-                    section_directives.push((msg.id.clone(), raw_label.to_string()));
-                    sections.push(Vec::new());
-                }
-            }
-            21 => {
-                let mut end_step = block_end_step;
-                if let Some(BlockStackEntry::Par {
-                    section_directives,
-                    sections,
-                }) = stack.pop()
-                {
-                    end_step = finish_sectioned_block(
-                        &mut directive_steps,
-                        section_directives,
-                        sections,
-                        frame_ctx,
-                        step_ctx,
-                    );
-                }
-                directive_steps.insert(msg.id.clone(), end_step);
-            }
-            // critical start/option/end
-            27 => stack.push(BlockStackEntry::Critical {
-                section_directives: vec![(msg.id.clone(), raw_label.to_string())],
-                sections: vec![Vec::new()],
-            }),
-            28 => {
-                if let Some(BlockStackEntry::Critical {
-                    section_directives,
-                    sections,
-                }) = stack.last_mut()
-                {
-                    section_directives.push((msg.id.clone(), raw_label.to_string()));
-                    sections.push(Vec::new());
-                }
-            }
-            29 => {
-                let mut end_step = block_end_step;
-                if let Some(BlockStackEntry::Critical {
-                    section_directives,
-                    sections,
-                }) = stack.pop()
-                {
-                    end_step = finish_sectioned_block(
-                        &mut directive_steps,
-                        section_directives,
-                        sections,
-                        frame_ctx,
-                        step_ctx,
-                    );
-                }
-                directive_steps.insert(msg.id.clone(), end_step);
-            }
-            _ => {
-                // If this is a "real" message edge, attach it to all active block scopes so block
-                // width computations can account for overflowing message labels.
-                if msg.from.is_some() && msg.to.is_some() {
-                    for entry in stack.iter_mut() {
-                        push_message_to_active_block(entry, msg.id.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    directive_steps
-}
-
-fn bracketize(s: &str) -> String {
-    let t = s.trim();
-    if t.is_empty() {
-        return "\u{200B}".to_string();
-    }
-    if t.starts_with('[') && t.ends_with(']') {
-        return t.to_string();
-    }
-    format!("[{t}]")
-}
-
-fn block_label_text(raw_label: &str) -> String {
-    bracketize(raw_label)
-}
-
-fn finish_single_block(
-    directive_steps: &mut HashMap<String, f64>,
-    start_id: String,
-    raw_label: String,
-    messages: Vec<String>,
-    frame_ctx: BlockFrameWidthContext<'_>,
-    step_ctx: BlockStepContext,
-) -> f64 {
-    let has_self = messages
+    let directive_steps = ctx
+        .model
+        .messages
         .iter()
-        .any(|msg_id| is_self_message_id(msg_id.as_str(), frame_ctx.msg_by_id));
-    let start_step = block_start_step(&raw_label, &messages, frame_ctx, step_ctx);
-    directive_steps.insert(start_id, start_step);
-    if has_self {
-        40.0
-    } else {
-        step_ctx.block_end_step
-    }
+        .filter(|msg| is_block_label_directive(msg.message_type))
+        .map(|msg| {
+            let frame_width = widths_by_id.get(&msg.id).copied();
+            (
+                msg.id.clone(),
+                block_label_step(msg.message_text(), frame_width, frame_ctx, step_ctx),
+            )
+        })
+        .collect();
+
+    SequenceBlockPlan { directive_steps }
 }
 
-fn finish_sectioned_block(
-    directive_steps: &mut HashMap<String, f64>,
-    section_directives: Vec<(String, String)>,
-    sections: Vec<Vec<String>>,
-    frame_ctx: BlockFrameWidthContext<'_>,
-    step_ctx: BlockStepContext,
-) -> f64 {
-    let has_self = sections
-        .iter()
-        .flatten()
-        .any(|msg_id| is_self_message_id(msg_id.as_str(), frame_ctx.msg_by_id));
-    let mut message_ids: Vec<String> = Vec::new();
-    for sec in &sections {
-        message_ids.extend(sec.iter().cloned());
-    }
-
-    let frame_width = block_frame_width(&message_ids, frame_ctx);
-    for (id, raw_label) in section_directives {
-        let step = block_label_step(&raw_label, frame_width, frame_ctx, step_ctx);
-        directive_steps.insert(id, step);
-    }
-
-    if has_self {
-        40.0
-    } else {
-        step_ctx.block_end_step
-    }
+pub(super) fn calculate_sequence_block_widths(
+    ctx: BlockStepPlanContext<'_>,
+) -> HashMap<String, f64> {
+    calculate_sequence_block_bounds(&ctx.model.messages, ctx.frame_width_context())
+        .into_iter()
+        .map(|(id, bounds)| (id, bounds.width))
+        .collect()
 }
 
-fn block_start_step(
-    raw_label: &str,
-    message_ids: &[String],
-    frame_ctx: BlockFrameWidthContext<'_>,
-    step_ctx: BlockStepContext,
-) -> f64 {
-    block_label_step(
-        raw_label,
-        block_frame_width(message_ids, frame_ctx),
-        frame_ctx,
-        step_ctx,
-    )
+pub(super) fn is_block_start(message_type: i32) -> bool {
+    matches!(message_type, 10 | 12 | 15 | 19 | 27 | 30 | 32)
+}
+
+pub(super) fn is_block_section(message_type: i32) -> bool {
+    matches!(message_type, 13 | 20 | 28)
+}
+
+pub(super) fn is_block_end(message_type: i32) -> bool {
+    matches!(message_type, 11 | 14 | 16 | 21 | 29 | 31)
+}
+
+fn is_block_label_directive(message_type: i32) -> bool {
+    is_block_start(message_type) || is_block_section(message_type)
 }
 
 fn block_label_step(
@@ -352,193 +100,427 @@ fn block_label_step(
         return step_ctx.block_base_step_empty;
     }
 
-    let Some(width) = frame_width else {
-        return step_ctx.block_base_step;
+    let label = bracketize_sequence_block_label(raw_label);
+    let measured_label = match frame_width {
+        Some(width) => wrap_label_like_mermaid_lines(
+            &label,
+            frame_ctx.measurer,
+            frame_ctx.msg_text_style,
+            sequence_block_label_wrap_width(width, step_ctx.wrap_padding),
+        )
+        .join("<br/>"),
+        None => label,
     };
-
-    let label = block_label_text(raw_label);
-    let metrics = frame_ctx.measurer.measure_wrapped(
-        &label,
+    let (_, height) = measure_svg_like_with_html_br(
+        frame_ctx.measurer,
+        &measured_label,
         frame_ctx.msg_text_style,
-        Some(width),
-        WrapMode::SvgLikeSingleRun,
     );
-    let extra = (metrics.line_count.saturating_sub(1) as f64) * step_ctx.block_extra_per_line;
-    step_ctx.block_base_step + extra
-}
-
-fn is_self_message_id(msg_id: &str, msg_by_id: &HashMap<&str, &SequenceMessage>) -> bool {
-    let Some(msg) = msg_by_id.get(msg_id).copied() else {
-        return false;
-    };
-    // Notes can use `from==to` for `rightOf`/`leftOf`; do not treat them as self-messages.
-    if msg.message_type == 2 {
-        return false;
-    }
-    msg.from
-        .as_deref()
-        .is_some_and(|from| Some(from) == msg.to.as_deref())
+    step_ctx.block_base_step_empty + height.max(step_ctx.label_box_height)
 }
 
 #[derive(Clone, Copy)]
 struct BlockFrameWidthContext<'a> {
-    msg_by_id: &'a HashMap<&'a str, &'a SequenceMessage>,
     actor_index: &'a HashMap<&'a str, usize>,
     actor_centers_x: &'a [f64],
     actor_widths: &'a [f64],
-    message_margin: f64,
-    box_text_margin: f64,
-    bottom_margin_adj: f64,
+    actor_margin: f64,
+    activation_width: f64,
+    label_box_width: f64,
+    sequence_default_width: f64,
+    wrap_padding: f64,
+    note_margin: f64,
+    is_neo: bool,
     measurer: &'a dyn TextMeasurer,
     msg_text_style: &'a TextStyle,
+    note_text_style: &'a TextStyle,
     math_config: &'a MermaidConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    message_width_scale: f64,
 }
 
 #[derive(Clone, Copy)]
 struct BlockStepContext {
-    block_base_step: f64,
     block_base_step_empty: f64,
-    block_extra_per_line: f64,
-    block_end_step: f64,
+    label_box_height: f64,
+    wrap_padding: f64,
 }
 
-fn message_span_x(msg: &SequenceMessage, ctx: BlockFrameWidthContext<'_>) -> Option<(f64, f64)> {
-    let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-        return None;
+impl<'a> BlockStepPlanContext<'a> {
+    fn frame_width_context(self) -> BlockFrameWidthContext<'a> {
+        BlockFrameWidthContext {
+            actor_index: self.actor_index,
+            actor_centers_x: self.actor_centers_x,
+            actor_widths: self.actor_widths,
+            actor_margin: self.actor_margin,
+            activation_width: self.activation_width,
+            label_box_width: self.label_box_width,
+            sequence_default_width: self.sequence_default_width,
+            wrap_padding: self.wrap_padding,
+            note_margin: self.note_margin,
+            is_neo: self.is_neo,
+            measurer: self.measurer,
+            msg_text_style: self.msg_text_style,
+            note_text_style: self.note_text_style,
+            math_config: self.math_config,
+            math_renderer: self.math_renderer,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct BlockHorizontalBounds {
+    from: f64,
+    to: f64,
+    width: f64,
+}
+
+impl BlockHorizontalBounds {
+    fn empty() -> Self {
+        Self {
+            from: f64::INFINITY,
+            to: f64::NEG_INFINITY,
+            width: 0.0,
+        }
+    }
+
+    fn include_note(&mut self, start_x: f64, width: f64, label_box_width: f64) {
+        self.from = self.from.min(start_x);
+        self.to = self.to.max(start_x + width);
+        self.width = self.width.max((self.to - self.from).abs()) - label_box_width;
+    }
+
+    fn include_message(
+        &mut self,
+        msg: &SequenceMessage,
+        model: SequenceMessageHorizontalModel,
+        ctx: BlockFrameWidthContext<'_>,
+    ) {
+        if model.start_x == model.stop_x {
+            let Some(actor_id) = msg.from.as_deref() else {
+                return;
+            };
+            let Some(actor_index) = ctx.actor_index.get(actor_id).copied() else {
+                return;
+            };
+            let Some(actor_center_x) = ctx.actor_centers_x.get(actor_index).copied() else {
+                return;
+            };
+            let Some(actor_width) = ctx.actor_widths.get(actor_index).copied() else {
+                return;
+            };
+            let actor_left_x = actor_center_x - actor_width / 2.0;
+            self.from = self
+                .from
+                .min(actor_left_x - model.width / 2.0)
+                .min(actor_left_x - actor_width / 2.0);
+            self.to = self
+                .to
+                .max(actor_left_x + model.width / 2.0)
+                .max(actor_left_x + actor_width / 2.0);
+            self.width = self.width.max((self.to - self.from).abs()) - ctx.label_box_width;
+        } else {
+            self.from = self.from.min(model.start_x);
+            self.to = self.to.max(model.stop_x);
+            self.width = self.width.max(model.width) - ctx.label_box_width;
+        }
+    }
+}
+
+#[derive(Debug)]
+struct OpenBlock {
+    aliases: Vec<String>,
+    bounds: BlockHorizontalBounds,
+}
+
+impl OpenBlock {
+    fn new(id: String) -> Self {
+        Self {
+            aliases: vec![id],
+            bounds: BlockHorizontalBounds::empty(),
+        }
+    }
+}
+
+fn calculate_sequence_block_bounds(
+    messages: &[SequenceMessage],
+    ctx: BlockFrameWidthContext<'_>,
+) -> HashMap<String, BlockHorizontalBounds> {
+    let mut completed = HashMap::new();
+    let mut stack: Vec<OpenBlock> = Vec::new();
+    let mut activation_state = SequenceActivationState::new(ctx.activation_width);
+
+    for msg in messages {
+        if is_block_start(msg.message_type) {
+            stack.push(OpenBlock::new(msg.id.clone()));
+            continue;
+        }
+        if is_block_section(msg.message_type) {
+            if !msg.message_text().is_empty()
+                && let Some(current) = stack.last_mut()
+            {
+                current.aliases.push(msg.id.clone());
+            }
+            continue;
+        }
+        if is_block_end(msg.message_type) {
+            if let Some(current) = stack.pop() {
+                for alias in current.aliases {
+                    completed.insert(alias, current.bounds);
+                }
+            }
+            continue;
+        }
+        if activation_state.handle_directive(msg, ctx.actor_index, ctx.actor_centers_x) {
+            continue;
+        }
+        if stack.is_empty() {
+            continue;
+        }
+
+        if msg.placement.is_some() {
+            let Some(note) = sequence_note_horizontal_model(
+                msg,
+                SequenceNoteHorizontalContext {
+                    actor_index: ctx.actor_index,
+                    actor_centers_x: ctx.actor_centers_x,
+                    actor_widths: ctx.actor_widths,
+                    actor_margin: ctx.actor_margin,
+                    note_default_width: ctx.sequence_default_width,
+                    note_margin: ctx.note_margin,
+                    wrap_padding: ctx.wrap_padding,
+                    measurer: ctx.measurer,
+                    note_text_style: ctx.note_text_style,
+                    math_config: ctx.math_config,
+                    math_renderer: ctx.math_renderer,
+                },
+            ) else {
+                continue;
+            };
+            for current in &mut stack {
+                current
+                    .bounds
+                    .include_note(note.start_x, note.width, ctx.label_box_width);
+            }
+            continue;
+        }
+
+        let Some(message) = sequence_message_horizontal_model(
+            msg,
+            SequenceMessageHorizontalContext {
+                actor_index: ctx.actor_index,
+                actor_centers_x: ctx.actor_centers_x,
+                activation_state: &activation_state,
+                default_width: ctx.sequence_default_width,
+                wrap_padding: ctx.wrap_padding,
+                is_neo: ctx.is_neo,
+                measurer: ctx.measurer,
+                msg_text_style: ctx.msg_text_style,
+            },
+        ) else {
+            continue;
+        };
+        for current in &mut stack {
+            current.bounds.include_message(msg, message, ctx);
+        }
+    }
+
+    completed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        BlockFrameWidthContext, BlockStepContext, block_label_step, calculate_sequence_block_bounds,
     };
-    let (Some(fi), Some(ti)) = (
-        ctx.actor_index.get(from).copied(),
-        ctx.actor_index.get(to).copied(),
-    ) else {
-        return None;
-    };
-    let from_x = ctx.actor_centers_x[fi];
-    let to_x = ctx.actor_centers_x[ti];
-    let sign = if to_x >= from_x { 1.0 } else { -1.0 };
-    let x1 = from_x + sign * 1.0;
-    let x2 = if from == to { x1 } else { to_x - sign * 4.0 };
-    let cx = (x1 + x2) / 2.0;
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
+    use merman_core::MermaidConfig;
+    use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
+    use std::collections::HashMap;
 
-    let text = msg.message_text();
-    let w = if text.is_empty() {
-        1.0
-    } else {
-        let (w, _h) = measure_sequence_label_for_layout(
-            ctx.measurer,
-            text,
-            ctx.msg_text_style,
-            ctx.math_config,
-            ctx.math_renderer,
-            SequenceMathHeightMode::Bound,
-        );
-        (w * ctx.message_width_scale).max(1.0)
-    };
-    Some((cx - w / 2.0, cx + w / 2.0))
-}
+    struct ExpectedBlockLabelMeasurer;
 
-fn block_frame_width(message_ids: &[String], ctx: BlockFrameWidthContext<'_>) -> Option<f64> {
-    let mut actor_idxs: Vec<usize> = Vec::new();
-    for msg_id in message_ids {
-        let Some(msg) = ctx.msg_by_id.get(msg_id.as_str()).copied() else {
-            continue;
-        };
-        let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
-            continue;
-        };
-        if let Some(i) = ctx.actor_index.get(from).copied() {
-            actor_idxs.push(i);
-        }
-        if let Some(i) = ctx.actor_index.get(to).copied() {
-            actor_idxs.push(i);
-        }
-    }
-    actor_idxs.sort();
-    actor_idxs.dedup();
-    if actor_idxs.is_empty() {
-        return None;
-    }
-
-    if actor_idxs.len() == 1 {
-        let i = actor_idxs[0];
-        let actor_w = ctx.actor_widths.get(i).copied().unwrap_or(150.0);
-        let half_width = actor_w / 2.0
-            + (ctx.message_margin / 2.0)
-            + ctx.box_text_margin
-            + ctx.bottom_margin_adj;
-        let w = (2.0 * half_width).max(1.0);
-        return Some(w);
-    }
-
-    let min_i = actor_idxs.first().copied()?;
-    let max_i = actor_idxs.last().copied()?;
-    let mut x1 = ctx.actor_centers_x[min_i] - SEQUENCE_FRAME_SIDE_PAD_PX;
-    let mut x2 = ctx.actor_centers_x[max_i] + SEQUENCE_FRAME_SIDE_PAD_PX;
-
-    // Expand multi-actor blocks to include overflowing message labels (e.g. long self messages).
-    for msg_id in message_ids {
-        let Some(msg) = ctx.msg_by_id.get(msg_id.as_str()).copied() else {
-            continue;
-        };
-        let Some((l, r)) = message_span_x(msg, ctx) else {
-            continue;
-        };
-        if l < x1 {
-            x1 = l.floor();
-        }
-        if r > x2 {
-            x2 = r.ceil();
-        }
-    }
-
-    Some((x2 - x1).max(1.0))
-}
-
-#[derive(Debug, Clone)]
-enum BlockStackEntry {
-    Loop {
-        start_id: String,
-        raw_label: String,
-        messages: Vec<String>,
-    },
-    Opt {
-        start_id: String,
-        raw_label: String,
-        messages: Vec<String>,
-    },
-    Break {
-        start_id: String,
-        raw_label: String,
-        messages: Vec<String>,
-    },
-    Alt {
-        section_directives: Vec<(String, String)>,
-        sections: Vec<Vec<String>>,
-    },
-    Par {
-        section_directives: Vec<(String, String)>,
-        sections: Vec<Vec<String>>,
-    },
-    Critical {
-        section_directives: Vec<(String, String)>,
-        sections: Vec<Vec<String>>,
-    },
-}
-
-fn push_message_to_active_block(entry: &mut BlockStackEntry, message_id: String) {
-    match entry {
-        BlockStackEntry::Alt { sections, .. }
-        | BlockStackEntry::Par { sections, .. }
-        | BlockStackEntry::Critical { sections, .. } => {
-            if let Some(cur) = sections.last_mut() {
-                cur.push(message_id);
+    impl TextMeasurer for ExpectedBlockLabelMeasurer {
+        fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+            assert_eq!(text, "[[Action 1]]");
+            TextMetrics {
+                width: 100.0,
+                height: 16.0,
+                line_count: 1,
             }
         }
-        BlockStackEntry::Loop { messages, .. }
-        | BlockStackEntry::Opt { messages, .. }
-        | BlockStackEntry::Break { messages, .. } => {
-            messages.push(message_id);
+    }
+
+    fn message(
+        id: &str,
+        message_type: i32,
+        from: Option<&str>,
+        to: Option<&str>,
+        text: &str,
+    ) -> SequenceMessage {
+        SequenceMessage {
+            id: id.to_string(),
+            from: from.map(str::to_string),
+            to: to.map(str::to_string),
+            message_type,
+            message: SequenceMessagePayload::Text(text.to_string()),
+            wrap: false,
+            activate: false,
+            placement: (message_type == 2).then_some(1),
+            central_connection: 0,
         }
+    }
+
+    fn bounds(messages: &[SequenceMessage]) -> HashMap<String, super::BlockHorizontalBounds> {
+        let actor_index = HashMap::from([("A", 0), ("B", 1), ("C", 2)]);
+        let centers = [100.0, 300.0, 500.0];
+        let widths = [80.0, 80.0, 80.0];
+        let measurer = DeterministicTextMeasurer::default();
+        let msg_style = TextStyle::default();
+        let note_style = TextStyle::default();
+        let math_config = MermaidConfig::default();
+
+        calculate_sequence_block_bounds(
+            messages,
+            BlockFrameWidthContext {
+                actor_index: &actor_index,
+                actor_centers_x: &centers,
+                actor_widths: &widths,
+                actor_margin: 40.0,
+                activation_width: 10.0,
+                label_box_width: 0.0,
+                sequence_default_width: 0.0,
+                wrap_padding: 0.0,
+                note_margin: 0.0,
+                is_neo: false,
+                measurer: &measurer,
+                msg_text_style: &msg_style,
+                note_text_style: &note_style,
+                math_config: &math_config,
+                math_renderer: None,
+            },
+        )
+    }
+
+    #[test]
+    fn activation_state_crosses_nested_block_boundaries() {
+        let messages = vec![
+            message("active", 17, Some("A"), Some("A"), ""),
+            message("outer", 10, None, None, "outer"),
+            message("inner", 15, None, None, "inner"),
+            message("inner-end", 16, None, None, ""),
+            message("edge", 5, Some("A"), Some("B"), ""),
+            message("outer-end", 11, None, None, ""),
+            message("inactive", 18, Some("A"), Some("A"), ""),
+        ];
+
+        let calculated = bounds(&messages);
+        let outer = &calculated["outer"];
+
+        assert_eq!((outer.from, outer.to, outer.width), (105.0, 299.0, 194.0));
+        assert_eq!(calculated["inner"].width, 0.0);
+    }
+
+    #[test]
+    fn ordinary_message_updates_bounds_after_self_message_and_note() {
+        let messages = vec![
+            message("loop", 10, None, None, "loop"),
+            message("self", 5, Some("A"), Some("A"), ""),
+            message("note", 2, Some("A"), Some("A"), ""),
+            message("edge", 5, Some("B"), Some("C"), ""),
+            message("end", 11, None, None, ""),
+        ];
+
+        let calculated = bounds(&messages);
+        let loop_bounds = &calculated["loop"];
+
+        assert_eq!(loop_bounds.from, 20.0);
+        assert_eq!(loop_bounds.to, 499.0);
+        assert_eq!(loop_bounds.width, 198.0);
+    }
+
+    #[test]
+    fn ordinary_message_bounds_survive_later_self_message_and_note() {
+        let messages = vec![
+            message("loop", 10, None, None, "loop"),
+            message("far", 5, Some("A"), Some("C"), ""),
+            message("self", 5, Some("B"), Some("B"), ""),
+            message("note", 2, Some("B"), Some("B"), ""),
+            message("end", 11, None, None, ""),
+        ];
+
+        let calculated = bounds(&messages);
+        let loop_bounds = &calculated["loop"];
+
+        assert_eq!(loop_bounds.from, 101.0);
+        assert_eq!(loop_bounds.to, 499.0);
+        assert_eq!(loop_bounds.width, 398.0);
+    }
+
+    #[test]
+    fn nested_blocks_and_section_aliases_share_final_width() {
+        let messages = vec![
+            message("outer", 10, None, None, "outer"),
+            message("alt", 12, None, None, "first"),
+            message("near", 5, Some("A"), Some("B"), ""),
+            message("else", 13, None, None, "otherwise"),
+            message("far", 5, Some("A"), Some("C"), ""),
+            message("alt-end", 14, None, None, ""),
+            message("outer-end", 11, None, None, ""),
+        ];
+
+        let calculated = bounds(&messages);
+
+        assert_eq!(calculated["alt"], calculated["else"]);
+        assert_eq!(calculated["alt"].width, 398.0);
+        assert_eq!(calculated["outer"].width, 398.0);
+    }
+
+    #[test]
+    fn empty_block_keeps_zero_width() {
+        let messages = vec![
+            message("empty", 10, None, None, "empty"),
+            message("end", 11, None, None, ""),
+        ];
+
+        assert_eq!(bounds(&messages)["empty"].width, 0.0);
+    }
+
+    #[test]
+    fn layout_measures_an_added_bracket_pair_around_a_bracketed_source_title() {
+        let actor_index: HashMap<&str, usize> = HashMap::new();
+        let actor_centers_x = [];
+        let actor_widths = [];
+        let measurer = ExpectedBlockLabelMeasurer;
+        let text_style = TextStyle::default();
+        let math_config = MermaidConfig::default();
+
+        let step = block_label_step(
+            "[Action 1]",
+            None,
+            BlockFrameWidthContext {
+                actor_index: &actor_index,
+                actor_centers_x: &actor_centers_x,
+                actor_widths: &actor_widths,
+                actor_margin: 0.0,
+                activation_width: 0.0,
+                label_box_width: 0.0,
+                sequence_default_width: 0.0,
+                wrap_padding: 0.0,
+                note_margin: 0.0,
+                is_neo: false,
+                measurer: &measurer,
+                msg_text_style: &text_style,
+                note_text_style: &text_style,
+                math_config: &math_config,
+                math_renderer: None,
+            },
+            BlockStepContext {
+                block_base_step_empty: 0.0,
+                label_box_height: 0.0,
+                wrap_padding: 0.0,
+            },
+        );
+
+        assert_eq!(step, 16.0);
     }
 }

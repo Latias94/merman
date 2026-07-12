@@ -473,6 +473,7 @@
         "rhsGroup": true,
         "title": "cross"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

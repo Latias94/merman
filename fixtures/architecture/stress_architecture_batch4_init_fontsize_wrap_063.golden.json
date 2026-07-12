@@ -182,6 +182,7 @@
         "rhsGroup": null,
         "title": "another label"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

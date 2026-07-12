@@ -1,0 +1,39 @@
+{
+  "diagramType": "railroadAbnf",
+  "model": {
+    "type": "railroadAbnf",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "rule",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "repetition",
+              "element": {
+                "type": "terminal",
+                "value": "hello"
+              },
+              "min": 1,
+              "max": 2
+            },
+            {
+              "type": "optional",
+              "element": {
+                "type": "nonterminal",
+                "name": "other-rule"
+              }
+            },
+            {
+              "type": "terminal",
+              "value": "%x41"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

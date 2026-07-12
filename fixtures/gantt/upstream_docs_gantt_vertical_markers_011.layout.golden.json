@@ -6,10 +6,10 @@
         "min_x": 0.0,
         "min_y": 0.0,
         "max_x": 1184.0,
-        "max_y": 196.0
+        "max_y": 148.0
       },
       "width": 1184.0,
-      "height": 196.0,
+      "height": 148.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
       "top_padding": 50.0,
@@ -45,22 +45,6 @@
           "width": 1146.5,
           "height": 24.0,
           "class": "section section0"
-        },
-        {
-          "index": 2.0,
-          "x": 0.0,
-          "y": 96.0,
-          "width": 1146.5,
-          "height": 24.0,
-          "class": "section section0"
-        },
-        {
-          "index": 3.0,
-          "x": 0.0,
-          "y": 120.0,
-          "width": 1146.5,
-          "height": 24.0,
-          "class": "section section0"
         }
       ],
       "section_titles": [
@@ -68,7 +52,7 @@
           "section": "",
           "index": 0.0,
           "x": 10.0,
-          "y": 98.0,
+          "y": 74.0,
           "dy_em": -0.0,
           "lines": [
             ""
@@ -82,7 +66,7 @@
           "task": "Initial vert ",
           "section": "",
           "task_type": "",
-          "order": 0.0,
+          "order": -1.0,
           "start_ms": 1771176600000.0,
           "end_ms": 1771176720000.0,
           "render_end_ms": null,
@@ -93,7 +77,7 @@
             "x": 75.0,
             "y": 35.0,
             "width": 1.6,
-            "height": 136.0,
+            "height": 88.0,
             "rx": 3.0,
             "ry": 3.0,
             "class": "task vert task0"
@@ -104,7 +88,7 @@
             "font_size": 11.0,
             "width": 49.28,
             "x": 75.0,
-            "y": 191.0,
+            "y": 143.0,
             "class": "taskText taskText0 width-49.279999999999994"
           }
         },
@@ -113,7 +97,7 @@
           "task": "Task A ",
           "section": "",
           "task_type": "",
-          "order": 1.0,
+          "order": 0.0,
           "start_ms": 1771176720000.0,
           "end_ms": 1771176900000.0,
           "render_end_ms": null,
@@ -122,7 +106,7 @@
           "bar": {
             "id": "task1",
             "x": 140.0,
-            "y": 74.0,
+            "y": 50.0,
             "width": 97.0,
             "height": 20.0,
             "rx": 3.0,
@@ -135,7 +119,7 @@
             "font_size": 11.0,
             "width": 32.34,
             "x": 188.5,
-            "y": 87.5,
+            "y": 63.5,
             "class": "taskText taskText0 width-32.339999999999996"
           }
         },
@@ -144,7 +128,7 @@
           "task": "Task B ",
           "section": "",
           "task_type": "",
-          "order": 2.0,
+          "order": 1.0,
           "start_ms": 1771176900000.0,
           "end_ms": 1771177380000.0,
           "render_end_ms": null,
@@ -153,7 +137,7 @@
           "bar": {
             "id": "task2",
             "x": 237.0,
-            "y": 98.0,
+            "y": 74.0,
             "width": 258.0,
             "height": 20.0,
             "rx": 3.0,
@@ -166,7 +150,7 @@
             "font_size": 11.0,
             "width": 32.34,
             "x": 366.0,
-            "y": 111.5,
+            "y": 87.5,
             "class": "taskText taskText0 width-32.339999999999996"
           }
         },
@@ -175,7 +159,7 @@
           "task": "Final vert ",
           "section": "",
           "task_type": "",
-          "order": 3.0,
+          "order": -1.0,
           "start_ms": 1771178280000.0,
           "end_ms": 1771178520000.0,
           "render_end_ms": null,
@@ -186,7 +170,7 @@
             "x": 980.0,
             "y": 35.0,
             "width": 1.6,
-            "height": 136.0,
+            "height": 88.0,
             "rx": 3.0,
             "ry": 3.0,
             "class": "task vert task0"
@@ -197,7 +181,7 @@
             "font_size": 11.0,
             "width": 44.77,
             "x": 980.0,
-            "y": 191.0,
+            "y": 143.0,
             "class": "taskText taskText0 width-44.77"
           }
         }

@@ -60,6 +60,11 @@ impl<'input> Iterator for Lexer<'input> {
             self.allow_header_direction = true;
             return Some(Ok((start, Tok::KwFlowchartElk, self.pos)));
         }
+        if self.starts_with_kw("swimlane-beta") {
+            self.pos += "swimlane-beta".len();
+            self.allow_header_direction = true;
+            return Some(Ok((start, Tok::KwSwimlane, self.pos)));
+        }
         if self.starts_with_kw("flowchart") {
             self.pos += "flowchart".len();
             self.allow_header_direction = true;

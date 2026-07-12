@@ -8,8 +8,8 @@
     "accDescr": null,
     "classDefs": {},
     "tooltips": {
-      "D": "click test",
-      "B": "link test"
+      "B": "link test",
+      "D": "click test"
     },
     "edgeDefaults": {
       "style": [

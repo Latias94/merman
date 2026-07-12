@@ -1,0 +1,475 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "timeline_stress_accdescr_block_multiline": {
+      "input_sha256": "464eb88f068b17b3c8253dd68b8260685f4c8574bd9ae16911c8260257041291",
+      "svg_sha256": "7f9d78833bcb40265071326058ab4f0f982915f0328f372dfb15c2628a23fe0b",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_acctitle_accdescr_and_title": {
+      "input_sha256": "6eb26c61b05f0e0706f9138237ab6787fbf62b5554bccd09b9fb5a0d64c81913",
+      "svg_sha256": "aab9cdd8f958861bab438ef39eb2eb0d986618ce334815503e44ca1b96d621cf",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_br_in_section_titles": {
+      "input_sha256": "f33cba0bf79c64c1403cb0657e653bee3067168c8102989065986188b5b0730d",
+      "svg_sha256": "bb6a1914d677d3a931b7c39ca18c3f8cbdc958e7b34fb4b61130f34d0badcce1",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_comments_and_blank_lines": {
+      "input_sha256": "53ee32360804293a849083f5cea16c80d40199bdfeae2b3e287730eb07b4cb64",
+      "svg_sha256": "6c99eac619873e0813c6a086f0603a5022c7dcc84cd0aa60652da192bf1088bb",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common2_default_multicolor_many_periods": {
+      "input_sha256": "6308f078014d598c5d2f9eb5465e9ea88cee64b170060911d7633aacb1399578",
+      "svg_sha256": "dc2d0b6da43d0de261ccf039c3ac371fa201aacfe0a5845b855c3af3c6d7d9cb",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common2_disable_multicolor_many_periods": {
+      "input_sha256": "c0e4142840180ef83f54ced1c7c2065b1a3d85e9a4d7161baad415804c2c41fe",
+      "svg_sha256": "79153152a28b7e1537ecaaf7c78c41ca38e94faf5d7355c5924fd6ce59bbab3c",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common2_frontmatter_maxwidth_false_many_periods": {
+      "input_sha256": "dc2182453129754fd0781c730ba17ffe6d96182b385f89f794b0fb091a5d0c2a",
+      "svg_sha256": "5a6548a2a7a9dcf653f906a1cc71eac1c075629e64bc858997b6ec6da5a2a8f1",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common2_sections_repeat_period_names": {
+      "input_sha256": "528d7be38e914db868048b320bfef64c8170627beaea721e3b2631ea1f66e91d",
+      "svg_sha256": "f5bf93b088a061ed04dad5cbbafedc93370609091f84032828542ea910edeabb",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common2_stack_many_events_per_period": {
+      "input_sha256": "b55f0758c60d72624bf9b766203991e85267183e3c8cc050205ca8d3d9d178be",
+      "svg_sha256": "fac8effd700902949f73f0d5623f3d6ad114e9bb2c4e405ca598f713bd2f7a49",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common2_textual_periods_with_dashes": {
+      "input_sha256": "5bccdb0647052a6ed43a95df623283987ba1f069a8621f08d20a89a194245c5d",
+      "svg_sha256": "1e6f02b12d1d0905eb2356bc206c4828890b5e05dbc5d0fd0b5d72b7ea8d810c",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common_long_unbroken_words": {
+      "input_sha256": "b037fc3ac6fd6a899deb763e40d45008b7cb865f16bfdbcd83a92c9e09100254",
+      "svg_sha256": "84f1dce8f5abd8da56c548c4cdb3c498f6dee18084c569ba3180f0b36a7e533f",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common_many_events_with_br": {
+      "input_sha256": "e5482ed732cc726b95d37d9bb2e5408ac3bf494798675b79d23a2da0c3a9e1fd",
+      "svg_sha256": "3b4c4280a1e61325eac5b5e4ed97f4104e646fbef9ce19fe9d3e8f18374a9b3b",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common_mixed_indentation_comments": {
+      "input_sha256": "2e4cf5f444b5a0c3d952908d611ad485525b57903e5130c32fdc90c3a5ec3c4a",
+      "svg_sha256": "8d269c784d74cdd5a987a689c38e3601cb6ef7323626090a93c26ed87e46c741",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common_section_br_and_entities": {
+      "input_sha256": "8b43ec01a9390b696985c40a5d228fba73bd8247740b0ed428fc2e0658627916",
+      "svg_sha256": "4fb6c127472dbaf6babb25aaaa2f9f240088bff439c45a6f69372cc5a9e02089",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common_textual_periods_and_multi_events": {
+      "input_sha256": "e5df6d36c69c2d9b749b499020d57d234098f9766d3d57c9e08b8faecb47475c",
+      "svg_sha256": "74f8d17e8b9091344eaeb9d4cc782a89d8e4d2e665ddb8b5ef18ee4b456f9c16",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_common_theme_variables_label_cycle": {
+      "input_sha256": "13b00484e5a4507e3869285e9561a2bd43bdcdaa2ab92f5fe694009f87f21997",
+      "svg_sha256": "9763da04551337890a6687abb1f6e80cbcfc5028a8b90a20565ea80cfa43f4db",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_dense_events_grid": {
+      "input_sha256": "ec54d936ab5ccaa7b916e75b01a9254e08c5ca04903729346d44b8c10433f49d",
+      "svg_sha256": "e845c2765d1520a3863be6d9d5aed51ef86d5f36a73d8201f53e007a8873d0f9",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_disable_multicolor_and_width": {
+      "input_sha256": "273053e1c4564e065d4edcb18903386d683ec746fc9f94f262cfb1388e9954ae",
+      "svg_sha256": "b493ff1914eb0799fa9361545da03186112d5fb1427f7fc92da23c48cb837828",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_duplicate_periods_across_sections": {
+      "input_sha256": "a4222de95d407c14add829a1b162fe0be104b1c2aa39c8f513cec6118916cb4b",
+      "svg_sha256": "04f934c3cc2da6394177579495d7d51435bafcf8e2b8f26f6a27ff23a954b583",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_events_with_entities_and_ampersands": {
+      "input_sha256": "f4cfc5fbdd073df0179bd0b5d64436a5e567419950568f57704429ed96a8d963",
+      "svg_sha256": "e27cc54cd0b3bc348aaebb6f06cb5352251ab461c91006adec9c75da9e9ba47a",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_font_size_precedence": {
+      "input_sha256": "bc6c398093a97265e7082f693f8f7605920853113e4800b8a75ef3eaf3b9e9e9",
+      "svg_sha256": "bd1525feb0b485d6e8eab53a9d295ac233e1f45e40c8aa66e717a4fcf19284fe",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_frontmatter_maxwidth_false_and_padding": {
+      "input_sha256": "3ce2f4be854aae7a2ff05d690cc1da75542e25f1ef9ac2b987c5e183767f8d7b",
+      "svg_sha256": "cb32150bcd35e81f9e490ad6e5dd74ac2b2278faa0440405bd65548ffeccb953",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_html_entities": {
+      "input_sha256": "da71f79b6baf4fe8fe92cbb0e048b1e09e232a79dbca85a26e9f987250060503",
+      "svg_sha256": "07dfe156123f585cbb7627ff13ed455897c8685fa9c872b8000d7813e069a5ca",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_inline_hashes_and_semicolons": {
+      "input_sha256": "12e770968c9727eaf6506fd9fb883b50e73c8e570addfcde86fdabd601998634",
+      "svg_sha256": "33f6bc0fb3384c8d7172280e25d787c3eaa4b1afdfaea5b9ed29de51cf528bff",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_leading_trailing_spaces_and_tabs": {
+      "input_sha256": "ecb78274baf72ad9ffeab33a4865afd7923a24367b177ccc405bdc2695ea60bd",
+      "svg_sha256": "1d37ac568592960ac23f33c91aced8c3d709690bc44a5f324fd5270acb40ceb7",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_left_margin_zero": {
+      "input_sha256": "7cf3b13dd6600f5003a326ae98aa5edb6d758059f2153915b22f6e2278c2ef32",
+      "svg_sha256": "26baef70a25f7877511ad135d9702a622b0b45b8c346814cedefb9dd1f72c1c2",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_many_events_single_period": {
+      "input_sha256": "0d4cb76708a6c3c31bd671c12b34eca3c13f189f8a5493e101913925da47762f",
+      "svg_sha256": "46f26d37064e3522d2eb8c87db73192d44c0d27cd0f547845375c5aa15ddc5b0",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_many_periods_no_sections": {
+      "input_sha256": "6184cf7bbf59d497ce54abd644c1769a3fbf32f605e340cc9ec819d9b39bd426",
+      "svg_sha256": "274cfe748ecbb9204bc73937d8592bb52edd9fea2893e69e66b8fa16bb9ffb58",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_many_sections_color_wrap": {
+      "input_sha256": "3a676bd32e26b760894c583f2cf91a592357fa76f0025f638f95cb7143e23a33",
+      "svg_sha256": "fabd81f0ba8786a8ea9b8f332988349a1b7d095f9586a53c87a13139b1e7c99d",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_many_sections_with_br_titles": {
+      "input_sha256": "588c0269461f658203e24e0eeae4b6d41d8db2333e5c0039d9ab4069985a134e",
+      "svg_sha256": "6f67aa748cddea5f15557b5a3738123dcb02cf71103aad33388c53311b00a097",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_markdown_links_and_br": {
+      "input_sha256": "5a6829557710efc6f687f6d0d2e80a53084c4c53d5c85384e97d40db5ccbc252",
+      "svg_sha256": "04da23779fd553022f9ec313c6964e989f21f95148c2e031fa3a32ec3151f15e",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_mixed_inline_and_continuation_events": {
+      "input_sha256": "8d7e58b774ce2dc7e8072a47102e4e2e211afa8db3d5242f46179bc5c65aabac",
+      "svg_sha256": "090a8490ac5f15c2de51230b7074064506cffbdd16266a3a038009031620aafa",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_multiple_sections_and_stacked_tasks": {
+      "input_sha256": "ccf444d81a5862600c5de1cd211c49e4098eeafacfa3261ea44a41d1195d5aec",
+      "svg_sha256": "272b17ef596c51cb55772e5999844a9999db43ba1ae8293de7e694d449cbac04",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_non_ascii_punctuation_quotes_dashes": {
+      "input_sha256": "74384b722fb83814e8530fa8708c80139734c7c45d71238dd334d2abfb4aca1e",
+      "svg_sha256": "02744f4ab6eadce83816d7051505da5b15cc1eefee14a0eb0778a4ab381af796",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_non_numeric_periods": {
+      "input_sha256": "4a02cb1174c4e20424bcf871c7d9c30af004bfc052071b29527689fbb051fb05",
+      "svg_sha256": "49aa034bdfa6144b77eb625d8bd7de603bcd3b9bcd144846533a78c12e9f14d9",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_period_labels_with_colons_entities": {
+      "input_sha256": "f62a375b7c432f8c6e3dbc9344feda5fe19b6bcb41034c584c8a765bbca06129",
+      "svg_sha256": "6b1876efb3f248a44ece82e6b472a4b2f9f5f1147de2a213643f9f85a9853caa",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_section_name_repeated": {
+      "input_sha256": "a79e3ce40b383c2cc29a30326c2d075aeeafb3d3fd268947e20db7cd1493e42d",
+      "svg_sha256": "1042ca4b8508ae674bb848a2aecc7e25fda60f81f63a058de298219900c72b53",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_section_titles_with_hashes_colons_semicolons": {
+      "input_sha256": "abe40b0331e799bccd9ccb4cc802902d3091f59a2ea2ca4e05e39ec31df45028",
+      "svg_sha256": "759495573b466f03597c40f8f4e3605dd2eaf1b0e3ab8feb20c3f87888df3654",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_sparse_sections_with_blank_lines": {
+      "input_sha256": "257b70e48e4600116d7e0111a4c3b137e8380b8c171cb5c2f4b175056c03d50f",
+      "svg_sha256": "714397ca2fb43880cec403003a8800ba7eb16d6a74d16612f430fb3100c3f628",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_tabs_indentation": {
+      "input_sha256": "6ff3b0b115b012f24ff48f72d262ea355164c835fe9ddc0348b1316608e1df6a",
+      "svg_sha256": "6d11b1ed3c2d1bc3e36c23aa993c3269a19c267b4b43dc5e467b73bf16b5bb65",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_task_labels_with_punctuation": {
+      "input_sha256": "d8da621f257c198b42f142653aefb0ae99417600b3357587c9a4110ec44ca3d4",
+      "svg_sha256": "47d58767f8921bf3adbd0c1f2ad616f3f6ca64dcee9c958ba250d27bf53e5245",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_unicode_cjk_and_emoji": {
+      "input_sha256": "1b817aaaae186b79b61b132b0fc8a99711b17fc81a0eaba5b4af56d9e0fe4511",
+      "svg_sha256": "71ea948d20447f94fe8f72d65cba95e61b8bd67740f3dd2cc7a01db117ddd95e",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_unknown_xml_entity": {
+      "input_sha256": "09315ffbdbd72cca3bfb87ec5e54d48eed61c29cebc3a96244584977adfa40b4",
+      "svg_sha256": "691caa1cccfb4101ea1c444cd16eeda6bff639dcfb19bb9d4b95bd37a1d723bb",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_very_long_unbroken_word": {
+      "input_sha256": "33a593614560a6899a388fd9214efb4e1b1f54f1f5d7dcf30622aa970cc8eb54",
+      "svg_sha256": "3abeb67091ec8b2c3ca2608ff7c2708ef3eb9202c89101dd48faccbc2379d263",
+      "renderer_profile": "mmdc-default"
+    },
+    "timeline_stress_width_large_and_long_labels": {
+      "input_sha256": "6ca8667b42c48613df0607e7d5cb0b93b2570b3131590d7acabfacc7b3ed93b5",
+      "svg_sha256": "424b772017235a460611439190ae21137404bd0ec9580c71a1e9127eda624a57",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_br_wrapping": {
+      "input_sha256": "c3cae18d3bcfbde3a026f8d904daf7e414342df49b0835e6acf83d80ac2b2ca8",
+      "svg_sha256": "fad41e7d320c6760a90df1da881d9377a43edeb2f94725b3a2c75c6d05dce6d3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_10_should_render_a_simple_timeline_in_forest_theme_010": {
+      "input_sha256": "6dc7082ff522cb9e29019e09efc67df5f3017a31bbc1becdc7c335792f517f68",
+      "svg_sha256": "46043f077e4043bfc5cbbecae6cdb6344c6e0134207cf324e0aa64ab703f9211",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_11_should_render_timeline_with_many_stacked_events_and_proper_ti_011": {
+      "input_sha256": "ccc5a785262d9396d52ab87d688b51c8a8eebd240d1dbf7f00c7a60428b91860",
+      "svg_sha256": "633630525d4b118d3fce93eef00384ad4390e4bedbe6eeda0006f0b13d8bc032",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_12_should_render_timeline_with_proper_vertical_line_lengths_for_012": {
+      "input_sha256": "913f05bbfa2bfba5177aeb5b34b64e40720bcd3e03617d0fd9d19aa9f8ed6bb9",
+      "svg_sha256": "19aafd20aff51ecf01fa5c33de090f316212997ebaf921171544780164e8455b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_2_should_render_a_timeline_diagram_with_sections_002": {
+      "input_sha256": "5b167caa760a77465efb15287d11b6c14a8899fea756345052168ce22226607d",
+      "svg_sha256": "f05f188b1ebf77ec21cb9ab65db778df9f26db41a679fd853db47a7649402d88",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_3_should_render_a_complex_timeline_with_sections_and_long_events_003": {
+      "input_sha256": "b833a4884f014e4cc88e3f05ca445d33c2353986d8ba00edc8cae730d162f0e1",
+      "svg_sha256": "e0865362b1377ca49c835dc071522845848f25dda27453755d21ff99ccbb5aa6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_4_should_render_a_simple_timeline_with_directives_and_disablemul_004": {
+      "input_sha256": "6e50fbf538d071c3e09bf3e5cff8a45e96288bfcc36c730fb87a252ceb07caea",
+      "svg_sha256": "e9bc06a32dcbfea003c577cf638f18da3b96cd7fed3a04e3a7a4f59be060d223",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_5_should_render_a_simple_timeline_with_directive_overridden_colo_005": {
+      "input_sha256": "9d089641d92c51e101f665f7c2d5b57c7e41c447b9dbf2743377edacd3a58743",
+      "svg_sha256": "68da5af21a608c838b891a127a40ebcb52136e36b967fb477e2f4b16a6e08b69",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_6_should_render_a_simple_timeline_in_base_theme_006": {
+      "input_sha256": "736e8e437b7e06da542bb0ea7523b1e556ae2839dd9ca806cf44ff9185eef6db",
+      "svg_sha256": "24f0fd7a7a3a8d1a3b923bf24ae772c464be3a055df5a6afa7444a8d154614ef",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_7_should_render_a_simple_timeline_in_default_theme_007": {
+      "input_sha256": "82fa1707d0d392062f8fc0ef14f0fd3d96353e5f5d9f007346f3d6f4c53ae79c",
+      "svg_sha256": "d649595b48f99bfdea3a4f37d319188b9f0bd63a2371556627853a59ed5b1fcb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_8_should_render_a_simple_timeline_in_dark_theme_008": {
+      "input_sha256": "17b53596aa30af722bc6b1a04d4adbee0b59ce39d40df649db97a03215bd69d9",
+      "svg_sha256": "3afcc75dcb6ccf84f8ec10708cc27223bfdff420a6d21f72a6f06736cfe0a7c6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_9_should_render_a_simple_timeline_in_neutral_theme_009": {
+      "input_sha256": "3ccd06226a23efe07132ea646c59a9bf29e7326d9191897cb2fe3bc032ba1132",
+      "svg_sha256": "9c9abf7dc6a3d93a88377b93e9b9d9c04f4913d819a04b9d95fcf65591ecfbb6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_timeline_spec_example_001": {
+      "input_sha256": "e34bc7348dbe7d6406b7599d16cbc09606315f796b3334212dd8eeea95ab8348",
+      "svg_sha256": "0751d4ff5b4aac51a463586480193f6837f6ad2cb06b2554e602a8e1c1ebfa2a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_disable_multicolor": {
+      "input_sha256": "01c2094d8d8d741a2233e00e1b827d5c8a96fe0cef5f8d54704e7aae6106882e",
+      "svg_sha256": "6f2ff3d0926dd6fcde025917a9bbe69b8f51dae1e0cb096e80f3be1ca75c8f48",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_an_example_of_a_timeline_002": {
+      "input_sha256": "1b6ef8c6e2bb60382d1e417d7363b495a28cfba8b98c31705c30c32081801372",
+      "svg_sha256": "97e6ccf53070d581f4fd4e137099b9757400d624d68277dee4462eb568908fd5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_base_theme_022": {
+      "input_sha256": "d355ed477cfd4b671660099d7b5f2aabed4f2f37dfb9b58b085dc8a96c5fc657",
+      "svg_sha256": "902c2e61436e5262c42ff228833b11121ae1f8fc6f0c7e28797c781eaccc86ec",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_customizing_color_scheme_020": {
+      "input_sha256": "6ee60b83a541e26447bb91e4d6c83d1a6f6ef882067ccbdb3eed16a65e368b08",
+      "svg_sha256": "1c9bf5f47e94951e8ca0f22f572c7e08a59524771eca282d28a87203dce9124b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_dark_theme_026": {
+      "input_sha256": "f09678e83888b535e359e428ad53f8eabe9dc749bf6b7858398371983f79bb2f",
+      "svg_sha256": "38d49828b18bc6996f1fed5b6e51dee3ebc0f1c1f0562f5e27c1226806bacaf6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_default_theme_028": {
+      "input_sha256": "87eacd36f6ef7b35936d9d94ad985824a3bc3f42fb2aedabe170ede481a922fc",
+      "svg_sha256": "dfa90e87e6cbfb66086952743c92bb60ffd26d6126dc46b6899250e4e5a3e5c6",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_forest_theme_024": {
+      "input_sha256": "a24bead1895db6a5952242866563a286fdd35a2ba18f27356d81166929269d9f",
+      "svg_sha256": "d6dae7f2ee43307b7b9fe3419ec076752eb0446563392f1d565d44822edefd23",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_grouping_of_time_periods_in_sections_ages_009": {
+      "input_sha256": "523985f9a7ca3ab9d5477c18115fa8b8253f660a11c4bb49ccad873bb9fadb2b",
+      "svg_sha256": "cc2d608cea18fbabe314ff79fac63e93bda244dd1ad05d038acb8d3137a54ccd",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_neutral_theme_030": {
+      "input_sha256": "399391685b5266aa85385e61b0a4057003b40dba1db4dfe7e1f774b16b039bbc",
+      "svg_sha256": "c85da8d4af1621e7485516050d9f53f799e7b29eee55e47651fdfca00539bdda",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_styling_of_time_periods_and_events_015": {
+      "input_sha256": "4a436bf5cde4cf7064475b34a017b531324895a66e11c18eb75378fff0054422",
+      "svg_sha256": "ef2e0311139608a777e6d319ee594668a489d4b9afef5ed82dc7e065a059219c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_styling_of_time_periods_and_events_018": {
+      "input_sha256": "56b167410e41154b2ae488a3be27acc3a077c8a8f8b744175a401fb5e48a1228",
+      "svg_sha256": "e0524b7871df5eb0a16b7703ff32c00e82b95b9715a630155201a2510b84b42b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_syntax_007": {
+      "input_sha256": "632b53443b0ca6875a179f9cd142fdcf36cf964c6d89c396b3fd0ac4b78a7d13",
+      "svg_sha256": "dd85ab751490bfdfd405d391b1ce06c72a8ab317d8c07b20aad3313422ce5397",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_wrapping_of_text_for_long_time_periods_or_events_011": {
+      "input_sha256": "c2440af8294c701536f8bd1333830af0df17c8e22e596fdd05d3f2dc59e9eafd",
+      "svg_sha256": "b8d8208929164e04a59b440a0ef09e45db7bed20c577be43a027d2a6a4a989fe",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_timeline_wrapping_of_text_for_long_time_periods_or_events_013": {
+      "input_sha256": "e2806e53df11c52185069ab59c263cffd50aa2beb555f6375a6895b5f39478af",
+      "svg_sha256": "db8401c95b452606a7039d1cd956753352c0e6ddd3dddb7680af04849e0f2f4e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_events_markdown_multiline": {
+      "input_sha256": "23be8bce47f0a00c4a8ab2f0b402ca18441a1e1eea64989520839c875537e7db",
+      "svg_sha256": "e93a75f35228ba3520d9e9e5e0f7d16a06c45c5533d0f586ae6dd6fa34ee38bb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_hashtags": {
+      "input_sha256": "648c774b8c74574d7b89d1d6e96fd6a4404b5e53850183d9dbb4bb7b693a46b5",
+      "svg_sha256": "3cedf6ef3abfaaae1f3d9b50af530f3d21436fa28c689948b8aebed2cc305f22",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_timeline_example_001": {
+      "input_sha256": "90cbfd372b45a1d74f602dd89000bf00d035d9cf46f69c3c2b41feaac3ba57b5",
+      "svg_sha256": "652a4ce0304d4e0e55958551ad45c9935d0433f0addd894d3cc9bfe2c526fcbe",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_timeline_medical_device_lifecycle_timeline_002": {
+      "input_sha256": "35419c3fe5b3b0b18ba9d4f5f7ce837d4bbb6c5d39433e49d18156907dc14214",
+      "svg_sha256": "665c8b182b78cd980e5e7b18a9ca6e641eb190f019b8b5eee758b375aef3f006",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_long_word_wrap": {
+      "input_sha256": "48288d0d195d64d0f544aaee5ea0059446f7456a9dde8690037a81f530d74b37",
+      "svg_sha256": "98b1b82e629ba18667c0a8f04cbb3ae1ee8d8a9e0d5d19315932d3ab388431b0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_no_sections": {
+      "input_sha256": "1f6d474f3e6131bad8c9b4f7ea80d99e864356255e8244ba2ffaa08edd35045a",
+      "svg_sha256": "f81c8dbd937e8bb3540319949e9c8f2f93512aaac8d6e2e11c4ac2ab0c694266",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_diagram_orchestration_spec_046": {
+      "input_sha256": "b37d7faa66b50a0fff002fdfbef096df2fb69cb8e3c9d5285b85bc1b44f1535d",
+      "svg_sha256": "53aa73542fc29457a0e4c2b46ae6a3c337e7cd4fcb493c4966e69033c5534380",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_timeline_spec_001": {
+      "input_sha256": "9c6f6e9aec2ae7d407a4d15a36ec0e4d819d0c6c57051234fc8d9ff37a3b0856",
+      "svg_sha256": "0913c13e11ab7c2371232449f7bf93b2ede126afa0d7f4ba98b3b2c8fef66a3d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_timeline_spec_002": {
+      "input_sha256": "ac4a1fe8cb046acb027175617b989b79570258bcb1882b766d4ea50e6218390e",
+      "svg_sha256": "5558beb017cb2301648185225863b5c41c53cc17447510d2fdc3382448cf1981",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_timeline_spec_003": {
+      "input_sha256": "92df1cf65c5c116cde73103061b928314a256ff24e6df81fb75b6e3a6789e26e",
+      "svg_sha256": "118a72ab4fdb770984c411204e8c5b25aa41dce4e3cdf3a156cf96b00452c13e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_timeline_spec_004": {
+      "input_sha256": "1dd154801c35b1d8b7b236b477eef746c36d4396ae3705b6376a9f8707a74859",
+      "svg_sha256": "5041185d4e35f79ca000643fce99dbcee4f4e7953b6daf72c9d4f98df3c6af77",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_timeline_spec_005": {
+      "input_sha256": "28f4c304b80b69d453025bf031034daf5ffc54ee1a06c0e62378e079fc1a9415",
+      "svg_sha256": "12570f9c091a125c052f08f829679affd787d959edb62cb893727aae6bfa05de",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_timeline_spec_006": {
+      "input_sha256": "e8d48be45a983244eadc9eabc7a84a8c5722fde8e3d26ecbe73fd6ad74af7ac0",
+      "svg_sha256": "84aabdcfae272f8f36a442cbd1457d44ec58cce559567b5c4786a99cbda4747a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_timeline_spec_007": {
+      "input_sha256": "40be4c8fae12390ba16c996874e2823d14b5196b02de9d6e9885c2b42d2f6a3f",
+      "svg_sha256": "75fa79cb8edd6ff1c5a1c4848971ebaa4241fc51bf4667dfec4b49aa6138d9fa",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_timeline_spec_009": {
+      "input_sha256": "0298fa55b06713b0cf02c0c586b7c774e5407341e6f66365812648a3b6a5497a",
+      "svg_sha256": "eb07006ba91c96ba3b3396de265d1e0fa4993f1d22503c5e9d0e6b3b72617c39",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_sections_and_tasks": {
+      "input_sha256": "198c19762c239e761dffedc8433cd3a628d9fc16affe2cd98938fdb50805f2ce",
+      "svg_sha256": "eba312271d364124fbf88fa4e7b9ce5c4c4737e9df680ddcb54740a16b6460e8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_semicolons": {
+      "input_sha256": "c647a4da7d5667ae6cc4c151ce6b537f58b8e8379188eb2b011b78fc5fb369f9",
+      "svg_sha256": "9e976eba47f7bfbb3b4f015251299992b2ab92843de491bd76ba936097999d7e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_semicolons_spec": {
+      "input_sha256": "c647a4da7d5667ae6cc4c151ce6b537f58b8e8379188eb2b011b78fc5fb369f9",
+      "svg_sha256": "47b7c289777fa3f7526b2f9c63b533e833b294557bda97cf812647837a20224f",
+      "renderer_profile": "mmdc-default"
+    },
+    "zed_pr_57644_timeline": {
+      "input_sha256": "bd86a4eff8d4d7d08627c7ff8f0493de41ee87c10d6dc47a7a0867d812329f52",
+      "svg_sha256": "49cd4d4e6aec7ee8abfcb52bdf5bfc8e1785b5eb74480154d914e3f61cc3c937",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

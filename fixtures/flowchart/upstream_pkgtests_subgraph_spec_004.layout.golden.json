@@ -81,7 +81,7 @@
         {
           "id": "L_b_B_0",
           "from": "b",
-          "to": "B",
+          "to": "c",
           "from_cluster": null,
           "to_cluster": "B",
           "points": [

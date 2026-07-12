@@ -2,7 +2,7 @@ use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutLabel, LayoutNo
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use serde_json::{Map, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 mod config;
 
@@ -644,8 +644,9 @@ fn get_max_child_size(block: &SizedBlock) -> (f64, f64) {
         if child.block_type == "space" {
             continue;
         }
-        if child.width > max_width {
-            max_width = child.width / (block.width_in_columns as f64);
+        let normalized_width = child.width / (child.width_in_columns as f64);
+        if normalized_width > max_width {
+            max_width = normalized_width;
         }
         if child.height > max_height {
             max_height = child.height;
@@ -743,18 +744,27 @@ fn block_grid_size(block: &SizedBlock) -> (i64, i64) {
     (x_size, y_size)
 }
 
-fn propagate_parent_size_to_children(block: &mut SizedBlock, padding: f64) {
+fn reconcile_block_with_parent_size(block: &mut SizedBlock, padding: f64) {
     if block.children.is_empty() {
         return;
     }
 
-    let (max_width, _max_height) = get_max_child_size(block);
-    let (x_size, y_size) = block_grid_size(block);
-    let grid_width = (x_size as f64) * (max_width + padding) + padding;
+    let inherited_width = block.width;
+    let inherited_height = block.height;
+    let column_span = block.width_in_columns.max(1) as f64;
+    let sibling_width = (inherited_width - padding * (column_span - 1.0)) / column_span;
 
-    if grid_width < block.width {
-        let child_width = (block.width - (x_size as f64) * padding - padding) / (x_size as f64);
-        let child_height = (block.height - (y_size as f64) * padding - padding) / (y_size as f64);
+    let (max_width, max_height) = get_max_child_size(block);
+    let (x_size, y_size) = block_grid_size(block);
+    let mut width = (x_size as f64) * (max_width + padding) + padding;
+    let mut height = (y_size as f64) * (max_height + padding) + padding;
+
+    if width < sibling_width {
+        width = sibling_width;
+        height = inherited_height;
+        let child_width = (sibling_width - (x_size as f64) * padding - padding) / (x_size as f64);
+        let child_height =
+            (inherited_height - (y_size as f64) * padding - padding) / (y_size as f64);
         for child in &mut block.children {
             child.width = child_width;
             child.height = child_height;
@@ -762,6 +772,26 @@ fn propagate_parent_size_to_children(block: &mut SizedBlock, padding: f64) {
             child.y = 0.0;
         }
     }
+
+    if width < inherited_width {
+        width = inherited_width;
+        let num = if block.columns > 0 {
+            (block.children.len() as i64).min(block.columns)
+        } else {
+            block.children.len() as i64
+        };
+        if num > 0 {
+            let child_width = (width - (num as f64) * padding - padding) / (num as f64);
+            for child in &mut block.children {
+                child.width = child_width;
+            }
+        }
+    }
+
+    block.width = width;
+    block.height = height;
+    block.x = 0.0;
+    block.y = 0.0;
 }
 
 fn set_block_sizes(block: &mut SizedBlock, padding: f64) {
@@ -782,11 +812,14 @@ fn set_block_sizes(block: &mut SizedBlock, padding: f64) {
         }
     }
 
-    let mut stack: Vec<Vec<usize>> = vec![Vec::new()];
+    let mut stack: Vec<Vec<usize>> = (0..block.children.len())
+        .rev()
+        .map(|index| vec![index])
+        .collect();
     while let Some(path) = stack.pop() {
         let child_count = {
             let block = block_mut_at_path(block, &path);
-            propagate_parent_size_to_children(block, padding);
+            reconcile_block_with_parent_size(block, padding);
             block.children.len()
         };
 
@@ -817,6 +850,30 @@ fn layout_blocks(block: &mut SizedBlock, padding: f64) {
                 0
             } else {
                 let columns = block.columns;
+                let mut row_heights = BTreeMap::<i64, f64>::new();
+                let mut height_column_pos = 0i64;
+                for child in &block.children {
+                    let (_, row) = calculate_block_position(columns, height_column_pos);
+                    row_heights
+                        .entry(row)
+                        .and_modify(|height| *height = height.max(child.height))
+                        .or_insert(child.height);
+
+                    let mut columns_filled = child.width_in_columns.max(1);
+                    if columns > 0 {
+                        let remaining = columns - (height_column_pos % columns);
+                        columns_filled = columns_filled.min(remaining.max(1));
+                    }
+                    height_column_pos += columns_filled;
+                }
+
+                let mut row_offsets = BTreeMap::<i64, f64>::new();
+                let mut offset = 0.0;
+                for (&row, &height) in &row_heights {
+                    row_offsets.insert(row, offset);
+                    offset += height + padding;
+                }
+
                 let mut column_pos = 0i64;
 
                 // JS truthiness: treat `0` as falsy (Mermaid uses `block?.size?.x ? ... : -padding`).
@@ -843,10 +900,10 @@ fn layout_blocks(block: &mut SizedBlock, padding: f64) {
                     child.x = starting_pos_x + padding + half_width;
                     starting_pos_x = child.x + half_width;
 
-                    child.y = block.y - block.height / 2.0
-                        + (py as f64) * (child.height + padding)
-                        + child.height / 2.0
-                        + padding;
+                    let row_offset = row_offsets.get(&py).copied().unwrap_or_default();
+                    let row_height = row_heights.get(&py).copied().unwrap_or(child.height);
+                    child.y =
+                        block.y - block.height / 2.0 + row_offset + row_height / 2.0 + padding;
 
                     let mut columns_filled = child.width_in_columns.max(1);
                     if columns > 0 {
@@ -1159,12 +1216,81 @@ pub fn layout_block_diagram_typed(
 mod tests {
     use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
 
+    use super::SizedBlock;
+
     fn default_style(font_size: f64) -> TextStyle {
         TextStyle {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size,
             font_weight: None,
         }
+    }
+
+    fn sized_block(id: &str, width: f64, height: f64, width_in_columns: i64) -> SizedBlock {
+        SizedBlock {
+            id: id.to_string(),
+            block_type: "square".to_string(),
+            children: Vec::new(),
+            columns: -1,
+            width_in_columns,
+            width,
+            height,
+            label_width: 0.0,
+            label_height: 0.0,
+            x: 0.0,
+            y: 0.0,
+        }
+    }
+
+    #[test]
+    fn max_child_width_is_normalized_by_each_child_column_span() {
+        let mut parent = sized_block("parent", 0.0, 0.0, 9);
+        parent.children = vec![
+            sized_block("three-columns", 180.0, 30.0, 3),
+            sized_block("one-column", 80.0, 20.0, 1),
+        ];
+
+        let (width, height) = super::get_max_child_size(&parent);
+
+        assert_eq!(width, 80.0);
+        assert_eq!(height, 30.0);
+    }
+
+    #[test]
+    fn multi_column_composite_keeps_intrinsic_height_when_only_total_width_grows() {
+        let mut composite = sized_block("composite", 0.0, 0.0, 3);
+        composite.children = (0..7)
+            .map(|index| sized_block(&format!("leaf-{index}"), 18.0, 32.0, 1))
+            .collect();
+
+        let mut root = sized_block("root", 0.0, 0.0, 1);
+        root.columns = 3;
+        root.children = vec![sized_block("tall", 150.0, 88.0, 3), composite];
+
+        super::set_block_sizes(&mut root, 8.0);
+
+        let composite = &root.children[1];
+        assert_eq!(composite.height, 48.0);
+        assert!(composite.children.iter().all(|child| child.height == 32.0));
+    }
+
+    #[test]
+    fn heterogeneous_block_rows_use_accumulated_row_heights() {
+        let mut root = sized_block("root", 239.0, 296.0, 1);
+        root.columns = 3;
+        root.children = vec![
+            sized_block("a", 223.0, 88.0, 3),
+            sized_block("group1", 150.0, 88.0, 2),
+            sized_block("g", 71.0, 88.0, 1),
+            sized_block("group2", 223.0, 48.0, 3),
+        ];
+
+        super::layout_blocks(&mut root, 8.0);
+
+        assert_eq!(root.children[0].y, -96.0);
+        assert_eq!(root.children[1].y, 0.0);
+        assert_eq!(root.children[2].y, 0.0);
+        assert_eq!(root.children[3].y, 76.0);
     }
 
     #[test]

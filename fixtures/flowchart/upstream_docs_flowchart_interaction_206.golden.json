@@ -9,8 +9,8 @@
     "classDefs": {},
     "tooltips": {
       "A": "Tooltip for a callback",
-      "C": "Tooltip for a callback",
       "B": "This is a tooltip for a link",
+      "C": "Tooltip for a callback",
       "D": "This is a tooltip for a link"
     },
     "edgeDefaults": {

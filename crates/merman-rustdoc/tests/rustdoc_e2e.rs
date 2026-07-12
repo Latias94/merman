@@ -297,7 +297,11 @@ fn assert_doc_contains_svg(out_dir: &Path, relative: &str) {
 }
 
 fn proc_macro_artifact() -> (PathBuf, PathBuf) {
-    let deps_dir = target_dir().join("debug/deps");
+    let deps_dir = std::env::current_exe()
+        .expect("current rustdoc e2e test executable")
+        .parent()
+        .expect("rustdoc e2e test executable must be inside a deps directory")
+        .to_path_buf();
     let extension = std::env::consts::DLL_EXTENSION;
     let artifact = fs::read_dir(&deps_dir)
         .unwrap()
@@ -324,19 +328,6 @@ fn is_proc_macro_artifact(path: &Path, extension: &str) -> bool {
     };
     path.extension().and_then(OsStr::to_str) == Some(extension)
         && file_name.contains("merman_rustdoc")
-}
-
-fn target_dir() -> PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| workspace_root().join("target"))
-}
-
-fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .unwrap()
 }
 
 fn unique_temp_dir() -> PathBuf {

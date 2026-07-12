@@ -805,6 +805,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             id: "one".to_string(),
             title: "LR Group".to_string(),
             dir: Some("LR".to_string()),
+            has_explicit_dir: true,
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),

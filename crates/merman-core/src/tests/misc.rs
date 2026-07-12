@@ -232,6 +232,18 @@ gantt:
   useWidth: 400
   topAxis: true
   numberSectionStyles: 2
+swimlane:
+  ignoreCrossLaneEdges: false
+cynefin:
+  width: 900
+railroad:
+  showMarkers: false
+treeView:
+  showIcons: false
+eventmodeling:
+  rowHeight: 36
+treemap:
+  padding: 12
 unknownDiagram:
   ignored: true
 ---
@@ -255,6 +267,24 @@ gantt
                 "useWidth": 400,
                 "topAxis": true,
                 "numberSectionStyles": 2
+            },
+            "swimlane": {
+                "ignoreCrossLaneEdges": false
+            },
+            "cynefin": {
+                "width": 900
+            },
+            "railroad": {
+                "showMarkers": false
+            },
+            "treeView": {
+                "showIcons": false
+            },
+            "eventmodeling": {
+                "rowHeight": 36
+            },
+            "treemap": {
+                "padding": 12
             }
         })
     );
@@ -531,7 +561,7 @@ graph TD;A-->B;
 
 #[test]
 #[cfg(feature = "full")]
-fn parse_architecture_exposes_11_15_fcose_config_defaults_and_overrides() {
+fn parse_architecture_exposes_11_16_fcose_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata(
         "architecture-beta\n  service a(server)[A]\n",
@@ -568,7 +598,7 @@ architecture-beta
 }
 
 #[test]
-fn parse_metadata_exposes_admitted_11_15_family_config_defaults() {
+fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
     let engine = Engine::new();
     let meta = block_on(engine.parse_metadata("flowchart TD\nA-->B", ParseOptions::default()))
         .unwrap()
@@ -595,12 +625,47 @@ fn parse_metadata_exposes_admitted_11_15_family_config_defaults() {
     assert_eq!(venn["padding"], json!(8));
     assert_eq!(venn["useDebugLayout"], json!(false));
 
-    for unsupported_key in ["wardley-beta", "cynefin", "railroad"] {
+    let cynefin = &config["cynefin"];
+    assert_eq!(cynefin["width"], json!(800));
+    assert_eq!(cynefin["height"], json!(600));
+    assert_eq!(cynefin["padding"], json!(40));
+    assert_eq!(cynefin["showDomainDescriptions"], json!(true));
+
+    let railroad = &config["railroad"];
+    for theme_derived_key in [
+        "fontFamily",
+        "fontSize",
+        "terminalFill",
+        "terminalStroke",
+        "terminalTextColor",
+        "nonTerminalFill",
+        "nonTerminalStroke",
+        "nonTerminalTextColor",
+        "lineColor",
+        "markerFill",
+        "commentFill",
+        "commentStroke",
+        "commentTextColor",
+        "specialFill",
+        "specialStroke",
+        "ruleNameColor",
+    ] {
         assert!(
-            config.get(unsupported_key).is_none(),
-            "{unsupported_key} should stay outside generated defaults until admitted"
+            railroad.get(theme_derived_key).is_none(),
+            "railroad.{theme_derived_key} should derive from active themeVariables"
         );
     }
+    assert_eq!(railroad["showMarkers"], json!(true));
+
+    let swimlane = &config["swimlane"];
+    assert_eq!(swimlane["lineHops"], json!("arc"));
+    assert_eq!(swimlane["ignoreCrossLaneEdges"], json!(true));
+    assert_eq!(swimlane["optimizeRanksByCrossings"], json!(true));
+
+    assert!(
+        config.get("wardley-beta").is_none(),
+        "wardley-beta should stay outside generated defaults until admitted"
+    );
 }
 
 #[test]
@@ -1018,6 +1083,24 @@ fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
     let engine = Engine::new();
     let err = block_on(engine.parse_metadata(
         "---\ntitle: a malformed YAML front-matter\n",
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+    assert!(err.to_string().contains("Malformed YAML front-matter"));
+}
+
+#[test]
+fn parse_rejects_mismatched_indented_frontmatter_like_upstream() {
+    let engine = Engine::new();
+    let err = block_on(engine.parse_metadata(
+        "---\ntitle: mismatched YAML front-matter\n   ---\nsequenceDiagram\nAlice->Bob: Hi\n",
+        ParseOptions::default(),
+    ))
+    .unwrap_err();
+    assert!(err.to_string().contains("Malformed YAML front-matter"));
+
+    let err = block_on(engine.parse_metadata(
+        "   ---\ntitle: mismatched YAML front-matter\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
         ParseOptions::default(),
     ))
     .unwrap_err();
@@ -1553,7 +1636,7 @@ accDescr: XY accDescription
 x-axis "X Axis" [Alpha, Beta]
 y-axis "Y Axis" 1 --> 5
 bar "Series 1" [1, 2]
-line "Series 2" [2, 3]
+line "Series 2" [2 "early", 3 "late"]
 "#;
 
     let parsed = engine
@@ -1596,6 +1679,7 @@ line "Series 2" [2, 3]
             );
             assert_eq!(model.plots[1].plot_type, XyChartPlotType::Line);
             assert_eq!(model.plots[1].title.as_deref(), Some("Series 2"));
+            assert_eq!(model.plots[1].point_labels, vec!["early", "late"]);
             model.to_compat_json(&parsed.meta)
         }
         other => panic!("xychart render parse should return typed model, got {other:?}"),
@@ -1618,6 +1702,10 @@ line "Series 2" [2, 3]
     assert_eq!(parsed_json.model["plots"][0]["type"], json!("bar"));
     assert!(parsed_json.model["plots"][0].get("title").is_none());
     assert_eq!(parsed_json.model["plots"][1]["type"], json!("line"));
+    assert_eq!(
+        parsed_json.model["plots"][1]["pointLabels"],
+        json!(["early", "late"])
+    );
     assert!(parsed_json.model["plots"][1].get("title").is_none());
     assert!(parsed_json.model.get("config").is_some());
     assert_eq!(typed_json, parsed_json.model);
@@ -2289,7 +2377,7 @@ Target,Done,2.5
 }
 
 #[test]
-fn parse_sankey_exposes_11_15_config_defaults_and_overrides() {
+fn parse_sankey_exposes_config_defaults_and_overrides() {
     let engine = Engine::new();
     let default = block_on(engine.parse_metadata("sankey\nA,B,1", ParseOptions::default()))
         .unwrap()

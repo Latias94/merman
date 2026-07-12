@@ -10,7 +10,6 @@ pub(super) fn write_sequence_svg_root_open(
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     diagram_id: &str,
-    apply_root_overrides: bool,
 ) -> SequenceRootMetrics {
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -41,27 +40,14 @@ pub(super) fn write_sequence_svg_root_open(
         .acc_descr
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    let mut max_w_attr = fmt_string(vb_w);
-    let mut viewbox_attr = format!(
+    let max_w_attr = fmt_string(vb_w);
+    let viewbox_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
         fmt(vb_w),
         fmt(vb_h)
     );
-    let mut width_attr = fmt_string(vb_w);
-    let mut height_attr = fmt_string(vb_h);
-    if apply_root_overrides {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut width_attr,
-            &mut height_attr,
-            &mut max_w_attr,
-            crate::generated::sequence_root_overrides_11_12_2::lookup_sequence_root_viewport_override,
-        );
-    }
-
     let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
     root_svg::push_svg_root_open(
         out,

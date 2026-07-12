@@ -1,6 +1,6 @@
 # Alignment Status (Mermaid Parity Dashboard)
 
-Baseline: Mermaid `@11.15.0` for the implemented diagram matrix (see
+Baseline: Mermaid `@11.16.0` for the implemented diagram matrix (see
 `tools/upstreams/REPOS.lock.json`). Unsupported upstream diagram families are scoped below.
 
 This file is a lightweight dashboard of what is currently implemented and what is covered by
@@ -100,14 +100,13 @@ Notes:
   This is not currently covered by upstream SVG baselines.
   Coverage docs: `docs/alignment/ZENUML_MINIMUM.md`, `docs/alignment/ZENUML_UPSTREAM_TEST_COVERAGE.md`.
 
-## Mermaid 11.15 Diagram Family Scope
+## Mermaid 11.16 Diagram Family Scope
 
-The `mermaid-11-15-baseline-upgrade` workstream selected existing-diagram compatibility as the
-baseline bump path. The 11.15 baseline covers the diagram matrix above plus the implemented
-11.13-11.15 deltas for those diagrams; it does not imply support for every upstream diagram
-directory. M15C-080 final decision check was refreshed on 2026-06-01 against
-`repo-ref/mermaid/packages/mermaid/src/diagrams`; no new upstream family is promoted into the
-implemented matrix without a child workstream. Some families below now have Phase 1 local support.
+The `mermaid-11-16-parity` workstream keeps implemented-family compatibility as the baseline bump
+path while making newly pinned upstream families explicit. The 11.16 baseline covers the diagram
+matrix above plus the implemented 11.13-11.16 deltas for those diagrams; it does not imply support
+for every upstream diagram directory. No new upstream family is promoted into the implemented
+matrix without a child workstream. Some families below now have Phase 1 local support.
 The Phase 2 Stage B families are admitted to the primary SVG DOM parity matrix once they have
 upstream SVG baselines and green family-local compare evidence; root viewport parity can remain a
 separate residual track when it is derived from browser text measurement or layout behavior.
@@ -124,18 +123,24 @@ Phase 2 admission work for `treeView`, `ishikawa`, and `eventmodeling` is tracke
 `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 Venn classic SVG admission is tracked separately in `docs/alignment/VENN_BETA_ADMISSION_PLAN.md`.
 
-| Upstream header or id | Pinned 11.15 source status | Local 11.15 status | Admission decision |
+| Upstream header or id | Pinned 11.16 source status | Local 11.16 status | Admission decision |
 |---|---|---|---|
 | `treeView-beta` header / `treeView` id | Present at `packages/mermaid/src/diagrams/treeView` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, and `compare-tree-view-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity remains deferred in the global `parity-root` sweep because current residuals are browser `getBBox()` text-metric drift; see `TREEVIEW_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
 | `ishikawa` / `ishikawa-beta` | Present at `packages/mermaid/src/diagrams/ishikawa` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, config/theme coverage, and `compare-ishikawa-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity and rough/handDrawn mode remain deferred; see `ISHIKAWA_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
 | `eventmodeling` | Present at `packages/mermaid/src/diagrams/eventmodeling` | Phase 2 admission infrastructure exists: detector, typed parser/model, layout, Stage B SVG renderer, semantic/layout fixtures, upstream SVG baselines, parser-source coverage, and `compare-eventmodeling-svgs`. Family-local DOM parity mode is green for the committed baseline corpus. | Admitted to `compare-all-svgs` primary `parity` mode. Root viewport parity, unsupported `entity`/`note`/`gwt` rendering, and strict data `foreignObject` HTML/browser text-metric parity remain deferred; see `EVENTMODELING_MINIMUM.md` and `PHASE2_PARITY_BACKLOG.md`. |
 | `venn-beta` | Present at `packages/mermaid/src/diagrams/venn` | Admitted classic SVG support exists: detector, typed parser/model, source-backed `@upsetjs/venn.js@2.0.0` / `fmin@0.0.4` Rust layout kernel, Stage B SVG renderer, `PresentationTheme::venn()` roles, semantic/layout fixtures, upstream SVG baselines, and `compare-venn-svgs`. | Admitted to `compare-all-svgs` primary `parity` mode. `look: "handDrawn"`/RoughJS Venn output remains deferred; see `VENN_BETA_ADMISSION_PLAN.md`. |
-| `wardley-beta` | Present at `packages/mermaid/src/diagrams/wardley` | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Priority 5; large family lane, not a starter task. |
-| `railroad-diagram`, `railroad-abnf`, `railroad-ebnf`, `railroad-peg` | Absent from pinned Mermaid `11.15.0` source. | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not part of the 11.15 parity backlog; reclassify only after a baseline bump includes it. |
-| `cynefin-beta` | Absent from pinned Mermaid `11.15.0` source. | No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Not part of the 11.15 parity backlog; reclassify only after a baseline bump includes it. |
+| `swimlane-beta` header / `swimlane` id | Present at `packages/mermaid/src/diagrams/swimlanes` | Parse-only semantic fixture coverage exists. Flowchart parser/editor-facts reuse exists, matching upstream's grammar reuse, and effective config defaults `layout` to `swimlane` unless the user overrides it. Typed render parser, source-backed swimlane layout, SVG admission, and upstream SVG baselines are not admitted yet. | Parse-only admitted; layout/SVG admission is staged behind the 11.16 swimlane layout port. See `SWIMLANE_MINIMUM.md`. |
+| `wardley-beta` | Present at `packages/mermaid/src/diagrams/wardley` | Detector/header/admission visibility exists. No local parser, semantic model, layout, renderer, fixtures, or upstream SVG baselines. | Large family lane, not a starter task. |
+| `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, `railroad-peg-beta` | Present at `packages/mermaid/src/diagrams/railroad` | All four variants have parser/editor facts, a unified typed AST, the 11.16 recursive layout/SVG renderer, semantic/layout fixtures, pinned upstream SVG baselines with provenance manifests, and family compare commands. The primary structural DOM matrix is green. Raw SVG text width now follows upstream `getBBox().width`; the remaining root-height delta is bounded browser font `getBBox().height` behavior. | Admitted to the primary SVG matrix. Keep browser-derived root-height parity in the separate residual lane; do not restore character-count width floors or fixture viewport pins. See `RAILROAD_MINIMUM.md`. |
+| `cynefin-beta` | Present at `packages/mermaid/src/diagrams/cynefin` | Parser/editor facts model domains, items, transitions, common title/accessibility fields, and self-loop filtering; typed layout/SVG output ports the 11.16 geometry, boundary paths, labels, badges, transitions, config, and theme surface. Semantic/layout fixtures, pinned upstream SVG baselines with provenance manifests, and `compare-cynefin-svgs` are present. Family and full structural DOM parity are green. | Admitted to the primary SVG matrix. |
 
 These families should enter the main coverage matrix only after they have at least parse coverage
 and an accepted support plan for layout/render behavior.
+
+Known upstream Mermaid 11.16.0 regression: [mermaid-js/mermaid#7954](https://github.com/mermaid-js/mermaid/issues/7954)
+tracks arrows between Flowchart subgraphs being broken since 11.16.0. Treat affected Flowchart layout
+fixtures as upstream-known regression evidence, not as a signal to restore 11.15 behavior locally or
+to broaden comparator normalization.
 
 Recent progress: sequence `alt`/`loop` frames derive separator placement from layout message y-coordinates;
 the dashed separators now use the exact same x-coordinates as the frame edges to match upstream SVG and
@@ -174,12 +179,18 @@ refreshed Architecture root viewport overrides for the new fixture IDs, keeping 
 As of 2026-02-26, `xtask compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3` reports 0 DOM
 mismatches for the current fixture set (diagram subtree parity).
 
-Root viewport parity (`--dom-mode parity-root`) is not currently enforced by `xtask verify`.
-As of the 2026-06-01 Mermaid 11.15 complete-adaptation closeout, the full implemented matrix is
-green in structural `parity` mode, while root-only `viewBox` / `style max-width` residuals are
-tracked separately in `docs/workstreams/mermaid-11-15-root-viewport-residuals`. The starting
-unaccepted residual set for that lane is sequence=168, flowchart=61, architecture=32, class=18,
-c4=15, timeline=7, er=3, sankey=3, and journey=2.
+Root viewport parity (`--dom-mode parity-root`) is not currently enforced by the ordinary `xtask
+verify` path. The strict root sweep still enforces every family whose admission record marks root
+coverage as `Covered`; only exact `RootParityResidualPolicy` records may pass that gate.
+
+The 2026-07-12 Mermaid 11.16 global root sweep compared 29 families and left 3 root-deferred
+families out of the lane. Before Railroad residual admission, it accepted 5 exact policy records
+(Class 2, GitGraph 1, Mindmap 2) and reported 760 unaccepted residuals: Flowchart 118, State 26,
+Class 16, Sequence 309, Timeline 3, GitGraph 221, Requirement 20, Mindmap 12, Architecture 31, and
+one fixture in each of `railroad`, `railroadEbnf`, `railroadAbnf`, and `railroadPeg`. The four
+Railroad entries have matching descendants and differ only in browser-derived root `viewBox`
+height, so they are now admitted by family-, fixture-, marker-, and value-locked policies. The
+policy inventory is therefore 9 exact records; the other 756 observed residuals remain actionable.
 
 Recent progress (2026-02-16): imported an additional batch of Architecture stress fixtures (with upstream SVG
 baselines), expanding coverage for cross-group edges, labeled ports, icon-text fallbacks, and long edge label

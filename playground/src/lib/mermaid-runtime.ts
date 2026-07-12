@@ -2,7 +2,7 @@ import { buildMermaidConfig, sourceWithConfig } from "@/src/lib/mermaid-config";
 import type { DiagramFont } from "@/src/lib/diagram-font";
 import { normalizeThemeName } from "@mermanjs/web";
 
-export const MERMAID_JS_VERSION = "11.15.0";
+export const MERMAID_JS_VERSION = "11.16.0";
 export const MERMAID_CDN_URL =
   import.meta.env.VITE_MERMAID_CDN_URL?.trim() ||
   `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_JS_VERSION}/dist/mermaid.esm.min.mjs`;

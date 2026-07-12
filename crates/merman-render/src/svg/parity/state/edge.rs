@@ -188,6 +188,161 @@ fn state_edge_boundary_for_cluster(
     })
 }
 
+fn state_edge_boundary_for_layout_node(
+    ctx: &StateRenderCtx<'_>,
+    node_id: &str,
+    ox: f64,
+    oy: f64,
+) -> Option<StateEdgeBoundaryNode> {
+    let n = ctx.layout_nodes_by_id.get(node_id).copied()?;
+    Some(StateEdgeBoundaryNode {
+        x: n.x - ox,
+        y: n.y - oy,
+        width: n.width,
+        height: n.height,
+    })
+}
+
+fn state_edge_clip_self_loop_points_to_node(
+    ctx: &StateRenderCtx<'_>,
+    le: &crate::model::LayoutEdge,
+    input: &[crate::model::LayoutPoint],
+    origin_x: f64,
+    origin_y: f64,
+) -> Option<Vec<crate::model::LayoutPoint>> {
+    if le.from != le.to || le.from_cluster.is_some() || le.to_cluster.is_some() || input.len() < 3 {
+        return None;
+    }
+    if ctx.layout_clusters_by_id.contains_key(le.from.as_str()) {
+        return None;
+    }
+    if ctx
+        .nodes_by_id
+        .get(le.from.as_str())
+        .copied()
+        .is_some_and(|node| node.is_group && node.shape != "noteGroup")
+    {
+        return None;
+    }
+
+    let boundary = state_edge_boundary_for_layout_node(ctx, le.from.as_str(), origin_x, origin_y)?;
+    let center = crate::model::LayoutPoint {
+        x: boundary.x,
+        y: boundary.y,
+    };
+    let inner = &input[1..input.len() - 1];
+    if inner.is_empty() {
+        return None;
+    }
+
+    let mut out = Vec::with_capacity(inner.len() + 2);
+    out.push(state_edge_rect_intersection(&boundary, &center, &inner[0]));
+    out.extend(inner.iter().cloned());
+    out.push(state_edge_rect_intersection(
+        &boundary,
+        &center,
+        &inner[inner.len() - 1],
+    ));
+    Some(out)
+}
+
+fn state_edge_find_adjacent_point(
+    point_a: &crate::model::LayoutPoint,
+    point_b: &crate::model::LayoutPoint,
+    distance: f64,
+) -> crate::model::LayoutPoint {
+    let x_diff = point_b.x - point_a.x;
+    let y_diff = point_b.y - point_a.y;
+    let length = (x_diff * x_diff + y_diff * y_diff).sqrt();
+    let ratio = distance / length;
+    crate::model::LayoutPoint {
+        x: point_b.x - ratio * x_diff,
+        y: point_b.y - ratio * y_diff,
+    }
+}
+
+fn state_edge_is_corner_point(
+    prev: &crate::model::LayoutPoint,
+    curr: &crate::model::LayoutPoint,
+    next: &crate::model::LayoutPoint,
+) -> bool {
+    (prev.x == curr.x
+        && curr.y == next.y
+        && (curr.x - next.x).abs() > 5.0
+        && (curr.y - prev.y).abs() > 5.0)
+        || (prev.y == curr.y
+            && curr.x == next.x
+            && (curr.x - prev.x).abs() > 5.0
+            && (curr.y - next.y).abs() > 5.0)
+}
+
+fn state_edge_fix_corners(
+    line_data: &[crate::model::LayoutPoint],
+) -> Vec<crate::model::LayoutPoint> {
+    if line_data.len() < 3 {
+        return line_data.to_vec();
+    }
+
+    let mut out = Vec::with_capacity(line_data.len());
+    for (idx, point) in line_data.iter().enumerate() {
+        let is_corner = idx > 0
+            && idx + 1 < line_data.len()
+            && state_edge_is_corner_point(&line_data[idx - 1], point, &line_data[idx + 1]);
+
+        if !is_corner {
+            out.push(point.clone());
+            continue;
+        }
+
+        let prev_point = &line_data[idx - 1];
+        let next_point = &line_data[idx + 1];
+        let corner_point = point;
+        let new_prev_point = state_edge_find_adjacent_point(prev_point, corner_point, 5.0);
+        let new_next_point = state_edge_find_adjacent_point(next_point, corner_point, 5.0);
+        let x_diff = new_next_point.x - new_prev_point.x;
+        let y_diff = new_next_point.y - new_prev_point.y;
+        out.push(new_prev_point.clone());
+
+        let mut new_corner_point = corner_point.clone();
+        if (next_point.x - prev_point.x).abs() > 10.0 && (next_point.y - prev_point.y).abs() >= 10.0
+        {
+            let a = std::f64::consts::SQRT_2 * 2.0;
+            let r = 5.0;
+            if corner_point.x == new_prev_point.x {
+                new_corner_point = crate::model::LayoutPoint {
+                    x: if x_diff < 0.0 {
+                        new_prev_point.x - r + a
+                    } else {
+                        new_prev_point.x + r - a
+                    },
+                    y: if y_diff < 0.0 {
+                        new_prev_point.y - a
+                    } else {
+                        new_prev_point.y + a
+                    },
+                };
+            } else {
+                new_corner_point = crate::model::LayoutPoint {
+                    x: if x_diff < 0.0 {
+                        new_prev_point.x - a
+                    } else {
+                        new_prev_point.x + a
+                    },
+                    y: if y_diff < 0.0 {
+                        new_prev_point.y - r + a
+                    } else {
+                        new_prev_point.y + r - a
+                    },
+                };
+            }
+        }
+
+        out.push(new_corner_point);
+        out.push(new_next_point);
+    }
+    out
+}
+
 fn state_marker_offset_for(arrow_type_end: Option<&str>) -> Option<f64> {
     match arrow_type_end {
         Some("arrow_barb_neo") => Some(5.5),
@@ -268,13 +423,16 @@ fn state_edge_prepare_points(
     Vec<crate::model::LayoutPoint>,
     Vec<crate::model::LayoutPoint>,
 ) {
-    let mut local_points: Vec<crate::model::LayoutPoint> = Vec::new();
+    let mut raw_local_points: Vec<crate::model::LayoutPoint> = Vec::new();
     for p in &le.points {
-        local_points.push(crate::model::LayoutPoint {
+        raw_local_points.push(crate::model::LayoutPoint {
             x: p.x - origin_x,
             y: p.y - origin_y,
         });
     }
+    let local_points =
+        state_edge_clip_self_loop_points_to_node(ctx, le, &raw_local_points, origin_x, origin_y)
+            .unwrap_or(raw_local_points);
 
     let is_cyclic_special = edge_id.contains("-cyclic-special-");
     let mut points_for_curve = if is_cyclic_special {
@@ -319,6 +477,7 @@ fn state_edge_prepare_points(
             points_for_curve.remove(1);
         }
     }
+    points_for_curve = state_edge_fix_corners(&points_for_curve);
     points_for_curve = state_line_with_end_marker_offset_points(&points_for_curve, arrow_type_end);
 
     (local_points, points_for_curve)
@@ -339,6 +498,70 @@ fn state_edge_encode_path(
         .encode(serde_json::to_vec(&local_points).unwrap_or_default());
     let d = curve_basis_path_d(&points_for_curve);
     (d, data_points)
+}
+
+enum StateSelfLoopLayout<'a> {
+    Compacted(&'a crate::model::LayoutEdge),
+    Segmented(Vec<(String, &'a crate::model::LayoutEdge)>),
+}
+
+fn state_self_loop_layout<'a>(
+    ctx: &'a StateRenderCtx<'_>,
+    edge: &StateSvgEdge,
+) -> Option<StateSelfLoopLayout<'a>> {
+    if edge.start != edge.end {
+        return None;
+    }
+    if let Some(compacted) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() {
+        return Some(StateSelfLoopLayout::Compacted(compacted));
+    }
+
+    let mut segments = Vec::with_capacity(3);
+    for suffix in [
+        "-cyclic-special-1",
+        "-cyclic-special-mid",
+        "-cyclic-special-2",
+    ] {
+        let id = format!("{}{suffix}", edge.start);
+        if let Some(segment) = ctx.layout_edges_by_id.get(id.as_str()).copied() {
+            segments.push((id, segment));
+        }
+    }
+    (!segments.is_empty()).then_some(StateSelfLoopLayout::Segmented(segments))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_state_edge_path(
+    out: &mut String,
+    ctx: &StateRenderCtx<'_>,
+    le: &crate::model::LayoutEdge,
+    edge_id: &str,
+    classes: &str,
+    marker_end: Option<&str>,
+    arrow_type_end: Option<&str>,
+    origin_x: f64,
+    origin_y: f64,
+) {
+    if le.points.len() < 2 {
+        return;
+    }
+
+    let (d, data_points) =
+        state_edge_encode_path(ctx, le, edge_id, arrow_type_end, origin_x, origin_y);
+    let _ = write!(
+        out,
+        r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
+        d,
+        escape_xml_display(&state_scoped_dom_id(ctx, edge_id)),
+        escape_xml_display(classes),
+        escape_xml_display(edge_id),
+        data_points,
+        escape_xml_display(state_data_look(ctx))
+    );
+    if let Some(marker_end) = marker_end {
+        let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(marker_end));
+    }
+    out.push_str("/>");
 }
 
 pub(super) fn render_state_edge_path(
@@ -365,40 +588,37 @@ pub(super) fn render_state_edge_path(
     };
 
     if edge.start == edge.end {
-        let start = edge.start.as_str();
-        let id1 = format!("{start}-cyclic-special-1");
-        let idm = format!("{start}-cyclic-special-mid");
-        let id2 = format!("{start}-cyclic-special-2");
-
-        let segments = [(&id1, None), (&idm, None), (&id2, marker_end.as_ref())];
-        for (sid, marker) in segments {
-            let Some(le) = ctx.layout_edges_by_id.get(sid.as_str()).copied() else {
-                continue;
-            };
-            if le.points.len() < 2 {
-                continue;
-            }
-            let (d, data_points) = state_edge_encode_path(
+        let Some(layout) = state_self_loop_layout(ctx, edge) else {
+            return;
+        };
+        match layout {
+            StateSelfLoopLayout::Compacted(le) => write_state_edge_path(
+                out,
                 ctx,
                 le,
-                sid,
-                marker.map(|_| edge.arrow_type_end.as_str()),
+                edge.id.as_str(),
+                &classes,
+                marker_end.as_deref(),
+                marker_end.as_ref().map(|_| edge.arrow_type_end.as_str()),
                 origin_x,
                 origin_y,
-            );
-            let _ = write!(
-                out,
-                r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-                d,
-                escape_xml_display(sid),
-                escape_xml_display(&classes),
-                escape_xml_display(sid),
-                data_points
-            );
-            if let Some(m) = marker {
-                let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(m));
+            ),
+            StateSelfLoopLayout::Segmented(segments) => {
+                for (segment_id, segment) in segments {
+                    let is_terminal = segment_id.ends_with("-cyclic-special-2");
+                    write_state_edge_path(
+                        out,
+                        ctx,
+                        segment,
+                        &segment_id,
+                        &classes,
+                        is_terminal.then_some(marker_end.as_deref()).flatten(),
+                        is_terminal.then_some(edge.arrow_type_end.as_str()),
+                        origin_x,
+                        origin_y,
+                    );
+                }
             }
-            out.push_str("/>");
         }
         return;
     }
@@ -406,32 +626,17 @@ pub(super) fn render_state_edge_path(
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
         return;
     };
-    if le.points.len() < 2 {
-        return;
-    }
-
-    let (d, data_points) = state_edge_encode_path(
+    write_state_edge_path(
+        out,
         ctx,
         le,
         edge.id.as_str(),
+        &classes,
+        marker_end.as_deref(),
         Some(edge.arrow_type_end.as_str()),
         origin_x,
         origin_y,
     );
-
-    let _ = write!(
-        out,
-        r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-        d,
-        escape_xml_display(&edge.id),
-        escape_xml_display(&classes),
-        escape_xml_display(&edge.id),
-        data_points
-    );
-    if let Some(m) = marker_end {
-        let _ = write!(out, r#" marker-end="{}""#, escape_xml_display(&m));
-    }
-    out.push_str("/>");
 }
 
 pub(super) fn render_state_edge_label(
@@ -600,38 +805,68 @@ pub(super) fn render_state_edge_label(
     let empty_edge_label_style = edge_label_div_style(0.0);
     let label_text = edge.label.trim();
     if edge.start == edge.end {
-        let start = edge.start.as_str();
-        let id1 = format!("{start}-cyclic-special-1");
-        let idm = format!("{start}-cyclic-special-mid");
-        let id2 = format!("{start}-cyclic-special-2");
-
-        // Mermaid emits self-loop label containers in the order:
-        // `*-cyclic-special-1`, `*-cyclic-special-mid` (visible label), `*-cyclic-special-2`.
-        write_empty_edge_label(out, &id1, ctx.html_labels, empty_edge_label_style.as_str());
-
-        // Mermaid ties the visible self-loop label to the `*-mid` segment.
-        if !label_text.is_empty() {
-            if let Some(le) = ctx.layout_edges_by_id.get(idm.as_str()).copied()
-                && let Some(lbl) = le.label.as_ref()
-            {
-                write_visible_edge_label(
-                    out,
-                    &idm,
-                    label_text,
-                    crate::model::LayoutPoint {
-                        x: lbl.x - origin_x,
-                        y: lbl.y - origin_y,
-                    },
-                    lbl.width,
-                    lbl.height,
-                    ctx.html_labels,
-                );
+        match state_self_loop_layout(ctx, edge) {
+            Some(StateSelfLoopLayout::Compacted(le)) => {
+                if label_text.is_empty() {
+                    write_empty_edge_label(
+                        out,
+                        &edge.id,
+                        ctx.html_labels,
+                        empty_edge_label_style.as_str(),
+                    );
+                } else if let Some(lbl) = le.label.as_ref() {
+                    write_visible_edge_label(
+                        out,
+                        &edge.id,
+                        label_text,
+                        crate::model::LayoutPoint {
+                            x: lbl.x - origin_x,
+                            y: lbl.y - origin_y,
+                        },
+                        lbl.width,
+                        lbl.height,
+                        ctx.html_labels,
+                    );
+                }
             }
-        } else {
-            write_empty_edge_label(out, &idm, ctx.html_labels, empty_edge_label_style.as_str());
+            Some(StateSelfLoopLayout::Segmented(segments)) => {
+                for (segment_id, segment) in segments {
+                    let segment_text = if segment_id.ends_with("-cyclic-special-mid") {
+                        label_text
+                    } else {
+                        ""
+                    };
+                    if segment_text.is_empty() {
+                        write_empty_edge_label(
+                            out,
+                            &segment_id,
+                            ctx.html_labels,
+                            empty_edge_label_style.as_str(),
+                        );
+                    } else if let Some(lbl) = segment.label.as_ref() {
+                        write_visible_edge_label(
+                            out,
+                            &segment_id,
+                            segment_text,
+                            crate::model::LayoutPoint {
+                                x: lbl.x - origin_x,
+                                y: lbl.y - origin_y,
+                            },
+                            lbl.width,
+                            lbl.height,
+                            ctx.html_labels,
+                        );
+                    }
+                }
+            }
+            None if label_text.is_empty() => write_empty_edge_label(
+                out,
+                &edge.id,
+                ctx.html_labels,
+                empty_edge_label_style.as_str(),
+            ),
+            None => {}
         }
-
-        write_empty_edge_label(out, &id2, ctx.html_labels, empty_edge_label_style.as_str());
         return;
     }
 

@@ -164,6 +164,7 @@ fn diagram_header_facts_follow_feature_profile() {
             "flowchart TD",
             "graph TD",
             "sequenceDiagram",
+            "swimlane-beta",
             "classDiagram",
             "classDiagram-v2",
             "stateDiagram-v2",
@@ -197,6 +198,12 @@ fn diagram_header_facts_follow_feature_profile() {
             "block-beta",
             "radar-beta",
             "treemap-beta",
+            "railroad-beta",
+            "railroad-ebnf-beta",
+            "railroad-abnf-beta",
+            "railroad-peg-beta",
+            "wardley-beta",
+            "cynefin-beta",
             "flowchart-elk TD",
         ]
     );
@@ -221,6 +228,7 @@ fn diagram_header_facts_follow_feature_profile() {
             "flowchart TD",
             "graph TD",
             "sequenceDiagram",
+            "swimlane-beta",
             "classDiagram",
             "classDiagram-v2",
             "stateDiagram-v2",
@@ -252,6 +260,12 @@ fn diagram_header_facts_follow_feature_profile() {
             "block-beta",
             "radar-beta",
             "treemap-beta",
+            "railroad-beta",
+            "railroad-ebnf-beta",
+            "railroad-abnf-beta",
+            "railroad-peg-beta",
+            "wardley-beta",
+            "cynefin-beta",
         ]
     );
 }
@@ -265,6 +279,7 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "block",
             "c4",
             "class",
+            "cynefin",
             "er",
             "flowchart",
             "gantt",
@@ -277,6 +292,10 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "pie",
             "quadrantchart",
             "radar",
+            "railroad",
+            "railroadAbnf",
+            "railroadEbnf",
+            "railroadPeg",
             "requirement",
             "sankey",
             "sequence",
@@ -295,6 +314,7 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "block",
             "c4",
             "class",
+            "cynefin",
             "er",
             "flowchart",
             "gantt",
@@ -306,6 +326,10 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "pie",
             "quadrantchart",
             "radar",
+            "railroad",
+            "railroadAbnf",
+            "railroadEbnf",
+            "railroadPeg",
             "requirement",
             "sankey",
             "sequence",
@@ -337,7 +361,7 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
 }
 
 #[test]
-fn diagram_family_capabilities_follow_parser_fact_projection() {
+fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     let full = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full);
     let tiny = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Tiny);
 
@@ -356,10 +380,48 @@ fn diagram_family_capabilities_follow_parser_fact_projection() {
     assert!(error.has_semantic_parser);
     assert!(!error.has_render_parser);
 
+    let swimlane = family_capability(full, "swimlane");
+    assert_eq!(swimlane.metadata_id, None);
+    assert!(swimlane.has_semantic_parser);
+    assert!(!swimlane.has_render_parser);
+
+    let railroad = family_capability(full, "railroad");
+    assert_eq!(railroad.metadata_id, Some("railroad"));
+    assert!(railroad.has_semantic_parser);
+    assert!(railroad.has_render_parser);
+
+    for (diagram_type, metadata_id) in [
+        ("railroadEbnf", "railroadEbnf"),
+        ("railroadAbnf", "railroadAbnf"),
+        ("railroadPeg", "railroadPeg"),
+    ] {
+        let capability = family_capability(full, diagram_type);
+        assert_eq!(capability.metadata_id, Some(metadata_id));
+        assert!(capability.has_semantic_parser);
+        assert!(capability.has_render_parser);
+    }
+
+    let cynefin = family_capability(full, "cynefin");
+    assert_eq!(cynefin.metadata_id, Some("cynefin"));
+    assert!(cynefin.has_semantic_parser);
+    assert!(cynefin.has_render_parser);
+
+    let wardley = family_capability(full, "wardley");
+    assert_eq!(wardley.metadata_id, None);
+    assert!(!wardley.has_semantic_parser);
+    assert!(!wardley.has_render_parser);
+
+    assert!(!full.iter().any(|fact| fact.diagram_type == "---"));
     assert!(full.iter().any(|fact| fact.diagram_type == "mindmap"));
     assert!(!tiny.iter().any(|fact| fact.diagram_type == "mindmap"));
     assert!(!tiny.iter().any(|fact| fact.diagram_type == "architecture"));
     assert!(!tiny.iter().any(|fact| fact.diagram_type == "flowchart-elk"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "swimlane"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "cynefin"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroad"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadEbnf"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadAbnf"));
+    assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadPeg"));
 }
 
 #[test]
@@ -457,7 +519,7 @@ fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
         );
 
         for fact in crate::family::semantic_parser_facts(profile) {
-            if fact.id == "error" {
+            if permits_parser_only_semantic_fact(fact.id) {
                 continue;
             }
 
@@ -472,6 +534,19 @@ fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
 
 fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {
     ids.into_iter().collect()
+}
+
+fn permits_parser_only_semantic_fact(id: &str) -> bool {
+    matches!(
+        id,
+        "error"
+            | "swimlane"
+            | "cynefin"
+            | "railroad"
+            | "railroadEbnf"
+            | "railroadAbnf"
+            | "railroadPeg"
+    )
 }
 
 fn family_capability(

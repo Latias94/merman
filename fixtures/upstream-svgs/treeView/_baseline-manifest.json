@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002": {
+      "input_sha256": "a38d3ba62d10c850189fd241cc4f4bffda35b7c32d0492e587ea25a8813c64e3",
+      "svg_sha256": "8e315317b0c2686e349c1118a7c07af541983ac29831d480ecdc5b234a6e1e87",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003": {
+      "input_sha256": "cb74cbb3fd4d5f2213389c88ad8ee48798d06fb69684df5ab31decb1aebadb17",
+      "svg_sha256": "1ac10b440514e4e9bfbb72967e9d8a2ed8f7120d86523c6eaffb91853195760f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001": {
+      "input_sha256": "e3eca43634d7f863673982fd132e036c4c4526001c08ebe28b184d81af660050",
+      "svg_sha256": "e2f70470e564871159c17ce9d326a4ff149981ec3c154d3ee4c869e451392c0d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004": {
+      "input_sha256": "1b2f98d6f3eba98efcab26cfb69539758bd01659fbb9d75edc15d84ce5fa0f54",
+      "svg_sha256": "2b6c62715f16534a5a1a81f0ebf0d148f355c157701b53a2c0be28c3df26f5cb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_treeview_basic": {
+      "input_sha256": "47b72aedb6fc36c74e7a3aa8c0f17e473766a97cf0a67f66b2523ddb24e2fae1",
+      "svg_sha256": "c9017c97605a21456890986fd1acdd8d2609f5e8614bf66c51db923f88e6632f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_parser_treeview_title_accessibility_spec": {
+      "input_sha256": "8fb64bfd2beec5a048f5e4a0acd0897ebbcce6f180f783340d604b1a22ecea55",
+      "svg_sha256": "59a57f98c439161b8164e90be3474905d3c8d2e5262fac6cd1658300a227d108",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

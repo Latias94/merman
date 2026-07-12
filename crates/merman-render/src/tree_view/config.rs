@@ -1,6 +1,7 @@
-use crate::config::{config_bool, config_f64};
+use crate::config::{config_bool, config_f64, config_string};
 use crate::theme::PresentationTheme;
 use serde_json::Value;
+use std::collections::HashMap;
 
 const DEFAULT_ROW_INDENT: f64 = 10.0;
 const DEFAULT_PADDING_X: f64 = 5.0;
@@ -44,6 +45,10 @@ impl<'a> TreeViewConfigView<'a> {
                 .tree_view_bool("useMaxWidth")
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
             label_font_size: theme.label_font_size,
+            show_icons: self.tree_view_bool("showIcons").unwrap_or(false),
+            default_icon_pack: self.tree_view_string("defaultIconPack").unwrap_or_default(),
+            filename_icons: self.tree_view_string_map("filenameIcons"),
+            extension_icons: self.tree_view_string_map("extensionIcons"),
         }
     }
 
@@ -53,6 +58,25 @@ impl<'a> TreeViewConfigView<'a> {
 
     fn tree_view_f64(&self, key: &str) -> Option<f64> {
         config_f64(self.tree_view_config, &[key])
+    }
+
+    fn tree_view_string(&self, key: &str) -> Option<String> {
+        config_string(self.tree_view_config, &[key])
+    }
+
+    fn tree_view_string_map(&self, key: &str) -> HashMap<String, String> {
+        self.tree_view_config
+            .get(key)
+            .and_then(Value::as_object)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|(key, value)| {
+                        value.as_str().map(|value| (key.clone(), value.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -64,6 +88,10 @@ pub(crate) struct TreeViewLayoutSettings {
     pub(crate) line_thickness: f64,
     pub(crate) use_max_width: bool,
     pub(crate) label_font_size: f64,
+    pub(crate) show_icons: bool,
+    pub(crate) default_icon_pack: String,
+    pub(crate) filename_icons: HashMap<String, String>,
+    pub(crate) extension_icons: HashMap<String, String>,
 }
 
 #[cfg(test)]
@@ -82,6 +110,10 @@ mod tests {
         assert_eq!(settings.line_thickness, DEFAULT_LINE_THICKNESS);
         assert!(settings.use_max_width);
         assert_eq!(settings.label_font_size, 16.0);
+        assert!(!settings.show_icons);
+        assert_eq!(settings.default_icon_pack, "");
+        assert!(settings.filename_icons.is_empty());
+        assert!(settings.extension_icons.is_empty());
     }
 
     #[test]
@@ -92,7 +124,11 @@ mod tests {
                 "paddingX": 7,
                 "paddingY": 8,
                 "lineThickness": 2,
-                "useMaxWidth": false
+                "useMaxWidth": false,
+                "showIcons": true,
+                "defaultIconPack": "logos",
+                "filenameIcons": { "Dockerfile": "docker" },
+                "extensionIcons": { ".ts": "typescript" }
             },
             "themeVariables": {
                 "treeView": {
@@ -108,6 +144,19 @@ mod tests {
         assert_eq!(settings.line_thickness, 2.0);
         assert!(!settings.use_max_width);
         assert_eq!(settings.label_font_size, 21.0);
+        assert!(settings.show_icons);
+        assert_eq!(settings.default_icon_pack, "logos");
+        assert_eq!(
+            settings
+                .filename_icons
+                .get("Dockerfile")
+                .map(String::as_str),
+            Some("docker")
+        );
+        assert_eq!(
+            settings.extension_icons.get(".ts").map(String::as_str),
+            Some("typescript")
+        );
     }
 
     #[test]

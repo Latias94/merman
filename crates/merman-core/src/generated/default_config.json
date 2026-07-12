@@ -150,14 +150,21 @@
     "titleTopMargin": 25,
     "useMaxWidth": true
   },
+  "cynefin": {
+    "boundaryAmplitude": 8,
+    "height": 600,
+    "padding": 40,
+    "seed": 0,
+    "showDomainDescriptions": true,
+    "useMaxWidth": true,
+    "width": 800
+  },
   "darkMode": false,
   "deterministicIds": false,
   "elk": {
     "considerModelOrder": "NODES_AND_EDGES",
     "forceNodeModelOrder": false,
-    "keepEntryNodeOnTop": false,
     "mergeEdges": false,
-    "nodePlacementAlignment": "NONE",
     "nodePlacementStrategy": "BRANDES_KOEPF"
   },
   "er": {
@@ -351,6 +358,17 @@
     "useMaxWidth": true,
     "width": 600
   },
+  "railroad": {
+    "arcRadius": 10,
+    "compactMode": false,
+    "horizontalSeparation": 10,
+    "markerRadius": 5,
+    "padding": 10,
+    "showMarkers": true,
+    "strokeWidth": 2,
+    "useMaxWidth": true,
+    "verticalSeparation": 8
+  },
   "requirement": {
     "fontSize": 14,
     "line_height": 20,
@@ -446,6 +464,13 @@
     "useMaxWidth": true
   },
   "suppressErrorRendering": false,
+  "swimlane": {
+    "automaticLaneOrdering": false,
+    "ignoreCrossLaneEdges": true,
+    "lineHops": "arc",
+    "optimizeRanksByCrossings": true,
+    "useMaxWidth": true
+  },
   "theme": "default",
   "timeline": {
     "activationWidth": 10,
@@ -489,10 +514,14 @@
     "width": 150
   },
   "treeView": {
+    "defaultIconPack": "",
+    "extensionIcons": {},
+    "filenameIcons": {},
     "lineThickness": 1,
     "paddingX": 5,
     "paddingY": 5,
     "rowIndent": 10,
+    "showIcons": false,
     "useMaxWidth": true
   },
   "venn": {
@@ -514,10 +543,32 @@
     "useMaxWidth": true,
     "width": 700,
     "xAxis": {
-      "$ref": "#/$defs/XYChartAxisConfig"
+      "axisLineWidth": 2,
+      "labelFontSize": 14,
+      "labelPadding": 5,
+      "labelRotation": 0,
+      "showAxisLine": true,
+      "showLabel": true,
+      "showTick": true,
+      "showTitle": true,
+      "tickLength": 5,
+      "tickWidth": 2,
+      "titleFontSize": 16,
+      "titlePadding": 5
     },
     "yAxis": {
-      "$ref": "#/$defs/XYChartAxisConfig"
+      "axisLineWidth": 2,
+      "labelFontSize": 14,
+      "labelPadding": 5,
+      "labelRotation": 0,
+      "showAxisLine": true,
+      "showLabel": true,
+      "showTick": true,
+      "showTitle": true,
+      "tickLength": 5,
+      "tickWidth": 2,
+      "titleFontSize": 16,
+      "titlePadding": 5
     }
   }
 }

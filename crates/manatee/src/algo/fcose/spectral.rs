@@ -2,7 +2,7 @@
 
 use rustc_hash::FxHashMap;
 
-use super::{SimEdge, SimNode, XorShift64Star};
+use super::{FcoseRandom, SimEdge, SimNode};
 
 const INFINITY_HOPS: f64 = 100_000_000.0;
 const SMALL: f64 = 1e-9;
@@ -18,7 +18,7 @@ pub(super) fn apply_spectral_start_positions(
     compound_parent: &[Option<usize>],
     compound_ids_in_order: &[usize],
     node_separation: f64,
-    rng: &mut XorShift64Star,
+    rng: &mut FcoseRandom,
 ) -> bool {
     if nodes.is_empty() {
         return false;
@@ -646,7 +646,7 @@ fn regularized_inverse_from_svd(phi: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
 }
 
 fn power_iteration(
-    rng: &mut XorShift64Star,
+    rng: &mut FcoseRandom,
     c: &[Vec<f64>],
     inv: &[Vec<f64>],
     pi_tol: f64,

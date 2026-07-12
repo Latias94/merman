@@ -1,0 +1,43 @@
+{
+  "diagramType": "railroad",
+  "model": {
+    "type": "railroad",
+    "title": "Simple Grammar",
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "rule",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "terminal",
+              "value": "a"
+            },
+            {
+              "type": "nonterminal",
+              "name": "other"
+            },
+            {
+              "type": "repetition",
+              "element": {
+                "type": "special",
+                "text": "anything"
+              },
+              "min": 0,
+              "max": null
+            }
+          ]
+        }
+      },
+      {
+        "name": "other",
+        "definition": {
+          "type": "terminal",
+          "value": "b"
+        }
+      }
+    ]
+  }
+}

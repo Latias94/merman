@@ -273,23 +273,6 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         }
     }
 
-    fn load_existing_fixtures(fixtures_dir: &Path) -> std::collections::HashMap<String, PathBuf> {
-        let mut map = std::collections::HashMap::new();
-        let Ok(entries) = fs::read_dir(fixtures_dir) else {
-            return map;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "mmd")
-                && let Ok(text) = fs::read_to_string(&path)
-            {
-                let canon = canonical_fixture_text(&text);
-                map.insert(canon, path);
-            }
-        }
-        map
-    }
-
     fn normalize_diagram_dir(detected: &str) -> Option<String> {
         match detected {
             "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
@@ -892,17 +875,60 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
         std::collections::HashMap<String, PathBuf>,
     > = std::collections::HashMap::new();
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug)]
     struct CreatedFixture {
         diagram_dir: String,
         stem: String,
         path: PathBuf,
+        rollback: Option<ImportedFixtureSnapshot>,
+    }
+
+    fn is_upstream_error_svg(svg_path: &Path) -> Result<bool, XtaskError> {
+        let svg = fs::read_to_string(svg_path).map_err(|source| XtaskError::ReadFile {
+            path: svg_path.display().to_string(),
+            source,
+        })?;
+        Ok(svg.contains("aria-roledescription=\"error\""))
+    }
+
+    fn reject_fixture(f: &CreatedFixture) -> Result<(), XtaskError> {
+        reject_imported_fixture_transaction(&f.diagram_dir, &f.stem, &f.path, f.rollback.as_ref())
+    }
+
+    fn defer_fixture(
+        f: &CreatedFixture,
+        keep_upstream_svg: bool,
+        replace_existing: bool,
+    ) -> Result<PathBuf, XtaskError> {
+        defer_imported_fixture_transaction(
+            &f.diagram_dir,
+            &f.stem,
+            &f.path,
+            f.rollback.as_ref(),
+            keep_upstream_svg,
+            replace_existing,
+        )
     }
 
     let mut created: Vec<CreatedFixture> = Vec::new();
 
     let mut imported = 0usize;
+    let workspace_lock = acquire_imported_fixture_workspace_lock()?;
+    let _non_baseline_family_locks = if with_baselines {
+        None
+    } else {
+        Some(acquire_imported_fixture_family_locks(
+            &workspace_lock,
+            candidates
+                .iter()
+                .map(|candidate| candidate.diagram_dir.as_str()),
+        )?)
+    };
     for c in candidates {
+        if imported > 0 && limit.is_some_and(|max| imported >= max) {
+            break;
+        }
+
         let fixtures_dir = crate::cmd::fixtures_root().join(&c.diagram_dir);
         if !fixtures_dir.is_dir() {
             skipped.push(format!(
@@ -914,7 +940,14 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
 
         let existing = existing_by_diagram
             .entry(c.diagram_dir.clone())
-            .or_insert_with(|| load_existing_fixtures(&fixtures_dir));
+            .or_insert_with(|| {
+                load_existing_imported_fixtures(
+                    &workspace_lock,
+                    &fixtures_dir,
+                    &c.diagram_dir,
+                    canonical_fixture_text,
+                )
+            });
         if let Some(existing_path) = existing.get(&c.body) {
             skipped.push(format!(
                 "skip (duplicate content): {} (idx={}) -> {}",
@@ -930,114 +963,173 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
             skipped.push(format!("skip (exists): {}", out_path.display()));
             continue;
         }
+        let deferred_out_path = crate::cmd::fixtures_root()
+            .join("_deferred")
+            .join(&c.diagram_dir)
+            .join(format!("{}.mmd", c.stem));
+        if deferred_out_path.exists() && !overwrite {
+            skipped.push(format!(
+                "skip (already deferred): {}",
+                deferred_out_path.display()
+            ));
+            continue;
+        }
 
-        write_imported_fixture(&c.diagram_dir, &c.stem, &out_path, &c.body)?;
-        existing.insert(c.body.clone(), out_path.clone());
+        let transaction_locks = if with_baselines {
+            Some(acquire_imported_fixture_transaction_locks(
+                &workspace_lock,
+                &c.diagram_dir,
+            )?)
+        } else {
+            None
+        };
+        if with_baselines && !overwrite && (out_path.exists() || deferred_out_path.exists()) {
+            skipped.push(format!(
+                "skip (candidate appeared while waiting for import lock): {}",
+                if out_path.exists() {
+                    out_path.display()
+                } else {
+                    deferred_out_path.display()
+                }
+            ));
+            continue;
+        }
+        let rollback = if with_baselines {
+            Some(ImportedFixtureSnapshot::capture(
+                &c.diagram_dir,
+                &c.stem,
+                &out_path,
+            )?)
+        } else {
+            None
+        };
+        if let Err(error) = write_imported_fixture(&c.diagram_dir, &c.stem, &out_path, &c.body) {
+            return Err(rollback_imported_fixture_snapshots(error, rollback.iter()));
+        }
+        if with_baselines
+            && let Err(error) =
+                validate_exact_import_candidate_filter(&c.diagram_dir, &c.stem, &out_path)
+        {
+            return Err(rollback_imported_fixture_snapshots(error, rollback.iter()));
+        }
 
-        created.push(CreatedFixture {
+        let mut f = CreatedFixture {
             diagram_dir: c.diagram_dir,
             stem: c.stem,
             path: out_path,
-        });
+            rollback,
+        };
 
         imported += 1;
-        if let Some(max) = limit
-            && imported >= max
-        {
-            break;
-        }
-    }
-
-    if with_baselines {
-        let mut kept: Vec<CreatedFixture> = Vec::with_capacity(created.len());
-
-        fn is_upstream_error_svg(svg_path: &Path) -> bool {
-            let Ok(svg) = fs::read_to_string(svg_path) else {
-                return false;
-            };
-            svg.contains("aria-roledescription=\"error\"")
+        if !with_baselines {
+            existing.insert(c.body, f.path.clone());
+            created.push(f);
+            continue;
         }
 
-        fn cleanup_fixture_and_svg(f: &CreatedFixture) {
-            crate::cmd::import::cleanup_fixture_files(&f.diagram_dir, &f.stem, &f.path);
+        let mut svg_args = vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ];
+        if install {
+            svg_args.push("--install".to_string());
         }
-
-        fn defer_fixture_and_svg(
-            f: &CreatedFixture,
-            keep_upstream_svg: bool,
-            replace_existing: bool,
+        if let Err(error) = super::super::gen_upstream_svgs_with_transaction_locks(
+            svg_args,
+            transaction_locks
+                .as_ref()
+                .expect("baseline import transaction must hold a family lock")
+                .family_lock(),
+            transaction_locks
+                .as_ref()
+                .expect("baseline import transaction must hold a toolchain lock")
+                .toolchain_lock(),
         ) {
-            let _ = crate::cmd::import::defer_fixture_files_with_replace_existing(
-                &f.diagram_dir,
-                &f.stem,
-                &f.path,
-                keep_upstream_svg,
-                replace_existing,
-            );
+            let message = match candidate_upstream_svg_failure(error, &f.path) {
+                Ok(message) => message,
+                Err(error) => {
+                    return Err(rollback_imported_fixture_snapshots(
+                        error,
+                        f.rollback.iter(),
+                    ));
+                }
+            };
+            skipped.push(format!(
+                "defer (upstream svg generation failed): {} ({message})",
+                f.path.display()
+            ));
+            let deferred_path = defer_fixture(&f, false, overwrite)?;
+            existing.insert(c.body, deferred_path);
+            continue;
         }
 
-        for f in &created {
-            let mut svg_args = vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ];
-            if install {
-                svg_args.push("--install".to_string());
-            }
-            if let Err(err) = super::super::gen_upstream_svgs(svg_args) {
-                skipped.push(format!(
-                    "defer (upstream svg generation failed): {} ({err})",
-                    f.path.display()
-                ));
-                defer_fixture_and_svg(f, false, overwrite);
-                continue;
-            }
+        let svg_path = crate::cmd::fixtures_root()
+            .join("upstream-svgs")
+            .join(&f.diagram_dir)
+            .join(format!("{}.svg", f.stem));
+        if is_upstream_error_svg(&svg_path)
+            .map_err(|error| rollback_imported_fixture_snapshots(error, f.rollback.iter()))?
+        {
+            skipped.push(format!(
+                "defer (upstream rendered error diagram): {}",
+                f.path.display()
+            ));
+            let deferred_path = defer_fixture(&f, true, overwrite)?;
+            existing.insert(c.body, deferred_path);
+            continue;
+        }
 
-            let svg_path = crate::cmd::fixtures_root()
-                .join("upstream-svgs")
-                .join(&f.diagram_dir)
-                .join(format!("{}.svg", f.stem));
-            if is_upstream_error_svg(&svg_path) {
-                skipped.push(format!(
-                    "defer (upstream rendered error diagram): {}",
-                    f.path.display()
-                ));
-                defer_fixture_and_svg(f, true, overwrite);
-                continue;
-            }
+        if let Err(error) = super::super::update_snapshots(vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ]) {
+            let message = match candidate_snapshot_failure(error, &f.path) {
+                Ok(message) => message,
+                Err(error) => {
+                    return Err(rollback_imported_fixture_snapshots(
+                        error,
+                        f.rollback.iter(),
+                    ));
+                }
+            };
+            skipped.push(format!(
+                "skip (snapshot update failed): {} ({message})",
+                f.path.display()
+            ));
+            reject_fixture(&f)?;
+            continue;
+        }
 
-            if let Err(err) = super::super::update_snapshots(vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ]) {
-                skipped.push(format!(
-                    "skip (snapshot update failed): {} ({err})",
-                    f.path.display()
-                ));
-                cleanup_fixture_and_svg(f);
-                continue;
-            }
+        if let Err(error) = super::super::update_layout_snapshots(vec![
+            "--diagram".to_string(),
+            f.diagram_dir.clone(),
+            "--filter".to_string(),
+            f.stem.clone(),
+        ]) {
+            let message = match candidate_snapshot_failure(error, &f.path) {
+                Ok(message) => message,
+                Err(error) => {
+                    return Err(rollback_imported_fixture_snapshots(
+                        error,
+                        f.rollback.iter(),
+                    ));
+                }
+            };
+            skipped.push(format!(
+                "skip (layout snapshot update failed): {} ({message})",
+                f.path.display()
+            ));
+            reject_fixture(&f)?;
+            continue;
+        }
 
-            if let Err(err) = super::super::update_layout_snapshots(vec![
-                "--diagram".to_string(),
-                f.diagram_dir.clone(),
-                "--filter".to_string(),
-                f.stem.clone(),
-            ]) {
-                skipped.push(format!(
-                    "skip (layout snapshot update failed): {} ({err})",
-                    f.path.display()
-                ));
-                cleanup_fixture_and_svg(f);
-                continue;
-            }
-
-            // Parity gate (matches `xtask verify`): keep only fixtures that pass SVG DOM parity.
-            if let Err(err) = super::super::compare_all_svgs(vec![
+        // Parity gate (matches `xtask verify`): keep only fixtures that pass SVG DOM parity.
+        if let Err(error) = super::super::compare_all_svgs_with_transaction_locks(
+            vec![
                 "--check-dom".to_string(),
                 "--dom-mode".to_string(),
                 "parity".to_string(),
@@ -1047,19 +1139,42 @@ pub(crate) fn import_upstream_pkg_tests(args: Vec<String>) -> Result<(), XtaskEr
                 f.diagram_dir.clone(),
                 "--filter".to_string(),
                 f.stem.clone(),
-            ]) {
-                skipped.push(format!(
-                    "skip (svg dom parity mismatch): {} ({err})",
-                    f.path.display()
-                ));
-                cleanup_fixture_and_svg(f);
-                continue;
-            }
-
-            kept.push(f.clone());
+            ],
+            transaction_locks
+                .as_ref()
+                .expect("baseline import transaction must hold a family lock")
+                .family_lock(),
+            transaction_locks
+                .as_ref()
+                .expect("baseline import transaction must hold a toolchain lock")
+                .toolchain_lock(),
+        ) {
+            let message = match candidate_svg_compare_failure(error, &f.path, &f.stem) {
+                Ok(message) => message,
+                Err(error) => {
+                    return Err(rollback_imported_fixture_snapshots(
+                        error,
+                        f.rollback.iter(),
+                    ));
+                }
+            };
+            skipped.push(format!(
+                "skip (svg dom parity mismatch): {} ({message})",
+                f.path.display()
+            ));
+            reject_fixture(&f)?;
+            continue;
         }
 
-        created = kept;
+        if let Err(error) = cleanup_deferred_fixture_files(&f.diagram_dir, &f.stem) {
+            return Err(rollback_imported_fixture_snapshots(
+                error,
+                f.rollback.iter(),
+            ));
+        }
+        existing.insert(c.body, f.path.clone());
+        f.rollback = None;
+        created.push(f);
     }
 
     if created.is_empty() {

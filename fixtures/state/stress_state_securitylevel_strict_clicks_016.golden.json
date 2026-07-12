@@ -183,10 +183,6 @@
     ],
     "other": {},
     "links": {
-      "Done": {
-        "url": "mailto:test@example.com",
-        "tooltip": ""
-      },
       "Review": {
         "url": "/review",
         "tooltip": "Relative link is allowed"
@@ -194,6 +190,10 @@
       "Start": {
         "url": "https://example.com/start",
         "tooltip": "Start docs"
+      },
+      "Done": {
+        "url": "mailto:test@example.com",
+        "tooltip": ""
       }
     },
     "direction": "TB",

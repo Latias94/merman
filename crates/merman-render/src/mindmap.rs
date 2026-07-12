@@ -6,6 +6,8 @@ use crate::text::{TextMeasurer, TextMetrics, TextStyle};
 use crate::{Error, Result};
 use serde_json::Value;
 
+mod tidy_tree;
+
 pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
     config_f64_css_px(effective_config, &["mindmap", "maxNodeWidth"])
         .unwrap_or(200.0)
@@ -14,6 +16,7 @@ pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
 
 type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 type MindmapNodeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderNode;
+type MindmapEdgeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderEdge;
 
 fn mindmap_text_style(effective_config: &Value) -> TextStyle {
     // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and inherit the global font.
@@ -378,7 +381,7 @@ fn layout_mindmap_diagram_model(
     struct MindmapLayoutTimings {
         total: web_time::Duration,
         measure_nodes: web_time::Duration,
-        manatee: web_time::Duration,
+        layout: web_time::Duration,
         build_edges: web_time::Duration,
         bounds: web_time::Duration,
     }
@@ -439,8 +442,22 @@ fn layout_mindmap_diagram_model(
         edge_indices.push((a, b));
     }
 
-    if use_manatee_layout {
-        let manatee_start = timing_enabled.then(web_time::Instant::now);
+    let use_tidy_tree =
+        config_string(effective_config, &["layout"]).as_deref() == Some("tidy-tree");
+    let mut tidy_tree_edges = None;
+    if use_tidy_tree {
+        let layout_start = timing_enabled.then(web_time::Instant::now);
+        tidy_tree_edges = Some(tidy_tree::layout(
+            &mut nodes,
+            &model.nodes,
+            &model.edges,
+            &edge_indices,
+        )?);
+        if let Some(start) = layout_start {
+            timings.layout = start.elapsed();
+        }
+    } else if use_manatee_layout {
+        let layout_start = timing_enabled.then(web_time::Instant::now);
         let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
             .iter()
             .map(|n| manatee::algo::cose_bilkent::IndexedNode {
@@ -476,8 +493,8 @@ fn layout_mindmap_diagram_model(
             n.x = p.x;
             n.y = p.y;
         }
-        if let Some(s) = manatee_start {
-            timings.manatee = s.elapsed();
+        if let Some(start) = layout_start {
+            timings.layout = start.elapsed();
         }
     }
 
@@ -485,32 +502,51 @@ fn layout_mindmap_diagram_model(
     // `transform(0,0)` (layout-base), yielding a content bbox that starts around (15,15) before
     // the 10px viewport padding is applied (viewBox starts at 5,5).
     //
-    // Do this regardless of layout backend so parity-root viewport comparisons remain stable.
-    shift_nodes_to_positive_bounds(&mut nodes, 15.0);
+    // Tidy-tree is centered around x=0 and intentionally grows in both horizontal directions.
+    // COSE-Bilkent instead normalizes into Mermaid's positive Cytoscape coordinate space.
+    if !use_tidy_tree {
+        shift_nodes_to_positive_bounds(&mut nodes, 15.0);
+    }
 
     let build_edges_start = timing_enabled.then(web_time::Instant::now);
-    let mut edges: Vec<LayoutEdge> = Vec::with_capacity(model.edges.len());
-    for (e, (sidx, tidx)) in model.edges.iter().zip(edge_indices.iter().copied()) {
-        let (sx, sy) = (nodes[sidx].x, nodes[sidx].y);
-        let (tx, ty) = (nodes[tidx].x, nodes[tidx].y);
-        let points = vec![LayoutPoint { x: sx, y: sy }, LayoutPoint { x: tx, y: ty }];
-        edges.push(LayoutEdge {
-            id: e.id.clone(),
-            from: e.start.clone(),
-            to: e.end.clone(),
-            from_cluster: None,
-            to_cluster: None,
-            points,
-            label: None,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        });
-    }
+    let edges = if let Some(edges) = tidy_tree_edges {
+        edges
+    } else {
+        model
+            .edges
+            .iter()
+            .zip(edge_indices.iter().copied())
+            .map(|(edge, (source_index, target_index))| {
+                let source = &nodes[source_index];
+                let target = &nodes[target_index];
+                LayoutEdge {
+                    id: edge.id.clone(),
+                    from: edge.start.clone(),
+                    to: edge.end.clone(),
+                    from_cluster: None,
+                    to_cluster: None,
+                    points: vec![
+                        LayoutPoint {
+                            x: source.x,
+                            y: source.y,
+                        },
+                        LayoutPoint {
+                            x: target.x,
+                            y: target.y,
+                        },
+                    ],
+                    label: None,
+                    start_label_left: None,
+                    start_label_right: None,
+                    end_label_left: None,
+                    end_label_right: None,
+                    start_marker: None,
+                    end_marker: None,
+                    stroke_dasharray: None,
+                }
+            })
+            .collect()
+    };
     if let Some(s) = build_edges_start {
         timings.build_edges = s.elapsed();
     }
@@ -523,10 +559,10 @@ fn layout_mindmap_diagram_model(
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[layout-timing] diagram=mindmap total={:?} measure_nodes={:?} manatee={:?} build_edges={:?} bounds={:?} nodes={} edges={}",
+            "[layout-timing] diagram=mindmap total={:?} measure_nodes={:?} layout={:?} build_edges={:?} bounds={:?} nodes={} edges={}",
             timings.total,
             timings.measure_nodes,
-            timings.manatee,
+            timings.layout,
             timings.build_edges,
             timings.bounds,
             nodes.len(),

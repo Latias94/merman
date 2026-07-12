@@ -162,12 +162,9 @@ pub(super) fn render_class_node_shell_open(
     let have_callback = node.have_callback;
 
     if let Some(link) = link {
-        out.push_str("<a");
-        if look != "handDrawn" {
-            out.push_str(r#" data-look=""#);
-            super::super::util::escape_attr_into(out, look);
-            out.push('"');
-        }
+        out.push_str(r#"<a data-look=""#);
+        super::super::util::escape_attr_into(out, look);
+        out.push('"');
         if include_href {
             out.push_str(r#" xlink:href=""#);
             super::super::util::escape_attr_into(out, link);
@@ -191,13 +188,11 @@ pub(super) fn render_class_node_shell_open(
     }
     super::super::util::escape_attr_into(out, node.css_classes.trim());
     out.push_str(r#"" id=""#);
-    if look != "handDrawn" {
-        super::super::util::escape_attr_into(out, diagram_id);
-        out.push('-');
-    }
+    super::super::util::escape_attr_into(out, diagram_id);
+    out.push('-');
     super::super::util::escape_attr_into(out, &node.dom_id);
     out.push('"');
-    if link.is_none() && look != "handDrawn" {
+    if link.is_none() {
         out.push_str(r#" data-look=""#);
         super::super::util::escape_attr_into(out, look);
         out.push('"');
@@ -263,10 +258,8 @@ pub(super) fn render_class_node_basic_container(
     let top = -h / 2.0;
     let rough_seed = class_rough_seed(ctx.hand_drawn_seed, ctx.diagram_id, &node.dom_id);
     let hand_drawn = ctx.look == "handDrawn";
-    if hand_drawn {
-        out.push_str(r#"<g class="basic label-container">"#);
-    } else {
-        out.push_str(r#"<g class="basic label-container outer-path">"#);
+    out.push_str(r#"<g class="basic label-container outer-path">"#);
+    if !hand_drawn {
         let _ = write!(
             out,
             r#"<path d="M{} {} L{} {} L{} {} L{} {}" stroke="none" stroke-width="0" fill="{}" style="{}"/>"#,

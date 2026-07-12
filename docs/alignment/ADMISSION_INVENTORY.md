@@ -1,7 +1,7 @@
 # Diagram Admission Inventory
 
 Status: Active
-Baseline: Mermaid `@11.15.0`
+Baseline: Mermaid `@11.16.0`
 Last updated: 2026-06-26
 
 The structured admission inventory lives in `crates/xtask/src/cmd/admission.rs`.

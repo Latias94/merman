@@ -14,13 +14,6 @@ fn gitgraph_theme_name(effective_config: &serde_json::Value) -> String {
     config_string(effective_config, &["theme"]).unwrap_or_else(|| "default".to_string())
 }
 
-fn gitgraph_theme_is_redux_geometry(theme: &str) -> bool {
-    matches!(
-        theme,
-        "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
-    )
-}
-
 fn gitgraph_theme_is_color(theme: &str) -> bool {
     matches!(theme, "redux-color" | "redux-dark-color")
 }
@@ -57,29 +50,45 @@ fn gitgraph_theme_array(effective_config: &serde_json::Value, key: &str) -> Vec<
         .unwrap_or_default()
 }
 
-fn gitgraph_gradient_defs(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    if !config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
-        return String::new();
+fn gitgraph_defs(diagram_id: &str, effective_config: &serde_json::Value) -> String {
+    let mut out = String::new();
+
+    if config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false) {
+        let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
+            .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
+            .unwrap_or_else(|| "#9370DB".to_string());
+        let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
+            .or_else(|| {
+                config_string(
+                    effective_config,
+                    &["themeVariables", "secondaryBorderColor"],
+                )
+            })
+            .unwrap_or_else(|| gradient_start.clone());
+
+        let _ = write!(
+            &mut out,
+            r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
+            escape_xml(diagram_id),
+            escape_xml(&gradient_start),
+            escape_xml(&gradient_stop)
+        );
     }
 
-    let gradient_start = config_string(effective_config, &["themeVariables", "gradientStart"])
-        .or_else(|| config_string(effective_config, &["themeVariables", "primaryBorderColor"]))
-        .unwrap_or_else(|| "#9370DB".to_string());
-    let gradient_stop = config_string(effective_config, &["themeVariables", "gradientStop"])
-        .or_else(|| {
-            config_string(
-                effective_config,
-                &["themeVariables", "secondaryBorderColor"],
-            )
-        })
-        .unwrap_or_else(|| gradient_start.clone());
+    let theme_name = gitgraph_theme_name(effective_config);
+    if config_diagram_look(effective_config).is_neo()
+        && crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name)
+    {
+        let filter_color = theme_color(effective_config, "filterColor", "#000000");
+        let _ = write!(
+            &mut out,
+            r#"<defs><filter id="{}-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="{}"/></filter></defs>"#,
+            escape_xml(diagram_id),
+            escape_xml(&filter_color)
+        );
+    }
 
-    format!(
-        r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="{}" stop-opacity="1"/><stop offset="100%" stop-color="{}" stop-opacity="1"/></linearGradient></defs>"#,
-        escape_xml(diagram_id),
-        escape_xml(&gradient_start),
-        escape_xml(&gradient_stop)
-    )
+    out
 }
 
 fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGraphCss {
@@ -87,7 +96,7 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
     let parts = info_css_parts_with_theme_font_size_only(diagram_id, effective_config);
     let font_family = parts.font_family.clone();
     let theme_name = gitgraph_theme_name(effective_config);
-    let use_redux_geometry = gitgraph_theme_is_redux_geometry(&theme_name);
+    let use_redux_geometry = crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name);
     let use_color_theme = gitgraph_theme_is_color(&theme_name);
     let use_neo_theme = gitgraph_theme_is_neo(&theme_name);
     let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
@@ -181,11 +190,9 @@ fn gitgraph_css(diagram_id: &str, effective_config: &serde_json::Value) -> GitGr
     let use_gradient =
         config_bool(effective_config, &["themeVariables", "useGradient"]).unwrap_or(false);
     let border_color_array = gitgraph_theme_array(effective_config, "borderColorArray");
-    let defs = if use_neo_theme {
-        gitgraph_gradient_defs(diagram_id, effective_config)
-    } else {
-        String::new()
-    };
+    // gitGraph owns its draw path instead of using rendering-util/render.ts, so it must append the
+    // configured root gradient itself for every theme. Several classic themes enable gradients.
+    let defs = gitgraph_defs(diagram_id, effective_config);
     let mut out = parts.css_prefix;
     let _ = write!(
         &mut out,
@@ -590,6 +597,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     fn include_gitgraph_branch_line_bounds(
         bounds: &mut Bounds,
         layout: &crate::model::GitGraphDiagramLayout,
+        use_redux_geometry: bool,
     ) {
         if !layout.show_branches {
             return;
@@ -613,8 +621,10 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     include_point(bounds, branch.pos, 30.0);
                 }
                 _ => {
-                    include_point(bounds, 0.0, branch.pos);
-                    include_point(bounds, layout.max_pos, branch.pos);
+                    let spine_y =
+                        crate::gitgraph::gitgraph_lr_branch_spine_y(branch.pos, use_redux_geometry);
+                    include_point(bounds, 0.0, spine_y);
+                    include_point(bounds, layout.max_pos, spine_y);
                 }
             }
         }
@@ -670,6 +680,10 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         );
     }
 
+    let theme_name = gitgraph_theme_name(effective_config);
+    let use_redux_geometry = crate::gitgraph::gitgraph_theme_is_redux_geometry(&theme_name);
+    let use_dark_theme = gitgraph_theme_is_dark(&theme_name);
+    let look = config_diagram_look(effective_config);
     let css = gitgraph_css(diagram_id, effective_config);
     let title_style = crate::text::TextStyle {
         font_family: Some(css.font_family.clone()),
@@ -689,6 +703,32 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     }
 
     let direction = layout.direction.as_str();
+    let branch_border_radius = if use_redux_geometry { 0.0 } else { 4.0 };
+    let branch_label_padding_x = if use_redux_geometry { 16.0 } else { 0.0 };
+    let branch_label_padding_y = if use_redux_geometry {
+        crate::gitgraph::REDUX_BRANCH_LABEL_PADDING_Y
+    } else {
+        0.0
+    };
+    let branch_label_filter = if look.is_neo() {
+        let filter = if use_redux_geometry {
+            format!("url(#{diagram_id}-drop-shadow)")
+        } else {
+            crate::config::config_css_number_or_string(
+                effective_config,
+                &["themeVariables", "dropShadow"],
+            )
+            .unwrap_or_else(|| "none".to_string())
+        };
+        format!("filter:{filter}")
+    } else {
+        String::new()
+    };
+    let branch_data_look = if look.is_neo() {
+        r#" data-look="neo""#
+    } else {
+        ""
+    };
 
     if layout.show_branches {
         out.push_str("<g>");
@@ -715,12 +755,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     idx = idx
                 );
             } else {
+                let spine_y = crate::gitgraph::gitgraph_lr_branch_spine_y(pos, use_redux_geometry);
                 let _ = write!(
                     &mut out,
                     r#"<line x1="0" y1="{y1}" x2="{x2}" y2="{y2}" class="branch branch{idx}"/>"#,
-                    y1 = fmt(pos),
+                    y1 = fmt(spine_y),
                     x2 = fmt(layout.max_pos),
-                    y2 = fmt(pos),
+                    y2 = fmt(spine_y),
                     idx = idx
                 );
             }
@@ -734,40 +775,77 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 
             if direction == "TB" {
                 let x = pos - bbox_w / 2.0 - 10.0;
+                let bkg_transform = if use_redux_geometry {
+                    format!(
+                        r#" transform="translate({}, {})""#,
+                        fmt(-branch_label_padding_x / 2.0 - 3.0),
+                        fmt(-branch_label_padding_y - 10.0)
+                    )
+                } else {
+                    String::new()
+                };
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="{cls}" rx="4" ry="4" x="{x}" y="0" width="{w}" height="{h}"/>"#,
+                    r#"<rect{data_look} class="{cls}" style="{style}" rx="{radius}" ry="{radius}" x="{x}" y="0" width="{w}" height="{h}"{transform}/>"#,
+                    data_look = branch_data_look,
                     cls = bkg_class,
+                    style = escape_attr(&branch_label_filter),
+                    radius = fmt(branch_border_radius),
                     x = fmt(x),
-                    w = fmt(bbox_w + 18.0),
-                    h = fmt(bbox_h + 4.0),
+                    w = fmt(bbox_w + 18.0 + branch_label_padding_x),
+                    h = fmt(bbox_h + 4.0 + branch_label_padding_y),
+                    transform = bkg_transform,
                 );
                 let tx = pos - bbox_w / 2.0 - 5.0;
-                let _ = write!(
-                    &mut out,
-                    r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, 0)"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
-                    cls = label_class,
-                    x = fmt(tx),
-                    name = name
-                );
-            } else if direction == "BT" {
-                let x = pos - bbox_w / 2.0 - 10.0;
-                let _ = write!(
-                    &mut out,
-                    r#"<rect class="{cls}" rx="4" ry="4" x="{x}" y="{y}" width="{w}" height="{h}"/>"#,
-                    cls = bkg_class,
-                    x = fmt(x),
-                    y = fmt(layout.max_pos),
-                    w = fmt(bbox_w + 18.0),
-                    h = fmt(bbox_h + 4.0),
-                );
-                let tx = pos - bbox_w / 2.0 - 5.0;
+                let ty = if use_redux_geometry {
+                    -branch_label_padding_y * 2.0 + 7.0
+                } else {
+                    0.0
+                };
                 let _ = write!(
                     &mut out,
                     r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
                     cls = label_class,
                     x = fmt(tx),
+                    y = fmt(ty),
+                    name = name
+                );
+            } else if direction == "BT" {
+                let x = pos - bbox_w / 2.0 - 10.0;
+                let bkg_transform = if use_redux_geometry {
+                    format!(
+                        r#" transform="translate({}, {})""#,
+                        fmt(-branch_label_padding_x / 2.0 - 3.0),
+                        fmt(branch_label_padding_y + 10.0)
+                    )
+                } else {
+                    String::new()
+                };
+                let _ = write!(
+                    &mut out,
+                    r#"<rect{data_look} class="{cls}" style="{style}" rx="{radius}" ry="{radius}" x="{x}" y="{y}" width="{w}" height="{h}"{transform}/>"#,
+                    data_look = branch_data_look,
+                    cls = bkg_class,
+                    style = escape_attr(&branch_label_filter),
+                    radius = fmt(branch_border_radius),
+                    x = fmt(x),
                     y = fmt(layout.max_pos),
+                    w = fmt(bbox_w + 18.0 + branch_label_padding_x),
+                    h = fmt(bbox_h + 4.0 + branch_label_padding_y),
+                    transform = bkg_transform,
+                );
+                let tx = pos - bbox_w / 2.0 - 5.0;
+                let ty = if use_redux_geometry {
+                    layout.max_pos + branch_label_padding_y * 2.0 + 4.0
+                } else {
+                    layout.max_pos
+                };
+                let _ = write!(
+                    &mut out,
+                    r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
+                    cls = label_class,
+                    x = fmt(tx),
+                    y = fmt(ty),
                     name = name
                 );
             } else {
@@ -777,24 +855,28 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     0.0
                 };
                 let x = -bbox_w - 4.0 - rotate_pad;
-                let y = -bbox_h / 2.0 + 8.0;
+                let y = -bbox_h / 2.0 + 10.0;
+                let spine_y = crate::gitgraph::gitgraph_lr_branch_spine_y(pos, use_redux_geometry);
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="{cls}" rx="4" ry="4" x="{x}" y="{y}" width="{w}" height="{h}" transform="translate(-19, {ty})"/>"#,
+                    r#"<rect{data_look} class="{cls}" style="{style}" rx="{radius}" ry="{radius}" x="{x}" y="{y}" width="{w}" height="{h}" transform="translate(-19, {ty})"/>"#,
+                    data_look = branch_data_look,
                     cls = bkg_class,
+                    style = escape_attr(&branch_label_filter),
+                    radius = fmt(branch_border_radius),
                     x = fmt(x),
                     y = fmt(y),
-                    w = fmt(bbox_w + 18.0),
-                    h = fmt(bbox_h + 4.0),
-                    ty = fmt(pos - bbox_h / 2.0),
+                    w = fmt(bbox_w + 18.0 + branch_label_padding_x),
+                    h = fmt(bbox_h + 4.0 + branch_label_padding_y),
+                    ty = fmt(spine_y - 12.0 - branch_label_padding_y / 2.0),
                 );
-                let tx = -bbox_w - 14.0 - rotate_pad;
+                let tx = -bbox_w - 14.0 - rotate_pad + branch_label_padding_x / 2.0;
                 let _ = write!(
                     &mut out,
                     r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text><tspan xml:space="preserve" dy="1em" x="0" class="row">{name}</tspan></text></g></g>"#,
                     cls = label_class,
                     x = fmt(tx),
-                    y = fmt(pos - bbox_h / 2.0 - 1.0),
+                    y = fmt(spine_y - bbox_h / 2.0 - 2.0),
                     name = name
                 );
             }
@@ -837,71 +919,85 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         let id = escape_attr(&c.id);
 
         if symbol_type == 2 {
+            let outer_half_size = if use_redux_geometry { 7.0 } else { 10.0 };
+            let inner_half_size = if use_redux_geometry { 4.0 } else { 6.0 };
             let _ = write!(
                 &mut out,
-                r#"<rect x="{x}" y="{y}" width="20" height="20" class="commit {id} commit-highlight{idx} {type_class}-outer"/>"#,
-                x = fmt(c.x - 10.0),
-                y = fmt(c.y - 10.0),
+                r#"<rect x="{x}" y="{y}" width="{size}" height="{size}" class="commit {id} commit-highlight{idx} {type_class}-outer"/>"#,
+                x = fmt(c.x - outer_half_size),
+                y = fmt(c.y - outer_half_size),
+                size = fmt(outer_half_size * 2.0),
                 id = id,
                 idx = idx,
                 type_class = type_class
             );
             let _ = write!(
                 &mut out,
-                r#"<rect x="{x}" y="{y}" width="12" height="12" class="commit {id} commit{idx} {type_class}-inner"/>"#,
-                x = fmt(c.x - 6.0),
-                y = fmt(c.y - 6.0),
+                r#"<rect x="{x}" y="{y}" width="{size}" height="{size}" class="commit {id} commit{idx} {type_class}-inner"/>"#,
+                x = fmt(c.x - inner_half_size),
+                y = fmt(c.y - inner_half_size),
+                size = fmt(inner_half_size * 2.0),
                 id = id,
                 idx = idx,
                 type_class = type_class
             );
         } else if symbol_type == 4 {
+            let outer_radius = if use_redux_geometry { 7.0 } else { 10.0 };
+            let inner_radius = if use_redux_geometry { 2.5 } else { 2.75 };
+            let cherry_pick_detail_color = if use_dark_theme { "#000000" } else { "#fff" };
             let _ = write!(
                 &mut out,
-                r#"<circle cx="{x}" cy="{y}" r="10" class="commit {id} {type_class}"/>"#,
+                r#"<circle cx="{x}" cy="{y}" r="{r}" class="commit {id} {type_class}"/>"#,
                 x = fmt(c.x),
                 y = fmt(c.y),
+                r = fmt(outer_radius),
                 id = id,
                 type_class = type_class
             );
             let _ = write!(
                 &mut out,
-                r##"<circle cx="{x}" cy="{y}" r="2.75" fill="#fff" class="commit {id} {type_class}"/>"##,
+                r#"<circle cx="{x}" cy="{y}" r="{r}" fill="{fill}" class="commit {id} {type_class}"/>"#,
                 x = fmt(c.x - 3.0),
                 y = fmt(c.y + 2.0),
+                r = fmt(inner_radius),
+                fill = cherry_pick_detail_color,
                 id = id,
                 type_class = type_class
             );
             let _ = write!(
                 &mut out,
-                r##"<circle cx="{x}" cy="{y}" r="2.75" fill="#fff" class="commit {id} {type_class}"/>"##,
+                r#"<circle cx="{x}" cy="{y}" r="{r}" fill="{fill}" class="commit {id} {type_class}"/>"#,
                 x = fmt(c.x + 3.0),
                 y = fmt(c.y + 2.0),
+                r = fmt(inner_radius),
+                fill = cherry_pick_detail_color,
                 id = id,
                 type_class = type_class
             );
             let _ = write!(
                 &mut out,
-                r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#fff" class="commit {id} {type_class}"/>"##,
+                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" class="commit {id} {type_class}"/>"#,
                 x1 = fmt(c.x + 3.0),
                 y1 = fmt(c.y + 1.0),
                 x2 = fmt(c.x),
                 y2 = fmt(c.y - 5.0),
+                stroke = cherry_pick_detail_color,
                 id = id,
                 type_class = type_class
             );
             let _ = write!(
                 &mut out,
-                r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#fff" class="commit {id} {type_class}"/>"##,
+                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" class="commit {id} {type_class}"/>"#,
                 x1 = fmt(c.x - 3.0),
                 y1 = fmt(c.y + 1.0),
                 x2 = fmt(c.x),
                 y2 = fmt(c.y - 5.0),
+                stroke = cherry_pick_detail_color,
                 id = id,
                 type_class = type_class
             );
         } else {
-            let r = if c.commit_type == 3 { 9.0 } else { 10.0 };
+            let r = if use_redux_geometry { 7.0 } else { 10.0 };
             let _ = write!(
                 &mut out,
                 r#"<circle cx="{x}" cy="{y}" r="{r}" class="commit {id} commit{idx}"/>"#,
@@ -912,27 +1008,30 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                 idx = idx
             );
             if symbol_type == 3 {
+                let inner_radius = if use_redux_geometry { 5.0 } else { 6.0 };
                 let _ = write!(
                     &mut out,
-                    r#"<circle cx="{x}" cy="{y}" r="6" class="commit {type_class} {id} commit{idx}"/>"#,
+                    r#"<circle cx="{x}" cy="{y}" r="{r}" class="commit {type_class} {id} commit{idx}"/>"#,
                     x = fmt(c.x),
                     y = fmt(c.y),
+                    r = fmt(inner_radius),
                     type_class = type_class,
                     id = id,
                     idx = idx
                 );
             }
             if symbol_type == 1 {
+                let cross_offset = if use_redux_geometry { 4.0 } else { 5.0 };
                 let d = format!(
                     "M {},{}L{},{}M {},{}L{},{}",
-                    fmt(c.x - 5.0),
-                    fmt(c.y - 5.0),
-                    fmt(c.x + 5.0),
-                    fmt(c.y + 5.0),
-                    fmt(c.x - 5.0),
-                    fmt(c.y + 5.0),
-                    fmt(c.x + 5.0),
-                    fmt(c.y - 5.0)
+                    fmt(c.x - cross_offset),
+                    fmt(c.y - cross_offset),
+                    fmt(c.x + cross_offset),
+                    fmt(c.y + cross_offset),
+                    fmt(c.x - cross_offset),
+                    fmt(c.y + cross_offset),
+                    fmt(c.x + cross_offset),
+                    fmt(c.y - cross_offset)
                 );
                 let _ = write!(
                     &mut out,
@@ -1193,7 +1292,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         max_x: vb_min_x + vb_w,
         max_y: vb_min_y + vb_h,
     });
-    include_gitgraph_branch_line_bounds(&mut b, layout);
+    include_gitgraph_branch_line_bounds(&mut b, layout, use_redux_geometry);
     let title_anchor_x = (b.min_x + b.max_x) / 2.0;
     let mut title_expands_x_bounds = false;
     if let Some(title) = title {
@@ -1302,25 +1401,14 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             bbox_h.to_bits()
         );
     }
-    let mut view_box_attr = format!(
+    let view_box_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),
         fmt(vb_min_y),
         fmt(vb_w),
         fmt(vb_h)
     );
-    let mut max_width_attr = fmt_string(vb_w);
-    let mut width_attr = max_width_attr.clone();
-    let mut height_attr = fmt_string(vb_h);
-
-    apply_root_viewport_override(
-        diagram_id,
-        &mut view_box_attr,
-        &mut width_attr,
-        &mut height_attr,
-        &mut max_width_attr,
-        crate::generated::gitgraph_root_overrides_11_12_2::lookup_gitgraph_root_viewport_override,
-    );
+    let max_width_attr = fmt_string(vb_w);
 
     out = out.replacen(VIEWBOX_PLACEHOLDER, &view_box_attr, 1);
     // Mermaid gitGraph baselines stringify `max-width` directly from the computed `viewBox` width
@@ -1334,6 +1422,63 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn lr_merge_layout(commit_y: f64) -> crate::model::GitGraphDiagramLayout {
+        crate::model::GitGraphDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: -100.0,
+                min_y: -50.0,
+                max_x: 100.0,
+                max_y: 50.0,
+            }),
+            direction: "LR".to_string(),
+            rotate_commit_label: true,
+            show_branches: true,
+            show_commit_label: false,
+            parallel_commits: false,
+            diagram_padding: 8.0,
+            max_pos: 100.0,
+            branches: vec![crate::model::GitGraphBranchLayout {
+                name: "main".to_string(),
+                index: 0,
+                pos: 0.0,
+                bbox_width: 35.25,
+                bbox_height: 19.0,
+            }],
+            commits: vec![crate::model::GitGraphCommitLayout {
+                id: "merge".to_string(),
+                message: "merge".to_string(),
+                seq: 0,
+                commit_type: 3,
+                custom_type: None,
+                custom_id: Some(false),
+                tags: Vec::new(),
+                parents: Vec::new(),
+                branch: "main".to_string(),
+                pos: 0.0,
+                pos_with_offset: 10.0,
+                x: 10.0,
+                y: commit_y,
+            }],
+            arrows: Vec::new(),
+        }
+    }
+
+    fn render_geometry_fixture(
+        layout: &crate::model::GitGraphDiagramLayout,
+        config: &serde_json::Value,
+    ) -> String {
+        render_gitgraph_diagram_svg_with_accessibility(
+            layout,
+            None,
+            None,
+            config,
+            None,
+            &crate::text::DeterministicTextMeasurer::default(),
+            &SvgRenderOptions::default(),
+        )
+        .expect("render gitGraph SVG")
+    }
 
     #[test]
     fn gitgraph_css_includes_mermaid_11_15_branch_theme_rules() {
@@ -1476,6 +1621,109 @@ mod tests {
         assert!(
             css.css
                 .contains("#git .commit-highlight1{stroke:#aa00aa;fill:#aa00aa;}")
+        );
+    }
+
+    #[test]
+    fn gitgraph_render_uses_mermaid_11_16_lr_spine_and_merge_geometry() {
+        let svg = render_geometry_fixture(&lr_merge_layout(-2.0), &json!({}));
+
+        assert!(
+            svg.contains(r#"<line x1="0" y1="-2" x2="100" y2="-2" class="branch branch0"/>"#),
+            "{svg}"
+        );
+        assert!(svg.contains(
+            r#"<rect class="branchLabelBkg label0" style="" rx="4" ry="4" x="-69.25" y="0.5" width="53.25" height="23" transform="translate(-19, -14)"/>"#
+        ));
+        assert!(
+            svg.contains(r#"<g class="label branch-label0" transform="translate(-79.25, -13.5)">"#)
+        );
+        assert!(svg.contains(r#"<circle cx="10" cy="-2" r="10" class="commit merge commit0"/>"#));
+        assert!(svg.contains(
+            r#"<circle cx="10" cy="-2" r="6" class="commit commit-merge merge commit0"/>"#
+        ));
+    }
+
+    #[test]
+    fn gitgraph_render_uses_redux_geometry_and_neo_branch_filter() {
+        let svg = render_geometry_fixture(
+            &lr_merge_layout(7.0),
+            &json!({
+                "look": "neo",
+                "theme": "redux",
+                "themeVariables": {
+                    "filterColor": "#123456"
+                }
+            }),
+        );
+
+        assert!(svg.contains(
+            r##"<defs><filter id="merman-drop-shadow" height="130%" width="130%"><feDropShadow dx="4" dy="4" stdDeviation="0" flood-opacity="0.06" flood-color="#123456"/></filter></defs>"##
+        ));
+        assert!(
+            svg.contains(r#"<line x1="0" y1="7" x2="100" y2="7" class="branch branch0"/>"#),
+            "{svg}"
+        );
+        assert!(svg.contains(
+            r#"<rect data-look="neo" class="branchLabelBkg label0" style="filter:url(#merman-drop-shadow)" rx="0" ry="0" x="-69.25" y="0.5" width="69.25" height="35" transform="translate(-19, -11)"/>"#
+        ));
+        assert!(
+            svg.contains(r#"<g class="label branch-label0" transform="translate(-71.25, -4.5)">"#)
+        );
+        assert!(svg.contains(r#"<circle cx="10" cy="7" r="7" class="commit merge commit0"/>"#));
+        assert!(svg.contains(
+            r#"<circle cx="10" cy="7" r="5" class="commit commit-merge merge commit0"/>"#
+        ));
+    }
+
+    #[test]
+    fn gitgraph_root_emits_gradient_for_non_neo_theme_when_enabled() {
+        let layout = crate::model::GitGraphDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 100.0,
+                max_y: 100.0,
+            }),
+            direction: "LR".to_string(),
+            rotate_commit_label: false,
+            show_branches: false,
+            show_commit_label: false,
+            parallel_commits: false,
+            diagram_padding: 8.0,
+            max_pos: 100.0,
+            branches: Vec::new(),
+            commits: Vec::new(),
+            arrows: Vec::new(),
+        };
+        let svg = render_gitgraph_diagram_svg_with_accessibility(
+            &layout,
+            None,
+            None,
+            &json!({
+                "theme": "base",
+                "themeVariables": {
+                    "useGradient": true,
+                    "gradientStart": "#112233",
+                    "gradientStop": "#445566"
+                }
+            }),
+            None,
+            &crate::text::DeterministicTextMeasurer::default(),
+            &SvgRenderOptions::default(),
+        )
+        .expect("render gitGraph SVG");
+
+        let initial_group = svg.find("<g/>").expect("initial gitGraph root group");
+        let gradient = svg
+            .find(r#"<defs><linearGradient id="merman-gradient""#)
+            .expect("configured base theme gradient");
+        let commit_bullets = svg
+            .find(r#"<g class="commit-bullets"/>"#)
+            .expect("commit bullets group");
+        assert!(
+            initial_group < gradient && gradient < commit_bullets,
+            "gitGraph should append its gradient after the initial root group and before diagram groups: {svg}"
         );
     }
 }

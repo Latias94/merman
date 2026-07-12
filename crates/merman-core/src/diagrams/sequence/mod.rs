@@ -53,3 +53,30 @@ pub use render_model::{
     SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
     SequenceMessagePayload, SequenceNote,
 };
+
+#[cfg(test)]
+mod tests {
+    use crate::{Engine, ParseOptions, RenderSemanticModel};
+
+    #[test]
+    fn parser_preserves_bracketed_block_titles_for_the_renderer() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"sequenceDiagram
+    par [Action 1]
+        Alice->>Bob: First
+    and [Action 2]
+        Bob-->>Alice: Second
+    end"#,
+                ParseOptions::strict(),
+            )
+            .expect("parse should succeed")
+            .expect("sequence diagram should be detected");
+        let RenderSemanticModel::Sequence(model) = parsed.model else {
+            panic!("expected typed Sequence render model");
+        };
+
+        assert_eq!(model.messages[0].message_text(), "[Action 1]");
+        assert_eq!(model.messages[2].message_text(), "[Action 2]");
+    }
+}

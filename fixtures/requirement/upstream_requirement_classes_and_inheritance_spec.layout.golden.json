@@ -23,15 +23,15 @@
           "id": "elem",
           "x": 388.0,
           "y": 30.0,
-          "width": 112.48,
+          "width": 112.484,
           "height": 68.0,
           "is_cluster": false
         },
         {
           "id": "myElem",
-          "x": 550.48,
+          "x": 550.484,
           "y": 8.0,
-          "width": 138.094,
+          "width": 129.125,
           "height": 112.0,
           "is_cluster": false
         }
@@ -40,7 +40,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 688.574,
+        "max_x": 679.609,
         "max_y": 120.0
       }
     }

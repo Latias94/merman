@@ -166,6 +166,7 @@
         "classes": [],
         "styles": [],
         "dir": "LR",
+        "hasExplicitDir": true,
         "labelType": "text"
       },
       {
@@ -178,6 +179,7 @@
         "classes": [],
         "styles": [],
         "dir": "LR",
+        "hasExplicitDir": true,
         "labelType": "text"
       }
     ]

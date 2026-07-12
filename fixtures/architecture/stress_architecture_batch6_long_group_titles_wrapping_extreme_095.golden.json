@@ -120,6 +120,7 @@
         "rhsGroup": null,
         "title": "query"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

@@ -9,10 +9,18 @@ pub(crate) fn render_requirement_diagram_svg(
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     let model: RequirementDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_requirement_diagram_svg_model(layout, &model, effective_config, diagram_title, options)
+    render_requirement_diagram_svg_model(
+        layout,
+        &model,
+        effective_config,
+        diagram_title,
+        measurer,
+        options,
+    )
 }
 
 pub(crate) fn render_requirement_diagram_svg_model(
@@ -20,25 +28,20 @@ pub(crate) fn render_requirement_diagram_svg_model(
     model: &RequirementDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
+    measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
     fn requirement_marker_id(diagram_id: &str, suffix: &str) -> String {
         format!("{diagram_id}_requirement-{suffix}")
     }
 
-    fn mermaid_markdown_to_html(raw: &str) -> String {
-        // Mermaid runs requirement node labels through its `markdownToHTML()` pipeline when
-        // `htmlLabels=true` (via `createText(...)`). Keep the XHTML fragment XML-safe while still
-        // preserving inline HTML like `<br/>` and Mermaid's minimal emphasis/strong subset.
-        let decoded = decode_mermaid_entities_for_render_text(raw);
-        crate::text::mermaid_markdown_to_xhtml_label_fragment(decoded.as_ref(), true)
-    }
-
-    fn requirement_label_uses_markdown_inline(raw: &str) -> bool {
-        // Inline emphasis/strong spans, explicit `<br>` breaks, or multiline field content all go
-        // through Mermaid's HTML-label Markdown path.
-        let lower = raw.to_ascii_lowercase();
-        raw.contains('*') || raw.contains('_') || raw.contains('\n') || lower.contains("<br")
+    fn mermaid_markdown_to_html(raw: &str, sanitize_config: &merman_core::MermaidConfig) -> String {
+        let decoded = raw
+            .replace("ﬂ°°", "&#")
+            .replace("ﬂ°", "&")
+            .replace("¶ß", ";");
+        let sanitized = merman_core::sanitize::sanitize_text(&decoded, sanitize_config);
+        crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true)
     }
 
     #[derive(Debug, Clone, Copy)]
@@ -77,16 +80,29 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .map(|s| format!(r#" style="{}""#, escape_xml(s)))
             .unwrap_or_default();
         let div_style_prefix = div_style_prefix.unwrap_or("");
+        let constrained_width = max_width_px > 0 && (width - max_width_px as f64).abs() <= 1.0e-6;
+        let (display, white_space, width_style) = if constrained_width {
+            (
+                "table",
+                "break-spaces",
+                format!(" width: {max_width_px}px;"),
+            )
+        } else {
+            ("table-cell", "nowrap", String::new())
+        };
         let _ = write!(
             out,
-            r#"<foreignObject height="{h}" width="{w}"><div{div_class_attr} style="{div_style_prefix}display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {max_width}px; text-align: center;"><span class="{span_class}"{span_style_attr}>"#,
+            r#"<foreignObject height="{h}" width="{w}"><div xmlns="http://www.w3.org/1999/xhtml"{div_class_attr} style="{div_style_prefix}display: {display}; white-space: {white_space}; line-height: 1.5; max-width: {max_width}px; text-align: center;{width_style}"><span class="{span_class}"{span_style_attr}>"#,
             w = fmt(width),
             h = fmt(height),
             div_class_attr = div_class_attr,
             span_class = escape_xml(span_class),
             span_style_attr = span_style_attr,
             div_style_prefix = escape_xml(div_style_prefix),
+            display = display,
+            white_space = white_space,
             max_width = max_width_px,
+            width_style = width_style,
         );
         match content {
             LabelContent::Text(text) => {
@@ -250,6 +266,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let diagram_id = options.diagram_id.as_deref().unwrap_or("requirement");
     let render_settings =
         crate::requirement::RequirementConfigView::new(effective_config).render_settings();
+    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
     let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
@@ -271,7 +288,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         .map(|n| (n.name.as_str(), n))
         .collect();
 
-    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
     let font_family = Some(render_settings.font_family);
     let font_size = render_settings.font_size;
     let theme = SvgTheme::new(effective_config);
@@ -279,8 +295,8 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let default_stroke_color = theme.color("nodeBorder", "#9370DB");
     let hand_drawn_seed = render_settings.hand_drawn_seed;
     let calc_style = TextStyle {
-        font_family: font_family.clone(),
-        font_size,
+        font_family: Some(render_settings.calculation_font_family),
+        font_size: render_settings.calculation_font_size,
         font_weight: None,
     };
     let html_style_regular = TextStyle {
@@ -293,28 +309,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         font_size,
         font_weight: Some("bold".to_string()),
     };
-
-    fn calculate_text_width_like_mermaid_px(
-        measurer: &dyn TextMeasurer,
-        style: &TextStyle,
-        text: &str,
-    ) -> i64 {
-        // Mermaid `calculateTextWidth` uses SVG `<text>` bbox widths, rounds to integers, and takes
-        // the maximum width across `sans-serif` and the configured `fontFamily`.
-        let mut sans = style.clone();
-        sans.font_family = Some("sans-serif".to_string());
-        sans.font_weight = None;
-
-        let mut fam = style.clone();
-        fam.font_weight = None;
-
-        let (l1, r1) = measurer.measure_svg_title_bbox_x(text, &sans);
-        let (l2, r2) = measurer.measure_svg_title_bbox_x(text, &fam);
-        let w1 = (l1 + r1).max(0.0);
-        let w2 = (l2 + r2).max(0.0);
-
-        w1.max(w2).round() as i64
-    }
 
     #[derive(Clone, Debug)]
     struct RequirementNodeLabelLine {
@@ -338,61 +332,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
         calc_text: &str,
         bold: bool,
     ) -> Option<(f64, f64, i64)> {
-        if display_text.trim().is_empty() {
-            return None;
-        }
-
-        let html_style = if bold {
-            html_style_bold
-        } else {
-            html_style_regular
-        };
-        let font_size = html_style.font_size.max(1.0);
-        let looks_like_markdown_inline = requirement_label_uses_markdown_inline(display_text);
-        let measured = if looks_like_markdown_inline {
-            crate::text::measure_markdown_with_flowchart_bold_deltas(
-                measurer,
-                display_text,
-                html_style,
-                None,
-                crate::text::WrapMode::HtmlLike,
-            )
-        } else {
-            measurer.measure_wrapped(
-                display_text,
-                html_style,
-                None,
-                crate::text::WrapMode::HtmlLike,
-            )
-        };
-        let height = measured.height.max(1.0);
-        let width = if let Some(em) =
-            crate::generated::requirement_text_overrides_11_12_2::lookup_requirement_html_label_width_em(
-                display_text,
-                bold,
-            )
-        {
-            (em * font_size).max(1.0)
-        } else {
-            measured.width.max(1.0)
-        };
-        let max_w = if let Some(px) =
-            crate::generated::requirement_text_overrides_11_12_2::lookup_requirement_calc_max_width_px(
-                calc_text,
-            )
-        {
-            px
-        } else {
-            let calc_input =
-                if calc_text.contains('\n') || calc_text.to_ascii_lowercase().contains("<br") {
-                    crate::flowchart::flowchart_label_plain_text_for_layout(calc_text, "text", true)
-                } else {
-                    calc_text.to_string()
-                };
-            let calc_w = calculate_text_width_like_mermaid_px(measurer, calc_style, &calc_input);
-            (calc_w + 50).max(0)
-        };
-        Some((width, height, max_w))
+        let metrics = crate::requirement::measure_requirement_label_metrics(
+            measurer,
+            html_style_regular,
+            html_style_bold,
+            calc_style,
+            display_text,
+            calc_text,
+            bold,
+        )?;
+        Some((metrics.width, metrics.height, metrics.max_width_px))
     }
 
     fn requirement_edge_id(src: &str, dst: &str, idx: usize) -> String {
@@ -407,7 +356,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         edge_rel_type_by_id.insert(edge_id, rel.rel_type.as_str());
     }
 
-    let bounds = layout.bounds.clone().unwrap_or_else(|| {
+    let mut content_bounds = layout.bounds.clone().unwrap_or_else(|| {
         if layout.nodes.is_empty() && layout.edges.is_empty() {
             Bounds {
                 min_x: 0.0,
@@ -424,11 +373,26 @@ pub(crate) fn render_requirement_diagram_svg_model(
             })
         }
     });
+    let diagram_title = diagram_title
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let title_position = diagram_title.map(|title| {
+        let x = (content_bounds.min_x + content_bounds.max_x) / 2.0;
+        let y = -render_settings.title_top_margin;
+        let (left, right) = measurer.measure_svg_title_bbox_x(title, &html_style_regular);
+        let (ascent, descent) =
+            crate::text::svg_title_bbox_vertical_extents_px(&html_style_regular);
+        content_bounds.min_x = content_bounds.min_x.min(x - left);
+        content_bounds.max_x = content_bounds.max_x.max(x + right);
+        content_bounds.min_y = content_bounds.min_y.min(y - ascent);
+        content_bounds.max_y = content_bounds.max_y.max(y + descent);
+        (title, x, y)
+    });
     let viewport_padding = render_settings.viewport_padding;
-    let vb_x = bounds.min_x - viewport_padding;
-    let vb_y = bounds.min_y - viewport_padding;
-    let vb_w = ((bounds.max_x - bounds.min_x) + 2.0 * viewport_padding).max(1.0);
-    let vb_h = ((bounds.max_y - bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+    let vb_x = content_bounds.min_x - viewport_padding;
+    let vb_y = content_bounds.min_y - viewport_padding;
+    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
+    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
     fn js_to_precision_fixed(v: f64, precision: i32) -> String {
         // Match JavaScript `Number(v).toPrecision(precision)` for the range of SVG widths we use
         // in Mermaid fixtures (fixed notation, no exponent branch needed).
@@ -451,19 +415,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     let vb_x_attr = fmt_string(vb_x);
     let vb_y_attr = fmt_string(vb_y);
-    let mut vb_w_attr = fmt_string(vb_w);
-    let mut vb_h_attr = fmt_string(vb_h);
-    let mut max_width_style_attr = max_width_style.clone();
-    let mut viewbox_attr = format!("{vb_x_attr} {vb_y_attr} {vb_w_attr} {vb_h_attr}");
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut vb_w_attr,
-        &mut vb_h_attr,
-        &mut max_width_style_attr,
-        crate::generated::requirement_root_overrides_11_12_2::lookup_requirement_root_viewport_override,
-    );
-
+    let vb_w_attr = fmt_string(vb_w);
+    let vb_h_attr = fmt_string(vb_h);
+    let max_width_style_attr = max_width_style.clone();
+    let viewbox_attr = format!("{vb_x_attr} {vb_y_attr} {vb_w_attr} {vb_h_attr}");
     let mut aria_labelledby: Option<String> = None;
     let mut aria_describedby: Option<String> = None;
     let mut a11y_nodes = String::new();
@@ -603,10 +558,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
         if rel_type.trim().is_empty() {
             continue;
         }
-        let label_text = format!("<<{rel_type}>>");
-        let label_calc = format!("&lt;&lt;{rel_type}&gt;&gt;");
+        let label_text = format!("&lt;&lt;{rel_type}&gt;&gt;");
+        let label_calc = label_text.clone();
         let max_width_px = measure_node_label_line(
-            &measurer,
+            measurer,
             &html_style_regular,
             &html_style_bold,
             &calc_style,
@@ -638,10 +593,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
             lx = fmt(-w / 2.0),
             ly = fmt(-h / 2.0),
         );
+        let label_html = mermaid_markdown_to_html(&label_text, &sanitize_config);
         mk_label_foreign_object(
             &mut out,
             LabelForeignObject {
-                content: LabelContent::Text(&label_text),
+                content: LabelContent::Html(&label_html),
                 width: w,
                 height: h,
                 span_class: "edgeLabel",
@@ -674,10 +630,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             css_styles = &req.css_styles;
             let style_bold = crate::requirement::requirement_styles_force_bold(css_styles);
 
-            let type_display = format!("<<{}>>", req.node_type);
-            let type_calc = format!("&lt;&lt;{}&gt;&gt;", req.node_type);
+            let type_display = format!("&lt;&lt;{}&gt;&gt;", req.node_type);
+            let type_calc = type_display.clone();
             let Some((w, h, max_w)) = measure_node_label_line(
-                &measurer,
+                measurer,
                 &html_style_regular,
                 &html_style_bold,
                 &calc_style,
@@ -702,7 +658,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             });
 
             let Some((w, h, max_w)) = measure_node_label_line(
-                &measurer,
+                measurer,
                 &html_style_regular,
                 &html_style_bold,
                 &calc_style,
@@ -733,7 +689,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if !id_line.is_empty() {
                 let t = format!("ID: {}", id_line);
                 if let Some((w, h, max_w)) = measure_node_label_line(
-                    &measurer,
+                    measurer,
                     &html_style_regular,
                     &html_style_bold,
                     &calc_style,
@@ -759,7 +715,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if !text_line.is_empty() {
                 let t = format!("Text: {}", text_line);
                 if let Some((w, h, max_w)) = measure_node_label_line(
-                    &measurer,
+                    measurer,
                     &html_style_regular,
                     &html_style_bold,
                     &calc_style,
@@ -785,7 +741,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if !risk_line.is_empty() {
                 let t = format!("Risk: {}", risk_line);
                 if let Some((w, h, max_w)) = measure_node_label_line(
-                    &measurer,
+                    measurer,
                     &html_style_regular,
                     &html_style_bold,
                     &calc_style,
@@ -811,7 +767,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if !verify_line.is_empty() {
                 let t = format!("Verification: {}", verify_line);
                 if let Some((w, h, max_w)) = measure_node_label_line(
-                    &measurer,
+                    measurer,
                     &html_style_regular,
                     &html_style_bold,
                     &calc_style,
@@ -837,10 +793,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             css_styles = &el.css_styles;
             let style_bold = crate::requirement::requirement_styles_force_bold(css_styles);
 
-            let type_display = "<<Element>>".to_string();
-            let type_calc = "&lt;&lt;Element&gt;&gt;".to_string();
+            let type_display = "&lt;&lt;Element&gt;&gt;".to_string();
+            let type_calc = type_display.clone();
             let Some((w, h, max_w)) = measure_node_label_line(
-                &measurer,
+                measurer,
                 &html_style_regular,
                 &html_style_bold,
                 &calc_style,
@@ -865,7 +821,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             });
 
             let Some((w, h, max_w)) = measure_node_label_line(
-                &measurer,
+                measurer,
                 &html_style_regular,
                 &html_style_bold,
                 &calc_style,
@@ -896,7 +852,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if !type_line.is_empty() {
                 let t = format!("Type: {}", type_line);
                 if let Some((w, h, max_w)) = measure_node_label_line(
-                    &measurer,
+                    measurer,
                     &html_style_regular,
                     &html_style_bold,
                     &calc_style,
@@ -922,7 +878,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if !doc_line.is_empty() {
                 let t = format!("Doc Ref: {}", doc_line);
                 if let Some((w, h, max_w)) = measure_node_label_line(
-                    &measurer,
+                    measurer,
                     &html_style_regular,
                     &html_style_bold,
                     &calc_style,
@@ -1034,10 +990,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
         // Labels.
         let padding = 20.0;
         for line in label_lines.iter_mut() {
-            if line.display_html.is_none()
-                && requirement_label_uses_markdown_inline(&line.display_text)
-            {
-                line.display_html = Some(mermaid_markdown_to_html(&line.display_text));
+            if line.display_html.is_none() {
+                line.display_html = Some(mermaid_markdown_to_html(
+                    &line.display_text,
+                    &sanitize_config,
+                ));
             }
         }
         for line in &label_lines {
@@ -1085,7 +1042,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                         .unwrap_or_else(|| LabelContent::Text(&line.display_text)),
                     width: line.html_width,
                     height: line.html_height,
-                    span_class: "markdown-node-label nodeLabel",
+                    span_class: "nodeLabel markdown-node-label",
                     span_style,
                     div_class: None,
                     div_style_prefix,
@@ -1142,14 +1099,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str("</g></g>");
 
-    let diagram_title = diagram_title.map(str::trim).filter(|t| !t.is_empty());
-    if let Some(title) = diagram_title {
-        let vb_x_f = vb_x_attr.parse::<f64>().unwrap_or(vb_x);
-        let vb_y_f = vb_y_attr.parse::<f64>().unwrap_or(vb_y);
-        let vb_w_f = vb_w_attr.parse::<f64>().unwrap_or(vb_w);
-        // Mermaid places requirement diagram titles at a fixed offset below the viewBox top.
-        let title_x = vb_x_f + vb_w_f / 2.0;
-        let title_y = vb_y_f + 23.0;
+    if let Some((title, title_x, title_y)) = title_position {
         let _ = write!(
             &mut out,
             r#"<text text-anchor="middle" x="{x}" y="{y}" class="requirementDiagramTitleText">{txt}</text>"#,
@@ -1190,9 +1140,11 @@ fn push_requirement_shadow_defs(
 #[cfg(test)]
 mod tests {
     use super::super::*;
-    use crate::model::{Bounds, RequirementDiagramLayout};
+    use crate::model::{Bounds, LayoutNode, RequirementDiagramLayout};
     use crate::svg::SvgRenderOptions;
-    use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
+    use merman_core::diagrams::requirement::{
+        RequirementDiagramRenderModel, RequirementRenderNode,
+    };
     use std::collections::BTreeMap;
 
     fn empty_requirement_model() -> RequirementDiagramRenderModel {
@@ -1207,8 +1159,22 @@ mod tests {
         }
     }
 
+    fn root_view_box(svg: &str) -> Vec<f64> {
+        let root_open = svg.split_once('>').expect("root svg open tag").0;
+        let value = root_open
+            .split_once("viewBox=\"")
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(value, _)| value)
+            .expect("root viewBox");
+        value
+            .split_whitespace()
+            .map(|part| part.parse::<f64>().expect("numeric viewBox part"))
+            .collect()
+    }
+
     #[test]
     fn requirement_root_honors_disabled_max_width() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let layout = RequirementDiagramLayout {
             nodes: Vec::new(),
             edges: Vec::new(),
@@ -1229,6 +1195,7 @@ mod tests {
             &empty_requirement_model(),
             &serde_json::json!({"requirement": {"useMaxWidth": false}}),
             None,
+            &measurer,
             &options,
         )
         .unwrap();
@@ -1245,5 +1212,141 @@ mod tests {
             "{root_open}"
         );
         assert!(!root_open.contains("max-width"), "{root_open}");
+    }
+
+    #[test]
+    fn requirement_root_is_derived_for_formerly_pinned_fixture_ids() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let layout = RequirementDiagramLayout {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            bounds: Some(Bounds {
+                min_x: 8.0,
+                min_y: 8.0,
+                max_x: 852.0,
+                max_y: 216.0,
+            }),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some(
+                "upstream_cypress_requirementdiagram_unified_spec_example_025".to_string(),
+            ),
+            ..SvgRenderOptions::default()
+        };
+
+        let svg = render_requirement_diagram_svg_model(
+            &layout,
+            &empty_requirement_model(),
+            &serde_json::json!({}),
+            None,
+            &measurer,
+            &options,
+        )
+        .unwrap();
+        let root_open = svg.split_once('>').expect("root svg open tag").0;
+
+        assert!(
+            root_open.contains(r#"viewBox="0 0 860 224""#),
+            "{root_open}"
+        );
+        assert!(root_open.contains("max-width: 860.000px"), "{root_open}");
+    }
+
+    #[test]
+    fn requirement_title_uses_pre_title_bounds_and_state_margin() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let layout = RequirementDiagramLayout {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+            bounds: Some(Bounds {
+                min_x: 8.0,
+                min_y: 8.0,
+                max_x: 165.75,
+                max_y: 378.0,
+            }),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("requirementTitle".to_string()),
+            ..SvgRenderOptions::default()
+        };
+
+        let svg = render_requirement_diagram_svg_model(
+            &layout,
+            &empty_requirement_model(),
+            &serde_json::json!({"state": {"titleTopMargin": 33}}),
+            Some("simple Requirement diagram"),
+            &measurer,
+            &options,
+        )
+        .unwrap();
+        let view_box = root_view_box(&svg);
+
+        assert!(svg.contains(r#"x="86.875" y="-33" class="requirementDiagramTitleText""#));
+        assert!(view_box[0] < 0.0, "{view_box:?}");
+        assert!(view_box[1] < -33.0, "{view_box:?}");
+        assert!(view_box[2] > 173.75, "{view_box:?}");
+        assert!(view_box[3] > 386.0, "{view_box:?}");
+    }
+
+    #[test]
+    fn requirement_html_labels_use_xhtml_and_source_wrap_styles() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let model = RequirementDiagramRenderModel {
+            requirements: vec![RequirementRenderNode {
+                name: "req_font_size".to_string(),
+                node_type: "Requirement".to_string(),
+                requirement_id: "req_font_size".to_string(),
+                text: "font size precedence should be deterministic".to_string(),
+                risk: "`Low`".to_string(),
+                verify_method: "Test".to_string(),
+                css_styles: Vec::new(),
+                classes: Vec::new(),
+            }],
+            ..empty_requirement_model()
+        };
+        let layout = RequirementDiagramLayout {
+            nodes: vec![LayoutNode {
+                id: "req_font_size".to_string(),
+                x: 8.0,
+                y: 8.0,
+                width: 299.0,
+                height: 418.0,
+                is_cluster: false,
+                label_width: None,
+                label_height: None,
+            }],
+            edges: Vec::new(),
+            bounds: Some(Bounds {
+                min_x: 8.0,
+                min_y: 8.0,
+                max_x: 307.0,
+                max_y: 426.0,
+            }),
+        };
+        let options = SvgRenderOptions {
+            diagram_id: Some("requirementLabels".to_string()),
+            ..SvgRenderOptions::default()
+        };
+
+        let svg = render_requirement_diagram_svg_model(
+            &layout,
+            &model,
+            &serde_json::json!({
+                "fontFamily": "trebuchet ms, verdana, arial, sans-serif",
+                "fontSize": 10,
+                "themeVariables": {"fontSize": "24px"}
+            }),
+            None,
+            &measurer,
+            &options,
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"<div xmlns="http://www.w3.org/1999/xhtml""#));
+        assert!(svg.contains("display: table; white-space: break-spaces;"));
+        assert!(svg.contains("display: table-cell; white-space: nowrap;"));
+        assert!(svg.contains("width: 279px;"));
+        assert!(svg.contains(r#"class="nodeLabel markdown-node-label""#));
+        assert!(svg.contains("<p>Risk: `Low`</p>"), "{svg}");
     }
 }

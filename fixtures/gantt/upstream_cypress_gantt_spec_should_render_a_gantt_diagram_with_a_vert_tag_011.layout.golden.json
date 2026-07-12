@@ -6,10 +6,10 @@
         "min_x": 0.0,
         "min_y": 0.0,
         "max_x": 1184.0,
-        "max_y": 196.0
+        "max_y": 172.0
       },
       "width": 1184.0,
-      "height": 196.0,
+      "height": 172.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
       "top_padding": 50.0,
@@ -45,20 +45,12 @@
           "y": 72.0,
           "width": 1146.5,
           "height": 24.0,
-          "class": "section section0"
+          "class": "section section1"
         },
         {
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
-          "height": 24.0,
-          "class": "section section1"
-        },
-        {
-          "index": 3.0,
-          "x": 0.0,
-          "y": 120.0,
           "width": 1146.5,
           "height": 24.0,
           "class": "section section1"
@@ -69,7 +61,7 @@
           "section": "Section",
           "index": 0.0,
           "x": 10.0,
-          "y": 74.0,
+          "y": 62.0,
           "dy_em": -0.0,
           "lines": [
             "Section"
@@ -80,7 +72,7 @@
           "section": "Another",
           "index": 1.0,
           "x": 10.0,
-          "y": 122.0,
+          "y": 98.0,
           "dy_em": -0.0,
           "lines": [
             "Another"
@@ -125,7 +117,7 @@
           "task": "Milestone     ",
           "section": "Section",
           "task_type": "Section",
-          "order": 1.0,
+          "order": -1.0,
           "start_ms": 1771113601000.0,
           "end_ms": 1771113601000.0,
           "render_end_ms": null,
@@ -136,7 +128,7 @@
             "x": 161.0,
             "y": 35.0,
             "width": 1.6,
-            "height": 136.0,
+            "height": 112.0,
             "rx": 3.0,
             "ry": 3.0,
             "class": "task vert task0"
@@ -147,7 +139,7 @@
             "font_size": 11.0,
             "width": 41.14,
             "x": 161.0,
-            "y": 191.0,
+            "y": 167.0,
             "class": "taskTextOutsideRight taskTextOutside0 width-41.14000000000001"
           }
         },
@@ -156,7 +148,7 @@
           "task": "Task in sec      ",
           "section": "Another",
           "task_type": "Another",
-          "order": 2.0,
+          "order": 1.0,
           "start_ms": 1771113606000.0,
           "end_ms": 1771113609000.0,
           "render_end_ms": null,
@@ -165,7 +157,7 @@
           "bar": {
             "id": "task2",
             "x": 592.0,
-            "y": 98.0,
+            "y": 74.0,
             "width": 259.0,
             "height": 20.0,
             "rx": 3.0,
@@ -178,7 +170,7 @@
             "font_size": 11.0,
             "width": 51.37,
             "x": 721.5,
-            "y": 111.5,
+            "y": 87.5,
             "class": "taskText taskText1 width-51.37"
           }
         },
@@ -187,7 +179,7 @@
           "task": "another task     ",
           "section": "Another",
           "task_type": "Another",
-          "order": 3.0,
+          "order": 2.0,
           "start_ms": 1771113609000.0,
           "end_ms": 1771113612000.0,
           "render_end_ms": null,
@@ -196,7 +188,7 @@
           "bar": {
             "id": "task3",
             "x": 851.0,
-            "y": 122.0,
+            "y": 98.0,
             "width": 258.0,
             "height": 20.0,
             "rx": 3.0,
@@ -209,7 +201,7 @@
             "font_size": 11.0,
             "width": 56.98,
             "x": 980.0,
-            "y": 135.5,
+            "y": 111.5,
             "class": "taskText taskText1 width-56.98"
           }
         }

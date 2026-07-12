@@ -1,0 +1,70 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "upstream_cypress_eventmodeling_spec_renders_a_state_change_pattern_002": {
+      "input_sha256": "4fa469993691159bb1177fbf51c353208099984fed8524fa7cfaaccbda234843",
+      "svg_sha256": "c1e7eecb3fb7de68af8da453735ffdf687e9ae6ff9edc7a4d4ceed9004ff179e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_eventmodeling_spec_renders_a_state_view_pattern_001": {
+      "input_sha256": "4a3476697c346dd1761b96ff99e052fe1b3fc188e01cb59d97325618615d351d",
+      "svg_sha256": "954388fc080d375147e6d439224dbb8373357611352aa0dad5760a4da03b8b48",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_eventmodeling_spec_renders_a_translation_pattern_003": {
+      "input_sha256": "5f173b75c8fd3176639595ac607892946ee7529c557b5574dfa7251736b645d4",
+      "svg_sha256": "b5b1078b18eddb28300ac99950faa3856a244bb9fec236df809ef86cddaeaf8e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_eventmodeling_spec_renders_with_data_block_reference_004": {
+      "input_sha256": "544dd3d3df331679ee12ec0ccc31f8b185bfadb8f8903402859b4c2677251da5",
+      "svg_sha256": "011a014322b519da15465c8efeabbe80a650bdb471b87adbc42cc84be57adae3",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_eventmodeling_spec_renders_with_multiple_source_relations_006": {
+      "input_sha256": "4782b875dc20caa43c7da63626e22700119d2a5e4cf466197d334e97cad4acb2",
+      "svg_sha256": "9f764a6b9b6e2cb93b968aebf5a951ba2de11bc7273bfc7787374221bf68ec5e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_eventmodeling_spec_renders_with_qualified_names_005": {
+      "input_sha256": "9ea6c0c02ff1d547eea368e1f36c76e309b1f76231a5058b16651b17a3b01e7e",
+      "svg_sha256": "d8db7adef56a08f98ea4ce5afddb9f9810d91b1a915b0f181a5a53bc88871012",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_eventmodeling_minimum": {
+      "input_sha256": "2bcc1dbb84cbc06630732871f89a593fb555bd04df1b56f781c7542c922d8fee",
+      "svg_sha256": "e1fb95d018992c96a6a8e6d978fb65e312e17dfda4933517a7625489b4aae14a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_parser_eventmodeling_full_syntax_spec": {
+      "input_sha256": "e94a3d7d90012b57b3af697ee27108b2c3bc159367a2ce886213049b7696c7a8",
+      "svg_sha256": "a45e5fd06f867fbba14f3876700198f5e874cd5d144c766db12aaaa9fb0080a8",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_parser_eventmodeling_qualified_names_spec": {
+      "input_sha256": "ffcc826f2b8cba6c050266b3321600db3a5a7e1f5144ccee38581f42eda75114",
+      "svg_sha256": "57eafeff3c8afd455b81e898cabee7669e1acfb5e5813c496f1b2adcf56b11eb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_parser_eventmodeling_resetframe_spec": {
+      "input_sha256": "e7fc2bcc6d13ebdd11636e018d5b380377d9ff856d91cb8ecf90f45c1bc227f6",
+      "svg_sha256": "a82def0ad790804d9c97bce2d4655bc8aa4de0441d11435f1ccf485e548b8752",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

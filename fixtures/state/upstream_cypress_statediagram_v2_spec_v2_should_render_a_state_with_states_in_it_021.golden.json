@@ -20,7 +20,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": null,
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",
@@ -39,7 +40,8 @@
         "ry": 10,
         "look": "classic",
         "parentId": "PilotCockpit",
-        "centerLabel": true
+        "centerLabel": true,
+        "explicitDir": false
       },
       {
         "labelStyle": "",

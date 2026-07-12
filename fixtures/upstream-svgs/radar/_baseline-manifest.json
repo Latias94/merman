@@ -1,0 +1,225 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "stress_radar_font_size_precedence_001": {
+      "input_sha256": "ae4b9642ea3f24af914ffac3af3c675beea5d9305ef252d9a3d99679c0e514e1",
+      "svg_sha256": "69de55b625269c81727256271e83aa99ce7a7f0ee7b75843a641eddc57fd038f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_radar_spec_example_001": {
+      "input_sha256": "60a757ca796c3e24b1fde4450e68e9551a025e8545b546d9f37a3d00637fbb61",
+      "svg_sha256": "774364a99865f77beac2fe1d8f77d82aee056dc28fca3e6996088599edc54338",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_radar_spec_should_handle_radar_diagram_with_radar_style_override_006": {
+      "input_sha256": "26c1e7676b4923e7da1eb7d7944a3f21d8a7b9a12e371cb55ea4a535a35fd381",
+      "svg_sha256": "070160de9a7f94f9e31eb6079d380df7de8660e2254c771f22736c01bc85b149",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_radar_spec_should_parse_radar_diagram_with_theme_override_005": {
+      "input_sha256": "aeb260dacb27d55673705ea1f6121076e93720ab441d2ed817cbe2ad734b87f3",
+      "svg_sha256": "e79c1f85f45c6c0bb69c0995a553acbccfdbce083e25e0eda6a2a5c5894d57c0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_radar_spec_should_render_a_complex_radar_diagram_003": {
+      "input_sha256": "9255adbb1c7d45c85e10d3ff2634a2157ffdd90ffd1011faeda03fa931d0e95f",
+      "svg_sha256": "b129a3887aa58412094f5b3e861f340721a5f6fa6eda714c390f14a62d255a13",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_radar_spec_should_render_a_radar_diagram_with_multiple_curves_002": {
+      "input_sha256": "c5da75d2e2a028bacbf5c75eb237d90a48af2cc013ffcaaa9aa589595b328e4d",
+      "svg_sha256": "e372591c4d27bbdedceabe389c4974eada5c2cb4912a70539ccb1cd4c7f902dc",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_radar_spec_should_render_radar_diagram_with_config_override_004": {
+      "input_sha256": "5785a9bf3309af333fdcd03c44a34ddf1059340225798e0015b442d05311045f",
+      "svg_sha256": "6e42d7be5bcb8a968720a4802a3061ec780277881b5393b2e55b36c8b36611dd",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_radar_axis_007": {
+      "input_sha256": "b71dd3545f380022b09e46278fb5f627fd6a5202e31e3d5a7443cc51625467f6",
+      "svg_sha256": "57dff555ab9ebf6285bb1bd06b1ab2756d29c461f1411851fcce53d31224f92d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_radar_curve_008": {
+      "input_sha256": "4c5bc55b704ea6e368e48d24f1d9562cdcbf4048c2be560c7fabbae1e8b539cc",
+      "svg_sha256": "7bc4231caaf70b5fb883d933b8a297bddfd8b6be181e95e04e04fec4fe1ea3dd",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_radar_example_on_config_and_theme_011": {
+      "input_sha256": "8ac5e8cdf4bde31ea9d13949a16224fc52fb6c065b6c06f1a4fda6c2e4b9e107",
+      "svg_sha256": "34621a2510f4f4b7d035e366b7ec0ae3d05acdf949fb93e22a81dcd3c3019450",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_radar_examples_003": {
+      "input_sha256": "3e866a35e9ee4a7a25fc3dfa2f4a13b1e06e1ec606675de08355cce2d8748357",
+      "svg_sha256": "e647dbcef9197e522b43ecc658281c6372d0cfea279622c4cfc66197c5a4985c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_radar_examples_004": {
+      "input_sha256": "39b48990c83837bf53d286d8c38928f35bf4864f902b2acbc90350f4177d99c0",
+      "svg_sha256": "aefa4a5b549a03811f640805ad61034c4622d67e3827f1a1a416c57e71b58477",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_radar_examples_005": {
+      "input_sha256": "5b830cbd36a04ebf82dd4d744c8a7cd8517568270edd8b70b2422aa405e29c9b",
+      "svg_sha256": "7ba59903cf0a6e71eef66a9aae7b553139033b522e93258bdb99d74715024e03",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_radar_options_009": {
+      "input_sha256": "6f8062be2324be9a28b316282613d02234f026b43af96178d66cd36aa1fdc023",
+      "svg_sha256": "db73a9882a9ad4c6ddcfbc41452339317a0496ce7eaa9a5218195a83306561ec",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_radar_title_006": {
+      "input_sha256": "39d1fe2243dc4239c226e14824844b88d8453180932956a95aff12cc72846d7e",
+      "svg_sha256": "31a2a9c3d86490807b9b6e4b77d477dbf41e573ace3cf4a4cdf1d5546ae9e2f5",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_radar_radar_diagram_demo_001": {
+      "input_sha256": "147f5a92d39962afe74ed81ad003c79e7a3fa34f7d8bf2c6b37024eb4ea49955",
+      "svg_sha256": "ae021d54b241f932b7466ee6d1cb4bf1dd9bb53ce893064497c2be478ae70cdc",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_radar_radar_diagram_demo_002": {
+      "input_sha256": "f7cfb21a56c9bebc575f52ce9557c943fc685b71858045c6642549cfba198646",
+      "svg_sha256": "e89b5fe4497561f345c8116f9ef8d864f2232372972a28b377a652ca83efb540",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_radar_radar_diagram_demo_003": {
+      "input_sha256": "ff072a5896ae0ad1670d971499ca7ca251f3e2325599fc24d02edaca33e1ef1a",
+      "svg_sha256": "eace3f353e95baa45d5deffffc122deff6dfddd624452e7afa2f2c7d83605aaa",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_radar_radar_diagram_demo_004": {
+      "input_sha256": "d069dc4500b8eeda853d3ca386456ed9db703473fbe89631be7660e8fc1e4592",
+      "svg_sha256": "9ac06f3057dd775a5b45a26f079479104282ca4783fd0a59e82461a9b1a37a7f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_radar_radar_diagram_demo_005": {
+      "input_sha256": "20fbc6906683a44f9698830ae3b13d91185646563c51690f32ac3fadf6beb5b3",
+      "svg_sha256": "31df38cd399997f81369a261cc716db5fe1d3ac77547e622d5e9d015a927a08e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_html_demos_radar_radar_diagram_demo_006": {
+      "input_sha256": "92b2d1d04e9b7f2153e835944b93c917294ec552b28cbff9e9ff4221111fba26",
+      "svg_sha256": "eb0c0cd35e382f1c42853c0df63716b0e2469e0bef5eaab4ebcf50fbef326cdb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_mermaidapi_spec_339": {
+      "input_sha256": "9d40877cefeefbd1ed1fe7c11572e30606d1e0028505b7b07049f7f7f56e3ecd",
+      "svg_sha256": "1f891f572197b62eeeb580c58f209cfb28f338a62856b188f7b63ee169a0b270",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_001": {
+      "input_sha256": "e8fc0e8b468f7ca7f208eab271e42b3ed6048a063d54a6a4662d3eff0116aa4f",
+      "svg_sha256": "5ae11ad9f939e67240d22b9a32b0bd8d0e93d747229f209538ca323fe32202c2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_002": {
+      "input_sha256": "6e7b65fa2225b9f5d6698726089ae2d607994d92b3cbfacbd8ca0a5abe8ef9f0",
+      "svg_sha256": "664ef9cb6a46e08747ca18d5eeb259ee6bf4b2658a1f0e508517f500732cc094",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_006": {
+      "input_sha256": "fa8d7fb60637bb5b0337c88f83c18290d4482c952f3291eec5451c37babcaf65",
+      "svg_sha256": "fe3a357a24a8774961524b41f40f598630861d50eb999db0a6c72613020c23a0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_008": {
+      "input_sha256": "ad534ef8c192a366877392cb4fcd592d167abc4f186dc7acf5a30b376b17cd42",
+      "svg_sha256": "7f63c4c9ba20a9be6286f74056a25a6ff5ee5f8ade43bb266d6deb139699a536",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_010": {
+      "input_sha256": "f0eff22b9235334f64260b50e89ffb7eb9bb2679fcb9d87bbc5ab8b28627baf7",
+      "svg_sha256": "cba6616d8b0256b5c70bc6cf90bdce56cffb74580aa059673e8105bec8f71d1d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_011": {
+      "input_sha256": "e710311dbb66a6fd65d7ee47b05e5bf0efab2ddf3bd10c86557398a38c8bb70b",
+      "svg_sha256": "a41294639705057d69d12088de4673884d5c6b6f15c2b226da48cd6d5a5fd3d7",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_012": {
+      "input_sha256": "fe3cf985f72d75629e130d97c5d55e36a123422f4dd9e1adc19d88bfd6f365b7",
+      "svg_sha256": "b0c78be1c9b80c56796a54d3723e651340cdd1666733bd1875bfaf702f14fca9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_013": {
+      "input_sha256": "0cd4df999ef9dec651696c95d70dd0cf2ac47352fa542d1593616a28c3c5d12a",
+      "svg_sha256": "36be93745edb8a6ea5c8345b0f873473caf52f192ede32d1526adb943de90b0a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_017": {
+      "input_sha256": "8f4912e49934ec91b1bd1d88a91f7353fa58243483be2ac1a3ece08e3def1bff",
+      "svg_sha256": "8115c07346032ca8583e5cf6624e460b9058d2211cd70459ab1cb44bd543dcbb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_spec_018": {
+      "input_sha256": "67c43787fa9762274bb1ef321d362e35fc60b98c43424355482a304f297c4836",
+      "svg_sha256": "e3314d33feee0f2b5ca078b247b3ee24bf78f52d0888a9fe707bc2b2b7dc7b4a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_pkgtests_radar_test_064": {
+      "input_sha256": "dd927a3602bdf954e1a5c573e8b3ecfe6fbec3162f1a67bf793f2dbad877f743",
+      "svg_sha256": "3a2138e23e9030312b512af8dd42e5197c47c3c52a5fe477ecac2d1faa65da72",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_radar_comments_spec": {
+      "input_sha256": "145a54ee03ce79df388f1ad6407d3aa5524d518afbd71591e7aec00e9bceddc9",
+      "svg_sha256": "0eac4053c54502cf272d3da6ebe950438d3fe26fcf7849adad5bb774050f0800",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_radar_config_override_directive_spec": {
+      "input_sha256": "39ebba357060690cdac6549cc4f5bf6cbe516d9827cdb4c600edb92cacc612b1",
+      "svg_sha256": "1105317e5aa9043d19406a96b94aa0848726c710eeea3875397c95205a2b1ad0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_radar_data_and_title_spec": {
+      "input_sha256": "1f318364d7ec9f4da7fbca0d3a88aa504244893050d7cccde6460193c2d8ff24",
+      "svg_sha256": "f300d7851446b949c6036b1562681ad5cf0776c22fed451765c07c1a1c88236b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_radar_detailed_curve_any_order_spec": {
+      "input_sha256": "708635d75311eaaac3d0e1af598d871cd7eef09bb8be10588eed3ef4b7b42a55",
+      "svg_sha256": "d67af48b0a386315c660dde64caf15ae26a86fce995b06a02837d1cb9a881ad2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_radar_options_spec": {
+      "input_sha256": "764e2d9e037427628e72e89377ed2dd9eaba82e3c9d54673c1682982cf362c7a",
+      "svg_sha256": "2e84506f65bf9cb6462f410a8e8de3ffba5484791f66edf53d6b39a8fbce3aba",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_radar_radar_style_override_spec": {
+      "input_sha256": "da90edf834b7d1833e086df804df5ae5336d9601fab65dbb227d5619307a73a8",
+      "svg_sha256": "20daf4cc33e25b9860b14899ce371bdbb60c0d0c60852654b3fae9a38658aac1",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_radar_simple_spec": {
+      "input_sha256": "76771d8a8b829d6a1203bfc70f5c83121a673cc5790c52f8167ab1a7c86b5300",
+      "svg_sha256": "4ec5ee542146182bca60e5e62a1a683c7615fb14ef8f081646b37a2afa58d801",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_radar_theme_override_colon_header_spec": {
+      "input_sha256": "850ad9b5af1d802872c27f8ef33eee2c68aba5087006d61ceebdc47885369989",
+      "svg_sha256": "02941e27368b2d5701c9799bdd7b3d01852695022057e578eb9800db286314b3",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

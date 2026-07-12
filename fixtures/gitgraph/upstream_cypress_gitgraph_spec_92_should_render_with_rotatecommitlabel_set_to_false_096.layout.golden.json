@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -76.766,
-        "min_y": -18.0,
+        "min_y": -20.0,
         "max_x": 258.0,
-        "max_y": 68.0
+        "max_y": 66.0
       },
       "direction": "LR",
       "rotate_commit_label": false,
@@ -45,7 +45,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Beta",
@@ -62,7 +62,7 @@
           "pos": 50.0,
           "pos_with_offset": 60.0,
           "x": 60.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Gamma",
@@ -79,7 +79,7 @@
           "pos": 100.0,
           "pos_with_offset": 110.0,
           "x": 110.0,
-          "y": 50.0
+          "y": 48.0
         },
         {
           "id": "Delta",
@@ -96,7 +96,7 @@
           "pos": 150.0,
           "pos_with_offset": 160.0,
           "x": 160.0,
-          "y": 50.0
+          "y": 48.0
         },
         {
           "id": "Epsilon",
@@ -113,7 +113,7 @@
           "pos": 200.0,
           "pos_with_offset": 210.0,
           "x": 210.0,
-          "y": 0.0
+          "y": -2.0
         }
       ],
       "arrows": [
@@ -121,25 +121,25 @@
           "from": "Alpha",
           "to": "Beta",
           "class_index": 0.0,
-          "d": "M 10 0 L 60 0"
+          "d": "M 10 -2 L 60 -2"
         },
         {
           "from": "Beta",
           "to": "Gamma",
           "class_index": 1.0,
-          "d": "M 60 0 L 60 30 A 20 20, 0, 0, 0, 80 50 L 110 50"
+          "d": "M 60 -2 L 60 28 A 20 20, 0, 0, 0, 80 48 L 110 48"
         },
         {
           "from": "Gamma",
           "to": "Delta",
           "class_index": 1.0,
-          "d": "M 110 50 L 160 50"
+          "d": "M 110 48 L 160 48"
         },
         {
           "from": "Beta",
           "to": "Epsilon",
           "class_index": 0.0,
-          "d": "M 60 0 L 210 0"
+          "d": "M 60 -2 L 210 -2"
         }
       ]
     }

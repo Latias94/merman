@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "source": {
+    "mermaid_version": "11.16.0",
+    "mermaid_cli_version": "11.16.0",
+    "mermaid_source_tag": "mermaid@11.16.0",
+    "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+    "package_json_sha256": "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7",
+    "package_lock_sha256": "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e",
+    "mermaid_config_sha256": "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc",
+    "renderer_revision": "xtask-upstream-svg-v2"
+  },
+  "attestation": {
+    "mode": "adopted-existing"
+  },
+  "complete": true,
+  "fixtures": {
+    "upstream_docs_venn_labels_and_sizes_002": {
+      "input_sha256": "dbe2e15b8822e28a45210626bc600ead36dd030635490449f24091d953008c18",
+      "svg_sha256": "cb0c0064ed0fc6f83c5b76e36a8a52e407564c6b46d35565bd22c3cb4b7f1c0a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_venn_team_overlap_001": {
+      "input_sha256": "7e1f629a073676a8e78837478b7c4351f087e557dd39b9ea1d7ecd0afd9f72ce",
+      "svg_sha256": "7abd9955db9419d037e241be6787a387f37bebcaf8086add4b41e9e13b9cac71",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_docs_venn_text_nodes_and_style_003": {
+      "input_sha256": "ac6de7c7813c6c4454972305ae734176395f3dc5b0be2c4ada601bd25815455d",
+      "svg_sha256": "40a2d3ded59c6f87f21a70804004209cbe6a6520ffffd511bca2f131a2432345",
+      "renderer_profile": "mmdc-default"
+    }
+  },
+  "excluded": {}
+}

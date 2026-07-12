@@ -1,6 +1,6 @@
 use super::constants::{
-    SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX, sequence_actor_lifeline_start_y,
-    sequence_actor_visual_height, sequence_text_dimensions_height_px,
+    sequence_actor_lifeline_start_y, sequence_actor_visual_height,
+    sequence_text_dimensions_height_px,
 };
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
 use crate::math::MathRenderer;
@@ -29,7 +29,6 @@ pub(super) struct SequenceActorLayoutPlanContext<'a> {
     pub(super) box_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) wrap_padding: f64,
-    pub(super) message_width_scale: f64,
     pub(super) message_font_size: f64,
 }
 
@@ -242,14 +241,7 @@ fn actor_message_widths(
             };
             measure_svg_like_with_html_br(ctx.measurer, &measured_text, style)
         };
-        let w0 = w0 * ctx.message_width_scale;
-        let mut message_w = (w0 + 2.0 * ctx.wrap_padding).max(0.0);
-        if msg.wrap
-            && message_w > ctx.actor_width_min
-            && message_w <= ctx.actor_width_min + SEQUENCE_WRAPPED_MESSAGE_WIDTH_EPS_PX
-        {
-            message_w = ctx.actor_width_min;
-        }
+        let message_w = (w0 + 2.0 * ctx.wrap_padding).max(0.0);
 
         let prev_idx = if to_idx > 0 { Some(to_idx - 1) } else { None };
         let next_idx = if to_idx + 1 < ctx.model.actor_order.len() {

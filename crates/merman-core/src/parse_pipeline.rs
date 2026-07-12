@@ -418,7 +418,7 @@ impl<'a> ParsePipeline<'a> {
 
         let parse_start = runtime::timing_start(timing_enabled);
         let parsed = match meta.diagram_type.as_str() {
-            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
+            "flowchart-v2" | "flowchart" | "flowchart-elk" | "swimlane" => {
                 let parse_res = self.with_fixed_time(|| {
                     crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts(
                         editor_input,
@@ -575,7 +575,7 @@ impl<'a> ParsePipeline<'a> {
         }
 
         let facts = match meta.diagram_type.as_str() {
-            "flowchart-v2" | "flowchart" | "flowchart-elk" => {
+            "flowchart-v2" | "flowchart" | "flowchart-elk" | "swimlane" => {
                 crate::diagrams::flowchart::parse_flowchart_editor_facts(editor_input, &meta)?
             }
             "sequence" => {
@@ -595,6 +595,7 @@ impl<'a> ParsePipeline<'a> {
             }
             "block" => crate::diagrams::block::parse_block_editor_facts(editor_input, &meta),
             "c4" => crate::diagrams::c4::parse_c4_editor_facts(editor_input, &meta),
+            "cynefin" => crate::diagrams::cynefin::parse_cynefin_editor_facts(editor_input, &meta),
             "gitGraph" => {
                 crate::diagrams::git_graph::parse_git_graph_editor_facts(editor_input, &meta)
             }
@@ -621,6 +622,18 @@ impl<'a> ParsePipeline<'a> {
                 editor_input,
                 &meta,
             ),
+            "railroad" => {
+                crate::diagrams::railroad::parse_railroad_editor_facts(editor_input, &meta)
+            }
+            "railroadEbnf" => {
+                crate::diagrams::railroad::parse_railroad_ebnf_editor_facts(editor_input, &meta)
+            }
+            "railroadAbnf" => {
+                crate::diagrams::railroad::parse_railroad_abnf_editor_facts(editor_input, &meta)
+            }
+            "railroadPeg" => {
+                crate::diagrams::railroad::parse_railroad_peg_editor_facts(editor_input, &meta)
+            }
             "radar" => crate::diagrams::radar::parse_radar_editor_facts(editor_input, &meta),
             "treemap" => crate::diagrams::treemap::parse_treemap_editor_facts(editor_input, &meta),
             "requirement" => {
@@ -822,6 +835,11 @@ impl<'a> ParsePipeline<'a> {
                 return Err(err);
             }
         };
+        family::apply_diagram_type_config_defaults(
+            &diagram_type,
+            &pre.config,
+            &mut effective_config,
+        );
         if has_config_overrides {
             theme::apply_theme_defaults(&mut effective_config);
         } else if cached_effective_config
@@ -863,6 +881,11 @@ impl<'a> ParsePipeline<'a> {
         let mut effective_config = self.effective_config_before_detect(&pre.config);
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
         family::apply_known_type_detector_side_effects(diagram_type, &mut effective_config);
+        family::apply_diagram_type_config_defaults(
+            diagram_type,
+            &pre.config,
+            &mut effective_config,
+        );
         if has_config_overrides {
             theme::apply_theme_defaults(&mut effective_config);
         } else if cached_effective_config

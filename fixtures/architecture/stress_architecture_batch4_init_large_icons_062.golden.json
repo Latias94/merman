@@ -195,6 +195,7 @@
         "rhsGroup": null,
         "title": "backup"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

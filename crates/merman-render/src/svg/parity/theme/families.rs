@@ -176,6 +176,22 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .optional_nested_color("treeView", "lineColor")
                 .unwrap_or_else(|| "black".to_string()),
+            icon_color: self
+                .raw
+                .optional_nested_color("treeView", "iconColor")
+                .unwrap_or_else(|| "#546e7a".to_string()),
+            description_color: self
+                .raw
+                .optional_nested_color("treeView", "descriptionColor")
+                .unwrap_or_else(|| "#6a9955".to_string()),
+            highlight_bg: self
+                .raw
+                .optional_nested_color("treeView", "highlightBg")
+                .unwrap_or_else(|| "rgba(255, 193, 7, 0.15)".to_string()),
+            highlight_stroke: self
+                .raw
+                .optional_nested_color("treeView", "highlightStroke")
+                .unwrap_or_else(|| "#ffc107".to_string()),
         }
     }
 

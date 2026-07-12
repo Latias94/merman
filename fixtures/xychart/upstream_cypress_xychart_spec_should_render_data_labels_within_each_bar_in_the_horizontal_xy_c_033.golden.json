@@ -1,11 +1,10 @@
 {
   "diagramType": "xychart",
   "model": {
-    "type": "xychart",
+    "orientation": "horizontal",
     "title": "Sales Revenue",
     "accTitle": null,
     "accDescr": null,
-    "orientation": "horizontal",
     "xAxis": {
       "type": "band",
       "title": "Months",
@@ -146,6 +145,7 @@
           ]
         ]
       }
-    ]
+    ],
+    "type": "xychart"
   }
 }

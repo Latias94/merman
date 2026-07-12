@@ -1,0 +1,34 @@
+{
+  "diagramType": "cynefin",
+  "model": {
+    "type": "cynefin",
+    "title": "Team Practices",
+    "accTitle": null,
+    "accDescr": null,
+    "domains": [
+      {
+        "name": "clear",
+        "items": [
+          {
+            "label": "Runbook"
+          }
+        ]
+      },
+      {
+        "name": "complex",
+        "items": [
+          {
+            "label": "Retrospective"
+          }
+        ]
+      }
+    ],
+    "transitions": [
+      {
+        "from": "clear",
+        "to": "complex",
+        "label": "Probe"
+      }
+    ]
+  }
+}

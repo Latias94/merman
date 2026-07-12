@@ -7,7 +7,7 @@
           "id": "req1",
           "x": 8.0,
           "y": 8.0,
-          "width": 169.438,
+          "width": 162.719,
           "height": 184.0,
           "is_cluster": false
         }
@@ -16,7 +16,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 177.438,
+        "max_x": 170.719,
         "max_y": 192.0
       }
     }

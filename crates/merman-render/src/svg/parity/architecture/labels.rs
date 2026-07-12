@@ -314,23 +314,23 @@ pub(super) fn wrap_svg_words_to_lines(
 pub(super) fn write_svg_text_lines(out: &mut String, lines: &[SvgLine]) {
     out.push_str(r#"<text y="-10.1" style="">"#);
     if lines.is_empty() || (lines.len() == 1 && lines[0].is_empty()) {
-        out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
+        out.push_str(r#"<tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/>"#);
         out.push_str("</text>");
         return;
     }
     for (idx, line) in lines.iter().enumerate() {
         if idx == 0 {
-            out.push_str(r#"<tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+            out.push_str(r#"<tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em">"#);
         } else if idx == 1 {
             let _ = write!(
                 out,
-                r#"<tspan class="text-outer-tspan" x="0" y="1em" dy="1.1em">"#
+                r#"<tspan class="text-outer-tspan row" x="0" y="1em" dy="1.1em">"#
             );
         } else {
             let y_em = 1.0 + (idx as f64 - 1.0) * 1.1;
             let _ = write!(
                 out,
-                r#"<tspan class="text-outer-tspan" x="0" y="{:.1}em" dy="1.1em">"#,
+                r#"<tspan class="text-outer-tspan row" x="0" y="{:.1}em" dy="1.1em">"#,
                 y_em
             );
         }
@@ -420,7 +420,7 @@ pub(super) fn plain_ascii_words_single_line_width(
 }
 
 pub(super) fn write_svg_plain_ascii_words_text_line(out: &mut String, text: &str) {
-    out.push_str(r#"<text y="-10.1" style=""><tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#);
+    out.push_str(r#"<text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">"#);
     if let Some((first, rest)) = text.split_once(' ') {
         out.push_str(first);
         out.push_str("</tspan>");
@@ -509,7 +509,7 @@ mod tests {
 
         assert_eq!(
             out,
-            r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate(40, 80)"><g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">s1</tspan></tspan></text></g></g>"#
+            r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate(40, 80)"><g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">s1</tspan></tspan></text></g></g>"#
         );
     }
 
@@ -528,7 +528,7 @@ mod tests {
 
         assert_eq!(
             out,
-            r#"<text y="-10.1" style=""><tspan class="text-outer-tspan" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Service</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Farm</tspan></tspan></text>"#
+            r#"<text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">Service</tspan><tspan font-style="normal" class="text-inner-tspan" font-weight="normal"> Farm</tspan></tspan></text>"#
         );
         assert_eq!(out, wrapped);
     }

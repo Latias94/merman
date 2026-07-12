@@ -2,7 +2,7 @@
 
 This document tracks fixtures that are sourced from outside Mermaid's own repository.
 
-As of the Mermaid `@11.15.0` alignment baseline, this repository does not check in external
+As of the Mermaid `@11.16.0` alignment baseline, this repository does not check in external
 fixtures. Keeping fixtures sourced only from upstream Mermaid makes SVG parity gating clearer and
 avoids mixing baselines from other renderers.
 

@@ -1,4 +1,4 @@
-# Class Diagram Upstream Test Coverage (Mermaid@11.15.0)
+# Class Diagram Upstream Test Coverage (Mermaid@11.16.0)
 
 This document tracks which upstream Mermaid `classDiagram` tests are covered in `merman` via:
 
@@ -6,7 +6,7 @@ This document tracks which upstream Mermaid `classDiagram` tests are covered in 
 - Rust unit tests under `crates/merman-core/src/lib.rs`
 - headless layout tests and debug SVG exports under `crates/merman-render`
 
-Scope: Mermaid tag `@11.15.0`.
+Scope: Mermaid tag `@11.16.0`.
 
 ## External regression cases
 
@@ -225,7 +225,8 @@ Imported (parity-gated with upstream SVG baselines):
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_011.mmd`
 - `fixtures/class/upstream_html_demos_classchart_class_diagram_demos_012.mmd`
 
-Deferred (upstream Mermaid CLI `@11.15.0` parse error, so no SVG baseline yet):
+Rechecked against the pinned Mermaid CLI at `@11.16.0` and still deferred because the upstream
+renderer fails, so no SVG baseline is committed:
 
 - `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`
 
@@ -252,7 +253,8 @@ Stage-B SVG DOM comparison (against upstream baselines):
 
 - `cargo run --release -p xtask -- compare-class-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 - Exclusions (see `docs/rendering/UPSTREAM_SVG_BASELINES.md`):
-  - `fixtures/class/upstream_text_label_variants_spec.mmd` (upstream CLI failure at 11.15.0)
+  - `fixtures/class/upstream_text_label_variants_spec.mmd` (pinned Mermaid 11.16 fails on the
+    whitespace-only class label; re-check before admitting under a future baseline)
   - `fixtures/class/upstream_parser_class_spec.mmd` (upstream prototype-key rendering artifacts)
 
 ## Authored stress fixtures

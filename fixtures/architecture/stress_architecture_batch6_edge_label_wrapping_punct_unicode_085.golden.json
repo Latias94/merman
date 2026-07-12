@@ -244,6 +244,7 @@
         "rhsGroup": null,
         "title": "refresh cache from db delta 0 05 wrap words"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

@@ -3,7 +3,7 @@ fn node_render_dimensions(
     metrics: crate::text::TextMetrics,
     padding: f64,
 ) -> (f64, f64) {
-    // This function mirrors Mermaid `@11.15.0` node shape sizing rules at the "rendering-elements"
+    // This function mirrors pinned Mermaid node shape sizing rules at the "rendering-elements"
     // layer, but uses our headless `TextMeasurer` metrics instead of DOM `getBBox()`.
     //
     // References:

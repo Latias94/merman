@@ -8,45 +8,11 @@ pub(crate) struct FlowchartSelfLoopHelperEdges {
     pub(crate) edge2: FlowEdge,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FlowchartSelfLoopEdgeOptions {
-    endpoint_label: FlowchartSelfLoopEndpointLabel,
-    clear_edge2_label_type: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum FlowchartSelfLoopEndpointLabel {
-    Empty,
-    None,
-}
-
-impl FlowchartSelfLoopEdgeOptions {
-    pub(crate) fn layout() -> Self {
-        Self {
-            endpoint_label: FlowchartSelfLoopEndpointLabel::Empty,
-            clear_edge2_label_type: false,
-        }
-    }
-
-    pub(crate) fn svg_render() -> Self {
-        Self {
-            endpoint_label: FlowchartSelfLoopEndpointLabel::None,
-            clear_edge2_label_type: true,
-        }
-    }
-}
-
-pub(crate) fn flowchart_self_loop_helper_edges(
-    base: &FlowEdge,
-    options: FlowchartSelfLoopEdgeOptions,
-) -> FlowchartSelfLoopHelperEdges {
+pub(crate) fn flowchart_self_loop_helper_edges(base: &FlowEdge) -> FlowchartSelfLoopHelperEdges {
     let node_id = base.from.as_str();
     let special_id_1 = format!("{node_id}---{node_id}---1");
     let special_id_2 = format!("{node_id}---{node_id}---2");
-    let endpoint_label = match options.endpoint_label {
-        FlowchartSelfLoopEndpointLabel::Empty => Some(String::new()),
-        FlowchartSelfLoopEndpointLabel::None => None,
-    };
+    let endpoint_label = Some(String::new());
 
     let edge1 = flowchart_self_loop_edge_from_base(
         base,
@@ -72,11 +38,7 @@ pub(crate) fn flowchart_self_loop_helper_edges(
         special_id_2.clone(),
         node_id.to_string(),
         endpoint_label,
-        if options.clear_edge2_label_type {
-            None
-        } else {
-            base.label_type.clone()
-        },
+        base.label_type.clone(),
         base.edge_type.clone(),
     );
 

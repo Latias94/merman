@@ -1,6 +1,7 @@
 use crate::config::{
-    DiagramLook, config_bool, config_diagram_look, config_f64,
-    config_font_family_or_first_array_css, config_theme_or_root_font_size_px,
+    DiagramLook, MERMAID_DEFAULT_FONT_FAMILY_CSS, config_bool, config_diagram_look, config_f64,
+    config_f64_css_px, config_font_family_or_first_array_css, config_string_or_first_array,
+    config_theme_or_root_font_size_px, normalize_css_font_family,
 };
 use serde_json::Value;
 
@@ -9,6 +10,7 @@ const DEFAULT_RANK_SPACING: f64 = 50.0;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 const DEFAULT_VIEWPORT_PADDING: f64 = 8.0;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
+const DEFAULT_TITLE_TOP_MARGIN: f64 = 25.0;
 
 pub(crate) struct RequirementConfigView<'a> {
     effective_config: &'a Value,
@@ -35,6 +37,8 @@ impl<'a> RequirementConfigView<'a> {
                 .unwrap_or(DEFAULT_RANK_SPACING),
             font_family: self.font_family(),
             font_size: self.font_size(),
+            calculation_font_family: self.calculation_font_family(),
+            calculation_font_size: self.calculation_font_size(),
         }
     }
 
@@ -50,8 +54,13 @@ impl<'a> RequirementConfigView<'a> {
                 .get("handDrawnSeed")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0),
+            title_top_margin: self
+                .config_f64(&["state", "titleTopMargin"])
+                .unwrap_or(DEFAULT_TITLE_TOP_MARGIN),
             font_family: self.font_family(),
             font_size: self.font_size(),
+            calculation_font_family: self.calculation_font_family(),
+            calculation_font_size: self.calculation_font_size(),
         }
     }
 
@@ -74,6 +83,21 @@ impl<'a> RequirementConfigView<'a> {
     fn font_size(&self) -> f64 {
         config_theme_or_root_font_size_px(self.effective_config, DEFAULT_FONT_SIZE)
     }
+
+    fn calculation_font_family(&self) -> String {
+        let raw = config_string_or_first_array(self.effective_config, &["fontFamily"])
+            .unwrap_or_else(|| MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string());
+        let normalized = normalize_css_font_family(&raw);
+        if normalized.is_empty() {
+            MERMAID_DEFAULT_FONT_FAMILY_CSS.to_string()
+        } else {
+            normalized
+        }
+    }
+
+    fn calculation_font_size(&self) -> f64 {
+        config_f64_css_px(self.effective_config, &["fontSize"]).unwrap_or(DEFAULT_FONT_SIZE)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +106,8 @@ pub(crate) struct RequirementLayoutSettings {
     pub(crate) ranksep: f64,
     pub(crate) font_family: String,
     pub(crate) font_size: f64,
+    pub(crate) calculation_font_family: String,
+    pub(crate) calculation_font_size: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -90,8 +116,11 @@ pub(crate) struct RequirementRenderSettings<'a> {
     pub(crate) viewport_padding: f64,
     pub(crate) use_max_width: bool,
     pub(crate) hand_drawn_seed: u64,
+    pub(crate) title_top_margin: f64,
     pub(crate) font_family: String,
     pub(crate) font_size: f64,
+    pub(crate) calculation_font_family: String,
+    pub(crate) calculation_font_size: f64,
 }
 
 #[cfg(test)]
@@ -111,6 +140,11 @@ mod tests {
             crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
         );
         assert_eq!(settings.font_size, DEFAULT_FONT_SIZE);
+        assert_eq!(
+            settings.calculation_font_family,
+            crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+        assert_eq!(settings.calculation_font_size, DEFAULT_FONT_SIZE);
     }
 
     #[test]
@@ -133,6 +167,11 @@ mod tests {
         assert_eq!(settings.ranksep, 70.0);
         assert_eq!(settings.font_family, "Courier New");
         assert_eq!(settings.font_size, 18.0);
+        assert_eq!(
+            settings.calculation_font_family,
+            crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS
+        );
+        assert_eq!(settings.calculation_font_size, DEFAULT_FONT_SIZE);
     }
 
     #[test]
@@ -166,7 +205,41 @@ mod tests {
         assert_eq!(settings.viewport_padding, DEFAULT_VIEWPORT_PADDING);
         assert!(!settings.use_max_width);
         assert_eq!(settings.hand_drawn_seed, 7);
+        assert_eq!(settings.title_top_margin, DEFAULT_TITLE_TOP_MARGIN);
         assert_eq!(settings.font_family, "Inter,sans-serif");
         assert_eq!(settings.font_size, 20.0);
+        assert_eq!(settings.calculation_font_family, "Inter,sans-serif");
+        assert_eq!(settings.calculation_font_size, 20.0);
+    }
+
+    #[test]
+    fn requirement_title_margin_uses_the_state_config_namespace() {
+        let cfg = json!({
+            "titleTopMargin": 91,
+            "requirement": { "titleTopMargin": 72 },
+            "state": { "titleTopMargin": 33 }
+        });
+
+        let settings = RequirementConfigView::new(&cfg).render_settings();
+
+        assert_eq!(settings.title_top_margin, 33.0);
+    }
+
+    #[test]
+    fn requirement_text_calculation_keeps_root_font_size_separate_from_theme_font_size() {
+        let cfg = json!({
+            "fontFamily": "Trebuchet MS, sans-serif",
+            "fontSize": 10,
+            "themeVariables": {
+                "fontFamily": "Courier New, monospace",
+                "fontSize": "24px"
+            }
+        });
+        let settings = RequirementConfigView::new(&cfg).layout_settings();
+
+        assert_eq!(settings.font_family, "Courier New,monospace");
+        assert_eq!(settings.font_size, 24.0);
+        assert_eq!(settings.calculation_font_family, "Trebuchet MS,sans-serif");
+        assert_eq!(settings.calculation_font_size, 10.0);
     }
 }

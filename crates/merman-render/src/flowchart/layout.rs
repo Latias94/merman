@@ -1,3 +1,4 @@
+use crate::dagre::self_loop::compact_self_loop_geometry;
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
@@ -6,7 +7,8 @@ use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use merman_core::MermaidConfig;
+use indexmap::IndexMap;
+use merman_core::{MermaidConfig, geom::Size};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
@@ -147,6 +149,182 @@ fn dir_to_rankdir(dir: &str) -> RankDir {
         "RL" => RankDir::RL,
         _ => RankDir::TB,
     }
+}
+
+const SELF_LOOP_ID_EXTRA: &str = "selfLoopId";
+const SELF_LOOP_NODE_EXTRA: &str = "selfLoopNode";
+const SELF_LOOP_ORDER_EXTRA: &str = "selfLoopOrder";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FlowchartSelfLoopSegmentMeta {
+    logical_edge_id: String,
+    node_id: String,
+    order: u8,
+}
+
+struct FlowchartLayoutEdgeCandidate {
+    edge: LayoutEdge,
+    self_loop: Option<FlowchartSelfLoopSegmentMeta>,
+}
+
+fn flowchart_layout_edge_key(
+    edge: &FlowEdge,
+    self_loop: Option<&FlowchartSelfLoopSegmentMeta>,
+) -> String {
+    match self_loop {
+        Some(meta) => format!("{}-cyclic-special-{}", meta.node_id, meta.order),
+        None => edge.id.clone(),
+    }
+}
+
+fn annotate_flowchart_self_loop_segment(
+    label: &mut EdgeLabel,
+    meta: &FlowchartSelfLoopSegmentMeta,
+) {
+    label.extras.insert(
+        SELF_LOOP_ID_EXTRA.to_string(),
+        Value::String(meta.logical_edge_id.clone()),
+    );
+    label.extras.insert(
+        SELF_LOOP_NODE_EXTRA.to_string(),
+        Value::String(meta.node_id.clone()),
+    );
+    label
+        .extras
+        .insert(SELF_LOOP_ORDER_EXTRA.to_string(), Value::from(meta.order));
+}
+
+fn flowchart_self_loop_segment_meta(label: &EdgeLabel) -> Option<FlowchartSelfLoopSegmentMeta> {
+    let logical_edge_id = label.extras.get(SELF_LOOP_ID_EXTRA)?.as_str()?.to_string();
+    let node_id = label
+        .extras
+        .get(SELF_LOOP_NODE_EXTRA)?
+        .as_str()?
+        .to_string();
+    let order = u8::try_from(label.extras.get(SELF_LOOP_ORDER_EXTRA)?.as_u64()?).ok()?;
+    Some(FlowchartSelfLoopSegmentMeta {
+        logical_edge_id,
+        node_id,
+        order,
+    })
+}
+
+fn merge_flowchart_self_loop_segments(
+    model_edges: &[FlowEdge],
+    layout_nodes: &[LayoutNode],
+    rankdir: &str,
+    layout_edges: Vec<FlowchartLayoutEdgeCandidate>,
+) -> Vec<LayoutEdge> {
+    let mut output = Vec::with_capacity(layout_edges.len());
+    let mut segments_by_id: IndexMap<String, Vec<(LayoutEdge, FlowchartSelfLoopSegmentMeta)>> =
+        IndexMap::new();
+    for candidate in layout_edges {
+        if let Some(meta) = candidate.self_loop {
+            segments_by_id
+                .entry(meta.logical_edge_id.clone())
+                .or_default()
+                .push((candidate.edge, meta));
+        } else {
+            output.push(candidate.edge);
+        }
+    }
+
+    let nodes_by_id: HashMap<&str, &LayoutNode> = layout_nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+
+    for (logical_edge_id, mut segments) in segments_by_id {
+        if segments.len() != 3 {
+            output.extend(segments.into_iter().map(|(edge, _)| edge));
+            continue;
+        }
+        segments.sort_by_key(|(_, meta)| meta.order);
+        if segments.iter().map(|(_, meta)| meta.order).ne([0_u8, 1, 2]) {
+            output.extend(segments.into_iter().map(|(edge, _)| edge));
+            continue;
+        }
+
+        let (first, first_meta) = &segments[0];
+        let (middle, _) = &segments[1];
+        let (last, _) = &segments[2];
+        let Some(original) = model_edges.iter().find(|edge| edge.id == logical_edge_id) else {
+            output.extend(segments.into_iter().map(|(edge, _)| edge));
+            continue;
+        };
+        let node_id = first_meta.node_id.as_str();
+        let Some(node) = nodes_by_id.get(node_id).copied() else {
+            output.extend(segments.into_iter().map(|(edge, _)| edge));
+            continue;
+        };
+
+        let helper_ids = [
+            format!("{node_id}---{node_id}---1"),
+            format!("{node_id}---{node_id}---2"),
+        ];
+        let mut hints = helper_ids
+            .iter()
+            .filter_map(|id| nodes_by_id.get(id.as_str()).copied())
+            .map(|helper| LayoutPoint {
+                x: helper.x,
+                y: helper.y,
+            })
+            .collect::<Vec<_>>();
+        if hints.is_empty() {
+            hints.extend(
+                [first, middle, last]
+                    .into_iter()
+                    .flat_map(|edge| edge.points.iter().cloned()),
+            );
+        }
+
+        let label_width = middle.label.as_ref().map_or(0.0, |label| label.width);
+        let label_height = middle.label.as_ref().map_or(0.0, |label| label.height);
+        let geometry = compact_self_loop_geometry(
+            &LayoutPoint {
+                x: node.x,
+                y: node.y,
+            },
+            Size::new(node.width, node.height),
+            dir_to_rankdir(rankdir),
+            &hints,
+            0.0,
+            Size::new(label_width, label_height),
+        );
+        let label = middle.label.as_ref().map(|_| LayoutLabel {
+            x: geometry.label_center.x,
+            y: geometry.label_center.y,
+            width: label_width,
+            height: label_height,
+        });
+
+        output.push(LayoutEdge {
+            id: original.id.clone(),
+            from: original.from.clone(),
+            to: original.to.clone(),
+            from_cluster: first
+                .from_cluster
+                .clone()
+                .or_else(|| middle.from_cluster.clone())
+                .or_else(|| last.from_cluster.clone()),
+            to_cluster: first
+                .to_cluster
+                .clone()
+                .or_else(|| middle.to_cluster.clone())
+                .or_else(|| last.to_cluster.clone()),
+            points: geometry.points,
+            label,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        });
+    }
+
+    output
 }
 
 fn edge_label_is_non_empty(edge: &FlowEdge) -> bool {
@@ -322,6 +500,54 @@ fn flowchart_find_non_cluster_child(
     reserve
 }
 
+fn flowchart_is_node_in_extractable_cluster(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    node_id: &str,
+    root_id: &str,
+    cluster_db: &HashMap<String, FlowchartClusterDbEntry>,
+) -> bool {
+    let mut parent = graph.parent(node_id);
+    while let Some(parent_id) = parent {
+        if parent_id == root_id {
+            break;
+        }
+        if cluster_db
+            .get(parent_id)
+            .is_some_and(|entry| !entry.external_connections)
+        {
+            return true;
+        }
+        parent = graph.parent(parent_id);
+    }
+    false
+}
+
+fn flowchart_find_safe_anchor_node(
+    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    cluster_id: &str,
+    excluded_cluster: &str,
+    descendants: &HashMap<String, Vec<String>>,
+    cluster_db: &HashMap<String, FlowchartClusterDbEntry>,
+) -> Option<String> {
+    for child in graph.children(cluster_id) {
+        if child == excluded_cluster
+            || descendants
+                .get(excluded_cluster)
+                .is_some_and(|nodes| nodes.iter().any(|node| node == child))
+        {
+            continue;
+        }
+
+        let Some(candidate) = flowchart_find_non_cluster_child(child, graph, cluster_id) else {
+            continue;
+        };
+        if !flowchart_is_node_in_extractable_cluster(graph, &candidate, cluster_id, cluster_db) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 fn adjust_flowchart_clusters_and_edges(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
 ) -> std::collections::HashMap<String, bool> {
@@ -388,6 +614,31 @@ fn adjust_flowchart_clusters_and_edges(
             && let Some(entry) = cluster_db.get_mut(&id)
         {
             entry.anchor_id = p.to_string();
+        }
+
+        let has_direct_outgoing_edge = graph.edges().any(|edge| edge.v == id);
+        let needs_safe_anchor = cluster_db
+            .get(&id)
+            .is_some_and(|entry| entry.external_connections)
+            && has_direct_outgoing_edge
+            && flowchart_is_node_in_extractable_cluster(
+                graph,
+                &non_cluster_child,
+                &id,
+                &cluster_db,
+            );
+        if needs_safe_anchor
+            && let Some(excluded_cluster) = graph.parent(&non_cluster_child)
+            && let Some(safe_anchor) = flowchart_find_safe_anchor_node(
+                graph,
+                &id,
+                excluded_cluster,
+                &descendants,
+                &cluster_db,
+            )
+            && let Some(entry) = cluster_db.get_mut(&id)
+        {
+            entry.anchor_id = safe_anchor;
         }
     }
 
@@ -543,13 +794,25 @@ fn copy_cluster(
             if !edge_in_cluster(&ek, root_id, descendants) {
                 continue;
             }
-            if new_graph.has_edge(&ek.v, &ek.w, ek.name.as_deref()) {
-                continue;
-            }
             let Some(lbl) = graph.edge_by_key(&ek).cloned() else {
                 continue;
             };
-            new_graph.set_edge_named(ek.v, ek.w, ek.name, Some(lbl));
+            let root_descendants = descendants.get(root_id).map(Vec::as_slice).unwrap_or(&[]);
+            let v_in = ek.v == root_id || root_descendants.iter().any(|id| id == &ek.v);
+            let w_in = ek.w == root_id || root_descendants.iter().any(|id| id == &ek.w);
+
+            if v_in && w_in {
+                if !new_graph.has_edge(&ek.v, &ek.w, ek.name.as_deref()) {
+                    new_graph.set_edge_named(ek.v, ek.w, ek.name, Some(lbl));
+                }
+            } else {
+                // Mermaid 11.16 keeps cross-boundary edges in the outer graph and rebinds the
+                // endpoint inside the extracted graph to its cluster node. Copying the edge into
+                // the child graph would implicitly create an unsized external node.
+                let new_v = if v_in { root_id.to_string() } else { ek.v };
+                let new_w = if w_in { root_id.to_string() } else { ek.w };
+                graph.set_edge_named(new_v, new_w, ek.name, Some(lbl));
+            }
         }
 
         let _ = graph.remove_node(&node);
@@ -590,17 +853,20 @@ fn extract_clusters_recursively(
             .into_iter()
             .filter(|id| graph.has_node(id))
             .filter(|id| !graph.children(id).is_empty())
-            // Mermaid's extractor does not recompute external connections after
-            // `adjustClustersAndEdges` rewrites cluster endpoints to anchor children. It uses the
-            // global `clusterDb.externalConnections` flag computed before those rewrites, then
-            // recurses into extracted graphs with the same `clusterDb`.
+            // Mermaid 11.16 always extracts a cluster with an explicit `direction`, including
+            // clusters with external connections. Otherwise it retains the historical isolated-
+            // cluster rule based on the global `clusterDb.externalConnections` flag.
             //
             // Reference:
             // - `packages/mermaid/src/rendering-util/layout-algorithms/dagre/mermaid-graphlib.js`
             .filter(|id| {
-                external_connections_by_id
+                let has_explicit_dir = subgraphs_by_id
                     .get(id.as_str())
-                    .is_some_and(|external| !external)
+                    .is_some_and(|subgraph| subgraph.has_explicit_dir);
+                has_explicit_dir
+                    || external_connections_by_id
+                        .get(id.as_str())
+                        .is_some_and(|external| !external)
             })
             .collect();
 
@@ -776,19 +1042,19 @@ fn layout_flowchart_v2_with_model(
     let self_loop_count = model.edges.iter().filter(|e| e.from == e.to).count();
     let mut render_edges: Vec<std::borrow::Cow<'_, FlowEdge>> =
         Vec::with_capacity(model.edges.len() + self_loop_count * 3);
+    let mut render_edge_self_loop_meta: Vec<Option<FlowchartSelfLoopSegmentMeta>> =
+        Vec::with_capacity(model.edges.len() + self_loop_count * 3);
     let mut self_loop_label_node_ids: Vec<String> = Vec::new();
     let mut self_loop_label_node_id_set: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for e in &model.edges {
         if e.from != e.to {
             render_edges.push(std::borrow::Cow::Borrowed(e));
+            render_edge_self_loop_meta.push(None);
             continue;
         }
 
-        let helper_edges = super::flowchart_self_loop_helper_edges(
-            e,
-            super::FlowchartSelfLoopEdgeOptions::layout(),
-        );
+        let helper_edges = super::flowchart_self_loop_helper_edges(e);
         if self_loop_label_node_id_set.insert(helper_edges.special_id_1.clone()) {
             self_loop_label_node_ids.push(helper_edges.special_id_1.clone());
         }
@@ -799,8 +1065,23 @@ fn layout_flowchart_v2_with_model(
         // Mermaid clears the label text on the end segments, but keeps the label (if any) on the
         // mid edge (`edgeMid` is a structuredClone of the original edge without label changes).
         render_edges.push(std::borrow::Cow::Owned(helper_edges.edge1));
+        render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
+            logical_edge_id: e.id.clone(),
+            node_id: e.from.clone(),
+            order: 0,
+        }));
         render_edges.push(std::borrow::Cow::Owned(helper_edges.edge_mid));
+        render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
+            logical_edge_id: e.id.clone(),
+            node_id: e.from.clone(),
+            order: 1,
+        }));
         render_edges.push(std::borrow::Cow::Owned(helper_edges.edge2));
+        render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
+            logical_edge_id: e.id.clone(),
+            node_id: e.from.clone(),
+            order: 2,
+        }));
     }
     if let Some(s) = expand_self_loops_start {
         timings.expand_self_loops = s.elapsed();
@@ -1144,20 +1425,10 @@ fn layout_flowchart_v2_with_model(
     let mut edge_key_by_id: HashMap<String, String> = HashMap::new();
     let mut edge_id_by_key: HashMap<String, String> = HashMap::new();
 
-    for e in &render_edges {
-        // Mermaid uses distinct graphlib multigraph keys for self-loop helper edges.
-        // Reference: `packages/mermaid/src/rendering-util/layout-algorithms/dagre/index.js`
-        let edge_key = if let Some(prefix) = e.id.strip_suffix("-cyclic-special-1") {
-            format!("{prefix}-cyclic-special-0")
-        } else if let Some(prefix) = e.id.strip_suffix("-cyclic-special-mid") {
-            format!("{prefix}-cyclic-special-1")
-        } else if let Some(prefix) = e.id.strip_suffix("-cyclic-special-2") {
-            // Mermaid contains this typo in the edge key (note the `<`):
-            // `nodeId + '-cyc<lic-special-2'`
-            format!("{prefix}-cyc<lic-special-2")
-        } else {
-            e.id.clone()
-        };
+    for (e, self_loop_meta) in render_edges.iter().zip(&render_edge_self_loop_meta) {
+        // Mermaid 11.16 stores helper identity as edge metadata. The graph key is intentionally
+        // node-scoped, so a later parallel self-loop overwrites the earlier triple in Graphlib.
+        let edge_key = flowchart_layout_edge_key(e, self_loop_meta.as_ref());
         edge_key_by_id.insert(e.id.clone(), edge_key.clone());
         edge_id_by_key.insert(edge_key.clone(), e.id.clone());
 
@@ -1224,7 +1495,7 @@ fn layout_flowchart_v2_with_model(
             };
 
             let minlen = e.length.max(1);
-            let el = EdgeLabel {
+            let mut el = EdgeLabel {
                 width: label_width,
                 height: label_height,
                 labelpos: LabelPos::C,
@@ -1234,10 +1505,13 @@ fn layout_flowchart_v2_with_model(
                 weight: 1.0,
                 ..Default::default()
             };
+            if let Some(meta) = self_loop_meta {
+                annotate_flowchart_self_loop_segment(&mut el, meta);
+            }
 
             g.set_edge_named(from, to, Some(edge_key), Some(el));
         } else {
-            let el = EdgeLabel {
+            let mut el = EdgeLabel {
                 width: 0.0,
                 height: 0.0,
                 labelpos: LabelPos::C,
@@ -1247,6 +1521,9 @@ fn layout_flowchart_v2_with_model(
                 weight: 1.0,
                 ..Default::default()
             };
+            if let Some(meta) = self_loop_meta {
+                annotate_flowchart_self_loop_segment(&mut el, meta);
+            }
             g.set_edge_named(from, to, Some(edge_key), Some(el));
         }
     }
@@ -1288,6 +1565,19 @@ fn layout_flowchart_v2_with_model(
         );
         if let Some(s) = extract_start {
             timings.extract_clusters = s.elapsed();
+        }
+
+        // Explicit-direction extraction can rebind a cross-boundary edge to the cluster node.
+        // Refresh root endpoints after extraction so output lookup uses the surviving nodes.
+        for ek in g.edge_keys() {
+            let Some(edge_key) = ek.name.as_deref() else {
+                continue;
+            };
+            let edge_id = edge_id_by_key
+                .get(edge_key)
+                .cloned()
+                .unwrap_or_else(|| edge_key.to_string());
+            edge_endpoints_by_id.insert(edge_id, (ek.v, ek.w));
         }
     }
 
@@ -1700,6 +1990,12 @@ fn layout_flowchart_v2_with_model(
         std::collections::HashMap::new();
     let mut edge_override_to_cluster: std::collections::HashMap<String, Option<String>> =
         std::collections::HashMap::new();
+    let mut edge_override_endpoints: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+    let mut edge_override_self_loop_meta: std::collections::HashMap<
+        String,
+        FlowchartSelfLoopSegmentMeta,
+    > = std::collections::HashMap::new();
     let mut leaf_node_ids: std::collections::HashSet<String> = model
         .nodes
         .iter()
@@ -1731,6 +2027,9 @@ fn layout_flowchart_v2_with_model(
         edge_override_label: &'a mut std::collections::HashMap<String, Option<LayoutLabel>>,
         edge_override_from_cluster: &'a mut std::collections::HashMap<String, Option<String>>,
         edge_override_to_cluster: &'a mut std::collections::HashMap<String, Option<String>>,
+        edge_override_endpoints: &'a mut std::collections::HashMap<String, (String, String)>,
+        edge_override_self_loop_meta:
+            &'a mut std::collections::HashMap<String, FlowchartSelfLoopSegmentMeta>,
     }
 
     fn place_graph(
@@ -1888,6 +2187,12 @@ fn layout_flowchart_v2_with_model(
                         .insert(edge_id.to_string(), from_cluster);
                     out.edge_override_to_cluster
                         .insert(edge_id.to_string(), to_cluster);
+                    out.edge_override_endpoints
+                        .insert(edge_id.to_string(), (ek.v.clone(), ek.w.clone()));
+                    if let Some(meta) = flowchart_self_loop_segment_meta(lbl) {
+                        out.edge_override_self_loop_meta
+                            .insert(edge_id.to_string(), meta);
+                    }
                 }
             }
 
@@ -1961,6 +2266,8 @@ fn layout_flowchart_v2_with_model(
             edge_override_label: &mut edge_override_label,
             edge_override_from_cluster: &mut edge_override_from_cluster,
             edge_override_to_cluster: &mut edge_override_to_cluster,
+            edge_override_endpoints: &mut edge_override_endpoints,
+            edge_override_self_loop_meta: &mut edge_override_self_loop_meta,
         };
         place_graph(
             &g,
@@ -2581,89 +2888,141 @@ fn layout_flowchart_v2_with_model(
     }
     clusters.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let mut out_edges: Vec<LayoutEdge> = Vec::new();
-    for e in &render_edges {
-        let (points, label_pos, mut from_cluster, mut to_cluster) =
-            if let Some(points) = edge_override_points.get(&e.id) {
-                let from_cluster = edge_override_from_cluster
+    let mut out_edge_candidates: Vec<FlowchartLayoutEdgeCandidate> = Vec::new();
+    for (e, expected_self_loop_meta) in render_edges.iter().zip(&render_edge_self_loop_meta) {
+        let (
+            points,
+            label_pos,
+            mut from_cluster,
+            mut to_cluster,
+            layout_from,
+            layout_to,
+            actual_self_loop_meta,
+        ) = if let Some(points) = edge_override_points.get(&e.id) {
+            let from_cluster = edge_override_from_cluster
+                .get(&e.id)
+                .cloned()
+                .unwrap_or(None);
+            let to_cluster = edge_override_to_cluster.get(&e.id).cloned().unwrap_or(None);
+            (
+                points.clone(),
+                edge_override_label.get(&e.id).cloned().unwrap_or(None),
+                from_cluster,
+                to_cluster,
+                edge_override_endpoints
                     .get(&e.id)
-                    .cloned()
-                    .unwrap_or(None);
-                let to_cluster = edge_override_to_cluster.get(&e.id).cloned().unwrap_or(None);
-                (
-                    points.clone(),
-                    edge_override_label.get(&e.id).cloned().unwrap_or(None),
-                    from_cluster,
-                    to_cluster,
-                )
-            } else {
-                let (v, w) = edge_endpoints_by_id
+                    .map(|(from, _)| from.clone())
+                    .unwrap_or_else(|| e.from.clone()),
+                edge_override_endpoints
                     .get(&e.id)
-                    .cloned()
-                    .unwrap_or_else(|| (e.from.clone(), e.to.clone()));
-                let edge_key = edge_key_by_id
-                    .get(&e.id)
-                    .map(String::as_str)
-                    .unwrap_or(e.id.as_str());
-                let Some(label) = g.edge(&v, &w, Some(edge_key)) else {
-                    return Err(Error::InvalidModel {
-                        message: format!("missing layout edge {}", e.id),
-                    });
-                };
-                let from_cluster = label
-                    .extras
-                    .get("fromCluster")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()));
-                let to_cluster = label
-                    .extras
-                    .get("toCluster")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()));
-                let points = label
-                    .points
-                    .iter()
-                    .map(|p| LayoutPoint { x: p.x, y: p.y })
-                    .collect::<Vec<_>>();
-                let label_pos = match (label.x, label.y) {
-                    (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => {
-                        Some(LayoutLabel {
-                            x,
-                            y,
-                            width: label.width,
-                            height: label.height,
-                        })
-                    }
-                    _ => None,
-                };
-                (points, label_pos, from_cluster, to_cluster)
+                    .map(|(_, to)| to.clone())
+                    .unwrap_or_else(|| e.to.clone()),
+                edge_override_self_loop_meta.get(&e.id).cloned(),
+            )
+        } else {
+            let (v, w) = edge_endpoints_by_id
+                .get(&e.id)
+                .cloned()
+                .unwrap_or_else(|| (e.from.clone(), e.to.clone()));
+            let edge_key = edge_key_by_id
+                .get(&e.id)
+                .map(String::as_str)
+                .unwrap_or(e.id.as_str());
+            let Some(label) = g.edge(&v, &w, Some(edge_key)) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing layout edge {}", e.id),
+                });
             };
+            let from_cluster = label
+                .extras
+                .get("fromCluster")
+                .and_then(|v| v.as_str().map(|s| s.to_string()));
+            let to_cluster = label
+                .extras
+                .get("toCluster")
+                .and_then(|v| v.as_str().map(|s| s.to_string()));
+            let points = label
+                .points
+                .iter()
+                .map(|p| LayoutPoint { x: p.x, y: p.y })
+                .collect::<Vec<_>>();
+            let label_pos = match (label.x, label.y) {
+                (Some(x), Some(y)) if label.width > 0.0 || label.height > 0.0 => {
+                    Some(LayoutLabel {
+                        x,
+                        y,
+                        width: label.width,
+                        height: label.height,
+                    })
+                }
+                _ => None,
+            };
+            let self_loop_meta = flowchart_self_loop_segment_meta(label);
+            (
+                points,
+                label_pos,
+                from_cluster,
+                to_cluster,
+                v,
+                w,
+                self_loop_meta,
+            )
+        };
+
+        // Graphlib identifies a multiedge by (v, w, name). Parallel self-loops reuse all three
+        // helper keys, so the later logical edge overwrites the earlier triple. Only materialize
+        // the helper segments whose metadata survived that overwrite.
+        if expected_self_loop_meta.is_some()
+            && actual_self_loop_meta.as_ref() != expected_self_loop_meta.as_ref()
+        {
+            continue;
+        }
 
         // Match Mermaid's dagre adapter: self-loop special edges on group nodes are annotated with
         // `fromCluster` / `toCluster` so downstream renderers can clip routes to the cluster
         // boundary.
-        if subgraph_ids.contains(e.from.as_str()) && e.id.ends_with("-cyclic-special-1") {
+        if subgraph_ids.contains(e.from.as_str())
+            && actual_self_loop_meta
+                .as_ref()
+                .is_some_and(|meta| meta.order == 0)
+        {
             from_cluster = Some(e.from.clone());
         }
-        if subgraph_ids.contains(e.to.as_str()) && e.id.ends_with("-cyclic-special-2") {
+        if subgraph_ids.contains(e.to.as_str())
+            && actual_self_loop_meta
+                .as_ref()
+                .is_some_and(|meta| meta.order == 2)
+        {
             to_cluster = Some(e.to.clone());
         }
 
-        out_edges.push(LayoutEdge {
-            id: e.id.clone(),
-            from: e.from.clone(),
-            to: e.to.clone(),
-            from_cluster,
-            to_cluster,
-            points,
-            label: label_pos,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
+        out_edge_candidates.push(FlowchartLayoutEdgeCandidate {
+            edge: LayoutEdge {
+                id: e.id.clone(),
+                from: layout_from,
+                to: layout_to,
+                from_cluster,
+                to_cluster,
+                points,
+                label: label_pos,
+                start_label_left: None,
+                start_label_right: None,
+                end_label_left: None,
+                end_label_right: None,
+                start_marker: None,
+                end_marker: None,
+                stroke_dasharray: None,
+            },
+            self_loop: actual_self_loop_meta,
         });
     }
+
+    let mut out_edges = merge_flowchart_self_loop_segments(
+        &model.edges,
+        &out_nodes,
+        &diagram_direction,
+        out_edge_candidates,
+    );
 
     // Mermaid's flowchart renderer uses shape-specific intersection functions for edge endpoints
     // (e.g. diamond nodes). Our Dagre-ish layout currently treats all nodes as rectangles, so the
@@ -2802,6 +3161,35 @@ mod tests {
         })
     }
 
+    #[test]
+    fn flowchart_third_self_loop_segment_uses_mermaid_11_16_graph_key() {
+        let edge = FlowEdge {
+            id: "A-cyclic-special-2".to_string(),
+            from: "A---A---2".to_string(),
+            to: "A".to_string(),
+            label: Some(String::new()),
+            label_type: None,
+            edge_type: None,
+            stroke: None,
+            interpolate: None,
+            classes: Vec::new(),
+            style: Vec::new(),
+            animate: None,
+            animation: None,
+            length: 1,
+        };
+        let meta = FlowchartSelfLoopSegmentMeta {
+            logical_edge_id: "L_A_A_0".to_string(),
+            node_id: "A".to_string(),
+            order: 2,
+        };
+
+        assert_eq!(
+            flowchart_layout_edge_key(&edge, Some(&meta)),
+            "A-cyclic-special-2"
+        );
+    }
+
     fn deep_compound_graph(depth: usize) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
         let mut graph = compound_graph();
         for i in (0..depth).rev() {
@@ -2819,6 +3207,7 @@ mod tests {
                     id: format!("n{i}"),
                     title: format!("n{i}"),
                     dir: None,
+                    has_explicit_dir: false,
                     label_type: None,
                     classes: Vec::new(),
                     styles: Vec::new(),

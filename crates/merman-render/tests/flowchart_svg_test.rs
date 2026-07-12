@@ -64,6 +64,170 @@ fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> Str
     .expect("render svg")
 }
 
+#[test]
+fn flowchart_svg_renders_one_logical_self_loop_edge() {
+    let svg = render_flowchart_svg_from_text("flowchart TB\nA -->|again| A\n");
+
+    assert_eq!(svg.matches(r#"id="merman-L_A_A_0""#).count(), 1, "{svg}");
+    assert!(svg.contains(r#"data-id="L_A_A_0""#), "{svg}");
+    assert!(
+        !svg.contains("cyclic-special"),
+        "Dagre self-loop segments must not leak into the rendered SVG: {svg}"
+    );
+}
+
+fn flowchart_svg_edge_data_points(
+    svg: &str,
+    edge_id: &str,
+) -> Vec<merman_render::model::LayoutPoint> {
+    use base64::Engine as _;
+
+    let marker = format!(r#"data-id="{edge_id}""#);
+    let marker_pos = svg
+        .find(&marker)
+        .unwrap_or_else(|| panic!("edge {edge_id}: {svg}"));
+    let tag_start = svg[..marker_pos].rfind("<path").expect("edge path start");
+    let tag_end = svg[marker_pos..]
+        .find('>')
+        .map(|offset| marker_pos + offset)
+        .expect("edge path end");
+    let tag = &svg[tag_start..=tag_end];
+    let attr = r#"data-points=""#;
+    let value_start = tag.find(attr).expect("data-points") + attr.len();
+    let value_end = tag[value_start..]
+        .find('"')
+        .map(|offset| value_start + offset)
+        .expect("data-points end");
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&tag[value_start..value_end])
+        .expect("data-points base64");
+    serde_json::from_slice(&bytes).expect("data-points JSON")
+}
+
+#[test]
+fn flowchart_svg_intersects_compact_self_loop_with_rendered_shape() {
+    let text = "flowchart TD\nA[box] --> A\n";
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+    let node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "A")
+        .expect("node A");
+    let edge = layout.edges.first().expect("self-loop edge");
+    assert_eq!(edge.points.len(), 4);
+
+    let outer = &edge.points[1];
+    let dx = outer.x - node.x;
+    let dy = outer.y - node.y;
+    let scale = (node.width / 2.0 / dx.abs()).min(node.height / 2.0 / dy.abs());
+    let expected_x = node.x + dx * scale;
+    let expected_y = node.y + dy * scale;
+    assert!(
+        (edge.points[0].x - expected_x).abs() > 1e-3
+            || (edge.points[0].y - expected_y).abs() > 1e-3,
+        "the compact layout point should still be the provisional bbox endpoint"
+    );
+
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+    let points = flowchart_svg_edge_data_points(&svg, &edge.id);
+    assert_eq!(points.len(), 4);
+    assert!((points[0].x - expected_x).abs() <= 1e-3, "{points:?}");
+    assert!((points[0].y - expected_y).abs() <= 1e-3, "{points:?}");
+}
+
+#[test]
+fn flowchart_svg_renders_regular_edges_before_compact_self_loops() {
+    let svg =
+        render_flowchart_svg_from_text("flowchart TD\nA loop-edge@--> A\nA normal-edge@--> B\n");
+
+    let normal = svg.find(r#"data-id="normal-edge""#).expect("normal edge");
+    let self_loop = svg.find(r#"data-id="loop-edge""#).expect("self-loop edge");
+    assert!(
+        normal < self_loop,
+        "regular edges must render before compact self-loops"
+    );
+}
+
+#[test]
+fn flowchart_svg_renders_explicit_direction_cluster_as_recursive_root() {
+    let svg = render_flowchart_svg_from_text(
+        "flowchart TB\nsubgraph A\n  direction LR\n  a --> b\nend\na --> c\n",
+    );
+
+    assert_eq!(
+        svg.matches(r#"<g class="root""#).count(),
+        2,
+        "the extracted cluster should render as one nested root: {svg}"
+    );
+    assert_eq!(
+        svg.matches(r#"id="merman-A""#).count(),
+        1,
+        "the cluster should render exactly once inside its recursive root: {svg}"
+    );
+    assert_eq!(
+        svg.matches(r#"id="merman-flowchart-a-"#).count(),
+        1,
+        "the extracted cluster's internal node should remain in the SVG DOM: {svg}"
+    );
+    assert_eq!(
+        svg.matches(r#"id="merman-flowchart-b-"#).count(),
+        1,
+        "the extracted cluster's internal node should remain in the SVG DOM: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_renders_edge_to_ancestor_cluster_inside_that_root() {
+    let svg = render_flowchart_svg_from_text(
+        "flowchart LR\nsubgraph Outer\n  direction TB\n  subgraph Inner\n    direction LR\n    a --> b\n  end\n  b --> c\nend\nc --> Outer\n",
+    );
+
+    assert!(
+        svg.contains(
+            r#"<g class="root"><g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/><g class="nodes"><g class="root""#
+        ),
+        "the edge to an ancestor cluster must not be promoted into the top-level root: {svg}"
+    );
+    assert_eq!(
+        svg.matches(r#"data-id="L_c_Outer_0""#).count(),
+        2,
+        "the ancestor edge should have one path and one label entry inside Outer: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_renders_recursive_cluster_self_loop_in_parent_root() {
+    let svg = render_flowchart_svg_from_text(
+        "flowchart TB\nsubgraph Outer\n  subgraph Inner\n    x\n  end\n  Inner --> Inner\nend\n",
+    );
+
+    let outer_cluster = svg.find(r#"id="merman-Outer""#).expect("Outer cluster");
+    let self_loop = svg
+        .find(r#"data-id="L_Inner_Inner_0""#)
+        .expect("Inner self-loop");
+    let inner_cluster = svg.find(r#"id="merman-Inner""#).expect("Inner cluster");
+    assert!(
+        outer_cluster < self_loop && self_loop < inner_cluster,
+        "a recursive cluster self-loop should render in its parent root: {svg}"
+    );
+}
+
 fn deep_flowchart_subgraph_chain(depth: usize) -> String {
     let mut input = String::from("flowchart TB\n");
     for level in 0..depth {
@@ -423,7 +587,7 @@ fn flowchart_html_node_labels_wrap_at_mermaid_default_width() {
 
     assert!(
         svg.contains(
-            r#"foreignObject width="200" height="48" overflow="visible" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;""#
+            r#"foreignObject width="200" height="48" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table; white-space: break-spaces; line-height: 1.5; max-width: 200px; text-align: center; width: 200px;""#
         ),
         "expected long flowchart HTML node label to wrap at Mermaid's default 200px width: {svg}"
     );
@@ -460,15 +624,15 @@ fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
     .expect("render svg");
 
     assert!(
-        svg.contains(r#"<foreignObject width="35.015625" height="24" overflow="visible" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Start</p></span>"#),
+        svg.contains(r#"<foreignObject width="35.015625" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Start</p></span>"#),
         "expected Start label foreignObject to remain non-clipping for browser font fallback: {svg}"
     );
     assert!(
-        svg.contains(r#"<foreignObject width="74.484375" height="24" overflow="visible" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Condition?</p></span>"#),
+        svg.contains(r#"<foreignObject width="74.484375" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Condition?</p></span>"#),
         "expected Condition? label foreignObject to remain non-clipping for browser font fallback: {svg}"
     );
     assert!(
-        svg.contains(r#"<foreignObject width="26.65625" height="24" overflow="visible" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Yes</p></span>"#),
+        svg.contains(r#"<foreignObject width="26.65625" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Yes</p></span>"#),
         "expected edge labels to use the same non-clipping foreignObject contract: {svg}"
     );
 }
@@ -1029,7 +1193,7 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
 
     assert!(
         svg.contains(
-            r#"<foreignObject width="176.984375" height="28" overflow="visible" style="overflow: visible;">"#
+            r#"<foreignObject width="176.984375" height="28" style="overflow: visible;">"#
         ),
         "expected image-shape label bbox to include Mermaid 11.15 paragraph padding: {svg}"
     );

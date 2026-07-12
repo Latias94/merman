@@ -65,6 +65,7 @@
       }
     ],
     "junctions": [],
-    "edges": []
+    "edges": [],
+    "layoutHints": []
   }
 }

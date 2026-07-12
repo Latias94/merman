@@ -108,6 +108,36 @@ fn render_sequence_svg_from_fixture_with_options(
     .expect("render svg")
 }
 
+fn render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture: &str) -> String {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("sequence")
+        .join(fixture);
+    let text = std::fs::read_to_string(&path).expect("fixture");
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    let layout_options = LayoutOptions::headless_svg_defaults();
+    let layouted = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let encoded = serde_json::to_vec(&layouted).expect("serialize layouted diagram");
+    let roundtripped: merman_render::model::LayoutedDiagram =
+        serde_json::from_slice(&encoded).expect("deserialize layouted diagram");
+    let LayoutDiagram::SequenceDiagram(layout) = &roundtripped.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+
+    render_sequence_diagram_svg(
+        layout,
+        &roundtripped.semantic,
+        &roundtripped.meta.effective_config,
+        roundtripped.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render roundtripped svg")
+}
+
 fn render_sequence_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
     render_sequence_svg_from_text_with_engine(engine, text)
@@ -128,6 +158,37 @@ fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> Stri
         layout,
         &out.semantic,
         &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg")
+}
+
+fn render_sequence_svg_with_theme_variables(
+    text: &str,
+    theme_variables: serde_json::Value,
+) -> String {
+    let engine = Engine::new();
+    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
+        panic!("expected SequenceDiagram layout");
+    };
+    let mut effective_config = out.meta.effective_config.clone();
+    effective_config
+        .as_object_mut()
+        .expect("effective config object")
+        .insert("themeVariables".to_string(), theme_variables);
+
+    render_sequence_diagram_svg(
+        layout,
+        &out.semantic,
+        &effective_config,
         out.meta.title.as_deref(),
         layout_options.text_measurer.as_ref(),
         &SvgRenderOptions::default(),
@@ -239,7 +300,7 @@ fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_1
 }
 
 #[test]
-fn sequence_root_overrides_can_be_disabled_per_render_options() {
+fn sequence_no_longer_depends_on_historical_root_overrides() {
     let stem = "stress_wrap_directive_and_prefixes_028";
     let fixture = format!("{stem}.mmd");
     let enabled = render_sequence_svg_from_fixture_with_options(
@@ -258,13 +319,84 @@ fn sequence_root_overrides_can_be_disabled_per_render_options() {
         },
     );
 
+    let enabled_root = enabled.split_once('>').expect("enabled SVG root").0;
+    let disabled_root = disabled.split_once('>').expect("disabled SVG root").0;
+    assert_eq!(
+        enabled_root, disabled_root,
+        "Sequence roots should be computed from layout bounds regardless of the legacy override flag"
+    );
+}
+
+#[test]
+fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
+    let fixture = "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd";
+    let svg = render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture);
+    let group_start = svg
+        .find(r#"<g data-et="control-structure" data-id="i17">"#)
+        .unwrap_or_else(|| panic!("missing nested opt control group: {svg}"));
+    let group_tail = &svg[group_start..];
+    let group_end = group_tail
+        .find("</g>")
+        .unwrap_or_else(|| panic!("unterminated nested opt control group: {group_tail}"));
+    let loop_lines: Vec<&str> = extract_paired_tags(&group_tail[..group_end], "text")
+        .into_iter()
+        .filter(|tag| tag.contains(r#"class="loopText""#))
+        .collect();
+
+    assert_eq!(
+        loop_lines.len(),
+        4,
+        "nested opt title should use four lines"
+    );
+    for (line, expected) in loop_lines.iter().zip([
+        "[this is a nested",
+        "opt with a long",
+        "title that will",
+        "overflow]",
+    ]) {
+        assert!(
+            line.contains(&format!(">{expected}</tspan>")),
+            "unexpected nested opt title line: {line}"
+        );
+    }
+}
+
+#[test]
+fn sequence_block_wraps_survive_layout_json_roundtrip() {
+    for fixture in [
+        "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd",
+        "upstream_alt_multiple_elses_spec.mmd",
+        "upstream_par_multiple_ands_spec.mmd",
+        "upstream_critical_with_options_spec.mmd",
+    ] {
+        let direct =
+            render_sequence_svg_from_fixture_with_options(fixture, &SvgRenderOptions::default());
+        let roundtripped = render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture);
+        assert_eq!(
+            roundtripped, direct,
+            "layout JSON roundtrip changed Sequence SVG for {fixture}"
+        );
+    }
+}
+
+#[test]
+fn sequence_bracketed_block_titles_receive_the_renderer_bracket_pair() {
+    let svg = render_sequence_svg_from_text(
+        r#"sequenceDiagram
+    par [Action 1]
+        Alice->>Bob: First
+    and [Action 2]
+        Bob-->>Alice: Second
+    end"#,
+    );
+
     assert!(
-        enabled.contains("max-width: 1022px;"),
-        "expected retained root override to pin the Sequence root width"
+        svg.contains(">[[Action 1]]</tspan>"),
+        "expected the par title to retain its source brackets and receive renderer brackets: {svg}"
     );
     assert!(
-        !disabled.contains("max-width: 1022px;"),
-        "expected disabled root overrides to emit computed Sequence root width"
+        svg.contains(">[[Action 2]]</text>"),
+        "expected the and title to retain its source brackets and receive renderer brackets: {svg}"
     );
 }
 
@@ -582,6 +714,61 @@ fn sequence_rect_block_is_root_level_before_actors() {
 }
 
 #[test]
+fn sequence_bare_rect_uses_mermaid_11_16_theme_fill_fallbacks() {
+    let bare_rect = r#"sequenceDiagram
+participant A
+participant B
+rect
+A->>B: Hello
+end"#;
+
+    let rect_fill = render_sequence_svg_with_theme_variables(
+        bare_rect,
+        serde_json::json!({
+            "rectBkgColor": "#112233",
+            "actorBkg": "#445566"
+        }),
+    );
+    assert!(
+        extract_self_closing_tags(&rect_fill, "rect")
+            .into_iter()
+            .any(|tag| tag.contains(r#"class="rect""#) && tag.contains(r##"fill="#112233""##)),
+        "rectBkgColor should be the first bare rect fallback: {rect_fill}"
+    );
+
+    let actor_fill = render_sequence_svg_with_theme_variables(
+        bare_rect,
+        serde_json::json!({ "actorBkg": "#445566" }),
+    );
+    assert!(
+        extract_self_closing_tags(&actor_fill, "rect")
+            .into_iter()
+            .any(|tag| tag.contains(r#"class="rect""#) && tag.contains(r##"fill="#445566""##)),
+        "actorBkg should be used when rectBkgColor is absent: {actor_fill}"
+    );
+
+    let neutral_fill = render_sequence_svg_with_theme_variables(bare_rect, serde_json::json!({}));
+    assert!(
+        extract_self_closing_tags(&neutral_fill, "rect")
+            .into_iter()
+            .any(|tag| tag.contains(r#"class="rect""#)
+                && tag.contains(r#"fill="rgba(128, 128, 128, 0.5)""#)),
+        "bare rect should use the neutral fallback without theme colors: {neutral_fill}"
+    );
+
+    let explicit_fill = render_sequence_svg_with_theme_variables(
+        &bare_rect.replacen("rect\n", "rect rgb(1, 2, 3)\n", 1),
+        serde_json::json!({ "rectBkgColor": "#112233" }),
+    );
+    assert!(
+        extract_self_closing_tags(&explicit_fill, "rect")
+            .into_iter()
+            .any(|tag| tag.contains(r#"class="rect""#) && tag.contains(r#"fill="rgb(1, 2, 3)""#)),
+        "an explicit rect color should override theme fallbacks: {explicit_fill}"
+    );
+}
+
+#[test]
 fn sequence_nested_rect_blocks_render_in_start_order() {
     let svg = render_sequence_svg_from_fixture("upstream_nested_rect_blocks_spec.mmd");
 
@@ -633,22 +820,22 @@ fn sequence_notes_expand_viewbox_left_for_leftof_notes() {
 }
 
 #[test]
-#[ignore = "documented Sequence root-width residual: deterministic local 570px vs Mermaid 11.15 upstream 566px"]
-fn sequence_long_leftof_notes_keep_mermaid_11_15_root_width() {
+#[ignore = "documented Sequence root-width residual: deterministic local 570px vs Mermaid 11.16 upstream 567px"]
+fn sequence_long_leftof_notes_keep_mermaid_11_16_root_width() {
     for fixture in [
         "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
         "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019.mmd",
     ] {
         let svg = render_sequence_svg_from_fixture(fixture);
         assert!(
-            svg.contains(r#"max-width: 566px"#),
-            "expected long left-of note fixture {fixture} to keep Mermaid 11.15 root width"
+            svg.contains(r#"max-width: 567px"#),
+            "expected long left-of note fixture {fixture} to keep Mermaid 11.16 root width"
         );
     }
 }
 
 #[test]
-fn sequence_long_leftof_notes_keep_mermaid_11_15_note_width() {
+fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
     let engine = Engine::new();
     for fixture in [
         "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
@@ -673,8 +860,8 @@ fn sequence_long_leftof_notes_keep_mermaid_11_15_note_width() {
             .find(|n| n.id == "note-1")
             .expect("expected note-1 layout node");
         assert_eq!(
-            note.width, 170.0,
-            "expected long left-of note fixture {fixture} to keep Mermaid 11.15 note width"
+            note.width, 155.0,
+            "expected long left-of note fixture {fixture} to use the source-backed wrapped width"
         );
     }
 }
@@ -783,7 +970,13 @@ fn sequence_central_connection_rtl_svg_uses_layout_actor_centers() {
         "expected Charlie top actor center from layout to be preserved in SVG: {svg}"
     );
     assert!(
-        svg.contains(r#"<line x1="442" y1="109" x2="83" y2="109""#),
+        extract_self_closing_tags(&svg, "line")
+            .into_iter()
+            .any(|tag| {
+                tag.contains(r#"x1="442""#)
+                    && tag.contains(r#"x2="83""#)
+                    && tag.contains(r#"class="messageLine"#)
+            }),
         "expected first message x positions to stay near layout/golden spacing: {svg}"
     );
 }

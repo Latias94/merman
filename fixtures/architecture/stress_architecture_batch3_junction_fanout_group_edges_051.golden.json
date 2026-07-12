@@ -421,6 +421,7 @@
         "rhsGroup": true,
         "title": "ingress"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

@@ -4,9 +4,9 @@
     "GitGraphDiagram": {
       "bounds": {
         "min_x": -91.719,
-        "min_y": -18.0,
+        "min_y": -20.0,
         "max_x": 358.0,
-        "max_y": 18.0
+        "max_y": 16.0
       },
       "direction": "LR",
       "rotate_commit_label": true,
@@ -38,7 +38,7 @@
           "pos": 0.0,
           "pos_with_offset": 10.0,
           "x": 10.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Normal",
@@ -57,7 +57,7 @@
           "pos": 50.0,
           "pos_with_offset": 60.0,
           "x": 60.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "2-<dynamic>",
@@ -74,7 +74,7 @@
           "pos": 100.0,
           "pos_with_offset": 110.0,
           "x": 110.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Reverse",
@@ -93,7 +93,7 @@
           "pos": 150.0,
           "pos_with_offset": 160.0,
           "x": 160.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "4-<dynamic>",
@@ -110,7 +110,7 @@
           "pos": 200.0,
           "pos_with_offset": 210.0,
           "x": 210.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "Highlight",
@@ -129,7 +129,7 @@
           "pos": 250.0,
           "pos_with_offset": 260.0,
           "x": 260.0,
-          "y": 0.0
+          "y": -2.0
         },
         {
           "id": "6-<dynamic>",
@@ -146,7 +146,7 @@
           "pos": 300.0,
           "pos_with_offset": 310.0,
           "x": 310.0,
-          "y": 0.0
+          "y": -2.0
         }
       ],
       "arrows": [
@@ -154,37 +154,37 @@
           "from": "0-<dynamic>",
           "to": "Normal",
           "class_index": 0.0,
-          "d": "M 10 0 L 60 0"
+          "d": "M 10 -2 L 60 -2"
         },
         {
           "from": "Normal",
           "to": "2-<dynamic>",
           "class_index": 0.0,
-          "d": "M 60 0 L 110 0"
+          "d": "M 60 -2 L 110 -2"
         },
         {
           "from": "2-<dynamic>",
           "to": "Reverse",
           "class_index": 0.0,
-          "d": "M 110 0 L 160 0"
+          "d": "M 110 -2 L 160 -2"
         },
         {
           "from": "Reverse",
           "to": "4-<dynamic>",
           "class_index": 0.0,
-          "d": "M 160 0 L 210 0"
+          "d": "M 160 -2 L 210 -2"
         },
         {
           "from": "4-<dynamic>",
           "to": "Highlight",
           "class_index": 0.0,
-          "d": "M 210 0 L 260 0"
+          "d": "M 210 -2 L 260 -2"
         },
         {
           "from": "Highlight",
           "to": "6-<dynamic>",
           "class_index": 0.0,
-          "d": "M 260 0 L 310 0"
+          "d": "M 260 -2 L 310 -2"
         }
       ]
     }

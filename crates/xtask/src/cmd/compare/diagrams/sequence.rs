@@ -9,10 +9,9 @@ use crate::cmd::compare::{
 use crate::svgdom;
 use std::fmt::Write as _;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 fn sequence_fixture_is_skipped_for_svg_compare(stem: &str) -> bool {
-    // Mermaid 11.15 rejects `(end)` as a participant id. Keep the fixture for local parser
+    // Pinned Mermaid 11.16 rejects `(end)` as a participant id. Keep the fixture for local parser
     // coverage, but exclude its stale pre-11.15 SVG from upstream DOM compare gates.
     stem == "stress_end_keyword_016"
 }
@@ -73,16 +72,9 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
     let parse_opts = merman::ParseOptions {
         suppress_errors: true,
     };
-    let sequence_math_renderer: Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> = {
-        let node_cwd = crate::cmd::mermaid_cli_root();
-        if node_cwd.join("package.json").is_file() && node_cwd.join("node_modules").is_dir() {
-            Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
-                node_cwd,
-            )))
-        } else {
-            None
-        }
-    };
+    let tools_root = crate::cmd::mermaid_cli_root();
+    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
+    let sequence_math_renderer = toolchain_read_guard.node_katex_math_renderer();
     let layout_opts = merman_render::LayoutOptions {
         math_renderer: sequence_math_renderer.clone(),
         ..merman_render::LayoutOptions::headless_svg_defaults()
@@ -104,24 +96,19 @@ pub(crate) fn compare_sequence_svgs(args: Vec<String>) -> Result<(), XtaskError>
         |_, report, _paths, options| {
             let _ = writeln!(
                 report,
-                "# Sequence SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sequence/*.svg` (pinned Mermaid baseline)\n- Local: `render_sequence_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n",
+                "# Sequence SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/sequence/*.svg` (pinned Mermaid baseline)\n- Local: `render_sequence_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n- Math renderer: `{}`\n- Root overrides: `none`\n",
                 options.dom_mode,
                 options.dom_decimals,
                 if sequence_math_renderer.is_some() {
                     "node-katex"
                 } else {
                     "none"
-                },
-                if apply_root_overrides {
-                    "enabled"
-                } else {
-                    "disabled"
                 }
             );
         },
         |_, stem, _| {
             sequence_fixture_is_skipped_for_svg_compare(stem)
-                .then_some("upstream Mermaid 11.15 cannot regenerate this SVG baseline".to_string())
+                .then_some("pinned Mermaid 11.16 cannot regenerate this SVG baseline".to_string())
         },
         |state, input| {
             let skip_dom_compare_for_math =

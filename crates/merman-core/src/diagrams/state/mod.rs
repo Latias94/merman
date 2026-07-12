@@ -67,11 +67,28 @@ pub(crate) enum Tok {
 #[error("{message}")]
 pub(crate) struct LexError {
     pub message: String,
+    pub span: Option<crate::SourceSpan>,
+}
+
+impl LexError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            span: None,
+        }
+    }
+
+    fn with_span(message: impl Into<String>, span: crate::SourceSpan) -> Self {
+        Self {
+            message: message.into(),
+            span: Some(span),
+        }
+    }
 }
 
 impl crate::error::ParseErrorSourceSpan for LexError {
     fn source_span(&self) -> Option<crate::SourceSpan> {
-        None
+        self.span
     }
 }
 
@@ -231,9 +248,9 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
         }
         if self.peek() != Some(b'"') {
-            return Some(Err(LexError {
-                message: "Unterminated string literal; missing '\"'".to_string(),
-            }));
+            return Some(Err(LexError::new(
+                "Unterminated string literal; missing '\"'",
+            )));
         }
         let body = self.input[body_start..self.pos].to_string();
         self.pos += 1;
@@ -314,9 +331,9 @@ impl<'input> Lexer<'input> {
             let body_start = self.pos;
             let tail = &self.input.as_bytes()[self.pos..];
             let Some(end_rel) = tail.iter().position(|&b| b == b'}') else {
-                return Some(Err(LexError {
-                    message: "Unterminated accDescr block; missing '}'".to_string(),
-                }));
+                return Some(Err(LexError::new(
+                    "Unterminated accDescr block; missing '}'",
+                )));
             };
             let body = self.input[body_start..body_start + end_rel].to_string();
             self.pos = body_start + end_rel + 1;
@@ -347,24 +364,18 @@ impl<'input> Lexer<'input> {
                 break;
             }
             if self.pos == width_start {
-                return Some(Err(LexError {
-                    message: "Expected a width number after 'scale'".to_string(),
-                }));
+                return Some(Err(LexError::new("Expected a width number after 'scale'")));
             }
             let width: usize = match self.input[width_start..self.pos].parse() {
                 Ok(v) => v,
                 Err(_) => {
-                    return Some(Err(LexError {
-                        message: "Invalid width number after 'scale'".to_string(),
-                    }));
+                    return Some(Err(LexError::new("Invalid width number after 'scale'")));
                 }
             };
 
             self.skip_ws();
             if !self.starts_with_word_ci("width") {
-                return Some(Err(LexError {
-                    message: "Expected 'width' after `scale <n>`".to_string(),
-                }));
+                return Some(Err(LexError::new("Expected 'width' after `scale <n>`")));
             }
             self.pos += "width".len();
             let _ = self.read_to_newline();
@@ -388,15 +399,13 @@ impl<'input> Lexer<'input> {
             // Floating note: note "text" as id
             if self.peek() == Some(b'"') {
                 let Some(Ok((_s, Tok::StringLit(text), _e))) = self.lex_string_lit() else {
-                    return Some(Err(LexError {
-                        message: "Unterminated note string; missing '\"'".to_string(),
-                    }));
+                    return Some(Err(LexError::new("Unterminated note string; missing '\"'")));
                 };
                 self.skip_ws();
                 if !self.starts_with_word_ci("as") {
-                    return Some(Err(LexError {
-                        message: "Expected 'as' in floating note statement".to_string(),
-                    }));
+                    return Some(Err(LexError::new(
+                        "Expected 'as' in floating note statement",
+                    )));
                 }
                 let as_start = self.pos;
                 self.pos += "as".len();
@@ -421,9 +430,9 @@ impl<'input> Lexer<'input> {
                 self.pos += "right of".len();
                 Tok::RightOf
             } else {
-                return Some(Err(LexError {
-                    message: "Expected 'left of' or 'right of' after 'note'".to_string(),
-                }));
+                return Some(Err(LexError::new(
+                    "Expected 'left of' or 'right of' after 'note'",
+                )));
             };
 
             self.skip_ws();
@@ -445,15 +454,15 @@ impl<'input> Lexer<'input> {
                 self.read_to_newline().trim().to_string()
             } else {
                 let Some(rest) = self.input.get(self.pos..) else {
-                    return Some(Err(LexError {
-                        message: "Internal lexer error: invalid UTF-8 boundary".to_string(),
-                    }));
+                    return Some(Err(LexError::new(
+                        "Internal lexer error: invalid UTF-8 boundary",
+                    )));
                 };
                 let rest_lower = rest.to_ascii_lowercase();
                 let Some(idx) = rest_lower.find("end note") else {
-                    return Some(Err(LexError {
-                        message: "Unterminated note block; missing 'end note'".to_string(),
-                    }));
+                    return Some(Err(LexError::new(
+                        "Unterminated note block; missing 'end note'",
+                    )));
                 };
                 let t = Self::normalize_note_block_text(&rest[..idx]);
                 self.pos += idx + "end note".len();
@@ -605,9 +614,9 @@ impl<'input> Lexer<'input> {
                 self.pos += 1;
             }
             if self.peek() != Some(b'"') {
-                return Some(Err(LexError {
-                    message: "Unterminated state description string; missing '\"'".to_string(),
-                }));
+                return Some(Err(LexError::new(
+                    "Unterminated state description string; missing '\"'",
+                )));
             }
             let body = self.input[body_start..self.pos].to_string();
             self.pos += 1;
@@ -622,9 +631,9 @@ impl<'input> Lexer<'input> {
 
         // Fork/join/choice markers are recognized using the rest of the line.
         let Some(rel) = self.input.get(self.pos..) else {
-            return Some(Err(LexError {
-                message: "Internal lexer error: invalid UTF-8 boundary".to_string(),
-            }));
+            return Some(Err(LexError::new(
+                "Internal lexer error: invalid UTF-8 boundary",
+            )));
         };
         let eol = rel.find('\n').unwrap_or(rel.len());
         let line = &rel[..eol];
@@ -657,9 +666,7 @@ impl<'input> Lexer<'input> {
 
         // Otherwise treat it as a composite state ID: read only the identifier token.
         let Some(id) = self.read_plain_id() else {
-            return Some(Err(LexError {
-                message: "Expected a state id".to_string(),
-            }));
+            return Some(Err(LexError::new("Expected a state id")));
         };
         self.pop_mode();
 
@@ -680,6 +687,28 @@ impl<'input> Lexer<'input> {
                 continue;
             }
             break;
+        }
+        let same_line_end = self.input[look..]
+            .find('\n')
+            .map(|rel| look + rel)
+            .unwrap_or(self.input.len());
+        let same_line_tail = &self.input[look..same_line_end];
+        let tail_leading = same_line_tail
+            .len()
+            .saturating_sub(same_line_tail.trim_start().len());
+        let same_line_value_start = look + tail_leading;
+        let same_line_value = &self.input[same_line_value_start..same_line_end];
+        if !same_line_value.starts_with('{')
+            && let Some(brace_rel) = same_line_value.find('{')
+        {
+            let bad_start = same_line_value_start;
+            let bad_end_untrimmed = same_line_value_start + brace_rel;
+            let bad = &self.input[bad_start..bad_end_untrimmed];
+            let bad_end = bad_start + bad.trim_end().len();
+            return Some(Err(LexError::with_span(
+                "State name must be a single word",
+                crate::SourceSpan::new(bad_start, bad_end.max(bad_start)),
+            )));
         }
         if self.input.as_bytes().get(look) == Some(&b'\n') {
             let mut scan = look;
@@ -887,8 +916,6 @@ impl Iterator for Lexer<'_> {
             .and_then(|s| s.chars().next())
             .unwrap_or('?');
         self.pos += bad.len_utf8().max(1);
-        Some(Err(LexError {
-            message: format!("Unexpected character '{bad}'"),
-        }))
+        Some(Err(LexError::new(format!("Unexpected character '{bad}'"))))
     }
 }

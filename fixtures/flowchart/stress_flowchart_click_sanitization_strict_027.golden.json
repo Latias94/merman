@@ -8,9 +8,9 @@
     "accDescr": "Ensures javascript/data links are sanitized in strict mode while http(s) links remain intact.",
     "classDefs": {},
     "tooltips": {
-      "tail": "data tooltip",
+      "safe": "safe tooltip",
       "bad": "bad tooltip",
-      "safe": "safe tooltip"
+      "tail": "data tooltip"
     },
     "edgeDefaults": {
       "style": [],

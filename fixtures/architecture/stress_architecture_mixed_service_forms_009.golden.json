@@ -388,6 +388,7 @@
         "rhsGroup": null,
         "title": "out"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

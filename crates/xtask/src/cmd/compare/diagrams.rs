@@ -37,7 +37,9 @@ pub(crate) use flowchart::{
 };
 pub(crate) use gantt::compare_gantt_svgs;
 pub(crate) use generic_stage_b::{
-    compare_eventmodeling_svgs, compare_ishikawa_svgs, compare_tree_view_svgs, compare_venn_svgs,
+    compare_cynefin_svgs, compare_eventmodeling_svgs, compare_ishikawa_svgs,
+    compare_railroad_abnf_svgs, compare_railroad_ebnf_svgs, compare_railroad_peg_svgs,
+    compare_railroad_svgs, compare_tree_view_svgs, compare_venn_svgs,
 };
 pub(crate) use gitgraph::compare_gitgraph_svgs;
 pub(crate) use info::compare_info_svgs;
@@ -173,6 +175,26 @@ const DIAGRAM_COMPARE_ADAPTERS: &[DiagramCompareAdapter] = &[
         diagram: "venn",
         run: compare_venn_svgs,
     },
+    DiagramCompareAdapter {
+        diagram: "cynefin",
+        run: compare_cynefin_svgs,
+    },
+    DiagramCompareAdapter {
+        diagram: "railroad",
+        run: compare_railroad_svgs,
+    },
+    DiagramCompareAdapter {
+        diagram: "railroadEbnf",
+        run: compare_railroad_ebnf_svgs,
+    },
+    DiagramCompareAdapter {
+        diagram: "railroadAbnf",
+        run: compare_railroad_abnf_svgs,
+    },
+    DiagramCompareAdapter {
+        diagram: "railroadPeg",
+        run: compare_railroad_peg_svgs,
+    },
 ];
 
 pub(crate) fn compare_diagram_svgs(diagram: &str, args: Vec<String>) -> Result<(), XtaskError> {
@@ -224,5 +246,21 @@ mod tests {
             crate::cmd::primary_svg_matrix_diagrams().any(|diagram| diagram == "venn"),
             "venn should be covered by compare-all after admission gates are green"
         );
+    }
+
+    #[test]
+    fn mermaid_11_16_new_family_adapters_are_available_for_admission() {
+        for diagram in [
+            "cynefin",
+            "railroad",
+            "railroadEbnf",
+            "railroadAbnf",
+            "railroadPeg",
+        ] {
+            assert!(
+                diagram_compare_adapter(diagram).is_some(),
+                "{diagram} should have a compare adapter before primary admission"
+            );
+        }
     }
 }

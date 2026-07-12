@@ -4956,7 +4956,7 @@ mod tests {
     fn render_path_probe_markdown_summarizes_facts_and_stages() {
         let probe_result = serde_json::json!({
             "versions": {
-                "mermaid": "11.15.0",
+                "mermaid": "11.16.0",
                 "cytoscapeFcose": "2.2.0"
             },
             "renderedFacts": {
@@ -5039,7 +5039,7 @@ mod tests {
         );
 
         assert!(md.contains("# Architecture Render-Path Probe"));
-        assert!(md.contains("| `mermaid` | `11.15.0` |"));
+        assert!(md.contains("| `mermaid` | `11.16.0` |"));
         assert!(md.contains("| viewBox | `0 0 100 50` | `0 0 99 50` | `different` |"));
         assert!(md.contains("| max-width | `100.000000` | `99.000000` | `+1.000` |"));
         assert!(md.contains("| `left` | `x=1.000000 y=2.000000 w=30.000000 h=40.000000` | `x=1.000000 y=3.000000 w=29.000000 h=40.000000` | `+0.000` | `-1.000` | `+1.000` | `+0.000` |"));

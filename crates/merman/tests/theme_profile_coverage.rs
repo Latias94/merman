@@ -491,7 +491,7 @@ fn host_theme_profile_covers_additional_current_diagram_surfaces() {
             include_str!("../../../fixtures/treeView/upstream_docs_treeview_basic.mmd"),
             &["#e5e7eb", "#94a3b8"],
             &[
-                ".treeView-node-label { font-size: 16px; fill: #e5e7eb; }",
+                ".treeView-node-label { font-size: 16px; fill: #e5e7eb; white-space: pre; }",
                 ".treeView-node-line { stroke: #94a3b8; }",
             ],
         ),

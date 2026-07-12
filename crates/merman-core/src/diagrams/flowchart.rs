@@ -70,6 +70,7 @@ pub(crate) struct FlowSubGraph {
     pub classes: Vec<String>,
     pub styles: Vec<String>,
     pub dir: Option<String>,
+    pub has_explicit_dir: bool,
     pub label_type: String,
 }
 
@@ -607,6 +608,7 @@ fn collect_editor_fact_from_token(
         Tok::KwGraph
         | Tok::KwFlowchart
         | Tok::KwFlowchartElk
+        | Tok::KwSwimlane
         | Tok::KwSubgraph
         | Tok::KwEnd
         | Tok::Sep
@@ -1421,6 +1423,7 @@ fn flow_subgraph_to_json(sg: FlowSubGraph) -> Value {
         "classes": sg.classes,
         "styles": sg.styles,
         "dir": sg.dir,
+        "hasExplicitDir": sg.has_explicit_dir,
         "labelType": sg.label_type,
     })
 }
@@ -1433,6 +1436,7 @@ fn flow_subgraph_to_model(sg: FlowSubGraph) -> FlowSubgraph {
         classes: sg.classes,
         styles: sg.styles,
         dir: sg.dir,
+        has_explicit_dir: sg.has_explicit_dir,
         label_type: Some(sg.label_type),
     }
 }
@@ -1456,6 +1460,7 @@ mod tests {
                 classes: Vec::new(),
                 styles: Vec::new(),
                 dir: None,
+                has_explicit_dir: false,
                 label_type: "text".to_string(),
             },
             FlowSubGraph {
@@ -1465,6 +1470,7 @@ mod tests {
                 classes: Vec::new(),
                 styles: Vec::new(),
                 dir: None,
+                has_explicit_dir: false,
                 label_type: "text".to_string(),
             },
             FlowSubGraph {
@@ -1474,6 +1480,7 @@ mod tests {
                 classes: Vec::new(),
                 styles: Vec::new(),
                 dir: None,
+                has_explicit_dir: false,
                 label_type: "text".to_string(),
             },
             FlowSubGraph {
@@ -1483,6 +1490,7 @@ mod tests {
                 classes: Vec::new(),
                 styles: Vec::new(),
                 dir: None,
+                has_explicit_dir: false,
                 label_type: "text".to_string(),
             },
         ];

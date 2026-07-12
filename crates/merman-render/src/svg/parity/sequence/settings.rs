@@ -15,6 +15,7 @@ pub(super) struct SequenceRenderSettings {
     pub(super) activation_width: f64,
     pub(super) actor_label_font_size: f64,
     pub(super) actor_wrap_width: f64,
+    pub(super) rect_default_fill: String,
     pub(super) loop_text_style: TextStyle,
     pub(super) note_text_style: TextStyle,
 }
@@ -60,6 +61,14 @@ impl SequenceRenderSettings {
             font_weight: Some("400".to_string()),
         };
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
+        let rect_default_fill =
+            crate::config::config_string(effective_config, &["themeVariables", "rectBkgColor"])
+                .filter(|fill| !fill.is_empty())
+                .or_else(|| {
+                    crate::config::config_string(effective_config, &["themeVariables", "actorBkg"])
+                        .filter(|fill| !fill.is_empty())
+                })
+                .unwrap_or_else(|| "rgba(128, 128, 128, 0.5)".to_string());
 
         Self {
             force_menus,
@@ -76,6 +85,7 @@ impl SequenceRenderSettings {
             activation_width,
             actor_label_font_size,
             actor_wrap_width,
+            rect_default_fill,
             loop_text_style,
             note_text_style,
         }

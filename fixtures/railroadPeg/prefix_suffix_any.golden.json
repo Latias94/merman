@@ -1,0 +1,38 @@
+{
+  "diagramType": "railroadPeg",
+  "model": {
+    "type": "railroadPeg",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "rule",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "special",
+              "text": "&\"a\""
+            },
+            {
+              "type": "special",
+              "text": "!\"b\""
+            },
+            {
+              "type": "special",
+              "text": "."
+            },
+            {
+              "type": "optional",
+              "element": {
+                "type": "nonterminal",
+                "name": "other"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

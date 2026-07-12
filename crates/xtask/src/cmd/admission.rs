@@ -288,6 +288,44 @@ macro_rules! primary_root_deferred {
     };
 }
 
+macro_rules! not_admitted {
+    ($diagram:literal, $reason:literal) => {
+        DiagramAdmissionRecord {
+            diagram: $diagram,
+            admission: AdmissionStatus::NotAdmitted,
+            fixtures: FixtureCorpusStatus::None,
+            normalized_fixture_dir: None,
+            deferred_fixture_dir: None,
+            semantic: CoverageStatus::NotAdmitted,
+            layout: CoverageStatus::NotAdmitted,
+            svg: CoverageStatus::NotAdmitted,
+            root_viewport: CoverageStatus::NotApplicable,
+            compare_command: None,
+            owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
+            defer_reason: Some($reason),
+        }
+    };
+}
+
+macro_rules! parse_only {
+    ($diagram:literal, $fixture_dir:literal, $owner:literal, $reason:literal) => {
+        DiagramAdmissionRecord {
+            diagram: $diagram,
+            admission: AdmissionStatus::ParseOnly,
+            fixtures: FixtureCorpusStatus::Normalized,
+            normalized_fixture_dir: Some($fixture_dir),
+            deferred_fixture_dir: None,
+            semantic: CoverageStatus::Covered,
+            layout: CoverageStatus::NotApplicable,
+            svg: CoverageStatus::Deferred,
+            root_viewport: CoverageStatus::NotApplicable,
+            compare_command: None,
+            owner_doc: $owner,
+            defer_reason: Some($reason),
+        }
+    };
+}
+
 const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     primary!(
         "er",
@@ -482,48 +520,46 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         "compare-venn-svgs",
         "docs/alignment/VENN_BETA_ADMISSION_PLAN.md"
     ),
-    DiagramAdmissionRecord {
-        diagram: "wardley",
-        admission: AdmissionStatus::NotAdmitted,
-        fixtures: FixtureCorpusStatus::None,
-        normalized_fixture_dir: None,
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::NotAdmitted,
-        layout: CoverageStatus::NotAdmitted,
-        svg: CoverageStatus::NotAdmitted,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        defer_reason: Some("large family lane deferred behind smaller source-backed work"),
-    },
-    DiagramAdmissionRecord {
-        diagram: "railroad",
-        admission: AdmissionStatus::NotInPinnedBaseline,
-        fixtures: FixtureCorpusStatus::None,
-        normalized_fixture_dir: None,
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::NotApplicable,
-        layout: CoverageStatus::NotApplicable,
-        svg: CoverageStatus::NotApplicable,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        defer_reason: Some("absent from pinned Mermaid 11.15 source"),
-    },
-    DiagramAdmissionRecord {
-        diagram: "cynefin",
-        admission: AdmissionStatus::NotInPinnedBaseline,
-        fixtures: FixtureCorpusStatus::None,
-        normalized_fixture_dir: None,
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::NotApplicable,
-        layout: CoverageStatus::NotApplicable,
-        svg: CoverageStatus::NotApplicable,
-        root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
-        owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-        defer_reason: Some("absent from pinned Mermaid 11.15 source"),
-    },
+    parse_only!(
+        "swimlane",
+        "swimlane",
+        "docs/alignment/SWIMLANE_MINIMUM.md",
+        "present in pinned Mermaid 11.16 source; Flowchart parser/editor reuse exists, while layout/render admission is tracked by the 11.16 parity plan"
+    ),
+    primary!(
+        "railroad",
+        FixtureCorpusStatus::Normalized,
+        "compare-railroad-svgs",
+        "docs/alignment/RAILROAD_MINIMUM.md"
+    ),
+    primary!(
+        "railroadEbnf",
+        FixtureCorpusStatus::Normalized,
+        "compare-railroad-ebnf-svgs",
+        "docs/alignment/RAILROAD_MINIMUM.md"
+    ),
+    primary!(
+        "railroadAbnf",
+        FixtureCorpusStatus::Normalized,
+        "compare-railroad-abnf-svgs",
+        "docs/alignment/RAILROAD_MINIMUM.md"
+    ),
+    primary!(
+        "railroadPeg",
+        FixtureCorpusStatus::Normalized,
+        "compare-railroad-peg-svgs",
+        "docs/alignment/RAILROAD_MINIMUM.md"
+    ),
+    not_admitted!(
+        "wardley",
+        "large family lane deferred behind smaller source-backed work"
+    ),
+    primary!(
+        "cynefin",
+        FixtureCorpusStatus::Normalized,
+        "compare-cynefin-svgs",
+        "docs/alignment/CYNEFIN_MINIMUM.md"
+    ),
 ];
 
 #[cfg(test)]
@@ -575,10 +611,11 @@ mod tests {
             .iter()
             .filter(|entry| entry.get("op").and_then(serde_json::Value::as_str) == Some("remove"))
             .filter_map(|entry| {
-                entry
-                    .get("path")
-                    .and_then(serde_json::Value::as_array)?
-                    .first()
+                let path = entry.get("path").and_then(serde_json::Value::as_array)?;
+                if path.len() != 1 {
+                    return None;
+                }
+                path.first()
                     .and_then(serde_json::Value::as_str)
                     .map(str::to_string)
             })
@@ -705,6 +742,13 @@ mod tests {
         assert!(!not_admitted.semantic_requires_golden());
         assert!(!not_admitted.layout_requires_golden());
         assert!(!not_admitted.svg_requires_upstream_baseline());
+
+        let parse_only = record("swimlane");
+        assert_eq!(parse_only.admission, AdmissionStatus::ParseOnly);
+        assert!(!parse_only.requires_compare_command());
+        assert!(parse_only.semantic_requires_golden());
+        assert!(!parse_only.layout_requires_golden());
+        assert!(!parse_only.svg_requires_upstream_baseline());
     }
 
     #[test]
@@ -772,6 +816,43 @@ mod tests {
                     record.diagram
                 );
             }
+        }
+
+        let wardley = record("wardley");
+        let wardley_capability = core_family_capability(core_capabilities, "wardley")
+            .expect("wardley should exist in core detector facts");
+        assert_eq!(wardley.admission, AdmissionStatus::NotAdmitted);
+        assert!(!wardley_capability.has_semantic_parser);
+        assert!(!wardley_capability.has_render_parser);
+
+        let swimlane = record("swimlane");
+        let swimlane_capability = core_family_capability(core_capabilities, "swimlane")
+            .expect("swimlane should exist in core detector/parser facts");
+        assert_eq!(swimlane.admission, AdmissionStatus::ParseOnly);
+        assert!(swimlane_capability.has_semantic_parser);
+        assert!(!swimlane_capability.has_render_parser);
+
+        let cynefin = record("cynefin");
+        let cynefin_capability = core_family_capability(core_capabilities, "cynefin")
+            .expect("cynefin should exist in core detector/parser facts");
+        assert_eq!(cynefin.admission, AdmissionStatus::PrimarySvgMatrix);
+        assert!(cynefin_capability.has_semantic_parser);
+        assert!(cynefin_capability.has_render_parser);
+
+        let railroad = record("railroad");
+        let railroad_capability = core_family_capability(core_capabilities, "railroad")
+            .expect("railroad should exist in core detector/parser facts");
+        assert_eq!(railroad.admission, AdmissionStatus::PrimarySvgMatrix);
+        assert!(railroad_capability.has_semantic_parser);
+        assert!(railroad_capability.has_render_parser);
+
+        for diagram in ["railroadEbnf", "railroadAbnf", "railroadPeg"] {
+            let record = record(diagram);
+            let capability = core_family_capability(core_capabilities, diagram)
+                .unwrap_or_else(|| panic!("{diagram} should exist in core detector/parser facts"));
+            assert_eq!(record.admission, AdmissionStatus::PrimarySvgMatrix);
+            assert!(capability.has_semantic_parser);
+            assert!(capability.has_render_parser);
         }
     }
 }

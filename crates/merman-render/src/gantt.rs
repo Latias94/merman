@@ -278,6 +278,9 @@ fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
 fn collect_categories(tasks: &[GanttRenderTask]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for t in tasks {
+        if t.vert {
+            continue;
+        }
         if !out.iter().any(|x| x == &t.task_type) {
             out.push(t.task_type.clone());
         }
@@ -1017,6 +1020,7 @@ pub fn layout_gantt_diagram_typed(
         .unwrap_or(DEFAULT_WIDTH);
     let gap = bar_height + bar_gap;
 
+    let row_task_count = m.tasks.iter().filter(|task| !task.vert).count();
     let categories = collect_categories(&m.tasks);
     let is_compact = m.display_mode == "compact" || cfg_display_mode == "compact";
 
@@ -1025,6 +1029,9 @@ pub fn layout_gantt_diagram_typed(
         let mut section_order: Vec<String> = Vec::new();
         let mut section_map: HashMap<String, Vec<usize>> = HashMap::new();
         for (idx, t) in m.tasks.iter().enumerate() {
+            if t.vert {
+                continue;
+            }
             match section_map.entry(t.section.clone()) {
                 Entry::Occupied(mut entry) => entry.get_mut().push(idx),
                 Entry::Vacant(entry) => {
@@ -1049,7 +1056,11 @@ pub fn layout_gantt_diagram_typed(
         }
     } else {
         for c in &categories {
-            let count = m.tasks.iter().filter(|t| &t.task_type == c).count() as i64;
+            let count = m
+                .tasks
+                .iter()
+                .filter(|t| !t.vert && &t.task_type == c)
+                .count() as i64;
             category_heights.push((c.clone(), count));
         }
     }
@@ -1060,7 +1071,7 @@ pub fn layout_gantt_diagram_typed(
             height += *h as f64 * gap;
         }
     } else {
-        height += m.tasks.len() as f64 * gap;
+        height += row_task_count as f64 * gap;
     }
 
     let has_tasks = !m.tasks.is_empty();
@@ -1126,6 +1137,9 @@ pub fn layout_gantt_diagram_typed(
     // (e.g. forward references can cause `order=0` to have the latest start date).
     let mut row_orders: Vec<i64> = Vec::new();
     for t in &m.tasks {
+        if t.vert {
+            continue;
+        }
         if !row_orders.contains(&t.order) {
             row_orders.push(t.order);
         }
@@ -1199,7 +1213,7 @@ pub fn layout_gantt_diagram_typed(
             (render_end_x - start_x).max(0.0)
         };
         let bar_height_actual = if t.vert {
-            m.tasks.len() as f64 * gap + bar_height * 2.0
+            row_task_count as f64 * gap + bar_height * 2.0
         } else {
             bar_height
         };
@@ -1285,7 +1299,7 @@ pub fn layout_gantt_diagram_typed(
         };
 
         let label_y = if t.vert {
-            grid_line_start_padding + m.tasks.len() as f64 * gap + 60.0
+            grid_line_start_padding + row_task_count as f64 * gap + 60.0
         } else {
             t.order as f64 * gap + bar_height / 2.0 + (font_size / 2.0 - 2.0) + top_padding
         };

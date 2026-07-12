@@ -56,9 +56,9 @@ pub struct DiagramHeaderFact {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DiagramFamilyCapability {
-    /// Mermaid diagram type id used by detector and parser registries.
+    /// Mermaid diagram type id used by the pinned detector and parser registries.
     pub diagram_type: &'static str,
-    /// Public supported-diagram metadata id, when this family contributes one.
+    /// Public supported-diagram metadata id, when this family contributes an admitted renderer.
     pub metadata_id: Option<&'static str>,
     /// Whether the selected registry profile has a semantic parser for this diagram type.
     pub has_semantic_parser: bool,
@@ -215,19 +215,42 @@ pub(crate) fn diagram_family_capabilities(
     profile: BaselineRegistryProfile,
 ) -> &'static [DiagramFamilyCapability] {
     fn build(profile: BaselineRegistryProfile) -> Vec<DiagramFamilyCapability> {
+        let detector_facts = detector_facts(profile);
+        let semantic_facts = semantic_parser_facts(profile);
         let render_facts = render_parser_facts(profile);
-        let mut capabilities: Vec<_> = semantic_parser_facts(profile)
+
+        let mut capabilities: Vec<_> = detector_facts
             .iter()
-            .map(|semantic| {
-                let render = render_facts.iter().find(|render| render.id == semantic.id);
+            .filter(|detector| detector.id != "---")
+            .map(|detector| {
+                let semantic = semantic_facts
+                    .iter()
+                    .find(|semantic| semantic.id == detector.id);
+                let render = render_facts.iter().find(|render| render.id == detector.id);
                 DiagramFamilyCapability {
-                    diagram_type: semantic.id,
+                    diagram_type: detector.id,
                     metadata_id: render.and_then(|render| render.metadata_id),
-                    has_semantic_parser: true,
+                    has_semantic_parser: semantic.is_some(),
                     has_render_parser: render.is_some(),
                 }
             })
             .collect();
+
+        for semantic in semantic_facts {
+            if capabilities
+                .iter()
+                .any(|capability| capability.diagram_type == semantic.id)
+            {
+                continue;
+            }
+            let render = render_facts.iter().find(|render| render.id == semantic.id);
+            capabilities.push(DiagramFamilyCapability {
+                diagram_type: semantic.id,
+                metadata_id: render.and_then(|render| render.metadata_id),
+                has_semantic_parser: true,
+                has_render_parser: render.is_some(),
+            });
+        }
 
         for render in render_facts {
             if capabilities
@@ -373,6 +396,16 @@ pub(crate) fn apply_known_type_detector_side_effects(
     }
 }
 
+pub(crate) fn apply_diagram_type_config_defaults(
+    diagram_type: &str,
+    user_config: &MermaidConfig,
+    effective_config: &mut MermaidConfig,
+) {
+    if diagram_type == "swimlane" && user_config.get_str("layout").is_none() {
+        effective_config.set_value("layout", Value::String("swimlane".to_string()));
+    }
+}
+
 const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
     DetectorFact {
         id: "error",
@@ -439,6 +472,10 @@ const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
         detector: crate::detect::detector_sequence,
     },
     DetectorFact {
+        id: "swimlane",
+        detector: crate::detect::detector_swimlane,
+    },
+    DetectorFact {
         id: "flowchart-v2",
         detector: crate::detect::detector_flowchart_v2,
     },
@@ -487,28 +524,52 @@ const DETECTOR_FACTS_FULL: &[DetectorFact] = &[
         detector: crate::detect::detector_block,
     },
     DetectorFact {
-        id: "treeView",
-        detector: crate::detect::detector_tree_view,
-    },
-    DetectorFact {
-        id: "ishikawa",
-        detector: crate::detect::detector_ishikawa,
-    },
-    DetectorFact {
         id: "eventmodeling",
         detector: crate::detect::detector_eventmodeling,
+    },
+    DetectorFact {
+        id: "treeView",
+        detector: crate::detect::detector_tree_view,
     },
     DetectorFact {
         id: "radar",
         detector: crate::detect::detector_radar,
     },
     DetectorFact {
+        id: "ishikawa",
+        detector: crate::detect::detector_ishikawa,
+    },
+    DetectorFact {
         id: "treemap",
         detector: crate::detect::detector_treemap,
     },
     DetectorFact {
+        id: "railroad",
+        detector: crate::detect::detector_railroad,
+    },
+    DetectorFact {
+        id: "railroadEbnf",
+        detector: crate::detect::detector_railroad_ebnf,
+    },
+    DetectorFact {
+        id: "railroadAbnf",
+        detector: crate::detect::detector_railroad_abnf,
+    },
+    DetectorFact {
+        id: "railroadPeg",
+        detector: crate::detect::detector_railroad_peg,
+    },
+    DetectorFact {
         id: "venn",
         detector: crate::detect::detector_venn,
+    },
+    DetectorFact {
+        id: "wardley",
+        detector: crate::detect::detector_wardley,
+    },
+    DetectorFact {
+        id: "cynefin",
+        detector: crate::detect::detector_cynefin,
     },
 ];
 
@@ -611,6 +672,30 @@ const SEMANTIC_PARSER_FACTS: &[SemanticParserFact] = &[
     SemanticParserFact {
         id: "sequence",
         parser: crate::diagrams::sequence::parse_sequence,
+    },
+    SemanticParserFact {
+        id: "swimlane",
+        parser: crate::diagrams::flowchart::parse_flowchart,
+    },
+    SemanticParserFact {
+        id: "cynefin",
+        parser: crate::diagrams::cynefin::parse_cynefin,
+    },
+    SemanticParserFact {
+        id: "railroad",
+        parser: crate::diagrams::railroad::parse_railroad,
+    },
+    SemanticParserFact {
+        id: "railroadEbnf",
+        parser: crate::diagrams::railroad::parse_railroad_ebnf,
+    },
+    SemanticParserFact {
+        id: "railroadAbnf",
+        parser: crate::diagrams::railroad::parse_railroad_abnf,
+    },
+    SemanticParserFact {
+        id: "railroadPeg",
+        parser: crate::diagrams::railroad::parse_railroad_peg,
     },
     SemanticParserFact {
         id: "zenuml",
@@ -756,6 +841,31 @@ render_parser!(
     render_c4,
     crate::diagrams::c4::parse_c4_model_for_render,
     RenderSemanticModel::C4
+);
+render_parser!(
+    render_cynefin,
+    crate::diagrams::cynefin::parse_cynefin_model_for_render,
+    RenderSemanticModel::Cynefin
+);
+render_parser!(
+    render_railroad,
+    crate::diagrams::railroad::parse_railroad_model_for_render,
+    RenderSemanticModel::Railroad
+);
+render_parser!(
+    render_railroad_ebnf,
+    crate::diagrams::railroad::parse_railroad_ebnf_model_for_render,
+    RenderSemanticModel::Railroad
+);
+render_parser!(
+    render_railroad_abnf,
+    crate::diagrams::railroad::parse_railroad_abnf_model_for_render,
+    RenderSemanticModel::Railroad
+);
+render_parser!(
+    render_railroad_peg,
+    crate::diagrams::railroad::parse_railroad_peg_model_for_render,
+    RenderSemanticModel::Railroad
 );
 render_parser!(
     render_architecture,
@@ -931,6 +1041,36 @@ const RENDER_PARSER_FACTS: &[RenderParserFact] = &[
         parser: render_c4,
     },
     RenderParserFact {
+        id: "cynefin",
+        metadata_id: Some("cynefin"),
+        model_kind: "cynefin",
+        parser: render_cynefin,
+    },
+    RenderParserFact {
+        id: "railroad",
+        metadata_id: Some("railroad"),
+        model_kind: "railroad",
+        parser: render_railroad,
+    },
+    RenderParserFact {
+        id: "railroadEbnf",
+        metadata_id: Some("railroadEbnf"),
+        model_kind: "railroad",
+        parser: render_railroad_ebnf,
+    },
+    RenderParserFact {
+        id: "railroadAbnf",
+        metadata_id: Some("railroadAbnf"),
+        model_kind: "railroad",
+        parser: render_railroad_abnf,
+    },
+    RenderParserFact {
+        id: "railroadPeg",
+        metadata_id: Some("railroadPeg"),
+        model_kind: "railroad",
+        parser: render_railroad_peg,
+    },
+    RenderParserFact {
         id: "architecture",
         metadata_id: Some("architecture"),
         model_kind: "architecture",
@@ -1069,6 +1209,7 @@ const SUPPORTED_DIAGRAM_METADATA_IDS: &[&str] = &[
     "block",
     "c4",
     "class",
+    "cynefin",
     "er",
     "flowchart",
     "gantt",
@@ -1081,6 +1222,10 @@ const SUPPORTED_DIAGRAM_METADATA_IDS: &[&str] = &[
     "pie",
     "quadrantchart",
     "radar",
+    "railroad",
+    "railroadAbnf",
+    "railroadEbnf",
+    "railroadPeg",
     "requirement",
     "sankey",
     "sequence",
@@ -1109,6 +1254,12 @@ const DIAGRAM_HEADER_FACTS: &[DiagramHeaderFact] = &[
         diagram_type: "sequence",
         label: "sequenceDiagram",
         detail: "sequence header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "swimlane",
+        label: "swimlane-beta",
+        detail: "swimlane header",
         full_only: false,
     },
     DiagramHeaderFact {
@@ -1307,6 +1458,42 @@ const DIAGRAM_HEADER_FACTS: &[DiagramHeaderFact] = &[
         diagram_type: "treemap",
         label: "treemap-beta",
         detail: "treemap header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "railroad",
+        label: "railroad-beta",
+        detail: "railroad header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "railroadEbnf",
+        label: "railroad-ebnf-beta",
+        detail: "railroad ebnf header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "railroadAbnf",
+        label: "railroad-abnf-beta",
+        detail: "railroad abnf header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "railroadPeg",
+        label: "railroad-peg-beta",
+        detail: "railroad peg header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "wardley",
+        label: "wardley-beta",
+        detail: "wardley header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
+        diagram_type: "cynefin",
+        label: "cynefin-beta",
+        detail: "cynefin header",
         full_only: false,
     },
     DiagramHeaderFact {

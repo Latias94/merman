@@ -510,6 +510,7 @@ impl ErEditorFactCollector {
                     self.attr_word_index = 2;
                 }
             }
+            Tok::Question => {}
             Tok::AttrKey(key) => {
                 if self.in_attribute_block {
                     self.push_payload_symbol(
@@ -686,6 +687,7 @@ enum Tok {
     StyleSeparator,
     Colon,
     Comma,
+    Question,
 
     StyleKw,
     ClassDefKw,
@@ -1155,6 +1157,10 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
             return Some(Ok((start, Tok::Comma, self.pos)));
         }
+        if self.peek() == Some(b'?') {
+            self.pos += 1;
+            return Some(Ok((start, Tok::Question, self.pos)));
+        }
         if self.peek() == Some(b'"') {
             self.pos += 1;
             let Some(rel_end) = self.input[self.pos..].find('"') else {
@@ -1165,6 +1171,19 @@ impl<'input> Lexer<'input> {
             let s = self.input[self.pos..self.pos + rel_end].to_string();
             self.pos = self.pos + rel_end + 1;
             return Some(Ok((start, Tok::Comment(s), self.pos)));
+        }
+        if self.peek() == Some(b'`') {
+            self.pos += 1;
+            let body_start = self.pos;
+            let Some(rel_end) = self.input[self.pos..].find('`') else {
+                return Some(Err(LexError {
+                    message: "Unterminated attribute word; missing '`'".to_string(),
+                }));
+            };
+            let body_end = self.pos + rel_end;
+            let s = self.input[body_start..body_end].to_string();
+            self.pos = body_end + 1;
+            return Some(Ok((body_start, Tok::AttrWord(s), body_end)));
         }
         if let Some(two) = self.input[self.pos..].get(..2) {
             let two_upper = two.to_ascii_uppercase();
@@ -1191,7 +1210,7 @@ impl<'input> Lexer<'input> {
         let start_word = self.pos;
         let mut end = self.pos;
         for (rel, ch) in self.input[self.pos..].char_indices() {
-            if ch.is_whitespace() || matches!(ch, ',' | '"' | '}') {
+            if ch.is_whitespace() || matches!(ch, '"' | '}' | '?') {
                 break;
             }
             end = self.pos + rel + ch.len_utf8();
@@ -1216,6 +1235,8 @@ impl<'input> Lexer<'input> {
             c == '*'
                 || c == '-'
                 || c == '_'
+                || c == '.'
+                || c == ','
                 || c.is_ascii_digit()
                 || c.is_alphabetic()
                 || matches!(c, '[' | ']' | '(' | ')')

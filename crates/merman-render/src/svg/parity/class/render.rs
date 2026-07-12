@@ -132,12 +132,8 @@ fn render_class_diagram_v2_svg_model_impl_inner(
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
-    class_markers(
-        &mut out,
-        diagram_id,
-        aria_roledescription,
-        settings.look != "handDrawn",
-    );
+    // Mermaid 11.16 inserts both the ordinary and margin-aware marker variants for every look.
+    class_markers(&mut out, diagram_id, aria_roledescription, true);
 
     let ClassRenderLookups {
         class_nodes_by_id,
@@ -176,6 +172,11 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         out
     };
 
+    let terminal_text_style = TextStyle {
+        font_family: settings.text_style.font_family.clone(),
+        font_size: 11.0,
+        font_weight: None,
+    };
     let group_ctx = ClassClusterEdgeGroupsRenderContext {
         clusters: &layout.clusters,
         edges: &layout.edges,
@@ -186,6 +187,8 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         content_tx,
         content_ty,
         edge_use_html_labels: settings.edge_use_html_labels,
+        text_measurer: measurer,
+        terminal_text_style: &terminal_text_style,
         look: settings.look.as_str(),
         hand_drawn_seed: settings.hand_drawn_seed,
         timing_enabled,
@@ -287,9 +290,11 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         detail.nodes += s.elapsed();
     }
 
-    if settings.look != "handDrawn" {
-        push_class_gradient(&mut out, diagram_id, effective_config);
-    }
+    // The unified Mermaid renderer appends shared root resources after the pre-existing graph
+    // wrapper. Shadow defs are emitted for every look, while the gradient remains config-gated;
+    // neither resource decision depends on whether shapes use the hand-drawn look.
+    push_class_shadow_defs(&mut out, diagram_id, effective_config);
+    push_class_gradient(&mut out, diagram_id, effective_config);
 
     drop(render_guard);
     let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));
@@ -329,9 +334,6 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         viewbox_attrs.max_w_attr.as_str(),
     );
 
-    if settings.look != "handDrawn" {
-        push_class_shadow_defs(&mut out, diagram_id, effective_config);
-    }
     out.push_str("</svg>");
     drop(finalize_guard);
 

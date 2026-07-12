@@ -422,15 +422,19 @@ mod tests {
                             level: 1,
                             name: "Child1".to_string(),
                             children: Vec::new(),
+                            ..Default::default()
                         },
                         TreeViewNodeRenderModel {
                             id: 3,
                             level: 1,
                             name: "Child2".to_string(),
                             children: Vec::new(),
+                            ..Default::default()
                         },
                     ],
+                    ..Default::default()
                 }],
+                ..Default::default()
             },
         }
     }
@@ -600,6 +604,7 @@ mod tests {
             id: "cluster".to_string(),
             title: "cluster".to_string(),
             dir: None,
+            has_explicit_dir: false,
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),
@@ -634,6 +639,7 @@ mod tests {
             id: "cluster".to_string(),
             title: "Line\nTwo".to_string(),
             dir: None,
+            has_explicit_dir: false,
             label_type: None,
             classes: Vec::new(),
             styles: Vec::new(),

@@ -29,7 +29,7 @@ model so downstream renderers (SVG/Canvas/UI wrappers) can match Mermaid behavio
     - `ADD_URI_SAFE_ATTR` / `ADD_DATA_URI_TAGS`
     - `KEEP_CONTENT`
 - Implement URL formatting in `utils::format_url` (Mermaid `utils.formatUrl` parity):
-  - if `securityLevel != loose`, sanitize URLs using a Rust port of `@braintree/sanitize-url@7.1.1`
+  - if `securityLevel != loose`, sanitize URLs using a Rust port of `@braintree/sanitize-url@7.1.2`
     (Mermaid dependency), returning `about:blank` for unsafe schemes and normalizing some http/https URLs
 - Apply sanitization/formatting at the semantic-model boundary:
   - Flowchart: node labels, edge labels, tooltips, and click link URLs

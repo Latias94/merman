@@ -195,6 +195,7 @@
         "rhsGroup": true,
         "title": "query"
       }
-    ]
+    ],
+    "layoutHints": []
   }
 }

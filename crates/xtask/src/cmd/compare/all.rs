@@ -7,14 +7,47 @@ use std::path::{Path, PathBuf};
 
 use super::diagrams::compare_diagram_svgs;
 use super::{
-    RootDeltaReportLimit, RootParityResidualPolicy, diagram_supports_root_delta_report,
-    parse_root_delta_report_limit,
+    DomParityResidualPolicy, RootDeltaReportLimit, RootParityResidualPolicy,
+    diagram_supports_root_delta_report, parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let options = CompareAllOptions::parse(args)?;
     let diagram_selection = CompareAllDiagramSelection::from_options(&options)?;
+    compare_selected_diagram_svgs(options, diagram_selection)
+}
 
+pub(crate) fn compare_all_svgs_with_transaction_locks(
+    args: Vec<String>,
+    family_lock: &crate::cmd::UpstreamSvgFamilyLock,
+    toolchain_lock: &crate::cmd::UpstreamSvgToolchainLock,
+) -> Result<(), XtaskError> {
+    let options = CompareAllOptions::parse(args)?;
+    let diagram_selection = CompareAllDiagramSelection::from_options(&options)?;
+    let [diagram] = diagram_selection.diagrams.as_slice() else {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "compare-all with borrowed upstream SVG transaction locks requires exactly one diagram, selected {}",
+            diagram_selection.diagrams.len()
+        )));
+    };
+    let diagram = *diagram;
+    let upstream_dir =
+        crate::cmd::compare_diagram_paths_with_roots(diagram, None, None, None).upstream_dir;
+
+    let tools_root = crate::cmd::mermaid_cli_root();
+    super::with_borrowed_upstream_svg_transaction_locks(
+        toolchain_lock,
+        &tools_root,
+        family_lock,
+        &upstream_dir,
+        || compare_selected_diagram_svgs(options, diagram_selection),
+    )
+}
+
+fn compare_selected_diagram_svgs(
+    options: CompareAllOptions,
+    diagram_selection: CompareAllDiagramSelection,
+) -> Result<(), XtaskError> {
     let compare_dir = crate::cmd::target_root().join("compare");
     fs::create_dir_all(&compare_dir).map_err(|source| XtaskError::WriteFile {
         path: compare_dir.display().to_string(),
@@ -135,6 +168,15 @@ impl CompareAllOptions {
                 .is_some_and(|mode| matches!(mode.trim(), "parity-root" | "parity_root"))
     }
 
+    fn dom_parity_policy_enabled(&self) -> bool {
+        self.check_dom
+            && self.filter.is_none()
+            && self
+                .dom_mode
+                .as_deref()
+                .is_some_and(|mode| mode.trim() == "parity")
+    }
+
     fn global_root_parity_sweep(&self) -> bool {
         self.root_parity_policy_enabled() && self.only_diagrams.is_empty()
     }
@@ -219,6 +261,7 @@ impl CompareAllDiagramSelection {
 #[derive(Debug)]
 struct CompareAllFailures {
     skip_unmatched_filter_messages: bool,
+    dom_parity_policy: Option<DomParityResidualPolicy>,
     root_parity_policy: Option<RootParityResidualPolicy>,
     failures: Vec<String>,
 }
@@ -228,6 +271,9 @@ impl CompareAllFailures {
         Self {
             skip_unmatched_filter_messages: options.filter.is_some()
                 && options.only_diagrams.is_empty(),
+            dom_parity_policy: options
+                .dom_parity_policy_enabled()
+                .then(|| DomParityResidualPolicy::new(diagrams)),
             root_parity_policy: options
                 .root_parity_policy_enabled()
                 .then(|| RootParityResidualPolicy::new(diagrams)),
@@ -254,6 +300,17 @@ impl CompareAllFailures {
     }
 
     fn finish(mut self) -> Result<(), XtaskError> {
+        if let Some(policy) = self.dom_parity_policy {
+            let accepted = policy.accepted_summaries();
+            if !accepted.is_empty() {
+                println!("\n== accepted DOM parity residuals ==");
+                for line in accepted {
+                    println!("{line}");
+                }
+            }
+            self.failures.extend(policy.missing_failures());
+        }
+
         if let Some(policy) = self.root_parity_policy {
             let accepted = policy.accepted_summaries();
             if !accepted.is_empty() {
@@ -273,7 +330,11 @@ impl CompareAllFailures {
     }
 
     fn record_svg_compare_failure(&mut self, diagram: &str, msg: &str, report_path: Option<&Path>) {
-        if let Some(policy) = self.root_parity_policy.as_mut() {
+        if let Some(policy) = self.dom_parity_policy.as_mut() {
+            if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
+                self.failures.push(failure);
+            }
+        } else if let Some(policy) = self.root_parity_policy.as_mut() {
             if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
                 self.failures.push(failure);
             }
@@ -541,6 +602,28 @@ mod tests {
     }
 
     #[test]
+    fn compare_all_options_detects_dom_parity_policy_scope() {
+        let global = CompareAllOptions {
+            check_dom: true,
+            dom_mode: Some("parity".to_string()),
+            ..Default::default()
+        };
+        assert!(global.dom_parity_policy_enabled());
+
+        let targeted = CompareAllOptions {
+            only_diagrams: vec!["sequence".to_string()],
+            ..global.clone()
+        };
+        assert!(targeted.dom_parity_policy_enabled());
+
+        let filtered = CompareAllOptions {
+            filter: Some("smoke".to_string()),
+            ..global
+        };
+        assert!(!filtered.dom_parity_policy_enabled());
+    }
+
+    #[test]
     fn compare_all_failures_skip_unmatched_filter_only_for_global_filtered_runs() {
         let msg = "no .mmd fixtures matched under fixtures";
         let global_options = CompareAllOptions {
@@ -583,15 +666,36 @@ mod tests {
             dom_mode: Some("parity-root".to_string()),
             ..Default::default()
         };
-        let mut failures = CompareAllFailures::new(&options, &["sequence"]);
+        let mut failures = CompareAllFailures::new(&options, &["gitgraph"]);
 
         failures.record(
-            "sequence",
+            "gitgraph",
             Err(XtaskError::SvgCompareFailed(
-                "dom mismatch for zed_pr_57644_sequence: upstream=a local=b (svg: attr `viewBox` mismatch upstream=`<n> <n> 796 1096` local=`<n> <n> 796 1126`)"
+                "dom mismatch for zed_pr_57644_gitgraph: upstream=a local=b (scope=parity-normalized-descendants-match; svg: attr `style` mismatch upstream=`max-width: 845.25px; background-color: white;` local=`max-width: 845px; background-color: white;`; additional DOM differences (1): svg: attr `viewBox` mismatch upstream=`<n> <n> 845.25 370.5` local=`<n> <n> 845 370.25`)"
                     .to_string(),
             )),
             None,
+        );
+
+        assert!(failures.finish().is_ok());
+    }
+
+    #[test]
+    fn compare_all_failures_accepts_exact_documented_sequence_dom_residuals() {
+        let options = CompareAllOptions {
+            check_dom: true,
+            dom_mode: Some("parity".to_string()),
+            ..Default::default()
+        };
+        let mut failures = CompareAllFailures::new(&options, &["sequence"]);
+        let msg = "dom mismatch for upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026: upstream=a local=b (svg/g[16]: child count mismatch upstream=9 local=8)\n\
+dom mismatch for upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019: upstream=a local=b (svg/g[20]: child count mismatch upstream=9 local=8)\n\
+dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b (svg/g[61]/text[9]: attr `class` mismatch upstream=`sectionTitle` local=`loopText`; additional DOM differences (2): svg/g[61]/text[9]: child count mismatch upstream=0 local=1 | svg/g[61]: child count mismatch upstream=10 local=11)";
+
+        failures.record(
+            "sequence",
+            Err(XtaskError::SvgCompareFailed(msg.to_string())),
+            Some(Path::new("target/compare/sequence_report_parity.md")),
         );
 
         assert!(failures.finish().is_ok());

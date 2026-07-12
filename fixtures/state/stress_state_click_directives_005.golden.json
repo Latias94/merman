@@ -167,6 +167,10 @@
     ],
     "other": {},
     "links": {
+      "Done": {
+        "url": "https://example.com/done",
+        "tooltip": "Done docs"
+      },
       "Start": {
         "url": "https://example.com/start",
         "tooltip": "Start docs"
@@ -174,10 +178,6 @@
       "Review": {
         "url": "https://example.com/review",
         "tooltip": "Review docs"
-      },
-      "Done": {
-        "url": "https://example.com/done",
-        "tooltip": "Done docs"
       }
     },
     "direction": "TB",

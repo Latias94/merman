@@ -185,23 +185,22 @@ pub(super) fn flowchart_compute_edge_path_geom(
             points_after_intersect,
         );
     } else if base_points.len() >= 3 {
+        // The semantic edge keeps its original source/target, while explicit-direction cluster
+        // extraction can rebind the Graphlib layout edge to a surviving cluster node. Mermaid
+        // passes those graph endpoints to `insertEdge` for shape lookup and clipping.
+        let layout_from = le.from.as_str();
+        let layout_to = le.to.as_str();
         let tail_shape = ctx
             .nodes_by_id
-            .get(edge.from.as_str())
+            .get(layout_from)
             .and_then(|n| n.layout_shape.as_deref());
         let head_shape = ctx
             .nodes_by_id
-            .get(edge.to.as_str())
+            .get(layout_to)
             .and_then(|n| n.layout_shape.as_deref());
         if let (Some(tail), Some(head)) = (
-            boundary_for_node(
-                ctx,
-                edge.from.as_str(),
-                origin_x,
-                origin_y,
-                is_cyclic_special,
-            ),
-            boundary_for_node(ctx, edge.to.as_str(), origin_x, origin_y, is_cyclic_special),
+            boundary_for_node(ctx, layout_from, origin_x, origin_y, is_cyclic_special),
+            boundary_for_node(ctx, layout_to, origin_x, origin_y, is_cyclic_special),
         ) {
             let interior = &base_points[1..base_points.len() - 1];
             if !interior.is_empty() {
@@ -212,11 +211,15 @@ pub(super) fn flowchart_compute_edge_path_geom(
                 let start_is_center =
                     (start.x - tail.x).abs() < eps && (start.y - tail.y).abs() < eps;
                 let end_is_center = (end.x - head.x).abs() < eps && (end.y - head.y).abs() < eps;
+                let is_compact_self_loop = edge.from == edge.to && le.from == le.to;
 
-                if start_is_center || force_intersect_for_layout_shape(tail_shape) {
+                if is_compact_self_loop
+                    || start_is_center
+                    || force_intersect_for_layout_shape(tail_shape)
+                {
                     start = intersect_for_layout_shape(
                         ctx,
-                        edge.from.as_str(),
+                        layout_from,
                         &tail,
                         tail_shape,
                         &interior[0],
@@ -227,10 +230,13 @@ pub(super) fn flowchart_compute_edge_path_geom(
                     }
                 }
 
-                if end_is_center || force_intersect_for_layout_shape(head_shape) {
+                if is_compact_self_loop
+                    || end_is_center
+                    || force_intersect_for_layout_shape(head_shape)
+                {
                     end = intersect_for_layout_shape(
                         ctx,
-                        edge.to.as_str(),
+                        layout_to,
                         &head,
                         head_shape,
                         &interior[interior.len() - 1],

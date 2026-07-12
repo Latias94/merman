@@ -117,6 +117,7 @@ impl SubgraphBuilder {
             }
         }
 
+        let has_explicit_dir = dir.is_some();
         let dir = dir.or_else(|| {
             if self.inherit_dir {
                 self.global_dir.clone()
@@ -168,6 +169,7 @@ impl SubgraphBuilder {
             classes: Vec::new(),
             styles: Vec::new(),
             dir,
+            has_explicit_dir,
             label_type,
         });
 

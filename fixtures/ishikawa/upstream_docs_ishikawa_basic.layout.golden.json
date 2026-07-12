@@ -41,515 +41,567 @@
           }
         }
       },
-      "lines": [
+      "spine": {
+        "x1": -341.2,
+        "y1": 392.857,
+        "x2": 0.0,
+        "y2": 392.857,
+        "class_name": "ishikawa-spine",
+        "marker_start": false
+      },
+      "pairs": [
         {
-          "x1": -20.0,
-          "y1": 392.857,
-          "x2": -74.675,
-          "y2": 3.823,
-          "class_name": "ishikawa-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -30.935,
-          "y1": 315.05,
-          "x2": -60.935,
-          "y2": 315.05,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -41.87,
-          "y1": 237.244,
-          "x2": -71.87,
-          "y2": 237.244,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -52.805,
-          "y1": 159.437,
-          "x2": -82.805,
-          "y2": 159.437,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -63.74,
-          "y1": 81.63,
-          "x2": -93.74,
-          "y2": 81.63,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -20.0,
-          "y1": 392.857,
-          "x2": -34.911,
-          "y2": 498.957,
-          "class_name": "ishikawa-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -27.456,
-          "y1": 445.907,
-          "x2": -57.456,
-          "y2": 445.907,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -175.818,
-          "y1": 392.857,
-          "x2": -230.493,
-          "y2": 3.823,
-          "class_name": "ishikawa-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -182.653,
-          "y1": 344.228,
-          "x2": -252.653,
-          "y2": 344.228,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -229.319,
-          "y1": 344.228,
-          "x2": -236.154,
-          "y2": 295.599,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -205.986,
-          "y1": 344.228,
-          "x2": -219.655,
-          "y2": 246.969,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -203.156,
-          "y1": 198.34,
-          "x2": -278.156,
-          "y2": 198.34,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -259.406,
-          "y1": 198.34,
-          "x2": -266.24,
-          "y2": 149.711,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -240.656,
-          "y1": 198.34,
-          "x2": -254.325,
-          "y2": 101.082,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -221.906,
-          "y1": 198.34,
-          "x2": -242.409,
-          "y2": 52.452,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -175.818,
-          "y1": 392.857,
-          "x2": -190.73,
-          "y2": 498.957,
-          "class_name": "ishikawa-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -180.789,
-          "y1": 428.224,
-          "x2": -210.789,
-          "y2": 428.224,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -185.759,
-          "y1": 463.591,
-          "x2": -215.759,
-          "y2": 463.591,
-          "class_name": "ishikawa-sub-branch",
-          "marker_start": true
-        },
-        {
-          "x1": -341.2,
-          "y1": 392.857,
-          "x2": 0.0,
-          "y2": 392.857,
-          "class_name": "ishikawa-spine",
-          "marker_start": false
-        }
-      ],
-      "labels": [
-        {
-          "text": "Process",
-          "lines": [
-            "Process"
-          ],
-          "class_name": "ishikawa-label cause",
-          "x": -74.675,
-          "y": -7.177,
-          "anchor": "middle",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -100.115,
-            "min_y": -17.989,
-            "max_x": -49.235,
-            "max_y": 1.011
+          "upper": {
+            "line": {
+              "x1": -20.0,
+              "y1": 392.857,
+              "x2": -74.675,
+              "y2": 3.823,
+              "class_name": "ishikawa-branch",
+              "marker_start": true
+            },
+            "label_group": {
+              "label_box": {
+                "x": -120.115,
+                "y": -19.989,
+                "width": 90.88,
+                "height": 23.0
+              },
+              "label": {
+                "text": "Process",
+                "lines": [
+                  "Process"
+                ],
+                "class_name": "ishikawa-label cause",
+                "x": -74.675,
+                "y": -7.177,
+                "anchor": "middle",
+                "line_height": 16.8,
+                "font_size": 16.0,
+                "bbox": {
+                  "min_x": -100.115,
+                  "min_y": -17.989,
+                  "max_x": -49.235,
+                  "max_y": 1.011
+                }
+              }
+            },
+            "sub_groups": [
+              {
+                "line": {
+                  "x1": -30.935,
+                  "y1": 315.05,
+                  "x2": -60.935,
+                  "y2": 315.05,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Beautification\nfilter applied",
+                  "lines": [
+                    "Beautification",
+                    "filter applied"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -60.935,
+                  "y": 315.05,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -152.779,
+                    "min_y": 295.838,
+                    "max_x": -60.935,
+                    "max_y": 331.638
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -41.87,
+                  "y1": 237.244,
+                  "x2": -71.87,
+                  "y2": 237.244,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Protective film\nnot removed",
+                  "lines": [
+                    "Protective film",
+                    "not removed"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -71.87,
+                  "y": 237.244,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -174.589,
+                    "min_y": 218.031,
+                    "max_x": -71.87,
+                    "max_y": 253.831
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -52.805,
+                  "y1": 159.437,
+                  "x2": -82.805,
+                  "y2": 159.437,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Shutter speed\ntoo slow",
+                  "lines": [
+                    "Shutter speed",
+                    "too slow"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -82.805,
+                  "y": 159.437,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -173.368,
+                    "min_y": 140.224,
+                    "max_x": -82.805,
+                    "max_y": 176.024
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -63.74,
+                  "y1": 81.63,
+                  "x2": -93.74,
+                  "y2": 81.63,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Out of focus",
+                  "lines": [
+                    "Out of focus"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -93.74,
+                  "y": 81.63,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -175.818,
+                    "min_y": 70.818,
+                    "max_x": -93.74,
+                    "max_y": 89.818
+                  }
+                }
+              }
+            ]
+          },
+          "lower": {
+            "line": {
+              "x1": -20.0,
+              "y1": 392.857,
+              "x2": -34.911,
+              "y2": 498.957,
+              "class_name": "ishikawa-branch",
+              "marker_start": true
+            },
+            "label_group": {
+              "label_box": {
+                "x": -70.031,
+                "y": 497.145,
+                "width": 70.24,
+                "height": 23.0
+              },
+              "label": {
+                "text": "User",
+                "lines": [
+                  "User"
+                ],
+                "class_name": "ishikawa-label cause",
+                "x": -34.911,
+                "y": 509.957,
+                "anchor": "middle",
+                "line_height": 16.8,
+                "font_size": 16.0,
+                "bbox": {
+                  "min_x": -50.031,
+                  "min_y": 499.145,
+                  "max_x": -19.791,
+                  "max_y": 518.145
+                }
+              }
+            },
+            "sub_groups": [
+              {
+                "line": {
+                  "x1": -27.456,
+                  "y1": 445.907,
+                  "x2": -57.456,
+                  "y2": 445.907,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Shaky hands",
+                  "lines": [
+                    "Shaky hands"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -57.456,
+                  "y": 445.907,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -138.096,
+                    "min_y": 435.095,
+                    "max_x": -57.456,
+                    "max_y": 454.095
+                  }
+                }
+              }
+            ]
           }
         },
         {
-          "text": "Beautification\nfilter applied",
-          "lines": [
-            "Beautification",
-            "filter applied"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -60.935,
-          "y": 315.05,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -152.779,
-            "min_y": 295.838,
-            "max_x": -60.935,
-            "max_y": 331.638
+          "upper": {
+            "line": {
+              "x1": -175.818,
+              "y1": 392.857,
+              "x2": -230.493,
+              "y2": 3.823,
+              "class_name": "ishikawa-branch",
+              "marker_start": true
+            },
+            "label_group": {
+              "label_box": {
+                "x": -284.413,
+                "y": -19.989,
+                "width": 107.84,
+                "height": 23.0
+              },
+              "label": {
+                "text": "Equipment",
+                "lines": [
+                  "Equipment"
+                ],
+                "class_name": "ishikawa-label cause",
+                "x": -230.493,
+                "y": -7.177,
+                "anchor": "middle",
+                "line_height": 16.8,
+                "font_size": 16.0,
+                "bbox": {
+                  "min_x": -264.413,
+                  "min_y": -17.989,
+                  "max_x": -196.573,
+                  "max_y": 1.011
+                }
+              }
+            },
+            "sub_groups": [
+              {
+                "line": {
+                  "x1": -182.653,
+                  "y1": 344.228,
+                  "x2": -252.653,
+                  "y2": 344.228,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "SENSOR",
+                  "lines": [
+                    "SENSOR"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -252.653,
+                  "y": 344.228,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -310.246,
+                    "min_y": 333.415,
+                    "max_x": -252.653,
+                    "max_y": 352.415
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -229.319,
+                  "y1": 344.228,
+                  "x2": -236.154,
+                  "y2": 295.599,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Dirty sensor",
+                  "lines": [
+                    "Dirty sensor"
+                  ],
+                  "class_name": "ishikawa-label up",
+                  "x": -236.154,
+                  "y": 295.599,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -319.357,
+                    "min_y": 276.599,
+                    "max_x": -236.154,
+                    "max_y": 295.599
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -205.986,
+                  "y1": 344.228,
+                  "x2": -219.655,
+                  "y2": 246.969,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Damaged sensor",
+                  "lines": [
+                    "Damaged sensor"
+                  ],
+                  "class_name": "ishikawa-label up",
+                  "x": -219.655,
+                  "y": 246.969,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -322.702,
+                    "min_y": 227.969,
+                    "max_x": -219.655,
+                    "max_y": 246.969
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -203.156,
+                  "y1": 198.34,
+                  "x2": -278.156,
+                  "y2": 198.34,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "LENS",
+                  "lines": [
+                    "LENS"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -278.156,
+                  "y": 198.34,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -316.562,
+                    "min_y": 187.528,
+                    "max_x": -278.156,
+                    "max_y": 206.528
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -259.406,
+                  "y1": 198.34,
+                  "x2": -266.24,
+                  "y2": 149.711,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Dirty lens",
+                  "lines": [
+                    "Dirty lens"
+                  ],
+                  "class_name": "ishikawa-label up",
+                  "x": -266.24,
+                  "y": 149.711,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -333.287,
+                    "min_y": 130.711,
+                    "max_x": -266.24,
+                    "max_y": 149.711
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -240.656,
+                  "y1": 198.34,
+                  "x2": -254.325,
+                  "y2": 101.082,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Damaged lens",
+                  "lines": [
+                    "Damaged lens"
+                  ],
+                  "class_name": "ishikawa-label up",
+                  "x": -254.325,
+                  "y": 101.082,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -341.2,
+                    "min_y": 82.082,
+                    "max_x": -254.325,
+                    "max_y": 101.082
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -221.906,
+                  "y1": 198.34,
+                  "x2": -242.409,
+                  "y2": 52.452,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Inappropriate\nlens",
+                  "lines": [
+                    "Inappropriate",
+                    "lens"
+                  ],
+                  "class_name": "ishikawa-label up",
+                  "x": -242.409,
+                  "y": 52.452,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -327.362,
+                    "min_y": 16.652,
+                    "max_x": -242.409,
+                    "max_y": 52.452
+                  }
+                }
+              }
+            ]
+          },
+          "lower": {
+            "line": {
+              "x1": -175.818,
+              "y1": 392.857,
+              "x2": -190.73,
+              "y2": 498.957,
+              "class_name": "ishikawa-branch",
+              "marker_start": true
+            },
+            "label_group": {
+              "label_box": {
+                "x": -251.53,
+                "y": 497.145,
+                "width": 121.6,
+                "height": 23.0
+              },
+              "label": {
+                "text": "Environment",
+                "lines": [
+                  "Environment"
+                ],
+                "class_name": "ishikawa-label cause",
+                "x": -190.73,
+                "y": 509.957,
+                "anchor": "middle",
+                "line_height": 16.8,
+                "font_size": 16.0,
+                "bbox": {
+                  "min_x": -231.53,
+                  "min_y": 499.145,
+                  "max_x": -149.93,
+                  "max_y": 518.145
+                }
+              }
+            },
+            "sub_groups": [
+              {
+                "line": {
+                  "x1": -180.789,
+                  "y1": 428.224,
+                  "x2": -210.789,
+                  "y2": 428.224,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Subject moved\ntoo quickly",
+                  "lines": [
+                    "Subject moved",
+                    "too quickly"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -210.789,
+                  "y": 428.224,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -306.945,
+                    "min_y": 409.011,
+                    "max_x": -210.789,
+                    "max_y": 444.811
+                  }
+                }
+              },
+              {
+                "line": {
+                  "x1": -185.759,
+                  "y1": 463.591,
+                  "x2": -215.759,
+                  "y2": 463.591,
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true
+                },
+                "label": {
+                  "text": "Too dark",
+                  "lines": [
+                    "Too dark"
+                  ],
+                  "class_name": "ishikawa-label align",
+                  "x": -215.759,
+                  "y": 463.591,
+                  "anchor": "end",
+                  "line_height": 16.8,
+                  "font_size": 16.0,
+                  "bbox": {
+                    "min_x": -273.837,
+                    "min_y": 452.778,
+                    "max_x": -215.759,
+                    "max_y": 471.778
+                  }
+                }
+              }
+            ]
           }
-        },
-        {
-          "text": "Protective film\nnot removed",
-          "lines": [
-            "Protective film",
-            "not removed"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -71.87,
-          "y": 237.244,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -174.589,
-            "min_y": 218.031,
-            "max_x": -71.87,
-            "max_y": 253.831
-          }
-        },
-        {
-          "text": "Shutter speed\ntoo slow",
-          "lines": [
-            "Shutter speed",
-            "too slow"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -82.805,
-          "y": 159.437,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -173.368,
-            "min_y": 140.224,
-            "max_x": -82.805,
-            "max_y": 176.024
-          }
-        },
-        {
-          "text": "Out of focus",
-          "lines": [
-            "Out of focus"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -93.74,
-          "y": 81.63,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -175.818,
-            "min_y": 70.818,
-            "max_x": -93.74,
-            "max_y": 89.818
-          }
-        },
-        {
-          "text": "User",
-          "lines": [
-            "User"
-          ],
-          "class_name": "ishikawa-label cause",
-          "x": -34.911,
-          "y": 509.957,
-          "anchor": "middle",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -50.031,
-            "min_y": 499.145,
-            "max_x": -19.791,
-            "max_y": 518.145
-          }
-        },
-        {
-          "text": "Shaky hands",
-          "lines": [
-            "Shaky hands"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -57.456,
-          "y": 445.907,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -138.096,
-            "min_y": 435.095,
-            "max_x": -57.456,
-            "max_y": 454.095
-          }
-        },
-        {
-          "text": "Equipment",
-          "lines": [
-            "Equipment"
-          ],
-          "class_name": "ishikawa-label cause",
-          "x": -230.493,
-          "y": -7.177,
-          "anchor": "middle",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -264.413,
-            "min_y": -17.989,
-            "max_x": -196.573,
-            "max_y": 1.011
-          }
-        },
-        {
-          "text": "SENSOR",
-          "lines": [
-            "SENSOR"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -252.653,
-          "y": 344.228,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -310.246,
-            "min_y": 333.415,
-            "max_x": -252.653,
-            "max_y": 352.415
-          }
-        },
-        {
-          "text": "Dirty sensor",
-          "lines": [
-            "Dirty sensor"
-          ],
-          "class_name": "ishikawa-label up",
-          "x": -236.154,
-          "y": 295.599,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -319.357,
-            "min_y": 276.599,
-            "max_x": -236.154,
-            "max_y": 295.599
-          }
-        },
-        {
-          "text": "Damaged sensor",
-          "lines": [
-            "Damaged sensor"
-          ],
-          "class_name": "ishikawa-label up",
-          "x": -219.655,
-          "y": 246.969,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -322.702,
-            "min_y": 227.969,
-            "max_x": -219.655,
-            "max_y": 246.969
-          }
-        },
-        {
-          "text": "LENS",
-          "lines": [
-            "LENS"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -278.156,
-          "y": 198.34,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -316.562,
-            "min_y": 187.528,
-            "max_x": -278.156,
-            "max_y": 206.528
-          }
-        },
-        {
-          "text": "Dirty lens",
-          "lines": [
-            "Dirty lens"
-          ],
-          "class_name": "ishikawa-label up",
-          "x": -266.24,
-          "y": 149.711,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -333.287,
-            "min_y": 130.711,
-            "max_x": -266.24,
-            "max_y": 149.711
-          }
-        },
-        {
-          "text": "Damaged lens",
-          "lines": [
-            "Damaged lens"
-          ],
-          "class_name": "ishikawa-label up",
-          "x": -254.325,
-          "y": 101.082,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -341.2,
-            "min_y": 82.082,
-            "max_x": -254.325,
-            "max_y": 101.082
-          }
-        },
-        {
-          "text": "Inappropriate\nlens",
-          "lines": [
-            "Inappropriate",
-            "lens"
-          ],
-          "class_name": "ishikawa-label up",
-          "x": -242.409,
-          "y": 52.452,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -327.362,
-            "min_y": 16.652,
-            "max_x": -242.409,
-            "max_y": 52.452
-          }
-        },
-        {
-          "text": "Environment",
-          "lines": [
-            "Environment"
-          ],
-          "class_name": "ishikawa-label cause",
-          "x": -190.73,
-          "y": 509.957,
-          "anchor": "middle",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -231.53,
-            "min_y": 499.145,
-            "max_x": -149.93,
-            "max_y": 518.145
-          }
-        },
-        {
-          "text": "Subject moved\ntoo quickly",
-          "lines": [
-            "Subject moved",
-            "too quickly"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -210.789,
-          "y": 428.224,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -306.945,
-            "min_y": 409.011,
-            "max_x": -210.789,
-            "max_y": 444.811
-          }
-        },
-        {
-          "text": "Too dark",
-          "lines": [
-            "Too dark"
-          ],
-          "class_name": "ishikawa-label align",
-          "x": -215.759,
-          "y": 463.591,
-          "anchor": "end",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": -273.837,
-            "min_y": 452.778,
-            "max_x": -215.759,
-            "max_y": 471.778
-          }
-        }
-      ],
-      "label_boxes": [
-        {
-          "x": -120.115,
-          "y": -19.989,
-          "width": 90.88,
-          "height": 23.0
-        },
-        {
-          "x": -70.031,
-          "y": 497.145,
-          "width": 70.24,
-          "height": 23.0
-        },
-        {
-          "x": -284.413,
-          "y": -19.989,
-          "width": 107.84,
-          "height": 23.0
-        },
-        {
-          "x": -251.53,
-          "y": 497.145,
-          "width": 121.6,
-          "height": 23.0
         }
       ]
     }

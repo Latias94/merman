@@ -9,16 +9,19 @@
       "id": 0,
       "level": -1,
       "name": "/",
+      "nodeType": "directory",
       "children": [
         {
           "id": 1,
           "level": 0,
           "name": "Root",
+          "nodeType": "file",
           "children": [
             {
               "id": 2,
               "level": 4,
               "name": "Child",
+              "nodeType": "file",
               "children": []
             }
           ]
@@ -29,17 +32,20 @@
       {
         "id": 0,
         "level": -1,
-        "name": "/"
+        "name": "/",
+        "nodeType": "directory"
       },
       {
         "id": 1,
         "level": 0,
-        "name": "Root"
+        "name": "Root",
+        "nodeType": "file"
       },
       {
         "id": 2,
         "level": 4,
-        "name": "Child"
+        "name": "Child",
+        "nodeType": "file"
       }
     ]
   }

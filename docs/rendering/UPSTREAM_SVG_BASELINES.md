@@ -3,7 +3,7 @@
 This document describes how to generate **upstream Mermaid SVG outputs** that act as baselines for
 1:1 parity work.
 
-Baseline version: Mermaid `@11.15.0`.
+Baseline version: Mermaid `@11.16.0`.
 
 Historical fixture notes may still mention the baseline version that introduced a fixture or
 normalization rule. The current authoritative baseline is ADR-0001 plus
@@ -49,11 +49,82 @@ collapsed into a single "supported" claim.
 
 We use `@mermaid-js/mermaid-cli` pinned under `tools/mermaid-cli/`.
 The CLI version and Mermaid version do not always match 1:1, so we use `npm overrides`
-to force Mermaid `11.15.0`.
+to force Mermaid `11.16.0`.
 
 Install:
 
 - `cd tools/mermaid-cli && npm install`
+
+### Render-environment attestation
+
+Every schema-v2 `_baseline-manifest.json` distinguishes between two provenance modes:
+
+- `generated`: the complete family was rendered in one measured environment. The manifest records
+  the CDP browser product/version/revision, Chromium's resolved IANA timezone, Puppeteer version, OS
+  identity, the versions reported by both Mermaid's ESM and IIFE runtimes, SHA-256 tree fingerprints
+  for the installed Mermaid and Mermaid CLI packages, and a browser-font fingerprint.
+- `adopted-existing`: the corpus and hashes were validated, but its historical browser environment
+  cannot be proved. Do not add a render environment to an adopted corpus after the fact.
+
+`gen-upstream-svgs` probes the browser once before rendering or writing provenance. It then passes
+the exact executable reported by the launched Puppeteer process to both mmdc and the seeded IIFE
+renderer. To select a browser, set `PUPPETEER_EXECUTABLE_PATH` before invoking xtask;
+`CHROME_EXECUTABLE` is not a Puppeteer configuration input. The absolute executable path is used
+only for the current command and is never stored in the manifest. Timed renderer processes run in
+a managed process tree; Puppeteer detachment is disabled so timeout cleanup terminates and reaps
+both Node and its browser descendants. Generated probe and seeded-renderer scripts use immutable,
+content-addressed paths installed by atomic rename, so concurrent xtask processes cannot observe a
+partially written script.
+
+The probe resolves Mermaid from the actual `@mermaid-js/mermaid-cli` package context, so the ESM and
+IIFE attestations describe the same dependency tree that mmdc uses rather than an unrelated root
+`node_modules/mermaid` installation. The package fingerprints must also match the pinned 11.16.0
+artifacts, so a same-version locally modified runtime is rejected before rendering.
+
+The font probe hashes fixed SVG `getBBox`/`getComputedTextLength` and canvas `measureText` samples.
+It is an environment fingerprint only: the values must not be copied into `merman-render`, used to
+tune text coefficients, or turned into fixture-specific wrapping overrides.
+
+The browser-resolved timezone is part of the generated-corpus identity because Mermaid Gantt date
+geometry follows browser-local time and daylight-saving rules. A partial generation from a different
+timezone is rejected before SVG promotion; use a complete family generation when intentionally
+changing timezone.
+
+A filtered generation against the baseline corpus may extend only an existing `generated` manifest
+with the exact same measured environment. The isolated `--fresh-output` mode used by
+`check-upstream-svgs` is the exception: when the family output directory is empty,
+`--filter --fresh-output` may create a new `generated` manifest with `complete: false`. That
+manifest covers only the selected check output and cannot establish or replace a complete baseline
+corpus. Use a complete family generation to establish a new environment or replace an adopted
+corpus. A filtered merge into an already complete generated corpus keeps `complete: true` only after
+the merged manifest is revalidated against the entire live family; a previously incomplete corpus
+remains incomplete. `check-upstream-svgs` compares render environments before comparing fresh SVG
+output; an `adopted-existing` baseline must be fully regenerated before that command can claim
+reproducibility.
+
+Generation is transactional at the family batch boundary. Every SVG is rendered and validated in a
+temporary location before any baseline is promoted. The manifest is staged only after all outputs and
+provenance checks succeed. Promotion uses backups for both replacements and deletions, including
+every stale SVG whose fixture was excluded, deleted, or renamed, and restores the previous SVGs and
+manifest if any file or metadata commit fails. A rejected partial environment cannot leave new SVGs
+paired with stale provenance. Generation and provenance adoption share the same per-family
+cross-process lock for final preflight, SVG promotion, and manifest commit. Baseline checks and
+pinned compare commands hold that lock while reading the manifest and SVG corpus, so they cannot
+observe a writer's promotion window. Provenance adoption with `--diagram all` acquires all family
+locks in stable output-path order, validates every family, then stages, backs up, and installs all
+manifests as one rollback-capable batch. A failed later install therefore restores every earlier
+family instead of leaving a partial adoption.
+
+All generator invocations also hold one cross-process Mermaid CLI toolchain lock from the
+`node_modules` installation check through rendering and the final runtime-package fingerprint
+verification. Compare and audit readers hold the same lock while invoking Mermaid CLI or Node KaTeX.
+This serializes `npm ci`/`npm install` against every shared-toolchain reader, including imports that
+already hold a family transaction lock; nested import operations keep the `toolchain -> family`
+acquisition order and reuse their existing guards.
+
+To validate and honestly adopt historical schema-v1 baselines without inventing environment proof:
+
+- `cargo run -p xtask -- adopt-upstream-svg-provenance --diagram all --allow-downgrade`
 
 ## Import Fixtures From Mermaid Syntax Docs
 
@@ -224,7 +295,7 @@ Convention:
 ## Normalized Fixtures (CLI-Compatible)
 
 Some upstream suites (notably Cypress) include inputs that are accepted by the browser bundle but
-rejected by the pinned Mermaid CLI (currently `@11.15.0`), often due to shorthand syntax.
+rejected by the pinned Mermaid CLI (currently `@11.16.0`), often due to shorthand syntax.
 
 To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
 comparisons, we add `*_normalized` variants that rewrite the input into the pinned Mermaid grammar.
@@ -258,7 +329,8 @@ Notes:
 - Mermaid derives C4 type-line `textLength` values from browser font metrics
   (`calculateTextWidth` + `getBBox`). To make DOM parity reproducible in a headless Rust context,
   `merman-render` now owns the observed `textLength` values for built-in C4 shape types directly
-  in `crates/merman-render/src/svg/parity/c4.rs` at Mermaid `11.15.0`.
+  in `crates/merman-render/src/svg/parity/c4.rs`. The current source baseline is Mermaid `11.16.0`;
+  existing measured constants should be refreshed when the C4 SVG corpus is regenerated.
 
 ## Generate (All supported diagrams)
 
@@ -398,7 +470,8 @@ output (DOM signature comparison):
 
 Notes:
 
-- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded (Mermaid CLI failure at 11.15.0).
+- `fixtures/class/upstream_text_label_variants_spec.mmd` is excluded because pinned Mermaid 11.16
+  fails on its whitespace-only class label; re-check before admitting under a future baseline.
 - `fixtures/class/upstream_parser_class_spec.mmd` is excluded from Class DOM and canonical-XML
   compares because the upstream SVG contains prototype-key rendering artifacts (nested `g.root` /
   `translate(NaN, ...)` and missing prototype-key nodes), while `merman` renders deterministically.
@@ -454,8 +527,11 @@ Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B 
 ## Notes
 
 - The generator passes `--svgId <fixture_stem>` to make the root SVG id deterministic.
-- If rendering fails for a fixture, the tool still writes as many SVGs as possible and records
-  failures to `fixtures/upstream-svgs/<diagram>/_failures.txt` (the command will exit non-zero).
+- If any fixture fails, the tool preserves that family's existing SVGs and manifest, removes the
+  temporary outputs, records a unique report under
+  `<output-root>/.xtask-upstream-svg-staging/<diagram>/`, and exits non-zero. SVGs and provenance are
+  promoted only after the complete batch validates; failure reports never contaminate a fresh family
+  output directory.
 - We currently store raw upstream SVG outputs. For `state` diagrams, upstream output is not
   byte-stable, so baseline verification uses a structure-level DOM signature instead of a raw byte
   compare.
@@ -463,7 +539,7 @@ Generate a report comparing upstream gitGraph SVGs and the current Rust Stage-B 
   Mermaid when not explicitly specified. Baseline verification uses a structure-level DOM signature
   by default.
 
-## Known Upstream Rendering Failures / Anomalies (as of Mermaid 11.15.0)
+## Known Upstream Rendering Failures / Anomalies
 
 - `fixtures/state/upstream_state_parser_spec.mmd`: includes `__proto__`/`constructor` states; Mermaid CLI currently crashes (excluded from `gen-upstream-svgs` / `check-upstream-svgs`).
 - `fixtures/class/upstream_text_label_variants_spec.mmd`: includes a whitespace-only label (`" "`); Mermaid CLI currently fails (NaN transforms / missing SVG in render tree; excluded from `gen-upstream-svgs` / `check-upstream-svgs`).

@@ -67,7 +67,6 @@ pub(super) fn render_sequence_note(
         // `noteModel.width`, so wrap to `n.width - 2*wrapPadding` here.
         let lines = sequence_note_final_wrapped_lines(
             raw,
-            msg.placement.unwrap_or(2),
             n.width,
             2.0 * ctx.wrap_padding,
             ctx.measurer,

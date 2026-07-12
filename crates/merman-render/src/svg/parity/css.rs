@@ -393,7 +393,7 @@ pub(super) fn requirement_css(diagram_id: &str, effective_config: &serde_json::V
 }
 
 pub(super) fn er_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    // Mirrors Mermaid@11.15.0 ER unified renderer stylesheet ordering (see `diagrams/er/styles.ts`
+    // Mirrors pinned Mermaid ER unified renderer stylesheet ordering (see `diagrams/er/styles.ts`
     // and shared base stylesheet).
     // Keep `:root` last (matches upstream fixtures).
     let id = escape_xml(diagram_id);
@@ -512,7 +512,7 @@ fn pie_theme_option(
 }
 
 pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
-    // Mirrors Mermaid@11.15.0 `diagrams/pie/pieStyles.ts`. Keep `:root` last to match the
+    // Mirrors Mermaid@11.16.0 `diagrams/pie/pieStyles.ts`. Keep `:root` last to match the
     // config-aware CSS emitters used by the other diagram families.
     let id = escape_xml(diagram_id);
     let parts = info_css_parts_with_config(diagram_id, effective_config);
@@ -533,11 +533,13 @@ pub(super) fn pie_css(diagram_id: &str, effective_config: &serde_json::Value) ->
     let pie_legend_text_color = theme.color("pieLegendTextColor", task_text_dark_color.as_str());
     let _ = write!(
         &mut out,
-        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
+        r#"#{} .pieCircle{{stroke:{};stroke-width:{};opacity:{};}}#{} .pieCircle.highlighted{{scale:1.05;opacity:1;}}#{} .pieCircle.highlightedOnHover:hover{{transition-duration:250ms;scale:1.05;opacity:1;}}#{} .pieOuterCircle{{stroke:{};stroke-width:{};fill:none;}}#{} .pieTitleText{{text-anchor:middle;font-size:{};fill:{};font-family:{};}}#{} .slice{{font-family:{};fill:{};font-size:{};}}#{} .legend text{{fill:{};font-family:{};font-size:{};}}"#,
         id,
         pie_stroke_color,
         pie_stroke_width,
         pie_opacity,
+        id,
+        id,
         id,
         pie_outer_stroke_color,
         pie_outer_stroke_width,

@@ -187,27 +187,15 @@ fn render_flowchart_v2_svg_with_config_inner(
         }
     }
 
-    let mut recursive_clusters: FxHashSet<&str> = FxHashSet::default();
-    for sg in model.subgraphs.iter() {
-        if sg.nodes.is_empty() {
-            continue;
-        }
-        let mut external = false;
-        for e in &render_edges {
-            let e = e.as_ref();
-            // Match Mermaid `adjustClustersAndEdges` / flowchart-v2 behavior: a cluster is
-            // considered to have external connections when an edge crosses its descendant boundary.
-            let from_in = flowchart_is_strict_descendant(&parent, e.from.as_str(), sg.id.as_str());
-            let to_in = flowchart_is_strict_descendant(&parent, e.to.as_str(), sg.id.as_str());
-            if from_in != to_in {
-                external = true;
-                break;
-            }
-        }
-        if !external {
-            recursive_clusters.insert(sg.id.as_str());
-        }
-    }
+    // Layout extraction is the source of truth for recursive cluster roots. Recomputing this from
+    // semantic edges loses Mermaid 11.16's explicit-direction extraction branch and can make every
+    // node inside an extracted cluster disappear from the SVG DOM.
+    let recursive_clusters: FxHashSet<&str> = layout
+        .dom_node_order_by_root
+        .keys()
+        .filter(|id| !id.is_empty())
+        .map(String::as_str)
+        .collect();
 
     let mut layout_nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());

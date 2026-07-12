@@ -1,7 +1,8 @@
 use crate::Result;
 use crate::model::{
-    Bounds, IshikawaDiagramLayout, IshikawaHeadLayout, IshikawaLabelBoxLayout, IshikawaLineLayout,
-    IshikawaTextLayout,
+    Bounds, IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaDiagramLayout,
+    IshikawaHeadLayout, IshikawaLabelBoxLayout, IshikawaLineLayout, IshikawaPairLayout,
+    IshikawaSubGroupLayout, IshikawaTextLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, round_to_1_64_px_ties_to_even};
 use merman_core::diagrams::ishikawa::{
@@ -53,9 +54,8 @@ pub fn layout_ishikawa_diagram_typed(
             use_max_width: cfg.use_max_width,
             font_size: cfg.font_size,
             head: None,
-            lines: Vec::new(),
-            labels: Vec::new(),
-            label_boxes: Vec::new(),
+            spine: None,
+            pairs: Vec::new(),
         });
     };
 
@@ -64,9 +64,8 @@ pub fn layout_ishikawa_diagram_typed(
         measurer,
         bounds: BoundsAcc::new(),
         head: None,
-        lines: Vec::new(),
-        labels: Vec::new(),
-        label_boxes: Vec::new(),
+        spine: None,
+        pairs: Vec::new(),
     };
 
     let causes = root.children.as_slice();
@@ -75,7 +74,7 @@ pub fn layout_ishikawa_diagram_typed(
 
     if causes.is_empty() {
         draw_head(&mut ctx, spine_x, spine_y, &root.text)?;
-        draw_line(
+        let spine = draw_line(
             &mut ctx,
             spine_x,
             spine_y,
@@ -84,6 +83,7 @@ pub fn layout_ishikawa_diagram_typed(
             "ishikawa-spine",
             false,
         );
+        ctx.spine = Some(spine);
         return Ok(ctx.into_layout());
     }
 
@@ -108,21 +108,21 @@ pub fn layout_ishikawa_diagram_typed(
     spine_y = upper_len.max(SPINE_BASE_LENGTH);
     draw_head(&mut ctx, 0.0, spine_y, &root.text)?;
 
-    let pair_count = causes.len().div_ceil(2);
-    for pair in 0..pair_count {
+    for causes_pair in causes.chunks(2) {
+        let Some(upper_cause) = causes_pair.first() else {
+            continue;
+        };
         let mut pair_min_text_x = f64::INFINITY;
-        if let Some(cause) = causes.get(pair * 2) {
-            draw_branch(
-                &mut ctx,
-                cause,
-                spine_x,
-                spine_y,
-                -1.0,
-                upper_len,
-                &mut pair_min_text_x,
-            )?;
-        }
-        if let Some(cause) = causes.get(pair * 2 + 1) {
+        let upper = draw_branch(
+            &mut ctx,
+            upper_cause,
+            spine_x,
+            spine_y,
+            -1.0,
+            upper_len,
+            &mut pair_min_text_x,
+        );
+        let lower = causes_pair.get(1).map(|cause| {
             draw_branch(
                 &mut ctx,
                 cause,
@@ -131,14 +131,15 @@ pub fn layout_ishikawa_diagram_typed(
                 1.0,
                 lower_len,
                 &mut pair_min_text_x,
-            )?;
-        }
+            )
+        });
+        ctx.pairs.push(IshikawaPairLayout { upper, lower });
         if pair_min_text_x.is_finite() {
             spine_x = pair_min_text_x;
         }
     }
 
-    draw_line(
+    let spine = draw_line(
         &mut ctx,
         spine_x,
         spine_y,
@@ -147,6 +148,7 @@ pub fn layout_ishikawa_diagram_typed(
         "ishikawa-spine",
         false,
     );
+    ctx.spine = Some(spine);
     Ok(ctx.into_layout())
 }
 
@@ -180,9 +182,8 @@ struct LayoutCtx<'a> {
     measurer: &'a dyn TextMeasurer,
     bounds: BoundsAcc,
     head: Option<IshikawaHeadLayout>,
-    lines: Vec<IshikawaLineLayout>,
-    labels: Vec<IshikawaTextLayout>,
-    label_boxes: Vec<IshikawaLabelBoxLayout>,
+    spine: Option<IshikawaLineLayout>,
+    pairs: Vec<IshikawaPairLayout>,
 }
 
 impl LayoutCtx<'_> {
@@ -207,9 +208,8 @@ impl LayoutCtx<'_> {
             use_max_width: self.cfg.use_max_width,
             font_size: self.cfg.font_size,
             head: self.head,
-            lines: self.lines,
-            labels: self.labels,
-            label_boxes: self.label_boxes,
+            spine: self.spine,
+            pairs: self.pairs,
         }
     }
 }
@@ -260,7 +260,7 @@ fn draw_branch(
     direction: f64,
     length: f64,
     pair_min_text_x: &mut f64,
-) -> Result<()> {
+) -> IshikawaBranchLayout {
     let children = node.children.as_slice();
     let line_len = length * if children.is_empty() { 0.2 } else { 1.0 };
     let dx = -COS_A * line_len;
@@ -268,7 +268,7 @@ fn draw_branch(
     let end_x = start_x + dx;
     let end_y = start_y + dy;
 
-    draw_line(ctx, start_x, start_y, end_x, end_y, "ishikawa-branch", true);
+    let line = draw_line(ctx, start_x, start_y, end_x, end_y, "ishikawa-branch", true);
     let cause_label = text_layout(
         ctx,
         &wrap_text(&node.text, 15),
@@ -279,10 +279,14 @@ fn draw_branch(
         VerticalMode::Middle,
     );
     *pair_min_text_x = pair_min_text_x.min(cause_label.bbox.min_x);
-    add_label_with_box(ctx, cause_label);
+    let label_group = label_group_layout(ctx, cause_label);
 
     if children.is_empty() {
-        return Ok(());
+        return IshikawaBranchLayout {
+            line,
+            label_group,
+            sub_groups: Vec::new(),
+        };
     }
 
     let flattened = flatten_tree(children, direction);
@@ -312,6 +316,7 @@ fn draw_branch(
     } else {
         "ishikawa-label down"
     };
+    let mut sub_groups = Vec::with_capacity(entry_count);
 
     for (i, entry) in flattened.entries.iter().enumerate() {
         let y = ys[i];
@@ -324,7 +329,7 @@ fn draw_branch(
             children_drawn: 0,
         });
 
-        let (bx0, by0, bx1, text) = if entry.depth % 2 == 0 {
+        let (bx0, by0, bx1, line, text) = if entry.depth % 2 == 0 {
             let dy_parent = parent.y1 - parent.y0;
             let bx0 = lerp(
                 parent.x0,
@@ -341,7 +346,7 @@ fn draw_branch(
                 } else {
                     BONE_STUB
                 };
-            draw_line(ctx, bx0, y, bx1, y, "ishikawa-sub-branch", true);
+            let line = draw_line(ctx, bx0, y, bx1, y, "ishikawa-sub-branch", true);
             let text = text_layout(
                 ctx,
                 &entry.text,
@@ -351,7 +356,7 @@ fn draw_branch(
                 TextAnchor::End,
                 VerticalMode::Middle,
             );
-            (bx0, y, bx1, text)
+            (bx0, y, bx1, line, text)
         } else {
             let parent = bones.entry(entry.parent_index).or_insert(BoneInfo {
                 x0: start_x,
@@ -370,7 +375,7 @@ fn draw_branch(
             );
             let by0 = parent.y0;
             let bx1 = bx0 + diagonal_x * ((y - by0) / diagonal_y);
-            draw_line(ctx, bx0, by0, bx1, y, "ishikawa-sub-branch", true);
+            let line = draw_line(ctx, bx0, by0, bx1, y, "ishikawa-sub-branch", true);
             let text = text_layout(
                 ctx,
                 &entry.text,
@@ -384,12 +389,12 @@ fn draw_branch(
                     VerticalMode::Hanging
                 },
             );
-            (bx0, by0, bx1, text)
+            (bx0, by0, bx1, line, text)
         };
 
         *pair_min_text_x = pair_min_text_x.min(text.bbox.min_x);
         ctx.bounds.include_bounds(&text.bbox);
-        ctx.labels.push(text);
+        sub_groups.push(IshikawaSubGroupLayout { line, label: text });
 
         if entry.child_count > 0 {
             bones.insert(
@@ -406,7 +411,11 @@ fn draw_branch(
         }
     }
 
-    Ok(())
+    IshikawaBranchLayout {
+        line,
+        label_group,
+        sub_groups,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -544,7 +553,10 @@ enum VerticalMode {
     Hanging,
 }
 
-fn add_label_with_box(ctx: &mut LayoutCtx<'_>, label: IshikawaTextLayout) {
+fn label_group_layout(
+    ctx: &mut LayoutCtx<'_>,
+    label: IshikawaTextLayout,
+) -> IshikawaCauseLabelGroupLayout {
     let box_layout = IshikawaLabelBoxLayout {
         x: label.bbox.min_x - 20.0,
         y: label.bbox.min_y - 2.0,
@@ -558,8 +570,10 @@ fn add_label_with_box(ctx: &mut LayoutCtx<'_>, label: IshikawaTextLayout) {
         box_layout.width,
         box_layout.height,
     );
-    ctx.label_boxes.push(box_layout);
-    ctx.labels.push(label);
+    IshikawaCauseLabelGroupLayout {
+        label_box: box_layout,
+        label,
+    }
 }
 
 fn text_layout(
@@ -719,17 +733,17 @@ fn draw_line(
     y2: f64,
     class_name: &str,
     marker_start: bool,
-) {
+) -> IshikawaLineLayout {
     ctx.bounds.include_point(x1, y1);
     ctx.bounds.include_point(x2, y2);
-    ctx.lines.push(IshikawaLineLayout {
+    IshikawaLineLayout {
         x1,
         y1,
         x2,
         y2,
         class_name: class_name.to_string(),
         marker_start,
-    });
+    }
 }
 
 fn wrap_text(text: &str, max_chars: usize) -> String {

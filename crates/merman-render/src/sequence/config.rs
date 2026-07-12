@@ -97,15 +97,14 @@ pub(super) struct SequenceLayoutSettings {
     pub(super) actor_margin: f64,
     pub(super) sequence_default_width: f64,
     pub(super) actor_height: f64,
-    pub(super) message_margin: f64,
     pub(super) wrap_padding: f64,
+    pub(super) note_margin: f64,
     pub(super) box_text_margin: f64,
     pub(super) label_box_height: f64,
+    pub(super) label_box_width: f64,
     pub(super) mirror_actors: bool,
-    pub(super) message_width_scale: f64,
-    pub(super) message_text_line_height: f64,
-    pub(super) message_step: f64,
-    pub(super) msg_label_offset: f64,
+    pub(super) right_angles: bool,
+    pub(super) is_neo: bool,
     pub(super) activation_width: f64,
     pub(super) actor_text_style: TextStyle,
     pub(super) note_text_style: TextStyle,
@@ -123,11 +122,14 @@ impl SequenceLayoutSettings {
         let actor_margin = config.sequence_compat_f64("actorMargin", 50.0);
         let sequence_default_width = config.sequence_compat_f64("width", 150.0);
         let actor_height = config.sequence_compat_f64("height", 65.0);
-        let message_margin = config.sequence_compat_f64("messageMargin", 35.0);
         let wrap_padding = config.sequence_compat_f64("wrapPadding", 10.0);
+        let note_margin = config.sequence_compat_f64("noteMargin", 10.0);
         let box_text_margin = config.sequence_compat_f64("boxTextMargin", 5.0);
         let label_box_height = config.sequence_compat_f64("labelBoxHeight", 20.0);
+        let label_box_width = config.sequence_compat_f64("labelBoxWidth", 50.0);
         let mirror_actors = config.sequence_bool("mirrorActors", true);
+        let right_angles = config.sequence_bool("rightAngles", false);
+        let is_neo = crate::config::config_diagram_look(effective_config).is_neo();
         let activation_width = config.sequence_compat_f64_min("activationWidth", 10.0, 1.0);
 
         // Mermaid's `sequenceRenderer.setConf(...)` overrides per-sequence font settings whenever
@@ -160,15 +162,6 @@ impl SequenceLayoutSettings {
             "messageFontWeight",
         );
 
-        // Upstream sequence uses SVG `getBBox()` when computing message widths. Keep this scale at
-        // 1.0 and let the selected TextMeasurer account for SVG/browser residuals.
-        let message_width_scale = 1.0;
-
-        let message_text_line_height =
-            crate::sequence::sequence_text_dimensions_height_px(msg_text_style.font_size);
-        let message_step = box_margin + 2.0 * message_text_line_height;
-        let msg_label_offset = (2.0 * message_text_line_height - wrap_padding / 2.0).max(0.0);
-
         Self {
             diagram_margin_x,
             diagram_margin_y,
@@ -177,15 +170,14 @@ impl SequenceLayoutSettings {
             actor_margin,
             sequence_default_width,
             actor_height,
-            message_margin,
             wrap_padding,
+            note_margin,
             box_text_margin,
             label_box_height,
+            label_box_width,
             mirror_actors,
-            message_width_scale,
-            message_text_line_height,
-            message_step,
-            msg_label_offset,
+            right_angles,
+            is_neo,
             activation_width,
             actor_text_style,
             note_text_style,
@@ -202,6 +194,7 @@ mod tests {
     #[test]
     fn sequence_layout_settings_preserve_layout_numeric_string_config() {
         let cfg = json!({
+            "look": "neo",
             "fontFamily": "Global, Arial",
             "fontSize": "22",
             "fontWeight": "700",
@@ -222,6 +215,7 @@ mod tests {
         assert_eq!(settings.actor_height, 80.0);
         assert_eq!(settings.activation_width, 1.0);
         assert!(!settings.mirror_actors);
+        assert!(settings.is_neo);
         assert_eq!(
             settings.msg_text_style.font_family.as_deref(),
             Some("Global, Arial")

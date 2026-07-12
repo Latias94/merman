@@ -1,11 +1,10 @@
 {
   "diagramType": "xychart",
   "model": {
-    "type": "xychart",
+    "orientation": "vertical",
     "title": "Single Bar Chart",
     "accTitle": null,
     "accDescr": null,
-    "orientation": "vertical",
     "xAxis": {
       "type": "band",
       "title": "Categories",
@@ -32,6 +31,7 @@
           ]
         ]
       }
-    ]
+    ],
+    "type": "xychart"
   }
 }
