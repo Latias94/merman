@@ -9,11 +9,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Breaking changes
 
 - Updated the compatibility target from Mermaid `11.15.0` to `11.16.0`; integrations that retain semantic, layout, or SVG parity snapshots should regenerate them.
-- `RailroadAstNode::Repetition` now uses `RailroadRepeatBound` for both `min` and `max` instead of `u64` and `Option<u64>`; Rust callers should construct finite bounds with constants or `From<u64>` and use `RailroadRepeatBound::INFINITY` for an unbounded maximum.
 
 ### New and changed
 
-- Added parser and editor facts, typed layout, and SVG rendering for `cynefin-beta` and all four Railroad dialects: `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, and `railroad-peg-beta`.
+- Added parser and editor facts, typed layout, and SVG rendering for `cynefin-beta` and all four Railroad dialects: `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, and `railroad-peg-beta`. #21 #24
 - Added parse-only support for `swimlane-beta` through shared Flowchart semantics and Mermaid 11.16 configuration defaults; dedicated Swimlane layout and SVG admission remain deferred.
 - Aligned Mermaid 11.16 behavior across existing diagrams, including Flowchart and State self-loops, Sequence blocks and wrapping, Ishikawa recursive DOM structure, TreeView ordering, XYChart point labels, Architecture hints, Pie highlighting, Gantt timing, and config/frontmatter handling.
 - Upstream SVG tooling now verifies pinned source, renderer runtime, browser timezone and fonts, input, and SVG provenance and promotes complete family batches transactionally under cross-process locks.
@@ -21,7 +20,6 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixes and polish
 
-- Railroad ABNF now accepts Mermaid-compatible large repetition bounds, including binary64 rounding and positive infinity; semantic JSON represents infinity as `null`. #24
 - TreeView now embeds configured Iconify pack bodies at Mermaid's 14px size and shows the standard unknown icon for missing packs or entries. #23
 - Removed 37 obsolete fixture-scoped root viewport pins and tightened the no-growth guard to the 183-entry Mermaid 11.16 inventory. #22
 - Kept centered Railroad choice branches straight when equivalent lane coordinates differ only because of floating-point addition order. #22

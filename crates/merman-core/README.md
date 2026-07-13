@@ -18,8 +18,7 @@ Pre-0.8 migration note: `Error::DiagramParse` carries
 `diagnostic.span_kind()`, and `diagnostic.code()` when an integration can
 preserve structured parser metadata.
 
-Railroad AST migration note: `RailroadAstNode::Repetition` now uses
-`RailroadRepeatBound` for both `min` and `max`, replacing `u64` and `Option<u64>`.
+Railroad repetition bounds use `RailroadRepeatBound` for both `min` and `max`.
 Use `ZERO`, `ONE`, or `RailroadRepeatBound::from(value)` for finite bounds and
 `RailroadRepeatBound::INFINITY` for an unbounded maximum. Inspect values with
 `is_zero()`, `is_one()`, `is_infinite()`, or `as_f64()`; `TryFrom<f64>` rejects
