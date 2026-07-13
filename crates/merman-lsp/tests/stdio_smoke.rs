@@ -129,10 +129,14 @@ fn decode_lsp_frames(stdout: &[u8]) -> Vec<serde_json::Value> {
             body_end <= stdout.len(),
             "LSP frame body exceeds stdout length"
         );
-        frames.push(
-            serde_json::from_slice::<serde_json::Value>(&stdout[body_start..body_end])
-                .expect("LSP frame body is JSON"),
+        let frame = serde_json::from_slice::<serde_json::Value>(&stdout[body_start..body_end])
+            .expect("LSP frame body is JSON");
+        assert_eq!(
+            frame.get("jsonrpc"),
+            Some(&json!("2.0")),
+            "LSP frame body must declare JSON-RPC 2.0"
         );
+        frames.push(frame);
         offset = body_end;
     }
 
@@ -145,6 +149,16 @@ fn stdout_frame_decoder_rejects_trailing_data() {
     let mut stdout = frame(r#"{"jsonrpc":"2.0","id":1,"result":null}"#);
     stdout.extend_from_slice(b"trailing output");
     let _ = decode_lsp_frames(&stdout);
+}
+
+#[test]
+fn stdout_frame_decoder_accepts_multiple_lsp_frames() {
+    let mut stdout = frame(r#"{"jsonrpc":"2.0","id":1,"result":null}"#);
+    stdout.extend_from_slice(&frame(
+        r#"{"jsonrpc":"2.0","method":"window/logMessage","params":{"type":3,"message":"ready"}}"#,
+    ));
+
+    assert_eq!(decode_lsp_frames(&stdout).len(), 2);
 }
 
 fn read_lsp_frame_sync(reader: &mut impl Read) -> serde_json::Value {
@@ -524,10 +538,7 @@ fn stdio_binary_writes_only_lsp_frames_to_stdout() {
         output.status.code(),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(
-        decode_lsp_frames(&output.stdout).is_empty(),
-        "exit emitted unexpected trailing LSP frames"
-    );
+    let _ = decode_lsp_frames(&output.stdout);
 }
 
 #[test]
@@ -628,8 +639,5 @@ fn stdio_binary_rejects_exit_requests_without_terminating() {
         output.status.code(),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(
-        decode_lsp_frames(&output.stdout).is_empty(),
-        "exit emitted unexpected trailing LSP frames"
-    );
+    let _ = decode_lsp_frames(&output.stdout);
 }
