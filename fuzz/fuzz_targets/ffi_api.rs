@@ -13,8 +13,9 @@ use merman_ffi::{
     merman_engine_set_text_measure_callback, merman_engine_validate_json,
     merman_host_text_measure_request_struct_size, merman_host_text_measure_result_struct_size,
     merman_layout_json, merman_lint_rule_catalog_json, merman_package_version, merman_parse_json,
-    merman_render_ascii, merman_render_svg, merman_result_struct_size, merman_supported_diagrams_json,
-    merman_supported_host_theme_presets_json, merman_supported_themes_json, merman_validate_json,
+    merman_render_ascii, merman_render_svg, merman_result_struct_size,
+    merman_supported_diagrams_json, merman_supported_host_theme_presets_json,
+    merman_supported_themes_json, merman_validate_json,
 };
 use std::ptr;
 
@@ -134,11 +135,20 @@ fn decode_input(data: &[u8]) -> FuzzInput<'_> {
         return text_seed(17, &[], &[]);
     };
 
+    let Some((&options_len, framed)) = source.split_first() else {
+        return text_seed(selector, &[], &[]);
+    };
+    let options_len = usize::from(options_len)
+        .min(MAX_OPTIONS_BYTES)
+        .min(framed.len());
+    let (options, framed) = framed.split_at(options_len);
+    let (uri, source) = split_uri(selector, framed);
+
     FuzzInput {
         selector,
         source,
-        options: options_variant(selector, source),
-        uri: uri_variant(selector, source),
+        options,
+        uri,
     }
 }
 
@@ -151,21 +161,18 @@ fn text_seed<'a>(selector: u8, source: &'a [u8], options: &'a [u8]) -> FuzzInput
     }
 }
 
-fn options_variant<'a>(selector: u8, data: &'a [u8]) -> &'a [u8] {
-    match (selector >> 4) & 0b11 {
-        0 => &[],
-        1 => FIXED_OPTIONS,
-        2 => MALFORMED_OPTIONS,
-        _ => &data[..data.len().min(MAX_OPTIONS_BYTES)],
-    }
-}
-
-fn uri_variant<'a>(selector: u8, data: &'a [u8]) -> &'a [u8] {
+fn split_uri(selector: u8, data: &[u8]) -> (&[u8], &[u8]) {
     if selector & 0b1000_0000 == 0 {
-        DEFAULT_URI
-    } else {
-        &data[..data.len().min(MAX_OPTIONS_BYTES)]
+        return (DEFAULT_URI, data);
     }
+
+    let Some((&uri_len, framed)) = data.split_first() else {
+        return (&[], &[]);
+    };
+    let uri_len = usize::from(uri_len)
+        .min(MAX_OPTIONS_BYTES)
+        .min(framed.len());
+    framed.split_at(uri_len)
 }
 
 fn options_ptr(options: &[u8]) -> *const u8 {
@@ -239,13 +246,16 @@ unsafe fn create_engine(options: &[u8]) -> Option<*mut MermanEngine> {
         result.code, MERMAN_PANIC,
         "FFI engine creation crossed panic boundary"
     );
-    assert_buffer_contract(result.data);
+    unsafe { assert_text_buffer_contract(result.data) };
     unsafe { merman_buffer_free(result.data) };
     if result.code == MERMAN_OK {
         assert!(!result.engine.is_null(), "OK engine result had null engine");
         Some(result.engine)
     } else {
-        assert!(result.engine.is_null(), "error engine result returned engine");
+        assert!(
+            result.engine.is_null(),
+            "error engine result returned engine"
+        );
         None
     }
 }
@@ -253,8 +263,14 @@ unsafe fn create_engine(options: &[u8]) -> Option<*mut MermanEngine> {
 unsafe fn call_metadata_exports() {
     assert!(merman_abi_version() > 0);
     assert!(!merman_package_version().is_null());
-    assert_eq!(merman_buffer_struct_size(), std::mem::size_of::<MermanBuffer>());
-    assert_eq!(merman_result_struct_size(), std::mem::size_of::<MermanResult>());
+    assert_eq!(
+        merman_buffer_struct_size(),
+        std::mem::size_of::<MermanBuffer>()
+    );
+    assert_eq!(
+        merman_result_struct_size(),
+        std::mem::size_of::<MermanResult>()
+    );
     assert_eq!(
         merman_engine_result_struct_size(),
         std::mem::size_of::<MermanEngineResult>()
@@ -279,44 +295,52 @@ unsafe fn call_metadata_exports() {
 }
 
 unsafe fn consume_result(result: MermanResult) {
-    assert_ne!(
-        result.code, MERMAN_PANIC,
-        "FFI call crossed panic boundary"
-    );
-    assert_buffer_contract(result.data);
+    assert_ne!(result.code, MERMAN_PANIC, "FFI call crossed panic boundary");
+    unsafe { assert_text_buffer_contract(result.data) };
     unsafe { merman_buffer_free(result.data) };
 }
 
-fn assert_buffer_contract(buffer: MermanBuffer) {
+unsafe fn assert_text_buffer_contract(buffer: MermanBuffer) {
     if buffer.len == 0 {
         assert!(buffer.data.is_null(), "empty FFI buffer had non-null data");
     } else {
-        assert!(
-            !buffer.data.is_null(),
-            "non-empty FFI buffer had null data"
-        );
+        assert!(!buffer.data.is_null(), "non-empty FFI buffer had null data");
+        let bytes = unsafe { std::slice::from_raw_parts(buffer.data, buffer.len) };
+        let text = std::str::from_utf8(bytes)
+            .unwrap_or_else(|error| panic!("FFI text buffer was not valid UTF-8: {error}"));
+        std::hint::black_box(text);
     }
+}
+
+unsafe fn callback_text<'a>(data: *const u8, len: usize, field: &str) -> &'a str {
+    if len == 0 {
+        return "";
+    }
+    assert!(!data.is_null(), "non-empty callback {field} had null data");
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    std::str::from_utf8(bytes)
+        .unwrap_or_else(|error| panic!("callback {field} was not valid UTF-8: {error}"))
 }
 
 unsafe extern "C" fn fuzz_measure_text(
     request: MermanHostTextMeasureRequest,
     _user_data: *mut std::ffi::c_void,
 ) -> MermanHostTextMeasureResult {
-    if request.text.is_null() && request.text_len != 0 {
-        return MermanHostTextMeasureResult {
-            handled: 0,
-            width: 0.0,
-            height: 0.0,
-            line_count: 0,
-        };
-    }
+    let text = unsafe { callback_text(request.text, request.text_len, "text") };
+    let font_family =
+        unsafe { callback_text(request.font_family, request.font_family_len, "font_family") };
+    let font_weight =
+        unsafe { callback_text(request.font_weight, request.font_weight_len, "font_weight") };
+    let font_style =
+        unsafe { callback_text(request.font_style, request.font_style_len, "font_style") };
+    std::hint::black_box((font_family, font_weight, font_style));
 
     let font_size = if request.font_size.is_finite() && request.font_size > 0.0 {
         request.font_size.min(128.0)
     } else {
         16.0
     };
-    let width = (request.text_len.min(1024) as f64 * font_size * 0.5).max(font_size);
+    let width = (text.len().min(1024) as f64 * font_size * 0.5).max(font_size);
     let height = font_size * 1.25;
 
     MermanHostTextMeasureResult {

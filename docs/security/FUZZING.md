@@ -27,6 +27,16 @@ The repository root stays on stable Rust. Invoke `cargo-fuzz` with the nightly t
 | `svg_pipeline` | Raw XML SVG through `SvgPipeline::resvg_safe()` | `fuzz/seeds/svg` | `fuzz/dictionaries/svg.dict` |
 | `ffi_api` | C ABI status, buffer ownership, reusable engine calls, and host text-measure callback handling | `fuzz/seeds/ffi` | `fuzz/dictionaries/mermaid.dict` |
 
+`ffi_api` keeps the text seeds above readable, but random inputs use a small binary frame so
+options, document URI, and source bytes can evolve independently:
+
+```text
+selector options_len options_bytes [uri_len uri_bytes] source_bytes
+```
+
+The optional URI field is present when the selector's high bit is set. Otherwise the harness uses a
+fixed default URI and treats the remaining bytes as Mermaid source.
+
 ## Local Smoke
 
 Run a fast smoke before changing fuzz harnesses:
@@ -50,9 +60,12 @@ CI uses AddressSanitizer because it catches the most relevant native memory faul
 signal-to-noise for this codebase and dependency graph. `cargo-fuzz` also supports leak, memory,
 thread, and no-sanitizer modes, but those are investigation tools rather than required release gates.
 
-The SVG assertions mirror the documented `resvg-safe` contract: output must stay XML-parseable,
-remove active SVG content such as scripts, event-handler attributes, unsafe URL schemes, and
-`foreignObject`, while preserving safe local fragment references and safe raster image data URIs.
+All UTF-8 SVG inputs, including malformed XML, pass through the pipeline for panic and sanitizer
+coverage. For well-formed input, the assertions mirror the documented `resvg-safe` structural
+contract: output must stay XML-parseable, remove active elements, event-handler and unsafe URL
+attributes, and `foreignObject`, while preserving safe local fragment references and safe raster
+image data URIs. `resvg-safe` is a raster-compatibility pipeline, not a general sanitizer for
+arbitrary host CSS; browser and webview consumers must follow `docs/security/RENDERING_SECURITY.md`.
 
 When a crash is found, minimize it before promoting it into a regression test:
 

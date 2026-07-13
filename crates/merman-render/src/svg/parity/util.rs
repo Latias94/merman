@@ -516,8 +516,52 @@ pub(super) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str
 }
 
 fn xml_text_is_plain_ascii(text: &str) -> bool {
-    text.bytes()
-        .all(|b| matches!(b, 0x00..=0x7f) && !matches!(b, b'&' | b'<' | b'"' | b'\'' | b'#'))
+    text.bytes().all(|b| {
+        matches!(b, b'\t' | b'\n' | b'\r' | 0x20..=0x7f)
+            && !matches!(b, b'&' | b'<' | b'"' | b'\'' | b'#')
+    })
+}
+
+fn is_xml_10_char(ch: char) -> bool {
+    // XML 1.0 excludes C0 controls except tab, LF, and CR.
+    matches!(
+        ch,
+        '\u{9}'
+            | '\u{A}'
+            | '\u{D}'
+            | '\u{20}'..='\u{D7FF}'
+            | '\u{E000}'..='\u{FFFD}'
+            | '\u{10000}'..='\u{10FFFF}'
+    )
+}
+
+fn xml_text_replacement(ch: char) -> Option<&'static str> {
+    if !is_xml_10_char(ch) {
+        return Some("");
+    }
+    match ch {
+        '&' => Some("&amp;"),
+        '<' => Some("&lt;"),
+        '"' => Some("&quot;"),
+        '\'' => Some("&#39;"),
+        _ => None,
+    }
+}
+
+fn xml_attr_replacement(ch: char) -> Option<&'static str> {
+    if !is_xml_10_char(ch) {
+        return Some("");
+    }
+    match ch {
+        '\n' => Some("&#10;"),
+        '\r' => Some("&#13;"),
+        '\t' => Some("&#9;"),
+        '&' => Some("&amp;"),
+        '<' => Some("&lt;"),
+        '"' => Some("&quot;"),
+        '\'' => Some("&#39;"),
+        _ => None,
+    }
 }
 
 pub(super) fn escape_xml_into(out: &mut String, text: &str) {
@@ -528,24 +572,16 @@ pub(super) fn escape_xml_into(out: &mut String, text: &str) {
 
     let decoded = decode_mermaid_entities_for_render_text(text);
     let text = decoded.as_ref();
-    let bytes = text.as_bytes();
     let mut start = 0usize;
-    for (i, &b) in bytes.iter().enumerate() {
-        let esc = match b {
-            b'&' => Some("&amp;"),
-            b'<' => Some("&lt;"),
-            b'"' => Some("&quot;"),
-            b'\'' => Some("&#39;"),
-            _ => None,
-        };
-        let Some(esc) = esc else {
+    for (i, ch) in text.char_indices() {
+        let Some(replacement) = xml_text_replacement(ch) else {
             continue;
         };
         if start < i {
             out.push_str(&text[start..i]);
         }
-        out.push_str(esc);
-        start = i + 1;
+        out.push_str(replacement);
+        start = i + ch.len_utf8();
     }
     if start < text.len() {
         out.push_str(&text[start..]);
@@ -566,24 +602,16 @@ impl std::fmt::Display for EscapeXmlDisplay<'_> {
 
         let decoded = decode_mermaid_entities_for_render_text(self.0);
         let text = decoded.as_ref();
-        let bytes = text.as_bytes();
         let mut start = 0usize;
-        for (i, &b) in bytes.iter().enumerate() {
-            let esc = match b {
-                b'&' => Some("&amp;"),
-                b'<' => Some("&lt;"),
-                b'"' => Some("&quot;"),
-                b'\'' => Some("&#39;"),
-                _ => None,
-            };
-            let Some(esc) = esc else {
+        for (i, ch) in text.char_indices() {
+            let Some(replacement) = xml_text_replacement(ch) else {
                 continue;
             };
             if start < i {
                 f.write_str(&text[start..i])?;
             }
-            f.write_str(esc)?;
-            start = i + 1;
+            f.write_str(replacement)?;
+            start = i + ch.len_utf8();
         }
         if start < text.len() {
             f.write_str(&text[start..])?;
@@ -600,33 +628,24 @@ pub(super) fn escape_attr(text: &str) -> String {
     // We mirror that behavior here to preserve parity for diagrams that embed newlines in IDs
     // (e.g. backtick-quoted multiline class names).
     let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '\n' => out.push_str("&#10;"),
-            '\r' => out.push_str("&#13;"),
-            '\t' => out.push_str("&#9;"),
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
-        }
-    }
+    escape_attr_into(&mut out, text);
     out
 }
 
 pub(super) fn escape_attr_into(out: &mut String, text: &str) {
-    for ch in text.chars() {
-        match ch {
-            '\n' => out.push_str("&#10;"),
-            '\r' => out.push_str("&#13;"),
-            '\t' => out.push_str("&#9;"),
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
+    let mut start = 0usize;
+    for (i, ch) in text.char_indices() {
+        let Some(replacement) = xml_attr_replacement(ch) else {
+            continue;
+        };
+        if start < i {
+            out.push_str(&text[start..i]);
         }
+        out.push_str(replacement);
+        start = i + ch.len_utf8();
+    }
+    if start < text.len() {
+        out.push_str(&text[start..]);
     }
 }
 
@@ -639,27 +658,16 @@ pub(super) struct EscapeAttrDisplay<'a>(&'a str);
 impl std::fmt::Display for EscapeAttrDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let text = self.0;
-        let bytes = text.as_bytes();
         let mut start = 0usize;
-        for (i, &b) in bytes.iter().enumerate() {
-            let esc = match b {
-                b'\n' => Some("&#10;"),
-                b'\r' => Some("&#13;"),
-                b'\t' => Some("&#9;"),
-                b'&' => Some("&amp;"),
-                b'<' => Some("&lt;"),
-                b'"' => Some("&quot;"),
-                b'\'' => Some("&#39;"),
-                _ => None,
-            };
-            let Some(esc) = esc else {
+        for (i, ch) in text.char_indices() {
+            let Some(replacement) = xml_attr_replacement(ch) else {
                 continue;
             };
             if start < i {
                 f.write_str(&text[start..i])?;
             }
-            f.write_str(esc)?;
-            start = i + 1;
+            f.write_str(replacement)?;
+            start = i + ch.len_utf8();
         }
         if start < text.len() {
             f.write_str(&text[start..])?;
@@ -772,6 +780,27 @@ mod tests {
             assert_eq!(escape_xml_display(src).to_string(), expected);
             assert_eq!(escape_xml(src), expected);
         }
+    }
+
+    #[test]
+    fn escape_helpers_drop_xml_forbidden_control_chars() {
+        let text = "A\u{1f}B\u{0}C\u{fffe}D";
+        let expected_text = "ABCD";
+        assert_eq!(escape_xml(text), expected_text);
+        assert_eq!(escape_xml_display(text).to_string(), expected_text);
+
+        let mut escaped_text = String::new();
+        escape_xml_into(&mut escaped_text, text);
+        assert_eq!(escaped_text, expected_text);
+
+        let attr = "A\nB\rC\tD\u{1f}E\u{0}F\u{fffe}G";
+        let expected_attr = "A&#10;B&#13;C&#9;DEFG";
+        assert_eq!(escape_attr(attr), expected_attr);
+        assert_eq!(escape_attr_display(attr).to_string(), expected_attr);
+
+        let mut escaped_attr = String::new();
+        escape_attr_into(&mut escaped_attr, attr);
+        assert_eq!(escaped_attr, expected_attr);
     }
 
     #[test]

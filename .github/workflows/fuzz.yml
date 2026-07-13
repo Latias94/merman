@@ -69,8 +69,9 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@nightly-2026-07-01
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ env.FUZZ_NIGHTLY }}
           components: rust-src
 
       - name: Rust cache

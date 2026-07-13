@@ -100,6 +100,22 @@ fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
 }
 
 #[test]
+fn resvg_safe_render_drops_xml_forbidden_control_chars_from_text() {
+    let source = "C4Context\n\
+title System Context\n\
+Person(customer, \"Customer\", \"A\u{1f}customer\")\n\
+System(system, \"System\", \"Does work\")\n\
+Rel(customer, system, \"Uses\")\n";
+    let renderer = HeadlessRenderer::new().with_diagram_id("security-xml-controls");
+
+    let svg = render_resvg_safe(&renderer, "security-xml-controls", source);
+
+    assert_xml_parseable("security-xml-controls", &svg);
+    assert!(!svg.contains('\u{1f}'), "{svg}");
+    assert!(svg.contains("Acustomer"), "{svg}");
+}
+
+#[test]
 fn raw_resvg_safe_pipeline_strips_active_svg_content() {
     let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 16 16">
 <script>alert(1)</script>
