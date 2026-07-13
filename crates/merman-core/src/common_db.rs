@@ -1,6 +1,37 @@
 use crate::MermaidConfig;
+use crate::diagrams::langium_common::{LangiumCommonFacts, LangiumCommonField};
 use crate::sanitize::sanitize_text;
 use serde_json::{Map, Value};
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct LangiumCommonDbFields {
+    pub(crate) title: Option<String>,
+    pub(crate) acc_title: Option<String>,
+    pub(crate) acc_descr: Option<String>,
+}
+
+impl LangiumCommonDbFields {
+    pub(crate) fn from_facts(facts: &LangiumCommonFacts) -> Self {
+        // `populateCommonDb` observes the final AST assignments in this order and ignores empty
+        // values. Looking up each field independently also preserves Langium's last-assignment
+        // semantics when a common fragment appears more than once.
+        let acc_descr = nonempty_last(facts, LangiumCommonField::AccDescr);
+        let acc_title = nonempty_last(facts, LangiumCommonField::AccTitle);
+        let title = nonempty_last(facts, LangiumCommonField::Title);
+        Self {
+            title,
+            acc_title,
+            acc_descr,
+        }
+    }
+}
+
+fn nonempty_last(facts: &LangiumCommonFacts, field: LangiumCommonField) -> Option<String> {
+    facts
+        .last(field)
+        .map(|fact| fact.value.clone())
+        .filter(|value| !value.is_empty())
+}
 
 fn strip_leading_whitespace(s: &str) -> String {
     s.trim_start_matches(char::is_whitespace).to_string()

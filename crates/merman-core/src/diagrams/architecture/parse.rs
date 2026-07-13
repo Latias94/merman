@@ -1,4 +1,7 @@
 use super::*;
+use crate::diagrams::langium_common::{
+    LangiumCommonFact, LangiumCommonField, LangiumCommonParse, parse_langium_common,
+};
 
 #[derive(Debug, Clone)]
 struct ArchitectureSpannedValue {
@@ -832,8 +835,17 @@ fn parse_trace(
         let leading = rest_with_ws.len() - rest_with_ws.trim_start().len();
         let rest = rest_with_ws.trim_start();
         if !rest.is_empty() {
-            let rest_start = trimmed_start + "architecture-beta".len() + leading;
-            parse_trace_statement(code, &mut lines, rest, rest_start, mode, &mut trace)?;
+            let common_start = trimmed_start + "architecture-beta".len();
+            let statement_start = common_start + leading;
+            parse_trace_statement(
+                code,
+                &mut lines,
+                rest,
+                statement_start,
+                common_start,
+                mode,
+                &mut trace,
+            )?;
         }
         break;
     }
@@ -847,7 +859,15 @@ fn parse_trace(
         if trimmed.is_empty() {
             continue;
         }
-        parse_trace_statement(code, &mut lines, trimmed, trimmed_start, mode, &mut trace)?;
+        parse_trace_statement(
+            code,
+            &mut lines,
+            trimmed,
+            trimmed_start,
+            line.start,
+            mode,
+            &mut trace,
+        )?;
     }
 
     Ok(trace)
@@ -882,14 +902,17 @@ fn parse_trace_statement(
     lines: &mut ArchitectureLineCursor<'_>,
     statement: &str,
     statement_start: usize,
+    common_start: usize,
     mode: ArchitectureParseMode,
     trace: &mut ArchitectureTrace,
 ) -> Result<()> {
-    let parsed =
-        parse_common_statement(code, lines, statement, statement_start).unwrap_or_else(|| {
-            let statement = extend_quoted_statement(code, lines, statement, statement_start);
-            ArchitectureStatementParser::new(statement, statement_start).parse()
-        });
+    let parsed = if let Some(common) = parse_langium_common(code, common_start) {
+        lines.offset = common_start + common.consumed;
+        architecture_common_trace_entry(common)
+    } else {
+        let statement = extend_quoted_statement(code, lines, statement, statement_start);
+        ArchitectureStatementParser::new(statement, statement_start).parse()
+    };
     match parsed {
         Ok(entry) => trace.entries.push(entry),
         Err(failure) if mode == ArchitectureParseMode::Strict => return Err(*failure.error),
@@ -902,6 +925,58 @@ fn parse_trace_statement(
         }),
     }
     Ok(())
+}
+
+fn architecture_common_trace_entry(
+    parsed: LangiumCommonParse,
+) -> std::result::Result<ArchitectureTraceEntry, StatementFailure> {
+    let LangiumCommonParse {
+        fact, diagnostic, ..
+    } = parsed;
+    let spanned = architecture_common_value(&fact);
+    let (statement, detail) = match fact.field {
+        LangiumCommonField::Title => (
+            ArchitectureStatement::Title(spanned.clone()),
+            "architecture title",
+        ),
+        LangiumCommonField::AccTitle => (
+            ArchitectureStatement::AccTitle(spanned.clone()),
+            "architecture accessibility title",
+        ),
+        LangiumCommonField::AccDescr => (
+            ArchitectureStatement::AccDescr(spanned.clone()),
+            "architecture accessibility description",
+        ),
+    };
+    let facts = common_payload_fact(&spanned, detail);
+
+    if let Some(diagnostic) = diagnostic {
+        return Err(StatementFailure::new(
+            Error::diagram_parse_insertion_point(
+                "architecture",
+                diagnostic.message,
+                diagnostic.span.start,
+            ),
+            facts,
+        )
+        .with_directive_prefix(fact.field.directive()));
+    }
+
+    Ok(ArchitectureTraceEntry {
+        statement: Some(statement),
+        span: fact.raw_span,
+        facts,
+        diagnostic: None,
+        directive_prefix: Some(fact.field.directive()),
+    })
+}
+
+fn architecture_common_value(fact: &LangiumCommonFact) -> ArchitectureSpannedValue {
+    ArchitectureSpannedValue {
+        value: fact.value.clone(),
+        span: fact.raw_span,
+        selection: fact.value_span,
+    }
 }
 
 fn extend_quoted_statement<'a>(
@@ -977,223 +1052,6 @@ fn line_ending_end(code: &str, offset: usize) -> usize {
     }
 }
 
-fn parse_common_statement(
-    code: &str,
-    lines: &mut ArchitectureLineCursor<'_>,
-    statement: &str,
-    statement_start: usize,
-) -> Option<std::result::Result<ArchitectureTraceEntry, StatementFailure>> {
-    if keyword_rest(statement, "title", &[]).is_some() {
-        return Some(parse_inline_common(
-            strip_common_inline_comment(statement),
-            statement_start,
-            "title",
-            CommonStatementKind::Title,
-        ));
-    }
-    if keyword_rest(statement, "accTitle", &[':']).is_some() {
-        return Some(parse_inline_common(
-            strip_common_inline_comment(statement),
-            statement_start,
-            "accTitle",
-            CommonStatementKind::AccTitle,
-        ));
-    }
-    if let Some(rest) = keyword_rest(statement, "accDescr", &[':', '{']) {
-        let rest_leading = rest.len() - rest.trim_start_matches([' ', '\t']).len();
-        let rest = rest.trim_start_matches([' ', '\t']);
-        if rest.starts_with(':') {
-            return Some(parse_inline_common(
-                strip_common_inline_comment(statement),
-                statement_start,
-                "accDescr",
-                CommonStatementKind::AccDescr,
-            ));
-        }
-        if rest.starts_with('{') {
-            let opening = statement_start + "accDescr".len() + rest_leading;
-            return Some(parse_acc_descr_block(code, lines, statement_start, opening));
-        }
-        if rest.is_empty()
-            && let Some(opening) =
-                whitespace_separated_block_opening(code, statement_start + "accDescr".len())
-        {
-            return Some(parse_acc_descr_block(code, lines, statement_start, opening));
-        }
-        let offset = statement_start + "accDescr".len() + rest_leading;
-        return Some(Err(StatementFailure::new(
-            Error::diagram_parse_insertion_point(
-                "architecture",
-                "expected ':' or '{' after accDescr",
-                offset,
-            ),
-            Vec::new(),
-        )
-        .with_directive_prefix("accDescr")));
-    }
-    None
-}
-
-#[derive(Debug, Clone, Copy)]
-enum CommonStatementKind {
-    Title,
-    AccTitle,
-    AccDescr,
-}
-
-impl CommonStatementKind {
-    fn prefix(self) -> &'static str {
-        match self {
-            Self::Title => "title",
-            Self::AccTitle => "accTitle",
-            Self::AccDescr => "accDescr",
-        }
-    }
-
-    fn detail(self) -> &'static str {
-        match self {
-            Self::Title => "architecture title",
-            Self::AccTitle => "architecture accessibility title",
-            Self::AccDescr => "architecture accessibility description",
-        }
-    }
-
-    fn statement(self, value: ArchitectureSpannedValue) -> ArchitectureStatement {
-        match self {
-            Self::Title => ArchitectureStatement::Title(value),
-            Self::AccTitle => ArchitectureStatement::AccTitle(value),
-            Self::AccDescr => ArchitectureStatement::AccDescr(value),
-        }
-    }
-}
-
-fn parse_inline_common(
-    statement: &str,
-    statement_start: usize,
-    keyword: &str,
-    kind: CommonStatementKind,
-) -> std::result::Result<ArchitectureTraceEntry, StatementFailure> {
-    let mut value_start = keyword.len();
-    if matches!(
-        kind,
-        CommonStatementKind::AccTitle | CommonStatementKind::AccDescr
-    ) {
-        while statement[value_start..].starts_with([' ', '\t']) {
-            value_start += 1;
-        }
-        if !statement[value_start..].starts_with(':') {
-            return Err(StatementFailure::new(
-                Error::diagram_parse_insertion_point(
-                    "architecture",
-                    format!("expected ':' after {keyword}"),
-                    statement_start + value_start,
-                ),
-                Vec::new(),
-            )
-            .with_directive_prefix(kind.prefix()));
-        }
-        value_start += 1;
-    } else if statement[value_start..]
-        .chars()
-        .next()
-        .is_some_and(|ch| matches!(ch, ' ' | '\t'))
-    {
-        value_start += 1;
-    }
-
-    let raw = &statement[value_start..];
-    let leading = raw.len() - raw.trim_start_matches([' ', '\t']).len();
-    let trailing = raw.len() - raw.trim_end_matches([' ', '\t']).len();
-    let selection_start = value_start + leading;
-    let selection_end = statement.len().saturating_sub(trailing);
-    let value = collapse_common_inline(&statement[selection_start..selection_end]);
-    let spanned = ArchitectureSpannedValue {
-        value,
-        span: SourceSpan::new(
-            statement_start + selection_start,
-            statement_start + selection_end,
-        ),
-        selection: SourceSpan::new(
-            statement_start + selection_start,
-            statement_start + selection_end,
-        ),
-    };
-    let facts = common_payload_fact(&spanned, kind.detail());
-    Ok(ArchitectureTraceEntry {
-        statement: Some(kind.statement(spanned)),
-        span: SourceSpan::new(statement_start, statement_start + statement.len()),
-        facts,
-        diagnostic: None,
-        directive_prefix: Some(kind.prefix()),
-    })
-}
-
-fn parse_acc_descr_block(
-    code: &str,
-    lines: &mut ArchitectureLineCursor<'_>,
-    statement_start: usize,
-    opening: usize,
-) -> std::result::Result<ArchitectureTraceEntry, StatementFailure> {
-    let content_start = opening + 1;
-    let Some(relative_close) = code[content_start..].find('}') else {
-        lines.offset = code.len();
-        let value = common_block_value(code, content_start, code.len());
-        let facts = common_payload_fact(&value, "architecture accessibility description");
-        return Err(StatementFailure::new(
-            Error::diagram_parse_insertion_point(
-                "architecture",
-                "unterminated accDescr block",
-                code.len(),
-            ),
-            facts,
-        )
-        .with_directive_prefix("accDescr"));
-    };
-    let close = content_start + relative_close;
-    let line_end = code[close + 1..]
-        .find('\n')
-        .map_or(code.len(), |relative| close + 1 + relative + 1);
-    let logical_end = strip_line_ending(&code[close + 1..line_end]);
-    let trailing = strip_inline_comment(logical_end).trim();
-    lines.offset = line_end;
-
-    let value = common_block_value(code, content_start, close);
-    let facts = common_payload_fact(&value, "architecture accessibility description");
-    if !trailing.is_empty() {
-        let relative = logical_end.find(trailing).unwrap_or(0);
-        return Err(StatementFailure::new(
-            Error::diagram_parse_exact(
-                "architecture",
-                "unexpected trailing input",
-                SourceSpan::new(close + 1 + relative, close + 1 + relative + trailing.len()),
-            ),
-            facts,
-        )
-        .with_directive_prefix("accDescr"));
-    }
-
-    Ok(ArchitectureTraceEntry {
-        statement: Some(ArchitectureStatement::AccDescr(value)),
-        span: SourceSpan::new(statement_start, close + 1),
-        facts,
-        diagnostic: None,
-        directive_prefix: Some("accDescr"),
-    })
-}
-
-fn common_block_value(code: &str, start: usize, end: usize) -> ArchitectureSpannedValue {
-    let raw = &code[start..end];
-    let leading = raw.len() - raw.trim_start().len();
-    let trailing = raw.len() - raw.trim_end().len();
-    let selection_start = start + leading;
-    let selection_end = end.saturating_sub(trailing);
-    ArchitectureSpannedValue {
-        value: convert_common_block(raw),
-        span: SourceSpan::new(start, end),
-        selection: SourceSpan::new(selection_start, selection_end),
-    }
-}
-
 fn common_payload_fact(
     value: &ArchitectureSpannedValue,
     detail: &'static str,
@@ -1209,77 +1067,6 @@ fn common_payload_fact(
             expected: EditorExpectedSyntaxKind::Payload,
         }]
     }
-}
-
-fn keyword_rest<'a>(input: &'a str, keyword: &str, separators: &[char]) -> Option<&'a str> {
-    let rest = input.strip_prefix(keyword)?;
-    if rest
-        .chars()
-        .next()
-        .is_none_or(|ch| matches!(ch, ' ' | '\t') || separators.contains(&ch))
-    {
-        Some(rest)
-    } else {
-        None
-    }
-}
-
-fn strip_common_inline_comment(statement: &str) -> &str {
-    statement
-        .split_once("%%")
-        .map_or(statement, |(value, _)| value)
-        .trim_end_matches([' ', '\t'])
-}
-
-fn whitespace_separated_block_opening(code: &str, start: usize) -> Option<usize> {
-    let mut offset = start;
-    for ch in code[start..].chars() {
-        if ch == '{' {
-            return Some(offset);
-        }
-        if !ch.is_whitespace() {
-            return None;
-        }
-        offset += ch.len_utf8();
-    }
-    None
-}
-
-fn collapse_common_inline(value: &str) -> String {
-    collapse_horizontal_runs(value.trim())
-}
-
-fn collapse_horizontal_runs(value: &str) -> String {
-    let mut result = String::with_capacity(value.len());
-    let mut horizontal = String::new();
-    for ch in value.chars() {
-        if matches!(ch, ' ' | '\t') {
-            horizontal.push(ch);
-            continue;
-        }
-        if horizontal.len() >= 2 {
-            result.push(' ');
-        } else {
-            result.push_str(&horizontal);
-        }
-        horizontal.clear();
-        result.push(ch);
-    }
-    if horizontal.len() >= 2 {
-        result.push(' ');
-    } else {
-        result.push_str(&horizontal);
-    }
-    result
-}
-
-fn convert_common_block(value: &str) -> String {
-    value
-        .lines()
-        .map(|line| collapse_horizontal_runs(line.trim()))
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn take_parse_diagnostic(error: Error) -> crate::ParseDiagnostic {

@@ -494,6 +494,7 @@ fn git_graph_render_model_renders_branches_commits_and_warnings() {
         ],
         current_branch: "main".to_string(),
         direction: "TB".to_string(),
+        title: Some("Repository history".to_string()),
         acc_title: Some("Git title".to_string()),
         acc_descr: Some("Git description".to_string()),
         warning_facts: vec![DiagramWarningFact::new(
@@ -508,6 +509,7 @@ fn git_graph_render_model_renders_branches_commits_and_warnings() {
         rendered,
         concat!(
             "gitGraph direction=TB current=main\n",
+            "Repository history\n",
             "accTitle: Git title\n",
             "accDescr: Git description\n",
             "branches: main, feature\n",

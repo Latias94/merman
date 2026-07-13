@@ -499,6 +499,12 @@ pub(crate) fn render_gitgraph_diagram_svg(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let diagram_title = semantic
+        .get("title")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or(diagram_title);
     let acc_title = semantic
         .get("accTitle")
         .and_then(|v| v.as_str())
@@ -529,6 +535,12 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
     measurer: &dyn TextMeasurer,
     options: &SvgRenderOptions,
 ) -> Result<String> {
+    let diagram_title = model
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .or(diagram_title);
     let acc_title = model
         .acc_title
         .as_deref()
@@ -1478,6 +1490,67 @@ mod tests {
             &SvgRenderOptions::default(),
         )
         .expect("render gitGraph SVG")
+    }
+
+    #[test]
+    fn gitgraph_typed_body_title_renders_and_overrides_metadata_title() {
+        let model = merman_core::diagrams::git_graph::GitGraphRenderModel {
+            diagram_type: "gitGraph".to_string(),
+            commits: Vec::new(),
+            branches: Vec::new(),
+            current_branch: "main".to_string(),
+            direction: "LR".to_string(),
+            title: Some("Body & Title".to_string()),
+            acc_title: None,
+            acc_descr: None,
+            warning_facts: Vec::new(),
+        };
+
+        let svg = render_gitgraph_diagram_svg_model(
+            &lr_merge_layout(-2.0),
+            &model,
+            &json!({}),
+            Some("Metadata Title"),
+            &crate::text::DeterministicTextMeasurer::default(),
+            &SvgRenderOptions::default(),
+        )
+        .expect("render typed gitGraph SVG");
+
+        assert!(svg.contains(
+            r#"class="gitTitleText" xmlns="http://www.w3.org/2000/svg">Body &amp; Title</text>"#
+        ));
+        assert!(!svg.contains("Metadata Title"));
+    }
+
+    #[test]
+    fn gitgraph_compat_body_title_renders_and_overrides_metadata_title() {
+        let layout = lr_merge_layout(-2.0);
+        let semantic = json!({
+            "title": "Body & Title",
+            "accTitle": null,
+            "accDescr": null
+        });
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let options = SvgRenderOptions::default();
+
+        let body_only =
+            render_gitgraph_diagram_svg(&layout, &semantic, &json!({}), None, &measurer, &options)
+                .expect("render compatibility gitGraph SVG with body title");
+        assert!(body_only.contains(
+            r#"class="gitTitleText" xmlns="http://www.w3.org/2000/svg">Body &amp; Title</text>"#
+        ));
+
+        let with_metadata = render_gitgraph_diagram_svg(
+            &layout,
+            &semantic,
+            &json!({}),
+            Some("Metadata Title"),
+            &measurer,
+            &options,
+        )
+        .expect("render compatibility gitGraph SVG with competing metadata title");
+        assert!(with_metadata.contains("Body &amp; Title"));
+        assert!(!with_metadata.contains("Metadata Title"));
     }
 
     #[test]

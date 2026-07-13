@@ -1,7 +1,11 @@
+use crate::common_db::LangiumCommonDbFields;
 use crate::diagram::{
     DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, legacy_warning_messages,
 };
-use crate::diagrams::scan::strip_line_ending;
+use crate::diagrams::langium_common::{
+    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
+    push_langium_common_recovery,
+};
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
@@ -59,6 +63,7 @@ pub struct GitGraphRenderModel {
     #[serde(rename = "currentBranch")]
     pub current_branch: String,
     pub direction: String,
+    pub title: Option<String>,
     #[serde(rename = "accTitle")]
     pub acc_title: Option<String>,
     #[serde(rename = "accDescr")]
@@ -73,6 +78,7 @@ pub struct GitGraphRenderModel {
 
 impl GitGraphRenderModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
+        crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
     }
@@ -125,6 +131,7 @@ struct GitGraphDb {
     direction: String,
     seq: i64,
     warning_facts: Vec<DiagramWarningFact>,
+    title: String,
     acc_title: String,
     acc_descr: String,
     prng: Option<XorShift64Star>,
@@ -197,6 +204,7 @@ impl GitGraphDb {
         self.direction = "LR".to_string();
         self.seq = 0;
         self.warning_facts.clear();
+        self.title.clear();
         self.acc_title.clear();
         self.acc_descr.clear();
 
@@ -893,73 +901,18 @@ impl<'a> LineParser<'a> {
     }
 }
 
-fn parse_header_line(line: &str) -> Result<Option<String>> {
-    let t = line.trim_start();
-    if !t.starts_with("gitGraph") {
-        return Err(Error::diagram_parse_fallback(
-            "gitGraph".to_string(),
-            "expected gitGraph header".to_string(),
-        ));
-    }
-    let rest = t["gitGraph".len()..].trim();
-    if rest.is_empty() || rest == ":" {
-        return Ok(None);
-    }
-    let rest = rest.trim_end_matches(':').trim();
-    if rest.is_empty() {
-        return Ok(None);
-    }
-    let dir = rest.split_whitespace().next().unwrap_or("");
-    match dir {
-        "LR" | "TB" | "BT" => Ok(Some(dir.to_string())),
-        _ => Ok(None),
-    }
-}
-
-fn parse_acc_title(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("accTitle") {
-        return None;
-    }
-    let rest = &t["accTitle".len()..];
-    let rest = rest.trim_start();
-    if !rest.starts_with(':') {
-        return None;
-    }
-    Some(rest[1..].trim().to_string())
-}
-
-fn parse_acc_descr_inline(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = &t["accDescr".len()..];
-    let rest = rest.trim_start();
-    if !rest.starts_with(':') {
-        return None;
-    }
-    Some(rest[1..].trim().to_string())
-}
-
-fn parse_acc_descr_block_start(line: &str) -> bool {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return false;
-    }
-    let rest = t["accDescr".len()..].trim_start();
-    rest.starts_with('{')
-}
-
 pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_git_graph_model(code, meta)?;
     let warnings = legacy_warning_messages(&model.warning_facts);
-    let mut out = Map::with_capacity(10);
+    let mut out = Map::with_capacity(11);
     out.insert("type".to_string(), Value::String(model.diagram_type));
     out.insert("commits".to_string(), json!(model.commits));
     out.insert("branches".to_string(), json!(model.branches));
     out.insert("currentBranch".to_string(), json!(model.current_branch));
     out.insert("direction".to_string(), json!(model.direction));
+    if let Some(title) = &model.title {
+        out.insert("title".to_string(), Value::String(title.clone()));
+    }
     out.insert("accTitle".to_string(), json!(model.acc_title));
     out.insert("accDescr".to_string(), json!(model.acc_descr));
     out.insert("warningFacts".to_string(), json!(model.warning_facts));
@@ -1014,87 +967,27 @@ fn push_gitgraph_payload_fact(
     ));
 }
 
-fn parse_acc_title_spanned(line: &str, base_offset: usize) -> Option<SpannedValue> {
-    let t = line.trim_start();
-    if !t.starts_with("accTitle") {
-        return None;
-    }
-    let rest = &t["accTitle".len()..];
-    let rest = rest.trim_start();
-    if !rest.starts_with(':') {
-        return None;
-    }
-    let value = rest[1..].trim();
-    let leading = line.find(value).unwrap_or(0);
-    Some(SpannedValue {
-        text: value.to_string(),
-        span: SourceSpan::new(base_offset + leading, base_offset + leading + value.len()),
-    })
-}
-
-fn parse_acc_descr_inline_spanned(line: &str, base_offset: usize) -> Option<SpannedValue> {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = &t["accDescr".len()..];
-    let rest = rest.trim_start();
-    if !rest.starts_with(':') {
-        return None;
-    }
-    let value = rest[1..].trim();
-    let leading = line.find(value).unwrap_or(0);
-    Some(SpannedValue {
-        text: value.to_string(),
-        span: SourceSpan::new(base_offset + leading, base_offset + leading + value.len()),
-    })
-}
-
 pub fn parse_git_graph_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut offset = 0usize;
-    let mut header_seen = false;
+    let Ok((_direction, mut offset)) = parse_gitgraph_header(code) else {
+        return facts;
+    };
 
-    for segment in code.split_inclusive('\n') {
+    while offset < code.len() {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            push_langium_common_editor_fact(&mut facts, &parsed.fact, "gitGraph");
+            if let Some(diagnostic) = &parsed.diagnostic {
+                push_langium_common_recovery(&mut facts, diagnostic);
+            }
+            offset += parsed.consumed;
+            continue;
+        }
+
         let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
+        let (line, next_offset) = physical_line(code, offset);
+        offset = next_offset;
         let trimmed = line.trim();
         if trimmed.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if !trimmed.starts_with("gitGraph") {
-                return facts;
-            }
-            header_seen = true;
-            continue;
-        }
-
-        if let Some(value) = parse_acc_title_spanned(line, line_start) {
-            facts.push_directive_prefix("accTitle");
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                value.text,
-                Some("gitGraph accessibility title".to_string()),
-                EditorSemanticKind::String,
-                value.span,
-                value.span,
-            ));
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_inline_spanned(line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_gitgraph_payload_fact(
-                &mut facts,
-                value,
-                "gitGraph accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if parse_acc_descr_block_start(line) {
-            facts.push_directive_prefix("accDescr");
             continue;
         }
 
@@ -1287,16 +1180,9 @@ pub fn parse_git_graph_editor_facts(code: &str, _meta: &ParseMetadata) -> Editor
 }
 
 fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRenderModel> {
-    let mut lines = gitgraph_lines_with_offsets(code).into_iter();
-    let Some((header, _header_start)) = lines.next() else {
-        return Err(Error::diagram_parse_fallback(
-            "gitGraph".to_string(),
-            "empty input".to_string(),
-        ));
-    };
-
-    let direction = parse_header_line(header)?;
-    let body_lines = lines.collect::<Vec<_>>();
+    let (direction, body_start) = parse_gitgraph_header(code)?;
+    let (body_lines, common) = collect_gitgraph_body(code, body_start, meta)?;
+    let common = LangiumCommonDbFields::from_facts(&common);
 
     let effective_config = &meta.effective_config;
     let prng_override = if seeded_gitgraph_prng(effective_config).is_some() {
@@ -1306,6 +1192,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
         // the render model used for SVG parity.
         let mut warmup = new_gitgraph_db();
         warmup.clear(effective_config, None);
+        apply_gitgraph_common_fields(&mut warmup, &common);
         if let Some(d) = direction.as_deref() {
             warmup.set_direction(d);
         }
@@ -1317,6 +1204,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
 
     let mut db = new_gitgraph_db();
     db.clear(effective_config, prng_override);
+    apply_gitgraph_common_fields(&mut db, &common);
     if let Some(d) = direction {
         db.set_direction(&d);
     }
@@ -1334,6 +1222,11 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
         branches: db.branches_in_order(),
         current_branch: db.curr_branch,
         direction: db.direction,
+        title: if db.title.is_empty() {
+            None
+        } else {
+            Some(db.title)
+        },
         acc_title: if db.acc_title.is_empty() {
             None
         } else {
@@ -1348,14 +1241,120 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
     })
 }
 
-fn gitgraph_lines_with_offsets(code: &str) -> Vec<(&str, usize)> {
-    let mut lines = Vec::new();
+fn parse_gitgraph_header(code: &str) -> Result<(Option<String>, usize)> {
     let mut offset = 0usize;
-    for segment in code.split_inclusive('\n') {
-        lines.push((strip_line_ending(segment), offset));
-        offset += segment.len();
+    while offset < code.len() {
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = line.split_once("%%").map_or(line, |(before, _)| before);
+        let trimmed = visible.trim_start();
+        if trimmed.trim().is_empty() {
+            offset = next_offset;
+            continue;
+        }
+        let Some(after_keyword) = trimmed.strip_prefix("gitGraph") else {
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "expected gitGraph header".to_string(),
+            ));
+        };
+        if after_keyword
+            .chars()
+            .next()
+            .is_some_and(|ch| !ch.is_whitespace() && ch != ':' && !after_keyword.starts_with("%%"))
+        {
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "expected gitGraph header".to_string(),
+            ));
+        }
+
+        let leading = visible.len() - trimmed.len();
+        let mut body_start = offset + leading + "gitGraph".len();
+        let mut rest = &code[body_start..];
+        let whitespace = rest
+            .chars()
+            .take_while(|ch| matches!(ch, ' ' | '\t'))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        rest = &rest[whitespace..];
+
+        if rest.starts_with(':') {
+            return Ok((None, body_start + whitespace + 1));
+        }
+        for direction in ["LR", "TB", "BT"] {
+            let Some(after_direction) = rest.strip_prefix(direction) else {
+                continue;
+            };
+            if after_direction
+                .chars()
+                .next()
+                .is_some_and(|ch| !ch.is_whitespace() && ch != ':')
+            {
+                continue;
+            }
+            let direction_ws = after_direction
+                .chars()
+                .take_while(|ch| matches!(ch, ' ' | '\t'))
+                .map(char::len_utf8)
+                .sum::<usize>();
+            if after_direction.as_bytes().get(direction_ws) == Some(&b':') {
+                body_start += whitespace + direction.len() + direction_ws + 1;
+                return Ok((Some(direction.to_string()), body_start));
+            }
+        }
+        return Ok((None, body_start));
     }
-    lines
+
+    Err(Error::diagram_parse_fallback(
+        "gitGraph".to_string(),
+        "empty input".to_string(),
+    ))
+}
+
+fn collect_gitgraph_body<'a>(
+    code: &'a str,
+    mut offset: usize,
+    meta: &ParseMetadata,
+) -> Result<(Vec<(&'a str, usize)>, LangiumCommonFacts)> {
+    let mut lines = Vec::new();
+    let mut common = LangiumCommonFacts::default();
+    while offset < code.len() {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            if let Some(diagnostic) = parsed.diagnostic {
+                return Err(Error::diagram_parse_insertion_point(
+                    meta.diagram_type.clone(),
+                    diagnostic.message,
+                    diagnostic.span.start,
+                ));
+            }
+            common.push(parsed.fact);
+            offset += parsed.consumed;
+            continue;
+        }
+        let line_start = offset;
+        let (line, next_offset) = physical_line(code, offset);
+        lines.push((line, line_start));
+        offset = next_offset;
+    }
+    Ok((lines, common))
+}
+
+fn apply_gitgraph_common_fields(db: &mut GitGraphDb, common: &LangiumCommonDbFields) {
+    db.acc_descr = common.acc_descr.clone().unwrap_or_default();
+    db.acc_title = common.acc_title.clone().unwrap_or_default();
+    db.title = common.title.clone().unwrap_or_default();
+}
+
+fn physical_line(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    if let Some(newline) = rest.find('\n') {
+        let line = rest[..newline]
+            .strip_suffix('\r')
+            .unwrap_or(&rest[..newline]);
+        (line, offset + newline + 1)
+    } else {
+        (rest, source.len())
+    }
 }
 
 fn new_gitgraph_db() -> GitGraphDb {
@@ -1370,6 +1369,7 @@ fn new_gitgraph_db() -> GitGraphDb {
         direction: "LR".to_string(),
         seq: 0,
         warning_facts: Vec::new(),
+        title: String::new(),
         acc_title: String::new(),
         acc_descr: String::new(),
         prng: None,
@@ -1384,43 +1384,13 @@ fn parse_git_graph_body<'a, I>(
 where
     I: IntoIterator<Item = (&'a str, usize)>,
 {
-    let mut pending_acc_descr_block = false;
-    let mut acc_descr_lines: Vec<String> = Vec::new();
-
     for (raw, line_start) in lines {
         let line = raw.trim_end_matches('\r');
         let trimmed = line.trim();
-        if pending_acc_descr_block {
-            if trimmed.starts_with('}') {
-                pending_acc_descr_block = false;
-                db.acc_descr = acc_descr_lines.join("\n");
-                acc_descr_lines.clear();
-                continue;
-            }
-            let t = trimmed.trim();
-            if !t.is_empty() {
-                acc_descr_lines.push(t.to_string());
-            }
-            continue;
-        }
-
         if trimmed.is_empty() {
             continue;
         }
         if trimmed.starts_with("%%") {
-            continue;
-        }
-
-        if let Some(v) = parse_acc_title(trimmed) {
-            db.acc_title = v;
-            continue;
-        }
-        if parse_acc_descr_block_start(trimmed) {
-            pending_acc_descr_block = true;
-            continue;
-        }
-        if let Some(v) = parse_acc_descr_inline(trimmed) {
-            db.acc_descr = v;
             continue;
         }
 
@@ -1590,6 +1560,7 @@ mod tests {
         })));
         let input = r#"
 gitGraph TB:
+title <script>alert(1)</script><b>Git title</b>
 accTitle: Git accTitle
 accDescr: Git accDescription
 commit id:"C0"
@@ -1611,6 +1582,7 @@ merge feature id:"M1"
                 assert_eq!(model.diagram_type, "gitGraph");
                 assert_eq!(model.direction, "TB");
                 assert_eq!(model.current_branch, "main");
+                assert_eq!(model.title.as_deref(), Some("<b>Git title</b>"));
                 assert_eq!(model.acc_title.as_deref(), Some("Git accTitle"));
                 assert_eq!(model.acc_descr.as_deref(), Some("Git accDescription"));
                 assert_eq!(model.branches.len(), 2);
@@ -1630,6 +1602,7 @@ merge feature id:"M1"
         assert_eq!(parsed_json.model["type"], json!("gitGraph"));
         assert_eq!(parsed_json.model["direction"], json!("TB"));
         assert_eq!(parsed_json.model["currentBranch"], json!("main"));
+        assert_eq!(parsed_json.model["title"], json!("<b>Git title</b>"));
         assert_eq!(parsed_json.model["accTitle"], json!("Git accTitle"));
         assert_eq!(parsed_json.model["branches"][0]["name"], json!("main"));
         assert_eq!(parsed_json.model["commits"][1]["id"], json!("F1"));

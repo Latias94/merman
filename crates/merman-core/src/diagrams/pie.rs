@@ -1,4 +1,8 @@
-use crate::diagrams::scan::starts_with_case_insensitive;
+use crate::common_db::LangiumCommonDbFields;
+use crate::diagrams::langium_common::{
+    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
+    push_langium_common_recovery,
+};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
@@ -69,203 +73,58 @@ pub fn parse_pie_model_for_render(
 
 pub fn parse_pie_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut raw_lines = code.split_inclusive('\n').peekable();
-    let mut offset = 0usize;
-    let mut header_seen = false;
+    let PieHeader::Body(body) = pie_body_start(code) else {
+        return facts;
+    };
+    let mut offset = body.offset;
+    if let Some(span) = body.show_data_span {
+        facts.push_directive_prefix("showData");
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
+            span,
+        ));
+    }
 
-    while let Some(segment) = raw_lines.next() {
-        let line_start = offset;
-        offset += segment.len();
-        let line = segment.strip_suffix('\n').unwrap_or(segment);
-        let trimmed = strip_inline_comment(line).trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if starts_with_case_insensitive(trimmed, "pie") {
-                header_seen = true;
-                if let Some(rest) = trimmed.strip_prefix("pie") {
-                    let rest = rest.trim_start();
-                    if !rest.is_empty() {
-                        facts.push_directive_prefix("showData");
-                        if rest.starts_with("showData") {
-                            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                                EditorExpectedSyntaxKind::Payload,
-                                SourceSpan::new(
-                                    line_start + line.find("showData").unwrap_or(0),
-                                    line_start
-                                        + line.find("showData").unwrap_or(0)
-                                        + "showData".len(),
-                                ),
-                            ));
-                        }
-                    }
-                }
-                continue;
+    while offset < code.len() {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            push_langium_common_editor_fact(&mut facts, &parsed.fact, "pie");
+            if let Some(diagnostic) = &parsed.diagnostic {
+                push_langium_common_recovery(&mut facts, diagnostic);
             }
+            offset += parsed.consumed;
             continue;
         }
 
-        if let Some(value) = parse_title_statement_spanned(line, line_start) {
-            facts.push_directive_prefix("title");
-            push_pie_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "pie title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_key_value_spanned(line, line_start, "accTitle") {
-            facts.push_directive_prefix("accTitle");
-            push_pie_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "pie accessibility title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_inline_spanned(line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_pie_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "pie accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_block_spanned(&mut raw_lines, line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_pie_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "pie accessibility description",
-                EditorSemanticKind::String,
-            );
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = strip_inline_comment(line);
+        let trimmed = visible.trim();
+        if trimmed.is_empty() {
+            offset = next_offset;
             continue;
         }
 
-        if let Some((label, value_span)) = parse_section_spanned(line, line_start) {
+        if let Some((label, value_span)) = parse_section_spanned(line, offset) {
             facts.push_symbol(EditorSemanticSymbol::outline(
                 label.text.to_string(),
                 Some("pie section".to_string()),
                 EditorSemanticKind::String,
-                SourceSpan::new(line_start, line_start + line.len()),
+                SourceSpan::new(offset, offset + line.len()),
                 SourceSpan::new(label.start, label.end),
             ));
             facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::Payload,
                 SourceSpan::new(value_span.start, value_span.end),
             ));
-            continue;
+        } else {
+            facts.mark_recovered_with_diagnostic(
+                "unexpected pie statement",
+                Some(SourceSpan::new(offset, offset + line.len())),
+            );
         }
+        offset = next_offset;
     }
 
     facts
-}
-
-fn parse_title_statement_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !t.starts_with("title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?;
-    let ws = rest.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let value = rest.trim_start();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_key_value_spanned<'a>(
-    line: &'a str,
-    line_start: usize,
-    key: &str,
-) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !t.starts_with(key) {
-        return None;
-    }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_acc_descr_inline_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_acc_descr_block_spanned<'a>(
-    lines: &mut std::iter::Peekable<std::str::SplitInclusive<'a, char>>,
-    first_line: &'a str,
-    line_start: usize,
-) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(first_line).trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    let rest = rest.strip_prefix('{')?;
-    if let Some(end) = rest.find('}') {
-        let value = rest[..end].trim();
-        let value_rel = first_line.find(value)?;
-        return Some(SpannedText {
-            text: value,
-            start: line_start + value_rel,
-            end: line_start + value_rel + value.len(),
-        });
-    }
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = first_line.find(value)?;
-    let _ = lines.peek();
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
 }
 
 fn parse_section_spanned<'a>(
@@ -304,27 +163,6 @@ fn parse_section_spanned<'a>(
     ))
 }
 
-fn push_pie_payload_fact(
-    facts: &mut EditorSemanticFacts,
-    text: &str,
-    start: usize,
-    detail: &'static str,
-    kind: EditorSemanticKind,
-) {
-    let end = start + text.len();
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        SourceSpan::new(start, end),
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        text.to_string(),
-        Some(detail.to_string()),
-        kind,
-        SourceSpan::new(start, end),
-        SourceSpan::new(start, end),
-    ));
-}
-
 #[derive(Debug, Clone, Copy)]
 struct SpannedText<'a> {
     text: &'a str,
@@ -333,151 +171,35 @@ struct SpannedText<'a> {
 }
 
 fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
-    let mut raw_lines = code.lines();
-
-    let mut header: Option<String> = None;
-    for line in &mut raw_lines {
-        let t = strip_inline_comment(line).trim();
-        if !t.is_empty() {
-            header = Some(t.to_string());
-            break;
-        }
-    }
-
-    let Some(header) = header else {
-        return Ok(PieParseOutput::Empty);
+    let body = match pie_body_start(code) {
+        PieHeader::Empty => return Ok(PieParseOutput::Empty),
+        PieHeader::ExpectedPie => return Ok(PieParseOutput::ExpectedPie),
+        PieHeader::Body(body) => body,
     };
-
-    let mut it0 = header.split_whitespace();
-    let Some(first) = it0.next() else {
-        return Ok(PieParseOutput::Empty);
-    };
-    if first != "pie" {
-        return Ok(PieParseOutput::ExpectedPie);
-    }
-
-    let mut show_data = false;
-    let mut title: Option<String> = None;
-    let mut acc_title: Option<String> = None;
-    let mut acc_descr: Option<String> = None;
-    let mut unsupported: Option<String> = None;
-
-    fn token_boundary_ok(s: &str, token_len: usize) -> bool {
-        let Some(rest) = s.get(token_len..) else {
-            return true;
-        };
-        match rest.chars().next() {
-            None => true,
-            Some(c) => c.is_whitespace(),
-        }
-    }
-
-    let header_after = header
-        .trim_start_matches(|c: char| c.is_whitespace())
-        .strip_prefix("pie")
-        .unwrap_or("");
-    let mut rest = header_after.trim_start();
-    while !rest.is_empty() {
-        if rest.starts_with("showData") && token_boundary_ok(rest, "showData".len()) {
-            show_data = true;
-            rest = rest["showData".len()..].trim_start();
-            continue;
-        }
-        if rest.starts_with("title") && token_boundary_ok(rest, "title".len()) {
-            let after = rest["title".len()..].trim_start();
-            title = Some(after.to_string());
-            rest = "";
-            continue;
-        }
-        if rest.starts_with("accTitle")
-            && let Some(v) = parse_key_value(rest, "accTitle")
-        {
-            acc_title = Some(v);
-            rest = "";
-            continue;
-        }
-        if rest.starts_with("accDescr") {
-            if let Some(v) = parse_acc_descr_inline(rest) {
-                acc_descr = Some(v);
-                rest = "";
-                continue;
-            }
-            if starts_acc_descr_block(rest) {
-                let mut parts: Vec<String> = Vec::new();
-                for next_line in raw_lines.by_ref() {
-                    let s = strip_inline_comment(next_line);
-                    if s.contains('}') {
-                        let before = s.split('}').next().unwrap_or("").trim();
-                        if !before.is_empty() {
-                            parts.push(before.to_string());
-                        }
-                        break;
-                    }
-                    let trimmed = s.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-                    parts.push(trimmed.to_string());
-                }
-                acc_descr = Some(parts.join("\n"));
-                rest = "";
-                continue;
-            }
-        }
-        unsupported = Some(rest.split_whitespace().next().unwrap_or(rest).to_string());
-        break;
-    }
-
-    if let Some(tok) = unsupported {
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            format!("unexpected pie header token: {tok}"),
-        ));
-    }
-
+    let mut offset = body.offset;
+    let mut common = LangiumCommonFacts::default();
     let mut sections: Vec<PieRenderSection> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
-    let mut lines = raw_lines.peekable();
-    while let Some(line) = lines.next() {
-        let t = strip_inline_comment(line).trim();
-        if t.is_empty() {
-            continue;
-        }
-
-        if let Some(v) = parse_title_statement(t) {
-            title = Some(v);
-            continue;
-        }
-
-        if let Some(v) = parse_key_value(t, "accTitle") {
-            acc_title = Some(v);
-            continue;
-        }
-
-        if let Some(v) = parse_acc_descr_inline(t) {
-            acc_descr = Some(v);
-            continue;
-        }
-
-        if starts_acc_descr_block(t) {
-            let mut parts: Vec<String> = Vec::new();
-            for next_line in lines.by_ref() {
-                let s = strip_inline_comment(next_line);
-                if s.contains('}') {
-                    let before = s.split('}').next().unwrap_or("").trim();
-                    if !before.is_empty() {
-                        parts.push(before.to_string());
-                    }
-                    break;
-                }
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-                parts.push(trimmed.to_string());
+    while offset < code.len() {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            if let Some(diagnostic) = parsed.diagnostic {
+                return Err(Error::diagram_parse_insertion_point(
+                    meta.diagram_type.clone(),
+                    diagnostic.message,
+                    diagnostic.span.start,
+                ));
             }
-            acc_descr = Some(parts.join("\n"));
+            common.push(parsed.fact);
+            offset += parsed.consumed;
+            continue;
+        }
+
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = strip_inline_comment(line);
+        let t = visible.trim();
+        if t.is_empty() {
+            offset = next_offset;
             continue;
         }
 
@@ -493,6 +215,7 @@ fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
             if seen.insert(label.clone()) {
                 sections.push(PieRenderSection { label, value });
             }
+            offset = next_offset;
             continue;
         }
 
@@ -502,13 +225,82 @@ fn parse_pie_model(code: &str, meta: &ParseMetadata) -> Result<PieParseOutput> {
         ));
     }
 
+    let common = LangiumCommonDbFields::from_facts(&common);
+
     Ok(PieParseOutput::Model(PieDiagramRenderModel {
-        show_data,
-        title,
-        acc_title,
-        acc_descr,
+        show_data: body.show_data_span.is_some(),
+        title: common.title,
+        acc_title: common.acc_title,
+        acc_descr: common.acc_descr,
         sections,
     }))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PieHeader {
+    Empty,
+    ExpectedPie,
+    Body(PieBodyStart),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PieBodyStart {
+    offset: usize,
+    show_data_span: Option<SourceSpan>,
+}
+
+fn pie_body_start(code: &str) -> PieHeader {
+    let mut offset = 0usize;
+    while offset < code.len() {
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = strip_inline_comment(line);
+        let trimmed = visible.trim_start();
+        if trimmed.trim().is_empty() {
+            offset = next_offset;
+            continue;
+        }
+        let Some(header_len) = keyword_token_len(trimmed, "pie") else {
+            return PieHeader::ExpectedPie;
+        };
+        let leading = visible.len() - trimmed.len();
+        let after_header = offset + leading + header_len;
+        let horizontal = code[after_header..]
+            .chars()
+            .take_while(|ch| matches!(ch, ' ' | '\t'))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let show_data_start = after_header + horizontal;
+        let show_data_span = keyword_token_len(&code[show_data_start..], "showData").map(|len| {
+            debug_assert_eq!(len, "showData".len());
+            SourceSpan::new(show_data_start, show_data_start + len)
+        });
+        let body_start = show_data_span.map_or(after_header, |span| span.end);
+        return PieHeader::Body(PieBodyStart {
+            offset: body_start,
+            show_data_span,
+        });
+    }
+    PieHeader::Empty
+}
+
+fn keyword_token_len(input: &str, keyword: &str) -> Option<usize> {
+    let rest = input.strip_prefix(keyword)?;
+    (rest.is_empty()
+        || rest.starts_with("%%")
+        || rest.chars().next().is_some_and(char::is_whitespace))
+    .then_some(keyword.len())
+}
+
+fn physical_line(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    if let Some(newline) = rest.find('\n') {
+        let line = rest[..newline]
+            .strip_suffix('\r')
+            .unwrap_or(&rest[..newline]);
+        (line, offset + newline + 1)
+    } else {
+        (rest, source.len())
+    }
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -516,50 +308,6 @@ fn strip_inline_comment(line: &str) -> &str {
         Some(idx) => &line[..idx],
         None => line,
     }
-}
-
-fn parse_title_statement(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?;
-    match rest.chars().next() {
-        None => Some(String::new()),
-        Some(c) if c.is_whitespace() => Some(rest.trim_start().to_string()),
-        _ => None,
-    }
-}
-
-fn parse_key_value(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with(key) {
-        return None;
-    }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-    Some(rest.to_string())
-}
-
-fn parse_acc_descr_inline(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    if let Some(rest) = rest.strip_prefix(':') {
-        return Some(rest.trim_start().to_string());
-    }
-    None
-}
-
-fn starts_acc_descr_block(line: &str) -> bool {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return false;
-    }
-    let rest = t.trim_start_matches("accDescr").trim_start();
-    rest.starts_with('{')
 }
 
 fn parse_section(line: &str) -> Option<(String, f64)> {
@@ -613,7 +361,17 @@ fn parse_quoted_string(input: &str) -> Option<(String, &str)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Engine, ParseOptions};
+    use super::parse_pie_editor_facts;
+    use crate::{EditorSemanticCompleteness, Engine, MermaidConfig, ParseMetadata, ParseOptions};
+
+    fn metadata() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "pie".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        }
+    }
 
     #[test]
     fn pie_supports_title_statement_after_header() {
@@ -638,6 +396,36 @@ pie showData
         assert_eq!(
             parsed.model.get("showData").and_then(|v| v.as_bool()),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn pie_rejects_show_data_after_the_header_line() {
+        let source = "pie\nshowData\n\"A\": 1\n";
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err("showData is only valid in the pie header");
+        assert!(
+            error
+                .to_string()
+                .contains("unexpected pie statement: showData")
+        );
+
+        let facts = parse_pie_editor_facts(source, &metadata());
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(
+            !facts
+                .directive_prefixes
+                .iter()
+                .any(|prefix| prefix == "showData")
+        );
+        assert!(
+            facts
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("unexpected pie statement"))
         );
     }
 

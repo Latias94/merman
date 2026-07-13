@@ -1,4 +1,8 @@
-use crate::diagrams::scan::strip_line_ending;
+use crate::common_db::LangiumCommonDbFields;
+use crate::diagrams::langium_common::{
+    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
+    push_langium_common_recovery,
+};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
@@ -295,41 +299,6 @@ fn parse_radar_stmt_facts(
     facts: &mut EditorSemanticFacts,
 ) -> std::result::Result<(), ()> {
     let trimmed = stmt.trim_start();
-    if let Some(title) = parse_title(trimmed) {
-        let Some(span) = find_span(stmt, &title, stmt_start) else {
-            return Err(());
-        };
-        facts.push_directive_prefix("title");
-        push_radar_payload(facts, span, "radar title", EditorSemanticKind::String);
-        return Ok(());
-    }
-    if let Some(acc_title) = parse_key_value(trimmed, "accTitle") {
-        let Some(span) = find_span(stmt, &acc_title, stmt_start) else {
-            return Err(());
-        };
-        facts.push_directive_prefix("accTitle");
-        push_radar_payload(
-            facts,
-            span,
-            "radar accessibility title",
-            EditorSemanticKind::String,
-        );
-        return Ok(());
-    }
-    if let Some(acc_descr) = parse_acc_descr(trimmed) {
-        let Some(span) = find_span(stmt, &acc_descr, stmt_start) else {
-            return Err(());
-        };
-        facts.push_directive_prefix("accDescr");
-        push_radar_payload(
-            facts,
-            span,
-            "radar accessibility description",
-            EditorSemanticKind::String,
-        );
-        return Ok(());
-    }
-
     if let Some(rest) = trimmed.strip_prefix("axis") {
         let rest = rest.trim_start();
         if rest.is_empty() {
@@ -426,44 +395,25 @@ fn parse_radar_stmt_facts(
 
 pub fn parse_radar_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut offset = 0usize;
-    let mut header_seen = false;
+    let Ok(Some(mut offset)) = radar_body_start(code) else {
+        return facts;
+    };
 
-    let mut lines = code.split_inclusive('\n').peekable();
-    while let Some(segment) = lines.next() {
-        let line_start = offset;
-        offset += segment.len();
-        let raw = strip_line_ending(segment);
-        let line = strip_inline_comment(raw);
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
+    while offset < code.len() {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            push_langium_common_editor_fact(&mut facts, &parsed.fact, "radar");
+            if let Some(diagnostic) = &parsed.diagnostic {
+                push_langium_common_recovery(&mut facts, diagnostic);
+            }
+            offset += parsed.consumed;
             continue;
         }
 
-        if !header_seen {
-            if !is_radar_header(trimmed) {
-                return facts;
-            }
-            header_seen = true;
+        let (stmt, stmt_start, next_offset) = radar_statement_at(code, offset);
+        offset = next_offset;
+        if stmt.is_empty() {
             continue;
         }
-
-        let mut stmt = trimmed.to_string();
-        if stmt.starts_with("curve") && stmt.contains('{') && !braces_balanced_outside_quotes(&stmt)
-        {
-            while let Some(next_segment) = lines.peek().copied() {
-                let next_line = strip_inline_comment(strip_line_ending(next_segment));
-                stmt.push('\n');
-                stmt.push_str(next_line);
-                offset += next_segment.len();
-                lines.next();
-                if braces_balanced_outside_quotes(&stmt) {
-                    break;
-                }
-            }
-        }
-
-        let stmt_start = line_start + line.find(trimmed).unwrap_or(0);
         if parse_radar_stmt_facts(&stmt, stmt_start, &mut facts).is_err() {
             facts.mark_recovered();
         }
@@ -520,50 +470,32 @@ pub fn parse_radar_model_for_render(
 
 #[inline]
 fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
-    let mut lines = code.lines().peekable();
-
-    let header = loop {
-        let Some(line) = lines.next() else {
-            return Ok(None);
-        };
-        let t = strip_inline_comment(line).trim();
-        if t.is_empty() {
-            continue;
-        }
-        break t.to_string();
+    let Some(mut offset) = radar_body_start(code)? else {
+        return Ok(None);
     };
 
-    if !is_radar_header(&header) {
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            "expected radar-beta".to_string(),
-        ));
-    }
-
-    let mut title: Option<String> = None;
-    let mut acc_title: Option<String> = None;
-    let mut acc_descr: Option<String> = None;
-
+    let mut common = LangiumCommonFacts::default();
     let mut axes: Vec<AxisAst> = Vec::new();
     let mut curves: Vec<CurveAst> = Vec::new();
     let mut options: Vec<OptionAst> = Vec::new();
 
-    while let Some(raw) = lines.next() {
-        let t = strip_inline_comment(raw).trim().to_string();
-        if t.is_empty() {
+    while offset < code.len() {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            if let Some(diagnostic) = parsed.diagnostic {
+                return Err(Error::diagram_parse_insertion_point(
+                    meta.diagram_type.clone(),
+                    diagnostic.message,
+                    diagnostic.span.start,
+                ));
+            }
+            common.push(parsed.fact);
+            offset += parsed.consumed;
             continue;
         }
 
-        if let Some(v) = parse_title(&t) {
-            title = Some(v);
-            continue;
-        }
-        if let Some(v) = parse_key_value(&t, "accTitle") {
-            acc_title = Some(v);
-            continue;
-        }
-        if let Some(v) = parse_acc_descr(&t) {
-            acc_descr = Some(v);
+        let (t, _stmt_start, next_offset) = radar_statement_at(code, offset);
+        offset = next_offset;
+        if t.is_empty() {
             continue;
         }
 
@@ -584,20 +516,8 @@ fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
         }
 
         if t.trim_start().starts_with("curve") {
-            let mut stmt = t;
-            if stmt.contains('{') && !braces_balanced_outside_quotes(&stmt) {
-                while let Some(next) = lines.peek().copied() {
-                    let next = strip_inline_comment(next);
-                    stmt.push('\n');
-                    stmt.push_str(next);
-                    lines.next();
-                    if braces_balanced_outside_quotes(&stmt) {
-                        break;
-                    }
-                }
-            }
             curves.extend(
-                parse_curves_stmt(&stmt).map_err(|message| {
+                parse_curves_stmt(&t).map_err(|message| {
                     Error::diagram_parse_fallback("radar".to_string(), message)
                 })?,
             );
@@ -624,10 +544,11 @@ fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
         ));
     }
 
+    let common = LangiumCommonDbFields::from_facts(&common);
     let mut db = RadarDb::new();
-    db.title = title;
-    db.acc_title = acc_title;
-    db.acc_descr = acc_descr;
+    db.title = common.title;
+    db.acc_title = common.acc_title;
+    db.acc_descr = common.acc_descr;
     db.set_axes(axes);
     db.set_curves(curves)?;
     db.set_options(options);
@@ -642,46 +563,80 @@ fn strip_inline_comment(line: &str) -> &str {
     }
 }
 
-fn is_radar_header(line: &str) -> bool {
-    let t = line.trim();
-    t == "radar-beta"
-        || t == "radar-beta:"
-        || (t.starts_with("radar-beta") && t[9..].trim_start().starts_with(':'))
+fn radar_body_start(code: &str) -> Result<Option<usize>> {
+    let mut offset = 0usize;
+    while offset < code.len() {
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = strip_inline_comment(line);
+        let trimmed = visible.trim_start();
+        if trimmed.trim().is_empty() {
+            offset = next_offset;
+            continue;
+        }
+        let Some(after_keyword) = trimmed.strip_prefix("radar-beta") else {
+            return Err(Error::diagram_parse_fallback(
+                "radar".to_string(),
+                "expected radar-beta".to_string(),
+            ));
+        };
+        if after_keyword
+            .chars()
+            .next()
+            .is_some_and(|ch| !ch.is_whitespace() && ch != ':' && !after_keyword.starts_with("%%"))
+        {
+            return Err(Error::diagram_parse_fallback(
+                "radar".to_string(),
+                "expected radar-beta".to_string(),
+            ));
+        }
+
+        let leading = visible.len() - trimmed.len();
+        let mut body_start = offset + leading + "radar-beta".len();
+        let whitespace = code[body_start..]
+            .chars()
+            .take_while(|ch| matches!(ch, ' ' | '\t'))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        if code.as_bytes().get(body_start + whitespace) == Some(&b':') {
+            body_start += whitespace + 1;
+        }
+        return Ok(Some(body_start));
+    }
+    Ok(None)
 }
 
-fn parse_title(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("title") {
-        return None;
+fn radar_statement_at(code: &str, offset: usize) -> (String, usize, usize) {
+    let (line, mut next_offset) = physical_line(code, offset);
+    let visible = strip_inline_comment(line);
+    let trimmed = visible.trim();
+    let stmt_start = offset + visible.find(trimmed).unwrap_or(0);
+    let mut stmt = trimmed.to_string();
+
+    if stmt.starts_with("curve") && stmt.contains('{') && !braces_balanced_outside_quotes(&stmt) {
+        while next_offset < code.len() {
+            let (next_line, after_next) = physical_line(code, next_offset);
+            stmt.push('\n');
+            stmt.push_str(strip_inline_comment(next_line));
+            next_offset = after_next;
+            if braces_balanced_outside_quotes(&stmt) {
+                break;
+            }
+        }
     }
-    let rest = t.strip_prefix("title")?.trim_start();
-    Some(rest.to_string())
+
+    (stmt, stmt_start, next_offset)
 }
 
-fn parse_key_value(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with(key) {
-        return None;
+fn physical_line(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    if let Some(newline) = rest.find('\n') {
+        let line = rest[..newline]
+            .strip_suffix('\r')
+            .unwrap_or(&rest[..newline]);
+        (line, offset + newline + 1)
+    } else {
+        (rest, source.len())
     }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-    Some(rest.to_string())
-}
-
-fn parse_acc_descr(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    if let Some(rest) = rest.strip_prefix(':') {
-        return Some(rest.trim_start().to_string());
-    }
-    if let Some(rest) = rest.strip_prefix('{') {
-        let end = rest.find('}')?;
-        return Some(rest[..end].to_string());
-    }
-    None
 }
 
 fn braces_balanced_outside_quotes(s: &str) -> bool {

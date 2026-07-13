@@ -13,6 +13,7 @@ pub mod info;
 pub mod ishikawa;
 pub mod journey;
 pub mod kanban;
+pub(crate) mod langium_common;
 pub mod mindmap;
 pub mod packet;
 pub mod pie;

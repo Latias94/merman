@@ -3,6 +3,13 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
+use crate::{
+    common_db::LangiumCommonDbFields,
+    diagrams::langium_common::{
+        LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
+        push_langium_common_recovery,
+    },
+};
 use serde_json::{Value, json};
 
 const HEADER: &str = "cynefin-beta";
@@ -66,22 +73,8 @@ struct TransitionParts {
     label: Option<SpannedText>,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum CommonFieldKind {
-    Title,
-    AccTitle,
-    AccDescr,
-}
-
-#[derive(Debug, Clone)]
-struct CommonField {
-    kind: CommonFieldKind,
-    value: SpannedText,
-}
-
 #[derive(Debug, Clone)]
 enum CynefinLinePart {
-    Common(CommonField),
     Domain(SpannedText),
     Item(SpannedText),
     Transition(TransitionParts),
@@ -146,12 +139,13 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
             continue;
         }
 
-        if let Some((field, consumed)) =
-            parse_multiline_acc_descr_spanned(&code[body_start..], body_start)
-        {
-            offset = body_start + consumed;
+        if let Some(parsed) = parse_langium_common(code, body_start) {
+            offset = body_start + parsed.consumed;
             current_domain = None;
-            push_common_field_fact(&mut facts, field);
+            push_langium_common_editor_fact(&mut facts, &parsed.fact, "cynefin");
+            if let Some(diagnostic) = &parsed.diagnostic {
+                push_langium_common_recovery(&mut facts, diagnostic);
+            }
             continue;
         }
 
@@ -167,10 +161,6 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
         };
         for part in parts {
             match part {
-                CynefinLinePart::Common(field) => {
-                    current_domain = None;
-                    push_common_field_fact(&mut facts, field);
-                }
                 CynefinLinePart::Domain(domain) => {
                     current_domain = Some(domain.text.clone());
                     push_domain_fact(&mut facts, domain, "cynefin domain");
@@ -240,6 +230,7 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
     let mut saw_header = false;
     let mut current_domain: Option<usize> = None;
     let mut offset = 0usize;
+    let mut common = LangiumCommonFacts::default();
 
     while offset < code.len() {
         let line_start = offset;
@@ -267,25 +258,22 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
             continue;
         }
 
-        if let Some((field, consumed)) =
-            parse_multiline_acc_descr_spanned(&code[body_start..], body_start)
-        {
-            offset = body_start + consumed;
+        if let Some(parsed) = parse_langium_common(code, body_start) {
+            if let Some(diagnostic) = parsed.diagnostic {
+                return Err(Error::diagram_parse_insertion_point(
+                    meta.diagram_type.clone(),
+                    diagnostic.message,
+                    diagnostic.span.start,
+                ));
+            }
+            offset = body_start + parsed.consumed;
             current_domain = None;
-            model.acc_descr = Some(field.value.text);
+            common.push(parsed.fact);
             continue;
         }
 
         for part in parse_cynefin_line_parts(body, body_start)? {
             match part {
-                CynefinLinePart::Common(field) => {
-                    current_domain = None;
-                    match field.kind {
-                        CommonFieldKind::Title => model.title = Some(field.value.text),
-                        CommonFieldKind::AccTitle => model.acc_title = Some(field.value.text),
-                        CommonFieldKind::AccDescr => model.acc_descr = Some(field.value.text),
-                    }
-                }
                 CynefinLinePart::Domain(domain) => {
                     current_domain = Some(start_domain(&mut model.domains, domain.text));
                 }
@@ -318,6 +306,11 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
         return Err(parse_error(meta, "expected cynefin-beta header"));
     }
 
+    let common = LangiumCommonDbFields::from_facts(&common);
+    model.title = common.title;
+    model.acc_title = common.acc_title;
+    model.acc_descr = common.acc_descr;
+
     Ok(model)
 }
 
@@ -326,7 +319,7 @@ fn split_header(line: &str) -> Option<(&str, usize)> {
     let rest = &line[leading..];
     let after_header = rest.strip_prefix(HEADER)?;
     let next = after_header.chars().next();
-    if next.is_some_and(|ch| ch != ':' && !ch.is_whitespace()) {
+    if next.is_some_and(|ch| ch != ':' && !ch.is_whitespace() && !after_header.starts_with("%%")) {
         return None;
     }
 
@@ -347,11 +340,6 @@ fn parse_cynefin_line_parts(line: &str, line_start: usize) -> Result<Vec<Cynefin
 
         let part_start = cursor.pos;
         let remaining = cursor.remaining();
-        if let Some(field) = parse_common_field_spanned(remaining, line_start + part_start) {
-            cursor.pos = line.len();
-            parts.push(CynefinLinePart::Common(field));
-            continue;
-        }
 
         if let Some(transition) = parse_transition_spanned(remaining, line_start + part_start)? {
             cursor.pos = line.len();
@@ -439,211 +427,6 @@ fn parse_transition_spanned(line: &str, line_start: usize) -> Result<Option<Tran
     }
 
     Ok(Some(TransitionParts { from, to, label }))
-}
-
-fn parse_common_field_spanned(line: &str, line_start: usize) -> Option<CommonField> {
-    let title = parse_title_spanned(line, line_start);
-    if title.is_some() {
-        return title;
-    }
-    let acc_title = parse_acc_title_spanned(line, line_start);
-    if acc_title.is_some() {
-        return acc_title;
-    }
-    parse_acc_descr_spanned(line, line_start)
-}
-
-fn parse_title_spanned(line: &str, line_start: usize) -> Option<CommonField> {
-    let trimmed = line.trim_start();
-    let leading = line.len() - trimmed.len();
-    if trimmed == "title" {
-        let offset = line_start + leading + "title".len();
-        return Some(CommonField {
-            kind: CommonFieldKind::Title,
-            value: SpannedText {
-                text: String::new(),
-                span: SourceSpan::new(offset, offset),
-                selection: SourceSpan::new(offset, offset),
-            },
-        });
-    }
-    let rest = trimmed.strip_prefix("title")?;
-    let ws = rest.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let value = rest.trim();
-    let value_rel = leading + "title".len() + (rest.len() - rest.trim_start().len());
-    Some(CommonField {
-        kind: CommonFieldKind::Title,
-        value: SpannedText {
-            text: normalize_single_line_common_value(value),
-            span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
-            selection: SourceSpan::new(
-                line_start + value_rel,
-                line_start + value_rel + value.len(),
-            ),
-        },
-    })
-}
-
-fn parse_acc_title_spanned(line: &str, line_start: usize) -> Option<CommonField> {
-    let trimmed = line.trim_start();
-    let leading = line.len() - trimmed.len();
-    let after_keyword = trimmed.strip_prefix("accTitle")?;
-    let before_colon = after_keyword.len() - after_keyword.trim_start().len();
-    let after_colon = after_keyword.trim_start().strip_prefix(':')?;
-    let value = after_colon.trim();
-    let after_colon_leading = after_colon.len() - after_colon.trim_start().len();
-    let value_rel = leading + "accTitle".len() + before_colon + 1 + after_colon_leading;
-    Some(CommonField {
-        kind: CommonFieldKind::AccTitle,
-        value: SpannedText {
-            text: normalize_single_line_common_value(value),
-            span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
-            selection: SourceSpan::new(
-                line_start + value_rel,
-                line_start + value_rel + value.len(),
-            ),
-        },
-    })
-}
-
-fn parse_acc_descr_spanned(line: &str, line_start: usize) -> Option<CommonField> {
-    let trimmed = line.trim_start();
-    let leading = line.len() - trimmed.len();
-    let after_keyword = trimmed.strip_prefix("accDescr")?;
-    let before_delimiter = after_keyword.len() - after_keyword.trim_start().len();
-    let rest = after_keyword.trim_start();
-    if let Some(after_colon) = rest.strip_prefix(':') {
-        let value = after_colon.trim();
-        let after_colon_leading = after_colon.len() - after_colon.trim_start().len();
-        let value_rel = leading + "accDescr".len() + before_delimiter + 1 + after_colon_leading;
-        return Some(CommonField {
-            kind: CommonFieldKind::AccDescr,
-            value: SpannedText {
-                text: normalize_single_line_common_value(value),
-                span: SourceSpan::new(line_start + value_rel, line_start + value_rel + value.len()),
-                selection: SourceSpan::new(
-                    line_start + value_rel,
-                    line_start + value_rel + value.len(),
-                ),
-            },
-        });
-    }
-    None
-}
-
-fn parse_multiline_acc_descr_spanned(
-    input: &str,
-    input_start: usize,
-) -> Option<(CommonField, usize)> {
-    let trimmed = input.trim_start_matches([' ', '\t']);
-    let leading = input.len() - trimmed.len();
-    let after_keyword = trimmed.strip_prefix("accDescr")?;
-    let whitespace_len = after_keyword
-        .chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum::<usize>();
-    let after_whitespace = &after_keyword[whitespace_len..];
-    let after_open = after_whitespace.strip_prefix('{')?;
-    let close_rel = after_open.find('}')?;
-
-    let open_rel = leading + "accDescr".len() + whitespace_len;
-    let value_start_rel = open_rel + 1;
-    let value_end_rel = value_start_rel + close_rel;
-    let after_close_rel = value_end_rel + 1;
-    let closing_line_len = input[after_close_rel..]
-        .find('\n')
-        .map_or(input.len() - after_close_rel, |index| index + 1);
-    let consumed = after_close_rel + closing_line_len;
-    let trailing = strip_line_ending(&input[after_close_rel..consumed]);
-    if !strip_inline_comment_aware(trailing).trim().is_empty() {
-        return None;
-    }
-
-    let raw_value = &input[value_start_rel..value_end_rel];
-    let value = SpannedText {
-        text: normalize_multiline_common_value(raw_value),
-        span: SourceSpan::new(input_start + value_start_rel, input_start + value_end_rel),
-        selection: SourceSpan::new(input_start + value_start_rel, input_start + value_end_rel),
-    };
-    Some((
-        CommonField {
-            kind: CommonFieldKind::AccDescr,
-            value,
-        },
-        consumed,
-    ))
-}
-
-fn normalize_single_line_common_value(value: &str) -> String {
-    let value = value.trim();
-    let mut normalized = String::with_capacity(value.len());
-    let mut chars = value.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if !matches!(ch, ' ' | '\t') {
-            normalized.push(ch);
-            continue;
-        }
-
-        let mut run_len = 1usize;
-        while chars.peek().is_some_and(|next| matches!(next, ' ' | '\t')) {
-            chars.next();
-            run_len += 1;
-        }
-        if run_len == 1 {
-            normalized.push(ch);
-        } else {
-            normalized.push(' ');
-        }
-    }
-
-    normalized
-}
-
-fn normalize_multiline_common_value(value: &str) -> String {
-    value
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(normalize_single_line_common_value)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn push_common_field_fact(facts: &mut EditorSemanticFacts, field: CommonField) {
-    match field.kind {
-        CommonFieldKind::Title => {
-            facts.push_directive_prefix("title");
-            push_payload_fact(
-                facts,
-                field.value,
-                "cynefin title",
-                EditorSemanticKind::String,
-            );
-        }
-        CommonFieldKind::AccTitle => {
-            facts.push_directive_prefix("accTitle");
-            push_payload_fact(
-                facts,
-                field.value,
-                "cynefin accessibility title",
-                EditorSemanticKind::String,
-            );
-        }
-        CommonFieldKind::AccDescr => {
-            facts.push_directive_prefix("accDescr");
-            push_payload_fact(
-                facts,
-                field.value,
-                "cynefin accessibility description",
-                EditorSemanticKind::String,
-            );
-        }
-    }
 }
 
 fn push_domain_fact(facts: &mut EditorSemanticFacts, domain: SpannedText, detail: &'static str) {

@@ -1,4 +1,8 @@
-use crate::diagrams::scan::{starts_with_case_insensitive, strip_line_ending};
+use crate::common_db::LangiumCommonDbFields;
+use crate::diagrams::langium_common::{
+    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
+    push_langium_common_recovery,
+};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
@@ -79,71 +83,23 @@ pub fn parse_packet_model_for_render(
 
 pub fn parse_packet_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
-    let mut offset = 0usize;
-    let mut header_seen = false;
+    let Ok(Some(mut offset)) = packet_body_start(code) else {
+        return facts;
+    };
 
-    while let Some(segment) = lines.next() {
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        let stripped = strip_inline_comment(line);
-        let trimmed = stripped.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if is_packet_header(trimmed) {
-                header_seen = true;
+    while offset < code.len() {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            push_langium_common_editor_fact(&mut facts, &parsed.fact, "packet");
+            if let Some(diagnostic) = &parsed.diagnostic {
+                push_langium_common_recovery(&mut facts, diagnostic);
             }
+            offset += parsed.consumed;
             continue;
         }
 
-        if let Some(value) = parse_title_spanned(line, line_start) {
-            facts.push_directive_prefix("title");
-            push_packet_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "packet title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_key_value_spanned(line, line_start, "accTitle") {
-            facts.push_directive_prefix("accTitle");
-            push_packet_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "packet accessibility title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_inline_spanned(line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_packet_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "packet accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_acc_descr_block_spanned(&mut lines, line, line_start) {
-            facts.push_directive_prefix("accDescr");
-            push_packet_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "packet accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
+        let (line, next_offset) = physical_line(code, offset);
+        let line_start = offset;
+        offset = next_offset;
         if let Some(block) = parse_packet_block_spanned(line, line_start) {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::Payload,
@@ -164,49 +120,30 @@ pub fn parse_packet_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSem
 }
 
 fn parse_packet_model(code: &str, meta: &ParseMetadata) -> Result<PacketParseOutput> {
-    let mut lines = code.lines();
-
-    let mut header = None;
-    for line in &mut lines {
-        let t = strip_inline_comment(line).trim();
-        if !t.is_empty() {
-            header = Some(t.to_string());
-            break;
-        }
-    }
-
-    let Some(header) = header else {
+    let Some(mut offset) = packet_body_start(code)? else {
         return Ok(PacketParseOutput::Empty);
     };
-
-    if !is_packet_header(&header) {
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            "expected packet".to_string(),
-        ));
-    }
-
-    let mut title: Option<String> = None;
-    let mut acc_title: Option<String> = None;
-    let mut acc_descr: Option<String> = None;
+    let mut common = LangiumCommonFacts::default();
     let mut blocks: Vec<PacketBlock> = Vec::new();
 
-    for line in lines {
-        let t = strip_inline_comment(line).trim();
-        if t.is_empty() {
+    while offset < code.len() {
+        if let Some(parsed) = parse_langium_common(code, offset) {
+            if let Some(diagnostic) = parsed.diagnostic {
+                return Err(Error::diagram_parse_insertion_point(
+                    meta.diagram_type.clone(),
+                    diagnostic.message,
+                    diagnostic.span.start,
+                ));
+            }
+            common.push(parsed.fact);
+            offset += parsed.consumed;
             continue;
         }
 
-        if let Some(v) = parse_title(t) {
-            title = Some(v);
-            continue;
-        }
-        if let Some(v) = parse_key_value(t, "accTitle") {
-            acc_title = Some(v);
-            continue;
-        }
-        if let Some(v) = parse_acc_descr(t) {
-            acc_descr = Some(v);
+        let (line, next_offset) = physical_line(code, offset);
+        offset = next_offset;
+        let t = strip_inline_comment(line).trim();
+        if t.is_empty() {
             continue;
         }
 
@@ -223,11 +160,12 @@ fn parse_packet_model(code: &str, meta: &ParseMetadata) -> Result<PacketParseOut
 
     let bits_per_row = config_i64(&meta.effective_config, "packet.bitsPerRow").unwrap_or(32);
     let packet = populate_packet(blocks, bits_per_row)?;
+    let common = LangiumCommonDbFields::from_facts(&common);
 
     Ok(PacketParseOutput::Model(PacketDiagramRenderModel {
-        title,
-        acc_title,
-        acc_descr,
+        title: common.title,
+        acc_title: common.acc_title,
+        acc_descr: common.acc_descr,
         packet,
     }))
 }
@@ -346,112 +284,6 @@ fn strip_inline_comment(line: &str) -> &str {
     }
 }
 
-fn parse_title_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !starts_with_case_insensitive(t, "title") {
-        return None;
-    }
-    let rest = t.strip_prefix("title")?;
-    let ws = rest.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let value = rest.trim_start();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_key_value_spanned<'a>(
-    line: &'a str,
-    line_start: usize,
-    key: &str,
-) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !starts_with_case_insensitive(t, key) {
-        return None;
-    }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_acc_descr_inline_spanned<'a>(line: &'a str, line_start: usize) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(line).trim_start();
-    if !starts_with_case_insensitive(t, "accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-fn parse_acc_descr_block_spanned<'a>(
-    lines: &mut std::iter::Peekable<std::str::SplitInclusive<'a, char>>,
-    first_line: &'a str,
-    line_start: usize,
-) -> Option<SpannedText<'a>> {
-    let t = strip_inline_comment(first_line).trim_start();
-    if !starts_with_case_insensitive(t, "accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    let rest = rest.strip_prefix('{')?;
-    if let Some(end) = rest.find('}') {
-        let value = rest[..end].trim();
-        let value_rel = first_line.find(value)?;
-        return Some(SpannedText {
-            text: value,
-            start: line_start + value_rel,
-            end: line_start + value_rel + value.len(),
-        });
-    }
-    let value = rest.trim();
-    if value.is_empty() {
-        for next_line in lines.by_ref() {
-            if next_line.contains('}') {
-                break;
-            }
-        }
-        return None;
-    }
-    let value_rel = first_line.find(value)?;
-    for next_line in lines.by_ref() {
-        if next_line.contains('}') {
-            break;
-        }
-    }
-    Some(SpannedText {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
 fn parse_packet_block_spanned<'a>(
     line: &'a str,
     line_start: usize,
@@ -560,58 +392,71 @@ fn parse_quoted_string_spanned<'a>(
 }
 
 fn packet_header_token_len(line: &str) -> Option<usize> {
-    if starts_with_case_insensitive(line, "packet-beta") {
+    if line.starts_with("packet-beta") {
         let rest = &line["packet-beta".len()..];
-        if rest.is_empty() {
+        if keyword_boundary(rest) {
             return Some("packet-beta".len());
         }
     }
-    if starts_with_case_insensitive(line, "packet") {
+    if line.starts_with("packet") {
         let rest = &line["packet".len()..];
-        if rest.is_empty() {
+        if keyword_boundary(rest) {
             return Some("packet".len());
         }
     }
     None
 }
 
-fn is_packet_header(line: &str) -> bool {
-    packet_header_token_len(line.trim_start()).is_some()
+fn keyword_boundary(rest: &str) -> bool {
+    rest.is_empty()
+        || rest.starts_with("%%")
+        || rest.chars().next().is_some_and(char::is_whitespace)
 }
 
-fn parse_title(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("title") {
-        return None;
+fn packet_body_start(code: &str) -> Result<Option<usize>> {
+    let mut offset = 0usize;
+    while offset < code.len() {
+        let (line, next_offset) = physical_line(code, offset);
+        let visible = strip_inline_comment(line);
+        let trimmed = visible.trim_start();
+        if trimmed.trim().is_empty() {
+            offset = next_offset;
+            continue;
+        }
+
+        let leading = visible.len() - trimmed.len();
+        let Some(header_len) = packet_header_token_len(trimmed) else {
+            return Err(Error::diagram_parse_fallback(
+                "packet".to_string(),
+                "expected packet".to_string(),
+            ));
+        };
+        let body_start = offset + leading + header_len;
+        let same_line_body = visible[leading + header_len..].trim();
+        if !same_line_body.is_empty()
+            && parse_langium_common(code, body_start).is_none()
+            && parse_packet_block(same_line_body).is_none()
+        {
+            return Err(Error::diagram_parse_fallback(
+                "packet".to_string(),
+                "expected packet".to_string(),
+            ));
+        }
+        return Ok(Some(body_start));
     }
-    let rest = t.strip_prefix("title")?.trim_start();
-    Some(rest.to_string())
+    Ok(None)
 }
 
-fn parse_key_value(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with(key) {
-        return None;
+fn physical_line(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    if let Some(newline) = rest.find('\n') {
+        let line = rest[..newline]
+            .strip_suffix('\r')
+            .unwrap_or(&rest[..newline]);
+        (line, offset + newline + 1)
+    } else {
+        (rest, source.len())
     }
-    let rest = t.strip_prefix(key)?.trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-    Some(rest.to_string())
-}
-
-fn parse_acc_descr(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t.starts_with("accDescr") {
-        return None;
-    }
-    let rest = t.strip_prefix("accDescr")?.trim_start();
-    if let Some(rest) = rest.strip_prefix(':') {
-        return Some(rest.trim_start().to_string());
-    }
-    if let Some(rest) = rest.strip_prefix('{') {
-        let end = rest.find('}')?;
-        return Some(rest[..end].to_string());
-    }
-    None
 }
 
 fn parse_packet_block(line: &str) -> Option<PacketBlock> {
@@ -707,27 +552,6 @@ fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
     }
 }
 
-fn push_packet_payload_fact(
-    facts: &mut EditorSemanticFacts,
-    text: &str,
-    start: usize,
-    detail: &'static str,
-    kind: EditorSemanticKind,
-) {
-    let end = start + text.len();
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        SourceSpan::new(start, end),
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        text.to_string(),
-        Some(detail.to_string()),
-        kind,
-        SourceSpan::new(start, end),
-        SourceSpan::new(start, end),
-    ));
-}
-
 #[derive(Debug, Clone, Copy)]
 struct SpannedText<'a> {
     text: &'a str,
@@ -807,6 +631,16 @@ accDescr: Packet accDescription
               ]
             ])
         );
+    }
+
+    #[test]
+    fn packet_multiline_accessibility_description_matches_common_langium() {
+        let model = parse(
+            "packet\r\naccDescr {\r\n  First   line\r\n\r\n\tSecond line  \r\n}\r\n0-7: \"byte\"\r\n",
+        );
+
+        assert_eq!(model["accDescr"], json!("First line\nSecond line"));
+        assert_eq!(model["packet"][0][0]["label"], json!("byte"));
     }
 
     #[test]
