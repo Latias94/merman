@@ -110,8 +110,8 @@ costs, makes Rust renderers irrelevant for CLI output.
 | `-f, --pdfFit` | PDF page clipped to chart bounding box. | Implemented divergence | Top-level default PDF uses a Letter-sized page approximation; `--pdfFit` uses chart-sized `svg2pdf` output. |
 | `-q, --quiet` | Suppresses info logs. | Implemented | Markdown chart-count and artefact logs are suppressed. |
 | `-p, --puppeteerConfigFile [file]` | JSON Puppeteer launch config; must exist. | Implemented divergence | File existence and JSON parsing match upstream preflight behavior; values are accepted no-op because the Rust CLI has no Puppeteer runtime. |
-| `--iconPacks <icons...>` | Registers Iconify package loaders in browser; may fetch from unpkg. | Implemented | Loads local `node_modules/<package>/icons.json` when present, otherwise fetches `https://unpkg.com/<package>/icons.json`; package tail is used as the Iconify prefix like upstream. |
-| `--iconPacksNamesAndUrls <prefix#url...>` | Registers explicit Iconify JSON URL loaders. | Implemented | Supports HTTP(S), `file://`, and local path Iconify JSON sources; prefix before `#` overrides the JSON prefix like upstream loader registration. |
+| `--iconPacks <icons...>` | Registers Iconify package loaders in browser; may fetch from unpkg. | Implemented | Loads local `node_modules/<package>/icons.json` when present. Missing packages fetch from `https://unpkg.com/<package>/icons.json` only with `--allow-network`; the package tail is used as the Iconify prefix like upstream. |
+| `--iconPacksNamesAndUrls <prefix#url...>` | Registers explicit Iconify JSON URL loaders. | Implemented | Supports HTTP(S), `file://`, and local path Iconify JSON sources; HTTP(S) requires `--allow-network`, while local sources remain offline by default. The prefix before `#` overrides the JSON prefix like upstream loader registration. |
 | `--help`, `-h` | Print help and exit 0. | Implemented | Covered by CLI tests. |
 | `--version` | Print version and exit 0. | Implemented | Covered by CLI tests. |
 
@@ -154,7 +154,7 @@ costs, makes Rust renderers irrelevant for CLI output.
 | RaTeX math | Local CLI enables `ratex-math` by default; upstream uses browser Mermaid/KaTeX behavior. | Rust CLI should render math without extra feature friction. | Keep `--math-renderer none|ratex`; no-default build still rejects. |
 | Puppeteer config | No browser runtime in local CLI. | Browserless architecture. | Validate file for compatibility, treat runtime config as accepted no-op. |
 | PDF output | Local PDF is generated through Rust `svg2pdf`, not Chromium print-to-PDF. | Browser PDF pagination, margins, and CSS print behavior cannot be pixel-identical without Puppeteer. | Top-level default uses a Letter page approximation; `--pdfFit` uses chart-sized output. |
-| Icon pack rendering internals | Upstream uses browser DOM `getBBox()` and Iconify `replaceIDs()` when embedding icons. | Local renderer parses Iconify JSON into a Rust registry and emits deterministic nested SVGs; layout remains based on existing Rust icon node sizing. | Keep tests focused on successful real icon rendering; deepen DOM-level icon parity separately if fixture comparison exposes differences. |
+| Icon pack rendering internals | Upstream uses browser DOM `getBBox()` and Iconify `replaceIDs()` when embedding icons. | Local renderer parses Iconify JSON into a Rust registry and emits deterministic nested SVGs for Flowchart, Architecture, and TreeView; TreeView uses Mermaid's 14px icon size. | Keep tests focused on successful real icon rendering; deepen DOM-level icon parity separately if fixture comparison exposes differences. |
 
 ## Execution Model / Concurrency
 
@@ -203,7 +203,7 @@ thread pool inside Markdown mode:
 ### Phase 4: Browser-Specific Decision Points
 
 - [x] Decide `pdfFit` semantics for Rust `svg2pdf`.
-- [x] Implement Iconify icon pack support through a Rust SVG icon registry.
+- [x] Implement Iconify icon pack support through a Rust SVG icon registry for Flowchart, Architecture, and TreeView.
 - [x] Document any final divergence in the register above.
 
 ## Risks and Mitigations
@@ -213,7 +213,7 @@ thread pool inside Markdown mode:
 | Accidentally removing useful Rust-only output (`jpg`, `ascii`, `unicode`) | Medium | Medium | Keep divergence register and tests. |
 | Markdown regex drift from upstream | High | Medium | Copy upstream regex semantics into tests with fixtures. |
 | Output file naming surprises | Medium | Medium | Test exact paths for `.svg`, `.png`, `.pdf`, `.md`, and artefacts. |
-| Network icon pack behavior introduces supply-chain risk | High | Medium | Remote fetching only occurs when the user explicitly passes `--iconPacks` without a local package or an HTTP(S) `prefix#url`; tests use local JSON sources. |
+| Network icon pack behavior introduces supply-chain risk | High | Medium | Remote fetching only occurs when the user explicitly passes `--allow-network` with a missing `--iconPacks` package or an HTTP(S) `prefix#url`; tests use local JSON sources. |
 | PDF fit cannot match browser PDF exactly | Medium | High | Define Rust-specific behavior and document divergence. |
 
 ## Immediate Next Tests

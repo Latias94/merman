@@ -43,6 +43,14 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
     layout config and resolved with Mermaid's explicit-icon-first priority
   - SVG output includes `treeView-node-dir`, custom class propagation, `treeView-node-icon`,
     `treeView-node-description`, and `treeView-highlight-bg` DOM/CSS coverage
+  - configured Iconify pack bodies render in deterministic 14-by-14 nested SVGs while preserving
+    their source viewBox; repeated nodes share one symbol definition
+  - internal Iconify IDs and references are scoped per diagram and TreeView symbol, with
+    deterministic output across repeated renders
+  - built-in `file`/`folder` bodies take precedence over registry entries, while missing packs or
+    icons use Mermaid's standard 80-by-80 unknown-icon body at the same 14px display size
+  - CLI coverage exercises the local Iconify JSON loader through `SvgRenderOptions` into TreeView;
+    renderer code performs no filesystem, package-manager, or network access
   - theme roles `iconColor`, `descriptionColor`, `highlightBg`, and `highlightStroke` are covered by
     `PresentationTheme` tests; full config-pipeline admission for those newer theme fields remains
     tracked separately from TreeView parser/model parity
@@ -118,10 +126,3 @@ Classification:
 
 - Exact Langium diagnostics and offsets.
 - Full strict DOM parity for the current Cypress image snapshot corpus.
-- Full browser/Iconify parity for third-party icon packs. Local SVG emits deterministic `<use>`
-  references and built-in `file`/`folder` icon bodies; external pack SVG body replacement remains a
-  bounded renderer residual unless fixture comparison exposes a source-backed requirement.
-- Golden refresh for the new 11.16 TreeView model fields and annotation/icon DOM. Refresh semantic,
-  layout, and upstream SVG baselines after U4 semantic/render code lands, not before. Semantic and
-  layout goldens are refreshed for the local 11.16 model; upstream SVG refresh was attempted but is
-  pending because the local Puppeteer Chrome cache is missing Chrome `131.0.6778.204`.
