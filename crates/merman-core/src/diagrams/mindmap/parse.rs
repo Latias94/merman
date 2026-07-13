@@ -1,4 +1,6 @@
 use serde_json::{Map, Value, json};
+#[cfg(all(test, feature = "full"))]
+use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
@@ -14,25 +16,125 @@ use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
 
 static MINDMAP_DIAGRAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(all(test, feature = "full"))]
+thread_local! {
+    static MINDMAP_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(all(test, feature = "full"))]
+pub(crate) fn reset_mindmap_syntax_construction_count() {
+    MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(all(test, feature = "full"))]
+pub(crate) fn mindmap_syntax_construction_count() -> usize {
+    MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get()
+}
+
 pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    parse_mindmap_impl(code, meta)
+    parse_mindmap_semantic_source(code, meta)?.into_compat_json(meta)
+}
+
+pub(crate) fn parse_mindmap_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let source = parse_mindmap_semantic_source(code, meta)?;
+    let editor_facts = source.editor_facts();
+    let model = source.into_compat_json(meta)?;
+    Ok((model, editor_facts))
 }
 
 pub fn parse_mindmap_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<MindmapDiagramRenderModel> {
-    let mut db = parse_mindmap_db(code, meta)?;
-    let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
-        return Ok(MindmapDiagramRenderModel::default());
-    };
+    parse_mindmap_semantic_source(code, meta)?.into_render_model(meta)
+}
 
-    db.assign_sections(root_id, None);
+struct MindmapSemanticSource {
+    parsed: MindmapParsedLines,
+}
 
-    Ok(MindmapDiagramRenderModel {
-        nodes: db.to_layout_nodes_for_render(root_id, &meta.effective_config),
-        edges: db.to_edges_for_render(root_id, &meta.effective_config),
+impl MindmapSemanticSource {
+    fn editor_facts(&self) -> EditorSemanticFacts {
+        mindmap_editor_facts_from_parsed(&self.parsed)
+    }
+
+    fn into_db(self, meta: &ParseMetadata) -> Result<MindmapDb> {
+        mindmap_db_from_events(self.parsed.events, meta)
+    }
+
+    fn into_render_model(self, meta: &ParseMetadata) -> Result<MindmapDiagramRenderModel> {
+        let mut db = self.into_db(meta)?;
+        let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
+            return Ok(MindmapDiagramRenderModel::default());
+        };
+
+        db.assign_sections(root_id, None);
+
+        Ok(MindmapDiagramRenderModel {
+            nodes: db.to_layout_nodes_for_render(root_id, &meta.effective_config),
+            edges: db.to_edges_for_render(root_id, &meta.effective_config),
+        })
+    }
+
+    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
+        mindmap_db_to_compat_json(self.into_db(meta)?, meta)
+    }
+}
+
+fn parse_mindmap_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<MindmapSemanticSource> {
+    Ok(MindmapSemanticSource {
+        parsed: parse_mindmap_lines(code, meta, false)?,
     })
+}
+
+fn mindmap_db_from_events(
+    events: Vec<MindmapParsedEvent>,
+    meta: &ParseMetadata,
+) -> Result<MindmapDb> {
+    let mut db = MindmapDb::default();
+    db.clear();
+    let parse_config = MindmapParseConfig::from_config(&meta.effective_config);
+
+    for event in events {
+        match event {
+            MindmapParsedEvent::Node(node) => {
+                db.add_node(
+                    super::db::MindmapNodeInput {
+                        indent_level: node.indent as i32,
+                        id_raw: &node.id_raw,
+                        descr_raw: &node.descr_raw,
+                        descr_is_markdown: node.descr_is_markdown,
+                        ty: node.ty,
+                        diagram_type: &meta.diagram_type,
+                    },
+                    &meta.effective_config,
+                    parse_config,
+                )?;
+            }
+            MindmapParsedEvent::Class(class) => {
+                db.decorate_last(Some(class.value), None, &meta.effective_config);
+            }
+            MindmapParsedEvent::Icon(icon) => {
+                db.decorate_last(None, Some(icon.value), &meta.effective_config);
+            }
+        }
+    }
+
+    Ok(db)
+}
+
+pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    let parsed = match parse_mindmap_lines(code, meta, true) {
+        Ok(parsed) => parsed,
+        Err(_) => return EditorSemanticFacts::new(),
+    };
+    mindmap_editor_facts_from_parsed(&parsed)
 }
 
 #[derive(Debug, Clone)]
@@ -69,80 +171,32 @@ struct MindmapParsedLines {
     diagnostics: Vec<EditorSemanticDiagnostic>,
 }
 
-fn parse_mindmap_db(code: &str, meta: &ParseMetadata) -> Result<MindmapDb> {
-    let mut db = MindmapDb::default();
-    db.clear();
-    let parse_config = MindmapParseConfig::from_config(&meta.effective_config);
-    let parsed = parse_mindmap_lines(code, meta, false)?;
-
-    for event in parsed.events {
-        match event {
-            MindmapParsedEvent::Node(node) => {
-                db.add_node(
-                    super::db::MindmapNodeInput {
-                        indent_level: node.indent as i32,
-                        id_raw: &node.id_raw,
-                        descr_raw: &node.descr_raw,
-                        descr_is_markdown: node.descr_is_markdown,
-                        ty: node.ty,
-                        diagram_type: &meta.diagram_type,
-                    },
-                    &meta.effective_config,
-                    parse_config,
-                )?;
-            }
-            MindmapParsedEvent::Class(class) => {
-                db.decorate_last(Some(class.value), None, &meta.effective_config);
-            }
-            MindmapParsedEvent::Icon(icon) => {
-                db.decorate_last(None, Some(icon.value), &meta.effective_config);
-            }
-        }
-    }
-
-    Ok(db)
-}
-
-pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    let parsed = match parse_mindmap_lines(code, meta, true) {
-        Ok(parsed) => parsed,
-        Err(_) => return EditorSemanticFacts::new(),
-    };
+fn mindmap_editor_facts_from_parsed(parsed: &MindmapParsedLines) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts {
         completeness: parsed.completeness,
         span_coordinate_space: Default::default(),
         symbols: Vec::new(),
         directive_prefixes: Vec::new(),
-        diagnostics: parsed.diagnostics,
+        diagnostics: parsed.diagnostics.clone(),
         expected_syntax: Vec::new(),
     };
-    for prefix in parsed.directive_prefixes {
-        facts.push_directive_prefix(prefix);
+    for prefix in &parsed.directive_prefixes {
+        facts.push_directive_prefix(prefix.clone());
     }
-    for event in parsed.events {
+    for event in &parsed.events {
         match event {
             MindmapParsedEvent::Node(node) => {
-                let MindmapParsedNodeLine {
-                    indent: _,
-                    id_raw,
-                    descr_raw,
-                    descr_is_markdown: _,
-                    ty: _,
-                    span,
-                    selection,
-                    payload_span,
-                } = node;
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::NodeIdentifier,
-                    selection,
+                    node.selection,
                 ));
-                if let Some(payload_span) = payload_span {
+                if let Some(payload_span) = node.payload_span {
                     facts.push_expected_syntax(EditorExpectedSyntax::new(
                         EditorExpectedSyntaxKind::Payload,
                         payload_span,
                     ));
                     facts.push_symbol(EditorSemanticSymbol::payload(
-                        descr_raw,
+                        node.descr_raw.clone(),
                         Some("mindmap node label".to_string()),
                         EditorSemanticKind::String,
                         payload_span,
@@ -150,16 +204,16 @@ pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSem
                     ));
                 }
                 facts.push_symbol(EditorSemanticSymbol::new(
-                    id_raw,
+                    node.id_raw.clone(),
                     Some("mindmap node".to_string()),
                     EditorSemanticKind::Namespace,
-                    span,
-                    selection,
+                    node.span,
+                    node.selection,
                 ));
             }
             MindmapParsedEvent::Class(class) => {
                 facts.push_symbol(EditorSemanticSymbol::payload(
-                    class.value,
+                    class.value.clone(),
                     Some("mindmap class".to_string()),
                     EditorSemanticKind::Property,
                     class.span,
@@ -168,7 +222,7 @@ pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSem
             }
             MindmapParsedEvent::Icon(icon) => {
                 facts.push_symbol(EditorSemanticSymbol::payload(
-                    icon.value,
+                    icon.value.clone(),
                     Some("mindmap icon".to_string()),
                     EditorSemanticKind::String,
                     icon.span,
@@ -185,6 +239,9 @@ fn parse_mindmap_lines(
     meta: &ParseMetadata,
     recover: bool,
 ) -> Result<MindmapParsedLines> {
+    #[cfg(all(test, feature = "full"))]
+    MINDMAP_SYNTAX_CONSTRUCTION_COUNT.set(MINDMAP_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
     let mut lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut found_header = false;
@@ -432,9 +489,7 @@ fn parse_mindmap_lines(
     Ok(out)
 }
 
-fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let mut db = parse_mindmap_db(code, meta)?;
-
+fn mindmap_db_to_compat_json(mut db: MindmapDb, meta: &ParseMetadata) -> Result<Value> {
     let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
         let mut final_config =
             crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
@@ -453,9 +508,7 @@ fn parse_mindmap_impl(code: &str, meta: &ParseMetadata) -> Result<Value> {
         out.insert("config".to_string(), final_config);
         return Ok(Value::Object(out));
     };
-
     db.assign_sections(root_id, None);
-
     let nodes = db.to_layout_node_values(root_id, &meta.effective_config);
     let edges = db.to_edge_values(root_id, &meta.effective_config);
 

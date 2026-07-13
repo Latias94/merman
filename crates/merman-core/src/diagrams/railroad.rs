@@ -6,7 +6,24 @@ use crate::{
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Value, json};
+#[cfg(test)]
+use std::cell::Cell;
 use std::fmt;
+
+#[cfg(test)]
+thread_local! {
+    static RAILROAD_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_railroad_syntax_construction_count() {
+    RAILROAD_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn railroad_syntax_construction_count() -> usize {
+    RAILROAD_SYNTAX_CONSTRUCTION_COUNT.get()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RailroadDialect {
@@ -445,21 +462,67 @@ pub fn parse_railroad_peg_editor_facts(code: &str, meta: &ParseMetadata) -> Edit
     parse_railroad_editor_facts_for_dialect(code, meta, RailroadDialect::Peg)
 }
 
+pub(crate) fn parse_railroad_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ir)
+}
+
+pub(crate) fn parse_railroad_ebnf_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Ebnf)
+}
+
+pub(crate) fn parse_railroad_abnf_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Abnf)
+}
+
+pub(crate) fn parse_railroad_peg_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    parse_railroad_json_and_editor_facts_for_dialect(code, meta, RailroadDialect::Peg)
+}
+
+struct RailroadSemanticSource {
+    model: RailroadDiagramModel,
+    dialect: RailroadDialect,
+}
+
+impl RailroadSemanticSource {
+    fn editor_facts(&self) -> EditorSemanticFacts {
+        editor_facts_from_model(&self.model, self.dialect)
+    }
+
+    fn into_compat_json(mut self, meta: &ParseMetadata) -> Value {
+        self.model.sanitize_common_db_fields(&meta.effective_config);
+        json!({
+            "type": meta.diagram_type,
+            "title": self.model.title,
+            "accTitle": self.model.acc_title,
+            "accDescr": self.model.acc_descr,
+            "rules": self.model.rules,
+        })
+    }
+
+    fn into_render_model(mut self, meta: &ParseMetadata) -> RailroadDiagramRenderModel {
+        self.model.sanitize_common_db_fields(&meta.effective_config);
+        self.model
+    }
+}
+
 fn parse_railroad_for_dialect(
     code: &str,
     meta: &ParseMetadata,
     dialect: RailroadDialect,
 ) -> Result<Value> {
-    let mut model = parse_railroad_model(code, meta, dialect)?;
-    model.sanitize_common_db_fields(&meta.effective_config);
-
-    Ok(json!({
-        "type": meta.diagram_type,
-        "title": model.title,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "rules": model.rules,
-    }))
+    Ok(parse_railroad_semantic_source(code, meta, dialect)?.into_compat_json(meta))
 }
 
 fn parse_railroad_model_for_render_dialect(
@@ -467,9 +530,7 @@ fn parse_railroad_model_for_render_dialect(
     meta: &ParseMetadata,
     dialect: RailroadDialect,
 ) -> Result<RailroadDiagramRenderModel> {
-    let mut model = parse_railroad_model(code, meta, dialect)?;
-    model.sanitize_common_db_fields(&meta.effective_config);
-    Ok(model)
+    Ok(parse_railroad_semantic_source(code, meta, dialect)?.into_render_model(meta))
 }
 
 fn parse_railroad_editor_facts_for_dialect(
@@ -477,8 +538,8 @@ fn parse_railroad_editor_facts_for_dialect(
     meta: &ParseMetadata,
     dialect: RailroadDialect,
 ) -> EditorSemanticFacts {
-    match parse_railroad_model(code, meta, dialect) {
-        Ok(model) => editor_facts_from_model(&model, dialect),
+    match parse_railroad_semantic_source(code, meta, dialect) {
+        Ok(source) => source.editor_facts(),
         Err(err) => {
             let mut facts = scan_editor_facts_lossy(code, dialect);
             facts.mark_recovered_from_parse_error(
@@ -493,13 +554,29 @@ fn parse_railroad_editor_facts_for_dialect(
     }
 }
 
-fn parse_railroad_model(
+fn parse_railroad_json_and_editor_facts_for_dialect(
     code: &str,
     meta: &ParseMetadata,
     dialect: RailroadDialect,
-) -> Result<RailroadDiagramModel> {
+) -> Result<(Value, EditorSemanticFacts)> {
+    let source = parse_railroad_semantic_source(code, meta, dialect)?;
+    let editor_facts = source.editor_facts();
+    let model = source.into_compat_json(meta);
+    Ok((model, editor_facts))
+}
+
+fn parse_railroad_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+    dialect: RailroadDialect,
+) -> Result<RailroadSemanticSource> {
+    #[cfg(test)]
+    RAILROAD_SYNTAX_CONSTRUCTION_COUNT.set(RAILROAD_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
     let tokens = Lexer::new(code, dialect, meta.diagram_type.as_str()).tokenize()?;
-    RailroadParser::new(tokens, code.len(), meta.diagram_type.as_str(), dialect).parse()
+    let model =
+        RailroadParser::new(tokens, code.len(), meta.diagram_type.as_str(), dialect).parse()?;
+    Ok(RailroadSemanticSource { model, dialect })
 }
 
 fn sanitize_ast_node(node: &mut RailroadAstNode, config: &crate::MermaidConfig) {

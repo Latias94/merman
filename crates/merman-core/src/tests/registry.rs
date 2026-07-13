@@ -5,6 +5,451 @@ use std::collections::BTreeSet;
 const PINNED_SEMANTIC_WITHOUT_EDITOR: &[&str] = &["error"];
 const PINNED_WITHOUT_SEMANTICS: &[&str] = &["wardley"];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CharacterizationProfile {
+    All,
+    FullOnly,
+}
+
+impl CharacterizationProfile {
+    fn includes(self, profile: BaselineRegistryProfile) -> bool {
+        matches!(self, Self::All) || profile == BaselineRegistryProfile::Full
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CharacterizedCapabilities {
+    semantic: bool,
+    editor: bool,
+    combined: bool,
+    typed: bool,
+}
+
+const STANDARD_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
+    semantic: true,
+    editor: true,
+    combined: false,
+    typed: true,
+};
+const COMBINED_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
+    semantic: true,
+    editor: true,
+    combined: true,
+    typed: true,
+};
+const EDITOR_ONLY_RENDER_GAP_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
+    semantic: true,
+    editor: true,
+    combined: true,
+    typed: false,
+};
+const ERROR_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
+    semantic: true,
+    editor: false,
+    combined: false,
+    typed: false,
+};
+const UNSUPPORTED_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
+    semantic: false,
+    editor: false,
+    combined: false,
+    typed: false,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MalformedContract {
+    StrictAcceptsEditorAvailable,
+    StrictAcceptsEditorUnavailable,
+    StrictRejectsEditorAvailable,
+    StrictRejectsEditorUnavailable,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FamilyCharacterization {
+    variant_id: &'static str,
+    logical_family: &'static str,
+    profile: CharacterizationProfile,
+    representative_source: &'static str,
+    malformed_source: &'static str,
+    capabilities: CharacterizedCapabilities,
+    malformed_contract: MalformedContract,
+}
+
+const MALFORMED_SOURCE: &str = "not-a-mermaid-diagram\n";
+
+const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
+    FamilyCharacterization {
+        variant_id: "error",
+        logical_family: "error",
+        profile: CharacterizationProfile::All,
+        representative_source: "error\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: ERROR_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictAcceptsEditorUnavailable,
+    },
+    FamilyCharacterization {
+        variant_id: "flowchart-elk",
+        logical_family: "flowchart",
+        profile: CharacterizationProfile::FullOnly,
+        representative_source: "flowchart-elk TD\nA-->B\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "flowchart-v2",
+        logical_family: "flowchart",
+        profile: CharacterizationProfile::All,
+        representative_source: "flowchart TD\nA-->B\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "flowchart",
+        logical_family: "flowchart",
+        profile: CharacterizationProfile::All,
+        representative_source: "graph TD\nA-->B\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "swimlane",
+        logical_family: "swimlane",
+        profile: CharacterizationProfile::All,
+        representative_source: "swimlane-beta LR\nA-->B\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: EDITOR_ONLY_RENDER_GAP_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "mindmap",
+        logical_family: "mindmap",
+        profile: CharacterizationProfile::FullOnly,
+        representative_source: "mindmap\n  root\n    child\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "architecture",
+        logical_family: "architecture",
+        profile: CharacterizationProfile::FullOnly,
+        representative_source: "architecture-beta\n  service api(server)[API]\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "zenuml",
+        logical_family: "zenuml",
+        profile: CharacterizationProfile::All,
+        representative_source: "zenuml\n  Alice->Bob: Hello\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "sequence",
+        logical_family: "sequence",
+        profile: CharacterizationProfile::All,
+        representative_source: "sequenceDiagram\nAlice->>Bob: Hello\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "c4",
+        logical_family: "c4",
+        profile: CharacterizationProfile::All,
+        representative_source: "C4Context\nPerson(user, \"User\")\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "kanban",
+        logical_family: "kanban",
+        profile: CharacterizationProfile::All,
+        representative_source: "kanban\n  Todo\n    item1\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "classDiagram",
+        logical_family: "class",
+        profile: CharacterizationProfile::All,
+        representative_source: "classDiagram\nclass Animal\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "class",
+        logical_family: "class",
+        profile: CharacterizationProfile::All,
+        representative_source: "classDiagram\nclass Animal\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "er",
+        logical_family: "er",
+        profile: CharacterizationProfile::All,
+        representative_source: "erDiagram\nCUSTOMER\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "erDiagram",
+        logical_family: "er",
+        profile: CharacterizationProfile::All,
+        representative_source: "erDiagram\nCUSTOMER\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "gantt",
+        logical_family: "gantt",
+        profile: CharacterizationProfile::All,
+        representative_source: "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2024-01-01, 1d\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "info",
+        logical_family: "info",
+        profile: CharacterizationProfile::All,
+        representative_source: "info\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictAcceptsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "pie",
+        logical_family: "pie",
+        profile: CharacterizationProfile::All,
+        representative_source: "pie\n\"A\": 1\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictAcceptsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "requirement",
+        logical_family: "requirement",
+        profile: CharacterizationProfile::All,
+        representative_source: "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Test\n  risk: low\n  verifymethod: analysis\n}\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "timeline",
+        logical_family: "timeline",
+        profile: CharacterizationProfile::All,
+        representative_source: "timeline\n2024 : Event\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "gitGraph",
+        logical_family: "gitGraph",
+        profile: CharacterizationProfile::All,
+        representative_source: "gitGraph\ncommit\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "stateDiagram",
+        logical_family: "state",
+        profile: CharacterizationProfile::All,
+        representative_source: "stateDiagram-v2\n[*] --> Idle\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "state",
+        logical_family: "state",
+        profile: CharacterizationProfile::All,
+        representative_source: "stateDiagram\n[*] --> Idle\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "journey",
+        logical_family: "journey",
+        profile: CharacterizationProfile::All,
+        representative_source: "journey\nsection Work\nTask: 5\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "quadrantChart",
+        logical_family: "quadrantChart",
+        profile: CharacterizationProfile::All,
+        representative_source: "quadrantChart\nx-axis Low --> High\ny-axis Low --> High\nA: [0.5, 0.5]\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "sankey",
+        logical_family: "sankey",
+        profile: CharacterizationProfile::All,
+        representative_source: "sankey\nA,B,1\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "packet",
+        logical_family: "packet",
+        profile: CharacterizationProfile::All,
+        representative_source: "packet-beta\n0-7: \"A\"\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "xychart",
+        logical_family: "xychart",
+        profile: CharacterizationProfile::All,
+        representative_source: "xychart-beta\nline [10, 30, 20]\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "block",
+        logical_family: "block",
+        profile: CharacterizationProfile::All,
+        representative_source: "block\n  a b c\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "eventmodeling",
+        logical_family: "eventmodeling",
+        profile: CharacterizationProfile::All,
+        representative_source: "eventmodeling\ntf 01 ui Shop.Cart\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "treeView",
+        logical_family: "treeView",
+        profile: CharacterizationProfile::All,
+        representative_source: "treeView-beta\n  root\n    child\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "radar",
+        logical_family: "radar",
+        profile: CharacterizationProfile::All,
+        representative_source: "radar-beta\naxis A,B,C\ncurve sample{1,2,3}\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "ishikawa",
+        logical_family: "ishikawa",
+        profile: CharacterizationProfile::All,
+        representative_source: "ishikawa-beta\n  Effect\n    Cause\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "treemap",
+        logical_family: "treemap",
+        profile: CharacterizationProfile::All,
+        representative_source: "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "railroad",
+        logical_family: "railroad",
+        profile: CharacterizationProfile::All,
+        representative_source: "railroad-beta\nrule = terminal(\"a\") ;\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "railroadEbnf",
+        logical_family: "railroad",
+        profile: CharacterizationProfile::All,
+        representative_source: "railroad-ebnf-beta\nrule = \"a\" ;\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "railroadAbnf",
+        logical_family: "railroad",
+        profile: CharacterizationProfile::All,
+        representative_source: "railroad-abnf-beta\nrule = \"a\" ;\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "railroadPeg",
+        logical_family: "railroad",
+        profile: CharacterizationProfile::All,
+        representative_source: "railroad-peg-beta\nrule <- \"a\" ;\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "venn",
+        logical_family: "venn",
+        profile: CharacterizationProfile::All,
+        representative_source: "venn-beta\nset Frontend\nset Backend\nunion Frontend,Backend[\"API\"]\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+    FamilyCharacterization {
+        variant_id: "wardley",
+        logical_family: "wardley",
+        profile: CharacterizationProfile::All,
+        representative_source: "wardley-beta\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: UNSUPPORTED_CAPABILITIES,
+        malformed_contract: MalformedContract::Unsupported,
+    },
+    FamilyCharacterization {
+        variant_id: "cynefin",
+        logical_family: "cynefin",
+        profile: CharacterizationProfile::All,
+        representative_source: "cynefin-beta\n  complex\n",
+        malformed_source: MALFORMED_SOURCE,
+        capabilities: STANDARD_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
+    },
+];
+
 #[test]
 fn detector_registries_follow_family_fact_order() {
     let full = DetectorRegistry::pinned_mermaid_baseline_full();
@@ -562,6 +1007,187 @@ fn every_catalog_variant_projects_all_declared_capabilities_in_full_and_tiny_pro
 }
 
 #[test]
+fn registry_characterization_matrix_covers_every_variant_and_logical_family() {
+    assert_eq!(FAMILY_CHARACTERIZATION_MATRIX.len(), 41);
+
+    let variant_ids = FAMILY_CHARACTERIZATION_MATRIX
+        .iter()
+        .map(|row| row.variant_id)
+        .collect::<BTreeSet<_>>();
+    let logical_families = FAMILY_CHARACTERIZATION_MATRIX
+        .iter()
+        .map(|row| row.logical_family)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(variant_ids.len(), 41, "variant ids must be unique");
+    assert_eq!(logical_families.len(), 33);
+
+    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
+        let actual = crate::diagram_family_capabilities_for_profile(profile);
+        let actual_ids = actual
+            .iter()
+            .map(|fact| fact.diagram_type)
+            .collect::<BTreeSet<_>>();
+        let expected_ids = FAMILY_CHARACTERIZATION_MATRIX
+            .iter()
+            .filter_map(|row| row.profile.includes(profile).then_some(row.variant_id))
+            .collect::<BTreeSet<_>>();
+        assert_eq!(actual_ids, expected_ids, "{profile:?} admission drift");
+
+        for row in FAMILY_CHARACTERIZATION_MATRIX
+            .iter()
+            .filter(|row| row.profile.includes(profile))
+        {
+            let fact = family_capability(actual, row.variant_id);
+            assert_eq!(
+                fact.logical_family_kind, row.logical_family,
+                "{profile:?} {} logical family",
+                row.variant_id
+            );
+            assert_eq!(
+                CharacterizedCapabilities {
+                    semantic: fact.has_semantic_parser,
+                    editor: fact.has_editor_parser,
+                    combined: fact.has_combined_parser,
+                    typed: fact.has_render_parser,
+                },
+                row.capabilities,
+                "{profile:?} {} capability contract",
+                row.variant_id
+            );
+        }
+    }
+}
+
+#[test]
+fn registry_characterization_matrix_executes_representative_and_malformed_contracts() {
+    let engine = crate::Engine::new();
+    let selected_profile = crate::selected_baseline_registry_profile();
+    let mut malformed_contract_mismatches = Vec::new();
+
+    for row in FAMILY_CHARACTERIZATION_MATRIX
+        .iter()
+        .filter(|row| row.profile.includes(selected_profile))
+    {
+        if row.capabilities.semantic {
+            let parsed = engine
+                .parse_diagram_with_type_sync(
+                    row.variant_id,
+                    row.representative_source,
+                    crate::ParseOptions::strict(),
+                )
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "{} representative semantic parse failed: {err}",
+                        row.variant_id
+                    )
+                })
+                .unwrap_or_else(|| panic!("{} returned no semantic model", row.variant_id));
+            assert_eq!(parsed.meta.diagram_type, row.variant_id);
+        }
+
+        if row.capabilities.editor {
+            assert!(
+                engine
+                    .parse_editor_semantic_facts_with_type_sync(
+                        row.variant_id,
+                        row.representative_source,
+                        crate::ParseOptions::strict(),
+                    )
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "{} representative editor parse failed: {err}",
+                            row.variant_id
+                        )
+                    })
+                    .is_some(),
+                "{} returned no editor facts",
+                row.variant_id
+            );
+        }
+
+        if row.capabilities.typed {
+            let parsed = engine
+                .parse_diagram_for_render_model_with_type_sync(
+                    row.variant_id,
+                    row.representative_source,
+                    crate::ParseOptions::strict(),
+                )
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "{} representative typed parse failed: {err}",
+                        row.variant_id
+                    )
+                })
+                .unwrap_or_else(|| panic!("{} returned no typed model", row.variant_id));
+            assert_eq!(parsed.meta.diagram_type, row.variant_id);
+        }
+
+        if row.capabilities.combined {
+            let parsed = engine
+                .parse_diagram_with_editor_facts_sync(
+                    row.representative_source,
+                    crate::ParseOptions::strict(),
+                )
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "{} representative combined parse failed: {err}",
+                        row.variant_id
+                    )
+                })
+                .unwrap_or_else(|| panic!("{} returned no combined model", row.variant_id));
+            assert_eq!(
+                crate::diagram_type_family_kind(&parsed.diagram.meta.diagram_type),
+                Some(row.logical_family),
+                "{} combined detection left its logical family",
+                row.variant_id
+            );
+            assert!(matches!(
+                parsed.editor_facts,
+                crate::ParsedEditorFacts::Available(_)
+            ));
+        }
+
+        let malformed_semantic = engine.parse_diagram_with_type_sync(
+            row.variant_id,
+            row.malformed_source,
+            crate::ParseOptions::strict(),
+        );
+        let malformed_editor = engine.parse_editor_semantic_facts_with_type_sync(
+            row.variant_id,
+            row.malformed_source,
+            crate::ParseOptions::strict(),
+        );
+        let observed_contract = match (&malformed_semantic, &malformed_editor) {
+            (Ok(Some(_)), Ok(Some(_))) => MalformedContract::StrictAcceptsEditorAvailable,
+            (Ok(Some(_)), Ok(None)) => MalformedContract::StrictAcceptsEditorUnavailable,
+            (Err(crate::Error::UnsupportedDiagram { .. }), Ok(None))
+            | (
+                Err(crate::Error::UnsupportedDiagram { .. }),
+                Err(crate::Error::UnsupportedDiagram { .. }),
+            ) => MalformedContract::Unsupported,
+            (Err(_), Ok(Some(_))) => MalformedContract::StrictRejectsEditorAvailable,
+            (Err(_), Ok(None)) => MalformedContract::StrictRejectsEditorUnavailable,
+            _ => panic!(
+                "{} exposed an unclassified malformed contract: semantic={malformed_semantic:?}, editor={malformed_editor:?}",
+                row.variant_id
+            ),
+        };
+        if observed_contract != row.malformed_contract {
+            malformed_contract_mismatches.push(format!(
+                "{}: expected {:?}, observed {:?}",
+                row.variant_id, row.malformed_contract, observed_contract
+            ));
+        }
+    }
+
+    assert!(
+        malformed_contract_mismatches.is_empty(),
+        "malformed contracts drifted:\n{}",
+        malformed_contract_mismatches.join("\n")
+    );
+}
+
+#[test]
 fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
     let full = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full);
 
@@ -616,9 +1242,65 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
             "flowchart",
             "flowchart-elk",
             "flowchart-v2",
+            "mindmap",
+            "railroad",
+            "railroadAbnf",
+            "railroadEbnf",
+            "railroadPeg",
             "swimlane",
         ])
     );
+}
+
+#[cfg(feature = "full")]
+#[test]
+fn mindmap_combined_parse_constructs_family_syntax_once() {
+    crate::diagrams::mindmap::reset_mindmap_syntax_construction_count();
+
+    let parsed = crate::Engine::new()
+        .parse_diagram_with_editor_facts_sync(
+            "mindmap\n  root\n    child\n",
+            crate::ParseOptions::strict(),
+        )
+        .expect("mindmap combined parse succeeds")
+        .expect("mindmap combined parse returns a diagram");
+
+    assert!(matches!(
+        parsed.editor_facts,
+        crate::ParsedEditorFacts::Available(_)
+    ));
+    assert_eq!(
+        crate::diagrams::mindmap::mindmap_syntax_construction_count(),
+        1,
+        "one combined request must construct Mindmap syntax once"
+    );
+}
+
+#[test]
+fn railroad_combined_parse_constructs_family_syntax_once_for_every_dialect() {
+    for source in [
+        "railroad-beta\nrule = terminal(\"a\") ;\n",
+        "railroad-ebnf-beta\nrule = \"a\" ;\n",
+        "railroad-abnf-beta\nrule = \"a\" ;\n",
+        "railroad-peg-beta\nrule <- \"a\" ;\n",
+    ] {
+        crate::diagrams::railroad::reset_railroad_syntax_construction_count();
+
+        let parsed = crate::Engine::new()
+            .parse_diagram_with_editor_facts_sync(source, crate::ParseOptions::strict())
+            .expect("railroad combined parse succeeds")
+            .expect("railroad combined parse returns a diagram");
+
+        assert!(matches!(
+            parsed.editor_facts,
+            crate::ParsedEditorFacts::Available(_)
+        ));
+        assert_eq!(
+            crate::diagrams::railroad::railroad_syntax_construction_count(),
+            1,
+            "one combined request must construct Railroad syntax once for {source:?}"
+        );
+    }
 }
 
 #[test]

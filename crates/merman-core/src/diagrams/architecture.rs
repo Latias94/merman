@@ -1700,12 +1700,19 @@ group child(cloud)[Child] in root\n";
 
     #[test]
     fn architecture_combined_projection_honors_custom_registry_replacement() {
+        fn detect_architecture(code: &str, _config: &mut MermaidConfig) -> bool {
+            code.starts_with("architecture-beta")
+        }
+
         fn custom_architecture_parser(_code: &str, _meta: &ParseMetadata) -> Result<Value> {
             Ok(json!({ "type": "custom-architecture" }))
         }
 
         let text = "architecture-beta\nservice api(server)[API]\n";
         let mut engine = Engine::new();
+        engine
+            .registry_mut()
+            .add_fn("architecture", detect_architecture);
         engine
             .diagram_registry_mut()
             .insert("architecture", custom_architecture_parser);
