@@ -2,47 +2,33 @@
 
 use crate::XtaskError;
 use crate::cmd::compare::{
-    CompareFixtureResult, CompareRunOptions, run_svg_compare, sanitize_svg_id,
-    write_compare_result_section, write_notes_section,
+    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
+    DiagramVerificationFact, run_svg_compare, sanitize_svg_id, write_compare_result_section,
+    write_notes_section, write_verification_policy_metadata,
 };
 use std::fmt::Write as _;
-use std::path::PathBuf;
 
 pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_path: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-    let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "structure".to_string();
-    let mut check_dom: bool = false;
+    let fact = super::diagram_verification_fact("gantt")
+        .copied()
+        .expect("Gantt must have a verification fact");
+    compare_gantt_args(fact, args)
+}
 
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--out" => {
-                i += 1;
-                out_path = args.get(i).map(PathBuf::from);
-            }
-            "--filter" => {
-                i += 1;
-                filter = args.get(i).map(|s| s.to_string());
-            }
-            "--check-dom" => check_dom = true,
-            "--dom-decimals" => {
-                i += 1;
-                dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
-            }
-            "--dom-mode" => {
-                i += 1;
-                dom_mode = args
-                    .get(i)
-                    .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "structure".to_string());
-            }
-            "--help" | "-h" => return Err(XtaskError::Usage),
-            _ => return Err(XtaskError::Usage),
-        }
-        i += 1;
-    }
+pub(super) fn compare_gantt_args(
+    fact: DiagramVerificationFact,
+    args: Vec<String>,
+) -> Result<(), XtaskError> {
+    let request = CompareRequest::parse_for_fact(args, fact)?;
+    compare_gantt_request(fact, request)
+}
+
+pub(super) fn compare_gantt_request(
+    fact: DiagramVerificationFact,
+    request: CompareRequest,
+) -> Result<(), XtaskError> {
+    let dom_mode = request.dom_mode.as_deref().unwrap_or(fact.default_dom_mode);
+    let dom_decimals = request.dom_decimals.unwrap_or(3);
 
     // Mermaid Gantt uses JavaScript local-time semantics. Upstream SVG baselines are therefore
     // timezone-dependent unless the renderer is pinned. Our fixture corpus was generated under
@@ -63,29 +49,38 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
 
     merman::time::with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes), || {
         run_svg_compare(
-            CompareRunOptions {
-                diagram: "gantt",
-                out_path,
-                filter: filter.as_deref(),
-                check_dom,
-                dom_mode: &dom_mode,
+            CompareHarnessOptions::new(CompareRunOptions {
+                diagram: fact.diagram,
+                out_path: request.out_path.clone(),
+                filter: request.filter.as_deref(),
+                check_dom: request.check_dom,
+                dom_mode,
                 dom_decimals,
-            },
+            }),
             &mut (),
             |_, report, _paths, options| {
                 let _ = writeln!(
                     report,
-                    "# Gantt SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Local: `render_gantt_diagram_svg` (Stage B)\n- Mode: `{}`\n- Decimals: `{}`\n",
-                    options.dom_mode, options.dom_decimals
+                    "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Render path: `{}`\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n",
+                    fact.report_title,
+                    fact.render_path().label(),
+                    fact.command,
+                    options.dom_mode,
+                    options.dom_decimals
                 );
+                write_verification_policy_metadata(report, &request, fact, options.dom_mode, false);
+                report.push('\n');
             },
             |_, stem, _| {
-                gantt_fixture_is_excluded(stem)
-                    .then_some("excluded from deterministic Gantt SVG compare".to_string())
+                crate::cmd::upstream_svg_baseline_skip_reason(fact.diagram, stem)
+                    .map(str::to_string)
             },
             |_, input| {
-                let parsed = match futures::executor::block_on(
-                    engine.parse_diagram(input.text, merman::ParseOptions::default()),
+                let semantic = match merman::render::prepare_semantic_sync(
+                    &engine,
+                    input.text,
+                    fact.parse_policy.options(),
+                    &layout_opts,
                 ) {
                     Ok(Some(v)) => v,
                     Ok(None) => {
@@ -102,7 +97,7 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                     }
                 };
 
-                let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+                let prepared = match semantic.continue_layout() {
                     Ok(v) => v,
                     Err(err) => {
                         return Err(format!(
@@ -112,28 +107,23 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                     }
                 };
 
-                let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout
+                let merman_render::model::LayoutDiagram::GanttDiagram(layout) = prepared.layout()
                 else {
                     return Err(format!(
                         "unexpected layout type for {}: {}",
                         input.fixture_path.display(),
-                        layouted.meta.diagram_type
+                        prepared.metadata().diagram_type
                     ));
                 };
+                let now_ms_override = gantt_now_ms_override(input.upstream_svg, layout);
 
                 let svg_opts = merman_render::svg::SvgRenderOptions {
                     diagram_id: Some(sanitize_svg_id(input.stem)),
-                    now_ms_override: gantt_now_ms_override(input.upstream_svg, layout),
+                    now_ms_override,
                     ..Default::default()
                 };
 
-                let local_svg = merman_render::svg::render_gantt_diagram_svg(
-                    layout,
-                    &layouted.semantic,
-                    &layouted.meta.effective_config,
-                    &svg_opts,
-                )
-                .map_err(|err| {
+                let local_svg = prepared.render_svg(&svg_opts).map_err(|err| {
                     format!("render failed for {}: {err}", input.fixture_path.display())
                 })?;
 
@@ -144,6 +134,7 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                     notes: Vec::new(),
                 })
             },
+            |_, _, _| {},
             |_, report, paths, options, failures, notes| {
                 write_compare_result_section(
                     report,
@@ -155,17 +146,6 @@ pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
             },
         )
     })
-}
-
-fn gantt_fixture_is_excluded(stem: &str) -> bool {
-    matches!(
-        stem,
-        "today_marker_and_axis"
-            | "click_loose"
-            | "click_strict"
-            | "dateformat_hash_comment_truncates"
-            | "excludes_hash_comment_truncates"
-    )
 }
 
 fn gantt_now_ms_override(

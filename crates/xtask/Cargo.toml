@@ -17,7 +17,7 @@ flate2.workspace = true
 fs2.workspace = true
 futures.workspace = true
 dugong = { path = "../dugong" }
-merman = { path = "../merman" }
+merman = { path = "../merman", features = ["render"] }
 merman-core = { path = "../merman-core" }
 merman-layout-elk = { workspace = true, features = ["layered"] }
 merman-render = { path = "../merman-render", features = ["elk-layout"] }

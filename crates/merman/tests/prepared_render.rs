@@ -1,6 +1,6 @@
 use merman::render::{
-    LayoutDiagram, LayoutOptions, PreparedRender, SvgRenderOptions, prepare_render_sync,
-    prepare_semantic_sync, render_svg_sync,
+    LayoutDiagram, LayoutOptions, PreparedRender, SvgRenderOptions, layout_parsed,
+    prepare_render_sync, prepare_semantic_sync, render_layouted_svg, render_svg_sync,
 };
 use merman::{ParseMetadata, ParseOptions, RenderSemanticModel};
 use std::sync::OnceLock;
@@ -144,4 +144,46 @@ fn high_level_render_matches_the_prepared_artifact_path() {
     .expect("Flowchart should render through the high-level helper");
 
     assert_eq!(prepared_svg, high_level_svg);
+}
+
+#[test]
+fn prepared_architecture_matches_the_compatibility_json_pipeline() {
+    let engine = merman::Engine::new();
+    let source = r#"architecture-beta
+group platform(cloud)[Platform]
+group data(database)[Data] in platform
+service api(server)[API] in platform
+service db(database)[Database] in data
+api:R --> L:db
+align row api db
+"#;
+    let parse_options = ParseOptions::strict();
+    let layout_options = LayoutOptions::headless_svg_defaults();
+    let svg_options = SvgRenderOptions {
+        diagram_id: Some("prepared-architecture".to_string()),
+        ..Default::default()
+    };
+
+    let compatibility = engine
+        .parse_diagram_sync(source, parse_options)
+        .unwrap()
+        .expect("Architecture should produce compatibility JSON");
+    let compatibility = layout_parsed(&compatibility, &layout_options).unwrap();
+    let compatibility_svg = render_layouted_svg(
+        &compatibility,
+        layout_options.text_measurer.as_ref(),
+        &svg_options,
+    )
+    .unwrap();
+
+    let prepared = prepare_render_sync(&engine, source, parse_options, &layout_options)
+        .unwrap()
+        .expect("Architecture should produce a typed prepared artifact");
+    assert!(matches!(
+        prepared.layout(),
+        LayoutDiagram::ArchitectureDiagram(_)
+    ));
+    let prepared_svg = prepared.render_svg(&svg_options).unwrap();
+
+    assert_eq!(prepared_svg, compatibility_svg);
 }

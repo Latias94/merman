@@ -2,7 +2,9 @@
 
 use crate::XtaskError;
 use crate::cmd::compare::{
-    CompareFixtureResult, CompareRunOptions, run_svg_compare, write_compare_result_section,
+    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
+    DiagramVerificationFact, run_svg_compare, write_compare_result_section,
+    write_verification_policy_metadata,
 };
 use regex::Regex;
 use std::fmt::Write as _;
@@ -11,42 +13,91 @@ use std::path::PathBuf;
 use super::super::{svg_compare_engine_with_site_config, svg_compare_layout_opts};
 
 pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let mut out_path: Option<PathBuf> = None;
-    let mut filter: Option<String> = None;
-    let mut check_markers: bool = false;
-    let mut check_dom: bool = false;
-    let mut dom_decimals: u32 = 3;
-    let mut dom_mode: String = "parity".to_string();
+    let fact = super::diagram_verification_fact("er")
+        .copied()
+        .expect("ER must have a verification fact");
+    compare_er_args(fact, args)
+}
+
+pub(super) fn compare_er_args(
+    fact: DiagramVerificationFact,
+    args: Vec<String>,
+) -> Result<(), XtaskError> {
+    let mut request = CompareRequest::default();
+    let mut check_markers = false;
 
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--out" => {
                 i += 1;
-                out_path = args.get(i).map(PathBuf::from);
+                request.out_path = args.get(i).map(PathBuf::from);
             }
             "--filter" => {
                 i += 1;
-                filter = args.get(i).map(|s| s.to_string());
+                request.filter = args.get(i).cloned();
             }
             "--check-markers" => check_markers = true,
-            "--check-dom" => check_dom = true,
+            "--check-dom" => request.check_dom = true,
             "--dom-decimals" => {
                 i += 1;
-                dom_decimals = args.get(i).and_then(|s| s.parse::<u32>().ok()).unwrap_or(3);
+                request.dom_decimals = Some(
+                    args.get(i)
+                        .and_then(|value| value.parse::<u32>().ok())
+                        .unwrap_or(3),
+                );
             }
             "--dom-mode" => {
                 i += 1;
-                dom_mode = args
-                    .get(i)
-                    .map(|s| s.trim().to_string())
-                    .unwrap_or_else(|| "parity".to_string());
+                request.dom_mode = Some(
+                    args.get(i)
+                        .map(|s| s.trim().to_string())
+                        .unwrap_or_else(|| fact.default_dom_mode.to_string()),
+                );
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
         i += 1;
     }
+
+    run_er_compare(
+        fact,
+        ErCompareRequest {
+            common: request,
+            check_markers,
+        },
+    )
+}
+
+pub(super) fn compare_er_request(
+    fact: DiagramVerificationFact,
+    request: CompareRequest,
+) -> Result<(), XtaskError> {
+    run_er_compare(
+        fact,
+        ErCompareRequest {
+            common: request,
+            check_markers: false,
+        },
+    )
+}
+
+struct ErCompareRequest {
+    common: CompareRequest,
+    check_markers: bool,
+}
+
+fn run_er_compare(
+    fact: DiagramVerificationFact,
+    request: ErCompareRequest,
+) -> Result<(), XtaskError> {
+    let dom_mode = request
+        .common
+        .dom_mode
+        .as_deref()
+        .unwrap_or(fact.default_dom_mode);
+    let dom_decimals = request.common.dom_decimals.unwrap_or(3);
 
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
@@ -55,23 +106,33 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut state = ErCompareState { rows: Vec::new() };
 
     run_svg_compare(
-        CompareRunOptions {
-            diagram: "er",
-            out_path,
-            filter: filter.as_deref(),
-            check_dom,
-            dom_mode: &dom_mode,
+        CompareHarnessOptions::new(CompareRunOptions {
+            diagram: fact.diagram,
+            out_path: request.common.out_path.clone(),
+            filter: request.common.filter.as_deref(),
+            check_dom: request.common.check_dom,
+            dom_mode,
             dom_decimals,
-        },
+        }),
         &mut state,
-        |_, report, _paths, _options| {
-            let _ = writeln!(report, "# ER SVG Compare Report");
+        |_, report, _paths, options| {
+            let _ = writeln!(report, "# {} SVG Compare Report", fact.report_title);
             let _ = writeln!(report);
             let _ = writeln!(
                 report,
                 "- Upstream: `fixtures/upstream-svgs/er/*.svg` (pinned Mermaid baseline via Mermaid CLI)"
             );
-            let _ = writeln!(report, "- Local: `render_er_diagram_svg` (Stage B)");
+            let _ = writeln!(report, "- Render path: `{}`", fact.render_path().label());
+            let _ = writeln!(report, "- Command: `{}`", fact.command);
+            let _ = writeln!(report, "- Mode: `{}`", options.dom_mode);
+            let _ = writeln!(report, "- Decimals: `{}`", options.dom_decimals);
+            write_verification_policy_metadata(
+                report,
+                &request.common,
+                fact,
+                options.dom_mode,
+                false,
+            );
             let _ = writeln!(report);
             let _ = writeln!(
                 report,
@@ -107,12 +168,12 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
 
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
+            let semantic = match merman::render::prepare_semantic_sync(
+                &engine,
                 input.text,
-                merman::ParseOptions {
-                    suppress_errors: true,
-                },
-            )) {
+                fact.parse_policy.options(),
+                &layout_opts,
+            ) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     return Err(format!(
@@ -128,7 +189,7 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let prepared = match semantic.continue_layout() {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!(
@@ -138,11 +199,11 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let merman_render::model::LayoutDiagram::ErDiagram(layout) = &layouted.layout else {
+            let merman_render::model::LayoutDiagram::ErDiagram(_) = prepared.layout() else {
                 return Err(format!(
                     "unexpected layout type for {}: {}",
                     input.fixture_path.display(),
-                    layouted.meta.diagram_type
+                    prepared.metadata().diagram_type
                 ));
             };
 
@@ -151,14 +212,7 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 ..Default::default()
             };
 
-            let local_svg = match merman_render::svg::render_er_diagram_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
-                &svg_opts,
-            ) {
+            let local_svg = match prepared.render_svg(&svg_opts) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!(
@@ -194,7 +248,7 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
 
-            if check_markers && !marker_ok {
+            if request.check_markers && !marker_ok {
                 issues.push(format!(
                     "marker mismatch for {}: missing={:?} extra={:?}",
                     input.stem, missing, extra
@@ -217,6 +271,7 @@ pub(crate) fn compare_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 notes: Vec::new(),
             })
         },
+        |_, _, _| {},
         |state, report, paths, options, failures, _notes| {
             for row in &state.rows {
                 let _ = writeln!(

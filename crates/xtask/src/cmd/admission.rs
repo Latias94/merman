@@ -38,7 +38,6 @@ pub(crate) struct DiagramAdmissionRecord {
     layout: CoverageStatus,
     svg: CoverageStatus,
     root_viewport: CoverageStatus,
-    compare_command: Option<&'static str>,
     owner_doc: &'static str,
     defer_reason: Option<&'static str>,
 }
@@ -68,7 +67,7 @@ impl DiagramAdmissionRecord {
         self.is_primary_svg_matrix() && self.root_viewport == CoverageStatus::Deferred
     }
 
-    fn requires_compare_command(self) -> bool {
+    fn requires_verification_fact(self) -> bool {
         self.is_primary_svg_matrix()
     }
 
@@ -134,11 +133,18 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
             ));
         }
 
-        if record.requires_compare_command() && record.compare_command.is_none() {
-            failures.push(format!(
-                "admission inventory: primary SVG diagram `{}` has no compare command",
-                record.diagram
-            ));
+        if record.requires_verification_fact() {
+            match crate::cmd::compare::diagram_verification_fact(record.diagram) {
+                Some(fact) if !fact.command.trim().is_empty() => {}
+                Some(_) => failures.push(format!(
+                    "admission inventory: primary SVG diagram `{}` has an empty verification command",
+                    record.diagram
+                )),
+                None => failures.push(format!(
+                    "admission inventory: primary SVG diagram `{}` has no executable verification fact",
+                    record.diagram
+                )),
+            }
         }
 
         if record.requires_defer_reason() && record.defer_reason.is_none() {
@@ -228,6 +234,19 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
         }
     }
 
+    for fact in crate::cmd::compare::DIAGRAM_VERIFICATION_FACTS {
+        if !admission_inventory()
+            .iter()
+            .copied()
+            .any(|record| record.diagram == fact.diagram && record.is_primary_svg_matrix())
+        {
+            failures.push(format!(
+                "admission inventory: verification fact `{}` is not backed by a primary SVG admission record",
+                fact.diagram
+            ));
+        }
+    }
+
     failures
 }
 
@@ -257,7 +276,7 @@ fn count_files_with_suffix(dir: &Path, suffix: &str) -> usize {
 }
 
 macro_rules! primary {
-    ($diagram:literal, $fixtures:expr, $compare:literal, $owner:literal) => {
+    ($diagram:literal, $fixtures:expr, $owner:literal) => {
         DiagramAdmissionRecord {
             diagram: $diagram,
             admission: AdmissionStatus::PrimarySvgMatrix,
@@ -271,7 +290,6 @@ macro_rules! primary {
             layout: CoverageStatus::Covered,
             svg: CoverageStatus::Covered,
             root_viewport: CoverageStatus::Covered,
-            compare_command: Some($compare),
             owner_doc: $owner,
             defer_reason: None,
         }
@@ -279,11 +297,11 @@ macro_rules! primary {
 }
 
 macro_rules! primary_root_deferred {
-    ($diagram:literal, $fixtures:expr, $compare:literal, $owner:literal, $reason:literal) => {
+    ($diagram:literal, $fixtures:expr, $owner:literal, $reason:literal) => {
         DiagramAdmissionRecord {
             root_viewport: CoverageStatus::Deferred,
             defer_reason: Some($reason),
-            ..primary!($diagram, $fixtures, $compare, $owner)
+            ..primary!($diagram, $fixtures, $owner)
         }
     };
 }
@@ -300,7 +318,6 @@ macro_rules! not_admitted {
             layout: CoverageStatus::NotAdmitted,
             svg: CoverageStatus::NotAdmitted,
             root_viewport: CoverageStatus::NotApplicable,
-            compare_command: None,
             owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
             defer_reason: Some($reason),
         }
@@ -319,7 +336,6 @@ macro_rules! parse_only {
             layout: CoverageStatus::NotApplicable,
             svg: CoverageStatus::Deferred,
             root_viewport: CoverageStatus::NotApplicable,
-            compare_command: None,
             owner_doc: $owner,
             defer_reason: Some($reason),
         }
@@ -330,159 +346,133 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     primary!(
         "er",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-er-svgs",
         "docs/alignment/ER_MINIMUM.md"
     ),
     primary!(
         "flowchart",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-flowchart-svgs",
         "docs/alignment/FLOWCHART_MINIMUM.md"
     ),
     primary!(
         "state",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-state-svgs",
         "docs/alignment/STATE_MINIMUM.md"
     ),
     primary!(
         "class",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-class-svgs",
         "docs/alignment/CLASS_MINIMUM.md"
     ),
     primary!(
         "sequence",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-sequence-svgs",
         "docs/alignment/SEQUENCE_MINIMUM.md"
     ),
     primary!(
         "info",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-info-svgs",
         "docs/alignment/INFO_MINIMUM.md"
     ),
     primary!(
         "pie",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-pie-svgs",
         "docs/alignment/PIE_MINIMUM.md"
     ),
     primary!(
         "sankey",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-sankey-svgs",
         "docs/alignment/SANKEY_MINIMUM.md"
     ),
     primary!(
         "packet",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-packet-svgs",
         "docs/alignment/PACKET_MINIMUM.md"
     ),
     primary!(
         "timeline",
         FixtureCorpusStatus::Normalized,
-        "compare-timeline-svgs",
         "docs/alignment/TIMELINE_MINIMUM.md"
     ),
     primary!(
         "journey",
         FixtureCorpusStatus::Normalized,
-        "compare-journey-svgs",
         "docs/alignment/JOURNEY_MINIMUM.md"
     ),
     primary!(
         "kanban",
         FixtureCorpusStatus::Normalized,
-        "compare-kanban-svgs",
         "docs/alignment/KANBAN_MINIMUM.md"
     ),
     primary!(
         "gitgraph",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-gitgraph-svgs",
         "docs/alignment/GITGRAPH_MINIMUM.md"
     ),
     primary!(
         "gantt",
         FixtureCorpusStatus::Normalized,
-        "compare-gantt-svgs",
         "docs/alignment/GANTT_MINIMUM.md"
     ),
     primary!(
         "c4",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-c4-svgs",
         "docs/alignment/C4_MINIMUM.md"
     ),
     primary!(
         "block",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-block-svgs",
         "docs/alignment/BLOCK_MINIMUM.md"
     ),
     primary!(
         "radar",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-radar-svgs",
         "docs/alignment/RADAR_MINIMUM.md"
     ),
     primary!(
         "requirement",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-requirement-svgs",
         "docs/alignment/REQUIREMENT_MINIMUM.md"
     ),
     primary!(
         "mindmap",
         FixtureCorpusStatus::Normalized,
-        "compare-mindmap-svgs",
         "docs/alignment/MINDMAP_MINIMUM.md"
     ),
     primary!(
         "architecture",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-architecture-svgs",
         "docs/alignment/ARCHITECTURE_MINIMUM.md"
     ),
     primary!(
         "quadrantchart",
         FixtureCorpusStatus::Normalized,
-        "compare-quadrantchart-svgs",
         "docs/alignment/QUADRANTCHART_MINIMUM.md"
     ),
     primary!(
         "treemap",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-treemap-svgs",
         "docs/alignment/TREEMAP_MINIMUM.md"
     ),
     primary!(
         "xychart",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-xychart-svgs",
         "docs/alignment/XYCHART_MINIMUM.md"
     ),
     primary_root_deferred!(
         "treeView",
         FixtureCorpusStatus::Normalized,
-        "compare-tree-view-svgs",
         "docs/alignment/TREEVIEW_MINIMUM.md",
         "global parity-root sweep skips current browser text-metric root viewport residuals"
     ),
     primary_root_deferred!(
         "ishikawa",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "compare-ishikawa-svgs",
         "docs/alignment/ISHIKAWA_MINIMUM.md",
         "global parity-root sweep skips current label/fish-head root viewport residuals"
     ),
     primary_root_deferred!(
         "eventmodeling",
         FixtureCorpusStatus::Normalized,
-        "compare-eventmodeling-svgs",
         "docs/alignment/EVENTMODELING_MINIMUM.md",
         "global parity-root sweep skips current foreignObject/browser text-metric residuals"
     ),
@@ -496,7 +486,6 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         layout: CoverageStatus::Covered,
         svg: CoverageStatus::Deferred,
         root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
         owner_doc: "docs/alignment/ZENUML_MINIMUM.md",
         defer_reason: Some("upstream ZenUML renders through browser-only @zenuml/core"),
     },
@@ -510,14 +499,12 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         layout: CoverageStatus::NotApplicable,
         svg: CoverageStatus::Deferred,
         root_viewport: CoverageStatus::NotApplicable,
-        compare_command: None,
         owner_doc: "docs/alignment/ERROR_MINIMUM.md",
         defer_reason: Some("tracked as parse/snapshot-only; no upstream SVG baseline corpus"),
     },
     primary!(
         "venn",
         FixtureCorpusStatus::Normalized,
-        "compare-venn-svgs",
         "docs/alignment/VENN_BETA_ADMISSION_PLAN.md"
     ),
     parse_only!(
@@ -529,25 +516,21 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     primary!(
         "railroad",
         FixtureCorpusStatus::Normalized,
-        "compare-railroad-svgs",
         "docs/alignment/RAILROAD_MINIMUM.md"
     ),
     primary!(
         "railroadEbnf",
         FixtureCorpusStatus::Normalized,
-        "compare-railroad-ebnf-svgs",
         "docs/alignment/RAILROAD_MINIMUM.md"
     ),
     primary!(
         "railroadAbnf",
         FixtureCorpusStatus::Normalized,
-        "compare-railroad-abnf-svgs",
         "docs/alignment/RAILROAD_MINIMUM.md"
     ),
     primary!(
         "railroadPeg",
         FixtureCorpusStatus::Normalized,
-        "compare-railroad-peg-svgs",
         "docs/alignment/RAILROAD_MINIMUM.md"
     ),
     not_admitted!(
@@ -557,7 +540,6 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
     primary!(
         "cynefin",
         FixtureCorpusStatus::Normalized,
-        "compare-cynefin-svgs",
         "docs/alignment/CYNEFIN_MINIMUM.md"
     ),
 ];
@@ -719,25 +701,25 @@ mod tests {
     #[test]
     fn admission_rules_are_record_owned() {
         let primary = record("flowchart");
-        assert!(primary.requires_compare_command());
+        assert!(primary.requires_verification_fact());
         assert!(!primary.requires_defer_reason());
         assert!(primary.semantic_requires_golden());
         assert!(primary.layout_requires_golden());
         assert!(primary.svg_requires_upstream_baseline());
 
         let compatibility = record("zenuml");
-        assert!(!compatibility.requires_compare_command());
+        assert!(!compatibility.requires_verification_fact());
         assert!(!compatibility.svg_requires_upstream_baseline());
 
         let venn = record("venn");
-        assert!(venn.requires_compare_command());
+        assert!(venn.requires_verification_fact());
         assert!(!venn.requires_defer_reason());
         assert!(venn.semantic_requires_golden());
         assert!(venn.layout_requires_golden());
         assert!(venn.svg_requires_upstream_baseline());
 
         let not_admitted = record("wardley");
-        assert!(!not_admitted.requires_compare_command());
+        assert!(!not_admitted.requires_verification_fact());
         assert!(not_admitted.requires_defer_reason());
         assert!(!not_admitted.semantic_requires_golden());
         assert!(!not_admitted.layout_requires_golden());
@@ -745,10 +727,36 @@ mod tests {
 
         let parse_only = record("swimlane");
         assert_eq!(parse_only.admission, AdmissionStatus::ParseOnly);
-        assert!(!parse_only.requires_compare_command());
+        assert!(!parse_only.requires_verification_fact());
         assert!(parse_only.semantic_requires_golden());
         assert!(!parse_only.layout_requires_golden());
         assert!(!parse_only.svg_requires_upstream_baseline());
+    }
+
+    #[test]
+    fn primary_admission_and_verification_facts_are_bijective() {
+        let primary_diagrams: BTreeSet<&str> = admission_inventory()
+            .iter()
+            .copied()
+            .filter(|record| record.is_primary_svg_matrix())
+            .map(|record| record.diagram)
+            .collect();
+        let verification_diagrams: BTreeSet<&str> = crate::cmd::compare::DIAGRAM_VERIFICATION_FACTS
+            .iter()
+            .map(|fact| fact.diagram)
+            .collect();
+
+        assert_eq!(
+            primary_diagrams, verification_diagrams,
+            "primary admission records and executable verification facts must stay one-to-one"
+        );
+        for fact in crate::cmd::compare::DIAGRAM_VERIFICATION_FACTS {
+            assert!(
+                !fact.command.trim().is_empty(),
+                "verification fact {} should name its executable command",
+                fact.diagram
+            );
+        }
     }
 
     #[test]
@@ -767,13 +775,6 @@ mod tests {
                 record.diagram,
                 record.fixtures
             );
-            if record.requires_compare_command() {
-                assert!(
-                    record.compare_command.is_some(),
-                    "{} should name its compare command",
-                    record.diagram
-                );
-            }
             if record.requires_defer_reason() {
                 assert!(
                     record.defer_reason.is_some(),
