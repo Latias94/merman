@@ -108,6 +108,9 @@ impl DetectorRegistry {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
         for fact in crate::family::detector_facts(BaselineRegistryProfile::Full) {
             reg.add_fn(fact.id, fact.detector);
+            if fact.id == "error" {
+                reg.add_fn("---", detector_frontmatter_unparsed);
+            }
         }
 
         reg
@@ -120,6 +123,9 @@ impl DetectorRegistry {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
         for fact in crate::family::detector_facts(BaselineRegistryProfile::Tiny) {
             reg.add_fn(fact.id, fact.detector);
+            if fact.id == "error" {
+                reg.add_fn("---", detector_frontmatter_unparsed);
+            }
         }
 
         reg

@@ -5,7 +5,7 @@ use crate::{
 };
 use diagram::{
     DiagramWarningFact, ParsedDiagram, ParsedDiagramRender, ParsedDiagramWithEditorFacts,
-    ParsedEditorFacts, RenderSemanticModel,
+    ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -64,22 +64,6 @@ struct SourceMapSegments {
 }
 
 const WARNING_FACT_REMAP_CONTEXT_EXPANSIONS: [usize; 6] = [1, 4, 8, 16, 32, 64];
-
-fn registry_uses_baseline_semantic_parser(
-    registry: &diagram::DiagramRegistry,
-    diagram_type: &str,
-) -> bool {
-    let Some(registered) = registry.get(diagram_type) else {
-        return false;
-    };
-    let Some(baseline) = family::semantic_parser_facts(registry.profile())
-        .iter()
-        .find(|fact| fact.id == diagram_type)
-    else {
-        return false;
-    };
-    std::ptr::fn_addr_eq(registered, baseline.parser)
-}
 
 impl<'a> EditorParseSourceMap<'a> {
     fn new(original: &'a str, preprocessed: &'a str) -> Self {
@@ -961,171 +945,88 @@ impl<'a> ParsePipeline<'a> {
         let source_map = EditorParseSourceMap::new(self.text, &code);
         let editor_input = source_map.parser_input();
         let preprocess = preprocess_start.map(runtime::timing_elapsed);
-        let uses_baseline_parser = registry_uses_baseline_semantic_parser(
-            &self.engine.diagram_registry,
-            &meta.diagram_type,
-        );
+
+        let resolved = self.engine.diagram_registry.resolve(&meta.diagram_type);
+        let combined = resolved
+            .filter(|resolved| resolved.owner == RegistryOwner::BuiltIn)
+            .and_then(|_| {
+                family::combined_parser(self.engine.diagram_registry.profile(), &meta.diagram_type)
+            });
 
         let parse_start = runtime::timing_start(timing_enabled);
-        let parsed = match meta.diagram_type.as_str() {
-            "flowchart-v2" | "flowchart" | "flowchart-elk" | "swimlane" if uses_baseline_parser => {
-                let parse_res = self.with_fixed_time(|| {
-                    crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts(
-                        editor_input,
-                        &meta,
-                    )
-                });
-                let parse = parse_start.map(runtime::timing_elapsed);
-                let (mut model, facts) = match parse_res {
-                    Ok(parsed) => parsed,
-                    Err(err) => {
-                        if !self.options.suppress_errors {
-                            return Err(source_map.remap_parse_error(err));
-                        }
-
-                        timing.log_suppressed_error(
-                            total_start,
-                            preprocess,
-                            parse,
-                            self.text.len(),
-                        );
-                        return Ok(Some(ParsedDiagramWithEditorFacts {
-                            diagram: error_diagram::suppressed_error_diagram(&meta),
-                            editor_facts: ParsedEditorFacts::Unavailable,
-                        }));
-                    }
-                };
-                let sanitize_start = runtime::timing_start(timing_enabled);
-                common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-                let sanitize = sanitize_start.map(runtime::timing_elapsed);
-                Self::remap_value_warning_facts(&mut model, &source_map);
-                timing.log_success(ParseTimingSuccess {
-                    total_start,
-                    meta: &meta,
-                    model_kind: None,
-                    preprocess,
-                    parse,
-                    sanitize,
-                    input_bytes: self.text.len(),
-                });
-                let facts =
-                    self.finish_editor_semantic_facts(facts, &source_map, directive_prefixes);
-                return Ok(Some(ParsedDiagramWithEditorFacts {
-                    diagram: ParsedDiagram { meta, model },
-                    editor_facts: ParsedEditorFacts::Available(facts),
-                }));
+        let parse_res = self.with_fixed_time(|| match resolved {
+            Some(resolved) => {
+                if let Some(parser) = combined {
+                    parser(editor_input, &meta).map(|(model, facts)| (model, Some(facts)))
+                } else {
+                    (resolved.parser)(editor_input, &meta).map(|model| (model, None))
+                }
             }
-            "architecture" if uses_baseline_parser => {
-                let parse_res = self.with_fixed_time(|| {
-                    crate::diagrams::architecture::parse_architecture_json_and_editor_facts(
-                        editor_input,
-                        &meta,
-                    )
-                });
-                let parse = parse_start.map(runtime::timing_elapsed);
-                let (mut model, facts) = match parse_res {
-                    Ok(parsed) => parsed,
-                    Err(err) => {
-                        if !self.options.suppress_errors {
-                            return Err(source_map.remap_parse_error(err));
-                        }
+            None => Err(Error::UnsupportedDiagram {
+                diagram_type: meta.diagram_type.clone(),
+            }),
+        });
+        let parse = parse_start.map(runtime::timing_elapsed);
+        let (mut model, combined_facts) = match parse_res {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                if !self.options.suppress_errors {
+                    return Err(source_map.remap_parse_error(err));
+                }
 
-                        timing.log_suppressed_error(
-                            total_start,
-                            preprocess,
-                            parse,
-                            self.text.len(),
-                        );
-                        return Ok(Some(ParsedDiagramWithEditorFacts {
-                            diagram: error_diagram::suppressed_error_diagram(&meta),
-                            editor_facts: ParsedEditorFacts::Unavailable,
-                        }));
-                    }
-                };
-                let sanitize_start = runtime::timing_start(timing_enabled);
-                common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-                let sanitize = sanitize_start.map(runtime::timing_elapsed);
-                Self::remap_value_warning_facts(&mut model, &source_map);
-                timing.log_success(ParseTimingSuccess {
-                    total_start,
-                    meta: &meta,
-                    model_kind: None,
-                    preprocess,
-                    parse,
-                    sanitize,
-                    input_bytes: self.text.len(),
-                });
-                let facts =
-                    self.finish_editor_semantic_facts(facts, &source_map, directive_prefixes);
+                timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
                 return Ok(Some(ParsedDiagramWithEditorFacts {
-                    diagram: ParsedDiagram { meta, model },
-                    editor_facts: ParsedEditorFacts::Available(facts),
+                    diagram: error_diagram::suppressed_error_diagram(&meta),
+                    editor_facts: ParsedEditorFacts::Unavailable,
                 }));
-            }
-            _ => {
-                let parse_res = self.with_fixed_time(|| {
-                    diagram::parse_or_unsupported(
-                        &self.engine.diagram_registry,
-                        &meta.diagram_type,
-                        editor_input,
-                        &meta,
-                    )
-                });
-                let parse = parse_start.map(runtime::timing_elapsed);
-                let mut model = match parse_res {
-                    Ok(model) => model,
-                    Err(err) => {
-                        if !self.options.suppress_errors {
-                            return Err(source_map.remap_parse_error(err));
-                        }
-
-                        timing.log_suppressed_error(
-                            total_start,
-                            preprocess,
-                            parse,
-                            self.text.len(),
-                        );
-                        return Ok(Some(ParsedDiagramWithEditorFacts {
-                            diagram: error_diagram::suppressed_error_diagram(&meta),
-                            editor_facts: ParsedEditorFacts::Unavailable,
-                        }));
-                    }
-                };
-                let sanitize_start = runtime::timing_start(timing_enabled);
-                common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-                let sanitize = sanitize_start.map(runtime::timing_elapsed);
-                timing.log_success(ParseTimingSuccess {
-                    total_start,
-                    meta: &meta,
-                    model_kind: None,
-                    preprocess,
-                    parse,
-                    sanitize,
-                    input_bytes: self.text.len(),
-                });
-                ParsedDiagram { meta, model }
             }
         };
 
-        let mut parsed = parsed;
-        Self::remap_value_warning_facts(&mut parsed.model, &source_map);
+        let sanitize_start = runtime::timing_start(timing_enabled);
+        common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
+        let sanitize = sanitize_start.map(runtime::timing_elapsed);
+        Self::remap_value_warning_facts(&mut model, &source_map);
+        timing.log_success(ParseTimingSuccess {
+            total_start,
+            meta: &meta,
+            model_kind: None,
+            preprocess,
+            parse,
+            sanitize,
+            input_bytes: self.text.len(),
+        });
 
-        let editor_facts = if uses_baseline_parser {
-            match self.parse_editor_semantic_facts_from_preprocessed(
-                editor_input,
-                &parsed.meta,
-                &source_map,
-                directive_prefixes,
-            ) {
-                Ok(Some(facts)) => ParsedEditorFacts::Available(facts),
-                Ok(None) => ParsedEditorFacts::Unavailable,
-                Err(error) => ParsedEditorFacts::Error(error),
+        let owner = resolved
+            .expect("a successful combined semantic parse must have a registry owner")
+            .owner;
+        let editor_facts = match (owner, combined_facts) {
+            (RegistryOwner::Custom, _) => ParsedEditorFacts::Unavailable,
+            (RegistryOwner::BuiltIn, Some(facts)) => ParsedEditorFacts::Available(
+                self.finish_editor_semantic_facts(facts, &source_map, directive_prefixes),
+            ),
+            (RegistryOwner::BuiltIn, None) => {
+                let Some(parser) = family::editor_parser(
+                    self.engine.diagram_registry.profile(),
+                    &meta.diagram_type,
+                ) else {
+                    return Ok(Some(ParsedDiagramWithEditorFacts {
+                        diagram: ParsedDiagram { meta, model },
+                        editor_facts: ParsedEditorFacts::Unavailable,
+                    }));
+                };
+                match parser(editor_input, &meta) {
+                    Ok(facts) => ParsedEditorFacts::Available(self.finish_editor_semantic_facts(
+                        facts,
+                        &source_map,
+                        directive_prefixes,
+                    )),
+                    Err(error) => ParsedEditorFacts::Error(source_map.remap_parse_error(error)),
+                }
             }
-        } else {
-            ParsedEditorFacts::Unavailable
         };
+
         Ok(Some(ParsedDiagramWithEditorFacts {
-            diagram: parsed,
+            diagram: ParsedDiagram { meta, model },
             editor_facts,
         }))
     }
@@ -1147,28 +1048,34 @@ impl<'a> ParsePipeline<'a> {
     }
 
     pub(crate) fn parse_editor_semantic_facts(&self) -> Result<Option<EditorSemanticFacts>> {
-        let mut directive_prefixes = editor_directive_prefixes(self.text);
+        let directive_prefixes = editor_directive_prefixes(self.text);
         let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
-        if self
-            .engine
-            .diagram_registry
-            .get(&meta.diagram_type)
-            .is_some()
-            && !registry_uses_baseline_semantic_parser(
-                &self.engine.diagram_registry,
-                &meta.diagram_type,
-            )
-        {
-            return Ok(None);
+        let registry = &self.engine.diagram_registry;
+        match registry.resolve(&meta.diagram_type) {
+            Some(resolved) if resolved.owner == RegistryOwner::Custom => return Ok(None),
+            Some(_) => {}
+            None => {
+                if family::is_builtin_diagram_type(&meta.diagram_type)
+                    && !family::diagram_type_supported_in_profile(
+                        registry.profile(),
+                        &meta.diagram_type,
+                    )
+                {
+                    return Err(Error::UnsupportedDiagram {
+                        diagram_type: meta.diagram_type.clone(),
+                    });
+                }
+            }
         }
+
         let source_map = EditorParseSourceMap::new(self.text, &code);
         self.parse_editor_semantic_facts_from_preprocessed(
             source_map.parser_input(),
             &meta,
             &source_map,
-            std::mem::take(&mut directive_prefixes),
+            directive_prefixes,
         )
     }
 
@@ -1179,92 +1086,18 @@ impl<'a> ParsePipeline<'a> {
         source_map: &EditorParseSourceMap<'_>,
         directive_prefixes: Vec<String>,
     ) -> Result<Option<EditorSemanticFacts>> {
-        let registry_profile = self.engine.diagram_registry.profile();
-        if !family::diagram_type_supported_in_profile(registry_profile, meta.diagram_type.as_str())
-        {
-            return Err(Error::UnsupportedDiagram {
-                diagram_type: meta.diagram_type.clone(),
-            });
-        }
-
-        let facts = match meta.diagram_type.as_str() {
-            "flowchart-v2" | "flowchart" | "flowchart-elk" | "swimlane" => {
-                crate::diagrams::flowchart::parse_flowchart_editor_facts(editor_input, &meta)?
-            }
-            "sequence" => {
-                crate::diagrams::sequence::parse_sequence_editor_facts(editor_input, &meta)
-            }
-            "state" | "stateDiagram" => {
-                crate::diagrams::state::parse_state_editor_facts(editor_input, &meta)
-            }
-            "class" | "classDiagram" => {
-                crate::diagrams::class::parse_class_editor_facts(editor_input, &meta)
-            }
-            "er" | "erDiagram" => crate::diagrams::er::parse_er_editor_facts(editor_input, &meta),
-            "mindmap" => crate::diagrams::mindmap::parse_mindmap_editor_facts(editor_input, &meta),
-            "gantt" => crate::diagrams::gantt::parse_gantt_editor_facts(editor_input, &meta),
-            "architecture" => {
-                crate::diagrams::architecture::parse_architecture_editor_facts(editor_input, &meta)
-            }
-            "block" => crate::diagrams::block::parse_block_editor_facts(editor_input, &meta),
-            "c4" => crate::diagrams::c4::parse_c4_editor_facts(editor_input, &meta),
-            "cynefin" => crate::diagrams::cynefin::parse_cynefin_editor_facts(editor_input, &meta),
-            "gitGraph" => {
-                crate::diagrams::git_graph::parse_git_graph_editor_facts(editor_input, &meta)
-            }
-            "kanban" => crate::diagrams::kanban::parse_kanban_editor_facts(editor_input, &meta),
-            "ishikawa" => {
-                crate::diagrams::ishikawa::parse_ishikawa_editor_facts(editor_input, &meta)
-            }
-            "journey" => crate::diagrams::journey::parse_journey_editor_facts(editor_input, &meta),
-            "info" => crate::diagrams::info::parse_info_editor_facts(editor_input, &meta),
-            "timeline" => {
-                crate::diagrams::timeline::parse_timeline_editor_facts(editor_input, &meta)
-            }
-            "pie" => crate::diagrams::pie::parse_pie_editor_facts(editor_input, &meta),
-            "packet" => crate::diagrams::packet::parse_packet_editor_facts(editor_input, &meta),
-            "sankey" => crate::diagrams::sankey::parse_sankey_editor_facts(editor_input, &meta),
-            "treeView" => {
-                crate::diagrams::tree_view::parse_tree_view_editor_facts(editor_input, &meta)
-            }
-            "eventmodeling" => crate::diagrams::eventmodeling::parse_eventmodeling_editor_facts(
-                editor_input,
-                &meta,
-            ),
-            "quadrantChart" => crate::diagrams::quadrant_chart::parse_quadrant_chart_editor_facts(
-                editor_input,
-                &meta,
-            ),
-            "railroad" => {
-                crate::diagrams::railroad::parse_railroad_editor_facts(editor_input, &meta)
-            }
-            "railroadEbnf" => {
-                crate::diagrams::railroad::parse_railroad_ebnf_editor_facts(editor_input, &meta)
-            }
-            "railroadAbnf" => {
-                crate::diagrams::railroad::parse_railroad_abnf_editor_facts(editor_input, &meta)
-            }
-            "railroadPeg" => {
-                crate::diagrams::railroad::parse_railroad_peg_editor_facts(editor_input, &meta)
-            }
-            "radar" => crate::diagrams::radar::parse_radar_editor_facts(editor_input, &meta),
-            "treemap" => crate::diagrams::treemap::parse_treemap_editor_facts(editor_input, &meta),
-            "requirement" => {
-                crate::diagrams::requirement::parse_requirement_editor_facts(editor_input, &meta)
-            }
-            "venn" => crate::diagrams::venn::parse_venn_editor_facts(editor_input, &meta),
-            "xychart" => crate::diagrams::xychart::parse_xychart_editor_facts(editor_input, &meta),
-            "zenuml" => crate::diagrams::zenuml::parse_zenuml_editor_facts(editor_input, &meta),
-            _ => return Ok(None),
+        let Some(parser) =
+            family::editor_parser(self.engine.diagram_registry.profile(), &meta.diagram_type)
+        else {
+            return Ok(None);
         };
-
+        let facts = parser(editor_input, meta)?;
         Ok(Some(self.finish_editor_semantic_facts(
             facts,
             source_map,
             directive_prefixes,
         )))
     }
-
     fn finish_editor_semantic_facts(
         &self,
         facts: EditorSemanticFacts,
@@ -1393,13 +1226,38 @@ impl<'a> ParsePipeline<'a> {
         code: &str,
         meta: &ParseMetadata,
     ) -> Result<RenderSemanticModel> {
-        if let Some(parser) = self.engine.render_diagram_registry.get(&meta.diagram_type) {
-            return parser(code, meta);
+        debug_assert_eq!(
+            self.engine.diagram_registry.profile(),
+            self.engine.render_diagram_registry.profile()
+        );
+        let semantic = self.engine.diagram_registry.resolve(&meta.diagram_type);
+        let render = self
+            .engine
+            .render_diagram_registry
+            .resolve(&meta.diagram_type);
+
+        if let Some(render) = render
+            && render.owner == RegistryOwner::Custom
+        {
+            return (render.parser)(code, meta);
         }
 
-        let registry_profile = self.engine.render_diagram_registry.profile();
-        debug_assert_eq!(self.engine.diagram_registry.profile(), registry_profile);
-        if !family::permits_json_render_fallback(registry_profile, &meta.diagram_type) {
+        if let Some(semantic) = semantic
+            && semantic.owner == RegistryOwner::Custom
+        {
+            return (semantic.parser)(code, meta).map(RenderSemanticModel::Json);
+        }
+
+        if let Some(render) = render {
+            debug_assert_eq!(render.owner, RegistryOwner::BuiltIn);
+            return (render.parser)(code, meta);
+        }
+
+        if let Some(semantic) = semantic {
+            debug_assert_eq!(semantic.owner, RegistryOwner::BuiltIn);
+            if meta.diagram_type == "error" {
+                return (semantic.parser)(code, meta).map(RenderSemanticModel::Json);
+            }
             return Err(Error::diagram_parse_fallback(
                 meta.diagram_type.clone(),
                 format!(
@@ -1409,13 +1267,9 @@ impl<'a> ParsePipeline<'a> {
             ));
         }
 
-        diagram::parse_or_unsupported(
-            &self.engine.diagram_registry,
-            &meta.diagram_type,
-            code,
-            meta,
-        )
-        .map(RenderSemanticModel::Json)
+        Err(Error::UnsupportedDiagram {
+            diagram_type: meta.diagram_type.clone(),
+        })
     }
 
     fn preprocess(&self) -> Result<Option<(String, ParseMetadata)>> {

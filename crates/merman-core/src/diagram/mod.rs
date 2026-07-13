@@ -4,6 +4,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID: &str =
@@ -55,10 +56,24 @@ pub type DiagramSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<
 /// Parser used by the typed render-model path for one Mermaid diagram family.
 pub type RenderSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel>;
 
+/// Ownership of a parser resolved from a built-in registry plus its custom overlay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RegistryOwner {
+    BuiltIn,
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ResolvedParser<T> {
+    pub(crate) parser: T,
+    pub(crate) owner: RegistryOwner,
+}
+
 /// Registry for semantic JSON parsers keyed by Mermaid diagram type id.
 #[derive(Debug, Clone)]
 pub struct DiagramRegistry {
-    parsers: std::collections::HashMap<&'static str, DiagramSemanticParser>,
+    builtins: HashMap<&'static str, DiagramSemanticParser>,
+    overlays: HashMap<&'static str, DiagramSemanticParser>,
     profile: BaselineRegistryProfile,
 }
 
@@ -76,26 +91,46 @@ impl DiagramRegistry {
 
     fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
-            parsers: std::collections::HashMap::new(),
+            builtins: HashMap::new(),
+            overlays: HashMap::new(),
             profile,
         }
     }
 
     /// Registers or replaces the parser for a Mermaid diagram type id.
     pub fn insert(&mut self, diagram_type: &'static str, parser: DiagramSemanticParser) {
-        self.parsers.insert(diagram_type, parser);
+        self.overlays.insert(diagram_type, parser);
     }
 
     /// Looks up a parser by Mermaid diagram type id.
     pub fn get(&self, diagram_type: &str) -> Option<DiagramSemanticParser> {
-        self.parsers.get(diagram_type).copied()
+        self.resolve(diagram_type).map(|resolved| resolved.parser)
+    }
+
+    pub(crate) fn resolve(
+        &self,
+        diagram_type: &str,
+    ) -> Option<ResolvedParser<DiagramSemanticParser>> {
+        if let Some(parser) = self.overlays.get(diagram_type).copied() {
+            return Some(ResolvedParser {
+                parser,
+                owner: RegistryOwner::Custom,
+            });
+        }
+        self.builtins
+            .get(diagram_type)
+            .copied()
+            .map(|parser| ResolvedParser {
+                parser,
+                owner: RegistryOwner::BuiltIn,
+            })
     }
 
     /// Builds the full semantic parser registry for the repository's pinned Mermaid baseline.
     pub fn pinned_mermaid_baseline_full() -> Self {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
         for fact in crate::family::semantic_parser_facts(BaselineRegistryProfile::Full) {
-            reg.insert(fact.id, fact.parser);
+            reg.builtins.insert(fact.id, fact.parser);
         }
 
         reg
@@ -105,7 +140,7 @@ impl DiagramRegistry {
     pub fn pinned_mermaid_baseline_tiny() -> Self {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
         for fact in crate::family::semantic_parser_facts(BaselineRegistryProfile::Tiny) {
-            reg.insert(fact.id, fact.parser);
+            reg.builtins.insert(fact.id, fact.parser);
         }
 
         reg
@@ -129,7 +164,14 @@ impl DiagramRegistry {
 
     #[cfg(test)]
     pub(crate) fn parser_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
-        self.parsers.keys().copied()
+        self.builtins
+            .keys()
+            .chain(
+                self.overlays
+                    .keys()
+                    .filter(|id| !self.builtins.contains_key(**id)),
+            )
+            .copied()
     }
 }
 
@@ -321,7 +363,8 @@ impl RenderSemanticModel {
 /// Registry for typed render-model parsers keyed by Mermaid diagram type id.
 #[derive(Debug, Clone)]
 pub struct RenderDiagramRegistry {
-    parsers: std::collections::HashMap<&'static str, RenderSemanticParser>,
+    builtins: HashMap<&'static str, RenderSemanticParser>,
+    overlays: HashMap<&'static str, RenderSemanticParser>,
     profile: BaselineRegistryProfile,
 }
 
@@ -339,31 +382,53 @@ impl RenderDiagramRegistry {
 
     fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
-            parsers: std::collections::HashMap::new(),
+            builtins: HashMap::new(),
+            overlays: HashMap::new(),
             profile,
         }
     }
 
     /// Registers or replaces the typed render parser for a Mermaid diagram type id.
     pub fn insert(&mut self, diagram_type: &'static str, parser: RenderSemanticParser) {
-        self.parsers.insert(diagram_type, parser);
+        self.overlays.insert(diagram_type, parser);
     }
 
     /// Looks up a typed render parser by Mermaid diagram type id.
     pub fn get(&self, diagram_type: &str) -> Option<RenderSemanticParser> {
-        self.parsers.get(diagram_type).copied()
+        self.resolve(diagram_type).map(|resolved| resolved.parser)
+    }
+
+    pub(crate) fn resolve(
+        &self,
+        diagram_type: &str,
+    ) -> Option<ResolvedParser<RenderSemanticParser>> {
+        if let Some(parser) = self.overlays.get(diagram_type).copied() {
+            return Some(ResolvedParser {
+                parser,
+                owner: RegistryOwner::Custom,
+            });
+        }
+        self.builtins
+            .get(diagram_type)
+            .copied()
+            .map(|parser| ResolvedParser {
+                parser,
+                owner: RegistryOwner::BuiltIn,
+            })
     }
 
     #[cfg(test)]
     pub(crate) fn remove(&mut self, diagram_type: &str) -> Option<RenderSemanticParser> {
-        self.parsers.remove(diagram_type)
+        self.overlays
+            .remove(diagram_type)
+            .or_else(|| self.builtins.remove(diagram_type))
     }
 
     /// Builds the full typed render parser registry for the repository's pinned Mermaid baseline.
     pub fn pinned_mermaid_baseline_full() -> Self {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
         for fact in crate::family::render_parser_facts(BaselineRegistryProfile::Full) {
-            reg.insert(fact.id, fact.parser);
+            reg.builtins.insert(fact.id, fact.parser);
         }
 
         reg
@@ -373,7 +438,7 @@ impl RenderDiagramRegistry {
     pub fn pinned_mermaid_baseline_tiny() -> Self {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
         for fact in crate::family::render_parser_facts(BaselineRegistryProfile::Tiny) {
-            reg.insert(fact.id, fact.parser);
+            reg.builtins.insert(fact.id, fact.parser);
         }
 
         reg
@@ -397,7 +462,14 @@ impl RenderDiagramRegistry {
 
     #[cfg(test)]
     pub(crate) fn parser_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
-        self.parsers.keys().copied()
+        self.builtins
+            .keys()
+            .chain(
+                self.overlays
+                    .keys()
+                    .filter(|id| !self.builtins.contains_key(**id)),
+            )
+            .copied()
     }
 }
 

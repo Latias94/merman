@@ -24,49 +24,6 @@ pub struct FrontmatterBlock<'a> {
     pub stripped: &'a str,
 }
 
-#[cfg(feature = "full-config")]
-const FRONTMATTER_DIAGRAM_CONFIG_KEYS: &[&str] = &[
-    "architecture",
-    "block",
-    "c4",
-    "class",
-    "cynefin",
-    "er",
-    "eventmodeling",
-    "flowchart",
-    "gantt",
-    "gitGraph",
-    "ishikawa",
-    "journey",
-    "kanban",
-    "mindmap",
-    "packet",
-    "pie",
-    "quadrantChart",
-    "radar",
-    "railroad",
-    "requirement",
-    "sankey",
-    "sequence",
-    "state",
-    "swimlane",
-    "timeline",
-    "treeView",
-    "treemap",
-    "venn",
-    "xyChart",
-    "zenuml",
-];
-
-const FRONTMATTER_DIAGRAM_CONFIG_ALIASES: &[(&str, &str)] = &[
-    ("classDiagram", "class"),
-    ("erDiagram", "er"),
-    ("flowchart-v2", "flowchart"),
-    ("flowchart-elk", "flowchart"),
-    ("stateDiagram", "state"),
-    ("xychart", "xyChart"),
-];
-
 const MAX_CONFIG_NESTING_DEPTH: usize = crate::MAX_DIAGRAM_NESTING_DEPTH;
 
 pub fn preprocess_diagram(input: &str, registry: &DetectorRegistry) -> Result<PreprocessResult> {
@@ -457,10 +414,7 @@ pub fn parse_frontmatter_yaml_fields(
 }
 
 pub fn diagram_config_key_for_type(diagram_type: &str) -> &str {
-    FRONTMATTER_DIAGRAM_CONFIG_ALIASES
-        .iter()
-        .find_map(|(source_key, target_key)| (*source_key == diagram_type).then_some(*target_key))
-        .unwrap_or(diagram_type)
+    crate::family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type)
 }
 
 fn frontmatter_indent_end(line: &str) -> usize {
@@ -526,13 +480,16 @@ fn merge_top_level_frontmatter_diagram_configs(
 ) {
     // Mermaid upstream only consumes `config`, but users commonly read docs examples as allowing
     // diagram config namespaces at the YAML root. Keep this compatibility narrow and explicit.
-    for &(source_key, target_key) in FRONTMATTER_DIAGRAM_CONFIG_ALIASES {
-        if let Some(value) = parsed_obj.get(source_key) {
-            config.set_value(target_key, crate::config::clone_value_nonrecursive(value));
+    for fact in crate::family::frontmatter_config_aliases() {
+        if let Some(value) = parsed_obj.get(fact.source) {
+            config.set_value(
+                fact.namespace,
+                crate::config::clone_value_nonrecursive(value),
+            );
         }
     }
 
-    for &key in FRONTMATTER_DIAGRAM_CONFIG_KEYS {
+    for &key in crate::family::frontmatter_config_namespaces() {
         if let Some(value) = parsed_obj.get(key) {
             config.set_value(key, crate::config::clone_value_nonrecursive(value));
         }

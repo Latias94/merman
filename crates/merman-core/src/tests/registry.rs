@@ -2,6 +2,9 @@ use crate::baseline::BaselineRegistryProfile;
 use crate::{DetectorRegistry, DiagramRegistry, MermaidConfig, RenderDiagramRegistry};
 use std::collections::BTreeSet;
 
+const PINNED_SEMANTIC_WITHOUT_EDITOR: &[&str] = &["error"];
+const PINNED_WITHOUT_SEMANTICS: &[&str] = &["wardley"];
+
 #[test]
 fn detector_registries_follow_family_fact_order() {
     let full = DetectorRegistry::pinned_mermaid_baseline_full();
@@ -10,7 +13,10 @@ fn detector_registries_follow_family_fact_order() {
         .iter()
         .map(|fact| fact.id)
         .collect();
-    assert_eq!(full_actual, full_expected);
+    assert_eq!(
+        full_actual,
+        with_frontmatter_guard_after_error(full_expected)
+    );
 
     let tiny = DetectorRegistry::pinned_mermaid_baseline_tiny();
     let tiny_actual: Vec<_> = tiny.detector_ids().collect();
@@ -18,7 +24,20 @@ fn detector_registries_follow_family_fact_order() {
         .iter()
         .map(|fact| fact.id)
         .collect();
-    assert_eq!(tiny_actual, tiny_expected);
+    assert_eq!(
+        tiny_actual,
+        with_frontmatter_guard_after_error(tiny_expected)
+    );
+}
+
+fn with_frontmatter_guard_after_error(mut family_ids: Vec<&'static str>) -> Vec<&'static str> {
+    let insert_at = family_ids
+        .iter()
+        .position(|id| *id == "error")
+        .expect("error detector")
+        + 1;
+    family_ids.insert(insert_at, "---");
+    family_ids
 }
 
 #[test]
@@ -422,6 +441,231 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadEbnf"));
     assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadAbnf"));
     assert!(tiny.iter().any(|fact| fact.diagram_type == "railroadPeg"));
+}
+
+#[test]
+fn every_catalog_variant_projects_all_declared_capabilities_in_full_and_tiny_profiles() {
+    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
+        let detector_ids = sorted_set(
+            crate::family::detector_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        let semantic_ids = sorted_set(
+            crate::family::semantic_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        let editor_ids = sorted_set(
+            crate::family::editor_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        let combined_ids = sorted_set(
+            crate::family::combined_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        let render_ids = sorted_set(
+            crate::family::render_parser_facts(profile)
+                .iter()
+                .map(|fact| fact.id),
+        );
+        let header_ids = sorted_set(
+            crate::diagram_header_facts_for_profile(profile)
+                .iter()
+                .map(|fact| fact.diagram_type),
+        );
+
+        for capability in crate::diagram_family_capabilities_for_profile(profile) {
+            let id = capability.diagram_type;
+            assert_eq!(
+                capability.has_detector,
+                detector_ids.contains(id),
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                capability.has_semantic_parser,
+                semantic_ids.contains(id),
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                capability.has_editor_parser,
+                editor_ids.contains(id),
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                capability.has_combined_parser,
+                combined_ids.contains(id),
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                capability.has_render_parser,
+                render_ids.contains(id),
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                capability.has_header,
+                header_ids.contains(id),
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                crate::diagram_type_family_kind(id),
+                Some(capability.logical_family_kind),
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                crate::diagram_type_render_model_kind(id),
+                capability.render_model_kind,
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                crate::family::config_namespace_for_diagram_type(id),
+                capability.config_namespace,
+                "{profile:?} {id}"
+            );
+
+            let render_fact = crate::family::render_parser_facts(profile)
+                .iter()
+                .find(|fact| fact.id == id);
+            assert_eq!(
+                render_fact.and_then(|fact| fact.metadata_id),
+                capability.metadata_id,
+                "{profile:?} {id}"
+            );
+            assert_eq!(
+                render_fact.map(|fact| fact.model_kind),
+                capability.render_model_kind,
+                "{profile:?} {id}"
+            );
+        }
+    }
+
+    let full_ids = sorted_set(
+        crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full)
+            .iter()
+            .map(|fact| fact.diagram_type),
+    );
+    let tiny_ids = sorted_set(
+        crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Tiny)
+            .iter()
+            .map(|fact| fact.diagram_type),
+    );
+    assert_eq!(
+        full_ids
+            .difference(&tiny_ids)
+            .copied()
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["architecture", "flowchart-elk", "mindmap"])
+    );
+    assert!(!full_ids.contains("---"));
+}
+
+#[test]
+fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
+    let full = crate::diagram_family_capabilities_for_profile(BaselineRegistryProfile::Full);
+
+    let zenuml = family_capability(full, "zenuml");
+    assert_eq!(zenuml.logical_family_kind, "zenuml");
+    assert_eq!(zenuml.render_model_kind, Some("sequence"));
+
+    for id in ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"] {
+        let fact = family_capability(full, id);
+        assert_eq!(fact.logical_family_kind, "railroad", "{id}");
+        assert_eq!(fact.render_model_kind, Some("railroad"), "{id}");
+        assert!(fact.has_semantic_parser && fact.has_editor_parser && fact.has_render_parser);
+    }
+
+    let swimlane = family_capability(full, "swimlane");
+    assert_eq!(swimlane.logical_family_kind, "swimlane");
+    assert!(swimlane.has_detector && swimlane.has_semantic_parser && swimlane.has_editor_parser);
+    assert!(swimlane.has_combined_parser);
+    assert!(!swimlane.has_render_parser);
+    assert_eq!(swimlane.render_model_kind, None);
+    assert_eq!(swimlane.metadata_id, None);
+
+    let er_alias = family_capability(full, "erDiagram");
+    assert_eq!(er_alias.logical_family_kind, "er");
+    assert!(!er_alias.has_detector);
+    assert!(!er_alias.has_header);
+    assert!(
+        er_alias.has_semantic_parser && er_alias.has_editor_parser && er_alias.has_render_parser
+    );
+
+    let error = family_capability(full, "error");
+    assert!(error.has_detector && error.has_semantic_parser);
+    assert!(!error.has_editor_parser && !error.has_combined_parser && !error.has_render_parser);
+
+    let wardley = family_capability(full, "wardley");
+    assert!(wardley.has_detector && wardley.has_header);
+    assert!(
+        !wardley.has_semantic_parser
+            && !wardley.has_editor_parser
+            && !wardley.has_combined_parser
+            && !wardley.has_render_parser
+    );
+
+    let combined = full
+        .iter()
+        .filter_map(|fact| fact.has_combined_parser.then_some(fact.diagram_type))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        combined,
+        BTreeSet::from([
+            "architecture",
+            "flowchart",
+            "flowchart-elk",
+            "flowchart-v2",
+            "swimlane",
+        ])
+    );
+}
+
+#[test]
+fn every_admitted_semantic_variant_has_editor_facts_except_pinned_exceptions() {
+    let expected_semantic_without_editor = PINNED_SEMANTIC_WITHOUT_EDITOR
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let expected_without_semantics = PINNED_WITHOUT_SEMANTICS
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
+        let capabilities = crate::diagram_family_capabilities_for_profile(profile);
+        let semantic_without_editor = capabilities
+            .iter()
+            .filter_map(|fact| {
+                (fact.has_semantic_parser && !fact.has_editor_parser).then_some(fact.diagram_type)
+            })
+            .collect::<BTreeSet<_>>();
+        let without_semantics = capabilities
+            .iter()
+            .filter_map(|fact| (!fact.has_semantic_parser).then_some(fact.diagram_type))
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(
+            semantic_without_editor, expected_semantic_without_editor,
+            "{profile:?} introduced an undeclared semantic/editor capability gap"
+        );
+        assert_eq!(
+            without_semantics, expected_without_semantics,
+            "{profile:?} introduced an undeclared semantic admission gap"
+        );
+
+        for fact in capabilities {
+            if fact.has_semantic_parser
+                && !expected_semantic_without_editor.contains(fact.diagram_type)
+            {
+                assert!(
+                    fact.has_editor_parser,
+                    "{} must declare parser-backed editor facts in {profile:?}",
+                    fact.diagram_type
+                );
+            }
+        }
+    }
 }
 
 #[test]

@@ -1268,6 +1268,197 @@ fn render_parser_registry_falls_back_to_json_registry_for_custom_diagrams() {
 }
 
 #[test]
+fn custom_semantic_overlay_does_not_inherit_builtin_family_capabilities() {
+    for (diagram_type, source) in [
+        ("flowchart-v2", "flowchart TD\nA-->B"),
+        (
+            "architecture",
+            "architecture-beta\nservice api(server)[API]",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        engine
+            .diagram_registry_mut()
+            .insert(diagram_type, custom_overlay_json_parser);
+
+        let parsed = engine
+            .parse_diagram_for_render_model_with_type_sync(
+                diagram_type,
+                source,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        match parsed.model {
+            RenderSemanticModel::Json(model) => {
+                assert_eq!(model["owner"], json!("custom-semantic"));
+                assert_eq!(model["diagramType"], json!(diagram_type));
+            }
+            other => panic!(
+                "custom semantic overlay for {diagram_type} inherited built-in typed model: {other:?}"
+            ),
+        }
+
+        assert!(
+            engine
+                .parse_editor_semantic_facts_with_type_sync(
+                    diagram_type,
+                    source,
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .is_none(),
+            "custom semantic overlay for {diagram_type} inherited built-in editor facts"
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "full")]
+fn combined_parse_keeps_custom_semantic_overlay_and_reports_editor_unavailable() {
+    for (diagram_type, source) in [
+        ("flowchart-v2", "flowchart TD\nA-->B"),
+        (
+            "architecture",
+            "architecture-beta\nservice api(server)[API]",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        engine
+            .diagram_registry_mut()
+            .insert(diagram_type, custom_overlay_json_parser);
+
+        let parsed = engine
+            .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.diagram.meta.diagram_type, diagram_type);
+        assert_eq!(parsed.diagram.model["owner"], json!("custom-semantic"));
+        assert!(matches!(
+            parsed.editor_facts,
+            crate::ParsedEditorFacts::Unavailable
+        ));
+    }
+}
+
+#[test]
+fn combined_parse_keeps_generic_custom_semantics_and_reports_editor_unavailable() {
+    let mut engine = Engine::new();
+    engine
+        .registry_mut()
+        .add_fn("generic-custom", detect_generic_custom);
+    engine
+        .diagram_registry_mut()
+        .insert("generic-custom", custom_overlay_json_parser);
+
+    let parsed = engine
+        .parse_diagram_with_editor_facts_sync("generic-custom\npayload", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.diagram.meta.diagram_type, "generic-custom");
+    assert_eq!(parsed.diagram.model["owner"], json!("custom-semantic"));
+    assert!(matches!(
+        parsed.editor_facts,
+        crate::ParsedEditorFacts::Unavailable
+    ));
+}
+
+#[test]
+fn combined_parse_suppresses_missing_semantic_parsers_after_successful_detection() {
+    assert_combined_missing_semantic_contract(
+        &Engine::new(),
+        "wardley",
+        "wardley-beta\ntitle Example",
+    );
+
+    let mut custom = Engine::new();
+    custom
+        .registry_mut()
+        .add_fn("generic-custom", detect_generic_custom);
+    assert_combined_missing_semantic_contract(&custom, "generic-custom", "generic-custom\npayload");
+}
+
+fn assert_combined_missing_semantic_contract(engine: &Engine, expected_type: &str, source: &str) {
+    let error = engine
+        .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
+        .unwrap_err();
+    let crate::Error::UnsupportedDiagram { diagram_type } = error else {
+        panic!("unexpected strict combined error for {expected_type}: {error}");
+    };
+    assert_eq!(diagram_type, expected_type);
+
+    let parsed = engine
+        .parse_diagram_with_editor_facts_sync(source, ParseOptions::lenient())
+        .unwrap()
+        .unwrap();
+    assert_suppressed_error_diagram(&parsed.diagram);
+    assert!(matches!(
+        parsed.editor_facts,
+        crate::ParsedEditorFacts::Unavailable
+    ));
+}
+
+#[test]
+fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("flowchart-v2", custom_overlay_json_parser);
+    engine
+        .render_diagram_registry_mut()
+        .insert("flowchart-v2", custom_overlay_render_parser);
+
+    let parsed = engine
+        .parse_diagram_for_render_model_with_type_sync(
+            "flowchart-v2",
+            "flowchart TD\nA-->B",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Json(model) = parsed.model else {
+        panic!("explicit custom render overlay should select its own render model");
+    };
+    assert_eq!(model["owner"], json!("custom-render"));
+}
+
+#[test]
+#[cfg(not(feature = "full"))]
+fn tiny_profile_allows_custom_architecture_semantics_without_builtin_capability_inheritance() {
+    let mut engine = Engine::new();
+    engine
+        .diagram_registry_mut()
+        .insert("architecture", custom_overlay_json_parser);
+    let source = "architecture-beta\nservice api(server)[API]";
+
+    let parsed = engine
+        .parse_diagram_with_type_sync("architecture", source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["owner"], json!("custom-semantic"));
+
+    let rendered = engine
+        .parse_diagram_for_render_model_with_type_sync(
+            "architecture",
+            source,
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    assert!(matches!(rendered.model, RenderSemanticModel::Json(_)));
+    assert!(
+        engine
+            .parse_editor_semantic_facts_with_type_sync(
+                "architecture",
+                source,
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
 fn render_parser_registry_rejects_builtin_json_fallback_without_typed_parser() {
     let mut engine = Engine::new();
     assert!(
@@ -1292,6 +1483,24 @@ fn render_parser_registry_rejects_builtin_json_fallback_without_typed_parser() {
 
 fn custom_json_parser(_code: &str, _meta: &ParseMetadata) -> Result<serde_json::Value> {
     Ok(json!({ "type": "customDiagram" }))
+}
+
+fn custom_overlay_json_parser(_code: &str, meta: &ParseMetadata) -> Result<serde_json::Value> {
+    Ok(json!({
+        "owner": "custom-semantic",
+        "diagramType": meta.diagram_type,
+    }))
+}
+
+fn custom_overlay_render_parser(_code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel> {
+    Ok(RenderSemanticModel::Json(json!({
+        "owner": "custom-render",
+        "diagramType": meta.diagram_type,
+    })))
+}
+
+fn detect_generic_custom(text: &str, _config: &mut MermaidConfig) -> bool {
+    text.trim_start().starts_with("generic-custom")
 }
 
 fn render_model_for(input: &str) -> RenderSemanticModel {
