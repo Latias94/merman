@@ -20,7 +20,7 @@
           "is_cluster": false
         },
         {
-          "id": "bus",
+          "id": "db",
           "x": 0.0,
           "y": 0.0,
           "width": 80.0,
@@ -28,7 +28,7 @@
           "is_cluster": false
         },
         {
-          "id": "db",
+          "id": "bus",
           "x": 0.0,
           "y": 0.0,
           "width": 80.0,
