@@ -2,6 +2,17 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 use std::fmt::Write as _;
 
+const MERMAID_UNKNOWN_ICON_BODY: &str = r#"<g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g>"#;
+
+pub(in crate::svg) fn mermaid_unknown_icon_svg(
+    width: impl std::fmt::Display,
+    height: impl std::fmt::Display,
+) -> String {
+    format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 80 80">{MERMAID_UNKNOWN_ICON_BODY}</svg>"#
+    )
+}
+
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum IconRegistryError {
     #[error("Iconify JSON error: {0}")]

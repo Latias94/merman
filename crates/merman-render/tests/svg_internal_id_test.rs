@@ -218,6 +218,36 @@ A --> B"#,
 }
 
 #[test]
+fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
+    let icon_body = r##"<defs><clipPath id="clip"><path d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="tree-view-id-fixture" clip-path="url(#clip)" d="M0 0H16V16H0z"/>"##;
+    let mut registry = IconRegistry::new();
+    registry.insert("test:one", IconSvg::new(icon_body, 16.0, 16.0));
+    registry.insert("test:two", IconSvg::new(icon_body, 16.0, 16.0));
+    let options = SvgRenderOptions {
+        diagram_id: Some("m15-tree-view-icons".to_string()),
+        icon_registry: Some(Arc::new(registry)),
+        ..SvgRenderOptions::default()
+    };
+    let input = "treeView-beta\nRoot\n    One icon(test:one)\n    Two icon(test:two)\n";
+
+    let svg = render_svg_from_text_with_options(input, &options);
+    let repeated_svg = render_svg_from_text_with_options(input, &options);
+
+    assert_eq!(svg, repeated_svg);
+    assert!(!svg.contains(r#"id="clip""#), "{svg}");
+    assert!(!svg.contains(r#"url(#clip)"#), "{svg}");
+    assert_eq!(
+        svg.matches(r#"data-icon="tree-view-id-fixture""#).count(),
+        2,
+        "{svg}"
+    );
+    let ids = internal_iconify_ids(&svg);
+    assert_eq!(ids.len(), 2, "{svg}");
+    let unique = ids.iter().collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(unique.len(), ids.len(), "{svg}");
+}
+
+#[test]
 fn architecture_builtin_icon_internal_ids_are_scoped_per_node() {
     let svg = render_svg_from_text(
         r#"architecture-beta

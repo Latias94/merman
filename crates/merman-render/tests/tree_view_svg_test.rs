@@ -4,9 +4,29 @@ use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};
 use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
+use merman_render::svg::{
+    IconRegistry, IconSvg, SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config,
+};
 use merman_render::tree_view::layout_tree_view_diagram_typed;
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
+use std::sync::Arc;
+
+fn render_tree_view_svg_with_options(input: &str, options: SvgRenderOptions) -> String {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
+        .unwrap()
+        .expect("TreeView diagram");
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        LayoutOptions::default().text_measurer.as_ref(),
+        &options,
+    )
+    .unwrap()
+}
 
 #[test]
 fn tree_view_typed_render_model_outputs_svg() {
@@ -158,23 +178,21 @@ file.txt icon(file)
 App.tsx icon(logos:react)
 "##;
 
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
-        .unwrap()
-        .unwrap();
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
-    let svg = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
-        &SvgRenderOptions {
+    let mut registry = IconRegistry::new();
+    for icon in ["file", "folder"] {
+        registry.insert(
+            format!("mermaid-treeview:{icon}"),
+            IconSvg::new(r#"<path data-icon="registry-override"/>"#, 16.0, 16.0),
+        );
+    }
+    let svg = render_tree_view_svg_with_options(
+        input,
+        SvgRenderOptions {
             diagram_id: Some("tree-view-icon-size-test".to_string()),
+            icon_registry: Some(Arc::new(registry)),
             ..Default::default()
         },
-    )
-    .unwrap();
+    );
     let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
 
     for (icon, label) in [("folder", "src"), ("file", "file.txt")] {
@@ -219,17 +237,141 @@ App.tsx icon(logos:react)
 
         assert_eq!(label_x - icon_right, 4.0);
     }
+    assert!(!svg.contains("registry-override"), "{svg}");
 
     let third_party_symbol = document
         .descendants()
         .find(|node| node.attribute("id") == Some("tv-icon-tree-view-icon-size-test-logos-react"))
-        .expect("third-party residual icon definition");
+        .expect("third-party fallback icon definition");
+    let fallback_svg = third_party_symbol
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "svg")
+        .expect("missing icon uses the standard fallback SVG");
+    assert_eq!(fallback_svg.attribute("width"), Some("14"));
+    assert_eq!(fallback_svg.attribute("height"), Some("14"));
+    assert_eq!(fallback_svg.attribute("viewBox"), Some("0 0 80 80"));
+    assert!(
+        fallback_svg
+            .children()
+            .any(|node| node.is_element() && node.tag_name().name() == "g")
+    );
+}
+
+#[test]
+fn tree_view_registry_icons_preserve_viewbox_and_empty_body_semantics() {
+    let mut registry = IconRegistry::new();
+    registry.insert(
+        "test:rocket",
+        IconSvg::new(
+            r#"<path data-icon="tree-view-registry" d="M2 3H34V21H2z"/>"#,
+            32.0,
+            18.0,
+        )
+        .with_viewbox(2.0, 3.0, 32.0, 18.0),
+    );
+    registry.insert("test:empty", IconSvg::new("", 16.0, 16.0));
+    let svg = render_tree_view_svg_with_options(
+        "treeView-beta\nRoot\n    Rocket icon(test:rocket)\n    Rocket Again icon(test:rocket)\n    Missing icon(test:missing)\n    Empty icon(test:empty)\n",
+        SvgRenderOptions {
+            diagram_id: Some("tree-view-registry-test".to_string()),
+            icon_registry: Some(Arc::new(registry)),
+            ..Default::default()
+        },
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
+
+    let rocket_symbol = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("tv-icon-tree-view-registry-test-test-rocket"))
+        .expect("registry icon symbol");
     assert_eq!(
-        third_party_symbol
+        document
+            .descendants()
+            .filter(|node| {
+                node.attribute("id") == Some("tv-icon-tree-view-registry-test-test-rocket")
+            })
+            .count(),
+        1
+    );
+    let rocket_svg = rocket_symbol
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "svg")
+        .expect("registry icon SVG");
+    assert_eq!(rocket_svg.attribute("width"), Some("14"));
+    assert_eq!(rocket_svg.attribute("height"), Some("14"));
+    assert_eq!(rocket_svg.attribute("viewBox"), Some("2 3 32 18"));
+    assert!(
+        rocket_svg
+            .descendants()
+            .any(|node| node.attribute("data-icon") == Some("tree-view-registry"))
+    );
+
+    let missing_symbol = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("tv-icon-tree-view-registry-test-test-missing"))
+        .expect("missing registry icon symbol");
+    let missing_svg = missing_symbol
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "svg")
+        .expect("missing registry icon fallback SVG");
+    assert_eq!(missing_svg.attribute("width"), Some("14"));
+    assert_eq!(missing_svg.attribute("height"), Some("14"));
+    assert_eq!(missing_svg.attribute("viewBox"), Some("0 0 80 80"));
+    assert_eq!(
+        missing_svg
+            .descendants()
+            .find(|node| node.tag_name().name() == "tspan")
+            .and_then(|node| node.text()),
+        Some("?")
+    );
+
+    let empty_symbol = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("tv-icon-tree-view-registry-test-test-empty"))
+        .expect("empty registry icon symbol");
+    let empty_svg = empty_symbol
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "svg")
+        .expect("an explicitly empty registry icon still resolves");
+    assert_eq!(empty_svg.attribute("viewBox"), Some("0 0 16 16"));
+    assert_eq!(
+        empty_svg
             .children()
             .filter(|node| node.is_element())
             .count(),
         0
+    );
+}
+
+#[test]
+fn tree_view_missing_icon_without_registry_uses_unknown_icon() {
+    let svg = render_tree_view_svg_with_options(
+        "treeView-beta\nRoot icon(test:missing)\n",
+        SvgRenderOptions {
+            diagram_id: Some("tree-view-no-registry-test".to_string()),
+            ..Default::default()
+        },
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
+    let symbol = document
+        .descendants()
+        .find(|node| {
+            node.attribute("id") == Some("tv-icon-tree-view-no-registry-test-test-missing")
+        })
+        .expect("missing icon symbol");
+    let icon_svg = symbol
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "svg")
+        .expect("unknown icon SVG");
+    assert_eq!(icon_svg.attribute("width"), Some("14"));
+    assert_eq!(icon_svg.attribute("height"), Some("14"));
+    assert_eq!(icon_svg.attribute("viewBox"), Some("0 0 80 80"));
+    assert_eq!(
+        icon_svg
+            .descendants()
+            .find(|node| node.tag_name().name() == "tspan")
+            .and_then(|node| node.text()),
+        Some("?")
     );
 }
 

@@ -1,5 +1,6 @@
 use super::super::*;
 use crate::model::TreeViewNodeLayout;
+use crate::svg::icon_registry::mermaid_unknown_icon_svg;
 use crate::tree_view::{
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
     is_tree_view_highlight_class,
@@ -87,7 +88,12 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         );
     }
     let _ = write!(&mut out, "<style>{css}</style>");
-    push_tree_view_icon_defs(&mut out, layout, diagram_id);
+    push_tree_view_icon_defs(
+        &mut out,
+        layout,
+        diagram_id,
+        options.icon_registry.as_deref(),
+    );
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
     let mut next_node = 0usize;
@@ -219,7 +225,12 @@ fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
     classes.join(" ")
 }
 
-fn push_tree_view_icon_defs(out: &mut String, layout: &TreeViewDiagramLayout, diagram_id: &str) {
+fn push_tree_view_icon_defs(
+    out: &mut String,
+    layout: &TreeViewDiagramLayout,
+    diagram_id: &str,
+    icon_registry: Option<&crate::svg::IconRegistry>,
+) {
     let used_icons = layout
         .nodes
         .iter()
@@ -230,11 +241,8 @@ fn push_tree_view_icon_defs(out: &mut String, layout: &TreeViewDiagramLayout, di
     }
     out.push_str("<defs>");
     for icon in used_icons {
-        let _ = write!(
-            out,
-            r#"<g id="{}">"#,
-            tree_view_icon_symbol_id(diagram_id, icon)
-        );
+        let symbol_id = tree_view_icon_symbol_id(diagram_id, icon);
+        let _ = write!(out, r#"<g id="{symbol_id}">"#);
         if let Some(body) = tree_view_icon_body(icon) {
             let _ = write!(
                 out,
@@ -242,6 +250,22 @@ fn push_tree_view_icon_defs(out: &mut String, layout: &TreeViewDiagramLayout, di
                 fmt(TREE_VIEW_ICON_SIZE),
                 fmt(TREE_VIEW_ICON_SIZE)
             );
+        } else {
+            let icon_svg = icon_registry
+                .and_then(|registry| {
+                    registry.svg_for_scoped(
+                        icon,
+                        TREE_VIEW_ICON_SIZE,
+                        TREE_VIEW_ICON_SIZE,
+                        None,
+                        None,
+                        &symbol_id,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE))
+                });
+            out.push_str(&icon_svg);
         }
         out.push_str("</g>");
     }

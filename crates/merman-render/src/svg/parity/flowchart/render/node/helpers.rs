@@ -1,5 +1,6 @@
 //! Node-level helpers (link sanitization, class building, placeholders).
 
+use crate::svg::icon_registry::mermaid_unknown_icon_svg;
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::util::escape_attr_display;
 use crate::svg::parity::{escape_xml_display, escape_xml_into, fmt_display};
@@ -16,14 +17,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn icon_svg_or_placeholder(
         .and_then(|registry| {
             registry.svg_for_scoped(icon_name, icon_size, icon_size, None, None, &id_scope)
         })
-        .unwrap_or_else(|| placeholder_icon_svg(icon_size))
-}
-
-fn placeholder_icon_svg(icon_size: f64) -> String {
-    format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{s}" height="{s}" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg>"#,
-        s = fmt_display(icon_size)
-    )
+        .unwrap_or_else(|| mermaid_unknown_icon_svg(fmt_display(icon_size), fmt_display(icon_size)))
 }
 
 fn is_self_loop_label_node_id(id: &str) -> bool {
