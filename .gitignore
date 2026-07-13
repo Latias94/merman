@@ -16,6 +16,10 @@
 /tools/mermaid-cli/.cache
 /tools/vscode-extension/.vscode-test/
 /dist/
+/fuzz/artifacts/
+/fuzz/corpus/
+/fuzz/coverage/
+/fuzz/target/
 
 # Local npm tarballs used for upstream layout source inspection (do not commit)
 /cose-base-*.tgz

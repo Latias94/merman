@@ -1,0 +1,124 @@
+name: Fuzz
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - Cargo.lock
+      - Cargo.toml
+      - "crates/**"
+      - fuzz/Cargo.lock
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  pull_request:
+    paths:
+      - Cargo.lock
+      - Cargo.toml
+      - "crates/**"
+      - fuzz/Cargo.lock
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+  schedule:
+    - cron: "41 3 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_FUZZ_VERSION: "0.13.2"
+  FUZZ_NIGHTLY: nightly-2026-07-01
+  RUST_BACKTRACE: "1"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  libfuzzer-asan:
+    name: libFuzzer ASan (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: parse_mermaid
+            seed: fuzz/seeds/mermaid
+            dictionary: fuzz/dictionaries/mermaid.dict
+            max_len: 262144
+          - target: render_mermaid
+            seed: fuzz/seeds/mermaid
+            dictionary: fuzz/dictionaries/mermaid.dict
+            max_len: 32768
+          - target: svg_pipeline
+            seed: fuzz/seeds/svg
+            dictionary: fuzz/dictionaries/svg.dict
+            max_len: 262144
+          - target: ffi_api
+            seed: fuzz/seeds/ffi
+            dictionary: fuzz/dictionaries/mermaid.dict
+            max_len: 16384
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.FUZZ_NIGHTLY }}
+          components: rust-src
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+          workspaces: |
+            . -> target
+            fuzz -> fuzz/target
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version "$CARGO_FUZZ_VERSION" --locked
+
+      - name: Check fuzz workspace lockfile
+        run: cargo +"$FUZZ_NIGHTLY" check --manifest-path fuzz/Cargo.toml --locked
+
+      - name: Choose libFuzzer run length
+        id: run-length
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "args=-max_total_time=300 -timeout=10 -max_len=${{ matrix.max_len }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=-runs=64 -timeout=10 -max_len=${{ matrix.max_len }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare corpus directory
+        run: mkdir -p "fuzz/corpus/${{ matrix.target }}"
+
+      - name: Run libFuzzer with ASan
+        run: |
+          cargo +"$FUZZ_NIGHTLY" fuzz run \
+            --fuzz-dir fuzz \
+            --sanitizer address \
+            --jobs 1 \
+            "${{ matrix.target }}" \
+            "fuzz/corpus/${{ matrix.target }}" \
+            "${{ matrix.seed }}" \
+            -- \
+            "-dict=${{ matrix.dictionary }}" \
+            ${{ steps.run-length.outputs.args }}
+
+      - name: Upload fuzz artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/**
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,5 @@
+architecture-beta
+  group platform(cloud)[Platform]
+  service api(server)[API] in platform
+  service db(database)[DB] in platform
+  api:R --> L:db

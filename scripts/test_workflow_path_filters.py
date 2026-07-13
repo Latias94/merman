@@ -48,6 +48,42 @@ def workflow_event_paths(relative_path: str, event_name: str) -> list[str]:
 
 
 class WorkflowPathFilterTests(unittest.TestCase):
+    def test_fuzz_paths_cover_parser_render_and_harness_inputs(self) -> None:
+        required_paths = {
+            ".github/workflows/fuzz.yml",
+            "Cargo.lock",
+            "Cargo.toml",
+            "crates/**",
+            "fuzz/Cargo.lock",
+            "fuzz/**",
+        }
+
+        for event_name in ("push", "pull_request"):
+            with self.subTest(event_name=event_name):
+                self.assert_event_paths_include(
+                    ".github/workflows/fuzz.yml",
+                    event_name,
+                    required_paths,
+                )
+
+    def test_security_audit_paths_cover_fuzz_workspace_inputs(self) -> None:
+        required_paths = {
+            ".github/workflows/security-audit.yml",
+            "Cargo.lock",
+            "Cargo.toml",
+            "crates/**/Cargo.toml",
+            "fuzz/Cargo.lock",
+            "fuzz/Cargo.toml",
+        }
+
+        for event_name in ("push", "pull_request"):
+            with self.subTest(event_name=event_name):
+                self.assert_event_paths_include(
+                    ".github/workflows/security-audit.yml",
+                    event_name,
+                    required_paths,
+                )
+
     def test_pages_paths_cover_web_prepack_inputs(self) -> None:
         required_paths = {
             ".github/workflows/pages.yml",
