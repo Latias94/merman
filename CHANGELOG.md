@@ -21,7 +21,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixes and polish
 
-- Railroad ABNF now accepts Mermaid-compatible large repetition bounds, including binary64 rounding and positive infinity; semantic JSON represents infinity as `null`.
+- Railroad ABNF now accepts Mermaid-compatible large repetition bounds, including binary64 rounding and positive infinity; semantic JSON represents infinity as `null`. #24
 - TreeView now embeds configured Iconify pack bodies at Mermaid's 14px size and shows the standard unknown icon for missing packs or entries. #23
 - Removed 37 obsolete fixture-scoped root viewport pins and tightened the no-growth guard to the 183-entry Mermaid 11.16 inventory. #22
 - Kept centered Railroad choice branches straight when equivalent lane coordinates differ only because of floating-point addition order. #22
