@@ -219,32 +219,103 @@ A --> B"#,
 
 #[test]
 fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
-    let icon_body = r##"<defs><clipPath id="clip"><path d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="tree-view-id-fixture" clip-path="url(#clip)" d="M0 0H16V16H0z"/>"##;
+    let icon_body = r##"<defs><clipPath id="none"><path id="shape" d="M0 0H16V16H0z"/></clipPath></defs><path data-icon="tree-view-id-fixture" fill="none" clip-path="url(#none)" d="M0 0H16V16H0z"/><use href="#shape" xlink:href="#shape"/><animate begin="shape.end;shape.click"/>"##;
     let mut registry = IconRegistry::new();
-    registry.insert("test:one", IconSvg::new(icon_body, 16.0, 16.0));
-    registry.insert("test:two", IconSvg::new(icon_body, 16.0, 16.0));
+    registry.insert("foo:bar-baz", IconSvg::new(icon_body, 16.0, 16.0));
+    registry.insert("foo-bar:baz", IconSvg::new(icon_body, 16.0, 16.0));
+    registry.insert("foo:bar-baz-2", IconSvg::new(icon_body, 16.0, 16.0));
     let options = SvgRenderOptions {
         diagram_id: Some("m15-tree-view-icons".to_string()),
         icon_registry: Some(Arc::new(registry)),
         ..SvgRenderOptions::default()
     };
-    let input = "treeView-beta\nRoot\n    One icon(test:one)\n    Two icon(test:two)\n";
+    let input = "treeView-beta\nRoot\n    One icon(foo:bar-baz)\n    Two icon(foo-bar:baz)\n    Three icon(foo:bar-baz-2)\n";
 
     let svg = render_svg_from_text_with_options(input, &options);
     let repeated_svg = render_svg_from_text_with_options(input, &options);
 
     assert_eq!(svg, repeated_svg);
-    assert!(!svg.contains(r#"id="clip""#), "{svg}");
-    assert!(!svg.contains(r#"url(#clip)"#), "{svg}");
+    assert!(!svg.contains(r#"id="none""#), "{svg}");
+    assert!(!svg.contains(r#"id="shape""#), "{svg}");
+    assert!(!svg.contains(r#"url(#none)"#), "{svg}");
+    assert!(!svg.contains(r##"href="#shape""##), "{svg}");
+    assert!(!svg.contains("shape.end"), "{svg}");
+    assert!(!svg.contains("shape.click"), "{svg}");
+    assert_eq!(svg.matches(r#"fill="none""#).count(), 3, "{svg}");
     assert_eq!(
         svg.matches(r#"data-icon="tree-view-id-fixture""#).count(),
-        2,
+        3,
         "{svg}"
     );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    let symbol_references = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("use") && node.attribute("class") == Some("treeView-node-icon")
+        })
+        .filter_map(|node| {
+            node.attributes()
+                .find(|attribute| attribute.name() == "href")
+                .and_then(|attribute| attribute.value().strip_prefix('#'))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        symbol_references,
+        [
+            "tv-icon-m15-tree-view-icons-foo-bar-baz-3",
+            "tv-icon-m15-tree-view-icons-foo-bar-baz",
+            "tv-icon-m15-tree-view-icons-foo-bar-baz-2",
+        ],
+        "{svg}"
+    );
+    assert_eq!(
+        symbol_references
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        symbol_references.len(),
+        "{svg}"
+    );
+
     let ids = internal_iconify_ids(&svg);
-    assert_eq!(ids.len(), 2, "{svg}");
+    assert_eq!(ids.len(), 6, "{svg}");
     let unique = ids.iter().collect::<std::collections::BTreeSet<_>>();
     assert_eq!(unique.len(), ids.len(), "{svg}");
+
+    let defined_ids = document
+        .descendants()
+        .filter_map(|node| node.attribute("id"))
+        .collect::<std::collections::BTreeSet<_>>();
+    let local_reference_targets = document
+        .descendants()
+        .flat_map(|node| node.attributes())
+        .filter_map(|attribute| {
+            let value = attribute.value();
+            if attribute.name() == "href" {
+                value.strip_prefix('#').map(str::to_string)
+            } else {
+                value
+                    .strip_prefix("url(#")
+                    .and_then(|value| value.strip_suffix(')'))
+                    .map(str::to_string)
+            }
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        local_reference_targets
+            .iter()
+            .filter(|target| target.starts_with("IconifyId"))
+            .count(),
+        9,
+        "{svg}"
+    );
+    for target in local_reference_targets {
+        assert!(
+            defined_ids.contains(target.as_str()),
+            "reference target `{target}` has no matching id in SVG:\n{svg}"
+        );
+    }
 }
 
 #[test]
