@@ -58,6 +58,10 @@ jobs:
             seed: fuzz/seeds/svg
             dictionary: fuzz/dictionaries/svg.dict
             max_len: 262144
+          - target: ffi_api
+            seed: fuzz/seeds/ffi
+            dictionary: fuzz/dictionaries/mermaid.dict
+            max_len: 16384
 
     steps:
       - uses: actions/checkout@v6
