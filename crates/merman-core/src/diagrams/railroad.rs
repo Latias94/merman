@@ -3,8 +3,10 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
-use serde::{Deserialize, Serialize};
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Value, json};
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RailroadDialect {
@@ -40,6 +42,174 @@ impl RailroadDialect {
             Self::Abnf => "railroad abnf",
             Self::Peg => "railroad peg",
         }
+    }
+}
+
+/// A Mermaid Railroad repetition bound stored with JavaScript number semantics.
+///
+/// Values are non-negative integral binary64 numbers or positive infinity. Positive infinity
+/// represents an unbounded maximum or an oversized ABNF bound and serializes as JSON `null`,
+/// matching `JSON.stringify(Infinity)`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RailroadRepeatBound(f64);
+
+impl Eq for RailroadRepeatBound {}
+
+impl RailroadRepeatBound {
+    /// The finite bound zero.
+    pub const ZERO: Self = Self(0.0);
+    /// The finite bound one.
+    pub const ONE: Self = Self(1.0);
+    /// The positive-infinity bound.
+    pub const INFINITY: Self = Self(f64::INFINITY);
+
+    /// Returns whether this bound is zero.
+    pub const fn is_zero(self) -> bool {
+        self.0 == 0.0
+    }
+
+    /// Returns whether this bound is one.
+    pub const fn is_one(self) -> bool {
+        self.0 == 1.0
+    }
+
+    /// Returns whether this bound is positive infinity.
+    pub const fn is_infinite(self) -> bool {
+        self.0.is_infinite()
+    }
+
+    /// Returns the validated binary64 value.
+    pub const fn as_f64(self) -> f64 {
+        self.0
+    }
+}
+
+/// An invalid value supplied to [`RailroadRepeatBound`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum RailroadRepeatBoundError {
+    /// The supplied value was NaN.
+    #[error("railroad repetition bound cannot be NaN")]
+    NotANumber,
+    /// The supplied value was negative, including negative infinity.
+    #[error("railroad repetition bound must be non-negative")]
+    Negative,
+    /// The supplied finite value had a fractional component.
+    #[error("railroad repetition bound must be an integer")]
+    Fractional,
+}
+
+impl TryFrom<f64> for RailroadRepeatBound {
+    type Error = RailroadRepeatBoundError;
+
+    fn try_from(value: f64) -> std::result::Result<Self, Self::Error> {
+        if value.is_nan() {
+            return Err(RailroadRepeatBoundError::NotANumber);
+        }
+        if value.is_sign_negative() && value != 0.0 {
+            return Err(RailroadRepeatBoundError::Negative);
+        }
+        if value == 0.0 {
+            return Ok(Self::ZERO);
+        }
+        if value.is_infinite() {
+            return Ok(Self::INFINITY);
+        }
+        if value.fract() != 0.0 {
+            return Err(RailroadRepeatBoundError::Fractional);
+        }
+        Ok(Self(value))
+    }
+}
+
+impl From<u64> for RailroadRepeatBound {
+    fn from(value: u64) -> Self {
+        Self(value as f64)
+    }
+}
+
+impl Serialize for RailroadRepeatBound {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if self.is_infinite() {
+            return serializer.serialize_none();
+        }
+
+        let integer = self.0 as u64;
+        if (integer as f64).to_bits() == self.0.to_bits() {
+            serializer.serialize_u64(integer)
+        } else {
+            serializer.serialize_f64(self.0)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RailroadRepeatBound {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct RailroadRepeatBoundVisitor;
+
+        impl<'de> Visitor<'de> for RailroadRepeatBoundVisitor {
+            type Value = RailroadRepeatBound;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a non-negative integer or null")
+            }
+
+            fn visit_unit<E>(self) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(RailroadRepeatBound::INFINITY)
+            }
+
+            fn visit_none<E>(self) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(RailroadRepeatBound::INFINITY)
+            }
+
+            fn visit_u64<E>(self, value: u64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(RailroadRepeatBound::from(value))
+            }
+
+            fn visit_u128<E>(self, value: u128) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                RailroadRepeatBound::try_from(value as f64).map_err(E::custom)
+            }
+
+            fn visit_i64<E>(self, value: i64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                RailroadRepeatBound::try_from(value as f64).map_err(E::custom)
+            }
+
+            fn visit_i128<E>(self, value: i128) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                RailroadRepeatBound::try_from(value as f64).map_err(E::custom)
+            }
+
+            fn visit_f64<E>(self, value: f64) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                RailroadRepeatBound::try_from(value).map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_any(RailroadRepeatBoundVisitor)
     }
 }
 
@@ -135,8 +305,9 @@ pub enum RailroadAstNode {
     #[serde(rename = "repetition")]
     Repetition {
         element: Box<RailroadAstNode>,
-        min: u64,
-        max: Option<u64>,
+        min: RailroadRepeatBound,
+        #[serde(default = "default_repeat_max")]
+        max: RailroadRepeatBound,
         #[serde(skip_serializing_if = "Option::is_none")]
         separator: Option<Box<RailroadAstNode>>,
         #[serde(skip_serializing, default = "zero_span")]
@@ -150,6 +321,10 @@ pub enum RailroadAstNode {
         #[serde(skip_serializing, default = "zero_span")]
         selection: SourceSpan,
     },
+}
+
+fn default_repeat_max() -> RailroadRepeatBound {
+    RailroadRepeatBound::INFINITY
 }
 
 fn zero_span() -> SourceSpan {
@@ -515,8 +690,8 @@ impl<'a> RailroadParser<'a> {
                 let end = self.expect_symbol(')', "expected ')' after oneOrMore argument")?;
                 RailroadAstNode::Repetition {
                     element: Box::new(element),
-                    min: 1,
-                    max: None,
+                    min: RailroadRepeatBound::ONE,
+                    max: RailroadRepeatBound::INFINITY,
                     separator: None,
                     span: SourceSpan::new(start, end.span.end),
                 }
@@ -527,8 +702,8 @@ impl<'a> RailroadParser<'a> {
                 let end = self.expect_symbol(')', "expected ')' after zeroOrMore argument")?;
                 RailroadAstNode::Repetition {
                     element: Box::new(element),
-                    min: 0,
-                    max: None,
+                    min: RailroadRepeatBound::ZERO,
+                    max: RailroadRepeatBound::INFINITY,
                     separator: None,
                     span: SourceSpan::new(start, end.span.end),
                 }
@@ -624,8 +799,8 @@ impl<'a> RailroadParser<'a> {
                 let span = SourceSpan::new(node.span().start, self.previous_end());
                 node = RailroadAstNode::Repetition {
                     element: Box::new(node),
-                    min: 0,
-                    max: None,
+                    min: RailroadRepeatBound::ZERO,
+                    max: RailroadRepeatBound::INFINITY,
                     separator: None,
                     span,
                 };
@@ -635,8 +810,8 @@ impl<'a> RailroadParser<'a> {
                 let span = SourceSpan::new(node.span().start, self.previous_end());
                 node = RailroadAstNode::Repetition {
                     element: Box::new(node),
-                    min: 1,
-                    max: None,
+                    min: RailroadRepeatBound::ONE,
+                    max: RailroadRepeatBound::INFINITY,
                     separator: None,
                     span,
                 };
@@ -707,8 +882,8 @@ impl<'a> RailroadParser<'a> {
             let end = self.expect_symbol('}', "expected '}' after EBNF repetition")?;
             return Ok(RailroadAstNode::Repetition {
                 element: Box::new(element),
-                min: 0,
-                max: None,
+                min: RailroadRepeatBound::ZERO,
+                max: RailroadRepeatBound::INFINITY,
                 separator: None,
                 span: SourceSpan::new(start, end.span.end),
             });
@@ -758,17 +933,10 @@ impl<'a> RailroadParser<'a> {
             return Ok(primary);
         };
 
-        let (min, max) = parse_abnf_repeat_bounds(&repeat.text).map_err(|overflow| {
-            self.error_at_span(
-                SourceSpan::new(
-                    repeat.span.start + overflow.start,
-                    repeat.span.start + overflow.end,
-                ),
-                ABNF_REPEAT_BOUND_OVERFLOW_MESSAGE,
-            )
-        })?;
+        let (min, max) = parse_abnf_repeat_bounds(&repeat.text)
+            .ok_or_else(|| self.error_at_span(repeat.span, "invalid ABNF repetition bound"))?;
         let span = SourceSpan::new(repeat.span.start, primary.span().end);
-        if min == 0 && max == Some(1) {
+        if min.is_zero() && max.is_one() {
             return Ok(RailroadAstNode::Optional {
                 element: Box::new(primary),
                 span,
@@ -894,8 +1062,8 @@ impl<'a> RailroadParser<'a> {
             return Ok(RailroadAstNode::Repetition {
                 span: SourceSpan::new(primary.span().start, self.previous_end()),
                 element: Box::new(primary),
-                min: 0,
-                max: None,
+                min: RailroadRepeatBound::ZERO,
+                max: RailroadRepeatBound::INFINITY,
                 separator: None,
             });
         }
@@ -903,8 +1071,8 @@ impl<'a> RailroadParser<'a> {
             return Ok(RailroadAstNode::Repetition {
                 span: SourceSpan::new(primary.span().start, self.previous_end()),
                 element: Box::new(primary),
-                min: 1,
-                max: None,
+                min: RailroadRepeatBound::ONE,
+                max: RailroadRepeatBound::INFINITY,
                 separator: None,
             });
         }
@@ -1879,41 +2047,30 @@ fn strip_inline_comment_aware(line: &str) -> &str {
     line
 }
 
-const ABNF_REPEAT_BOUND_OVERFLOW_MESSAGE: &str =
-    "ABNF repetition bound exceeds the supported integer range";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct AbnfRepeatBoundOverflow {
-    start: usize,
-    end: usize,
-}
-
-fn parse_abnf_repeat_bounds(
-    repeat: &str,
-) -> std::result::Result<(u64, Option<u64>), AbnfRepeatBoundOverflow> {
-    let parse_bound = |bound: &str, start: usize| {
-        bound.parse::<u64>().map_err(|_| AbnfRepeatBoundOverflow {
-            start,
-            end: start + bound.len(),
-        })
+fn parse_abnf_repeat_bounds(repeat: &str) -> Option<(RailroadRepeatBound, RailroadRepeatBound)> {
+    let parse_bound = |bound: &str| {
+        bound
+            .parse::<f64>()
+            .ok()
+            .and_then(|value| RailroadRepeatBound::try_from(value).ok())
     };
 
     if let Some((min, max)) = repeat.split_once('*') {
         let min = if min.is_empty() {
-            0
+            RailroadRepeatBound::ZERO
         } else {
-            parse_bound(min, 0)?
+            parse_bound(min)?
         };
         let max = if max.is_empty() {
-            None
+            RailroadRepeatBound::INFINITY
         } else {
-            Some(parse_bound(max, repeat.len() - max.len())?)
+            parse_bound(max)?
         };
-        return Ok((min, max));
+        return Some((min, max));
     }
 
-    let exact = parse_bound(repeat, 0)?;
-    Ok((exact, Some(exact)))
+    let exact = parse_bound(repeat)?;
+    Some((exact, exact))
 }
 
 fn collapse_sequence(elements: Vec<RailroadAstNode>, span: SourceSpan) -> RailroadAstNode {
@@ -2180,66 +2337,38 @@ mod tests {
 
     #[test]
     fn parses_repeat_bounds() {
-        assert_eq!(parse_abnf_repeat_bounds("*"), Ok((0, None)));
-        assert_eq!(parse_abnf_repeat_bounds("1*"), Ok((1, None)));
-        assert_eq!(parse_abnf_repeat_bounds("*2"), Ok((0, Some(2))));
-        assert_eq!(parse_abnf_repeat_bounds("1*2"), Ok((1, Some(2))));
-        assert_eq!(parse_abnf_repeat_bounds("3"), Ok((3, Some(3))));
+        assert_eq!(
+            parse_abnf_repeat_bounds("*"),
+            Some((RailroadRepeatBound::ZERO, RailroadRepeatBound::INFINITY))
+        );
+        assert_eq!(
+            parse_abnf_repeat_bounds("1*"),
+            Some((RailroadRepeatBound::ONE, RailroadRepeatBound::INFINITY))
+        );
+        assert_eq!(
+            parse_abnf_repeat_bounds("*2"),
+            Some((RailroadRepeatBound::ZERO, 2.into()))
+        );
+        assert_eq!(
+            parse_abnf_repeat_bounds("1*2"),
+            Some((RailroadRepeatBound::ONE, 2.into()))
+        );
+        assert_eq!(parse_abnf_repeat_bounds("3"), Some((3.into(), 3.into())));
         assert_eq!(
             parse_abnf_repeat_bounds("18446744073709551615"),
-            Ok((u64::MAX, Some(u64::MAX)))
+            Some((u64::MAX.into(), u64::MAX.into()))
+        );
+        assert_eq!(
+            parse_abnf_repeat_bounds("18446744073709551616"),
+            Some((u64::MAX.into(), u64::MAX.into()))
         );
         assert_eq!(
             parse_abnf_repeat_bounds("00000000000000000002*00000000000000000003"),
-            Ok((2, Some(3)))
+            Some((2.into(), 3.into()))
         );
-    }
-
-    fn assert_abnf_repeat_overflow(repeat: &str, bound_start: usize, bound_end: usize) {
-        let source = format!("railroad-abnf-beta\nrule = {repeat}\"a\" ;\n");
-        let tokens = Lexer::new(&source, RailroadDialect::Abnf, "railroadAbnf")
-            .tokenize()
-            .expect("ABNF source should tokenize");
-        let error =
-            RailroadParser::new(tokens, source.len(), "railroadAbnf", RailroadDialect::Abnf)
-                .parse()
-                .expect_err("overflowing repetition bound should be rejected");
-        let Error::DiagramParse {
-            diagram_type,
-            diagnostic,
-        } = error
-        else {
-            panic!("expected railroad parse error");
-        };
-
-        let repeat_start = source.find(repeat).expect("source should contain repeat");
-        assert_eq!(diagram_type, "railroadAbnf");
-        assert_eq!(diagnostic.message(), ABNF_REPEAT_BOUND_OVERFLOW_MESSAGE);
-        assert_eq!(
-            diagnostic.span(),
-            Some(SourceSpan::new(
-                repeat_start + bound_start,
-                repeat_start + bound_end,
-            ))
-        );
-        assert_eq!(
-            diagnostic.span_kind(),
-            crate::ParseDiagnosticSpanKind::Exact
-        );
-    }
-
-    #[test]
-    fn rejects_overflowing_exact_abnf_repeat_bound() {
-        assert_abnf_repeat_overflow("18446744073709551616", 0, 20);
-    }
-
-    #[test]
-    fn rejects_overflowing_minimum_abnf_repeat_bound() {
-        assert_abnf_repeat_overflow("18446744073709551616*", 0, 20);
-    }
-
-    #[test]
-    fn rejects_overflowing_maximum_abnf_repeat_bound() {
-        assert_abnf_repeat_overflow("1*18446744073709551616", 2, 22);
+        let huge = "9".repeat(400);
+        let (min, max) = parse_abnf_repeat_bounds(&huge).expect("all-digit repeat bound");
+        assert!(min.is_infinite());
+        assert!(max.is_infinite());
     }
 }

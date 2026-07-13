@@ -9,6 +9,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Breaking changes
 
 - Updated the compatibility target from Mermaid `11.15.0` to `11.16.0`; integrations that retain semantic, layout, or SVG parity snapshots should regenerate them.
+- `RailroadAstNode::Repetition` now uses `RailroadRepeatBound` for both `min` and `max` instead of `u64` and `Option<u64>`; Rust callers should construct finite bounds with constants or `From<u64>` and use `RailroadRepeatBound::INFINITY` for an unbounded maximum.
 
 ### New and changed
 
@@ -20,10 +21,11 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixes and polish
 
+- Railroad ABNF now accepts Mermaid-compatible large repetition bounds, including binary64 rounding and positive infinity; semantic JSON represents infinity as `null`.
 - TreeView now embeds configured Iconify pack bodies at Mermaid's 14px size and shows the standard unknown icon for missing packs or entries. #23
 - Removed 37 obsolete fixture-scoped root viewport pins and tightened the no-growth guard to the 183-entry Mermaid 11.16 inventory. #22
 - Kept centered Railroad choice branches straight when equivalent lane coordinates differ only because of floating-point addition order. #22
-- Fixed Mermaid 11.16 edge cases in TreeView annotation boundaries, 14px built-in icons, and highlight bounds; Cynefin inline syntax, frontmatter titles, and global fonts; Architecture reserved IDs; exact Railroad ABNF overflow diagnostics; and generated XYChart axis defaults. #21
+- Fixed Mermaid 11.16 edge cases in TreeView annotation boundaries, 14px built-in icons, and highlight bounds; Cynefin inline syntax, frontmatter titles, and global fonts; Architecture reserved IDs; and generated XYChart axis defaults. #21
 - Hardened upstream SVG maintenance so full-family generation removes obsolete fixture baselines transactionally, compare/audit readers cannot race shared Mermaid CLI installs, and root-override audits consume root attributes captured from the locked compare generation. #21
 - Unified fixture importer reject/defer rollback handling so all import sources restore the same transaction state after a failed baseline or deferred-fixture operation. #21
 

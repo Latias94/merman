@@ -752,6 +752,33 @@ fn cli_lint_reports_markdown_fence_failure_as_json_from_stdin_file_name() {
 }
 
 #[test]
+fn cli_parse_meta_reports_javascript_compatible_railroad_repeat_bounds() {
+    let huge = "9".repeat(400);
+    let source = format!(
+        "railroad-abnf-beta\nrounded = 9007199254740993\"a\" ;\ninfinite = {huge}\"b\" ;\n"
+    );
+    let output = run_with_stdin(&["parse", "--meta", "-"], &source);
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let payload: Value =
+        serde_json::from_slice(&output.stdout).expect("parse --meta stdout should be JSON");
+    assert_eq!(payload["meta"]["diagram_type"], "railroadAbnf");
+
+    let rules = payload["model"]["rules"]
+        .as_array()
+        .expect("Railroad rules should be an array");
+    assert_eq!(rules.len(), 2);
+    for field in ["min", "max"] {
+        assert_eq!(
+            rules[0]["definition"][field].as_f64(),
+            Some(9_007_199_254_740_992.0),
+            "rounded {field}"
+        );
+        assert!(rules[1]["definition"][field].is_null(), "infinite {field}");
+    }
+}
+
+#[test]
 fn cli_parse_gantt_fixed_today_makes_missing_year_dates_deterministic() {
     let output = run_with_stdin(
         &[
