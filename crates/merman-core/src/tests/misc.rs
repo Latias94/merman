@@ -2641,3 +2641,145 @@ accDescr: <script>alert(1)</script><b>d</b>
         other => panic!("treemap render parse should return typed model, got {other:?}"),
     }
 }
+
+#[test]
+#[cfg(feature = "full")]
+fn parse_architecture_applies_upstream_category_population_order() {
+    let source = r#"architecture-beta
+api:R -- L:join
+align row api db
+junction join in child
+service api(server)[API] in child
+service db(database)[DB] in child
+group root(cloud)[Root]
+group child(cloud)[Child] in root
+"#;
+
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .expect("Architecture should accept cross-category forward references")
+        .expect("Architecture should be detected");
+
+    let ids = |field: &str| {
+        parsed.model[field]
+            .as_array()
+            .expect("Architecture projection should contain an array")
+            .iter()
+            .map(|item| {
+                item["id"]
+                    .as_str()
+                    .expect("Architecture item should contain an id")
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids("groups"), ["root", "child"]);
+    assert_eq!(ids("nodes"), ["api", "db", "join"]);
+    assert_eq!(parsed.model["edges"][0]["lhsId"], json!("api"));
+    assert_eq!(parsed.model["edges"][0]["rhsId"], json!("join"));
+    assert_eq!(
+        parsed.model["layoutHints"][0]["members"],
+        json!(["api", "db"])
+    );
+}
+
+#[test]
+#[cfg(feature = "full")]
+fn parse_architecture_converts_quoted_titles_like_langium() {
+    let source = r#"architecture-beta
+service api(server)["API \"Gateway\""]
+"#;
+
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .expect("quoted Architecture title should parse")
+        .expect("Architecture should be detected");
+
+    assert_eq!(
+        parsed.model["services"][0]["title"],
+        json!("API \"Gateway\"")
+    );
+}
+
+#[test]
+#[cfg(feature = "full")]
+fn parse_architecture_rejects_unterminated_acc_descr_but_recovers_editor_payload() {
+    let source = "architecture-beta\naccDescr {\n  Draft description\n";
+    let engine = Engine::new();
+
+    let error = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .expect_err("an unterminated accessibility description must not be successful semantics");
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("expected an Architecture parse diagnostic");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(source.len(), source.len()))
+    );
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("architecture", source, ParseOptions::strict())
+        .expect("editor recovery should remain available")
+        .expect("Architecture should expose editor facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(
+        facts
+            .directive_prefixes
+            .iter()
+            .any(|prefix| prefix == "accDescr")
+    );
+    let payload_start = source.find("Draft description").unwrap();
+    assert!(facts.symbols.iter().any(|symbol| {
+        symbol.role == EditorSemanticRole::Payload
+            && symbol.name == "Draft description"
+            && symbol.selection
+                == SourceSpan::new(payload_start, payload_start + "Draft description".len())
+    }));
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(source.len(), source.len()))
+    }));
+}
+
+#[test]
+#[cfg(feature = "full")]
+fn parse_architecture_validates_junction_ids_and_parents_with_exact_spans() {
+    let cases = [
+        (
+            "architecture-beta\njunction join\njunction join\n",
+            "join",
+            "The junction id [join] is already in use by another node",
+        ),
+        (
+            "architecture-beta\njunction join in join\n",
+            "join",
+            "The junction [join] cannot be placed within itself",
+        ),
+        (
+            "architecture-beta\njunction join in missing\n",
+            "missing",
+            "The junction [join]'s parent does not exist. Please make sure the parent is created before this junction",
+        ),
+        (
+            "architecture-beta\nservice api\njunction join in api\n",
+            "api",
+            "The junction [join]'s parent is not a group",
+        ),
+    ];
+
+    for (source, token, expected_message) in cases {
+        let error = Engine::new()
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err(expected_message);
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected an Architecture parse diagnostic");
+        };
+        let start = source.rfind(token).unwrap();
+        assert_eq!(diagnostic.message(), expected_message);
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(start, start + token.len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+}

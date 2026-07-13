@@ -19,7 +19,7 @@
         "type": "service",
         "edges": [],
         "icon": null,
-        "iconText": "<img src=x onerror=\\\"xssAttack()\\\">",
+        "iconText": "<img src=x onerror=\"xssAttack()\">",
         "title": "Database",
         "in": "api"
       }
@@ -30,7 +30,7 @@
         "type": "service",
         "edges": [],
         "icon": null,
-        "iconText": "<img src=x onerror=\\\"xssAttack()\\\">",
+        "iconText": "<img src=x onerror=\"xssAttack()\">",
         "title": "Database",
         "in": "api"
       }

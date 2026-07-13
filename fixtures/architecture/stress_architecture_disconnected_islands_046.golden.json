@@ -72,15 +72,6 @@
         "in": "right"
       },
       {
-        "id": "j",
-        "type": "junction",
-        "edges": [],
-        "icon": null,
-        "iconText": null,
-        "title": null,
-        "in": "right"
-      },
-      {
         "id": "d",
         "type": "service",
         "edges": [],
@@ -88,6 +79,15 @@
         "iconText": null,
         "title": "D",
         "in": null
+      },
+      {
+        "id": "j",
+        "type": "junction",
+        "edges": [],
+        "icon": null,
+        "iconText": null,
+        "title": null,
+        "in": "right"
       }
     ],
     "services": [

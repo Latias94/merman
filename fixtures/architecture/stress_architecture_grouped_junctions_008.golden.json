@@ -53,38 +53,6 @@
         "in": "edge"
       },
       {
-        "id": "j1",
-        "type": "junction",
-        "edges": [
-          {
-            "lhsId": "gw",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "j1",
-            "rhsDir": "L",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "j1",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": true,
-            "rhsId": "api",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": true,
-            "title": null
-          }
-        ],
-        "icon": null,
-        "iconText": null,
-        "title": null,
-        "in": "edge"
-      },
-      {
         "id": "api",
         "type": "service",
         "edges": [
@@ -147,6 +115,38 @@
         "iconText": null,
         "title": "DB",
         "in": "core"
+      },
+      {
+        "id": "j1",
+        "type": "junction",
+        "edges": [
+          {
+            "lhsId": "gw",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "j1",
+            "rhsDir": "L",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          },
+          {
+            "lhsId": "j1",
+            "lhsDir": "R",
+            "lhsInto": null,
+            "lhsGroup": true,
+            "rhsId": "api",
+            "rhsDir": "L",
+            "rhsInto": true,
+            "rhsGroup": true,
+            "title": null
+          }
+        ],
+        "icon": null,
+        "iconText": null,
+        "title": null,
+        "in": "edge"
       },
       {
         "id": "j2",

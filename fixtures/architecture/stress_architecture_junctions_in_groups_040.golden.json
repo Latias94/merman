@@ -85,38 +85,6 @@
         "in": "core"
       },
       {
-        "id": "bus",
-        "type": "junction",
-        "edges": [
-          {
-            "lhsId": "api",
-            "lhsDir": "L",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "bus",
-            "rhsDir": "R",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "enqueue"
-          },
-          {
-            "lhsId": "bus",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "worker",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": null,
-        "iconText": null,
-        "title": null,
-        "in": "core"
-      },
-      {
         "id": "db",
         "type": "service",
         "edges": [
@@ -146,6 +114,38 @@
         "icon": "database",
         "iconText": null,
         "title": "DB",
+        "in": "core"
+      },
+      {
+        "id": "bus",
+        "type": "junction",
+        "edges": [
+          {
+            "lhsId": "api",
+            "lhsDir": "L",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "bus",
+            "rhsDir": "R",
+            "rhsInto": true,
+            "rhsGroup": null,
+            "title": "enqueue"
+          },
+          {
+            "lhsId": "bus",
+            "lhsDir": "T",
+            "lhsInto": null,
+            "lhsGroup": null,
+            "rhsId": "worker",
+            "rhsDir": "B",
+            "rhsInto": null,
+            "rhsGroup": null,
+            "title": null
+          }
+        ],
+        "icon": null,
+        "iconText": null,
+        "title": null,
         "in": "core"
       }
     ],

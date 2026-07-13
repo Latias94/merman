@@ -37,14 +37,49 @@ struct EditorParseSourceMap<'a> {
 enum EditorSourceRemap {
     None,
     Offset(usize),
-    Normalized {
-        normalized_offset: usize,
-        normalized_to_original: Vec<usize>,
+    Segmented {
+        parser_offset: usize,
+        source_map: SourceMapSegments,
     },
     ParserInputCoordinates,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SourceMapSegment {
+    parser_start: usize,
+    original_start: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SourceMapGap {
+    parser_offset: usize,
+    original_left: usize,
+    original_right: usize,
+}
+
+struct SourceMapSegments {
+    parser_len: usize,
+    segments: Vec<SourceMapSegment>,
+    gaps: Vec<SourceMapGap>,
+}
+
 const WARNING_FACT_REMAP_CONTEXT_EXPANSIONS: [usize; 6] = [1, 4, 8, 16, 32, 64];
+
+fn registry_uses_baseline_semantic_parser(
+    registry: &diagram::DiagramRegistry,
+    diagram_type: &str,
+) -> bool {
+    let Some(registered) = registry.get(diagram_type) else {
+        return false;
+    };
+    let Some(baseline) = family::semantic_parser_facts(registry.profile())
+        .iter()
+        .find(|fact| fact.id == diagram_type)
+    else {
+        return false;
+    };
+    std::ptr::fn_addr_eq(registered, baseline.parser)
+}
 
 impl<'a> EditorParseSourceMap<'a> {
     fn new(original: &'a str, preprocessed: &'a str) -> Self {
@@ -64,6 +99,17 @@ impl<'a> EditorParseSourceMap<'a> {
             };
         }
 
+        if let Some(source_map) = deletion_only_source_map(original, preprocessed) {
+            return Self {
+                original,
+                parser_input: preprocessed,
+                remap: EditorSourceRemap::Segmented {
+                    parser_offset: 0,
+                    source_map,
+                },
+            };
+        }
+
         if let Some(offset) = original.rfind(preprocessed) {
             return Self {
                 original,
@@ -73,14 +119,14 @@ impl<'a> EditorParseSourceMap<'a> {
         }
 
         if original.contains('\r') {
-            let (normalized, normalized_to_original) = normalize_original_with_offsets(original);
+            let (normalized, source_map) = normalize_original_with_source_map(original);
             if let Some(normalized_offset) = normalized.rfind(preprocessed) {
                 return Self {
                     original,
                     parser_input: preprocessed,
-                    remap: EditorSourceRemap::Normalized {
-                        normalized_offset,
-                        normalized_to_original,
+                    remap: EditorSourceRemap::Segmented {
+                        parser_offset: normalized_offset,
+                        source_map,
                     },
                 };
             }
@@ -107,25 +153,48 @@ impl<'a> EditorParseSourceMap<'a> {
                 facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
                 return;
             }
-            EditorSourceRemap::Offset(_) | EditorSourceRemap::Normalized { .. } => {
-                facts.span_coordinate_space = EditorSpanCoordinateSpace::OriginalSource;
-            }
+            EditorSourceRemap::Offset(_) | EditorSourceRemap::Segmented { .. } => {}
         }
 
+        if !self.facts_are_fully_remappable(facts) {
+            facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
+            return;
+        }
+        facts.span_coordinate_space = EditorSpanCoordinateSpace::OriginalSource;
+
         for symbol in &mut facts.symbols {
-            symbol.span = self.remap_source_span(symbol.span);
-            symbol.selection = self.remap_source_span(symbol.selection);
+            symbol.span = self
+                .try_remap_source_span(symbol.span)
+                .expect("fact spans were prevalidated");
+            symbol.selection = self
+                .try_remap_source_span(symbol.selection)
+                .expect("fact spans were prevalidated");
         }
         for diagnostic in &mut facts.diagnostics {
-            diagnostic.span = diagnostic.span.map(|span| self.remap_source_span(span));
+            diagnostic.span = diagnostic.span.map(|span| {
+                self.try_remap_source_span(span)
+                    .expect("fact spans were prevalidated")
+            });
         }
         for expected in &mut facts.expected_syntax {
-            expected.span = self.remap_source_span(expected.span);
+            expected.span = self
+                .try_remap_source_span(expected.span)
+                .expect("fact spans were prevalidated");
         }
     }
 
-    fn remap_source_span(&self, span: SourceSpan) -> SourceSpan {
-        SourceSpan::new(self.remap_offset(span.start), self.remap_offset(span.end))
+    fn facts_are_fully_remappable(&self, facts: &EditorSemanticFacts) -> bool {
+        facts.symbols.iter().all(|symbol| {
+            self.try_remap_source_span(symbol.span).is_some()
+                && self.try_remap_source_span(symbol.selection).is_some()
+        }) && facts.diagnostics.iter().all(|diagnostic| {
+            diagnostic
+                .span
+                .is_none_or(|span| self.try_remap_source_span(span).is_some())
+        }) && facts
+            .expected_syntax
+            .iter()
+            .all(|expected| self.try_remap_source_span(expected.span).is_some())
     }
 
     fn remap_parse_error(&self, err: Error) -> Error {
@@ -152,6 +221,18 @@ impl<'a> EditorParseSourceMap<'a> {
     }
 
     fn try_remap_source_span(&self, span: SourceSpan) -> Option<SourceSpan> {
+        if let EditorSourceRemap::Segmented {
+            parser_offset,
+            source_map,
+        } = &self.remap
+        {
+            if span.start > span.end || span.end > self.parser_input.len() {
+                return None;
+            }
+            let start = parser_offset.checked_add(span.start)?;
+            let end = parser_offset.checked_add(span.end)?;
+            return source_map.try_remap_span(SourceSpan::new(start, end));
+        }
         let start = self.try_remap_offset(span.start)?;
         let end = self.try_remap_offset(span.end)?;
         (start <= end).then(|| SourceSpan::new(start, end))
@@ -219,27 +300,6 @@ impl<'a> EditorParseSourceMap<'a> {
         (remapped_end <= self.original.len()).then(|| SourceSpan::new(remapped_start, remapped_end))
     }
 
-    fn remap_offset(&self, offset: usize) -> usize {
-        if let Some(remapped) = self.try_remap_offset(offset) {
-            return remapped;
-        }
-        match &self.remap {
-            EditorSourceRemap::None => offset,
-            EditorSourceRemap::Offset(base) => offset + base,
-            EditorSourceRemap::ParserInputCoordinates => offset,
-            EditorSourceRemap::Normalized {
-                normalized_offset,
-                normalized_to_original,
-            } => {
-                let normalized_index = normalized_offset + offset;
-                normalized_to_original
-                    .get(normalized_index)
-                    .copied()
-                    .unwrap_or_else(|| normalized_to_original.last().copied().unwrap_or(offset))
-            }
-        }
-    }
-
     fn try_remap_offset(&self, offset: usize) -> Option<usize> {
         if offset > self.parser_input.len() {
             return None;
@@ -248,24 +308,378 @@ impl<'a> EditorParseSourceMap<'a> {
             EditorSourceRemap::None => Some(offset),
             EditorSourceRemap::Offset(base) => base.checked_add(offset),
             EditorSourceRemap::ParserInputCoordinates => None,
-            EditorSourceRemap::Normalized {
-                normalized_offset,
-                normalized_to_original,
-            } => normalized_to_original
-                .get(normalized_offset.checked_add(offset)?)
-                .copied(),
+            EditorSourceRemap::Segmented {
+                parser_offset,
+                source_map,
+            } => source_map.original_at_right(parser_offset.checked_add(offset)?),
         }
     }
 }
 
-fn normalize_original_with_offsets(original: &str) -> (String, Vec<usize>) {
+impl SourceMapSegments {
+    fn try_remap_span(&self, span: SourceSpan) -> Option<SourceSpan> {
+        if span.start > span.end || span.end > self.parser_len {
+            return None;
+        }
+        if span.start < span.end && self.has_gap_between(span.start, span.end) {
+            return None;
+        }
+
+        let start = self.original_at_right(span.start)?;
+        let end = if span.start == span.end {
+            start
+        } else {
+            self.original_at_left(span.end)?
+        };
+        (start <= end).then(|| SourceSpan::new(start, end))
+    }
+
+    fn original_at_right(&self, offset: usize) -> Option<usize> {
+        if offset > self.parser_len {
+            return None;
+        }
+        if let Some(gap) = self.gap_at(offset) {
+            return Some(gap.original_right);
+        }
+        self.original_at_segment(offset)
+    }
+
+    fn original_at_left(&self, offset: usize) -> Option<usize> {
+        if offset > self.parser_len {
+            return None;
+        }
+        if let Some(gap) = self.gap_at(offset) {
+            return Some(gap.original_left);
+        }
+        self.original_at_segment(offset)
+    }
+
+    fn original_at_segment(&self, offset: usize) -> Option<usize> {
+        let index = self
+            .segments
+            .partition_point(|segment| segment.parser_start <= offset)
+            .checked_sub(1)?;
+        let segment = self.segments.get(index)?;
+        segment
+            .original_start
+            .checked_add(offset.checked_sub(segment.parser_start)?)
+    }
+
+    fn gap_at(&self, offset: usize) -> Option<&SourceMapGap> {
+        self.gaps
+            .binary_search_by_key(&offset, |gap| gap.parser_offset)
+            .ok()
+            .and_then(|index| self.gaps.get(index))
+    }
+
+    fn has_gap_between(&self, start: usize, end: usize) -> bool {
+        let first_after_start = self.gaps.partition_point(|gap| gap.parser_offset <= start);
+        self.gaps
+            .get(first_after_start)
+            .is_some_and(|gap| gap.parser_offset < end)
+    }
+
+    fn remove_ranges(&mut self, ranges: &[(usize, usize)]) {
+        if ranges.is_empty() {
+            return;
+        }
+
+        let mut removed_before = 0;
+        let deletions: Vec<SourceMapDeletion> = ranges
+            .iter()
+            .map(|&(start, end)| {
+                debug_assert!(start < end);
+                debug_assert!(end <= self.parser_len);
+                let deletion = SourceMapDeletion {
+                    start,
+                    end,
+                    removed_before,
+                };
+                removed_before += end - start;
+                deletion
+            })
+            .collect();
+
+        let deletion_boundaries: Vec<(usize, usize)> = deletions
+            .iter()
+            .map(|deletion| {
+                (
+                    self.original_at_left(deletion.start)
+                        .expect("deletion start should be in the source map"),
+                    self.original_at_right(deletion.end)
+                        .expect("deletion end should be in the source map"),
+                )
+            })
+            .collect();
+
+        let mut segments = Vec::with_capacity(self.segments.len() + deletions.len());
+        for segment in &self.segments {
+            if let Some(parser_start) = remap_retained_offset(segment.parser_start, &deletions) {
+                segments.push(SourceMapSegment {
+                    parser_start,
+                    original_start: segment.original_start,
+                });
+            }
+        }
+        for (deletion, &(_, original_right)) in deletions.iter().zip(&deletion_boundaries) {
+            segments.push(SourceMapSegment {
+                parser_start: deletion.start - deletion.removed_before,
+                original_start: original_right,
+            });
+        }
+        let segments = canonicalize_source_map_segments(segments);
+
+        let mut gaps = Vec::with_capacity(self.gaps.len() + deletions.len());
+        for gap in &self.gaps {
+            if let Some(parser_offset) = remap_retained_offset(gap.parser_offset, &deletions) {
+                gaps.push(SourceMapGap {
+                    parser_offset,
+                    original_left: gap.original_left,
+                    original_right: gap.original_right,
+                });
+            }
+        }
+        for (deletion, &(original_left, original_right)) in
+            deletions.iter().zip(&deletion_boundaries)
+        {
+            gaps.push(SourceMapGap {
+                parser_offset: deletion.start - deletion.removed_before,
+                original_left,
+                original_right,
+            });
+        }
+        self.segments = segments;
+        self.gaps = canonicalize_source_map_gaps(gaps);
+        self.parser_len -= removed_before;
+
+        debug_assert_eq!(
+            self.segments.first().map(|segment| segment.parser_start),
+            Some(0)
+        );
+        debug_assert!(
+            self.segments
+                .windows(2)
+                .all(|pair| pair[0].parser_start < pair[1].parser_start)
+        );
+        debug_assert!(
+            self.gaps
+                .windows(2)
+                .all(|pair| pair[0].parser_offset < pair[1].parser_offset)
+        );
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SourceMapDeletion {
+    start: usize,
+    end: usize,
+    removed_before: usize,
+}
+
+fn remap_retained_offset(offset: usize, deletions: &[SourceMapDeletion]) -> Option<usize> {
+    let insertion = deletions.partition_point(|deletion| deletion.start <= offset);
+    let Some(deletion) = insertion
+        .checked_sub(1)
+        .and_then(|index| deletions.get(index))
+    else {
+        return Some(offset);
+    };
+    if offset <= deletion.end {
+        return None;
+    }
+    offset.checked_sub(deletion.removed_before + deletion.end - deletion.start)
+}
+
+fn canonicalize_source_map_segments(mut segments: Vec<SourceMapSegment>) -> Vec<SourceMapSegment> {
+    segments.sort_by_key(|segment| segment.parser_start);
+
+    let mut grouped: Vec<SourceMapSegment> = Vec::with_capacity(segments.len());
+    for segment in segments {
+        if let Some(previous) = grouped.last_mut()
+            && previous.parser_start == segment.parser_start
+        {
+            previous.original_start = previous.original_start.max(segment.original_start);
+        } else {
+            grouped.push(segment);
+        }
+    }
+
+    let mut canonical: Vec<SourceMapSegment> = Vec::with_capacity(grouped.len());
+    for segment in grouped {
+        let is_redundant = canonical.last().is_some_and(|previous| {
+            previous
+                .original_start
+                .checked_add(segment.parser_start - previous.parser_start)
+                == Some(segment.original_start)
+        });
+        if !is_redundant {
+            canonical.push(segment);
+        }
+    }
+    canonical
+}
+
+fn canonicalize_source_map_gaps(mut gaps: Vec<SourceMapGap>) -> Vec<SourceMapGap> {
+    gaps.sort_by_key(|gap| gap.parser_offset);
+    let mut canonical: Vec<SourceMapGap> = Vec::with_capacity(gaps.len());
+    for gap in gaps {
+        if let Some(previous) = canonical.last_mut()
+            && previous.parser_offset == gap.parser_offset
+        {
+            previous.original_left = previous.original_left.min(gap.original_left);
+            previous.original_right = previous.original_right.max(gap.original_right);
+        } else if gap.original_left != gap.original_right {
+            canonical.push(gap);
+        }
+    }
+    canonical
+}
+
+fn push_source_map_segment(
+    segments: &mut Vec<SourceMapSegment>,
+    parser_start: usize,
+    original_start: usize,
+) {
+    let Some(previous) = segments.last_mut() else {
+        segments.push(SourceMapSegment {
+            parser_start,
+            original_start,
+        });
+        return;
+    };
+    if previous.parser_start == parser_start {
+        previous.original_start = original_start;
+        return;
+    }
+    let expected = previous
+        .original_start
+        .checked_add(parser_start - previous.parser_start);
+    if expected != Some(original_start) {
+        segments.push(SourceMapSegment {
+            parser_start,
+            original_start,
+        });
+    }
+}
+
+struct DeletionMappedText {
+    text: String,
+    source_map: SourceMapSegments,
+}
+
+impl DeletionMappedText {
+    fn from_original(original: &str) -> Self {
+        let (text, source_map) = normalize_original_with_source_map(original);
+        Self { text, source_map }
+    }
+
+    fn remove_ranges(&mut self, ranges: &[(usize, usize)]) {
+        let mut sorted: Vec<(usize, usize)> = ranges
+            .iter()
+            .copied()
+            .filter(|(start, end)| start < end)
+            .collect();
+        sorted.sort_unstable_by_key(|&(start, end)| (start, end));
+
+        let mut merged: Vec<(usize, usize)> = Vec::with_capacity(sorted.len());
+        for (start, end) in sorted {
+            debug_assert!(self.text.is_char_boundary(start));
+            debug_assert!(self.text.is_char_boundary(end));
+            if let Some((_, previous_end)) = merged.last_mut()
+                && start <= *previous_end
+            {
+                *previous_end = (*previous_end).max(end);
+            } else {
+                merged.push((start, end));
+            }
+        }
+        if merged.is_empty() {
+            return;
+        }
+
+        let old_text = std::mem::take(&mut self.text);
+        let removed_bytes: usize = merged.iter().map(|(start, end)| end - start).sum();
+        let mut text = String::with_capacity(old_text.len() - removed_bytes);
+        let mut cursor = 0;
+
+        for &(start, end) in &merged {
+            if cursor < start {
+                text.push_str(&old_text[cursor..start]);
+            }
+            cursor = end;
+        }
+        if cursor < old_text.len() {
+            text.push_str(&old_text[cursor..]);
+        }
+
+        self.source_map.remove_ranges(&merged);
+        self.text = text;
+        debug_assert_eq!(self.source_map.parser_len, self.text.len());
+    }
+
+    fn remove_frontmatter(&mut self) {
+        if let Some(end) =
+            crate::preprocess::split_frontmatter_block(&self.text).map(|block| block.full.end)
+        {
+            self.remove_ranges(&[(0, end)]);
+        }
+    }
+
+    fn remove_directives(&mut self) {
+        let mut ranges = Vec::new();
+        let mut cursor = 0;
+        while let Some(relative_start) = self.text[cursor..].find("%%{") {
+            let start = cursor + relative_start;
+            let after_start = start + 3;
+            let Some(relative_end) = self.text[after_start..].find("}%%") else {
+                ranges.push((start, self.text.len()));
+                break;
+            };
+            let end = after_start + relative_end + 3;
+            ranges.push((start, end));
+            cursor = end;
+        }
+        self.remove_ranges(&ranges);
+    }
+
+    fn remove_full_line_comments(&mut self) {
+        let mut ranges = Vec::new();
+        let mut offset = 0;
+        for line in self.text.split_inclusive('\n') {
+            let trimmed = line.trim_start();
+            if let Some(after_marker) = trimmed.strip_prefix("%%") {
+                let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
+                if !after_marker.starts_with('{') && has_comment_body {
+                    ranges.push((offset, offset + line.len()));
+                }
+            }
+            offset += line.len();
+        }
+        self.remove_ranges(&ranges);
+
+        let leading = self.text.len() - self.text.trim_start().len();
+        self.remove_ranges(&[(0, leading)]);
+    }
+}
+
+fn deletion_only_source_map(original: &str, preprocessed: &str) -> Option<SourceMapSegments> {
+    let mut mapped = DeletionMappedText::from_original(original);
+    mapped.remove_frontmatter();
+    mapped.remove_directives();
+    mapped.remove_full_line_comments();
+    (mapped.text == preprocessed).then_some(mapped.source_map)
+}
+
+fn normalize_original_with_source_map(original: &str) -> (String, SourceMapSegments) {
     let mut normalized = String::with_capacity(original.len());
-    let mut normalized_to_original = Vec::with_capacity(original.len() + 1);
+    let mut segments = vec![SourceMapSegment {
+        parser_start: 0,
+        original_start: 0,
+    }];
     let bytes = original.as_bytes();
     let mut offset = 0;
 
     while offset < bytes.len() {
-        normalized_to_original.push(offset);
         if bytes[offset] == b'\r' {
             normalized.push('\n');
             offset += if bytes.get(offset + 1) == Some(&b'\n') {
@@ -273,6 +687,7 @@ fn normalize_original_with_offsets(original: &str) -> (String, Vec<usize>) {
             } else {
                 1
             };
+            push_source_map_segment(&mut segments, normalized.len(), offset);
             continue;
         }
 
@@ -281,20 +696,28 @@ fn normalize_original_with_offsets(original: &str) -> (String, Vec<usize>) {
             .next()
             .expect("offset should be at a UTF-8 character boundary");
         normalized.push(ch);
-        for byte_offset in 1..ch.len_utf8() {
-            normalized_to_original.push(offset + byte_offset);
-        }
         offset += ch.len_utf8();
     }
 
-    normalized_to_original.push(original.len());
-    (normalized, normalized_to_original)
+    let parser_len = normalized.len();
+    (
+        normalized,
+        SourceMapSegments {
+            parser_len,
+            segments,
+            gaps: Vec::new(),
+        },
+    )
 }
 
 #[cfg(test)]
 mod editor_parse_source_map_tests {
-    use super::EditorParseSourceMap;
-    use crate::{Error, ParseDiagnosticSpanKind, SourceSpan};
+    use super::{EditorParseSourceMap, EditorSourceRemap};
+    use crate::{
+        EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
+        EditorSemanticSymbol, EditorSpanCoordinateSpace, Error, ParseDiagnosticSpanKind,
+        SourceSpan,
+    };
 
     #[test]
     fn parser_input_coordinate_parse_error_drops_span() {
@@ -351,6 +774,129 @@ mod editor_parse_source_map_tests {
         };
         assert_eq!(diagnostic.span(), None);
         assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
+    }
+
+    #[test]
+    fn discontinuous_map_tracks_crlf_directives_and_removed_comment_lines() {
+        let original = concat!(
+            "flowchart TD\r\n",
+            "A-->B\r\n",
+            "%%{init: {\"theme\": \"default\"}}%%\r\n",
+            "%% removed comment\r\n",
+            "B-->C\r\n",
+        );
+        let preprocessed = "flowchart TD\nA-->B\n\nB-->C\n";
+        let target = preprocessed.rfind('C').unwrap();
+        let map = EditorParseSourceMap::new(original, preprocessed);
+        let span = map
+            .try_remap_source_span(SourceSpan::new(target, target + 1))
+            .expect("discontinuous parser span should remap");
+
+        assert_eq!(&original[span.start..span.end], "C");
+        assert_eq!(span.start, original.rfind('C').unwrap());
+    }
+
+    #[test]
+    fn discontinuous_map_storage_scales_with_edits_not_input_bytes() {
+        let body = "A".repeat(128 * 1024);
+        let original = format!("flowchart TD\n{body}\n%% removed comment\nB\n");
+        let preprocessed = format!("flowchart TD\n{body}\nB\n");
+        let map = EditorParseSourceMap::new(&original, &preprocessed);
+        let storage_units = match &map.remap {
+            EditorSourceRemap::Segmented { source_map, .. } => {
+                source_map.segments.len() + source_map.gaps.len()
+            }
+            EditorSourceRemap::None
+            | EditorSourceRemap::Offset(_)
+            | EditorSourceRemap::ParserInputCoordinates => 0,
+        };
+
+        assert!(
+            storage_units <= 16,
+            "one deletion should use sparse mapping storage, got {storage_units} units"
+        );
+    }
+
+    #[test]
+    fn discontinuous_map_sends_eof_insertions_past_removed_trailing_comments() {
+        let original = "flowchart TD\nA-->B\n%% trailing comment\n";
+        let preprocessed = "flowchart TD\nA-->B\n";
+        let map = EditorParseSourceMap::new(original, preprocessed);
+        let eof = preprocessed.len();
+        let span = map
+            .try_remap_source_span(SourceSpan::new(eof, eof))
+            .expect("parser EOF should remap after the removed suffix");
+
+        assert_eq!(span, SourceSpan::new(original.len(), original.len()));
+    }
+
+    #[test]
+    fn discontinuous_map_rejects_spans_that_cross_a_removed_segment() {
+        let original = "architecture-beta\nservice be%%{wrap}%%fore\n";
+        let preprocessed = "architecture-beta\nservice before\n";
+        let map = EditorParseSourceMap::new(original, preprocessed);
+        let start = preprocessed.find("before").unwrap();
+        let span = SourceSpan::new(start, start + "before".len());
+
+        assert_eq!(map.try_remap_source_span(span), None);
+    }
+
+    #[test]
+    fn discontinuous_map_uses_directional_gap_boundaries() {
+        let directive = "%%{wrap}%%";
+        let original = format!("architecture-beta\nservice be{directive}fore\n");
+        let preprocessed = "architecture-beta\nservice before\n";
+        let map = EditorParseSourceMap::new(&original, preprocessed);
+        let gap = preprocessed.find("before").unwrap() + "be".len();
+        let original_gap_left = original.find(directive).unwrap();
+        let original_gap_right = original_gap_left + directive.len();
+
+        let prefix = map
+            .try_remap_source_span(SourceSpan::new(gap - "be".len(), gap))
+            .expect("span ending at the gap should use its left boundary");
+        assert_eq!(prefix.end, original_gap_left);
+
+        let suffix = map
+            .try_remap_source_span(SourceSpan::new(gap, gap + "fore".len()))
+            .expect("span starting at the gap should use its right boundary");
+        assert_eq!(suffix.start, original_gap_right);
+
+        let insertion = map
+            .try_remap_source_span(SourceSpan::new(gap, gap))
+            .expect("zero-width span should use the gap's right boundary");
+        assert_eq!(
+            insertion,
+            SourceSpan::new(original_gap_right, original_gap_right)
+        );
+    }
+
+    #[test]
+    fn fact_remap_stays_in_parser_coordinates_when_any_span_is_unmappable() {
+        let original = "architecture-beta\nservice be%%{wrap}%%fore\n";
+        let preprocessed = "architecture-beta\nservice before\n";
+        let map = EditorParseSourceMap::new(original, preprocessed);
+        let start = preprocessed.find("before").unwrap();
+        let span = SourceSpan::new(start, start + "before".len());
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::new(
+            "before",
+            None,
+            EditorSemanticKind::Variable,
+            span,
+            span,
+        ));
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::NodeIdentifier,
+            SourceSpan::new(preprocessed.len() + 1, preprocessed.len() + 1),
+        ));
+
+        map.remap_facts(&mut facts);
+
+        assert_eq!(
+            facts.span_coordinate_space,
+            EditorSpanCoordinateSpace::ParserInput
+        );
+        assert_eq!(facts.symbols[0].selection, span);
     }
 }
 
@@ -415,12 +961,63 @@ impl<'a> ParsePipeline<'a> {
         let source_map = EditorParseSourceMap::new(self.text, &code);
         let editor_input = source_map.parser_input();
         let preprocess = preprocess_start.map(runtime::timing_elapsed);
+        let uses_baseline_parser = registry_uses_baseline_semantic_parser(
+            &self.engine.diagram_registry,
+            &meta.diagram_type,
+        );
 
         let parse_start = runtime::timing_start(timing_enabled);
         let parsed = match meta.diagram_type.as_str() {
-            "flowchart-v2" | "flowchart" | "flowchart-elk" | "swimlane" => {
+            "flowchart-v2" | "flowchart" | "flowchart-elk" | "swimlane" if uses_baseline_parser => {
                 let parse_res = self.with_fixed_time(|| {
                     crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts(
+                        editor_input,
+                        &meta,
+                    )
+                });
+                let parse = parse_start.map(runtime::timing_elapsed);
+                let (mut model, facts) = match parse_res {
+                    Ok(parsed) => parsed,
+                    Err(err) => {
+                        if !self.options.suppress_errors {
+                            return Err(source_map.remap_parse_error(err));
+                        }
+
+                        timing.log_suppressed_error(
+                            total_start,
+                            preprocess,
+                            parse,
+                            self.text.len(),
+                        );
+                        return Ok(Some(ParsedDiagramWithEditorFacts {
+                            diagram: error_diagram::suppressed_error_diagram(&meta),
+                            editor_facts: ParsedEditorFacts::Unavailable,
+                        }));
+                    }
+                };
+                let sanitize_start = runtime::timing_start(timing_enabled);
+                common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
+                let sanitize = sanitize_start.map(runtime::timing_elapsed);
+                Self::remap_value_warning_facts(&mut model, &source_map);
+                timing.log_success(ParseTimingSuccess {
+                    total_start,
+                    meta: &meta,
+                    model_kind: None,
+                    preprocess,
+                    parse,
+                    sanitize,
+                    input_bytes: self.text.len(),
+                });
+                let facts =
+                    self.finish_editor_semantic_facts(facts, &source_map, directive_prefixes);
+                return Ok(Some(ParsedDiagramWithEditorFacts {
+                    diagram: ParsedDiagram { meta, model },
+                    editor_facts: ParsedEditorFacts::Available(facts),
+                }));
+            }
+            "architecture" if uses_baseline_parser => {
+                let parse_res = self.with_fixed_time(|| {
+                    crate::diagrams::architecture::parse_architecture_json_and_editor_facts(
                         editor_input,
                         &meta,
                     )
@@ -513,15 +1110,19 @@ impl<'a> ParsePipeline<'a> {
         let mut parsed = parsed;
         Self::remap_value_warning_facts(&mut parsed.model, &source_map);
 
-        let editor_facts = match self.parse_editor_semantic_facts_from_preprocessed(
-            editor_input,
-            &parsed.meta,
-            &source_map,
-            directive_prefixes,
-        ) {
-            Ok(Some(facts)) => ParsedEditorFacts::Available(facts),
-            Ok(None) => ParsedEditorFacts::Unavailable,
-            Err(error) => ParsedEditorFacts::Error(error),
+        let editor_facts = if uses_baseline_parser {
+            match self.parse_editor_semantic_facts_from_preprocessed(
+                editor_input,
+                &parsed.meta,
+                &source_map,
+                directive_prefixes,
+            ) {
+                Ok(Some(facts)) => ParsedEditorFacts::Available(facts),
+                Ok(None) => ParsedEditorFacts::Unavailable,
+                Err(error) => ParsedEditorFacts::Error(error),
+            }
+        } else {
+            ParsedEditorFacts::Unavailable
         };
         Ok(Some(ParsedDiagramWithEditorFacts {
             diagram: parsed,
@@ -550,6 +1151,18 @@ impl<'a> ParsePipeline<'a> {
         let Some((code, meta)) = self.preprocess()? else {
             return Ok(None);
         };
+        if self
+            .engine
+            .diagram_registry
+            .get(&meta.diagram_type)
+            .is_some()
+            && !registry_uses_baseline_semantic_parser(
+                &self.engine.diagram_registry,
+                &meta.diagram_type,
+            )
+        {
+            return Ok(None);
+        }
         let source_map = EditorParseSourceMap::new(self.text, &code);
         self.parse_editor_semantic_facts_from_preprocessed(
             source_map.parser_input(),
