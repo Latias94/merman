@@ -1,5 +1,98 @@
+use crate::diagrams::railroad::{RailroadRepeatBound, RailroadRepeatBoundError};
 use crate::*;
 use serde_json::json;
+
+#[test]
+fn railroad_repeat_bound_validates_public_construction() {
+    let negative_zero = RailroadRepeatBound::try_from(-0.0).expect("negative zero is valid");
+    assert_eq!(negative_zero, RailroadRepeatBound::ZERO);
+    assert_eq!(negative_zero.as_f64().to_bits(), 0.0f64.to_bits());
+
+    assert!(RailroadRepeatBound::ZERO.is_zero());
+    assert!(!RailroadRepeatBound::ZERO.is_one());
+    assert!(RailroadRepeatBound::ONE.is_one());
+    assert!(!RailroadRepeatBound::ONE.is_infinite());
+    assert!(RailroadRepeatBound::INFINITY.is_infinite());
+    assert_eq!(
+        RailroadRepeatBound::try_from(f64::INFINITY).unwrap(),
+        RailroadRepeatBound::INFINITY
+    );
+    assert_eq!(
+        RailroadRepeatBound::from(u64::MAX).as_f64().to_bits(),
+        (u64::MAX as f64).to_bits()
+    );
+
+    for (invalid, expected) in [
+        (f64::NAN, RailroadRepeatBoundError::NotANumber),
+        (f64::NEG_INFINITY, RailroadRepeatBoundError::Negative),
+        (-1.0, RailroadRepeatBoundError::Negative),
+        (0.5, RailroadRepeatBoundError::Fractional),
+    ] {
+        assert_eq!(
+            RailroadRepeatBound::try_from(invalid),
+            Err(expected),
+            "unexpected error for invalid repeat bound: {invalid}"
+        );
+    }
+}
+
+#[test]
+fn railroad_repeat_bound_serde_preserves_finite_and_infinite_states() {
+    for (bound, expected_json) in [
+        (RailroadRepeatBound::ZERO, "0"),
+        (RailroadRepeatBound::ONE, "1"),
+        (
+            RailroadRepeatBound::try_from(9_007_199_254_740_992.0).unwrap(),
+            "9007199254740992",
+        ),
+        (RailroadRepeatBound::INFINITY, "null"),
+    ] {
+        let encoded = serde_json::to_string(&bound).expect("repeat bound serializes");
+        assert_eq!(encoded, expected_json);
+        let decoded: RailroadRepeatBound =
+            serde_json::from_str(&encoded).expect("repeat bound deserializes");
+        assert_eq!(decoded, bound);
+    }
+
+    for bound in [
+        RailroadRepeatBound::from(u64::MAX),
+        RailroadRepeatBound::try_from(18_446_744_073_709_551_616.0).unwrap(),
+        RailroadRepeatBound::try_from(f64::MAX).unwrap(),
+    ] {
+        let encoded = serde_json::to_string(&bound).expect("large finite bound serializes");
+        let decoded: RailroadRepeatBound =
+            serde_json::from_str(&encoded).expect("large finite bound deserializes");
+        assert_eq!(decoded.as_f64().to_bits(), bound.as_f64().to_bits());
+    }
+
+    for value in [
+        json!({
+            "type": "repetition",
+            "element": { "type": "terminal", "value": "item" },
+            "min": 1
+        }),
+        json!({
+            "type": "repetition",
+            "element": { "type": "terminal", "value": "item" },
+            "min": 1,
+            "max": null
+        }),
+    ] {
+        let node: crate::diagrams::railroad::RailroadAstNode =
+            serde_json::from_value(value).expect("unbounded repetition deserializes");
+        let crate::diagrams::railroad::RailroadAstNode::Repetition { max, .. } = node else {
+            panic!("expected repetition node");
+        };
+        assert!(max.is_infinite());
+    }
+
+    for invalid_json in ["-1", "0.5", r#""1""#, "{}", "[]"] {
+        assert!(
+            serde_json::from_str::<RailroadRepeatBound>(invalid_json).is_err(),
+            "invalid repeat bound JSON was accepted: {invalid_json}"
+        );
+    }
+}
 
 #[test]
 fn parse_railroad_ir_rules_and_editor_facts() {
@@ -137,33 +230,106 @@ rule = 1*2"hello" / [ other-rule ] / %x41 ;
 }
 
 #[test]
-fn parse_railroad_abnf_preserves_supported_repeat_bound_extremes() {
+fn parse_railroad_abnf_matches_javascript_repeat_number_semantics() {
+    let huge = "9".repeat(400);
+    let source = format!(
+        r#"railroad-abnf-beta
+rule = 9007199254740991"a" / 9007199254740992"b" / 9007199254740993"c" / 18446744073709551615*"d" / 18446744073709551616*"e" / *3"f" / 2*"g" / *"h" / 5*2"i" / *1"j" / {huge}"k" / 00000000000000000002*00000000000000000003"l" / {huge}*1"m" / 1*{huge}"n" ;
+"#
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .expect("all valid ABNF repetition bounds should parse");
+
+    let alternatives = parsed.model["rules"][0]["definition"]["alternatives"]
+        .as_array()
+        .expect("choice alternatives");
+    assert_eq!(alternatives.len(), 14);
+    assert_eq!(alternatives[0]["min"].as_u64(), Some(9_007_199_254_740_991));
+    assert_eq!(alternatives[0]["max"].as_u64(), Some(9_007_199_254_740_991));
+    assert_eq!(
+        alternatives[1]["min"].as_f64(),
+        Some(9_007_199_254_740_992.0)
+    );
+    assert_eq!(
+        alternatives[2]["min"].as_f64(),
+        Some(9_007_199_254_740_992.0)
+    );
+    assert_eq!(
+        alternatives[3]["min"].as_f64(),
+        Some(18_446_744_073_709_551_616.0)
+    );
+    assert_eq!(
+        alternatives[4]["min"].as_f64(),
+        Some(18_446_744_073_709_551_616.0)
+    );
+    assert_eq!(alternatives[3]["max"], json!(null));
+    assert_eq!(alternatives[4]["max"], json!(null));
+    assert_eq!(
+        (
+            alternatives[5]["min"].as_u64(),
+            alternatives[5]["max"].as_u64()
+        ),
+        (Some(0), Some(3))
+    );
+    assert_eq!(
+        (alternatives[6]["min"].as_u64(), &alternatives[6]["max"]),
+        (Some(2), &json!(null))
+    );
+    assert_eq!(
+        (alternatives[7]["min"].as_u64(), &alternatives[7]["max"]),
+        (Some(0), &json!(null))
+    );
+    assert_eq!(
+        (
+            alternatives[8]["min"].as_u64(),
+            alternatives[8]["max"].as_u64()
+        ),
+        (Some(5), Some(2))
+    );
+    assert_eq!(alternatives[9]["type"], json!("optional"));
+    assert_eq!(alternatives[10]["min"], json!(null));
+    assert_eq!(alternatives[10]["max"], json!(null));
+    assert_eq!(
+        (
+            alternatives[11]["min"].as_u64(),
+            alternatives[11]["max"].as_u64()
+        ),
+        (Some(2), Some(3))
+    );
+    assert_eq!(alternatives[12]["min"], json!(null));
+    assert_eq!(alternatives[12]["max"].as_u64(), Some(1));
+    assert_eq!(alternatives[13]["min"].as_u64(), Some(1));
+    assert_eq!(alternatives[13]["max"], json!(null));
+}
+
+#[test]
+fn parse_railroad_peg_repetitions_keep_ordinary_json_shape() {
     let parsed = Engine::new()
         .parse_diagram_sync(
-            r#"railroad-abnf-beta
-rule = 18446744073709551615*"a" / 00000000000000000002"b" ;
-"#,
+            "railroad-peg-beta\nrule <- zero* one+ ;\n",
             ParseOptions::strict(),
         )
         .unwrap()
-        .expect("ABNF repetition bounds through u64::MAX should parse");
+        .expect("railroad PEG repetitions parse");
 
     assert_eq!(
         parsed.model["rules"][0]["definition"],
         json!({
-            "type": "choice",
-            "alternatives": [
+            "type": "sequence",
+            "elements": [
                 {
                     "type": "repetition",
-                    "element": { "type": "terminal", "value": "a" },
-                    "min": u64::MAX,
+                    "element": { "type": "nonterminal", "name": "zero" },
+                    "min": 0,
                     "max": null
                 },
                 {
                     "type": "repetition",
-                    "element": { "type": "terminal", "value": "b" },
-                    "min": 2,
-                    "max": 2
+                    "element": { "type": "nonterminal", "name": "one" },
+                    "min": 1,
+                    "max": null
                 }
             ]
         })

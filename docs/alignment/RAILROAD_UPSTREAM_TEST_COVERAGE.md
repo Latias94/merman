@@ -28,13 +28,17 @@ Scope: Mermaid tag `@11.16.0`.
   are covered by registry/detection tests.
 - Parser coverage for IR, EBNF, ABNF, and PEG variants lives in
   `crates/merman-core/src/tests/railroad.rs`.
-- Parser internals cover escaped string decoding, ABNF string slicing, and repetition bounds in
+- Parser internals cover escaped string decoding, ABNF string slicing, and JavaScript-compatible
+  binary64 repetition bounds, including rounding, unbounded maxima, and positive infinity, in
   `crates/merman-core/src/diagrams/railroad.rs`.
 - LSP/editor facts cover rules, terminals, nonterminal references, and PEG nonterminal references.
 - Typed render model projection for all four variants is covered by
   `parse_railroad_variants_expose_typed_render_models`.
 - Layout recursion for sequence, optional/repetition arcs, and connector paths is covered by
-  `railroad_layout_handles_sequence_choice_and_repetition`.
+  `railroad_layout_handles_sequence_choice_and_repetition`; zero, finite nonzero, and infinite
+  repetition minima are covered by `railroad_repetition_bypass_depends_only_on_zero_minimum`.
+- CLI `parse --meta` coverage verifies rounded finite Railroad bounds by parsed binary64 value and
+  infinity as JSON `null`; exact large-number JSON spelling is not a compatibility requirement.
 - SVG dispatch and DOM shape for rule groups, rule names, terminals, nonterminals, specials,
   connector paths, and accessible root metadata is covered by
   `render_model_dispatch_renders_railroad_svg`.
@@ -69,6 +73,3 @@ committed corpus; browser-derived root-height differences remain in the exact ro
   consume them in drawing; the local compatibility renderer follows the upstream rendering behavior.
 - The upstream 11.16 renderer does not draw repetition separator or maximum cardinality metadata;
   the local layout keeps those parser facts in the model but does not invent extra SVG semantics.
-- ABNF repetition bounds through `u64::MAX` are preserved exactly. Larger bounds produce an exact
-  overflow diagnostic instead of copying JavaScript `parseInt` rounding (or `Infinity`) into the
-  public integer AST; this is an explicit parser-acceptance residual from Mermaid 11.16.

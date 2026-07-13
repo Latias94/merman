@@ -18,6 +18,14 @@ Pre-0.8 migration note: `Error::DiagramParse` carries
 `diagnostic.span_kind()`, and `diagnostic.code()` when an integration can
 preserve structured parser metadata.
 
+Railroad repetition bounds use `RailroadRepeatBound` for both `min` and `max`.
+Use `ZERO`, `ONE`, or `RailroadRepeatBound::from(value)` for finite bounds and
+`RailroadRepeatBound::INFINITY` for an unbounded maximum. Inspect values with
+`is_zero()`, `is_one()`, `is_infinite()`, or `as_f64()`; `TryFrom<f64>` rejects
+NaN, negative, and fractional values. Finite bounds serialize as JSON numbers,
+while infinity serializes as `null`. Integers beyond binary64's exact range may
+round to match Mermaid's JavaScript number semantics.
+
 ## What It Provides
 
 - Mermaid diagram detection and preprocessing, including front matter and directives.

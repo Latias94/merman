@@ -5,7 +5,7 @@ use crate::model::{
 };
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::railroad::{
-    RailroadAstNode, RailroadDiagramRenderModel, RailroadRuleModel,
+    RailroadAstNode, RailroadDiagramRenderModel, RailroadRepeatBound, RailroadRuleModel,
 };
 
 #[derive(Debug, Clone)]
@@ -911,7 +911,7 @@ fn layout_optional(
 
 fn layout_repetition(
     element: &RailroadAstNode,
-    min: u64,
+    min: RailroadRepeatBound,
     style: &RailroadStyle,
     measurer: &dyn TextMeasurer,
 ) -> ExprLayout {
@@ -919,7 +919,7 @@ fn layout_repetition(
     let arc_radius = style.arc_radius;
     let arc_height = arc_radius * 2.0;
     let total_width = inner.width + arc_radius * 4.0;
-    let has_bypass = min == 0;
+    let has_bypass = min.is_zero();
     let total_height = inner.height + arc_height + if has_bypass { arc_height } else { 0.0 };
     let elem_x = arc_radius * 2.0;
     let elem_y = if has_bypass { arc_height } else { 0.0 };
@@ -1305,6 +1305,46 @@ mod tests {
                 .iter()
                 .any(|segment| matches!(segment, PathSegment::EllipticalArc { .. })),
             "expected an arc connector: {path}"
+        );
+    }
+
+    fn repetition_render_path_count(min: RailroadRepeatBound) -> usize {
+        let node = RailroadAstNode::Repetition {
+            element: Box::new(RailroadAstNode::Terminal {
+                value: "item".to_string(),
+                span: merman_core::SourceSpan::new(0, 0),
+                selection: merman_core::SourceSpan::new(0, 0),
+            }),
+            min,
+            max: RailroadRepeatBound::INFINITY,
+            separator: None,
+            span: merman_core::SourceSpan::new(0, 0),
+        };
+        let (render_node, _) = railroad_render_node(
+            &node,
+            &railroad_style(&serde_json::json!({})),
+            &DeterministicTextMeasurer::default(),
+        );
+        let RailroadRenderNode::Group {
+            class, children, ..
+        } = render_node
+        else {
+            panic!("expected railroad repetition render group");
+        };
+        assert_eq!(class, "railroad-repetition");
+        children
+            .iter()
+            .filter(|child| matches!(child, RailroadRenderNode::Path(_)))
+            .count()
+    }
+
+    #[test]
+    fn railroad_repetition_bypass_depends_only_on_zero_minimum() {
+        assert_eq!(repetition_render_path_count(RailroadRepeatBound::ZERO), 4);
+        assert_eq!(repetition_render_path_count(RailroadRepeatBound::ONE), 3);
+        assert_eq!(
+            repetition_render_path_count(RailroadRepeatBound::INFINITY),
+            3
         );
     }
 

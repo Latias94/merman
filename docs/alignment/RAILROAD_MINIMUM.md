@@ -23,9 +23,11 @@ Upstream references at pinned Mermaid 11.16.0:
   - IR calls: `terminal`, `nonterminal`, `sequence`, `choice`, `optional`, `zeroOrMore`,
     `oneOrMore`, and `special`
   - EBNF choice, sequence, optional, repetition, exception-as-sequence, and special text
-  - ABNF alternation, concatenation, repetition bounds, optional groups, comments, and numeric values
+  - ABNF alternation, concatenation, Mermaid-compatible binary64 repetition bounds (including
+    rounding and positive infinity), optional groups, comments, and numeric values
   - PEG ordered choice, sequence, prefix predicates, suffix operators, any-char, grouping, and comments
   - common `title`, `accTitle`, and `accDescr`
+  - semantic JSON encodes finite repetition bounds as numbers and infinity as `null`
 - LSP/editor facts:
   - header, common directives, rule symbols, terminal labels, nonterminal references, and special text
   - lossy fact scanning remains available when strict parsing fails
@@ -84,6 +86,3 @@ only with a source-backed browser measurement model.
 - The upstream renderer currently ignores `compactMode`, `showMarkers`, repetition separators, and
   repetition maximums during drawing; the local compatibility renderer follows that behavior rather
   than inventing extra semantics.
-- Mermaid accepts arbitrarily long ABNF repetition lexemes through JavaScript `parseInt`, which can
-  round or become `Infinity`. Merman preserves bounds through `u64::MAX` and reports larger values
-  with an exact source span rather than silently changing the public integer AST.
