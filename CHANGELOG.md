@@ -9,8 +9,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Breaking changes
 
 - Updated the compatibility target from Mermaid `11.15.0` to `11.16.0`; integrations that retain semantic, layout, or SVG parity snapshots should regenerate them.
-- Marked `EditorSemanticSymbol`, `EditorSemanticFacts`, `FenceSemanticItem`, and `FenceReferenceGroup` as non-exhaustive so parser-owned completion and rename metadata can evolve; Rust callers that construct them should migrate from struct literals to the provided constructors, `Default`, and `with_*` methods.
-- `merman-lsp --no-default-features` no longer includes the bundled stdio binary or stdio transport exports; embedders that use those surfaces should enable the new `stdio` feature explicitly.
+- Marked `EditorSemanticSymbol`, `EditorSemanticFacts`, `FenceSemanticItem`, and `FenceReferenceGroup` as non-exhaustive so parser-owned completion and rename metadata can evolve; Rust callers that construct them should migrate from struct literals to the provided constructors, `Default`, and `with_*` methods. #26
+- `merman-lsp --no-default-features` no longer includes the bundled stdio binary or stdio transport exports; embedders that use those surfaces should enable the new `stdio` feature explicitly. #26
 
 ### New and changed
 
@@ -19,7 +19,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Aligned Mermaid 11.16 behavior across existing diagrams, including Flowchart and State self-loops, Sequence blocks and wrapping, Ishikawa recursive DOM structure, TreeView ordering, XYChart point labels, Architecture hints, Pie highlighting, Gantt timing, and config/frontmatter handling.
 - Upstream SVG tooling now verifies pinned source, renderer runtime, browser timezone and fonts, input, and SVG provenance and promotes complete family batches transactionally under cross-process locks.
 - Parity gates now compare the complete mismatch set against narrow policies for documented browser-only Sequence and Railroad residuals, so changed or additional mismatches still fail.
-- Language-tooling crates now forward the full diagram registry, config parsing, and sanitization features independently, while `merman-lsp` reports the selected registry profile to clients.
+- Language-tooling crates now forward the full diagram registry, config parsing, and sanitization features independently, while `merman-lsp` reports the selected registry profile to clients. #26
 
 ### Fixes and polish
 
@@ -29,9 +29,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Fixed Mermaid 11.16 edge cases in TreeView annotation boundaries, 14px built-in icons, and highlight bounds; Cynefin inline syntax, frontmatter titles, and global fonts; Architecture reserved IDs; and generated XYChart axis defaults. #21
 - Hardened upstream SVG maintenance so full-family generation removes obsolete fixture baselines transactionally, compare/audit readers cannot race shared Mermaid CLI installs, and root-override audits consume root attributes captured from the locked compare generation. #21
 - Unified fixture importer reject/defer rollback handling so all import sources restore the same transaction state after a failed baseline or deferred-fixture operation. #21
-- LSP responses now honor negotiated snippet, markup, diagnostic, code-action, and semantic-token capabilities, and no longer advertise project-wide symbol search when only open documents are indexed.
-- LSP diagnostics and editor requests now share one versioned analysis through a bounded single-flight executor; incremental UTF-16 positions clamp to line ends, cancellation and refresh requests cannot strand handler capacity, and completion and rename rules follow each diagram family.
-- The stdio server now follows the LSP shutdown/exit lifecycle and keeps protocol stdout clean, while the VS Code extension reads resource-scoped source-action settings from the matching document URI.
+- LSP responses now honor negotiated snippet, markup, diagnostic, code-action, and semantic-token capabilities, and no longer advertise project-wide symbol search when only open documents are indexed. #26
+- LSP diagnostics and editor requests now share one versioned analysis through a bounded single-flight executor; incremental UTF-16 positions clamp to line ends, cancellation and refresh requests cannot strand handler capacity, and completion and rename rules follow each diagram family. #26
+- The stdio server now follows the LSP shutdown/exit lifecycle and keeps protocol stdout clean, while the VS Code extension reads resource-scoped source-action settings from the matching document URI. #26
 
 ## [0.8.0-alpha.3] - 2026-07-09
 
