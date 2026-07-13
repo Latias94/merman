@@ -306,24 +306,7 @@ fn tree_view_registry_icons_preserve_viewbox_and_empty_body_semantics() {
             .any(|node| node.attribute("data-icon") == Some("tree-view-registry"))
     );
 
-    let missing_symbol = document
-        .descendants()
-        .find(|node| node.attribute("id") == Some("tv-icon-tree-view-registry-test-test-missing"))
-        .expect("missing registry icon symbol");
-    let missing_svg = missing_symbol
-        .children()
-        .find(|node| node.is_element() && node.tag_name().name() == "svg")
-        .expect("missing registry icon fallback SVG");
-    assert_eq!(missing_svg.attribute("width"), Some("14"));
-    assert_eq!(missing_svg.attribute("height"), Some("14"));
-    assert_eq!(missing_svg.attribute("viewBox"), Some("0 0 80 80"));
-    assert_eq!(
-        missing_svg
-            .descendants()
-            .find(|node| node.tag_name().name() == "tspan")
-            .and_then(|node| node.text()),
-        Some("?")
-    );
+    assert_unknown_tree_view_icon(&document, "tv-icon-tree-view-registry-test-test-missing");
 
     let empty_symbol = document
         .descendants()
@@ -353,11 +336,13 @@ fn tree_view_missing_icon_without_registry_uses_unknown_icon() {
         },
     );
     let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
+    assert_unknown_tree_view_icon(&document, "tv-icon-tree-view-no-registry-test-test-missing");
+}
+
+fn assert_unknown_tree_view_icon(document: &roxmltree::Document<'_>, symbol_id: &str) {
     let symbol = document
         .descendants()
-        .find(|node| {
-            node.attribute("id") == Some("tv-icon-tree-view-no-registry-test-test-missing")
-        })
+        .find(|node| node.attribute("id") == Some(symbol_id))
         .expect("missing icon symbol");
     let icon_svg = symbol
         .children()
