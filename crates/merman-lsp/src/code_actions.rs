@@ -1,9 +1,8 @@
-use crate::protocol::WorkspaceEditEncoding;
+use crate::client_profile::ClientProtocolProfile;
+use crate::protocol::{VersionedDiagnosticCodeActionData, WorkspaceEditEncoding};
 use merman_editor_core::{
-    DiagnosticCodeActionData, EditorCodeActionEdit, Position as EditorPosition,
-    code_actions_from_fixes,
+    EditorCodeActionEdit, Position as EditorPosition, code_actions_from_fixes,
 };
-use serde::Deserialize;
 use tower_lsp::lsp_types::{
     CodeActionContext, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse,
     Diagnostic, DocumentChanges, OneOf, OptionalVersionedTextDocumentIdentifier, TextDocumentEdit,
@@ -22,10 +21,25 @@ pub fn code_actions_for_params(
     )
 }
 
+#[cfg(test)]
 pub fn code_actions_for_params_with_encoding(
     params: &CodeActionParams,
     current_document_version: Option<i32>,
     workspace_edit_encoding: WorkspaceEditEncoding,
+) -> Option<CodeActionResponse> {
+    code_actions_for_params_with_encoding_and_preferred_support(
+        params,
+        current_document_version,
+        workspace_edit_encoding,
+        true,
+    )
+}
+
+pub fn code_actions_for_params_with_encoding_and_preferred_support(
+    params: &CodeActionParams,
+    current_document_version: Option<i32>,
+    workspace_edit_encoding: WorkspaceEditEncoding,
+    is_preferred_support: bool,
 ) -> Option<CodeActionResponse> {
     if !allows_quickfix(&params.context) {
         return None;
@@ -42,6 +56,7 @@ pub fn code_actions_for_params_with_encoding(
                 &params.text_document.uri,
                 current_document_version,
                 workspace_edit_encoding,
+                is_preferred_support,
             )
         })
         .collect::<Vec<_>>();
@@ -51,6 +66,20 @@ pub fn code_actions_for_params_with_encoding(
     } else {
         Some(actions)
     }
+}
+
+pub(crate) fn code_actions_for_params_with_profile(
+    params: &CodeActionParams,
+    current_document_version: Option<i32>,
+    profile: &ClientProtocolProfile,
+) -> Option<CodeActionResponse> {
+    let projection = profile.code_actions.as_ref()?;
+    code_actions_for_params_with_encoding_and_preferred_support(
+        params,
+        current_document_version,
+        profile.workspace_edit_encoding,
+        projection.is_preferred,
+    )
 }
 
 fn allows_quickfix(context: &CodeActionContext) -> bool {
@@ -65,6 +94,7 @@ fn code_actions_for_diagnostic(
     uri: &Url,
     current_document_version: i32,
     workspace_edit_encoding: WorkspaceEditEncoding,
+    is_preferred_support: bool,
 ) -> Vec<CodeActionOrCommand> {
     if diagnostic.source.as_deref() != Some("merman") {
         return Vec::new();
@@ -72,10 +102,10 @@ fn code_actions_for_diagnostic(
     let Some(data) = diagnostic.data.as_ref() else {
         return Vec::new();
     };
-    let Ok(data) = serde_json::from_value::<LspDiagnosticCodeActionData>(data.clone()) else {
+    let Ok(data) = serde_json::from_value::<VersionedDiagnosticCodeActionData>(data.clone()) else {
         return Vec::new();
     };
-    if data.document_version != Some(current_document_version) {
+    if data.document_version != current_document_version {
         return Vec::new();
     }
 
@@ -94,21 +124,13 @@ fn code_actions_for_diagnostic(
                 diagnostics: Some(vec![diagnostic.clone()]),
                 edit: Some(edit),
                 command: None,
-                is_preferred: action.is_preferred.then_some(true),
+                is_preferred: (is_preferred_support && action.is_preferred).then_some(true),
                 disabled: None,
                 data: None,
             })
         })
         .map(tower_lsp::lsp_types::CodeActionOrCommand::CodeAction)
         .collect::<Vec<_>>()
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LspDiagnosticCodeActionData {
-    #[serde(flatten)]
-    inner: DiagnosticCodeActionData,
-    document_version: Option<i32>,
 }
 
 fn workspace_edit_for_edits(

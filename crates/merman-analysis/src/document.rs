@@ -313,16 +313,43 @@ pub fn analyze_document_result_shared(
     analyzer: &Analyzer,
     source: SourceDescriptor,
 ) -> AnalysisResult {
+    match analyze_document_result_shared_inner(text, analyzer, source, || {
+        Ok::<(), std::convert::Infallible>(())
+    }) {
+        Ok(result) => result,
+        Err(never) => match never {},
+    }
+}
+
+pub fn analyze_document_result_shared_cancellable(
+    text: Arc<str>,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+    cancellation: &crate::AnalysisCancellationToken,
+) -> Result<AnalysisResult, crate::AnalysisCancelled> {
+    analyze_document_result_shared_inner(text, analyzer, source, || cancellation.checkpoint())
+}
+
+fn analyze_document_result_shared_inner<E>(
+    text: Arc<str>,
+    analyzer: &Analyzer,
+    source: SourceDescriptor,
+    mut checkpoint: impl FnMut() -> Result<(), E>,
+) -> Result<AnalysisResult, E> {
+    checkpoint()?;
     if let Some(result) = analyzer.source_limit_result(text.as_ref(), source.clone()) {
-        return result;
+        return Ok(result);
     }
 
     let document = DocumentSource::new(text, source.clone());
+    checkpoint()?;
 
     let mut diagnostics = Vec::new();
     let mut analyzed_diagrams = Vec::new();
     for diagram in document.diagrams() {
+        checkpoint()?;
         let analyzed = analyzer.analyze_diagram(diagram);
+        checkpoint()?;
         extend_document_diagnostics(
             &mut diagnostics,
             &document,
@@ -331,12 +358,13 @@ pub fn analyze_document_result_shared(
         );
         analyzed_diagrams.push(analyzed);
     }
-    AnalysisResult::new(
+    checkpoint()?;
+    Ok(AnalysisResult::new(
         source,
         document.source_map().clone(),
         diagnostics,
         analyzed_diagrams,
-    )
+    ))
 }
 
 fn analyze_document_diagnostics(

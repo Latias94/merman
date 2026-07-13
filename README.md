@@ -823,9 +823,10 @@ Fuzzing coverage for parser, render, and SVG pipeline surfaces is documented in
 Cargo feature meanings and host profile expectations are documented in
 [`docs/FEATURES.md`](https://github.com/Latias94/merman/blob/main/docs/FEATURES.md). In short,
 public facade crates such as `merman`, `merman-ffi`, `merman-wasm`, and `merman-typst-plugin` use
-`core-full` for Mermaid's full config/sanitization profile and `core-host` for local clock,
-randomness, and timing support. The lower-level `merman-core` crate names the same profiles `full`
-and `host`.
+`core-full` for Mermaid's full registry/config/sanitization profile and `core-host` for local
+clock, randomness, and timing support. The lower-level `merman-core` crate names the same profiles
+`full` and `host`; `full` is the compatibility combination of `full-registry`, `full-config`, and
+`full-sanitization`.
 
 These core profiles are separate from output features:
 
@@ -835,12 +836,18 @@ These core profiles are separate from output features:
 | `ascii` | ASCII/Unicode text rendering surfaces. |
 | `raster` | PNG/JPG/PDF conversion on top of SVG rendering. |
 | `analysis` | Diagnostics, validation projection, document analysis, and lint metadata in binding crates. |
-| `core-full` | Full Mermaid config/frontmatter behavior and full sanitizer parity; larger dependency set. |
+| `core-full` | Full Mermaid registry, config/frontmatter behavior, and sanitizer parity; larger dependency set. |
+| `core-full-registry` | Full detector/parser registry without also enabling full config parsing or sanitization. |
 | `core-host` | Ambient host capabilities such as local time, randomness, and parse timing; disable for deterministic sandboxed builds. |
 
 `merman-wasm` is the browser/wasm-bindgen package, while pure-WASM and Typst-style hosts start from
 `merman-core --no-default-features` or `merman --no-default-features` and avoid `core-full`,
 `core-host`, JS, and WASI imports unless the host explicitly permits them.
+
+The tiny no-default registry omits Architecture, Mindmap, and `flowchart-elk`. This currently gates
+registration and reported capabilities rather than compiling every unused family module out of the
+artifact. Language-tooling crates forward the three `core-full-*` concerns independently, and
+`merman-lsp` gates its stdio executable behind the separate `stdio` feature.
 
 `@mermanjs/web` publishes the full browser artifact by default and also exposes package subpaths for
 users who want less code loaded in browser bundles:

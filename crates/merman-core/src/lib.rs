@@ -41,10 +41,10 @@ pub use diagram::{
     RenderSemanticParser,
 };
 pub use editor::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
-    EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, EditorSpanCoordinateSpace,
-    SourceSpan,
+    EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenameDomain,
+    EditorSemanticCompleteness, EditorSemanticDiagnostic, EditorSemanticDiagnosticKind,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol,
+    EditorSpanCoordinateSpace, SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{DiagramFamilyCapability, DiagramHeaderFact, diagram_type_family_kind};

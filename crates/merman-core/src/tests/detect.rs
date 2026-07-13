@@ -3,7 +3,7 @@ use futures::executor::block_on;
 use serde_json::{Value, json};
 use std::fmt::Write;
 
-#[cfg(feature = "full")]
+#[cfg(feature = "full-registry")]
 #[test]
 fn full_build_detects_mindmap() {
     let engine = Engine::new();
@@ -13,7 +13,7 @@ fn full_build_detects_mindmap() {
     assert_eq!(res.diagram_type, "mindmap");
 }
 
-#[cfg(not(feature = "full"))]
+#[cfg(not(feature = "full-registry"))]
 #[test]
 fn tiny_build_does_not_detect_mindmap() {
     let engine = Engine::new();
@@ -25,7 +25,7 @@ fn tiny_build_does_not_detect_mindmap() {
     );
 }
 
-#[cfg(feature = "full")]
+#[cfg(feature = "full-registry")]
 #[test]
 fn full_build_detects_flowchart_elk_and_sets_layout() {
     let engine = Engine::new();
@@ -36,7 +36,7 @@ fn full_build_detects_flowchart_elk_and_sets_layout() {
     assert_eq!(res.effective_config.get_str("layout"), Some("elk"));
 }
 
-#[cfg(not(feature = "full"))]
+#[cfg(not(feature = "full-registry"))]
 #[test]
 fn tiny_build_flowchart_elk_falls_back_to_flowchart_v2() {
     let engine = Engine::new();

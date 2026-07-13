@@ -12,6 +12,7 @@ fn test_store() -> Arc<Mutex<DocumentStore>> {
 
 fn stale_message(kind: SnapshotContextKind) -> &'static str {
     match kind {
+        SnapshotContextKind::Diagnostics => "diagnostics document changed",
         SnapshotContextKind::SemanticTokens => "semantic tokens document changed",
         SnapshotContextKind::Structure => "structure document changed",
         SnapshotContextKind::WorkspaceSymbols => "workspace symbol documents changed",
@@ -21,6 +22,7 @@ fn stale_message(kind: SnapshotContextKind) -> &'static str {
 #[tokio::test(flavor = "current_thread")]
 async fn stale_snapshot_commit_returns_purpose_error() {
     for kind in [
+        SnapshotContextKind::Diagnostics,
         SnapshotContextKind::SemanticTokens,
         SnapshotContextKind::Structure,
     ] {

@@ -127,14 +127,14 @@
             "type": "boolean",
             "default": true,
             "markdownDescription": "Start the local `merman-lsp` language server for completion, hover, symbols, references, rename, semantic tokens, diagnostics, and quick fixes. Disable this when using the extension only for preview and export.",
-            "scope": "resource",
+            "scope": "window",
             "order": 10
           },
           "merman.diagnostics.enabled": {
             "type": "boolean",
             "default": true,
             "markdownDescription": "Publish Merman diagnostics to VS Code Problems. Disable this when another Mermaid or Markdown linter owns diagnostics; Merman completion, hover, symbols, references, rename, semantic tokens, preview, and export remain available.",
-            "scope": "resource",
+            "scope": "window",
             "order": 20
           },
           "merman.trace.server": {
@@ -164,7 +164,7 @@
             "default": "",
             "pattern": "^$|^\\d{4}-\\d{2}-\\d{2}$",
             "markdownDescription": "Optional deterministic local date forwarded to `merman-lsp` analysis options in `YYYY-MM-DD` format.",
-            "scope": "resource",
+            "scope": "window",
             "order": 10
           },
           "merman.analysis.fixed_local_offset_minutes": {
@@ -176,28 +176,28 @@
             "minimum": -1439,
             "maximum": 1439,
             "markdownDescription": "Optional deterministic local UTC offset in minutes forwarded to `merman-lsp` analysis options.",
-            "scope": "resource",
+            "scope": "window",
             "order": 20
           },
           "merman.analysis.site_config": {
             "type": "object",
             "default": {},
             "markdownDescription": "Optional Mermaid site configuration object forwarded to `merman-lsp` analysis options.",
-            "scope": "resource",
+            "scope": "window",
             "order": 30
           },
           "merman.analysis.parse.suppress_errors": {
             "type": "boolean",
             "default": false,
             "markdownDescription": "Forward lenient parse mode to `merman-lsp`.",
-            "scope": "resource",
+            "scope": "window",
             "order": 40
           },
           "merman.analysis.resources.max_source_bytes": {
             "type": "integer",
             "default": 0,
             "markdownDescription": "Optional source size cap forwarded to `merman-lsp`. `0` uses the server default.",
-            "scope": "resource",
+            "scope": "window",
             "minimum": 0,
             "order": 50
           },
@@ -211,7 +211,7 @@
             ],
             "default": "core",
             "markdownDescription": "Lint profile forwarded to `merman-lsp`.",
-            "scope": "resource",
+            "scope": "window",
             "enumDescriptions": [
               "Unset the profile and rely only on explicit rule configuration.",
               "Core diagnostics only.",
@@ -227,7 +227,7 @@
             },
             "default": [],
             "markdownDescription": "Additional lint rules enabled in `merman-lsp`.",
-            "scope": "resource",
+            "scope": "window",
             "order": 70
           },
           "merman.analysis.lint.disable_rules": {
@@ -237,7 +237,7 @@
             },
             "default": [],
             "markdownDescription": "Lint rules disabled in `merman-lsp`.",
-            "scope": "resource",
+            "scope": "window",
             "order": 80
           },
           "merman.analysis.lint.rule_severities": {
@@ -265,7 +265,7 @@
             },
             "default": [],
             "markdownDescription": "Per-rule severity overrides forwarded to `merman-lsp`.",
-            "scope": "resource",
+            "scope": "window",
             "order": 90
           }
         }
@@ -299,7 +299,7 @@
               "Use Mermaid base theme."
             ],
             "default": "source",
-            "scope": "resource",
+            "scope": "window",
             "order": 20,
             "markdownDescription": "Default diagram theme for new Merman preview panels. The preview toolbar can override this for the current panel session."
           },
@@ -316,7 +316,7 @@
               "Render Unicode text preview output."
             ],
             "default": "svg",
-            "scope": "resource",
+            "scope": "window",
             "order": 30,
             "markdownDescription": "Default display mode for new Merman preview panels. The preview toolbar can override this for the current panel session."
           },
@@ -333,7 +333,7 @@
               "Use a dark preview background."
             ],
             "default": "paper",
-            "scope": "resource",
+            "scope": "window",
             "order": 40,
             "markdownDescription": "Default background for new Merman preview panels and exported preview renders. The preview toolbar can override this for the current panel session."
           }

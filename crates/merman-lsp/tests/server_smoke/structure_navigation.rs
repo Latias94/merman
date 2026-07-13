@@ -9,6 +9,9 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
         .params(serde_json::json!({
             "capabilities": {
                 "textDocument": {
+                    "hover": {
+                        "contentFormat": ["markdown"]
+                    },
                     "documentSymbol": {
                         "hierarchicalDocumentSymbolSupport": true
                     }
@@ -174,6 +177,85 @@ async fn lsp_service_smoke_handles_hover_and_document_symbols() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_projects_hover_as_negotiated_plain_text() {
+    let (mut service, mut socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/plain-hover.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "hover": {
+                        "contentFormat": ["plaintext"]
+                    }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(response.as_ref().is_some_and(|response| response.is_ok()));
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: "flowchart TD\nA-->B\n".to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+    socket.next().await.expect("expected diagnostics");
+
+    let hover = Request::build("textDocument/hover")
+        .params(
+            serde_json::to_value(HoverParams {
+                text_document_position_params: TextDocumentPositionParams::new(
+                    TextDocumentIdentifier { uri },
+                    Position::new(1, 0),
+                ),
+                work_done_progress_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let hover_value = service
+        .ready()
+        .await
+        .unwrap()
+        .call(hover)
+        .await
+        .unwrap()
+        .and_then(|response| response.result().cloned())
+        .expect("expected hover result");
+    let hover: tower_lsp::lsp_types::Hover = serde_json::from_value(hover_value).unwrap();
+    let markup = match hover.contents {
+        HoverContents::Markup(markup) => markup,
+        other => panic!("unexpected hover contents: {other:?}"),
+    };
+
+    assert_eq!(markup.kind, tower_lsp::lsp_types::MarkupKind::PlainText);
+    assert!(markup.value.contains('A'));
+    assert!(!markup.value.contains('`'));
+    assert!(!markup.value.contains("### "));
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_selection_range_mixed_positions_returns_fallbacks() {
     let (mut service, _socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.md").unwrap();
@@ -263,6 +345,80 @@ async fn lsp_service_selection_range_mixed_positions_returns_fallbacks() {
     assert!(ranges[0].parent.is_none());
     assert_eq!(ranges[1].range.start, Position::new(3, 0));
     assert!(ranges[1].parent.is_some());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_smoke_returns_folding_ranges_over_json_rpc() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/folding.md").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({"capabilities": {}}))
+        .id(1)
+        .finish();
+    let init_response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap();
+    assert!(
+        init_response
+            .as_ref()
+            .is_some_and(|response| response.is_ok())
+    );
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "markdown".to_string(),
+                    version: 1,
+                    text:
+                        "before\n```mermaid\nflowchart TD\nsubgraph group\nA-->B\nend\n```\nafter\n"
+                            .to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let request = Request::build("textDocument/foldingRange")
+        .params(
+            serde_json::to_value(FoldingRangeParams {
+                text_document: TextDocumentIdentifier { uri },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("folding range response");
+    let ranges: Vec<FoldingRange> =
+        from_value(response.result().cloned().expect("folding range result")).unwrap();
+
+    assert!(
+        ranges.iter().any(|range| {
+            range.start_line == 1
+                && range.end_line == 6
+                && range.kind == Some(FoldingRangeKind::Region)
+        }),
+        "expected Mermaid fence fold, got {ranges:#?}"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -1,7 +1,7 @@
 use crate::diagrams::scan::strip_line_ending;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenameDomain, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -940,13 +940,16 @@ fn push_architecture_entity(
         EditorExpectedSyntaxKind::NodeIdentifier,
         text.span,
     ));
-    facts.push_symbol(EditorSemanticSymbol::new(
-        text.text,
-        Some(detail.to_string()),
-        kind,
-        text.span,
-        text.span,
-    ));
+    facts.push_symbol(
+        EditorSemanticSymbol::new(
+            text.text,
+            Some(detail.to_string()),
+            kind,
+            text.span,
+            text.span,
+        )
+        .with_rename_domain(EditorRenameDomain::ArchitectureIdentifier),
+    );
 }
 
 fn push_architecture_payload(
@@ -1329,6 +1332,12 @@ fn take_id_prefix(input: &str) -> Option<(&str, &str)> {
 
 fn is_architecture_reserved_id(id: &str) -> bool {
     matches!(id, "align" | "row" | "column")
+}
+
+pub(crate) fn is_valid_editor_identifier(candidate: &str) -> bool {
+    take_id_prefix(candidate).is_some_and(|(id, rest)| {
+        rest.is_empty() && id == candidate && !is_architecture_reserved_id(id)
+    })
 }
 
 fn architecture_reserved_id_message(id: &str) -> String {

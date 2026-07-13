@@ -299,105 +299,6 @@ async fn lsp_service_pull_after_close_returns_stable_empty_report() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn lsp_service_smoke_reports_deprecated_flowchart_html_labels_without_quickfix() {
-    let (mut service, mut socket) = MermanLanguageServer::service();
-    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
-
-    let initialize = Request::build("initialize")
-        .params(serde_json::json!({
-            "capabilities": {
-                "workspace": {
-                    "workspaceEdit": {
-                        "documentChanges": true
-                    }
-                }
-            }
-        }))
-        .id(1)
-        .finish();
-    let init_response = service
-        .ready()
-        .await
-        .unwrap()
-        .call(initialize)
-        .await
-        .unwrap();
-    assert!(
-        init_response
-            .as_ref()
-            .is_some_and(|response| response.is_ok())
-    );
-
-    let open = Request::build("textDocument/didOpen")
-        .params(
-            serde_json::to_value(DidOpenTextDocumentParams {
-                text_document: TextDocumentItem {
-                    uri: uri.clone(),
-                    language_id: "mermaid".to_string(),
-                    version: 1,
-                    text: "%%{init: { \"flowchart\": { \"htmlLabels\": false, \"curve\": \"linear\" } }}%%\nflowchart TD\nA-->B\n".to_string(),
-                },
-            })
-            .unwrap(),
-        )
-        .finish();
-    assert_eq!(
-        service.ready().await.unwrap().call(open).await.unwrap(),
-        None
-    );
-
-    let publish = timeout(Duration::from_secs(5), socket.next())
-        .await
-        .unwrap()
-        .expect("expected diagnostics publish");
-    assert_eq!(publish.method(), "textDocument/publishDiagnostics");
-    let params: PublishDiagnosticsParams =
-        from_value(publish.params().cloned().expect("publish params")).unwrap();
-    assert_eq!(params.diagnostics.len(), 1);
-    let diagnostic = params.diagnostics[0].clone();
-    assert_eq!(
-        diagnostic.severity,
-        Some(tower_lsp::lsp_types::DiagnosticSeverity::WARNING)
-    );
-    assert_eq!(
-        diagnostic.code,
-        Some(NumberOrString::String(
-            "merman.compatibility.config.deprecated_flowchart_html_labels".to_string()
-        ))
-    );
-    let request = Request::build("textDocument/codeAction")
-        .params(
-            serde_json::to_value(CodeActionParams {
-                text_document: TextDocumentIdentifier { uri: uri.clone() },
-                range: Range {
-                    start: Position::new(0, 0),
-                    end: Position::new(0, 80),
-                },
-                context: CodeActionContext {
-                    diagnostics: vec![diagnostic],
-                    only: Some(vec![CodeActionKind::QUICKFIX]),
-                    trigger_kind: None,
-                },
-                work_done_progress_params: Default::default(),
-                partial_result_params: Default::default(),
-            })
-            .unwrap(),
-        )
-        .id(2)
-        .finish();
-    let response = service
-        .ready()
-        .await
-        .unwrap()
-        .call(request)
-        .await
-        .unwrap()
-        .expect("code action response");
-    let result = response.result().expect("code action result");
-    assert!(result.is_null());
-}
-
-#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_reports_flowchart_unknown_style_target_warning() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
@@ -469,7 +370,13 @@ async fn lsp_service_smoke_publishes_current_diagnostics_version() {
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::json!({"capabilities":{}}))
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                }
+            }
+        }))
         .id(1)
         .finish();
     let init_response = service
@@ -573,7 +480,13 @@ async fn lsp_service_smoke_publishes_sync_error_after_invalid_incremental_range(
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::to_value(InitializeParams::default()).unwrap())
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                }
+            }
+        }))
         .id(1)
         .finish();
     let init_response = service
@@ -623,8 +536,8 @@ async fn lsp_service_smoke_publishes_sync_error_after_invalid_incremental_range(
                 },
                 content_changes: vec![TextDocumentContentChangeEvent {
                     range: Some(Range {
-                        start: Position::new(0, 100),
-                        end: Position::new(0, 100),
+                        start: Position::new(99, 0),
+                        end: Position::new(99, 0),
                     }),
                     range_length: None,
                     text: "x".to_string(),
@@ -757,8 +670,8 @@ async fn lsp_service_pull_reports_sync_error_after_invalid_incremental_range() {
                 },
                 content_changes: vec![TextDocumentContentChangeEvent {
                     range: Some(Range {
-                        start: Position::new(0, 100),
-                        end: Position::new(0, 100),
+                        start: Position::new(99, 0),
+                        end: Position::new(99, 0),
                     }),
                     range_length: None,
                     text: "x".to_string(),

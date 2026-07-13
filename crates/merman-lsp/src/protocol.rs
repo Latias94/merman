@@ -2,13 +2,14 @@ use crate::document_store::DEFAULT_LSP_MAX_SOURCE_BYTES;
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity};
 pub use merman_analysis::{RULE_CATALOG_RESPONSE_VERSION, RuleCatalogEntry, RuleCatalogResponse};
 use merman_editor_core::{
-    DocumentUri, EditorLocation, Position as CorePosition, Range as CoreRange,
+    DiagnosticCodeActionData, DocumentUri, EditorLocation, Position as CorePosition,
+    Range as CoreRange,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
-pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 1;
+pub const EXPERIMENTAL_SCHEMA_VERSION: u32 = 2;
 pub const CONFIG_SCHEMA_RESPONSE_VERSION: u32 = 1;
 pub const RULE_CATALOG_METHOD: &str = "merman/ruleCatalog";
 pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
@@ -17,6 +18,20 @@ pub const CONFIG_SCHEMA_METHOD: &str = "merman/configSchema";
 pub enum WorkspaceEditEncoding {
     DocumentChanges,
     Changes,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct VersionedDiagnosticCodeActionData {
+    #[serde(flatten)]
+    pub(crate) inner: DiagnosticCodeActionData,
+    pub(crate) document_version: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DiagnosticVersionData {
+    pub(crate) document_version: i32,
 }
 
 impl WorkspaceEditEncoding {
@@ -62,9 +77,23 @@ impl ConfigSchemaResponse {
 }
 
 pub fn experimental_capabilities() -> serde_json::Value {
+    let diagram_families = merman_core::diagram_family_capabilities()
+        .iter()
+        .map(|family| {
+            json!({
+                "diagramType": family.diagram_type,
+                "semanticParser": family.has_semantic_parser,
+                "renderParser": family.has_render_parser,
+            })
+        })
+        .collect::<Vec<_>>();
     json!({
         "merman": {
             "schemaVersion": EXPERIMENTAL_SCHEMA_VERSION,
+            "diagramSupport": {
+                "profile": merman_core::selected_baseline_registry_profile().as_str(),
+                "families": diagram_families,
+            },
             "requests": {
                 "ruleCatalog": RULE_CATALOG_METHOD,
                 "configSchema": CONFIG_SCHEMA_METHOD
@@ -91,6 +120,27 @@ pub fn document_uri_to_lsp(uri: &DocumentUri, fallback_uri: &Url) -> Url {
 pub fn location_to_lsp(location: EditorLocation, fallback_uri: &Url) -> Location {
     let uri = document_uri_to_lsp(&location.uri, fallback_uri);
     Location::new(uri, range_to_lsp(location.range))
+}
+
+pub(crate) fn generated_markdown_to_plain_text(markdown: &str) -> String {
+    let mut plain = String::with_capacity(markdown.len());
+    for (index, line) in markdown.lines().enumerate() {
+        if index > 0 {
+            plain.push('\n');
+        }
+        let line = line.strip_prefix("### ").unwrap_or(line);
+        let mut chars = line.chars();
+        while let Some(character) = chars.next() {
+            if character == '\\' {
+                if let Some(next) = chars.next() {
+                    plain.push(next);
+                }
+            } else if character != '`' {
+                plain.push(character);
+            }
+        }
+    }
+    plain.trim_end().to_string()
 }
 
 fn profile_name(profile: AnalysisRuleProfile) -> &'static str {
@@ -324,6 +374,24 @@ mod tests {
         assert_eq!(
             capabilities["merman"]["schemaVersion"],
             EXPERIMENTAL_SCHEMA_VERSION
+        );
+        assert_eq!(
+            capabilities["merman"]["diagramSupport"]["profile"],
+            merman_core::selected_baseline_registry_profile().as_str()
+        );
+        let families = capabilities["merman"]["diagramSupport"]["families"]
+            .as_array()
+            .expect("diagram family capabilities");
+        assert!(families.iter().any(|family| {
+            family["diagramType"] == "gitGraph"
+                && family["semanticParser"] == true
+                && family["renderParser"] == true
+        }));
+        #[cfg(not(any(feature = "core-full", feature = "core-full-registry")))]
+        assert!(
+            families
+                .iter()
+                .all(|family| family["diagramType"] != "mindmap")
         );
     }
 

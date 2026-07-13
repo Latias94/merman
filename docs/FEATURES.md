@@ -15,7 +15,8 @@ or similar capabilities.
 
 | Crate | Feature | Default | Meaning |
 | --- | --- | ---: | --- |
-| `merman-core` | `full` | yes | Compatibility profile for full Mermaid behavior. Enables `full-config` and `full-sanitization`. |
+| `merman-core` | `full` | yes | Compatibility profile for full Mermaid behavior. Enables `full-registry`, `full-config`, and `full-sanitization`. |
+| `merman-core` | `full-registry` | via `full` | Enables the full detector and parser registry, including Architecture, Mindmap, and `flowchart-elk`. |
 | `merman-core` | `full-config` | via `full` | Enables full YAML frontmatter parsing and JSON5 directive parsing through `serde_yaml` and `json5`. |
 | `merman-core` | `full-sanitization` | via `full` | Enables DOMPurify-like HTML sanitization and URL canonicalization through `lol_html` and `url`. |
 | `merman-core` | `host` | yes | Host capability profile. Enables `host-clock`, `host-random`, and `host-timing`. |
@@ -27,6 +28,11 @@ or similar capabilities.
 is intentionally smaller and more deterministic than the default full profile. In this profile,
 implicit local time falls back to UTC, generated IDs are deterministic, and parse timing
 instrumentation is disabled.
+
+The no-default registry is the current tiny profile. It does not register Architecture, Mindmap,
+or `flowchart-elk`, and capability metadata reports those families as unavailable. This is a
+runtime registry split, not compile-time family pruning: diagram modules and generated parser code
+may still be compiled until the family manifest can drive module-level feature gates.
 
 Without `full-config`, closed YAML frontmatter is stripped before diagram detection, but title/config
 fields from that frontmatter are not applied. Common Mermaid inline metadata remains supported by a
@@ -103,6 +109,24 @@ such as `merman-wasm --no-default-features --features ascii` can omit `merman-an
 lint support, and editor-language dependencies.
 For browser package users, `@mermanjs/web/render` keeps analysis for compatibility and
 `@mermanjs/web/render-only` is the render/parse/layout artifact that omits analysis.
+
+## Analysis And Language Tooling Features
+
+| Crate | Feature | Default | Meaning |
+| --- | --- | ---: | --- |
+| `merman-analysis` | `core-full` | yes | Compatibility alias forwarding `merman-core/full`. |
+| `merman-analysis` | `core-full-registry` / `core-full-config` / `core-full-sanitization` | via `core-full` | Forward one full-profile concern without enabling the other two. |
+| `merman-analysis` | `core-host` | yes | Forwards `merman-core/host`. |
+| `merman-editor-core` | `core-full` / `core-host` | yes | Compatibility aliases forwarding the full and host profiles through analysis and core. |
+| `merman-editor-core` | `core-full-registry` / `core-full-config` / `core-full-sanitization` | via `core-full` | Forward one full-profile concern through both editor dependencies. |
+| `merman-lsp` | `stdio` | yes | Builds the `merman-lsp` stdio binary. The protocol-neutral library remains available without it. |
+| `merman-lsp` | `core-full` / `core-host` | yes | Compatibility aliases forwarding the full and host profiles through all language-tooling layers. |
+| `merman-lsp` | `core-full-registry` / `core-full-config` / `core-full-sanitization` | via `core-full` | Forward one full-profile concern through LSP, editor, analysis, and core. |
+
+`merman-lsp --no-default-features` builds the protocol-neutral library against the tiny core
+registry and without the stdio executable. Add `stdio` when a no-default build still needs the
+binary. The server publishes its selected registry profile and per-family availability through
+capability metadata so clients do not need to infer support from the package name.
 
 ## Host Profiles
 

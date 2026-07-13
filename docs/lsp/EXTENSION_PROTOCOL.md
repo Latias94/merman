@@ -17,7 +17,17 @@ During `initialize`, the server advertises:
 {
   "experimental": {
     "merman": {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
+      "diagramSupport": {
+        "profile": "full",
+        "families": [
+          {
+            "diagramType": "flowchart-v2",
+            "semanticParser": true,
+            "renderParser": true
+          }
+        ]
+      },
       "requests": {
         "ruleCatalog": "merman/ruleCatalog",
         "configSchema": "merman/configSchema"
@@ -28,6 +38,12 @@ During `initialize`, the server advertises:
 ```
 
 Clients should feature-detect these fields instead of hard-coding extension availability.
+
+`diagramSupport.profile` is `full` for the default registry and `tiny` for a no-default registry.
+Each `families` entry reports the canonical `diagramType` plus separate semantic-parser and
+render-parser availability. Clients should use this data to explain a slim server build instead of
+assuming every published Mermaid family is available. The family list describes compiled registry
+capabilities, not files currently open in the workspace.
 
 ## `merman/ruleCatalog`
 

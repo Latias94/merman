@@ -18,14 +18,22 @@ pub(crate) struct DetectorFact {
 
 #[derive(Clone, Copy)]
 pub(crate) struct FastDetectKeywordFact {
-    keyword: &'static str,
-    id: &'static str,
+    pub(crate) keyword: &'static str,
+    pub(crate) id: &'static str,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct SemanticParserFact {
     pub(crate) id: &'static str,
     pub(crate) parser: DiagramSemanticParser,
+    pub(crate) header_policy: HeaderPolicy,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HeaderPolicy {
+    Required,
+    Alias(&'static str),
+    Internal,
 }
 
 #[derive(Clone, Copy)]
@@ -99,11 +107,11 @@ pub(crate) fn fast_detect_by_leading_keyword(
 }
 
 pub(crate) fn selected_registry_profile() -> BaselineRegistryProfile {
-    #[cfg(feature = "full")]
+    #[cfg(feature = "full-registry")]
     {
         BaselineRegistryProfile::Full
     }
-    #[cfg(not(feature = "full"))]
+    #[cfg(not(feature = "full-registry"))]
     {
         BaselineRegistryProfile::Tiny
     }
@@ -194,6 +202,10 @@ pub(crate) fn diagram_header_facts(
             .filter(|fact| {
                 diagram_type_supported_in_profile(profile, fact.diagram_type)
                     && (!fact.full_only || include_full_only)
+                    && semantic_parser_facts(profile).iter().any(|semantic| {
+                        semantic.id == fact.diagram_type
+                            && semantic.header_policy == HeaderPolicy::Required
+                    })
             })
             .collect()
     }
@@ -208,6 +220,21 @@ pub(crate) fn diagram_header_facts(
         BaselineRegistryProfile::Full => FULL_FACTS
             .get_or_init(|| build(BaselineRegistryProfile::Full))
             .as_slice(),
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn declared_diagram_header_facts() -> &'static [DiagramHeaderFact] {
+    DIAGRAM_HEADER_FACTS
+}
+
+#[cfg(test)]
+pub(crate) fn fast_detect_keyword_facts(
+    profile: BaselineRegistryProfile,
+) -> &'static [FastDetectKeywordFact] {
+    match profile {
+        BaselineRegistryProfile::Tiny => fast_detect_keyword_facts_tiny(),
+        BaselineRegistryProfile::Full => FAST_DETECT_KEYWORDS_FULL,
     }
 }
 
@@ -636,167 +663,103 @@ const FAST_DETECT_KEYWORDS_FULL: &[FastDetectKeywordFact] = &[
     },
 ];
 
+const fn semantic_parser_fact(
+    id: &'static str,
+    parser: DiagramSemanticParser,
+) -> SemanticParserFact {
+    SemanticParserFact {
+        id,
+        parser,
+        header_policy: HeaderPolicy::Required,
+    }
+}
+
+const fn semantic_parser_alias_fact(
+    id: &'static str,
+    canonical_id: &'static str,
+    parser: DiagramSemanticParser,
+) -> SemanticParserFact {
+    SemanticParserFact {
+        id,
+        parser,
+        header_policy: HeaderPolicy::Alias(canonical_id),
+    }
+}
+
+const fn internal_semantic_parser_fact(
+    id: &'static str,
+    parser: DiagramSemanticParser,
+) -> SemanticParserFact {
+    SemanticParserFact {
+        id,
+        parser,
+        header_policy: HeaderPolicy::Internal,
+    }
+}
+
 const SEMANTIC_PARSER_FACTS: &[SemanticParserFact] = &[
-    SemanticParserFact {
-        id: "error",
-        parser: crate::diagrams::error_diagram::parse_error,
-    },
-    SemanticParserFact {
-        id: "flowchart-v2",
-        parser: crate::diagrams::flowchart::parse_flowchart,
-    },
-    SemanticParserFact {
-        id: "flowchart",
-        parser: crate::diagrams::flowchart::parse_flowchart,
-    },
-    SemanticParserFact {
-        id: "flowchart-elk",
-        parser: crate::diagrams::flowchart::parse_flowchart,
-    },
-    SemanticParserFact {
-        id: "info",
-        parser: crate::diagrams::info::parse_info,
-    },
-    SemanticParserFact {
-        id: "pie",
-        parser: crate::diagrams::pie::parse_pie,
-    },
-    SemanticParserFact {
-        id: "c4",
-        parser: crate::diagrams::c4::parse_c4,
-    },
-    SemanticParserFact {
-        id: "requirement",
-        parser: crate::diagrams::requirement::parse_requirement,
-    },
-    SemanticParserFact {
-        id: "sequence",
-        parser: crate::diagrams::sequence::parse_sequence,
-    },
-    SemanticParserFact {
-        id: "swimlane",
-        parser: crate::diagrams::flowchart::parse_flowchart,
-    },
-    SemanticParserFact {
-        id: "cynefin",
-        parser: crate::diagrams::cynefin::parse_cynefin,
-    },
-    SemanticParserFact {
-        id: "railroad",
-        parser: crate::diagrams::railroad::parse_railroad,
-    },
-    SemanticParserFact {
-        id: "railroadEbnf",
-        parser: crate::diagrams::railroad::parse_railroad_ebnf,
-    },
-    SemanticParserFact {
-        id: "railroadAbnf",
-        parser: crate::diagrams::railroad::parse_railroad_abnf,
-    },
-    SemanticParserFact {
-        id: "railroadPeg",
-        parser: crate::diagrams::railroad::parse_railroad_peg,
-    },
-    SemanticParserFact {
-        id: "zenuml",
-        parser: crate::diagrams::zenuml::parse_zenuml,
-    },
-    SemanticParserFact {
-        id: "classDiagram",
-        parser: crate::diagrams::class::parse_class,
-    },
-    SemanticParserFact {
-        id: "class",
-        parser: crate::diagrams::class::parse_class,
-    },
-    SemanticParserFact {
-        id: "er",
-        parser: crate::diagrams::er::parse_er,
-    },
-    SemanticParserFact {
-        id: "erDiagram",
-        parser: crate::diagrams::er::parse_er,
-    },
-    SemanticParserFact {
-        id: "stateDiagram",
-        parser: crate::diagrams::state::parse_state,
-    },
-    SemanticParserFact {
-        id: "state",
-        parser: crate::diagrams::state::parse_state,
-    },
-    SemanticParserFact {
-        id: "mindmap",
-        parser: crate::diagrams::mindmap::parse_mindmap,
-    },
-    SemanticParserFact {
-        id: "gantt",
-        parser: crate::diagrams::gantt::parse_gantt,
-    },
-    SemanticParserFact {
-        id: "timeline",
-        parser: crate::diagrams::timeline::parse_timeline,
-    },
-    SemanticParserFact {
-        id: "journey",
-        parser: crate::diagrams::journey::parse_journey,
-    },
-    SemanticParserFact {
-        id: "kanban",
-        parser: crate::diagrams::kanban::parse_kanban,
-    },
-    SemanticParserFact {
-        id: "architecture",
-        parser: crate::diagrams::architecture::parse_architecture,
-    },
-    SemanticParserFact {
-        id: "block",
-        parser: crate::diagrams::block::parse_block,
-    },
-    SemanticParserFact {
-        id: "gitGraph",
-        parser: crate::diagrams::git_graph::parse_git_graph,
-    },
-    SemanticParserFact {
-        id: "quadrantChart",
-        parser: crate::diagrams::quadrant_chart::parse_quadrant_chart,
-    },
-    SemanticParserFact {
-        id: "packet",
-        parser: crate::diagrams::packet::parse_packet,
-    },
-    SemanticParserFact {
-        id: "radar",
-        parser: crate::diagrams::radar::parse_radar,
-    },
-    SemanticParserFact {
-        id: "treeView",
-        parser: crate::diagrams::tree_view::parse_tree_view,
-    },
-    SemanticParserFact {
-        id: "ishikawa",
-        parser: crate::diagrams::ishikawa::parse_ishikawa,
-    },
-    SemanticParserFact {
-        id: "eventmodeling",
-        parser: crate::diagrams::eventmodeling::parse_eventmodeling,
-    },
-    SemanticParserFact {
-        id: "treemap",
-        parser: crate::diagrams::treemap::parse_treemap,
-    },
-    SemanticParserFact {
-        id: "venn",
-        parser: crate::diagrams::venn::parse_venn,
-    },
-    SemanticParserFact {
-        id: "sankey",
-        parser: crate::diagrams::sankey::parse_sankey,
-    },
-    SemanticParserFact {
-        id: "xychart",
-        parser: crate::diagrams::xychart::parse_xychart,
-    },
+    internal_semantic_parser_fact("error", crate::diagrams::error_diagram::parse_error),
+    semantic_parser_fact("flowchart-v2", crate::diagrams::flowchart::parse_flowchart),
+    semantic_parser_alias_fact(
+        "flowchart",
+        "flowchart-v2",
+        crate::diagrams::flowchart::parse_flowchart,
+    ),
+    semantic_parser_fact("flowchart-elk", crate::diagrams::flowchart::parse_flowchart),
+    semantic_parser_fact("info", crate::diagrams::info::parse_info),
+    semantic_parser_fact("pie", crate::diagrams::pie::parse_pie),
+    semantic_parser_fact("c4", crate::diagrams::c4::parse_c4),
+    semantic_parser_fact(
+        "requirement",
+        crate::diagrams::requirement::parse_requirement,
+    ),
+    semantic_parser_fact("sequence", crate::diagrams::sequence::parse_sequence),
+    semantic_parser_fact("swimlane", crate::diagrams::flowchart::parse_flowchart),
+    semantic_parser_fact("cynefin", crate::diagrams::cynefin::parse_cynefin),
+    semantic_parser_fact("railroad", crate::diagrams::railroad::parse_railroad),
+    semantic_parser_fact(
+        "railroadEbnf",
+        crate::diagrams::railroad::parse_railroad_ebnf,
+    ),
+    semantic_parser_fact(
+        "railroadAbnf",
+        crate::diagrams::railroad::parse_railroad_abnf,
+    ),
+    semantic_parser_fact("railroadPeg", crate::diagrams::railroad::parse_railroad_peg),
+    semantic_parser_fact("zenuml", crate::diagrams::zenuml::parse_zenuml),
+    semantic_parser_fact("classDiagram", crate::diagrams::class::parse_class),
+    semantic_parser_alias_fact("class", "classDiagram", crate::diagrams::class::parse_class),
+    semantic_parser_fact("er", crate::diagrams::er::parse_er),
+    semantic_parser_alias_fact("erDiagram", "er", crate::diagrams::er::parse_er),
+    semantic_parser_fact("stateDiagram", crate::diagrams::state::parse_state),
+    semantic_parser_alias_fact("state", "stateDiagram", crate::diagrams::state::parse_state),
+    semantic_parser_fact("mindmap", crate::diagrams::mindmap::parse_mindmap),
+    semantic_parser_fact("gantt", crate::diagrams::gantt::parse_gantt),
+    semantic_parser_fact("timeline", crate::diagrams::timeline::parse_timeline),
+    semantic_parser_fact("journey", crate::diagrams::journey::parse_journey),
+    semantic_parser_fact("kanban", crate::diagrams::kanban::parse_kanban),
+    semantic_parser_fact(
+        "architecture",
+        crate::diagrams::architecture::parse_architecture,
+    ),
+    semantic_parser_fact("block", crate::diagrams::block::parse_block),
+    semantic_parser_fact("gitGraph", crate::diagrams::git_graph::parse_git_graph),
+    semantic_parser_fact(
+        "quadrantChart",
+        crate::diagrams::quadrant_chart::parse_quadrant_chart,
+    ),
+    semantic_parser_fact("packet", crate::diagrams::packet::parse_packet),
+    semantic_parser_fact("radar", crate::diagrams::radar::parse_radar),
+    semantic_parser_fact("treeView", crate::diagrams::tree_view::parse_tree_view),
+    semantic_parser_fact("ishikawa", crate::diagrams::ishikawa::parse_ishikawa),
+    semantic_parser_fact(
+        "eventmodeling",
+        crate::diagrams::eventmodeling::parse_eventmodeling,
+    ),
+    semantic_parser_fact("treemap", crate::diagrams::treemap::parse_treemap),
+    semantic_parser_fact("venn", crate::diagrams::venn::parse_venn),
+    semantic_parser_fact("sankey", crate::diagrams::sankey::parse_sankey),
+    semantic_parser_fact("xychart", crate::diagrams::xychart::parse_xychart),
 ];
 
 macro_rules! render_parser {
@@ -1323,6 +1286,12 @@ const DIAGRAM_HEADER_FACTS: &[DiagramHeaderFact] = &[
         full_only: false,
     },
     DiagramHeaderFact {
+        diagram_type: "gitGraph",
+        label: "gitGraph",
+        detail: "git graph header",
+        full_only: false,
+    },
+    DiagramHeaderFact {
         diagram_type: "pie",
         label: "pie",
         detail: "pie header",
@@ -1482,12 +1451,6 @@ const DIAGRAM_HEADER_FACTS: &[DiagramHeaderFact] = &[
         diagram_type: "railroadPeg",
         label: "railroad-peg-beta",
         detail: "railroad peg header",
-        full_only: false,
-    },
-    DiagramHeaderFact {
-        diagram_type: "wardley",
-        label: "wardley-beta",
-        detail: "wardley header",
         full_only: false,
     },
     DiagramHeaderFact {

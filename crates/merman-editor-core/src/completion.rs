@@ -272,7 +272,6 @@ fn node_items(
     fence
         .text_index
         .node_ids()
-        .into_iter()
         .map(|id| CompletionItem {
             label: id.clone(),
             kind: CompletionItemKind::Variable,
@@ -646,8 +645,9 @@ mod tests {
     use crate::workspace::DocumentWorkspace;
     use merman_analysis::{FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceMap};
     use merman_core::{
-        EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-        EditorSemanticSymbol, EditorSpanCoordinateSpace, SourceSpan,
+        EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind,
+        EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, EditorSpanCoordinateSpace,
+        SourceSpan,
     };
     use std::sync::Arc;
 
@@ -1190,7 +1190,8 @@ mod tests {
 
     #[test]
     fn degraded_parser_flowchart_top_level_shape_trigger_still_completes_shapes() {
-        let mut facts = EditorSemanticFacts::new();
+        let mut facts =
+            EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart);
         facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
         let line = "A((";
         let snapshot = snapshot_with_facts(
@@ -1310,7 +1311,8 @@ mod tests {
 
     #[test]
     fn degraded_parser_flowchart_shape_object_value_still_completes_shapes() {
-        let mut facts = EditorSemanticFacts::new();
+        let mut facts =
+            EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart);
         facts.span_coordinate_space = EditorSpanCoordinateSpace::ParserInput;
         let line = "A@{ shape: rou";
         let snapshot = snapshot_with_facts(

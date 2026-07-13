@@ -6,6 +6,7 @@
 //! helpers that FFI, UniFFI, WASM, CLI linting, Markdown scanning, and future LSP adapters can share.
 
 mod analyzer;
+mod cancellation;
 mod diagnostic_projection;
 pub mod document;
 pub mod editor;
@@ -22,17 +23,19 @@ mod source_map;
 mod status;
 
 pub use analyzer::{AnalysisOptions, Analyzer};
+pub use cancellation::{AnalysisCancellationToken, AnalysisCancelled};
 pub use document::{
     DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceMarker,
     SharedTextSlice, analyze_document, analyze_document_facts, analyze_document_result,
-    analyze_document_result_shared, source_descriptor_for_kind,
-    source_descriptor_for_markdown_path, source_descriptor_for_uri, source_language,
+    analyze_document_result_shared, analyze_document_result_shared_cancellable,
+    source_descriptor_for_kind, source_descriptor_for_markdown_path, source_descriptor_for_uri,
+    source_language,
 };
 pub use editor::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
-    FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceSemanticItem,
-    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, ShapeObjectValuePrefix,
-    shape_object_value_prefix,
+    FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceRenameDomain,
+    FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    ShapeObjectValuePrefix, shape_object_value_prefix,
 };
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,

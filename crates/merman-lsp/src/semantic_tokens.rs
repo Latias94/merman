@@ -1,18 +1,23 @@
+use crate::client_profile::{ClientProtocolProfile, SemanticTokenProjection};
 use crate::snapshot::DocumentSnapshot;
 use merman_editor_core::{
-    SemanticTokenKind, SemanticTokenModifier as CoreSemanticTokenModifier,
-    semantic_token_legend as core_semantic_token_legend,
+    SemanticToken as CoreSemanticToken,
     semantic_tokens_for_snapshot as core_semantic_tokens_for_snapshot,
     semantic_tokens_for_snapshot_range as core_semantic_tokens_for_snapshot_range,
-    token_modifier_index, token_type_index,
+};
+#[cfg(test)]
+use merman_editor_core::{
+    SemanticTokenKind, SemanticTokenModifier as CoreSemanticTokenModifier,
+    semantic_token_legend as core_semantic_token_legend, token_modifier_index, token_type_index,
 };
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use tower_lsp::lsp_types::{
-    Range, SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
-    SemanticTokensDelta, SemanticTokensEdit, SemanticTokensFullDeltaResult,
-    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    Range, SemanticToken, SemanticTokens, SemanticTokensDelta, SemanticTokensEdit,
+    SemanticTokensFullDeltaResult, SemanticTokensOptions,
 };
+#[cfg(test)]
+use tower_lsp::lsp_types::{SemanticTokenModifier, SemanticTokenType, SemanticTokensLegend};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct AbsoluteToken {
@@ -23,48 +28,68 @@ struct AbsoluteToken {
     token_modifiers_bitset: u32,
 }
 
-pub fn semantic_tokens_options() -> SemanticTokensOptions {
-    SemanticTokensOptions {
-        work_done_progress_options: Default::default(),
-        legend: semantic_tokens_legend(),
-        range: Some(true),
-        full: Some(SemanticTokensFullOptions::Delta { delta: Some(true) }),
-    }
+pub(crate) fn semantic_tokens_options_with_profile(
+    profile: &ClientProtocolProfile,
+) -> Option<SemanticTokensOptions> {
+    profile
+        .semantic_tokens
+        .as_ref()
+        .map(SemanticTokenProjection::options)
 }
 
+#[cfg(test)]
 pub fn semantic_tokens_legend() -> SemanticTokensLegend {
-    let legend = core_semantic_token_legend();
-    SemanticTokensLegend {
-        token_types: legend
-            .token_types
-            .into_iter()
-            .map(semantic_token_type_to_lsp)
-            .collect(),
-        token_modifiers: legend
-            .token_modifiers
-            .into_iter()
-            .map(semantic_token_modifier_to_lsp)
-            .collect(),
-    }
+    ClientProtocolProfile::permissive()
+        .semantic_tokens
+        .expect("permissive profile enables semantic tokens")
+        .legend()
 }
 
+#[cfg(test)]
 pub fn semantic_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> SemanticTokens {
-    semantic_tokens_from_absolute_tokens_with_result_id(
-        absolute_tokens_for_snapshot(snapshot),
-        None,
-    )
+    semantic_tokens_for_snapshot_with_profile(snapshot, &ClientProtocolProfile::permissive())
+        .expect("permissive profile enables semantic tokens")
 }
 
+pub(crate) fn semantic_tokens_for_snapshot_with_profile(
+    snapshot: &DocumentSnapshot,
+    profile: &ClientProtocolProfile,
+) -> Option<SemanticTokens> {
+    let projection = profile.semantic_tokens.as_ref()?;
+    Some(semantic_tokens_from_absolute_tokens_with_result_id(
+        absolute_tokens_for_snapshot(snapshot, projection),
+        None,
+    ))
+}
+
+#[cfg(test)]
 pub fn semantic_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: Range,
 ) -> SemanticTokens {
-    let absolute_tokens = absolute_tokens_for_snapshot_range(snapshot, &range)
+    semantic_tokens_for_snapshot_range_with_profile(
+        snapshot,
+        range,
+        &ClientProtocolProfile::permissive(),
+    )
+    .expect("permissive profile enables semantic tokens")
+}
+
+pub(crate) fn semantic_tokens_for_snapshot_range_with_profile(
+    snapshot: &DocumentSnapshot,
+    range: Range,
+    profile: &ClientProtocolProfile,
+) -> Option<SemanticTokens> {
+    let projection = profile.semantic_tokens.as_ref()?;
+    let absolute_tokens = absolute_tokens_for_snapshot_range(snapshot, &range, projection)
         .into_iter()
         .filter(|token| token_overlaps_range(token, &range))
         .collect();
 
-    semantic_tokens_from_absolute_tokens_with_result_id(absolute_tokens, None)
+    Some(semantic_tokens_from_absolute_tokens_with_result_id(
+        absolute_tokens,
+        None,
+    ))
 }
 
 pub fn semantic_tokens_delta_result(
@@ -108,33 +133,38 @@ pub fn semantic_tokens_result_id(snapshot: &DocumentSnapshot, tokens: &[Semantic
     format!("{}:{:016x}", snapshot.version, hasher.finish())
 }
 
-fn absolute_tokens_for_snapshot(snapshot: &DocumentSnapshot) -> Vec<AbsoluteToken> {
+fn absolute_tokens_for_snapshot(
+    snapshot: &DocumentSnapshot,
+    projection: &SemanticTokenProjection,
+) -> Vec<AbsoluteToken> {
     core_semantic_tokens_for_snapshot(snapshot.as_editor())
         .into_iter()
-        .map(|token| AbsoluteToken {
-            line: token.line,
-            start: token.start,
-            length: token.length,
-            token_type: token_type(token.kind),
-            token_modifiers_bitset: token_modifier_bitset(token.modifier),
-        })
+        .filter_map(|token| project_absolute_token(token, projection))
         .collect()
 }
 
 fn absolute_tokens_for_snapshot_range(
     snapshot: &DocumentSnapshot,
     range: &Range,
+    projection: &SemanticTokenProjection,
 ) -> Vec<AbsoluteToken> {
     core_semantic_tokens_for_snapshot_range(snapshot.as_editor(), range.start.line, range.end.line)
         .into_iter()
-        .map(|token| AbsoluteToken {
-            line: token.line,
-            start: token.start,
-            length: token.length,
-            token_type: token_type(token.kind),
-            token_modifiers_bitset: token_modifier_bitset(token.modifier),
-        })
+        .filter_map(|token| project_absolute_token(token, projection))
         .collect()
+}
+
+fn project_absolute_token(
+    token: CoreSemanticToken,
+    projection: &SemanticTokenProjection,
+) -> Option<AbsoluteToken> {
+    Some(AbsoluteToken {
+        line: token.line,
+        start: token.start,
+        length: token.length,
+        token_type: projection.token_type(token.kind)?,
+        token_modifiers_bitset: projection.token_modifier_bitset(token.modifier),
+    })
 }
 
 fn token_overlaps_range(token: &AbsoluteToken, range: &Range) -> bool {
@@ -232,31 +262,12 @@ fn semantic_tokens_delta_edit(
     })
 }
 
-fn semantic_token_type_to_lsp(kind: SemanticTokenKind) -> SemanticTokenType {
-    match kind {
-        SemanticTokenKind::Namespace => SemanticTokenType::NAMESPACE,
-        SemanticTokenKind::Class => SemanticTokenType::CLASS,
-        SemanticTokenKind::Struct => SemanticTokenType::STRUCT,
-        SemanticTokenKind::Variable => SemanticTokenType::VARIABLE,
-        SemanticTokenKind::Property => SemanticTokenType::PROPERTY,
-        SemanticTokenKind::Event => SemanticTokenType::EVENT,
-        SemanticTokenKind::Function => SemanticTokenType::FUNCTION,
-        SemanticTokenKind::String => SemanticTokenType::STRING,
-    }
-}
-
-fn semantic_token_modifier_to_lsp(modifier: CoreSemanticTokenModifier) -> SemanticTokenModifier {
-    match modifier {
-        CoreSemanticTokenModifier::Entity => SemanticTokenModifier::new("mermanEntity"),
-        CoreSemanticTokenModifier::Outline => SemanticTokenModifier::new("mermanOutline"),
-        CoreSemanticTokenModifier::Payload => SemanticTokenModifier::new("mermanPayload"),
-    }
-}
-
+#[cfg(test)]
 fn token_type(kind: SemanticTokenKind) -> u32 {
     token_type_index(kind)
 }
 
+#[cfg(test)]
 fn token_modifier_bitset(modifier: CoreSemanticTokenModifier) -> u32 {
     1 << token_modifier_index(modifier)
 }
@@ -274,21 +285,24 @@ mod tests {
 
         assert_eq!(
             lsp_legend.token_types,
-            core_legend
-                .token_types
-                .iter()
-                .copied()
-                .map(semantic_token_type_to_lsp)
-                .collect::<Vec<_>>()
+            vec![
+                SemanticTokenType::NAMESPACE,
+                SemanticTokenType::CLASS,
+                SemanticTokenType::STRUCT,
+                SemanticTokenType::VARIABLE,
+                SemanticTokenType::PROPERTY,
+                SemanticTokenType::EVENT,
+                SemanticTokenType::FUNCTION,
+                SemanticTokenType::STRING,
+            ]
         );
         assert_eq!(
             lsp_legend.token_modifiers,
-            core_legend
-                .token_modifiers
-                .iter()
-                .copied()
-                .map(semantic_token_modifier_to_lsp)
-                .collect::<Vec<_>>()
+            vec![
+                SemanticTokenModifier::new("mermanEntity"),
+                SemanticTokenModifier::new("mermanOutline"),
+                SemanticTokenModifier::new("mermanPayload"),
+            ]
         );
         for (index, kind) in core_legend.token_types.iter().copied().enumerate() {
             assert_eq!(token_type(kind), index as u32);

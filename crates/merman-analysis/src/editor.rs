@@ -58,17 +58,46 @@ pub enum FenceSemanticRole {
     Payload,
 }
 
+pub use merman_core::EditorRenameDomain as FenceRenameDomain;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct FenceSemanticItem {
     pub name: String,
     pub detail: Option<String>,
     pub kind: EditorSymbolKind,
     pub role: FenceSemanticRole,
+    #[serde(default)]
+    pub rename_domain: FenceRenameDomain,
     pub span: ByteSpan,
     pub selection: ByteSpan,
 }
 
 impl FenceSemanticItem {
+    pub fn new(
+        name: impl Into<String>,
+        detail: Option<String>,
+        kind: EditorSymbolKind,
+        role: FenceSemanticRole,
+        span: ByteSpan,
+        selection: ByteSpan,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            detail,
+            kind,
+            role,
+            rename_domain: FenceRenameDomain::default(),
+            span,
+            selection,
+        }
+    }
+
+    pub fn with_rename_domain(mut self, rename_domain: FenceRenameDomain) -> Self {
+        self.rename_domain = rename_domain;
+        self
+    }
+
     fn to_line_item(&self) -> FenceLineItem {
         FenceLineItem {
             name: self.name.clone(),
@@ -81,9 +110,12 @@ impl FenceSemanticItem {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct FenceReferenceGroup {
     pub name: String,
     pub kind: EditorSymbolKind,
+    #[serde(default)]
+    pub rename_domain: FenceRenameDomain,
 }
 
 impl FenceReferenceGroup {
@@ -91,11 +123,21 @@ impl FenceReferenceGroup {
         Self {
             name: name.into(),
             kind,
+            rename_domain: FenceRenameDomain::default(),
         }
     }
 
     pub fn from_semantic_item(item: &FenceSemanticItem) -> Self {
-        Self::new(item.name.clone(), item.kind)
+        Self {
+            name: item.name.clone(),
+            kind: item.kind,
+            rename_domain: item.rename_domain,
+        }
+    }
+
+    pub fn with_rename_domain(mut self, rename_domain: FenceRenameDomain) -> Self {
+        self.rename_domain = rename_domain;
+        self
     }
 }
 
@@ -251,6 +293,7 @@ pub struct FenceTextIndex {
     outline_items: Vec<FenceLineItem>,
     semantic_items: Vec<FenceSemanticItem>,
     expected_syntax: Vec<FenceExpectedSyntax>,
+    completion_dialect: merman_core::EditorCompletionDialect,
     source: FenceTextIndexSource,
 }
 
@@ -446,15 +489,16 @@ impl FenceTextIndex {
                 completion_kinds.push(FenceCursorCompletionKind::DiagramHeader);
             }
 
-            if self.source.is_parser_backed() {
+            if self.source.is_parser_backed() && offer_directive_items(&prefix, directive_prefix) {
+                completion_kinds.push(FenceCursorCompletionKind::Directive);
+            }
+
+            if self.completion_dialect == merman_core::EditorCompletionDialect::Flowchart {
                 if offer_operator_items(&prefix) {
                     completion_kinds.push(FenceCursorCompletionKind::Operator);
                 }
                 if offer_direction_items(&prefix) {
                     completion_kinds.push(FenceCursorCompletionKind::Direction);
-                }
-                if offer_directive_items(&prefix, directive_prefix) {
-                    completion_kinds.push(FenceCursorCompletionKind::Directive);
                 }
                 if offer_shape_items(&prefix) {
                     completion_kinds.push(FenceCursorCompletionKind::Shape);

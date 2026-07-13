@@ -1,9 +1,42 @@
-use crate::diagnostics::analysis_payload_to_diagnostics;
-use merman_analysis::{
-    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticCategory, DiagnosticSeverity,
-    SourceDescriptor,
+use crate::client_profile::ClientProtocolProfile;
+use crate::diagnostics::{
+    analysis_payload_to_diagnostics, analysis_payload_to_diagnostics_with_profile,
 };
-use tower_lsp::lsp_types::{DiagnosticTag, NumberOrString, Url};
+use merman_analysis::{
+    AnalysisDiagnostic, AnalysisPayload, Analyzer, DiagnosticCategory, DiagnosticRelated,
+    DiagnosticSeverity, SourceDescriptor, SourceMap,
+};
+use tower_lsp::lsp_types::{ClientCapabilities, DiagnosticTag, NumberOrString, Url};
+
+#[test]
+fn diagnostics_projection_omits_unnegotiated_extension_fields() {
+    let map = SourceMap::new("bad");
+    let span = map.whole_source_span().unwrap();
+    let diagnostic = AnalysisDiagnostic {
+        related: vec![DiagnosticRelated {
+            message: "related".to_string(),
+            span: Some(span.clone()),
+        }],
+        ..AnalysisDiagnostic::new(
+            "merman.compatibility.config.deprecated_test",
+            DiagnosticSeverity::Warning,
+            DiagnosticCategory::Config,
+            "deprecated option",
+        )
+        .with_span(span)
+    };
+    let payload = AnalysisPayload::new(SourceDescriptor::diagram(), vec![diagnostic]);
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+    let profile = ClientProtocolProfile::negotiate(&ClientCapabilities::default());
+
+    let diagnostics = analysis_payload_to_diagnostics_with_profile(&payload, &uri, &profile);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].related_information.is_none());
+    assert!(diagnostics[0].tags.is_none());
+    assert!(diagnostics[0].code_description.is_none());
+    assert!(diagnostics[0].data.is_none());
+}
 
 #[test]
 fn diagnostics_projection_preserves_uri_and_message() {

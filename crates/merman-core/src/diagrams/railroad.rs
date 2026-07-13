@@ -1,7 +1,7 @@
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenameDomain, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -17,6 +17,14 @@ enum RailroadDialect {
 }
 
 impl RailroadDialect {
+    fn is_identifier_start(self, ch: char) -> bool {
+        ch.is_ascii_alphabetic() || (self != Self::Abnf && ch == '_')
+    }
+
+    fn is_identifier_continue(self, ch: char) -> bool {
+        ch.is_ascii_alphanumeric() || ch == '-' || (self != Self::Abnf && ch == '_')
+    }
+
     fn diagram_type(self) -> &'static str {
         match self {
             Self::Ir => "railroad",
@@ -43,6 +51,25 @@ impl RailroadDialect {
             Self::Peg => "railroad peg",
         }
     }
+
+    fn editor_rename_domain(self) -> EditorRenameDomain {
+        match self {
+            Self::Abnf => EditorRenameDomain::RailroadAbnfRule,
+            Self::Ir | Self::Ebnf | Self::Peg => EditorRenameDomain::RailroadRule,
+        }
+    }
+}
+
+pub(crate) fn is_valid_editor_rule_identifier(candidate: &str, abnf: bool) -> bool {
+    let dialect = if abnf {
+        RailroadDialect::Abnf
+    } else {
+        RailroadDialect::Ir
+    };
+    let mut chars = candidate.chars();
+    chars.next().is_some_and(|first| {
+        dialect.is_identifier_start(first) && chars.all(|ch| dialect.is_identifier_continue(ch))
+    })
 }
 
 /// A Mermaid Railroad repetition bound stored with JavaScript number semantics.
@@ -1653,25 +1680,13 @@ impl<'a> Lexer<'a> {
     fn take_identifier(&mut self) -> Option<Token> {
         let start = self.pos;
         let first = self.current_char()?;
-        let valid_start = match self.dialect {
-            RailroadDialect::Abnf => first.is_ascii_alphabetic(),
-            RailroadDialect::Ir | RailroadDialect::Ebnf | RailroadDialect::Peg => {
-                first.is_ascii_alphabetic() || first == '_'
-            }
-        };
-        if !valid_start {
+        if !self.dialect.is_identifier_start(first) {
             return None;
         }
 
         self.advance_char();
         while let Some(ch) = self.current_char() {
-            let valid = match self.dialect {
-                RailroadDialect::Abnf => ch.is_ascii_alphanumeric() || ch == '-',
-                RailroadDialect::Ir | RailroadDialect::Ebnf | RailroadDialect::Peg => {
-                    ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'
-                }
-            };
-            if !valid {
+            if !self.dialect.is_identifier_continue(ch) {
                 break;
             }
             self.advance_char();
@@ -2117,6 +2132,7 @@ fn editor_facts_from_model(
 ) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let detail_prefix = dialect.common_detail_prefix();
+    let rename_domain = dialect.editor_rename_domain();
 
     if let (Some(title), Some(span)) = (&model.title, model.title_span) {
         facts.push_directive_prefix("title");
@@ -2151,20 +2167,28 @@ fn editor_facts_from_model(
             EditorExpectedSyntaxKind::NodeIdentifier,
             rule.name_span,
         ));
-        facts.push_symbol(EditorSemanticSymbol::new(
-            rule.name.clone(),
-            Some(format!("{detail_prefix} rule")),
-            EditorSemanticKind::Function,
-            rule.name_span,
-            rule.name_span,
-        ));
-        push_ast_facts(&mut facts, &rule.definition, detail_prefix);
+        facts.push_symbol(
+            EditorSemanticSymbol::new(
+                rule.name.clone(),
+                Some(format!("{detail_prefix} rule")),
+                EditorSemanticKind::Function,
+                rule.name_span,
+                rule.name_span,
+            )
+            .with_rename_domain(rename_domain),
+        );
+        push_ast_facts(&mut facts, &rule.definition, detail_prefix, rename_domain);
     }
 
     facts
 }
 
-fn push_ast_facts(facts: &mut EditorSemanticFacts, node: &RailroadAstNode, detail_prefix: &str) {
+fn push_ast_facts(
+    facts: &mut EditorSemanticFacts,
+    node: &RailroadAstNode,
+    detail_prefix: &str,
+    rename_domain: EditorRenameDomain,
+) {
     match node {
         RailroadAstNode::Terminal {
             value, selection, ..
@@ -2185,13 +2209,16 @@ fn push_ast_facts(facts: &mut EditorSemanticFacts, node: &RailroadAstNode, detai
                 EditorExpectedSyntaxKind::NodeIdentifier,
                 *selection,
             ));
-            facts.push_symbol(EditorSemanticSymbol::new(
-                name.clone(),
-                Some(format!("{detail_prefix} nonterminal reference")),
-                EditorSemanticKind::Function,
-                *span,
-                *selection,
-            ));
+            facts.push_symbol(
+                EditorSemanticSymbol::new(
+                    name.clone(),
+                    Some(format!("{detail_prefix} nonterminal reference")),
+                    EditorSemanticKind::Function,
+                    *span,
+                    *selection,
+                )
+                .with_rename_domain(rename_domain),
+            );
         }
         RailroadAstNode::Special {
             text, selection, ..
@@ -2205,21 +2232,23 @@ fn push_ast_facts(facts: &mut EditorSemanticFacts, node: &RailroadAstNode, detai
         }
         RailroadAstNode::Sequence { elements, .. } => {
             for element in elements {
-                push_ast_facts(facts, element, detail_prefix);
+                push_ast_facts(facts, element, detail_prefix, rename_domain);
             }
         }
         RailroadAstNode::Choice { alternatives, .. } => {
             for alternative in alternatives {
-                push_ast_facts(facts, alternative, detail_prefix);
+                push_ast_facts(facts, alternative, detail_prefix, rename_domain);
             }
         }
-        RailroadAstNode::Optional { element, .. } => push_ast_facts(facts, element, detail_prefix),
+        RailroadAstNode::Optional { element, .. } => {
+            push_ast_facts(facts, element, detail_prefix, rename_domain)
+        }
         RailroadAstNode::Repetition {
             element, separator, ..
         } => {
-            push_ast_facts(facts, element, detail_prefix);
+            push_ast_facts(facts, element, detail_prefix, rename_domain);
             if let Some(separator) = separator {
-                push_ast_facts(facts, separator, detail_prefix);
+                push_ast_facts(facts, separator, detail_prefix, rename_domain);
             }
         }
     }
@@ -2250,6 +2279,7 @@ fn scan_editor_facts_lossy(code: &str, dialect: RailroadDialect) -> EditorSemant
         return facts;
     };
     let detail_prefix = dialect.common_detail_prefix();
+    let rename_domain = dialect.editor_rename_domain();
 
     let mut after_header = false;
     let mut prev_ident: Option<Token> = None;
@@ -2284,13 +2314,16 @@ fn scan_editor_facts_lossy(code: &str, dialect: RailroadDialect) -> EditorSemant
                             EditorExpectedSyntaxKind::NodeIdentifier,
                             name.selection,
                         ));
-                        facts.push_symbol(EditorSemanticSymbol::new(
-                            value,
-                            Some(format!("{detail_prefix} rule")),
-                            EditorSemanticKind::Function,
-                            name.span,
-                            name.selection,
-                        ));
+                        facts.push_symbol(
+                            EditorSemanticSymbol::new(
+                                value,
+                                Some(format!("{detail_prefix} rule")),
+                                EditorSemanticKind::Function,
+                                name.span,
+                                name.selection,
+                            )
+                            .with_rename_domain(rename_domain),
+                        );
                     }
                 }
             }

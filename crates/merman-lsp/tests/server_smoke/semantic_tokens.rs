@@ -1,12 +1,30 @@
 use super::prelude::*;
 
+fn semantic_tokens_initialize_params() -> serde_json::Value {
+    serde_json::json!({
+        "capabilities": {
+            "textDocument": {
+                "semanticTokens": {
+                    "requests": { "range": true, "full": { "delta": true } },
+                    "tokenTypes": [
+                        "namespace", "class", "struct", "variable", "property", "event",
+                        "function", "string"
+                    ],
+                    "tokenModifiers": ["mermanEntity", "mermanOutline", "mermanPayload"],
+                    "formats": ["relative"]
+                }
+            }
+        }
+    })
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_serves_semantic_tokens_range() {
     let (mut service, _socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::json!({"capabilities": {}}))
+        .params(semantic_tokens_initialize_params())
         .id(1)
         .finish();
     let init_response = service
@@ -64,12 +82,101 @@ async fn lsp_service_smoke_serves_semantic_tokens_range() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn lsp_service_filters_tokens_outside_the_negotiated_type_subset() {
+    let (mut service, _socket) = MermanLanguageServer::service();
+    let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/subset.mmd").unwrap();
+
+    let initialize = Request::build("initialize")
+        .params(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "semanticTokens": {
+                        "requests": { "full": true },
+                        "tokenTypes": ["string"],
+                        "tokenModifiers": ["mermanPayload"],
+                        "formats": ["relative"]
+                    }
+                }
+            }
+        }))
+        .id(1)
+        .finish();
+    service
+        .ready()
+        .await
+        .unwrap()
+        .call(initialize)
+        .await
+        .unwrap()
+        .expect("initialize response");
+
+    let open = Request::build("textDocument/didOpen")
+        .params(
+            serde_json::to_value(DidOpenTextDocumentParams {
+                text_document: TextDocumentItem {
+                    uri: uri.clone(),
+                    language_id: "mermaid".to_string(),
+                    version: 1,
+                    text: concat!(
+                        "gantt\n",
+                        "title Roadmap\n",
+                        "section Demo\n",
+                        "Task 1: id1,2014-01-01,1d\n",
+                    )
+                    .to_string(),
+                },
+            })
+            .unwrap(),
+        )
+        .finish();
+    assert_eq!(
+        service.ready().await.unwrap().call(open).await.unwrap(),
+        None
+    );
+
+    let request = Request::build("textDocument/semanticTokens/full")
+        .params(
+            serde_json::to_value(SemanticTokensParams {
+                text_document: TextDocumentIdentifier { uri },
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            })
+            .unwrap(),
+        )
+        .id(2)
+        .finish();
+    let response = service
+        .ready()
+        .await
+        .unwrap()
+        .call(request)
+        .await
+        .unwrap()
+        .expect("semantic tokens response");
+    let result: SemanticTokensResult =
+        serde_json::from_value(response.result().cloned().expect("semantic tokens result"))
+            .unwrap();
+    let SemanticTokensResult::Tokens(tokens) = result else {
+        panic!("expected full semantic tokens")
+    };
+
+    assert!(!tokens.data.is_empty());
+    assert!(tokens.data.iter().all(|token| token.token_type == 0));
+    assert!(
+        tokens
+            .data
+            .iter()
+            .all(|token| token.token_modifiers_bitset == 1)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_serves_semantic_tokens_delta() {
     let (mut service, mut socket) = MermanLanguageServer::service();
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::json!({"capabilities": {}}))
+        .params(semantic_tokens_initialize_params())
         .id(1)
         .finish();
     let init_response = service
@@ -210,7 +317,7 @@ async fn lsp_service_semantic_tokens_delta_falls_back_to_full_after_snapshot_con
     let uri = tower_lsp::lsp_types::Url::parse("file:///tmp/example.mmd").unwrap();
 
     let initialize = Request::build("initialize")
-        .params(serde_json::json!({"capabilities": {}}))
+        .params(semantic_tokens_initialize_params())
         .id(1)
         .finish();
     let init_response = service

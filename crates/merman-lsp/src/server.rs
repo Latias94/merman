@@ -1,40 +1,46 @@
-use crate::code_actions::code_actions_for_params_with_encoding;
-use crate::completion::{completion_for_snapshot, resolve_completion_item};
-use crate::diagnostics::analysis_payload_to_versioned_diagnostics;
+use crate::client_profile::ClientProtocolProfile;
+use crate::code_actions::code_actions_for_params_with_profile;
+use crate::completion::{
+    completion_for_snapshot_with_profile, resolve_completion_item_with_profile,
+};
+use crate::diagnostics::analysis_payload_to_versioned_diagnostics_with_profile;
 use crate::document_store::{
     AnalyzerConfigurationChange, DiagnosticContext, DocumentDiagnosticState, DocumentStore,
-    DocumentSyncError, SemanticTokensState, SnapshotContext, StoredDocument,
-    WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE, analysis_options_with_lsp_resource_defaults,
-    default_lsp_analysis_options,
+    DocumentSyncError, SemanticTokensState, StoredDocument, WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE,
+    analysis_options_with_lsp_resource_defaults, default_lsp_analysis_options,
 };
 use crate::protocol::{
-    CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, RULE_CATALOG_METHOD, RuleCatalogResponse,
-    WorkspaceEditEncoding, experimental_capabilities,
+    CONFIG_SCHEMA_METHOD, ConfigSchemaResponse, DiagnosticVersionData, RULE_CATALOG_METHOD,
+    RuleCatalogResponse, experimental_capabilities,
 };
+use crate::refresh_coordinator::RefreshCoordinator;
+use crate::refresh_transport::{MermanClientSocket, RefreshClient};
 use crate::semantic_tokens::{
-    semantic_tokens_delta_result, semantic_tokens_for_snapshot, semantic_tokens_for_snapshot_range,
-    semantic_tokens_options, semantic_tokens_result_id,
+    semantic_tokens_delta_result, semantic_tokens_for_snapshot_range_with_profile,
+    semantic_tokens_for_snapshot_with_profile, semantic_tokens_options_with_profile,
+    semantic_tokens_result_id,
 };
-use crate::snapshot::DocumentSnapshot;
+use crate::snapshot::{DocumentSnapshot, SnapshotContext};
 use crate::snapshot_context::{self, SnapshotContextKind};
 use crate::structure::{
     document_symbols_with_hierarchy_support as structure_document_symbols_with_hierarchy_support,
     folding_ranges as structure_folding_ranges, goto_definition as structure_goto_definition,
-    hover as structure_hover, prepare_rename as structure_prepare_rename,
+    hover_with_profile as structure_hover_with_profile, prepare_rename as structure_prepare_rename,
     references as structure_references,
     rename_with_workspace_edit_encoding as structure_rename_with_workspace_edit_encoding,
     selection_ranges as structure_selection_ranges,
     workspace_symbols_for_snapshots as structure_workspace_symbols_for_snapshots,
 };
 use merman_analysis::{
-    AnalysisOptions, AnalysisPayload, Analyzer, SourceKind, document::analyze_document,
-    options_json::analysis_options_from_json_value, source_descriptor_for_kind,
-    source_discarded_after_limit_change_diagnostic, source_limit_diagnostic_for_len,
+    AnalysisOptions, AnalysisPayload, SourceKind, options_json::analysis_options_from_json_value,
+    source_descriptor_for_kind, source_discarded_after_limit_change_diagnostic,
+    source_limit_diagnostic_for_len,
 };
+#[cfg(test)]
+use merman_analysis::{Analyzer, analyze_document_result_shared};
 use merman_editor_core::DocumentKind;
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 use tokio::sync::Mutex;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
@@ -53,7 +59,8 @@ use tower_lsp::lsp_types::{
     SemanticTokensFullDeltaResult, SemanticTokensParams, SemanticTokensRangeParams,
     SemanticTokensRangeResult, SemanticTokensResult, SemanticTokensServerCapabilities,
     ServerCapabilities, TextDocumentPositionParams, TextDocumentSyncCapability,
-    TextDocumentSyncKind, UnchangedDocumentDiagnosticReport, WorkspaceEdit, WorkspaceSymbolParams,
+    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions,
+    UnchangedDocumentDiagnosticReport, WorkspaceEdit, WorkspaceSymbolParams,
 };
 use tower_lsp::{Client, ClientSocket, LanguageServer, LspService};
 
@@ -63,26 +70,32 @@ const MAX_DIAGNOSTIC_RECOMPUTE_ATTEMPTS: usize = 3;
 pub struct MermanLanguageServer {
     client: Client,
     store: Arc<Mutex<DocumentStore>>,
-    semantic_tokens_refresh_supported: AtomicBool,
-    diagnostic_pull_supported: AtomicBool,
-    diagnostic_refresh_supported: AtomicBool,
-    workspace_edit_document_changes_supported: AtomicBool,
-    hierarchical_document_symbols_supported: AtomicBool,
+    client_profile: OnceLock<ClientProtocolProfile>,
+    refresh_coordinator: RefreshCoordinator,
 }
 
 impl MermanLanguageServer {
+    /// Creates a language server for hosts that construct the tower-lsp transport themselves.
     pub fn new(client: Client) -> Self {
+        let refresh_coordinator = RefreshCoordinator::from_tower_client(client.clone());
+        Self::with_refresh_coordinator(client, refresh_coordinator)
+    }
+
+    fn new_with_refresh(client: Client, refresh_client: RefreshClient) -> Self {
+        let refresh_coordinator = RefreshCoordinator::new(refresh_client);
+        Self::with_refresh_coordinator(client, refresh_coordinator)
+    }
+
+    fn with_refresh_coordinator(client: Client, refresh_coordinator: RefreshCoordinator) -> Self {
         Self {
             client,
             store: Arc::new(Mutex::new(DocumentStore::new())),
-            semantic_tokens_refresh_supported: AtomicBool::new(false),
-            diagnostic_pull_supported: AtomicBool::new(false),
-            diagnostic_refresh_supported: AtomicBool::new(false),
-            workspace_edit_document_changes_supported: AtomicBool::new(false),
-            hierarchical_document_symbols_supported: AtomicBool::new(false),
+            client_profile: OnceLock::new(),
+            refresh_coordinator,
         }
     }
 
+    /// Builds the source-compatible tower-lsp service and client socket.
     pub fn service() -> (LspService<Self>, ClientSocket) {
         LspService::build(Self::new)
             .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
@@ -90,10 +103,37 @@ impl MermanLanguageServer {
             .finish()
     }
 
+    /// Builds the production service with cancellation-safe, supervised refresh requests.
+    pub fn service_with_refresh() -> (LspService<Self>, MermanClientSocket) {
+        let (refresh_client, refresh_requests, refresh_responses) = RefreshClient::channel();
+        let (service, socket) =
+            LspService::build(move |client| Self::new_with_refresh(client, refresh_client))
+                .custom_method(RULE_CATALOG_METHOD, Self::rule_catalog)
+                .custom_method(CONFIG_SCHEMA_METHOD, Self::config_schema)
+                .finish();
+        (
+            service,
+            MermanClientSocket::new(socket, refresh_requests, refresh_responses),
+        )
+    }
+
+    /// Returns the server's full capability envelope without client-side negotiation.
+    ///
+    /// Live `initialize` responses are projected from the connecting client's capabilities.
     pub fn capabilities() -> ServerCapabilities {
+        Self::capabilities_for_profile(&ClientProtocolProfile::permissive())
+    }
+
+    fn capabilities_for_profile(profile: &ClientProtocolProfile) -> ServerCapabilities {
         ServerCapabilities {
-            text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                TextDocumentSyncKind::INCREMENTAL,
+            text_document_sync: Some(TextDocumentSyncCapability::Options(
+                TextDocumentSyncOptions {
+                    open_close: Some(true),
+                    change: Some(TextDocumentSyncKind::INCREMENTAL),
+                    will_save: None,
+                    will_save_wait_until: None,
+                    save: Some(TextDocumentSyncSaveOptions::Supported(true)),
+                },
             )),
             selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -122,21 +162,29 @@ impl MermanLanguageServer {
                 work_done_progress_options: Default::default(),
             })),
             document_symbol_provider: Some(OneOf::Left(true)),
-            workspace_symbol_provider: Some(OneOf::Left(true)),
+            workspace_symbol_provider: None,
             diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
                 Self::diagnostic_options(),
             )),
-            code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
-                code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
-                work_done_progress_options: Default::default(),
-                resolve_provider: Some(false),
-            })),
+            code_action_provider: profile.code_actions.as_ref().map(|_| {
+                CodeActionProviderCapability::Options(CodeActionOptions {
+                    code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+                    work_done_progress_options: Default::default(),
+                    resolve_provider: Some(false),
+                })
+            }),
             folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
-            semantic_tokens_provider: Some(
-                SemanticTokensServerCapabilities::SemanticTokensOptions(semantic_tokens_options()),
-            ),
+            semantic_tokens_provider: semantic_tokens_options_with_profile(profile)
+                .map(SemanticTokensServerCapabilities::SemanticTokensOptions),
             experimental: Some(experimental_capabilities()),
             ..ServerCapabilities::default()
+        }
+    }
+
+    fn client_profile(&self) -> &ClientProtocolProfile {
+        match self.client_profile.get() {
+            Some(profile) => profile,
+            None => ClientProtocolProfile::conservative_ref(),
         }
     }
 
@@ -190,30 +238,64 @@ impl MermanLanguageServer {
         .await
     }
 
+    #[cfg(test)]
     fn diagnostics_for_document(document: &StoredDocument, analyzer: &Analyzer) -> Vec<Diagnostic> {
+        let profile = ClientProtocolProfile::permissive();
+        if let Some(diagnostics) =
+            Self::unavailable_document_diagnostics_with_profile(document, &profile)
+        {
+            return diagnostics;
+        }
+
         let source = source_descriptor_for_document(&document.uri, document.kind);
-        let payload = if let Some(resource_limit) = document.resource_limit {
-            AnalysisPayload::new(
-                source,
-                vec![source_limit_diagnostic_for_len(
-                    resource_limit.source_len,
-                    resource_limit.max_source_bytes,
-                )],
+        let analysis = analyze_document_result_shared(Arc::clone(&document.text), analyzer, source);
+        Self::analysis_payload_diagnostics_with_profile(document, analysis.payload(), &profile)
+    }
+
+    fn unavailable_document_diagnostics_with_profile(
+        document: &StoredDocument,
+        profile: &ClientProtocolProfile,
+    ) -> Option<Vec<Diagnostic>> {
+        let diagnostic = if let Some(resource_limit) = document.resource_limit {
+            source_limit_diagnostic_for_len(
+                resource_limit.source_len,
+                resource_limit.max_source_bytes,
             )
         } else if let Some(discarded_source) = document.discarded_source {
-            AnalysisPayload::new(
-                source,
-                vec![source_discarded_after_limit_change_diagnostic(
-                    discarded_source.source_len,
-                    discarded_source.previous_max_source_bytes,
-                )],
+            source_discarded_after_limit_change_diagnostic(
+                discarded_source.source_len,
+                discarded_source.previous_max_source_bytes,
             )
         } else if let Some(sync_error) = document.sync_error {
-            return vec![document_sync_error_diagnostic(sync_error, document.version)];
+            return Some(vec![document_sync_error_diagnostic(
+                sync_error,
+                document.version,
+                profile,
+            )]);
         } else {
-            analyze_document(document.text.as_ref(), analyzer, source)
+            return None;
         };
-        analysis_payload_to_versioned_diagnostics(&payload, &document.uri, document.version)
+        let payload = AnalysisPayload::new(
+            source_descriptor_for_document(&document.uri, document.kind),
+            vec![diagnostic],
+        );
+
+        Some(Self::analysis_payload_diagnostics_with_profile(
+            document, &payload, profile,
+        ))
+    }
+
+    fn analysis_payload_diagnostics_with_profile(
+        document: &StoredDocument,
+        payload: &AnalysisPayload,
+        profile: &ClientProtocolProfile,
+    ) -> Vec<Diagnostic> {
+        analysis_payload_to_versioned_diagnostics_with_profile(
+            payload,
+            &document.uri,
+            document.version,
+            profile,
+        )
     }
 
     fn diagnostic_result_id(diagnostics: &[tower_lsp::lsp_types::Diagnostic]) -> String {
@@ -256,11 +338,34 @@ impl MermanLanguageServer {
         &self,
         context: &DiagnosticContext,
     ) -> Option<Vec<tower_lsp::lsp_types::Diagnostic>> {
-        let diagnostics = Self::diagnostics_for_document(&context.document, &context.analyzer);
+        let profile = self.client_profile();
+        let (diagnostics, analysis_context) =
+            match Self::unavailable_document_diagnostics_with_profile(&context.document, profile) {
+                Some(diagnostics) => (diagnostics, None),
+                None => {
+                    let analysis_context = snapshot_context::snapshot_context_for_uri(
+                        &self.store,
+                        &context.document.uri,
+                        SnapshotContextKind::Diagnostics,
+                    )
+                    .await
+                    .ok()
+                    .flatten()?;
+                    let payload = analysis_context.analysis_payload()?;
+                    let diagnostics = Self::analysis_payload_diagnostics_with_profile(
+                        &context.document,
+                        payload,
+                        profile,
+                    );
+                    (diagnostics, Some(analysis_context))
+                }
+            };
         let store = self.store.lock().await;
-        store
-            .is_diagnostic_context_current(context)
-            .then_some(diagnostics)
+        (store.is_diagnostic_context_current(context)
+            && analysis_context
+                .as_ref()
+                .is_none_or(|context| store.is_analysis_context_current(context)))
+        .then_some(diagnostics)
     }
 
     async fn diagnostics_or_recompute_latest(
@@ -298,7 +403,7 @@ impl MermanLanguageServer {
     }
 
     async fn publish_for_uri(&self, uri: &tower_lsp::lsp_types::Url) {
-        if self.diagnostic_pull_supported.load(Ordering::Relaxed) {
+        if self.client_profile().diagnostic_pull {
             return;
         }
 
@@ -316,11 +421,15 @@ impl MermanLanguageServer {
 
     async fn publish_current_diagnostics(&self, context: &DiagnosticContext) {
         if let Some(diagnostics) = self.diagnostics_for_current_context(context).await {
+            let profile = self.client_profile();
             self.client
                 .publish_diagnostics(
                     context.document.uri.clone(),
                     diagnostics,
-                    Some(context.document.version),
+                    profile
+                        .diagnostics
+                        .version
+                        .then_some(context.document.version),
                 )
                 .await;
         }
@@ -357,9 +466,13 @@ impl MermanLanguageServer {
 
     async fn workspace_symbol_snapshot_contexts(&self) -> Result<Vec<SnapshotContext>> {
         loop {
-            let plan = {
+            let (plan, executor) = {
                 let store = self.store.lock().await;
-                store.workspace_symbol_snapshot_build_plan(WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE)
+                (
+                    store
+                        .workspace_symbol_snapshot_build_plan(WORKSPACE_SYMBOL_SNAPSHOT_BATCH_SIZE),
+                    store.analysis_executor(),
+                )
             };
 
             if plan.batches.is_empty() {
@@ -367,13 +480,19 @@ impl MermanLanguageServer {
             }
 
             for batch in plan.batches {
-                let built = batch
-                    .into_iter()
-                    .map(|request| {
-                        let snapshot = request.build();
-                        (request, snapshot)
-                    })
-                    .collect();
+                let built = futures::future::join_all(batch.into_iter().map(|request| {
+                    let executor = executor.clone();
+                    async move {
+                        let analysis = executor.execute(&request).await?;
+                        Ok::<_, crate::analysis_executor::AnalysisExecutionError>((
+                            request, analysis,
+                        ))
+                    }
+                }))
+                .await
+                .into_iter()
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .map_err(snapshot_context::analysis_execution_error)?;
                 let commit = self
                     .store
                     .lock()
@@ -391,55 +510,6 @@ impl MermanLanguageServer {
     async fn replace_analyzer(&self, options: AnalysisOptions) -> AnalyzerConfigurationChange {
         let mut store = self.store.lock().await;
         store.apply_analyzer_options(options)
-    }
-
-    fn client_supports_semantic_tokens_refresh(params: &InitializeParams) -> bool {
-        params
-            .capabilities
-            .workspace
-            .as_ref()
-            .and_then(|workspace| workspace.semantic_tokens.as_ref())
-            .and_then(|semantic_tokens| semantic_tokens.refresh_support)
-            .unwrap_or(false)
-    }
-
-    fn client_supports_diagnostic_pull(params: &InitializeParams) -> bool {
-        params
-            .capabilities
-            .text_document
-            .as_ref()
-            .and_then(|text_document| text_document.diagnostic.as_ref())
-            .is_some()
-    }
-
-    fn client_supports_diagnostic_refresh(params: &InitializeParams) -> bool {
-        params
-            .capabilities
-            .workspace
-            .as_ref()
-            .and_then(|workspace| workspace.diagnostic.as_ref())
-            .and_then(|diagnostic| diagnostic.refresh_support)
-            .unwrap_or(false)
-    }
-
-    fn client_supports_workspace_edit_document_changes(params: &InitializeParams) -> bool {
-        params
-            .capabilities
-            .workspace
-            .as_ref()
-            .and_then(|workspace| workspace.workspace_edit.as_ref())
-            .and_then(|workspace_edit| workspace_edit.document_changes)
-            .unwrap_or(false)
-    }
-
-    fn client_supports_hierarchical_document_symbols(params: &InitializeParams) -> bool {
-        params
-            .capabilities
-            .text_document
-            .as_ref()
-            .and_then(|text_document| text_document.document_symbol.as_ref())
-            .and_then(|document_symbol| document_symbol.hierarchical_document_symbol_support)
-            .unwrap_or(false)
     }
 
     async fn apply_initialization_options(
@@ -464,7 +534,7 @@ impl MermanLanguageServer {
     }
 
     async fn republish_all(&self) {
-        if self.diagnostic_pull_supported.load(Ordering::Relaxed) {
+        if self.client_profile().diagnostic_pull {
             return;
         }
 
@@ -482,30 +552,15 @@ impl MermanLanguageServer {
 #[tower_lsp::async_trait]
 impl LanguageServer for MermanLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
-        self.semantic_tokens_refresh_supported.store(
-            Self::client_supports_semantic_tokens_refresh(&params),
-            Ordering::Relaxed,
-        );
-        self.diagnostic_pull_supported.store(
-            Self::client_supports_diagnostic_pull(&params),
-            Ordering::Relaxed,
-        );
-        self.diagnostic_refresh_supported.store(
-            Self::client_supports_diagnostic_refresh(&params),
-            Ordering::Relaxed,
-        );
-        self.workspace_edit_document_changes_supported.store(
-            Self::client_supports_workspace_edit_document_changes(&params),
-            Ordering::Relaxed,
-        );
-        self.hierarchical_document_symbols_supported.store(
-            Self::client_supports_hierarchical_document_symbols(&params),
-            Ordering::Relaxed,
-        );
+        let profile = ClientProtocolProfile::negotiate(&params.capabilities);
+        let capabilities = Self::capabilities_for_profile(&profile);
         self.apply_initialization_options(params.initialization_options)
             .await?;
+        self.client_profile
+            .set(profile)
+            .map_err(|_| tower_lsp::jsonrpc::Error::invalid_request())?;
         Ok(InitializeResult {
-            capabilities: Self::capabilities(),
+            capabilities,
             ..InitializeResult::default()
         })
     }
@@ -550,7 +605,7 @@ impl LanguageServer for MermanLanguageServer {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let uri = params.text_document.uri;
         self.store.lock().await.remove(&uri);
-        if !self.diagnostic_pull_supported.load(Ordering::Relaxed) {
+        if !self.client_profile().diagnostic_pull {
             self.client.publish_diagnostics(uri, Vec::new(), None).await;
         }
     }
@@ -580,19 +635,11 @@ impl LanguageServer for MermanLanguageServer {
         if change.affects_diagnostics() {
             self.republish_all().await;
         }
-        if change.affects_snapshots()
-            && self
-                .semantic_tokens_refresh_supported
-                .load(Ordering::Relaxed)
-        {
-            let _ = self.client.semantic_tokens_refresh().await;
-        }
-        if change.affects_diagnostics()
-            && self.diagnostic_pull_supported.load(Ordering::Relaxed)
-            && self.diagnostic_refresh_supported.load(Ordering::Relaxed)
-        {
-            let _ = self.client.workspace_diagnostic_refresh().await;
-        }
+        let profile = self.client_profile();
+        self.refresh_coordinator.request(
+            change.affects_snapshots() && profile.semantic_tokens_refresh,
+            change.affects_diagnostics() && profile.diagnostic_pull && profile.diagnostic_refresh,
+        );
     }
 
     async fn diagnostic(
@@ -640,34 +687,35 @@ impl LanguageServer for MermanLanguageServer {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
+        let profile = self.client_profile();
 
         self.structure_snapshot_result(&uri, |snapshot| {
-            Ok(Some(CompletionResponse::List(completion_for_snapshot(
-                snapshot, position,
-            ))))
+            Ok(Some(CompletionResponse::List(
+                completion_for_snapshot_with_profile(snapshot, position, profile),
+            )))
         })
         .await
     }
 
     async fn completion_resolve(&self, item: CompletionItem) -> Result<CompletionItem> {
-        Ok(resolve_completion_item(item))
+        Ok(resolve_completion_item_with_profile(
+            item,
+            self.client_profile(),
+        ))
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let profile = self.client_profile();
         let current_document_version = {
             let store = self.store.lock().await;
             store
                 .get(&params.text_document.uri)
                 .map(|document| document.version)
         };
-        let workspace_edit_encoding = WorkspaceEditEncoding::from_document_changes_support(
-            self.workspace_edit_document_changes_supported
-                .load(Ordering::Relaxed),
-        );
-        Ok(code_actions_for_params_with_encoding(
+        Ok(code_actions_for_params_with_profile(
             &params,
             current_document_version,
-            workspace_edit_encoding,
+            profile,
         ))
     }
 
@@ -682,8 +730,11 @@ impl LanguageServer for MermanLanguageServer {
             return Ok(None);
         };
         let snapshot = &snapshot_context.snapshot;
+        let profile = self.client_profile();
 
-        let mut tokens = semantic_tokens_for_snapshot(snapshot);
+        let Some(mut tokens) = semantic_tokens_for_snapshot_with_profile(snapshot, profile) else {
+            return Ok(None);
+        };
         let result_id = semantic_tokens_result_id(snapshot, &tokens.data);
         tokens.result_id = Some(result_id.clone());
         self.record_semantic_tokens_state(&snapshot_context, tokens.data.clone(), Some(result_id))
@@ -702,8 +753,12 @@ impl LanguageServer for MermanLanguageServer {
             return Ok(None);
         };
         let snapshot = &snapshot_context.snapshot;
+        let profile = self.client_profile();
 
-        let current_tokens = semantic_tokens_for_snapshot(snapshot);
+        let Some(current_tokens) = semantic_tokens_for_snapshot_with_profile(snapshot, profile)
+        else {
+            return Ok(None);
+        };
         let current_result_id = semantic_tokens_result_id(snapshot, &current_tokens.data);
         let previous = {
             let store = self.store.lock().await;
@@ -742,7 +797,14 @@ impl LanguageServer for MermanLanguageServer {
         let Some(snapshot_context) = snapshot_context else {
             return Ok(None);
         };
-        let result = semantic_tokens_for_snapshot_range(&snapshot_context.snapshot, params.range);
+        let profile = self.client_profile();
+        let Some(result) = semantic_tokens_for_snapshot_range_with_profile(
+            &snapshot_context.snapshot,
+            params.range,
+            profile,
+        ) else {
+            return Ok(None);
+        };
         snapshot_context::ensure_snapshot_current(
             &self.store,
             &snapshot_context,
@@ -756,9 +818,12 @@ impl LanguageServer for MermanLanguageServer {
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
+        let profile = self.client_profile();
 
-        self.structure_snapshot_result(&uri, |snapshot| Ok(structure_hover(snapshot, position)))
-            .await
+        self.structure_snapshot_result(&uri, |snapshot| {
+            Ok(structure_hover_with_profile(snapshot, position, profile))
+        })
+        .await
     }
 
     async fn selection_range(
@@ -787,9 +852,7 @@ impl LanguageServer for MermanLanguageServer {
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
         let uri = params.text_document.uri;
-        let hierarchical_supported = self
-            .hierarchical_document_symbols_supported
-            .load(Ordering::Relaxed);
+        let hierarchical_supported = self.client_profile().hierarchical_document_symbols;
 
         self.structure_snapshot_result(&uri, |snapshot| {
             Ok(Some(structure_document_symbols_with_hierarchy_support(
@@ -845,10 +908,7 @@ impl LanguageServer for MermanLanguageServer {
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
         let uri = params.text_document_position.text_document.uri.clone();
-        let workspace_edit_encoding = WorkspaceEditEncoding::from_document_changes_support(
-            self.workspace_edit_document_changes_supported
-                .load(Ordering::Relaxed),
-        );
+        let workspace_edit_encoding = self.client_profile().workspace_edit_encoding;
 
         self.structure_snapshot_result(&uri, |snapshot| {
             structure_rename_with_workspace_edit_encoding(snapshot, params, workspace_edit_encoding)
@@ -884,6 +944,7 @@ fn stale_diagnostic_recompute_error() -> tower_lsp::jsonrpc::Error {
 fn document_sync_error_diagnostic(
     sync_error: DocumentSyncError,
     document_version: i32,
+    profile: &ClientProtocolProfile,
 ) -> Diagnostic {
     let message = match sync_error {
         DocumentSyncError::InvalidIncrementalRange => {
@@ -901,9 +962,11 @@ fn document_sync_error_diagnostic(
         related_information: None,
         tags: None,
         code_description: None,
-        data: Some(serde_json::json!({
-            "documentVersion": document_version,
-        })),
+        data: profile
+            .diagnostics
+            .data
+            .then(|| serde_json::to_value(DiagnosticVersionData { document_version }).ok())
+            .flatten(),
     }
 }
 

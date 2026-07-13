@@ -7,6 +7,7 @@ use super::{
 pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceTextIndex {
     let mut index = FenceTextIndex::default();
     let source_mapped_spans = facts.span_coordinate_space.is_original_source();
+    index.completion_dialect = facts.completion_dialect;
 
     index.source = match (facts.completeness, source_mapped_spans) {
         (merman_core::EditorSemanticCompleteness::Complete, true) => {
@@ -54,20 +55,21 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
             continue;
         }
 
-        let item = FenceSemanticItem {
-            name: symbol.name,
-            detail: symbol.detail,
+        let item = FenceSemanticItem::new(
+            symbol.name,
+            symbol.detail,
             kind,
-            role: semantic_role_from_core(role),
-            span: ByteSpan {
+            semantic_role_from_core(role),
+            ByteSpan {
                 start: symbol.span.start,
                 end: symbol.span.end,
             },
-            selection: ByteSpan {
+            ByteSpan {
                 start: symbol.selection.start,
                 end: symbol.selection.end,
             },
-        };
+        )
+        .with_rename_domain(symbol.rename_domain);
         if role.contributes_references() {
             index
                 .references

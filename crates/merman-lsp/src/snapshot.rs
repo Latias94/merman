@@ -1,11 +1,95 @@
 use std::ops::Deref;
+use std::sync::Arc;
 
+use merman_analysis::AnalysisPayload;
 use tower_lsp::lsp_types::Url;
 
 #[derive(Debug, Clone)]
 pub struct DocumentSnapshot {
     pub uri: Url,
     editor: merman_editor_core::DocumentSnapshot,
+}
+
+#[derive(Debug)]
+pub struct DocumentAnalysisContext {
+    pub snapshot: Arc<DocumentSnapshot>,
+    pub payload: Arc<AnalysisPayload>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+pub(crate) struct DocumentEpoch(pub(crate) u64);
+
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+pub(crate) struct SnapshotGeneration(pub(crate) u64);
+
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+pub(crate) struct DiagnosticGeneration(pub(crate) u64);
+
+#[derive(Debug, Clone)]
+pub(crate) struct SnapshotContext {
+    pub(crate) snapshot: Arc<DocumentSnapshot>,
+    analysis: Option<SnapshotAnalysis>,
+    pub(crate) generation: SnapshotGeneration,
+    pub(crate) document_epoch: DocumentEpoch,
+}
+
+#[derive(Debug, Clone)]
+struct SnapshotAnalysis {
+    payload: Arc<AnalysisPayload>,
+    generation: DiagnosticGeneration,
+}
+
+impl SnapshotContext {
+    pub(crate) fn new(
+        snapshot: Arc<DocumentSnapshot>,
+        generation: SnapshotGeneration,
+        document_epoch: DocumentEpoch,
+    ) -> Self {
+        Self {
+            snapshot,
+            analysis: None,
+            generation,
+            document_epoch,
+        }
+    }
+
+    pub(crate) fn with_analysis(
+        snapshot: Arc<DocumentSnapshot>,
+        payload: Arc<AnalysisPayload>,
+        generation: SnapshotGeneration,
+        diagnostic_generation: DiagnosticGeneration,
+        document_epoch: DocumentEpoch,
+    ) -> Self {
+        Self {
+            snapshot,
+            analysis: Some(SnapshotAnalysis {
+                payload,
+                generation: diagnostic_generation,
+            }),
+            generation,
+            document_epoch,
+        }
+    }
+
+    pub(crate) fn analysis_payload(&self) -> Option<&AnalysisPayload> {
+        self.analysis
+            .as_ref()
+            .map(|analysis| analysis.payload.as_ref())
+    }
+
+    pub(crate) fn analysis_generation(&self) -> Option<DiagnosticGeneration> {
+        self.analysis.as_ref().map(|analysis| analysis.generation)
+    }
+}
+
+impl DocumentAnalysisContext {
+    pub fn from_editor(context: merman_editor_core::DocumentAnalysisContext, uri: Url) -> Self {
+        let (snapshot, payload) = context.into_parts();
+        Self {
+            snapshot: Arc::new(DocumentSnapshot::from_editor(snapshot, uri)),
+            payload: Arc::new(payload),
+        }
+    }
 }
 
 impl DocumentSnapshot {
