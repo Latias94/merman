@@ -65,6 +65,16 @@ fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> Str
 }
 
 #[test]
+fn flowchart_missing_icon_uses_mermaid_unknown_icon_at_requested_size() {
+    let svg = render_flowchart_svg_from_text(
+        "flowchart TD\nA@{ icon: \"missing:icon\", label: \"Missing\" }\n",
+    );
+    let unknown_icon = r#"<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg>"#;
+
+    assert!(svg.contains(unknown_icon), "{svg}");
+}
+
+#[test]
 fn flowchart_svg_renders_one_logical_self_loop_edge() {
     let svg = render_flowchart_svg_from_text("flowchart TB\nA -->|again| A\n");
 

@@ -1685,6 +1685,47 @@ fn dynamic_icon_pack_url_file_renders_flowchart_icon() {
 }
 
 #[test]
+fn dynamic_icon_pack_url_file_renders_tree_view_icon() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let icons = tmp.path().join("icons.json");
+    fs::write(
+        &icons,
+        r#"{
+            "prefix": "test",
+            "left": 2,
+            "top": 3,
+            "width": 32,
+            "height": 18,
+            "icons": {
+                "rocket": {
+                    "body": "<path data-icon=\"tree-view-cli\" fill=\"currentColor\" d=\"M2 3H34V21H2z\"/>"
+                }
+            }
+        }"#,
+    )
+    .expect("write icons");
+
+    let icon_arg = format!("test#{}", icons.display());
+    let output = run_with_stdin(
+        &["-i", "-", "-o", "-", "--iconPacksNamesAndUrls", &icon_arg],
+        "treeView-beta\nRoot icon(test:rocket)\n",
+    );
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    assert!(
+        stdout.contains(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="2 3 32 18"><path data-icon="tree-view-cli""#
+        ),
+        "expected a non-empty 14px TreeView icon symbol in SVG:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains(r#"<tspan x="0" y="0">?</tspan>"#),
+        "custom TreeView icon should replace the unknown icon:\n{stdout}"
+    );
+}
+
+#[test]
 fn dynamic_icon_pack_http_url_renders_flowchart_icon() {
     let url = serve_icon_json_once(
         r#"{

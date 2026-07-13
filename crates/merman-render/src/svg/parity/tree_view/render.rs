@@ -1,11 +1,12 @@
 use super::super::*;
 use crate::model::TreeViewNodeLayout;
+use crate::svg::icon_registry::mermaid_unknown_icon_svg;
 use crate::tree_view::{
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION, TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH, TREE_VIEW_ICON_SIZE,
     is_tree_view_highlight_class,
 };
 use merman_core::diagrams::tree_view::TreeViewDiagramRenderModel;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
@@ -87,7 +88,8 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         );
     }
     let _ = write!(&mut out, "<style>{css}</style>");
-    push_tree_view_icon_defs(&mut out, layout, diagram_id);
+    let icon_symbol_ids = tree_view_icon_symbol_ids(layout, diagram_id);
+    push_tree_view_icon_defs(&mut out, &icon_symbol_ids, options.icon_registry.as_deref());
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
     let mut next_node = 0usize;
@@ -106,7 +108,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
                 &mut out,
                 node,
                 layout,
-                diagram_id,
+                &icon_symbol_ids,
                 &mut width_before_highlight,
             );
             next_node += 1;
@@ -126,7 +128,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             &mut out,
             node,
             layout,
-            diagram_id,
+            &icon_symbol_ids,
             &mut width_before_highlight,
         );
     }
@@ -138,7 +140,7 @@ fn push_tree_view_node(
     out: &mut String,
     node: &TreeViewNodeLayout,
     layout: &TreeViewDiagramLayout,
-    diagram_id: &str,
+    icon_symbol_ids: &BTreeMap<&str, String>,
     width_before_highlight: &mut f64,
 ) {
     out.push_str("<g>");
@@ -156,11 +158,15 @@ fn push_tree_view_node(
         );
         *width_before_highlight += TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     }
-    if let Some(icon) = &node.resolved_icon {
+    if let Some(symbol_id) = node
+        .resolved_icon
+        .as_deref()
+        .and_then(|icon| icon_symbol_ids.get(icon))
+    {
         let _ = write!(
             out,
             r##"<use xlink:href="#{}" x="{}" y="{}" class="treeView-node-icon"></use>"##,
-            tree_view_icon_symbol_id(diagram_id, icon),
+            symbol_id,
             fmt(node.x + layout.padding_x),
             fmt(node.y + layout.padding_y)
         );
@@ -219,22 +225,17 @@ fn tree_view_label_classes(node: &TreeViewNodeLayout) -> String {
     classes.join(" ")
 }
 
-fn push_tree_view_icon_defs(out: &mut String, layout: &TreeViewDiagramLayout, diagram_id: &str) {
-    let used_icons = layout
-        .nodes
-        .iter()
-        .filter_map(|node| node.resolved_icon.as_deref())
-        .collect::<BTreeSet<_>>();
-    if used_icons.is_empty() {
+fn push_tree_view_icon_defs(
+    out: &mut String,
+    icon_symbol_ids: &BTreeMap<&str, String>,
+    icon_registry: Option<&crate::svg::IconRegistry>,
+) {
+    if icon_symbol_ids.is_empty() {
         return;
     }
     out.push_str("<defs>");
-    for icon in used_icons {
-        let _ = write!(
-            out,
-            r#"<g id="{}">"#,
-            tree_view_icon_symbol_id(diagram_id, icon)
-        );
+    for (icon, symbol_id) in icon_symbol_ids {
+        let _ = write!(out, r#"<g id="{symbol_id}">"#);
         if let Some(body) = tree_view_icon_body(icon) {
             let _ = write!(
                 out,
@@ -242,13 +243,68 @@ fn push_tree_view_icon_defs(out: &mut String, layout: &TreeViewDiagramLayout, di
                 fmt(TREE_VIEW_ICON_SIZE),
                 fmt(TREE_VIEW_ICON_SIZE)
             );
+        } else {
+            let icon_svg = icon_registry
+                .and_then(|registry| {
+                    registry.svg_for_scoped(
+                        icon,
+                        TREE_VIEW_ICON_SIZE,
+                        TREE_VIEW_ICON_SIZE,
+                        None,
+                        None,
+                        symbol_id,
+                    )
+                })
+                .unwrap_or_else(|| {
+                    mermaid_unknown_icon_svg(fmt(TREE_VIEW_ICON_SIZE), fmt(TREE_VIEW_ICON_SIZE))
+                });
+            out.push_str(&icon_svg);
         }
         out.push_str("</g>");
     }
     out.push_str("</defs>");
 }
 
-fn tree_view_icon_symbol_id(diagram_id: &str, icon: &str) -> String {
+fn tree_view_icon_symbol_ids<'a>(
+    layout: &'a TreeViewDiagramLayout,
+    diagram_id: &str,
+) -> BTreeMap<&'a str, String> {
+    let base_ids = layout
+        .nodes
+        .iter()
+        .filter_map(|node| node.resolved_icon.as_deref())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|icon| (icon, tree_view_icon_symbol_id_base(diagram_id, icon)))
+        .collect::<Vec<_>>();
+    let reserved_ids = base_ids
+        .iter()
+        .map(|(_, symbol_id)| symbol_id.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut next_suffixes = BTreeMap::new();
+    let mut symbol_ids = BTreeMap::new();
+
+    for (icon, base_id) in &base_ids {
+        let next_suffix = next_suffixes.entry(base_id.as_str()).or_insert(1usize);
+        let symbol_id = if *next_suffix == 1 {
+            *next_suffix = 2;
+            base_id.clone()
+        } else {
+            loop {
+                let candidate = format!("{base_id}-{next_suffix}");
+                *next_suffix += 1;
+                if !reserved_ids.contains(candidate.as_str()) {
+                    break candidate;
+                }
+            }
+        };
+        symbol_ids.insert(*icon, symbol_id);
+    }
+
+    symbol_ids
+}
+
+fn tree_view_icon_symbol_id_base(diagram_id: &str, icon: &str) -> String {
     let mut id = format!("tv-icon-{diagram_id}-");
     for ch in icon.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {

@@ -114,8 +114,8 @@ Markdown mode does not support stdout output because it may need to write multip
 
 ## Icon Packs
 
-Iconify packs are loaded into a Rust SVG icon registry, so flowchart and architecture icon nodes can
-embed real icon SVGs without a browser.
+Iconify packs are loaded into a Rust SVG icon registry, so Flowchart, Architecture, and TreeView
+nodes can embed real icon SVGs without a browser.
 
 Load an Iconify package name:
 
