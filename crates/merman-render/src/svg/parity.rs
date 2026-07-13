@@ -870,16 +870,20 @@ fn render_layout_svg_parts_for_render_model_with_config_raw(
 }
 
 fn apply_theme_css(svg: String, effective_config: &serde_json::Value) -> Result<String> {
+    const UNBALANCED_CSS_ERROR: &str = "{ /* ERROR: Unbalanced CSS */ }";
+
     let Some(theme_css) = effective_config
         .get("themeCSS")
         .and_then(serde_json::Value::as_str)
-        .filter(|css| !css.trim().is_empty())
+        .map(str::trim)
+        .filter(|css| !css.is_empty() && *css != UNBALANCED_CSS_ERROR)
     else {
         return Ok(svg);
     };
 
     let metadata = SvgPostprocessMetadata::from_svg(&svg);
-    let pipeline = SvgPipeline::parity().with_postprocessor(ScopedCssPostprocessor::new(theme_css));
+    let pipeline = SvgPipeline::parity()
+        .with_postprocessor(ScopedCssPostprocessor::new(theme_css).with_existing_style_merge());
     pipeline.process_to_string_with_metadata(&svg, &metadata)
 }
 

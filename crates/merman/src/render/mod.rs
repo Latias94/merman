@@ -623,7 +623,7 @@ mod svg_pipeline_tests {
     }
 
     #[test]
-    fn render_svg_sync_applies_site_config_scoped_theme_css_once() {
+    fn render_svg_sync_merges_site_config_scoped_theme_css_once() {
         let renderer = HeadlessRenderer::new()
             .with_site_config(merman_core::MermaidConfig::from_value(json!({
                 "themeCSS": ".node rect { fill: #123456; } @media (max-width: 600px) { text { fill: #654321; } }"
@@ -636,11 +636,11 @@ mod svg_pipeline_tests {
         let svg = renderer.render_svg_sync(source).unwrap().unwrap();
 
         assert_eq!(
-            svg.matches(r#"data-merman-postprocess="scoped-css""#)
+            svg.matches("#theme-css .node rect { fill: #123456; }")
                 .count(),
             1
         );
-        assert!(svg.contains("#theme-css .node rect { fill: #123456; }"));
+        assert!(!svg.contains(r#"data-merman-postprocess="scoped-css""#));
         assert!(svg.contains("@media (max-width: 600px) {"));
         assert!(svg.contains("#theme-css text { fill: #654321; }"));
     }
@@ -660,6 +660,21 @@ flowchart TD
             !svg.contains("data-merman-postprocess=\"scoped-css\""),
             "{svg}"
         );
+    }
+
+    #[test]
+    fn render_svg_sync_drops_mermaid_unbalanced_css_sentinel() {
+        let renderer = HeadlessRenderer::new().with_diagram_id("unbalanced-theme-css");
+        let source = r##"%%{init: {"themeCSS": "} * { background: red }"}}%%
+flowchart TD
+  A[Hello] --> B[World]
+"##;
+
+        let svg = renderer.render_svg_sync(source).unwrap().unwrap();
+
+        assert_eq!(svg.matches("<style").count(), 1);
+        assert!(!svg.contains("Unbalanced CSS"), "{svg}");
+        assert!(!svg.contains("background: red"), "{svg}");
     }
 
     #[test]

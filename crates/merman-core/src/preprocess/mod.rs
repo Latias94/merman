@@ -709,6 +709,9 @@ fn sanitize_directive(value: &mut Value) {
                 }
             }
             Value::String(s) => {
+                if directive_path_is_css(&path) && !css_braces_are_balanced(s) {
+                    *s = "{ /* ERROR: Unbalanced CSS */ }".to_string();
+                }
                 let blocked = s.contains('<') || s.contains('>') || s.contains("url(data:");
                 if blocked {
                     s.clear();
@@ -717,6 +720,33 @@ fn sanitize_directive(value: &mut Value) {
             _ => {}
         }
     }
+}
+
+fn directive_path_is_css(path: &[DirectiveValuePathSegment]) -> bool {
+    matches!(
+        path.last(),
+        Some(DirectiveValuePathSegment::Key(key))
+            if ["themeCSS", "fontFamily", "altFontFamily"]
+                .iter()
+                .any(|css_key| key.contains(css_key))
+    )
+}
+
+fn css_braces_are_balanced(css: &str) -> bool {
+    let mut depth = 0usize;
+    for ch in css.chars() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                let Some(next) = depth.checked_sub(1) else {
+                    return false;
+                };
+                depth = next;
+            }
+            _ => {}
+        }
+    }
+    depth == 0
 }
 
 fn directive_dictionary_kind(key: &str) -> Option<DirectiveDictionaryKind> {
@@ -1109,6 +1139,29 @@ mod tests {
         handle
             .join()
             .expect("deep directive sanitizer should finish without stack overflow");
+    }
+
+    #[test]
+    fn sanitize_directive_replaces_unbalanced_css_like_mermaid() {
+        let mut value = json!({
+            "themeCSS": "} * { background: red }",
+            "nested": {
+                "fontFamily": "valid { nested: value; }",
+                "altFontFamily": "missing { close"
+            }
+        });
+
+        sanitize_directive(&mut value);
+
+        assert_eq!(
+            value["themeCSS"],
+            Value::String("{ /* ERROR: Unbalanced CSS */ }".to_string())
+        );
+        assert_eq!(value["nested"]["fontFamily"], "valid { nested: value; }");
+        assert_eq!(
+            value["nested"]["altFontFamily"],
+            Value::String("{ /* ERROR: Unbalanced CSS */ }".to_string())
+        );
     }
 
     #[test]

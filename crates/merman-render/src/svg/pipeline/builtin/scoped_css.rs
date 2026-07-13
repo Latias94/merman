@@ -9,6 +9,7 @@ use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 pub struct ScopedCssPostprocessor {
     css: String,
     override_policy: CssOverridePolicy,
+    merge_into_existing_style: bool,
 }
 
 impl ScopedCssPostprocessor {
@@ -16,6 +17,7 @@ impl ScopedCssPostprocessor {
         Self {
             css: css.into(),
             override_policy: CssOverridePolicy::Preserve,
+            merge_into_existing_style: false,
         }
     }
 
@@ -30,6 +32,11 @@ impl ScopedCssPostprocessor {
 
     pub fn override_policy(&self) -> CssOverridePolicy {
         self.override_policy
+    }
+
+    pub fn with_existing_style_merge(mut self) -> Self {
+        self.merge_into_existing_style = true;
+        self
     }
 }
 
@@ -53,13 +60,17 @@ impl SvgPostprocessor for ScopedCssPostprocessor {
         };
         let css = decode_mermaid_css_hash_placeholders(&self.css);
         let scoped_css = scope_css(css.as_ref(), ctx.svg_id());
-        inject_style(&mut base, &scoped_css);
+        inject_style(&mut base, &scoped_css, self.merge_into_existing_style);
         Ok(Cow::Owned(base))
     }
 }
 
-fn inject_style(svg: &mut String, css: &str) {
+fn inject_style(svg: &mut String, css: &str, merge_into_existing_style: bool) {
     let css = css.replace("</style", "<\\/style");
+    if merge_into_existing_style && let Some(style_close_start) = svg.find("</style") {
+        svg.insert_str(style_close_start, &css);
+        return;
+    }
     let style = format!(
         r#"<style data-merman-postprocess="scoped-css">{}</style>"#,
         css
@@ -251,6 +262,35 @@ mod tests {
             existing < injected,
             "injected CSS should follow Mermaid CSS for cascade order: {out}"
         );
+    }
+
+    #[test]
+    fn scoped_css_can_merge_into_mermaid_generated_stylesheet() {
+        let svg = r#"<svg id="diagram"><style>#diagram{fill:red;}</style><g/></svg>"#;
+        let out = SvgPipeline::parity()
+            .with_postprocessor(
+                ScopedCssPostprocessor::new(".node { fill: green; }").with_existing_style_merge(),
+            )
+            .process_to_string(svg)
+            .unwrap();
+
+        assert_eq!(out.matches("<style").count(), 1);
+        assert!(out.contains("#diagram{fill:red;}#diagram .node { fill: green; }</style>"));
+        assert!(!out.contains("data-merman-postprocess"));
+    }
+
+    #[test]
+    fn scoped_css_merge_targets_mermaids_first_global_stylesheet() {
+        let svg = r#"<svg id="diagram"><style>.global{fill:red;}</style><g><style>.nested{fill:blue;}</style></g></svg>"#;
+        let out = SvgPipeline::parity()
+            .with_postprocessor(
+                ScopedCssPostprocessor::new(".node { fill: green; }").with_existing_style_merge(),
+            )
+            .process_to_string(svg)
+            .unwrap();
+
+        assert!(out.contains(".global{fill:red;}#diagram .node { fill: green; }</style>"));
+        assert!(out.contains("<style>.nested{fill:blue;}</style>"));
     }
 
     #[test]
