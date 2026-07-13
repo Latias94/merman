@@ -1,7 +1,7 @@
 #[cfg(feature = "ratex-math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
-pub use merman_render::model::LayoutedDiagram;
+pub use merman_render::model::{LayoutDiagram, LayoutedDiagram};
 pub use merman_render::resources::{
     ClassComplexity, FlowchartComplexity, RenderResourceLimits, RenderResourceProfile,
     ResourceLimitExceeded, ResourceLimitPhase,
@@ -26,6 +26,7 @@ pub use merman_render::{
 };
 
 mod operation;
+pub use operation::{PreparedRender, PreparedSemantic};
 
 #[cfg(feature = "raster")]
 pub mod raster;
@@ -194,6 +195,34 @@ pub fn render_layouted_svg(
     )?)
 }
 
+/// Parses and lays out one diagram through the canonical typed render path.
+///
+/// The returned artifact exposes read-only semantic, metadata, and layout views. Rendering it
+/// consumes the artifact so diagnostics and request policy can inspect exactly the parse/layout
+/// result that produces the SVG.
+pub fn prepare_render_sync(
+    engine: &merman_core::Engine,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    layout_options: &LayoutOptions,
+) -> Result<Option<PreparedRender>> {
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options).prepare_render()
+}
+
+/// Parses one diagram through the canonical typed path without starting layout.
+///
+/// This stage lets callers apply admission or skip policy from the exact metadata and semantic
+/// model that would otherwise continue into layout.
+pub fn prepare_semantic_sync(
+    engine: &merman_core::Engine,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    layout_options: &LayoutOptions,
+) -> Result<Option<PreparedSemantic>> {
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
+        .prepare_semantic()
+}
+
 /// Synchronous SVG render helper (executor-free).
 pub fn render_svg_sync(
     engine: &merman_core::Engine,
@@ -275,6 +304,28 @@ pub fn render_svg_resvg_safe_sync(
         svg_options,
         &SvgPipeline::resvg_safe(),
     )
+}
+
+pub async fn prepare_render(
+    engine: &merman_core::Engine,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    layout_options: &LayoutOptions,
+) -> Result<Option<PreparedRender>> {
+    // This async API is runtime-agnostic: parsing and layout are CPU-bound and do not perform I/O.
+    // It executes synchronously and does not yield.
+    prepare_render_sync(engine, text, parse_options, layout_options)
+}
+
+pub async fn prepare_semantic(
+    engine: &merman_core::Engine,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    layout_options: &LayoutOptions,
+) -> Result<Option<PreparedSemantic>> {
+    // This async API is runtime-agnostic: parsing is CPU-bound and does not perform I/O.
+    // It executes synchronously and does not yield.
+    prepare_semantic_sync(engine, text, parse_options, layout_options)
 }
 
 pub async fn render_svg(
@@ -985,6 +1036,16 @@ impl HeadlessRenderer {
 
     pub fn layout_diagram_sync(&self, text: &str) -> Result<Option<LayoutedDiagram>> {
         layout_diagram_sync(&self.engine, text, self.parse, &self.layout)
+    }
+
+    /// Parses and lays out one typed render artifact for inspection before SVG rendering.
+    pub fn prepare_render_sync(&self, text: &str) -> Result<Option<PreparedRender>> {
+        prepare_render_sync(&self.engine, text, self.parse, &self.layout)
+    }
+
+    /// Parses one typed semantic stage for admission before layout starts.
+    pub fn prepare_semantic_sync(&self, text: &str) -> Result<Option<PreparedSemantic>> {
+        prepare_semantic_sync(&self.engine, text, self.parse, &self.layout)
     }
 
     pub fn render_layouted_svg_sync(&self, diagram: &LayoutedDiagram) -> Result<String> {
