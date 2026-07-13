@@ -25,7 +25,6 @@ pub fn lookup_timeline_root_viewport_override(
         "timeline_stress_font_size_precedence" => {
             Some(("-5 -77 1228.375 530.3999938964844", "1228.38"))
         }
-        "timeline_stress_unicode_cjk_and_emoji" => Some(("95 -61 995 629.5999755859375", "995")),
         "timeline_stress_very_long_unbroken_word" => {
             Some(("-107.984375 -61 1516.3203125 594.3999938964844", "1516.32"))
         }

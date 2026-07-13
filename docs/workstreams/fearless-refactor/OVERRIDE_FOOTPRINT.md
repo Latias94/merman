@@ -5,6 +5,40 @@ fearless refactor work. Overrides are useful when upstream behavior depends on b
 measurement or a temporary raw SVG/path compatibility bridge, but new model fixes should be
 preferred when the mismatch comes from our own data or geometry.
 
+## Snapshot: 2026-07-12
+
+Commands:
+
+`cargo run -p xtask -- report-overrides --check-no-growth`
+
+`cargo run -p xtask -- audit-root-overrides --diagram c4 --diagram flowchart --diagram state --diagram timeline --fail-on-stale`
+
+Mermaid baseline: `@11.16.0`.
+
+Generated override modules scanned: `21`.
+
+### Root Viewport Overrides
+
+Total entries reported by `xtask`: `183`.
+
+| file | entries |
+| --- | ---: |
+| `c4_root_overrides_11_12_2.rs` | 2 |
+| `er_root_overrides_11_12_2.rs` | 6 |
+| `eventmodeling_root_overrides_11_15_0.rs` | 9 |
+| `flowchart_root_overrides_11_12_2.rs` | 36 |
+| `mindmap_root_overrides_11_12_2.rs` | 30 |
+| `pie_root_overrides_11_12_2.rs` | 58 |
+| `sankey_root_overrides_11_12_2.rs` | 3 |
+| `state_root_overrides_11_12_2.rs` | 32 |
+| `timeline_root_overrides_11_12_2.rs` | 7 |
+
+The targeted disabled-root audit removed 37 stale entries (C4 33, Flowchart 2, State 1, and
+Timeline 1). Its post-delete inventory contained 77 entries spanning 83 fixture keys across the
+affected tables, reported zero stale entries and runner issues, and preserved the exact 130
+outside-table mismatch keys. The audit reports under `target/compare/` are uncommitted execution
+evidence.
+
 ## Snapshot: 2026-06-06
 
 Command:

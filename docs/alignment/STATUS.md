@@ -192,6 +192,12 @@ Railroad entries have matching descendants and differ only in browser-derived ro
 height, so they are now admitted by family-, fixture-, marker-, and value-locked policies. The
 policy inventory is therefore 9 exact records; the other 756 observed residuals remain actionable.
 
+Recent progress (2026-07-12): a disabled-root audit proved that 37 fixture-scoped root viewport
+pins were obsolete and removed them: C4 33, Flowchart 2, State 1, and Timeline 1. The generated
+inventory is now 183 entries (C4 2, Flowchart 36, State 32, Timeline 7 for the affected tables).
+The audit preserved the exact 130 outside-table mismatch keys across those four families; this
+cleanup did not add root pins, comparator normalization, or residual-policy records.
+
 Recent progress (2026-02-16): imported an additional batch of Architecture stress fixtures (with upstream SVG
 baselines), expanding coverage for cross-group edges, labeled ports, icon-text fallbacks, and long edge label
 wrapping. Added Architecture root viewport overrides for the new fixture IDs and hardened one edge-label wrap

@@ -105,6 +105,12 @@ cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-
 - Do not add broad/global constants that affect unrelated diagrams.
 - Store exact upstream strings for `viewBox`/`max-width` to avoid re-rounding drift.
 - Prefer real layout/render parity fixes first; use overrides for remaining deterministic gaps.
+- Before deleting a pin, capture a disabled-root audit for the affected families without
+  `--fail-on-stale`, using explicit, distinct pre-delete `--out` and `--report-dir` paths. Remove
+  only its stale candidates, then capture a post-delete audit with distinct paths and
+  `--fail-on-stale`; require zero stale entries and runner issues. Compare the exact outside-table
+  mismatch key set between the two reports; `--fail-on-stale` does not admit or hide those
+  independent mismatches.
 
 ## Current Status
 

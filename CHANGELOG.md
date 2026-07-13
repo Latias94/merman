@@ -20,6 +20,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixes and polish
 
+- Removed 37 obsolete fixture-scoped root viewport pins and tightened the no-growth guard to the 183-entry Mermaid 11.16 inventory. #22
+- Kept centered Railroad choice branches straight when equivalent lane coordinates differ only because of floating-point addition order. #22
 - Fixed Mermaid 11.16 edge cases in TreeView annotation boundaries, 14px built-in icons, and highlight bounds; Cynefin inline syntax, frontmatter titles, and global fonts; Architecture reserved IDs; exact Railroad ABNF overflow diagnostics; and generated XYChart axis defaults. #21
 - Hardened upstream SVG maintenance so full-family generation removes obsolete fixture baselines transactionally, compare/audit readers cannot race shared Mermaid CLI installs, and root-override audits consume root attributes captured from the locked compare generation. #21
 - Unified fixture importer reject/defer rollback handling so all import sources restore the same transaction state after a failed baseline or deferred-fixture operation. #21
