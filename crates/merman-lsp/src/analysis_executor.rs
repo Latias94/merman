@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn identical_analysis_requests_share_one_cpu_execution() {
+    async fn overlapping_identical_analysis_requests_share_one_cpu_execution() {
         let mut store = DocumentStore::new();
         let uri = Url::parse("file:///tmp/single-flight.mmd").unwrap();
         store.upsert_text(
@@ -503,19 +503,30 @@ mod tests {
             "flowchart TD\nA-->B\n".to_string(),
             DocumentKind::Diagram,
         );
+        let gate = Arc::new(TestAnalysisGate::default());
         let request = store
             .snapshot_build_request(&uri)
-            .expect("expected analysis request");
+            .expect("expected analysis request")
+            .with_test_gate(Arc::clone(&gate));
+        let key = request.key();
         let executor = store.analysis_executor();
 
-        let (first, second, third) = tokio::join!(
-            executor.execute(&request),
-            executor.execute(&request),
-            executor.execute(&request),
-        );
-        let first = first.unwrap();
-        let second = second.unwrap();
-        let third = third.unwrap();
+        let spawn_execution = || {
+            let executor = executor.clone();
+            let request = request.clone();
+            tokio::spawn(async move { executor.execute(&request).await })
+        };
+        let first = spawn_execution();
+        wait_for_gate_starts(&gate, 1).await;
+        let second = spawn_execution();
+        let third = spawn_execution();
+        wait_for_waiter_count(&executor, &key, 3).await;
+        gate.release();
+
+        let (first, second, third) = tokio::join!(first, second, third);
+        let first = first.unwrap().unwrap();
+        let second = second.unwrap().unwrap();
+        let third = third.unwrap().unwrap();
 
         assert!(Arc::ptr_eq(&first, &second));
         assert!(Arc::ptr_eq(&first, &third));
