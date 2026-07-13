@@ -799,6 +799,9 @@ For a quick “does raster output look sane?” sweep across fixtures (dev-only)
 
 - `pwsh -NoProfile -ExecutionPolicy Bypass -File tools/preview/export-fixtures-png.ps1 -BuildReleaseCli -CleanOutDir`
 
+Fuzzing coverage for parser, render, and SVG pipeline surfaces is documented in
+[`docs/security/FUZZING.md`](https://github.com/Latias94/merman/blob/main/docs/security/FUZZING.md).
+
 ## Limitations
 
 - SVG `<foreignObject>` HTML labels are not universally supported (especially in rasterizers). If you need a more compatible output, prefer `render_svg_resvg_safe_sync()` or the explicit `SvgPipeline::resvg_safe()` preset.

@@ -9,12 +9,16 @@ on:
       - Cargo.lock
       - Cargo.toml
       - "crates/**/Cargo.toml"
+      - fuzz/Cargo.lock
+      - fuzz/Cargo.toml
       - ".github/workflows/security-audit.yml"
   pull_request:
     paths:
       - Cargo.lock
       - Cargo.toml
       - "crates/**/Cargo.toml"
+      - fuzz/Cargo.lock
+      - fuzz/Cargo.toml
       - ".github/workflows/security-audit.yml"
   schedule:
     - cron: "23 4 * * 1"
@@ -29,8 +33,14 @@ concurrency:
 
 jobs:
   cargo-audit:
-    name: cargo-audit
+    name: cargo-audit (${{ matrix.lockfile }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        lockfile:
+          - Cargo.lock
+          - fuzz/Cargo.lock
     steps:
       - uses: actions/checkout@v6
 
@@ -41,4 +51,4 @@ jobs:
         uses: taiki-e/install-action@cargo-audit
 
       - name: Audit Rust dependencies
-        run: cargo audit
+        run: cargo audit --file "${{ matrix.lockfile }}"

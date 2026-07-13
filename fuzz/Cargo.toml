@@ -1,0 +1,40 @@
+[package]
+name = "merman-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+libfuzzer-sys = "0.4"
+merman = { path = "../crates/merman", features = ["render"] }
+merman-core = { path = "../crates/merman-core" }
+roxmltree = "0.21.1"
+
+# Use independent workspace for fuzzers.
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "parse_mermaid"
+path = "fuzz_targets/parse_mermaid.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "render_mermaid"
+path = "fuzz_targets/render_mermaid.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "svg_pipeline"
+path = "fuzz_targets/svg_pipeline.rs"
+test = false
+doc = false
+bench = false

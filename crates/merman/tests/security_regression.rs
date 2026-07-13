@@ -2,6 +2,7 @@
 
 use merman::MermaidConfig;
 use merman::render::{HeadlessRenderer, RenderResourceLimits};
+#[cfg(feature = "raster")]
 use std::io::Cursor;
 use std::sync::Arc;
 

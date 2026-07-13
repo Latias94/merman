@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <style>@keyframes pulse{to{opacity:1}} .node{animation:pulse 1s}</style>
+  <defs><path id="shape" d="M0 0L10 10"/></defs>
+  <use href="#shape"/>
+  <path stroke="url(javascript:alert(1))" style="filter:url('file:///tmp/x');stroke:#333"/>
+</svg>

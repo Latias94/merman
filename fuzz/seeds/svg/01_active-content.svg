@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)">
+  <script>alert(1)</script>
+  <foreignObject width="100" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Label</div></foreignObject>
+  <a href="javascript:alert(1)"><text>unsafe</text></a>
+</svg>
