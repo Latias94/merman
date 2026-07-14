@@ -202,7 +202,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "erDiagram\nCUSTOMER\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -211,7 +211,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "erDiagram\nCUSTOMER\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -1215,7 +1215,10 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
     assert!(!er_alias.has_detector);
     assert!(!er_alias.has_header);
     assert!(
-        er_alias.has_semantic_parser && er_alias.has_editor_parser && er_alias.has_render_parser
+        er_alias.has_semantic_parser
+            && er_alias.has_editor_parser
+            && er_alias.has_combined_parser
+            && er_alias.has_render_parser
     );
 
     let error = family_capability(full, "error");
@@ -1255,6 +1258,8 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
             "sankey",
             "swimlane",
             "cynefin",
+            "er",
+            "erDiagram",
         ])
     );
 }
@@ -1305,6 +1310,29 @@ fn git_graph_combined_parse_constructs_syntax_once() {
         crate::diagrams::langium_common::family_syntax_construction_count(family),
         1,
         "one combined request must construct gitGraph syntax once"
+    );
+}
+
+#[test]
+fn er_combined_parse_constructs_family_syntax_once() {
+    crate::diagrams::er::reset_er_syntax_construction_count();
+
+    let parsed = crate::Engine::new()
+        .parse_diagram_with_editor_facts_sync(
+            "erDiagram\nCUSTOMER ||--o{ ORDER : places\n",
+            crate::ParseOptions::strict(),
+        )
+        .expect("ER combined parse succeeds")
+        .expect("ER combined parse returns a diagram");
+
+    assert!(matches!(
+        parsed.editor_facts,
+        crate::ParsedEditorFacts::Available(_)
+    ));
+    assert_eq!(
+        crate::diagrams::er::er_syntax_construction_count(),
+        1,
+        "one combined request must construct ER syntax once"
     );
 }
 
@@ -1411,6 +1439,64 @@ fn langium_combined_projections_match_standalone_public_entrypoints() {
             assert_eq!(standalone_model["accTitle"], "Accessible history");
         }
     }
+}
+
+#[test]
+fn er_combined_projections_match_standalone_and_typed_public_entrypoints() {
+    let engine = crate::Engine::new();
+    let source = concat!(
+        "erDiagram\r\n",
+        "accTitle: <script>bad()</script><b>Entity map</b>\r\n",
+        "accDescr { <script>bad()</script>first line\r\n",
+        "  second line }\r\n",
+        "direction LR\r\n",
+        "CUSTOMER[Customer] {\r\n",
+        "  string id PK, FK \"primary key\"\r\n",
+        "  string name UK\r\n",
+        "}\r\n",
+        "ORDER[Order] {\r\n",
+        "  string id PK\r\n",
+        "}\r\n",
+        "CUSTOMER ||--o{ ORDER : places\r\n",
+        "CUSTOMER ||--|| CUSTOMER : refers\r\n",
+        "classDef emphasized fill:#fff,color:red\r\n",
+        "class CUSTOMER emphasized\r\n",
+        "style ORDER stroke:#000\r\n",
+    );
+    let mut compat = assert_combined_projections_match_standalone(&engine, "er", source, None);
+
+    let acc_title = compat["accTitle"].as_str().unwrap();
+    let acc_descr = compat["accDescr"].as_str().unwrap();
+    assert!(!acc_title.contains("<script>"));
+    assert!(!acc_descr.contains("<script>"));
+    assert!(acc_title.contains("Entity map"));
+    assert!(acc_descr.contains("first line"));
+    assert!(acc_descr.contains("second line"));
+    assert_eq!(compat["direction"], "LR");
+    assert_eq!(compat["entities"]["CUSTOMER"]["alias"], "Customer");
+    assert_eq!(
+        compat["entities"]["CUSTOMER"]["attributes"][0]["keys"],
+        serde_json::json!(["PK", "FK"])
+    );
+    assert_eq!(compat["relationships"].as_array().unwrap().len(), 2);
+    assert_eq!(compat["relationships"][0]["roleA"], "places");
+    assert_eq!(compat["relationships"][1]["roleA"], "refers");
+    assert!(
+        compat.get("warningFacts").is_none(),
+        "ER has no warning projection"
+    );
+
+    let typed = engine
+        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+        .expect("ER typed parse succeeds")
+        .expect("ER typed parse returns a diagram");
+    let crate::RenderSemanticModel::Er(typed) = typed.model else {
+        panic!("ER typed parse returned a different family");
+    };
+    let typed = serde_json::to_value(typed).expect("ER typed model serializes");
+    compat.as_object_mut().unwrap().remove("type");
+    compat.as_object_mut().unwrap().remove("constants");
+    assert_eq!(compat, typed, "ER JSON and typed projections drifted");
 }
 
 #[cfg(feature = "full")]

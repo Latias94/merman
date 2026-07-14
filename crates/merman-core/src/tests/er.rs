@@ -951,3 +951,116 @@ fn parse_er_editor_facts_record_expected_id_list_spans() {
             && expected.span.start == text.find("pink").unwrap()
     }));
 }
+
+#[test]
+fn parse_er_editor_facts_preserve_every_crlf_unicode_occurrence_span() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "erDiagram\r\n",
+        "孤島\r\n",
+        "顧客[\"客戶別名\"] {\r\n",
+        "  文字列 名稱 PK\r\n",
+        "  文字列 名稱 FK\r\n",
+        "}\r\n",
+        "顧客 ||--o{ 訂單 : places 群島\r\n",
+        "顧客 ||--|| 顧客 : refers\r\n",
+        "class 顧客 important\r\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("ER editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    for name in ["孤島", "顧客", "名稱", "群島"] {
+        let expected = text
+            .match_indices(name)
+            .map(|(start, value)| SourceSpan::new(start, start + value.len()))
+            .collect::<Vec<_>>();
+        let actual = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name)
+            .map(|symbol| symbol.selection)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual, expected,
+            "ER lost or collapsed a {name:?} occurrence"
+        );
+    }
+    let payload = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing ER payload {name:?} ({detail})"))
+    };
+
+    let alias_start = text.find("客戶別名").unwrap();
+    let alias = payload("客戶別名", "er entity alias");
+    assert_eq!(alias.role, EditorSemanticRole::Payload);
+    assert_eq!(alias.kind, EditorSemanticKind::String);
+    assert_eq!(
+        alias.span,
+        SourceSpan::new(alias_start - 1, alias.selection.end + 1)
+    );
+    assert_eq!(
+        alias.selection,
+        SourceSpan::new(alias_start, alias_start + "客戶別名".len())
+    );
+
+    for role_name in ["places", "refers"] {
+        let start = text.find(role_name).unwrap();
+        let role = payload(role_name, "er relationship role");
+        assert_eq!(role.role, EditorSemanticRole::Payload);
+        assert_eq!(role.kind, EditorSemanticKind::String);
+        assert_eq!(role.span, SourceSpan::new(start, start + role_name.len()));
+        assert_eq!(role.selection, role.span);
+    }
+}
+
+#[test]
+fn parse_er_editor_recovery_reuses_one_lexical_event_stream_and_reports_exact_span() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "erDiagram\r\n",
+        "顧客 ||--o{ 訂單 : places\r\n",
+        "@",
+    );
+    let invalid_start = text.find('@').unwrap();
+    crate::diagrams::er::reset_er_syntax_construction_count();
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("er", text, ParseOptions::strict())
+        .unwrap()
+        .expect("ER recovery facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert_eq!(crate::diagrams::er::er_syntax_construction_count(), 1);
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    }));
+
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("strict ER parsing rejects the invalid token");
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("invalid ER token returned a non-parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+}
