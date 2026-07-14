@@ -30,9 +30,9 @@ pub use document::{
 };
 pub use editor::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
-    FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceSemanticItem,
-    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, ShapeObjectValuePrefix,
-    shape_object_value_prefix,
+    FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceRenamePolicy,
+    FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    ShapeObjectValuePrefix, shape_object_value_prefix,
 };
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,
@@ -40,9 +40,9 @@ pub use options_json::{
     analysis_options_json_from_json_value,
 };
 pub use payload::{
-    AnalysisDiagnostic, AnalysisPayload, DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit,
-    DiagnosticRelated, DiagnosticSeverity, DiagnosticSpan, SourceDescriptor, SourceKind, Summary,
-    Utf16Position,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisDiagnostic, AnalysisPayload,
+    DiagnosticCategory, DiagnosticFix, DiagnosticFixEdit, DiagnosticRelated, DiagnosticSeverity,
+    DiagnosticSpan, LspRange, SourceDescriptor, SourceKind, SourcePosition, Summary, Utf16Position,
 };
 pub use result::{
     AnalysisDiagramFacts, AnalysisDiagramSyntaxFacts, AnalysisExpectedSyntaxFacts,

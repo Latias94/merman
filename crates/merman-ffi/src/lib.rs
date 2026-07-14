@@ -1238,6 +1238,8 @@ fn error_result(status: BindingStatus, message: &str) -> MermanResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "analysis")]
+    use merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION;
     use serde_json::Value;
     use std::ffi::CStr;
 
@@ -1603,9 +1605,40 @@ mod tests {
         if cfg!(feature = "analysis") {
             assert_eq!(result.code, BindingStatus::Ok.code());
             let json: Value = serde_json::from_str(&take_text(result.data)).unwrap();
-            assert_eq!(json["version"], 1);
+            #[cfg(feature = "analysis")]
+            assert_eq!(json["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
             assert_eq!(json["source"]["kind"], "markdown");
             assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
+            assert_eq!(
+                json["diagrams"][0]["syntax"]["fact_source"],
+                "parser_complete"
+            );
+            assert!(
+                json["diagrams"][0]["syntax"]["semantic_items"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| {
+                        item["name"] == "A" && item["rename_policy"] == "identifier"
+                    }))
+            );
+
+            let unavailable = call_analyze_document_facts(
+                b"```mermaid\nunknownDiagram\nPretendNode --> OtherNode\n```\n",
+                b"",
+                b"file:///tmp/unknown.md",
+            );
+            assert_eq!(unavailable.code, BindingStatus::Ok.code());
+            let unavailable_json: Value =
+                serde_json::from_str(&take_text(unavailable.data)).unwrap();
+            #[cfg(feature = "analysis")]
+            assert_eq!(unavailable_json["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
+            assert_eq!(
+                unavailable_json["diagrams"][0]["syntax"]["fact_source"],
+                "unavailable"
+            );
+            assert_eq!(
+                unavailable_json["diagrams"][0]["syntax"]["semantic_items"],
+                serde_json::json!([])
+            );
         } else {
             expect_analysis_feature_error(result);
         }

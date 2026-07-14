@@ -14,12 +14,13 @@ server rather than depending on this crate directly.
   definition, references, prepare-rename, rename, and semantic tokens.
 - Preserve semantic fact provenance with `FenceTextIndexSource` so callers can tell
   `ParserComplete`, `ParserCompleteDegradedSpans`, `ParserRecovered`,
-  `ParserRecoveredDegradedSpans`, and `TextScan` results apart.
+  `ParserRecoveredDegradedSpans`, and `Unavailable` results apart.
 - Keep language behavior protocol-neutral: no LSP `Url`, `Range`, `Diagnostic`, or VS Code
   ownership policy lives here.
 
 `ParserCompleteDegradedSpans` and `ParserRecoveredDegradedSpans` remain parser-backed for identity
 and outline facts, but callers must treat their spans as unavailable for precise source edits when
-analysis reports `source_mapped_spans=false`. `TextScan` is a bounded fallback, not a maturity
-signal. New editor behavior should deepen parser-backed semantic facts in `merman-core` /
-`merman-analysis` rather than adding protocol-layer scans.
+analysis reports `source_mapped_spans=false`. `Unavailable` means no body semantics are projected;
+source-start headers and templates are read independently from the static family catalog. New
+editor behavior should deepen parser-backed semantic facts in `merman-core` / `merman-analysis`
+rather than adding protocol-layer scans.

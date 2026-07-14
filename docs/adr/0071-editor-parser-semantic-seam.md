@@ -27,8 +27,8 @@ product-grade contract.
   instead of raw-text structure scans.
 - Keep render-model generation as a downstream projection, not the public parsing contract.
 
-Temporary raw-text scans may remain during migration, but only as compatibility shims. They are not
-the target architecture.
+Generic raw-text body scans are not part of the architecture. When family facts are unavailable,
+the semantic index remains empty; source-start authoring reads static family catalog facts.
 
 As of 2026-07-01, `merman-analysis::FenceTextIndex` is the shared semantic index and
 `merman-editor-core` is the protocol-neutral query boundary. LSP and WASM editor APIs project
@@ -44,12 +44,13 @@ legend is derived from the editor-core legend instead of maintaining a second to
 
 Every editor-core result that depends on semantic facts carries `FenceTextIndexSource` provenance:
 `ParserComplete`, `ParserCompleteDegradedSpans`, `ParserRecovered`,
-`ParserRecoveredDegradedSpans`, or `TextScan`. Parser-backed and recovered results may be
+`ParserRecoveredDegradedSpans`, or `Unavailable`. Parser-backed and recovered results may be
 first-class editor behavior when covered by tests. The `*DegradedSpans` variants are still
 parser-backed facts, but their spans were produced in parser-input coordinates that could not be
 proven as exact original-source ranges; downstream payloads expose `source_mapped_spans=false` and
-must not use those spans for precise edits, rename ranges, or diagnostic source positions. Text-scan
-results remain bounded fallback behavior and must stay visible in capability docs and tests.
+must not use those spans for precise edits, rename ranges, or diagnostic source positions.
+`Unavailable` produces no body semantic items; source-start headers and templates come from the
+static family catalog rather than a source scan.
 
 `FenceTextIndex` must respect semantic roles when it projects parser facts. It should not treat
 every parser-produced span as a graph-node completion id. For example, ER attribute names can be

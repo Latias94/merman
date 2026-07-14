@@ -1,7 +1,7 @@
-use super::text_scan::is_candidate_node_id;
 use super::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceExpectedSyntaxKind,
-    FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, shape_object_value_prefix,
+    FenceRenamePolicy, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    shape_object_value_prefix,
 };
 use merman_core::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -21,371 +21,38 @@ fn byte_span_contains_half_open_ranges_and_empty_insertions() {
 }
 
 #[test]
-fn text_index_collects_node_ids() {
-    let index = FenceTextIndex::from_text("flowchart TD\nA-->B\nB-->C\n", Some("flowchart-v2"));
-    let ids = index.node_ids().cloned().collect::<Vec<_>>();
+fn rename_policies_validate_family_owned_lexical_forms() {
+    assert!(FenceRenamePolicy::Identifier.accepts("node-alpha_1"));
+    assert!(!FenceRenamePolicy::Identifier.accepts("node alpha"));
 
-    assert_eq!(ids, vec!["A", "B", "C"]);
+    assert!(FenceRenamePolicy::QualifiedIdentifier.accepts("Sales.Order_1"));
+    assert!(!FenceRenamePolicy::QualifiedIdentifier.accepts("1Sales.Order"));
+    assert!(!FenceRenamePolicy::QualifiedIdentifier.accepts("Sales..Order"));
+    assert!(FenceRenamePolicy::EventModelingId.accepts("Order_1"));
+    assert!(!FenceRenamePolicy::EventModelingId.accepts("Sales.Order"));
+
+    assert!(FenceRenamePolicy::EventModelingFrameId.accepts("007"));
+    assert!(!FenceRenamePolicy::EventModelingFrameId.accepts("1000"));
+    assert!(!FenceRenamePolicy::None.is_renameable());
 }
 
 #[test]
-fn text_index_treats_legacy_flowchart_as_module_facts() {
-    let index = FenceTextIndex::from_text("flowchart TD\nA-->B\n", Some("flowchart"));
-    let item = index
-        .outline_items()
-        .iter()
-        .find(|item| item.name == "A")
-        .expect("flowchart node outline item");
-
-    assert_eq!(item.kind, EditorSymbolKind::Module);
-}
-
-#[test]
-fn node_id_filter_skips_keywords_and_empty_tokens() {
-    assert!(!is_candidate_node_id("flowchart"));
-    assert!(!is_candidate_node_id("%comment"));
-    assert!(is_candidate_node_id("node_1"));
-}
-
-#[test]
-fn text_index_tracks_directive_prefixes() {
-    let index = FenceTextIndex::from_text(
-        "%%{init: {\"theme\": \"dark\"}}%%\nclassDef foo fill:#f00\n:::className\n",
-        None,
-    );
-
-    assert!(index.has_directive_prefix("init"));
-    assert!(index.has_directive_prefix("classDef"));
-    assert!(index.has_directive_prefix(":::"));
-}
-
-#[test]
-fn text_scan_records_payload_directive_prefixes_without_projecting_payload_symbols() {
-    let index = FenceTextIndex::from_text(
-        concat!(
-            "flowchart TD\n",
-            "click A href \"https://example.com\" \"Open user\" _blank\n",
-            "linkStyle 0 stroke:#111,stroke-width:2px\n",
-            "accTitle: Chart title\n",
-            "accDescr: Chart description\n",
-            "title Roadmap\n",
-        ),
-        Some("flowchart-v2"),
-    );
-
-    for prefix in ["click", "linkStyle", "accTitle", "accDescr", "title"] {
-        assert!(index.has_directive_prefix(prefix));
-    }
-    for leaked in [
-        "A", "href", "https", "example", "Open", "user", "_blank", "stroke", "Chart", "Roadmap",
-    ] {
-        assert!(
-            !index.node_ids().any(|id| id == leaked),
-            "text-scan payload directive leaked {leaked:?} as a node id"
-        );
-    }
-    assert!(
-        index
-            .outline_items()
-            .iter()
-            .any(|item| item.name == "A" && item.detail.as_deref() == Some("interaction"))
-    );
-    assert!(
-        index
-            .outline_items()
-            .iter()
-            .any(|item| item.name == "0" && item.detail.as_deref() == Some("link style"))
-    );
-}
-
-#[test]
-fn text_scan_skips_class_directive_payload_prefixes() {
-    let index = FenceTextIndex::from_text(
-        concat!(
-            "flowchart TD\n",
-            "A-->B\n",
-            "class User:::service\n",
-            "style User fill:#fff\n",
-            "click User href \"https://example.com\" \"Open user\" _blank\n",
-            "classDef service fill:#eee\n",
-            "cssClass A,B service\n",
-            "link Alice: Endpoint @ https://alice.example.com\n",
-            "callback Bob open(userId)\n",
-            ":::service\n",
-        ),
-        Some("flowchart-v2"),
-    );
-
-    for prefix in ["classDef", "cssClass", "link", "callback", ":::"] {
-        assert!(index.has_directive_prefix(prefix));
-    }
-    assert_eq!(
-        index.node_ids().cloned().collect::<Vec<_>>(),
-        vec!["A", "B"]
-    );
-    for leaked in [
-        "service", "User", "Alice", "Endpoint", "https", "alice", "example", "com", "Bob", "open",
-        "userId", "fill", "fff",
-    ] {
-        assert!(
-            !index.node_ids().any(|id| id == leaked),
-            "class directive payload leaked {leaked:?} as a node id"
-        );
-    }
-    assert!(
-        index
-            .outline_items()
-            .iter()
-            .any(|item| item.name == "User" && item.detail.as_deref() == Some("class assignment"))
-    );
-    assert!(
-        index.outline_items().iter().any(
-            |item| item.name == "service" && item.detail.as_deref() == Some("class definition")
-        )
-    );
-    assert_eq!(
-        index.class_names().cloned().collect::<Vec<_>>(),
-        vec!["service"]
-    );
-}
-
-#[test]
-fn text_scan_skips_sequence_directive_payload_prefixes() {
-    let index = FenceTextIndex::from_text(
-        concat!(
-            "sequenceDiagram\n",
-            "links a: { \"Repo\": \"https://repo.contoso.com/\" }\n",
-            "properties a: { \"class\": \"internal-service-actor\", \"icon\": \"@clock\" }\n",
-            "details Alice: {\"owner\": \"platform\"}\n",
-        ),
-        Some("sequence"),
-    );
-
-    for prefix in ["links", "properties", "details"] {
-        assert!(index.has_directive_prefix(prefix));
-    }
-    assert!(index.node_ids().next().is_none());
-    assert!(index.outline_items().is_empty());
-}
-
-#[test]
-fn text_scan_classifies_gantt_section_without_leaking_payloads() {
-    let index = FenceTextIndex::from_text(
-        concat!(
-            "gantt\n",
-            "dateFormat YYYY-MM-DD\n",
-            "axisFormat %Y-%m-%d\n",
-            "tickInterval 1day\n",
-            "includes 2026-01-09\n",
-            "excludes weekends\n",
-            "todayMarker off\n",
-            "weekday monday\n",
-            "weekend friday\n",
-            "section Demo\n",
-        ),
-        Some("gantt"),
-    );
-
-    for prefix in [
-        "dateFormat",
-        "axisFormat",
-        "tickInterval",
-        "includes",
-        "excludes",
-        "todayMarker",
-        "weekday",
-        "weekend",
-        "section",
-    ] {
-        assert!(index.has_directive_prefix(prefix));
-    }
-    for leaked in [
-        "YYYY-MM-DD",
-        "%Y-%m-%d",
-        "1day",
-        "2026-01-09",
-        "weekends",
-        "off",
-        "monday",
-        "friday",
-    ] {
-        assert!(
-            !index.node_ids().any(|id| id == leaked),
-            "gantt directive payload leaked {leaked:?} as a node id"
-        );
-    }
-    assert!(
-        index
-            .outline_items()
-            .iter()
-            .any(|item| item.name == "Demo" && item.detail.as_deref() == Some("gantt section"))
-    );
-}
-
-#[test]
-fn text_scan_mindmap_keeps_labels_out_of_node_ids() {
-    let index = FenceTextIndex::from_text(
-        concat!(
-            "mindmap\n",
-            "root(Root Node)\n",
-            " child1[Child 1]\n",
-            " ::icon(bomb)\n",
-            " :::hot\n",
-            " %% comment about node ids\n",
-            " child2\n",
-        ),
-        Some("mindmap"),
-    );
-
-    for required in ["root", "child1", "child2"] {
-        assert!(
-            index.node_ids().any(|id| id == required),
-            "missing mindmap node id {required:?} from text-scan fallback"
-        );
-    }
-
-    for leaked in [
-        "Root", "Node", "Child", "1", ":", "bomb", "hot", "comment", "about", "ids",
-    ] {
-        assert!(
-            !index.node_ids().any(|id| id == leaked),
-            "mindmap text-scan fallback leaked {leaked:?} as a node id"
-        );
-    }
-
-    for required in ["root", "child1", "child2"] {
-        assert!(
-            index
-                .outline_items()
-                .iter()
-                .any(|item| item.name == required),
-            "missing mindmap outline item {required:?} from text-scan fallback"
-        );
-    }
-}
-
-#[test]
-fn text_scan_skips_non_symbol_directive_prefixes() {
-    let index = FenceTextIndex::from_text(
-        concat!(
-            "%%{initialize: {\"theme\": \"dark\"}}%%\n",
-            "%%{wrap}%%\n",
-            "flowchart TD\n",
-            "A-->B\n",
-        ),
-        Some("flowchart-v2"),
-    );
-
-    assert!(index.has_directive_prefix("initialize"));
-    assert!(index.has_directive_prefix("wrap"));
-    assert_eq!(
-        index.node_ids().cloned().collect::<Vec<_>>(),
-        vec!["A", "B"]
-    );
-    assert!(
-        !index
-            .outline_items()
-            .iter()
-            .any(|item| matches!(item.name.as_str(), "initialize" | "wrap"))
-    );
-}
-
-#[test]
-fn text_scan_requires_directive_keyword_boundaries() {
-    let index = FenceTextIndex::from_text(
-        concat!(
-            "flowchart TD\n",
-            "clickableNode-->B\n",
-            "classNode-->C\n",
-            "styleNode-->D\n",
-        ),
-        Some("flowchart-v2"),
-    );
-
-    for required in ["clickableNode", "classNode", "styleNode"] {
-        assert!(
-            index.node_ids().any(|id| id == required),
-            "missing node id {required:?} from text-scan fallback"
-        );
-        assert!(
-            index
-                .outline_items()
-                .iter()
-                .any(|item| item.name == required
-                    && item.detail.as_deref() == Some("diagram element")),
-            "missing diagram outline item {required:?} from text-scan fallback"
-        );
-    }
-}
-
-#[test]
-fn text_scan_cursor_context_only_offers_source_start_headers() {
-    let index = FenceTextIndex::from_text("flowchart TD\nA-->B\n", Some("flowchart-v2"));
+fn unavailable_index_offers_only_source_start_headers() {
+    let index = FenceTextIndex::default();
 
     let header = index.cursor_context("flow", 4);
-    assert_eq!(header.prefix(), "flow");
-    assert_eq!(header.prefix_start(), 0);
-    assert_eq!(header.source(), FenceTextIndexSource::TextScan);
+    assert_eq!(header.source(), FenceTextIndexSource::Unavailable);
     assert!(header.is_source_start());
     assert!(!header.has_parser_backed_facts());
     assert!(header.offers(FenceCursorCompletionKind::DiagramHeader));
-    assert!(!header.offers(FenceCursorCompletionKind::NodeIdentifier));
 
-    let kanban_header = index.cursor_context("kan", 3);
-    assert!(kanban_header.offers(FenceCursorCompletionKind::DiagramHeader));
-    assert!(!kanban_header.offers(FenceCursorCompletionKind::NodeIdentifier));
-
-    let ambiguous = index.cursor_context("flowchart TD\nA-", "flowchart TD\nA-".len());
-    assert!(!ambiguous.offers(FenceCursorCompletionKind::Operator));
-    assert!(!ambiguous.offers(FenceCursorCompletionKind::NodeIdentifier));
-
-    let operator = index.cursor_context("flowchart TD\nA-->B", "flowchart TD\nA--".len());
-    assert!(!operator.offers(FenceCursorCompletionKind::Operator));
-    assert!(!operator.offers(FenceCursorCompletionKind::NodeIdentifier));
-
-    let directive = index.cursor_context("classDef foo fill:#f00", "classDef foo".len());
-    assert_eq!(directive.directive_prefix(), Some("classDef"));
-    assert!(directive.is_comment_or_directive_line());
-    assert!(!directive.offers(FenceCursorCompletionKind::Directive));
-    assert!(!directive.offers(FenceCursorCompletionKind::NodeIdentifier));
-
-    for (source, prefix, expected_prefix) in [
-        ("cssClass A,B service", "cssClass".len(), Some("cssClass")),
-        (
-            "link User href \"https://example.com\" \"Open user\" _blank",
-            "link".len(),
-            Some("link"),
-        ),
-        (
-            "callback User open(userId)",
-            "callback".len(),
-            Some("callback"),
-        ),
-    ] {
-        let context = index.cursor_context(source, prefix);
-        assert_eq!(context.directive_prefix(), expected_prefix);
-        assert!(context.is_comment_or_directive_line());
-        assert!(!context.offers(FenceCursorCompletionKind::Directive));
-        assert!(!context.offers(FenceCursorCompletionKind::NodeIdentifier));
-    }
-
-    let sequence_directive = index.cursor_context(
-        "links a: { \"Repo\": \"https://repo.contoso.com/\" }",
-        "links".len(),
-    );
-    assert_eq!(sequence_directive.directive_prefix(), Some("links"));
-    assert!(sequence_directive.is_comment_or_directive_line());
-    assert!(!sequence_directive.offers(FenceCursorCompletionKind::Directive));
-    assert!(!sequence_directive.offers(FenceCursorCompletionKind::NodeIdentifier));
-
-    let gantt_directive = index.cursor_context("section Demo", "section".len());
-    assert_eq!(gantt_directive.directive_prefix(), Some("section"));
-    assert!(gantt_directive.is_comment_or_directive_line());
-    assert!(!gantt_directive.offers(FenceCursorCompletionKind::Directive));
-    assert!(!gantt_directive.offers(FenceCursorCompletionKind::NodeIdentifier));
-
-    let node = index.cursor_context("node_1", "node_1".len());
-    assert!(!node.offers(FenceCursorCompletionKind::NodeIdentifier));
+    let body = "unknownDiagram\nA-->B";
+    let body_context = index.cursor_context(body, body.len());
+    assert!(!body_context.offers(FenceCursorCompletionKind::DiagramHeader));
+    assert!(!body_context.offers(FenceCursorCompletionKind::NodeIdentifier));
+    assert!(index.node_ids().next().is_none());
+    assert!(index.outline_items().is_empty());
+    assert!(index.semantic_items().is_empty());
 }
 
 #[test]
@@ -455,7 +122,7 @@ fn shape_object_value_prefix_stops_after_shape_field_boundary() {
 #[test]
 fn cursor_context_clamps_to_utf8_char_boundaries() {
     let text = "\u{8282}\u{70b9}";
-    let index = FenceTextIndex::from_text(text, Some("flowchart-v2"));
+    let index = FenceTextIndex::default();
     let context = index.cursor_context(text, 1);
 
     assert_eq!(context.cursor(), 0);

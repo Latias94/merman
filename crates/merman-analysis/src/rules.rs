@@ -799,10 +799,7 @@ fn init_directive_alias_diagnostics(
 
     directive_keyword_spans(source)
         .into_iter()
-        .filter_map(|keyword| {
-            (source.get(keyword.start..keyword.end) == Some("initialize"))
-                .then_some(keyword)
-        })
+        .filter(|keyword| source.get(keyword.start..keyword.end) == Some("initialize"))
         .filter_map(|keyword| {
             let span = source_map.span(keyword.start, keyword.end).ok()?;
             Some(
@@ -839,9 +836,11 @@ fn prefer_frontmatter_config_diagnostics(
 
     directive_keyword_spans(source)
         .into_iter()
-        .filter_map(|keyword| {
-            matches!(source.get(keyword.start..keyword.end), Some("init" | "initialize"))
-                .then_some(keyword)
+        .filter(|keyword| {
+            matches!(
+                source.get(keyword.start..keyword.end),
+                Some("init" | "initialize")
+            )
         })
         .filter_map(|keyword| {
             let span = source_map.span(keyword.start, keyword.end).ok()?;
@@ -874,11 +873,13 @@ fn deprecated_flowchart_html_labels_diagnostics(
         source,
         source_map,
         rule_config,
-        DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
-        init_matching_paths,
-        frontmatter_matching_paths,
-        "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
-        "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
+        ConfigKeyDiagnosticSpec {
+            descriptor: DEPRECATED_FLOWCHART_HTML_LABELS_RULE,
+            init_matching_paths,
+            frontmatter_matching_paths,
+            message: "`flowchart.htmlLabels` is deprecated; use root-level `htmlLabels` instead",
+            help: "Mermaid keeps `flowchart.htmlLabels` as a compatibility fallback, but root-level `htmlLabels` takes precedence.",
+        },
     )
 }
 
@@ -891,33 +892,40 @@ fn deprecated_external_diagram_loading_diagnostics(
         source,
         source_map,
         rule_config,
-        DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE,
-        &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS,
-        &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_FRONTMATTER_CONFIG_PATHS,
-        "deprecated external diagram loading config; use `registerExternalDiagrams` instead",
-        "Mermaid warns that `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` are deprecated in favor of the `registerExternalDiagrams` API.",
+        ConfigKeyDiagnosticSpec {
+            descriptor: DEPRECATED_EXTERNAL_DIAGRAM_LOADING_RULE,
+            init_matching_paths: &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_CONFIG_PATHS,
+            frontmatter_matching_paths:
+                &DEPRECATED_EXTERNAL_DIAGRAM_LOADING_FRONTMATTER_CONFIG_PATHS,
+            message: "deprecated external diagram loading config; use `registerExternalDiagrams` instead",
+            help: "Mermaid warns that `lazyLoadedDiagrams` and `loadExternalDiagramsAtStartup` are deprecated in favor of the `registerExternalDiagrams` API.",
+        },
     )
+}
+
+struct ConfigKeyDiagnosticSpec<'a> {
+    descriptor: RuleDescriptor,
+    init_matching_paths: &'a [&'a [&'a str]],
+    frontmatter_matching_paths: &'a [&'a [&'a str]],
+    message: &'static str,
+    help: &'static str,
 }
 
 fn config_key_diagnostics(
     source: &str,
     source_map: &SourceMap,
     rule_config: &AnalysisRuleConfig,
-    descriptor: RuleDescriptor,
-    init_matching_paths: &[&[&str]],
-    frontmatter_matching_paths: &[&[&str]],
-    message: &'static str,
-    help: &'static str,
+    spec: ConfigKeyDiagnosticSpec<'_>,
 ) -> Vec<AnalysisDiagnostic> {
-    if !rule_config.is_rule_enabled(descriptor) {
+    if !rule_config.is_rule_enabled(spec.descriptor) {
         return Vec::new();
     }
-    let severity = rule_config.severity_for(descriptor);
+    let severity = rule_config.severity_for(spec.descriptor);
 
-    let mut spans = init_directive_config_key_spans(source, init_matching_paths);
+    let mut spans = init_directive_config_key_spans(source, spec.init_matching_paths);
     spans.extend(frontmatter_config_key_spans(
         source,
-        frontmatter_matching_paths,
+        spec.frontmatter_matching_paths,
     ));
 
     spans
@@ -925,9 +933,14 @@ fn config_key_diagnostics(
         .filter_map(|span| {
             let span = source_map.span(span.start, span.end).ok()?;
             Some(
-                AnalysisDiagnostic::new(descriptor.id, severity, descriptor.category, message)
-                    .with_span(span)
-                    .with_help(help),
+                AnalysisDiagnostic::new(
+                    spec.descriptor.id,
+                    severity,
+                    spec.descriptor.category,
+                    spec.message,
+                )
+                .with_span(span)
+                .with_help(spec.help),
             )
         })
         .collect()

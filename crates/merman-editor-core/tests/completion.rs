@@ -361,7 +361,7 @@ fn completion_payload_contexts_return_no_body_items() {
 }
 
 #[test]
-fn completion_bounds_text_scan_fallback_to_source_start() {
+fn completion_bounds_unavailable_facts_to_source_start() {
     let mut workspace = DocumentWorkspace::new();
     let source_start = workspace.upsert(
         "file:///tmp/example.mmd",
@@ -372,7 +372,7 @@ fn completion_bounds_text_scan_fallback_to_source_start() {
     let context = CompletionContext::from_snapshot(&source_start, Position::new(0, 4)).unwrap();
     let list = completion_for_snapshot(&source_start, Position::new(0, 4));
 
-    assert_eq!(context.fact_source(), FenceTextIndexSource::TextScan);
+    assert_eq!(context.fact_source(), FenceTextIndexSource::Unavailable);
     assert!(list.items.iter().any(|item| {
         item.data
             .as_ref()
@@ -393,7 +393,7 @@ fn completion_bounds_text_scan_fallback_to_source_start() {
     let context = CompletionContext::from_snapshot(&body, Position::new(1, 2)).unwrap();
     let list = completion_for_snapshot(&body, Position::new(1, 2));
 
-    assert_eq!(context.fact_source(), FenceTextIndexSource::TextScan);
+    assert_eq!(context.fact_source(), FenceTextIndexSource::Unavailable);
     assert!(list.items.is_empty());
 }
 

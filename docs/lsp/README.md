@@ -49,7 +49,10 @@ semantic-token delta state, custom requests, and `tower_lsp::lsp_types` projecti
 ## Product Direction
 
 - LSP behavior is driven by parser-backed semantic facts.
-- Text-scan results are visible fallback provenance, not a mature capability signal.
+- `Unavailable` provenance means no parser-backed body facts exist, so unknown or unsupported body
+  text does not produce completion, hover, symbols, navigation, rename, or semantic tokens.
+- Source-start header and template completion is catalog-backed and remains available independently
+  of body semantic facts.
 - `docs/lsp/CAPABILITIES.md` is the maturity contract. Families outside that matrix may still
   parse or render, but they are not first-class LSP commitments yet.
 - The current supported product-family set is first-class in the capability matrix. `error`

@@ -18,7 +18,7 @@ use tower_lsp::Loopback;
 use tower_lsp::jsonrpc::{Request, Response};
 
 fn frame(json: &str) -> Vec<u8> {
-    format!("Content-Length: {}\r\n\r\n{}", json.as_bytes().len(), json).into_bytes()
+    format!("Content-Length: {}\r\n\r\n{}", json.len(), json).into_bytes()
 }
 
 fn assert_lsp_frames_only(stdout: &[u8]) {
@@ -131,10 +131,12 @@ impl Service<Request> for OverlapService {
 
 #[tokio::test(flavor = "current_thread")]
 async fn stdio_server_processes_overlapping_requests() {
-    assert!(
-        LSP_HANDLER_CONCURRENCY > 1,
-        "stdio handler concurrency must allow overlapping requests"
-    );
+    const {
+        assert!(
+            LSP_HANDLER_CONCURRENCY > 1,
+            "stdio handler concurrency must allow overlapping requests"
+        );
+    }
 
     let (mut client_stdin, server_stdin) = tokio::io::duplex(4096);
     let (server_stdout, mut client_stdout) = tokio::io::duplex(4096);

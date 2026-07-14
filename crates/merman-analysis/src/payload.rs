@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 
 pub const ANALYSIS_PAYLOAD_VERSION: u32 = 1;
+// Diagnostics and facts are separate serialized contracts even while both begin at version 1.
+pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -108,10 +111,28 @@ pub struct Utf16Position {
     pub character: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourcePosition {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl SourcePosition {
+    pub const fn new(line: usize, column: usize) -> Self {
+        Self { line, column }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LspRange {
     pub start: Utf16Position,
     pub end: Utf16Position,
+}
+
+impl LspRange {
+    pub const fn new(start: Utf16Position, end: Utf16Position) -> Self {
+        Self { start, end }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,26 +148,19 @@ pub struct DiagnosticSpan {
 
 impl DiagnosticSpan {
     pub const fn new(
-        byte_start: usize,
-        byte_end: usize,
-        line: usize,
-        column: usize,
-        end_line: usize,
-        end_column: usize,
-        lsp_start: Utf16Position,
-        lsp_end: Utf16Position,
+        byte_range: Range<usize>,
+        start: SourcePosition,
+        end: SourcePosition,
+        lsp_range: LspRange,
     ) -> Self {
         Self {
-            byte_start,
-            byte_end,
-            line,
-            column,
-            end_line,
-            end_column,
-            lsp_range: LspRange {
-                start: lsp_start,
-                end: lsp_end,
-            },
+            byte_start: byte_range.start,
+            byte_end: byte_range.end,
+            line: start.line,
+            column: start.column,
+            end_line: end.line,
+            end_column: end.column,
+            lsp_range,
         }
     }
 }

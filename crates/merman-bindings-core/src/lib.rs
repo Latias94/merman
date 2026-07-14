@@ -32,6 +32,8 @@ pub use metadata::{
 };
 
 #[cfg(feature = "analysis")]
+pub use merman_analysis::{ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION};
+#[cfg(feature = "analysis")]
 use merman_analysis::{AnalysisFactsPayload, AnalysisPayload, Analyzer};
 
 #[cfg(feature = "ascii")]
@@ -261,7 +263,7 @@ mod tests {
     #[test]
     fn analyze_json_reports_payload_for_empty_source() {
         let json: Value = serde_json::from_slice(&analyze_json(b"", b"").unwrap()).unwrap();
-        assert_eq!(json["version"], 1);
+        assert_eq!(json["version"], ANALYSIS_PAYLOAD_VERSION);
         assert_eq!(json["valid"], false);
         assert_eq!(json["diagnostics"][0]["code_name"], "MERMAN_NO_DIAGRAM");
     }
@@ -273,7 +275,7 @@ mod tests {
             serde_json::from_slice(&analysis_facts_json(b"flowchart TD\nA-->B\n", b"").unwrap())
                 .unwrap();
 
-        assert_eq!(json["version"], 1);
+        assert_eq!(json["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
         assert_eq!(json["valid"], true);
         assert_eq!(json["diagrams"][0]["kind"], "whole_document");
         assert_eq!(
@@ -292,6 +294,13 @@ mod tests {
                 .iter()
                 .any(|id| id == "A"),
             true
+        );
+        assert!(
+            json["diagrams"][0]["syntax"]["semantic_items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["name"] == "A" && item["rename_policy"] == "identifier")
         );
     }
 
@@ -345,6 +354,7 @@ mod tests {
         )
         .unwrap();
 
+        assert_eq!(json["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
         assert_eq!(json["source"]["kind"], "markdown");
         assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
         assert_eq!(json["diagrams"][0]["kind"], "mermaid_fence");

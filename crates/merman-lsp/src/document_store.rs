@@ -72,10 +72,25 @@ pub enum DocumentSyncError {
 
 impl StoredDocument {
     pub fn has_unavailable_source(&self) -> bool {
-        self.resource_limit.is_some()
-            || self.discarded_source.is_some()
-            || self.sync_error.is_some()
+        self.unavailable_source().is_some()
     }
+
+    fn unavailable_source(&self) -> Option<UnavailableSource> {
+        if let Some(resource_limit) = self.resource_limit {
+            return Some(UnavailableSource::ResourceLimit(resource_limit));
+        }
+        if let Some(discarded_source) = self.discarded_source {
+            return Some(UnavailableSource::Discarded(discarded_source));
+        }
+        self.sync_error.map(UnavailableSource::SyncError)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnavailableSource {
+    ResourceLimit(DocumentResourceLimit),
+    Discarded(DocumentDiscardedSource),
+    SyncError(DocumentSyncError),
 }
 
 fn resource_state_source_len_and_previous_limit(
@@ -348,9 +363,7 @@ impl DocumentStore {
         };
         let current_version = current.version;
         let kind = current.kind;
-        let resource_limit = current.resource_limit;
-        let discarded_source = current.discarded_source;
-        let sync_error = current.sync_error;
+        let unavailable_source = current.unavailable_source();
         let current_text = current.text.clone();
         let changes = changes.into_iter().collect::<Vec<_>>();
 
@@ -365,14 +378,12 @@ impl DocumentStore {
             return TextDocumentUpdate::EmptyChangeSet;
         }
 
-        if resource_limit.is_some() || discarded_source.is_some() || sync_error.is_some() {
+        if let Some(unavailable_source) = unavailable_source {
             return self.apply_unavailable_source_text_changes(
                 uri,
                 version,
                 kind,
-                resource_limit,
-                discarded_source,
-                sync_error,
+                unavailable_source,
                 changes,
             );
         }
@@ -400,24 +411,19 @@ impl DocumentStore {
         uri: Url,
         version: i32,
         kind: DocumentKind,
-        resource_limit: Option<DocumentResourceLimit>,
-        discarded_source: Option<DocumentDiscardedSource>,
-        sync_error: Option<DocumentSyncError>,
+        unavailable_source: UnavailableSource,
         changes: Vec<TextDocumentContentChangeEvent>,
     ) -> TextDocumentUpdate {
         let Some(recovery_start) = changes.iter().rposition(|change| change.range.is_none()) else {
-            match (resource_limit, discarded_source, sync_error) {
-                (Some(resource_limit), _, _) => {
+            match unavailable_source {
+                UnavailableSource::ResourceLimit(resource_limit) => {
                     self.upsert_resource_limited(uri, version, kind, resource_limit);
                 }
-                (None, Some(discarded_source), _) => {
+                UnavailableSource::Discarded(discarded_source) => {
                     self.upsert_discarded_source(uri, version, kind, discarded_source);
                 }
-                (None, None, Some(sync_error)) => {
+                UnavailableSource::SyncError(sync_error) => {
                     self.upsert_sync_error(uri, version, kind, sync_error);
-                }
-                (None, None, None) => {
-                    unreachable!("checked unavailable source before applying edits")
                 }
             }
             return TextDocumentUpdate::Applied;

@@ -31,6 +31,29 @@ fn document_symbols_include_root_and_child_items() {
 }
 
 #[test]
+fn unavailable_body_does_not_manufacture_structure_or_navigation() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/unknown.mmd",
+        1,
+        "unknownDiagram\nPretendNode --> OtherNode\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let position = Position::new(1, 2);
+
+    assert_eq!(
+        snapshot.fences[0].text_index.source(),
+        FenceTextIndexSource::Unavailable
+    );
+    assert!(document_symbols(&snapshot).is_empty());
+    assert!(workspace_symbols(&snapshot, "").is_empty());
+    assert!(hover(&snapshot, position).is_none());
+    assert!(goto_definition(&snapshot, position).is_none());
+    assert!(references(&snapshot, position, true).is_none());
+    assert!(prepare_rename(&snapshot, position).is_none());
+}
+
+#[test]
 fn hover_reports_the_active_outline_entry() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(
@@ -162,6 +185,72 @@ fn navigation_ignores_payload_spans_and_tracks_entities() {
     let edit = rename(&snapshot, position, "X").unwrap().unwrap();
     assert_eq!(edit.fact_source, FenceTextIndexSource::ParserComplete);
     assert_eq!(edit.changes.get(&snapshot.uri).unwrap().len(), 2);
+    assert!(matches!(
+        rename(&snapshot, position, "not a flowchart id"),
+        Err(merman_editor_core::RenameError::InvalidName)
+    ));
+}
+
+#[test]
+fn rename_obeys_eventmodeling_family_grammar_policies() {
+    let mut workspace = DocumentWorkspace::new();
+    let entities = workspace.upsert(
+        "file:///tmp/entities.mmd",
+        1,
+        "eventmodeling\nentity Sales.Order\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let entity_position = Position::new(1, "entity ".len());
+
+    let entity_edit = rename(&entities, entity_position, "Sales.Invoice")
+        .unwrap()
+        .expect("qualified entity rename");
+    assert_eq!(entity_edit.changes.get(&entities.uri).unwrap().len(), 1);
+    assert!(matches!(
+        rename(&entities, entity_position, "Sales-Order"),
+        Err(merman_editor_core::RenameError::InvalidName)
+    ));
+
+    let frames = workspace.upsert(
+        "file:///tmp/frames.mmd",
+        1,
+        "eventmodeling\ntf 01 ui Shop.Cart\n".to_string(),
+        DocumentKind::Diagram,
+    );
+    let frame_position = Position::new(1, "tf ".len());
+
+    assert!(rename(&frames, frame_position, "007").unwrap().is_some());
+    assert!(matches!(
+        rename(&frames, frame_position, "1000"),
+        Err(merman_editor_core::RenameError::InvalidName)
+    ));
+
+    let grouped = workspace.upsert(
+        "file:///tmp/grouped.mmd",
+        1,
+        concat!(
+            "eventmodeling\n",
+            "entity ProductChanged\n",
+            "tf 002 evt Changed\n",
+            "gwt 002\n",
+            "  given\n",
+            "    evt ProductChanged\n",
+            "  then\n",
+            "    evt ProductChanged\n",
+        )
+        .to_string(),
+        DocumentKind::Diagram,
+    );
+    let grouped_position = Position::new(1, "entity ".len());
+
+    assert!(matches!(
+        rename(&grouped, grouped_position, "Sales.Order"),
+        Err(merman_editor_core::RenameError::InvalidName)
+    ));
+    let grouped_edit = rename(&grouped, grouped_position, "ProductUpdated")
+        .unwrap()
+        .expect("group rename satisfying every occurrence grammar");
+    assert_eq!(grouped_edit.changes.get(&grouped.uri).unwrap().len(), 3);
 }
 
 #[test]

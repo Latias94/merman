@@ -130,7 +130,7 @@ fn diagnostics_mode_does_not_project_valid_syntax_facts() {
 
     assert!(local.diagnostics.is_empty());
     assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert_eq!(local.syntax.source(), FenceTextIndexSource::TextScan);
+    assert_eq!(local.syntax.source(), FenceTextIndexSource::Unavailable);
     assert!(local.syntax.flowchart.is_none());
     assert!(local.syntax.text_index.node_ids().next().is_none());
     assert!(local.syntax.text_index.semantic_items().is_empty());
@@ -244,7 +244,7 @@ fn diagnostics_mode_does_not_project_flowchart_facts_failures() {
         })
     );
     assert_eq!(local.syntax.diagram_type.as_deref(), Some("flowchart-v2"));
-    assert_eq!(local.syntax.source(), FenceTextIndexSource::TextScan);
+    assert_eq!(local.syntax.source(), FenceTextIndexSource::Unavailable);
     assert!(local.syntax.flowchart.is_none());
 }
 
@@ -266,7 +266,7 @@ fn disabled_resource_limit_rule_still_returns_hard_resource_diagnostic() {
         crate::rules::RESOURCE_LIMIT_RULE_ID
     );
     assert_eq!(local.syntax.diagram_type, None);
-    assert_eq!(local.syntax.source(), FenceTextIndexSource::TextScan);
+    assert_eq!(local.syntax.source(), FenceTextIndexSource::Unavailable);
     assert!(local.syntax.text_index.node_ids().next().is_none());
     assert!(local.syntax.text_index.semantic_items().is_empty());
 }

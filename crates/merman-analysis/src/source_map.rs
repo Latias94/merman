@@ -1,17 +1,7 @@
-use crate::payload::{DiagnosticSpan, Utf16Position};
+use crate::payload::{DiagnosticSpan, LspRange, SourcePosition, Utf16Position};
 use std::sync::{Arc, OnceLock};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LineCol {
-    pub line: usize,
-    pub column: usize,
-}
-
-impl LineCol {
-    pub const fn new(line: usize, column: usize) -> Self {
-        Self { line, column }
-    }
-}
+pub type LineCol = SourcePosition;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SourceMapError {
@@ -87,14 +77,10 @@ impl SourceMap {
         let lsp_end = self.utf16_position(end)?;
 
         Ok(DiagnosticSpan::new(
-            start,
-            end,
-            start_lc.line,
-            start_lc.column,
-            end_lc.line,
-            end_lc.column,
-            lsp_start,
-            lsp_end,
+            start..end,
+            start_lc,
+            end_lc,
+            LspRange::new(lsp_start, lsp_end),
         ))
     }
 
@@ -236,20 +222,19 @@ pub(crate) fn whole_text_span_without_source_copy(text: &str) -> DiagnosticSpan 
     }
 
     DiagnosticSpan::new(
-        0,
-        text.len(),
-        1,
-        1,
-        end_line,
-        end_column,
-        Utf16Position {
-            line: 0,
-            character: 0,
-        },
-        Utf16Position {
-            line: end_lsp_line,
-            character: end_lsp_character,
-        },
+        0..text.len(),
+        SourcePosition::new(1, 1),
+        SourcePosition::new(end_line, end_column),
+        LspRange::new(
+            Utf16Position {
+                line: 0,
+                character: 0,
+            },
+            Utf16Position {
+                line: end_lsp_line,
+                character: end_lsp_character,
+            },
+        ),
     )
 }
 

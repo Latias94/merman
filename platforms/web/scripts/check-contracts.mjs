@@ -87,6 +87,10 @@ const requiredTypeProperties = new Map([
     ["source_mapped_spans"],
   ],
   [
+    "AnalysisSemanticItemFacts",
+    ["rename_policy"],
+  ],
+  [
     "EditorDiagnosticData",
     ["id", "code", "codeName", "category", "diagramType", "help", "fixes"],
   ],
@@ -95,14 +99,28 @@ const requiredTypeStringLiterals = new Map([
   [
     "EditorSemanticFactSource",
     [
-      "text_scan",
+      "unavailable",
       "parser_complete",
       "parser_complete_degraded_spans",
       "parser_recovered",
       "parser_recovered_degraded_spans",
     ],
   ],
+  [
+    "AnalysisRenamePolicy",
+    [
+      "none",
+      "identifier",
+      "qualified_identifier",
+      "event_modeling_id",
+      "event_modeling_frame_id",
+    ],
+  ],
 ]);
+const requiredTypePropertyTypes = [
+  ["AnalysisResult", "version", "1"],
+  ["AnalysisFactsResult", "version", "1"],
+];
 
 let failed = false;
 failed ||= reportPolicyFailure(
@@ -147,6 +165,14 @@ for (const [typeName, requiredLiterals] of requiredTypeStringLiterals) {
   failed ||= reportMissing(
     `check-contracts: ${typeName} is missing required string members`,
     requiredLiterals.filter((literal) => !literals.has(literal)),
+  );
+}
+
+for (const [interfaceName, propertyName, expectedType] of requiredTypePropertyTypes) {
+  const actualType = extractInterfacePropertyType(publicApi, interfaceName, propertyName);
+  failed ||= reportPolicyFailure(
+    `check-contracts: ${interfaceName}.${propertyName} must use type ${expectedType}`,
+    actualType !== expectedType,
   );
 }
 
@@ -221,6 +247,21 @@ function extractExportedFunctionNames(source) {
 }
 
 function extractInterfaceProperties(source, interfaceName) {
+  const body = extractInterfaceBody(source, interfaceName);
+  return new Set(matches(body, /^\s+([A-Za-z_$][\w$]*)\??:\s*/gm));
+}
+
+function extractInterfacePropertyType(source, interfaceName, propertyName) {
+  const body = extractInterfaceBody(source, interfaceName);
+  const escapedName = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = body.match(new RegExp(`^\\s*${escapedName}\\??:\\s*([^;]+);`, "m"));
+  if (!match) {
+    throw new Error(`check-contracts: missing ${interfaceName}.${propertyName} property`);
+  }
+  return match[1].trim();
+}
+
+function extractInterfaceBody(source, interfaceName) {
   const escapedName = interfaceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = source.match(
     new RegExp(`export interface ${escapedName}(?:\\s+extends\\s+[^\\{]+)?\\s*\\{([\\s\\S]*?)\\n\\}`),
@@ -228,7 +269,7 @@ function extractInterfaceProperties(source, interfaceName) {
   if (!match) {
     throw new Error(`check-contracts: missing ${interfaceName} interface`);
   }
-  return new Set(matches(match[1], /^\s+([A-Za-z_$][\w$]*)\??:\s*/gm));
+  return match[1];
 }
 
 function extractTypeStringLiterals(source, typeName) {

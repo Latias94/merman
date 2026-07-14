@@ -1,8 +1,9 @@
 use crate::editor::FenceExpectedSyntax;
 use crate::{
-    AnalysisDiagnostic, AnalysisPayload, DocumentDiagram, DocumentDiagramKind, FenceDelimiter,
-    FenceLineItem, FenceMarker, FenceReferenceGroup, FenceSemanticItem, FenceTextIndex,
-    FenceTextIndexSource, SharedTextSlice, SourceDescriptor, SourceMap, Summary,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisDiagnostic, AnalysisPayload, DocumentDiagram,
+    DocumentDiagramKind, FenceDelimiter, FenceLineItem, FenceMarker, FenceReferenceGroup,
+    FenceSemanticItem, FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceDescriptor,
+    SourceMap, Summary,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -110,9 +111,9 @@ impl AnalysisSyntaxFacts {
         }
     }
 
-    pub fn text_scan(text: &str, diagram_type: Option<String>) -> Self {
+    pub fn unavailable(diagram_type: Option<String>) -> Self {
         Self {
-            text_index: FenceTextIndex::from_text(text, diagram_type.as_deref()),
+            text_index: FenceTextIndex::default(),
             diagram_type,
             flowchart: None,
         }
@@ -141,7 +142,7 @@ pub struct AnalysisFactsPayload {
 impl AnalysisFactsPayload {
     pub fn from_result(result: &AnalysisResult) -> Self {
         Self {
-            version: result.payload.version,
+            version: ANALYSIS_FACTS_PAYLOAD_VERSION,
             valid: result.payload.valid,
             summary: result.payload.summary,
             source: result.payload.source.clone(),
@@ -208,7 +209,7 @@ impl From<FenceDelimiter> for AnalysisFenceDelimiterFacts {
     fn from(value: FenceDelimiter) -> Self {
         Self {
             marker: fence_marker_name(value.marker()).to_string(),
-            len: value.len(),
+            len: value.marker_len(),
         }
     }
 }
@@ -475,6 +476,7 @@ pub struct AnalysisSemanticItemFacts {
     pub detail: Option<String>,
     pub kind: crate::EditorSymbolKind,
     pub role: crate::FenceSemanticRole,
+    pub rename_policy: crate::FenceRenamePolicy,
     pub span: AnalysisFactSpan,
     pub selection: AnalysisFactSpan,
 }
@@ -486,6 +488,7 @@ impl AnalysisSemanticItemFacts {
             detail: item.detail.clone(),
             kind: item.kind,
             role: item.role,
+            rename_policy: item.rename_policy,
             span: AnalysisFactSpan::from_local(item.span, source_map, body_start),
             selection: AnalysisFactSpan::from_local(item.selection, source_map, body_start),
         }

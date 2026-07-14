@@ -1,6 +1,6 @@
 use super::{
     ByteSpan, EditorSymbolKind, FenceExpectedSyntax, FenceExpectedSyntaxKind, FenceReferenceGroup,
-    FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
+    FenceRenamePolicy, FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
     is_class_definition_detail,
 };
 
@@ -59,6 +59,7 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
             detail: symbol.detail,
             kind,
             role: semantic_role_from_core(role),
+            rename_policy: rename_policy_from_core(symbol.rename_policy),
             span: ByteSpan {
                 start: symbol.span.start,
                 end: symbol.span.end,
@@ -114,6 +115,20 @@ pub(super) fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> FenceT
             ))
     });
     index
+}
+
+fn rename_policy_from_core(policy: merman_core::EditorRenamePolicy) -> FenceRenamePolicy {
+    match policy {
+        merman_core::EditorRenamePolicy::None => FenceRenamePolicy::None,
+        merman_core::EditorRenamePolicy::Identifier => FenceRenamePolicy::Identifier,
+        merman_core::EditorRenamePolicy::QualifiedIdentifier => {
+            FenceRenamePolicy::QualifiedIdentifier
+        }
+        merman_core::EditorRenamePolicy::EventModelingId => FenceRenamePolicy::EventModelingId,
+        merman_core::EditorRenamePolicy::EventModelingFrameId => {
+            FenceRenamePolicy::EventModelingFrameId
+        }
+    }
 }
 
 fn editor_kind_from_core(kind: merman_core::EditorSemanticKind) -> EditorSymbolKind {

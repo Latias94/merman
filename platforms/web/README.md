@@ -177,6 +177,11 @@ diagnostics shape remains compatible with `analyze()` / `analyzeDocument()`; the
 `diagrams[].syntax` data is for editor, lint, and preview integrations that want Merman's parser
 facts without speaking LSP.
 
+The diagnostics and facts endpoints expose separate payload contracts; both current alpha
+contracts start at version 1 and evolve independently. Facts v1 uses explicit
+`fact_source: "unavailable"` provenance when body semantics are unavailable, and every
+`semantic_items[]` entry has a required `rename_policy` field.
+
 This web surface is an integration bridge, not a request that external linters copy Merman policy.
 Adapters should preserve `merman.*` rule ids for Merman diagnostics and layer their own style rules
 under their own namespaces.
@@ -318,7 +323,7 @@ All render, parse, layout, analysis, validation, editor, and metadata functions 
 `merman-editor-core`; they return UTF-16 positions/ranges so Monaco and LSP adapters can project the
 same completion, diagnostics, hover, symbol, code-action, rename, and semantic-token semantics.
 Editor query results expose semantic fact provenance where applicable, matching the
-`ParserComplete`, `ParserRecovered`, and `TextScan` boundary used by `merman-editor-core`.
+`ParserComplete`, `ParserRecovered`, and `Unavailable` boundary used by `merman-editor-core`.
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
 `supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
 metadata drifts from the TypeScript surface. `lintRuleCatalog()` is available only on

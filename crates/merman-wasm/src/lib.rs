@@ -594,6 +594,10 @@ mod tests {
 
     #[cfg(feature = "analysis")]
     fn assert_parser_backed_analysis_facts_payload(value: &Value) {
+        assert_eq!(
+            value["version"],
+            merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION
+        );
         assert_eq!(value["valid"], true);
         assert_eq!(
             value["diagrams"][0]["syntax"]["fact_source"],
@@ -605,8 +609,52 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|item| item["name"] == "A" && item["span"]["document"].is_object())
+                .any(|item| {
+                    item["name"] == "A"
+                        && item["rename_policy"] == "identifier"
+                        && item["span"]["document"].is_object()
+                })
         );
+    }
+
+    #[cfg(all(target_arch = "wasm32", feature = "analysis"))]
+    #[test]
+    fn analysis_facts_serializes_unavailable_body_semantics() {
+        let value: Value = serde_wasm_bindgen::from_value(
+            analysis_facts("unknownDiagram\nPretendNode --> OtherNode\n", None).unwrap(),
+        )
+        .unwrap();
+        assert_unavailable_analysis_facts_payload(&value);
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), feature = "analysis"))]
+    #[test]
+    fn analysis_facts_serializes_unavailable_body_semantics() {
+        let value: Value = serde_json::from_slice(
+            &merman_bindings_core::analysis_facts_json(
+                b"unknownDiagram\nPretendNode --> OtherNode\n",
+                b"",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_unavailable_analysis_facts_payload(&value);
+    }
+
+    #[cfg(feature = "analysis")]
+    fn assert_unavailable_analysis_facts_payload(value: &Value) {
+        assert_eq!(
+            value["version"],
+            merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION
+        );
+        let syntax = &value["diagrams"][0]["syntax"];
+        assert_eq!(syntax["fact_source"], "unavailable");
+        assert_eq!(syntax["parser_backed"], false);
+        assert_eq!(syntax["source_mapped_spans"], false);
+        assert_eq!(syntax["node_ids"], serde_json::json!([]));
+        assert_eq!(syntax["references"], serde_json::json!([]));
+        assert_eq!(syntax["outline_items"], serde_json::json!([]));
+        assert_eq!(syntax["semantic_items"], serde_json::json!([]));
     }
 
     #[cfg(all(target_arch = "wasm32", feature = "analysis"))]
@@ -685,6 +733,10 @@ mod tests {
 
     #[cfg(feature = "analysis")]
     fn assert_markdown_document_analysis_facts_payload(value: &Value) {
+        assert_eq!(
+            value["version"],
+            merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION
+        );
         assert_eq!(value["valid"], false);
         assert_eq!(value["source"]["kind"], "markdown");
         assert_eq!(value["diagrams"][0]["source_id"], "mermaid-fence-1");

@@ -1,8 +1,7 @@
 # Mermaid LSP Capability Matrix
 
 This matrix records the current product readiness bar for Mermaid families and editor features.
-It is intentionally conservative: if a capability depends on text scanning instead of parser-backed
-facts, it is not considered mature.
+It is intentionally conservative: only parser-backed facts count as mature body semantics.
 
 This table is the maturity contract for first-class LSP families. The parser and render registries
 also include additional diagram types, but they are not treated as mature LSP commitments unless
@@ -89,8 +88,8 @@ does not expose many entity-bearing spans.
 ## Semantic Fact Provenance
 
 Editor features are backed by `merman-editor-core` query results. Those results expose
-`FenceTextIndexSource` provenance so callers can distinguish first-class parser facts from fallback
-behavior:
+`FenceTextIndexSource` provenance so callers can distinguish parser facts from explicit
+unavailability:
 
 | Provenance | Meaning | Product status |
 | --- | --- | --- |
@@ -98,12 +97,11 @@ behavior:
 | `ParserCompleteDegradedSpans` | Semantic facts came from a successful parser path, but at least one fact span could not be proven as an original-source coordinate after preprocessing. | Parser-backed for identity and outline behavior, but not mature for precise range edits or source-position projection unless callers check `source_mapped_spans=false` and avoid those spans. |
 | `ParserRecovered` | Semantic facts came from parser recovery after an incomplete or invalid edit buffer. | Mature for incomplete-buffer editing when tests cover the family and feature. |
 | `ParserRecoveredDegradedSpans` | Semantic facts came from parser recovery, but spans are in degraded parser-input coordinates rather than trusted original-source ranges. | Mature only for non-range-dependent recovery behavior; precise edits, rename ranges, and diagnostics must treat exposed spans as unavailable. |
-| `TextScan` | Semantic facts came from the bounded text-scan fallback. | Fallback only; not a mature family capability and must stay visible to callers. |
+| `Unavailable` | No parser-backed body facts are available. | No body completion, hover, symbols, navigation, rename, or semantic tokens are projected. |
 
 The matrix above requires parser-backed complete or recovered provenance for first-class feature
-claims. Text-scan fallback may still support source-start headers/templates and conservative
-directive prefixes, but it must not be counted as mature body completion, navigation, rename, or
-semantic-token support.
+claims. Source-start headers and templates come directly from the static Diagram Family catalog;
+they remain available without constructing or claiming body semantics.
 
 ## Parser Diagnostic Span Coverage
 
@@ -176,7 +174,9 @@ Remaining fallback ledger:
   fields.
 - Definition / References / Rename: entity-only semantic item queries keyed by typed reference
   groups. Payload and outline-only items are excluded unless a future role explicitly allows
-  projection, and same-name entities with different semantic kinds do not collide.
+  projection, and same-name entities with different semantic kinds do not collide. Rename
+  validation uses the parser-owned policy carried by each entity, including qualified names and
+  Event Modeling frame ids; the LSP adapter does not impose a second identifier grammar.
 - Code actions: quickfix provider is wired; only diagnostics with `DiagnosticFix` metadata are
   eligible, and diagnostics without explicit safe fixes produce no action. Recommended-profile
   authoring rules include `merman.authoring.config.prefer_init_directive`,
@@ -212,11 +212,9 @@ Remaining fallback ledger:
   diagnostics without invalidating semantic-token state. Delta requests reuse cached previous token
   state only when the result id matches state from the current snapshot generation; otherwise they
   return full tokens.
-- Text-scan fallback: may support source-start headers/templates and record directive prefixes for
-  unmigrated paths, but must not assert body completion availability. It must not project
-  payload-only directive lines such as `click`, `linkStyle`, `accTitle`, `accDescr`, or `title`
-  into node IDs, completion IDs, or outline entries. Parser-backed payload facts must likewise
-  remain outside completion IDs and outline entries unless their role explicitly permits it.
+- Unavailable facts: source-start headers/templates are catalog-backed, while unknown or
+  unsupported body text produces no semantic items. Parser-backed payload facts remain outside
+  completion IDs and outline entries unless their role explicitly permits it.
 - Flowchart lint: parser-backed warning facts flow through the shared analysis contract, starting
   with a recommended-profile authoring hint and preferred quickfix for flowchart headers that omit
   an explicit direction, plus a core compatibility warning for `style` targets that would

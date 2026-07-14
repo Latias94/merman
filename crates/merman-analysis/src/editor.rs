@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 
 mod core_facts;
-mod text_scan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ByteSpan {
@@ -58,12 +57,57 @@ pub enum FenceSemanticRole {
     Payload,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FenceRenamePolicy {
+    None,
+    #[default]
+    Identifier,
+    QualifiedIdentifier,
+    EventModelingId,
+    EventModelingFrameId,
+}
+
+impl FenceRenamePolicy {
+    pub fn is_renameable(self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    pub fn accepts(self, value: &str) -> bool {
+        match self {
+            Self::None => false,
+            Self::Identifier => {
+                !value.is_empty()
+                    && value
+                        .chars()
+                        .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
+            }
+            Self::QualifiedIdentifier => {
+                !value.is_empty() && value.split('.').all(is_ascii_identifier)
+            }
+            Self::EventModelingId => is_ascii_identifier(value),
+            Self::EventModelingFrameId => {
+                (1..=3).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_digit())
+            }
+        }
+    }
+}
+
+fn is_ascii_identifier(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FenceSemanticItem {
     pub name: String,
     pub detail: Option<String>,
     pub kind: EditorSymbolKind,
     pub role: FenceSemanticRole,
+    pub rename_policy: FenceRenamePolicy,
     pub span: ByteSpan,
     pub selection: ByteSpan,
 }
@@ -102,9 +146,9 @@ impl FenceReferenceGroup {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FenceTextIndexSource {
-    /// Legacy text scan used only when parser facts are unavailable.
+    /// No parser-backed body facts are available.
     #[default]
-    TextScan,
+    Unavailable,
     /// Parser-backed facts from a complete family parse.
     ParserComplete,
     /// Parser-backed complete facts whose spans remain in parser-input coordinates.
@@ -132,8 +176,8 @@ impl FenceTextIndexSource {
         )
     }
 
-    pub fn is_text_scan(self) -> bool {
-        matches!(self, Self::TextScan)
+    pub fn is_unavailable(self) -> bool {
+        matches!(self, Self::Unavailable)
     }
 
     pub fn is_recovered(self) -> bool {
@@ -144,10 +188,7 @@ impl FenceTextIndexSource {
     }
 
     pub fn has_source_mapped_spans(self) -> bool {
-        !matches!(
-            self,
-            Self::ParserCompleteDegradedSpans | Self::ParserRecoveredDegradedSpans
-        )
+        matches!(self, Self::ParserComplete | Self::ParserRecovered)
     }
 }
 
@@ -255,67 +296,8 @@ pub struct FenceTextIndex {
 }
 
 impl FenceTextIndex {
-    pub fn from_text(text: &str, diagram_type: Option<&str>) -> Self {
-        let mut index = Self::default();
-        let mut relative_start = 0usize;
-
-        for line in text.split_inclusive('\n') {
-            let line_end = relative_start + line.len();
-            let line_no_newline = line.strip_suffix('\n').unwrap_or(line);
-            let trimmed = line_no_newline.trim_start();
-            let leading = line_no_newline.len().saturating_sub(trimmed.len());
-            let abs_start = relative_start + leading;
-            let abs_end = line_end;
-
-            index.record_line(diagram_type, line_no_newline, trimmed, abs_start, abs_end);
-            relative_start = line_end;
-        }
-
-        if !text.ends_with('\n') && relative_start < text.len() {
-            let line_no_newline = &text[relative_start..];
-            let trimmed = line_no_newline.trim_start();
-            let leading = line_no_newline.len().saturating_sub(trimmed.len());
-            index.record_line(
-                diagram_type,
-                line_no_newline,
-                trimmed,
-                relative_start + leading,
-                text.len(),
-            );
-        }
-
-        index.outline_items.sort_by(|left, right| {
-            (
-                left.span.start,
-                left.span.end,
-                left.name.as_str(),
-                left.selection.start,
-                left.selection.end,
-            )
-                .cmp(&(
-                    right.span.start,
-                    right.span.end,
-                    right.name.as_str(),
-                    right.selection.start,
-                    right.selection.end,
-                ))
-        });
-        index.outline_items.dedup_by(|left, right| {
-            left.span.start == right.span.start
-                && left.span.end == right.span.end
-                && left.name == right.name
-        });
-
-        index
-    }
-
     pub fn from_core_facts(facts: merman_core::EditorSemanticFacts) -> Self {
         core_facts::from_core_facts(facts)
-    }
-
-    pub fn merge_text_scan_node_ids(&mut self, text: &str, diagram_type: Option<&str>) {
-        let text_index = Self::from_text(text, diagram_type);
-        self.node_ids.extend(text_index.node_ids);
     }
 
     pub fn node_ids(&self) -> impl Iterator<Item = &String> {
@@ -490,39 +472,6 @@ impl FenceTextIndex {
                 ))
             })
     }
-
-    fn record_line(
-        &mut self,
-        diagram_type: Option<&str>,
-        line_no_newline: &str,
-        trimmed: &str,
-        abs_start: usize,
-        abs_end: usize,
-    ) {
-        let directive_prefix = directive_prefix(line_no_newline);
-        if let Some(prefix) = directive_prefix {
-            self.directive_prefixes.insert(prefix.to_string());
-            if is_payload_only_text_scan_prefix(prefix) {
-                return;
-            }
-        }
-
-        if directive_prefix.is_none_or(|prefix| !is_classify_only_text_scan_prefix(prefix)) {
-            text_scan::collect_node_ids(diagram_type, line_no_newline, &mut self.node_ids);
-        }
-
-        if let Some(item) = text_scan::classify_line_item(diagram_type, trimmed, abs_start, abs_end)
-        {
-            if is_class_definition_detail(item.detail.as_deref()) {
-                self.class_names.insert(item.name.clone());
-            }
-            self.references
-                .entry(FenceReferenceGroup::new(item.name.clone(), item.kind))
-                .or_default()
-                .push(item.selection);
-            self.outline_items.push(item);
-        }
-    }
 }
 
 fn clamp_to_char_boundary(text: &str, offset: usize) -> usize {
@@ -585,42 +534,6 @@ const DIRECTIVE_HELPER_PREFIXES: &[&str] = &[
     "click",
     "link",
     "callback",
-    ":::",
-];
-
-const DIRECTIVE_CLASSIFY_ONLY_PREFIXES: &[&str] = &[
-    "classDef",
-    "class",
-    "style",
-    "linkStyle",
-    "click",
-    "section",
-];
-
-const PAYLOAD_ONLY_TEXT_SCAN_PREFIXES: &[&str] = &[
-    "init",
-    "initialize",
-    "wrap",
-    "cssClass",
-    "link",
-    "callback",
-    "links",
-    "properties",
-    "details",
-    "dateFormat",
-    "inclusiveEndDates",
-    "topAxis",
-    "axisFormat",
-    "tickInterval",
-    "includes",
-    "excludes",
-    "todayMarker",
-    "weekday",
-    "weekend",
-    "accTitle",
-    "accDescr",
-    "accDescription",
-    "title",
     ":::",
 ];
 
@@ -731,17 +644,9 @@ fn diagram_header_prefix_matches(prefix: &str) -> bool {
         return false;
     }
 
-    text_scan::diagram_header_facts()
+    merman_core::diagram_header_facts()
         .iter()
         .any(|fact| fact.label.starts_with(prefix))
-}
-
-fn is_payload_only_text_scan_prefix(prefix: &str) -> bool {
-    PAYLOAD_ONLY_TEXT_SCAN_PREFIXES.contains(&prefix)
-}
-
-fn is_classify_only_text_scan_prefix(prefix: &str) -> bool {
-    DIRECTIVE_CLASSIFY_ONLY_PREFIXES.contains(&prefix)
 }
 
 fn is_class_definition_detail(detail: Option<&str>) -> bool {
@@ -798,13 +703,10 @@ fn directive_prefix(line: &str) -> Option<&'static str> {
         return Some(":::");
     }
 
-    for &prefix in DIRECTIVE_PREFIXES {
-        if has_word_boundary(trimmed, prefix) {
-            return Some(prefix);
-        }
-    }
-
-    None
+    DIRECTIVE_PREFIXES
+        .iter()
+        .find(|&&prefix| has_word_boundary(trimmed, prefix))
+        .copied()
 }
 
 fn has_word_boundary(text: &str, prefix: &str) -> bool {

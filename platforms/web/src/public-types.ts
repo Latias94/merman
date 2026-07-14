@@ -316,12 +316,15 @@ export interface AnalysisDiagnostic {
   fixes?: AnalysisDiagnosticFix[];
 }
 
-export interface AnalysisResult {
-  version: number;
+interface AnalysisPayloadFields {
   valid: boolean;
   summary: AnalysisSummary;
   source: AnalysisSource;
   diagnostics: AnalysisDiagnostic[];
+}
+
+export interface AnalysisResult extends AnalysisPayloadFields {
+  version: 1;
 }
 
 export interface AnalysisByteSpan {
@@ -359,6 +362,14 @@ export type AnalysisEditorSymbolKind =
 
 export type AnalysisSemanticRole = "entity" | "outline" | "payload" | string;
 
+export type AnalysisRenamePolicy =
+  | "none"
+  | "identifier"
+  | "qualified_identifier"
+  | "event_modeling_id"
+  | "event_modeling_frame_id"
+  | string;
+
 export type AnalysisExpectedSyntaxKind =
   | "id_list"
   | "node_identifier"
@@ -384,6 +395,7 @@ export interface AnalysisLineItemFacts {
 
 export interface AnalysisSemanticItemFacts extends AnalysisLineItemFacts {
   role: AnalysisSemanticRole;
+  rename_policy: AnalysisRenamePolicy;
 }
 
 export interface AnalysisExpectedSyntaxFacts {
@@ -480,7 +492,8 @@ export interface AnalysisDiagramFacts {
   syntax: AnalysisDiagramSyntaxFacts;
 }
 
-export interface AnalysisFactsResult extends AnalysisResult {
+export interface AnalysisFactsResult extends AnalysisPayloadFields {
+  version: 1;
   diagrams: AnalysisDiagramFacts[];
 }
 
@@ -501,7 +514,7 @@ export interface EditorTextEdit {
 }
 
 export type EditorSemanticFactSource =
-  | "text_scan"
+  | "unavailable"
   | "parser_complete"
   | "parser_complete_degraded_spans"
   | "parser_recovered"

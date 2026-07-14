@@ -197,13 +197,12 @@ fn recovered_editor_diagnostic(
     }
     .with_diagram_type(diagram_type);
 
-    if source_mapped_spans {
-        if let Some(span) = diagnostic
+    if source_mapped_spans
+        && let Some(span) = diagnostic
             .span
             .and_then(|span| source_map.span(span.start, span.end).ok())
-        {
-            out = out.with_span(span);
-        }
+    {
+        out = out.with_span(span);
     }
 
     Some(AnalysisRecoveryDiagnostic::parser_backed(out, kind))

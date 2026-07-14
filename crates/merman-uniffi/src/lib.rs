@@ -694,7 +694,7 @@ impl MermanReusableEngine {
     pub fn render_svg(&self, source: String) -> Result<String, MermanError> {
         #[cfg(feature = "render")]
         {
-            return self.render_svg_with_render_lock(source);
+            self.render_svg_with_render_lock(source)
         }
         #[cfg(not(feature = "render"))]
         {
@@ -716,7 +716,7 @@ impl MermanReusableEngine {
     pub fn layout_json(&self, source: String) -> Result<String, MermanError> {
         #[cfg(feature = "render")]
         {
-            return self.layout_json_with_render_lock(source);
+            self.layout_json_with_render_lock(source)
         }
         #[cfg(not(feature = "render"))]
         {
@@ -920,6 +920,8 @@ uniffi::setup_scaffolding!();
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "analysis")]
+    use merman_bindings_core::ANALYSIS_FACTS_PAYLOAD_VERSION;
     use serde_json::Value;
     #[cfg(feature = "render")]
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1293,9 +1295,42 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(json["version"], 1);
+        #[cfg(feature = "analysis")]
+        assert_eq!(json["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
         assert_eq!(json["source"]["kind"], "markdown");
         assert_eq!(json["diagrams"][0]["source_id"], "mermaid-fence-1");
+        assert_eq!(
+            json["diagrams"][0]["syntax"]["fact_source"],
+            "parser_complete"
+        );
+        assert!(
+            json["diagrams"][0]["syntax"]["semantic_items"]
+                .as_array()
+                .is_some_and(|items| items
+                    .iter()
+                    .any(|item| { item["name"] == "A" && item["rename_policy"] == "identifier" }))
+        );
+
+        let unavailable: Value = serde_json::from_str(
+            &engine()
+                .analyze_document_facts_json(
+                    "```mermaid\nunknownDiagram\nPretendNode --> OtherNode\n```\n".to_string(),
+                    None,
+                    "file:///tmp/unknown.md".to_string(),
+                )
+                .unwrap(),
+        )
+        .unwrap();
+        #[cfg(feature = "analysis")]
+        assert_eq!(unavailable["version"], ANALYSIS_FACTS_PAYLOAD_VERSION);
+        assert_eq!(
+            unavailable["diagrams"][0]["syntax"]["fact_source"],
+            "unavailable"
+        );
+        assert_eq!(
+            unavailable["diagrams"][0]["syntax"]["semantic_items"],
+            serde_json::json!([])
+        );
     }
 
     #[test]

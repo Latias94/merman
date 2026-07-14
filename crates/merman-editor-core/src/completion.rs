@@ -272,7 +272,6 @@ fn node_items(
     fence
         .text_index
         .node_ids()
-        .into_iter()
         .map(|id| CompletionItem {
             label: id.clone(),
             kind: CompletionItemKind::Variable,

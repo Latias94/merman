@@ -188,7 +188,7 @@ impl Analyzer {
             let diagnostics = no_diagram_diagnostic(&source_map, &self.options.rule_config)
                 .into_iter()
                 .collect();
-            return mode.text_scan_or_empty(source, None, diagnostics);
+            return mode.unavailable_syntax(None, diagnostics);
         }
 
         let source_lints =
@@ -213,13 +213,13 @@ impl Analyzer {
                 {
                     diagnostics.push(diagnostic);
                 }
-                mode.text_scan_or_empty(source, None, diagnostics)
+                mode.unavailable_syntax(None, diagnostics)
             }
             Ok(parse_result) => match parse_result {
                 Ok(Some(parsed)) => {
                     self.analyze_parsed_diagram(source, &source_map, parsed, source_lints, mode)
                 }
-                Ok(None) => mode.text_scan_or_empty(source, None, source_lints),
+                Ok(None) => mode.unavailable_syntax(None, source_lints),
                 Err(error) => {
                     self.analyze_parse_error(source, &source_map, source_lints, error, mode)
                 }
@@ -261,28 +261,13 @@ impl Analyzer {
                 let editor_projection = match precomputed_editor_facts {
                     Some(ParsedEditorFacts::Available(facts)) => self
                         .editor_facts_projection_from_facts(
-                            source,
                             &diagram_type,
                             source_map,
                             mode,
                             Some(facts),
                         ),
                     Some(ParsedEditorFacts::Unavailable) => self
-                        .editor_facts_projection_from_facts(
-                            source,
-                            &diagram_type,
-                            source_map,
-                            mode,
-                            None,
-                        ),
-                    Some(ParsedEditorFacts::Error(error)) => self
-                        .editor_facts_projection_from_error(
-                            source,
-                            &diagram_type,
-                            source_map,
-                            mode,
-                            error,
-                        ),
+                        .editor_facts_projection_from_facts(&diagram_type, source_map, mode, None),
                     None => self.editor_facts_projection(source, &diagram_type, source_map, mode),
                 };
                 diagnostics.extend(
@@ -329,7 +314,7 @@ impl Analyzer {
             None if mode == AnalysisMode::Diagnostics => {
                 AnalysisSyntaxFacts::new(None, FenceTextIndex::default())
             }
-            None => AnalysisSyntaxFacts::text_scan(source, None),
+            None => AnalysisSyntaxFacts::unavailable(None),
         };
         LocalAnalysis {
             diagnostics,
@@ -345,36 +330,25 @@ impl Analyzer {
         mode: AnalysisMode,
     ) -> EditorFactsProjection {
         match self.parse_editor_semantic_facts(source, diagram_type, source_map) {
-            Err(diagnostics) => {
-                EditorFactsProjection::fallback(source, Some(diagram_type), diagnostics, mode)
+            Err(diagnostics) => EditorFactsProjection::unavailable(diagnostics),
+            Ok(Some(facts)) => {
+                self.editor_facts_projection_from_facts(diagram_type, source_map, mode, Some(facts))
             }
-            Ok(Some(facts)) => self.editor_facts_projection_from_facts(
-                source,
-                diagram_type,
-                source_map,
-                mode,
-                Some(facts),
-            ),
-            Ok(None) => self.editor_facts_projection_from_facts(
-                source,
-                diagram_type,
-                source_map,
-                mode,
-                None,
-            ),
+            Ok(None) => {
+                self.editor_facts_projection_from_facts(diagram_type, source_map, mode, None)
+            }
         }
     }
 
     fn editor_facts_projection_from_facts(
         &self,
-        source: &str,
         diagram_type: &str,
         source_map: &SourceMap,
         mode: AnalysisMode,
         facts: Option<EditorSemanticFacts>,
     ) -> EditorFactsProjection {
         let Some(facts) = facts else {
-            return EditorFactsProjection::fallback(source, Some(diagram_type), Vec::new(), mode);
+            return EditorFactsProjection::unavailable(Vec::new());
         };
 
         let source_mapped_spans = facts.span_coordinate_space.is_original_source();
@@ -392,23 +366,6 @@ impl Analyzer {
             },
             diagnostics,
         }
-    }
-
-    fn editor_facts_projection_from_error(
-        &self,
-        source: &str,
-        diagram_type: &str,
-        source_map: &SourceMap,
-        mode: AnalysisMode,
-        error: CoreError,
-    ) -> EditorFactsProjection {
-        if matches!(error, CoreError::UnsupportedDiagram { .. }) {
-            return EditorFactsProjection::fallback(source, Some(diagram_type), Vec::new(), mode);
-        }
-
-        let diagnostics =
-            core_error_recovery_diagnostics(error, source_map, &self.options.rule_config);
-        EditorFactsProjection::fallback(source, Some(diagram_type), diagnostics, mode)
     }
 
     fn flowchart_facts_projection(
@@ -503,15 +460,14 @@ impl ParsedAnalysisDiagram {
 }
 
 impl AnalysisMode {
-    fn text_scan_or_empty(
+    fn unavailable_syntax(
         self,
-        source: &str,
         diagram_type: Option<String>,
         diagnostics: Vec<AnalysisDiagnostic>,
     ) -> LocalAnalysis {
         match self {
             Self::Diagnostics => LocalAnalysis::empty_syntax_with_type(diagram_type, diagnostics),
-            Self::RichFacts => LocalAnalysis::text_scan(source, diagram_type, diagnostics),
+            Self::RichFacts => LocalAnalysis::unavailable_syntax(diagram_type, diagnostics),
         }
     }
 }
@@ -537,14 +493,13 @@ impl LocalAnalysis {
         }
     }
 
-    fn text_scan(
-        source: &str,
+    fn unavailable_syntax(
         diagram_type: Option<String>,
         diagnostics: Vec<AnalysisDiagnostic>,
     ) -> Self {
         Self {
             diagnostics,
-            syntax: AnalysisSyntaxFacts::text_scan(source, diagram_type),
+            syntax: AnalysisSyntaxFacts::unavailable(diagram_type),
         }
     }
 }
@@ -556,17 +511,9 @@ struct EditorFactsProjection {
 }
 
 impl EditorFactsProjection {
-    fn fallback(
-        source: &str,
-        diagram_type: Option<&str>,
-        diagnostics: Vec<AnalysisRecoveryDiagnostic>,
-        mode: AnalysisMode,
-    ) -> Self {
+    fn unavailable(diagnostics: Vec<AnalysisRecoveryDiagnostic>) -> Self {
         Self {
-            text_index: match mode {
-                AnalysisMode::Diagnostics => FenceTextIndex::default(),
-                AnalysisMode::RichFacts => FenceTextIndex::from_text(source, diagram_type),
-            },
+            text_index: FenceTextIndex::default(),
             diagnostics,
         }
     }

@@ -162,8 +162,8 @@ mod tests {
     use crate::protocol::WorkspaceEditEncoding;
     use merman_analysis::{
         AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, Analyzer, DiagnosticCategory,
-        DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, SourceMap, Utf16Position,
-        document::analyze_document,
+        DiagnosticFix, DiagnosticFixEdit, DiagnosticSpan, LspRange, SourceMap, SourcePosition,
+        Utf16Position, document::analyze_document,
     };
     use merman_editor_core::DiagnosticCodeActionData;
     use serde_json::{Value, json};
@@ -208,20 +208,19 @@ mod tests {
                         title: "Replace text".to_string(),
                         edits: vec![DiagnosticFixEdit::new(
                             DiagnosticSpan::new(
-                                0,
-                                5,
-                                1,
-                                1,
-                                1,
-                                6,
-                                Utf16Position {
-                                    line: 0,
-                                    character: 0,
-                                },
-                                Utf16Position {
-                                    line: 0,
-                                    character: 5,
-                                },
+                                0..5,
+                                SourcePosition::new(1, 1),
+                                SourcePosition::new(1, 6),
+                                LspRange::new(
+                                    Utf16Position {
+                                        line: 0,
+                                        character: 0,
+                                    },
+                                    Utf16Position {
+                                        line: 0,
+                                        character: 5,
+                                    },
+                                ),
                             ),
                             "fixed",
                         )],
@@ -392,39 +391,37 @@ mod tests {
                 edits: vec![
                     DiagnosticFixEdit::new(
                         DiagnosticSpan::new(
-                            0,
-                            4,
-                            1,
-                            1,
-                            1,
-                            5,
-                            Utf16Position {
-                                line: 0,
-                                character: 0,
-                            },
-                            Utf16Position {
-                                line: 0,
-                                character: 4,
-                            },
+                            0..4,
+                            SourcePosition::new(1, 1),
+                            SourcePosition::new(1, 5),
+                            LspRange::new(
+                                Utf16Position {
+                                    line: 0,
+                                    character: 0,
+                                },
+                                Utf16Position {
+                                    line: 0,
+                                    character: 4,
+                                },
+                            ),
                         ),
                         "left",
                     ),
                     DiagnosticFixEdit::new(
                         DiagnosticSpan::new(
-                            2,
-                            5,
-                            1,
-                            3,
-                            1,
-                            6,
-                            Utf16Position {
-                                line: 0,
-                                character: 2,
-                            },
-                            Utf16Position {
-                                line: 0,
-                                character: 5,
-                            },
+                            2..5,
+                            SourcePosition::new(1, 3),
+                            SourcePosition::new(1, 6),
+                            LspRange::new(
+                                Utf16Position {
+                                    line: 0,
+                                    character: 2,
+                                },
+                                Utf16Position {
+                                    line: 0,
+                                    character: 5,
+                                },
+                            ),
                         ),
                         "right",
                     ),

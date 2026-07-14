@@ -1,7 +1,8 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentUri, Position, Range};
 use merman_analysis::{
-    ByteSpan, EditorSymbolKind, FenceLineItem, FenceSemanticItem, FenceTextIndexSource, SourceMap,
+    ByteSpan, EditorSymbolKind, FenceLineItem, FenceRenamePolicy, FenceSemanticItem,
+    FenceTextIndexSource, SourceMap,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -113,6 +114,7 @@ pub fn document_symbols(snapshot: &DocumentSnapshot) -> Vec<EditorDocumentSymbol
     snapshot
         .fences
         .iter()
+        .filter(|fence| !fence.text_index.source().is_unavailable())
         .map(outline_for_fence)
         .filter_map(|item| item.to_document_symbol(&snapshot.source_map))
         .collect()
@@ -127,6 +129,9 @@ pub fn workspace_symbols(snapshot: &DocumentSnapshot, query: &str) -> Vec<Editor
     };
     let mut symbols = Vec::new();
     for fence in &snapshot.fences {
+        if fence.text_index.source().is_unavailable() {
+            continue;
+        }
         let outline = outline_for_fence(fence);
         collect_workspace_symbols(snapshot, &outline, None, query.as_deref(), &mut symbols);
     }
@@ -167,15 +172,15 @@ pub fn selection_range(
     let outline = outline_for_fence(fence);
     let mut spans = Vec::new();
 
-    if let Some(relative_offset) = fence_relative_offset(snapshot, fence, position) {
-        if let Some(item) = fence.text_index.semantic_item_at_offset(relative_offset) {
-            push_selection_span(
-                &mut spans,
-                absolute_offset,
-                absolute_span(fence, item.selection),
-            );
-            push_selection_span(&mut spans, absolute_offset, absolute_span(fence, item.span));
-        }
+    if let Some(relative_offset) = fence_relative_offset(snapshot, fence, position)
+        && let Some(item) = fence.text_index.semantic_item_at_offset(relative_offset)
+    {
+        push_selection_span(
+            &mut spans,
+            absolute_offset,
+            absolute_span(fence, item.selection),
+        );
+        push_selection_span(&mut spans, absolute_offset, absolute_span(fence, item.span));
     }
 
     if let Some(item) = outline.find_deepest(absolute_offset) {
@@ -250,6 +255,9 @@ fn trim_folding_span(text: &str, mut span: ByteSpan) -> ByteSpan {
 
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<EditorHover> {
     let fence = snapshot.fence_at_position(position)?;
+    if fence.text_index.source().is_unavailable() {
+        return None;
+    }
     let absolute_offset = snapshot.byte_offset_for_position(position)?;
     let relative_offset = fence_relative_offset(snapshot, fence, position)?;
     let outline = outline_for_fence(fence);
@@ -330,6 +338,9 @@ pub fn prepare_rename(
     let fence = snapshot.fence_at_position(position)?;
     let offset = fence_relative_offset(snapshot, fence, position)?;
     let item = fence.text_index.entity_item_at_offset(offset)?;
+    if !rename_group_allows(fence, item, FenceRenamePolicy::is_renameable) {
+        return None;
+    }
     let selection = absolute_span(fence, item.selection);
     let range = range_from_span(&snapshot.source_map, selection)?;
     let placeholder = snapshot
@@ -348,9 +359,6 @@ pub fn rename(
     position: Position,
     new_name: &str,
 ) -> Result<Option<EditorWorkspaceEdit>, RenameError> {
-    if !is_valid_rename_name(new_name) {
-        return Err(RenameError::InvalidName);
-    }
     let fence = snapshot
         .fence_at_position(position)
         .ok_or(RenameError::OutsideFence)?;
@@ -360,6 +368,9 @@ pub fn rename(
         .text_index
         .entity_item_at_offset(offset)
         .ok_or(RenameError::NoRenameableSymbol)?;
+    if !rename_group_allows(fence, item, |policy| policy.accepts(new_name)) {
+        return Err(RenameError::InvalidName);
+    }
     Ok(rename_edits(snapshot, fence, item, new_name))
 }
 
@@ -391,6 +402,23 @@ fn rename_edits(
         fact_source: fence.text_index.source(),
         changes,
     })
+}
+
+fn rename_group_allows(
+    fence: &FenceSnapshot,
+    item: &FenceSemanticItem,
+    predicate: impl Fn(FenceRenamePolicy) -> bool,
+) -> bool {
+    fence
+        .text_index
+        .semantic_items()
+        .iter()
+        .filter(|candidate| {
+            candidate.role == merman_analysis::FenceSemanticRole::Entity
+                && candidate.name == item.name
+                && candidate.kind == item.kind
+        })
+        .all(|candidate| predicate(candidate.rename_policy))
 }
 
 fn outline_for_fence(fence: &FenceSnapshot) -> OutlineItem {
@@ -512,7 +540,7 @@ fn absolute_span(fence: &FenceSnapshot, span: ByteSpan) -> ByteSpan {
 }
 
 fn push_selection_span(spans: &mut Vec<ByteSpan>, offset: usize, span: ByteSpan) {
-    if span.start >= span.end || !span.contains(offset) || spans.iter().any(|item| *item == span) {
+    if span.start >= span.end || !span.contains(offset) || spans.contains(&span) {
         return;
     }
 
@@ -632,13 +660,6 @@ fn compare_range(left: &Range, right: &Range) -> std::cmp::Ordering {
         ))
 }
 
-fn is_valid_rename_name(new_name: &str) -> bool {
-    !new_name.is_empty()
-        && new_name
-            .chars()
-            .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorDocumentSymbol {
     pub name: String,
@@ -727,7 +748,7 @@ pub enum RenameError {
 impl fmt::Display for RenameError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
-            Self::InvalidName => "new name must use letters, numbers, underscore, or dash",
+            Self::InvalidName => "new name is not valid for this symbol's Mermaid grammar",
             Self::OutsideFence => "position is outside a Mermaid fence",
             Self::NoRenameableSymbol => "no renameable symbol at the requested position",
         };

@@ -24,14 +24,24 @@ Editor-facing ownership is layered:
 - `AnalysisFactsPayload` is the serializable facts contract for bindings. It includes the
   diagnostics summary, document/fence spans, parser fact provenance, semantic items, outline items,
   expected syntax, references, and the first typed Flowchart projection.
-- `FenceTextIndex` preserves parser-complete, parser-recovered, or text-scan provenance for
-  semantic facts and expected syntax.
+- `FenceTextIndex` preserves parser-complete, parser-recovered, or explicit-unavailable provenance
+  for semantic facts and expected syntax.
 - `merman-editor-core` owns protocol-neutral completion, hover, symbols, navigation, rename,
   selection ranges, folding ranges, and semantic-token queries over snapshots projected from
   analysis facts.
 - LSP, WASM, and VS Code convert those protocol-neutral results into host surfaces.
 
 ## Rust API Migration Notes
+
+### Analysis payload versioning
+
+The diagnostics-only `AnalysisPayload` and the richer `AnalysisFactsPayload` are separate
+serialized contracts. Both current alpha contracts start at version 1, but each reads its own
+version constant so future breaking changes do not force the other payload to advance.
+
+Facts v1 uses `fact_source: "unavailable"` when parser-backed body semantics do not exist and does
+not manufacture body semantic items. Every `semantic_items[]` entry includes the required
+`rename_policy` field so consumers can enforce the owning diagram family's identifier grammar.
 
 `DocumentDiagram::text`, `AnalyzedDiagram::text`, and editor `FenceSnapshot::text` use
 `SharedTextSlice` instead of owned `String` buffers. The slice shares the immutable document text

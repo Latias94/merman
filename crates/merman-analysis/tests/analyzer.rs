@@ -1,7 +1,7 @@
 use merman_analysis::{
-    AnalysisOptions, AnalysisRuleConfig, AnalysisRuleProfile, AnalysisStatus, Analyzer,
-    DiagnosticCategory, DiagnosticSeverity, FenceExpectedSyntaxKind, FenceTextIndexSource,
-    SourceDescriptor, analyze_document_facts,
+    ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSION, AnalysisOptions, AnalysisRuleConfig,
+    AnalysisRuleProfile, AnalysisStatus, Analyzer, DiagnosticCategory, DiagnosticSeverity,
+    FenceExpectedSyntaxKind, FenceTextIndexSource, SourceDescriptor, analyze_document_facts,
     document::{analyze_document, analyze_document_result},
     source_descriptor_for_markdown_path,
 };
@@ -27,6 +27,36 @@ fn empty_source_returns_no_diagram_error() {
     );
     assert_eq!(diagnostic.span.as_ref().unwrap().byte_start, 0);
     assert_eq!(diagnostic.span.as_ref().unwrap().byte_end, 0);
+}
+
+#[test]
+fn facts_and_diagnostics_payloads_use_independent_version_constants() {
+    let analyzer = Analyzer::new();
+
+    assert_eq!(
+        analyzer.analyze("flowchart TD\nA\n").version,
+        ANALYSIS_PAYLOAD_VERSION
+    );
+    assert_eq!(
+        analyzer.analyze_facts("flowchart TD\nA\n").version,
+        ANALYSIS_FACTS_PAYLOAD_VERSION
+    );
+}
+
+#[test]
+fn unknown_source_exposes_unavailable_facts_without_inventing_body_semantics() {
+    let facts = Analyzer::new()
+        .analyze_result("unknownDiagram\nPretendNode --> OtherNode\n")
+        .to_facts_payload();
+    let syntax = &facts.diagrams[0].syntax;
+
+    assert_eq!(syntax.fact_source, FenceTextIndexSource::Unavailable);
+    assert!(!syntax.parser_backed);
+    assert!(!syntax.source_mapped_spans);
+    assert!(syntax.node_ids.is_empty());
+    assert!(syntax.references.is_empty());
+    assert!(syntax.outline_items.is_empty());
+    assert!(syntax.semantic_items.is_empty());
 }
 
 #[test]
@@ -232,25 +262,37 @@ fn markdown_fence_parse_diagnostic_remaps_to_fence_body_not_whole_document() {
 }
 
 #[test]
-fn recovered_gantt_editor_diagnostic_is_projected() {
+fn recovered_gantt_editor_diagnostic_is_deduplicated_with_the_parse_error() {
     let source = "gantt\nweekday foo\n";
     let payload = analyze(source);
 
     assert!(!payload.valid);
     assert_eq!(payload.summary.errors, 1);
-    assert_eq!(payload.summary.warnings, 1);
+    assert_eq!(payload.summary.warnings, 0);
+    assert_eq!(payload.diagnostics.len(), 1);
     let diagnostic = payload
         .diagnostics
         .iter()
-        .find(|diagnostic| diagnostic.id == "merman.parse.recovered_editor_facts")
-        .expect("recovered editor diagnostic");
-    assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
+        .find(|diagnostic| diagnostic.id == "merman.parse.diagram_parse")
+        .expect("parse diagnostic");
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
     assert_eq!(diagnostic.category, DiagnosticCategory::Parse);
     assert_eq!(diagnostic.diagram_type.as_deref(), Some("gantt"));
     assert!(diagnostic.message.contains("invalid weekday"));
     assert_eq!(
         diagnostic.span.as_ref().map(|span| span.byte_start),
         source.find("foo")
+    );
+    assert!(diagnostic.related.iter().any(|related| {
+        related
+            .message
+            .contains("Parser recovery produced the same syntax problem")
+    }));
+    assert!(
+        payload
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.id != "merman.parse.recovered_editor_facts")
     );
 }
 

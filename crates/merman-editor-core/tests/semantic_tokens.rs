@@ -35,6 +35,19 @@ fn semantic_tokens_project_entity_outline_and_payload_roles() {
 }
 
 #[test]
+fn unavailable_body_does_not_manufacture_semantic_tokens() {
+    let mut workspace = DocumentWorkspace::new();
+    let snapshot = workspace.upsert(
+        "file:///tmp/unknown.mmd",
+        1,
+        "unknownDiagram\nPretendNode --> OtherNode\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert!(semantic_tokens_for_snapshot(&snapshot).is_empty());
+}
+
+#[test]
 fn semantic_tokens_use_document_ranges_and_utf16_lengths() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

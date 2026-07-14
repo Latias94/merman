@@ -101,7 +101,7 @@ impl FenceDelimiter {
         self.marker
     }
 
-    pub const fn len(self) -> usize {
+    pub const fn marker_len(self) -> usize {
         self.len
     }
 
@@ -412,10 +412,10 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
                         &mut diagrams,
                         Arc::clone(text),
                         source,
-                        cursor,
-                        body_start,
-                        body_end,
-                        closing_end,
+                        MarkdownFenceBounds {
+                            fence: cursor..closing_end,
+                            body: body_start..body_end,
+                        },
                         delimiter,
                     );
                     cursor = closing_end;
@@ -429,10 +429,10 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
                     &mut diagrams,
                     Arc::clone(text),
                     source,
-                    cursor,
-                    body_start,
-                    body_end,
-                    document_text.len(),
+                    MarkdownFenceBounds {
+                        fence: cursor..document_text.len(),
+                        body: body_start..body_end,
+                    },
                     delimiter,
                 );
                 break;
@@ -451,14 +451,16 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
     diagrams
 }
 
+struct MarkdownFenceBounds {
+    fence: std::ops::Range<usize>,
+    body: std::ops::Range<usize>,
+}
+
 fn push_markdown_diagram(
     diagrams: &mut Vec<DocumentDiagram>,
     text: Arc<str>,
     document_source: &SourceDescriptor,
-    start: usize,
-    body_start: usize,
-    body_end: usize,
-    end: usize,
+    bounds: MarkdownFenceBounds,
     fence_delimiter: FenceDelimiter,
 ) {
     let index = diagrams.len();
@@ -470,11 +472,11 @@ fn push_markdown_diagram(
             .clone()
             .with_diagram_index(index)
             .with_language("mermaid"),
-        start,
-        body_start,
-        body_end,
-        end,
-        text: SharedTextSlice::new(text, body_start, body_end),
+        start: bounds.fence.start,
+        body_start: bounds.body.start,
+        body_end: bounds.body.end,
+        end: bounds.fence.end,
+        text: SharedTextSlice::new(text, bounds.body.start, bounds.body.end),
         fence_delimiter: Some(fence_delimiter),
     });
 }
@@ -533,7 +535,7 @@ fn is_matching_closing_fence(line: &str, delimiter: FenceDelimiter) -> bool {
     };
     let marker = delimiter.marker_byte();
     let len = repeated_marker_len(trimmed.as_bytes(), marker);
-    if len < delimiter.len() {
+    if len < delimiter.marker_len() {
         return false;
     }
     trimmed[len..].chars().all(|ch| ch.is_whitespace())

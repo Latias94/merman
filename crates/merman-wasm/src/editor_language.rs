@@ -634,7 +634,7 @@ fn symbol_kind_name(kind: EditorSymbolKind) -> &'static str {
 
 fn fact_source_name(source: FenceTextIndexSource) -> &'static str {
     match source {
-        FenceTextIndexSource::TextScan => "text_scan",
+        FenceTextIndexSource::Unavailable => "unavailable",
         FenceTextIndexSource::ParserComplete => "parser_complete",
         FenceTextIndexSource::ParserCompleteDegradedSpans => "parser_complete_degraded_spans",
         FenceTextIndexSource::ParserRecovered => "parser_recovered",
