@@ -16,8 +16,9 @@ mod debug_svg;
 pub(super) fn render_class_diagram_v2_debug_svg(
     layout: &ClassDiagramV2Layout,
     options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
 ) -> String {
-    debug_svg::render_class_diagram_v2_debug_svg(layout, options)
+    debug_svg::render_class_diagram_v2_debug_svg(layout, options, debug)
 }
 
 mod defs;
@@ -61,7 +62,7 @@ pub(super) fn render_class_diagram_v2_svg(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     render::render_class_diagram_v2_svg_impl(
         layout,
@@ -79,7 +80,7 @@ pub(super) fn render_class_diagram_v2_svg_model_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     render::render_class_diagram_v2_svg_model_impl_with_config(
         layout,

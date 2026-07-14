@@ -160,7 +160,7 @@ pub(crate) fn render_pie_diagram_svg(
     layout: &PieDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
     render_pie_diagram_svg_model(layout, &model, effective_config, options)
@@ -170,7 +170,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -197,7 +197,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     apply_empty_pie_root_viewport(model, &mut viewbox_attr, &mut max_w_attr);
     let mut w_attr = fmt_string(vb_w);
     let mut h_attr = fmt_string(vb_h);
-    if options.apply_root_overrides {
+    if options.root_viewport_override_policy().applies_generated() {
         apply_root_viewport_override(
             diagram_id,
             &mut viewbox_attr,
@@ -513,15 +513,22 @@ mod tests {
         };
         let options = SvgRenderOptions {
             diagram_id: Some("pieFixed".to_string()),
-            apply_root_overrides: false,
             ..SvgRenderOptions::default()
         };
+        let session = crate::environment::RenderEnvironment::parity()
+            .with_root_viewport_override_policy(
+                crate::environment::RootViewportOverridePolicy::ComputedOnly,
+            )
+            .begin_session()
+            .expect("render session");
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&options, &debug, &session);
 
         let svg = render_pie_diagram_svg_model(
             &layout,
             &PieDiagramRenderModel::default(),
             &serde_json::json!({"pie": {"useMaxWidth": false}}),
-            &options,
+            &execution,
         )
         .unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;

@@ -6,7 +6,6 @@ use crate::svgdom;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UpstreamRootTrust {
@@ -189,11 +188,10 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let dom_decimals = dom_decimals.unwrap_or(3);
     let mode = svgdom::DomMode::parse(&dom_mode);
 
-    let measurer: Arc<dyn merman_render::text::TextMeasurer + Send + Sync> =
-        match text_measurer.as_deref().unwrap_or("vendored") {
-            "deterministic" => Arc::new(merman_render::text::DeterministicTextMeasurer::default()),
-            _ => Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default()),
-        };
+    let text_measurement_policy = match text_measurer.as_deref().unwrap_or("vendored") {
+        "deterministic" => merman::render::TextMeasurementPolicy::deterministic(),
+        _ => merman::render::TextMeasurementPolicy::parity(),
+    };
 
     let workspace_root = crate::cmd::workspace_root();
 
@@ -208,7 +206,6 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
         serde_json::json!({ "handDrawnSeed": 1, "gitGraph": { "seed": 1 } }),
     );
     let layout_opts = merman_render::LayoutOptions {
-        text_measurer: Arc::clone(&measurer),
         flowchart_elk_backend,
         ..Default::default()
     };
@@ -546,12 +543,22 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
 
-            let mut layout_opts = layout_opts.clone();
-            if matches!(diagram.as_str(), "flowchart" | "sequence") {
-                layout_opts.math_renderer = node_math_renderer.clone();
+            let layout_opts = layout_opts.clone();
+            let mut environment = merman::render::RenderEnvironment::parity()
+                .with_text_measurement_policy(text_measurement_policy.clone());
+            if matches!(diagram.as_str(), "flowchart" | "sequence")
+                && let Some(renderer) = node_math_renderer.clone()
+            {
+                environment = environment.with_math_renderer(renderer);
             }
-
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let mut session = match environment.begin_session() {
+                Ok(session) => session,
+                Err(err) => {
+                    missing.push(format!("{diagram}/{stem}: session failed: {err}"));
+                    continue;
+                }
+            };
+            let mut layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
                 Ok(v) => v,
                 Err(err) => {
                     missing.push(format!("{diagram}/{stem}: layout failed: {err}"));
@@ -575,31 +582,50 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             } else {
                 sanitize_svg_id(stem)
             };
-            let mut svg_opts = merman_render::svg::SvgRenderOptions {
+            let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(diagram_id),
                 aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
                 ..Default::default()
             };
-            if matches!(diagram.as_str(), "flowchart" | "sequence") {
-                svg_opts.math_renderer = node_math_renderer.clone();
-            }
             if diagram == "gantt"
                 && let merman_render::model::LayoutDiagram::GanttDiagram(layout) = &layouted.layout
+                && let Some(now_ms) = gantt_derive_now_ms_from_upstream_today(&upstream_svg, layout)
             {
-                svg_opts.now_ms_override =
-                    gantt_derive_now_ms_from_upstream_today(&upstream_svg, layout);
+                let snapshot = match merman::render::RenderTimeSnapshot::from_unix_millis(now_ms, 0)
+                {
+                    Ok(snapshot) => snapshot,
+                    Err(err) => {
+                        missing.push(format!("{diagram}/{stem}: invalid baseline time: {err}"));
+                        continue;
+                    }
+                };
+                session = match environment
+                    .clone()
+                    .with_time_snapshot(snapshot)
+                    .begin_session()
+                {
+                    Ok(session) => session,
+                    Err(err) => {
+                        missing.push(format!("{diagram}/{stem}: session failed: {err}"));
+                        continue;
+                    }
+                };
+                layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
+                    Ok(layouted) => layouted,
+                    Err(err) => {
+                        missing.push(format!("{diagram}/{stem}: final layout failed: {err}"));
+                        continue;
+                    }
+                };
             }
-            let local_svg = match merman_render::svg::render_layouted_svg(
-                &layouted,
-                layout_opts.text_measurer.as_ref(),
-                &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    missing.push(format!("{diagram}/{stem}: render failed: {err}"));
-                    continue;
-                }
-            };
+            let local_svg =
+                match merman_render::svg::render_layouted_svg(&layouted, &session, &svg_opts) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        missing.push(format!("{diagram}/{stem}: render failed: {err}"));
+                        continue;
+                    }
+                };
 
             let upstream_xml = match svgdom::canonical_xml(&upstream_svg, mode, dom_decimals) {
                 Ok(v) => v,

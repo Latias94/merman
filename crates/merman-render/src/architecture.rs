@@ -277,7 +277,10 @@ fn js_to_uint32(value: f64) -> u64 {
     value.trunc().rem_euclid(UINT32_MODULUS) as u64
 }
 
-fn architecture_seed_policy(value: Option<&Value>) -> manatee::FcoseRandomPolicy {
+fn architecture_seed_policy(
+    value: Option<&Value>,
+    ambient_seed: u64,
+) -> manatee::FcoseRandomPolicy {
     let numeric_seed = value
         .and_then(json_f64)
         .filter(|value| value.is_finite())
@@ -286,7 +289,7 @@ fn architecture_seed_policy(value: Option<&Value>) -> manatee::FcoseRandomPolicy
         .and_then(Value::as_f64)
         .is_some_and(|value| value == 0.0);
     let policy = if is_json_number_zero {
-        manatee::FcoseRandomPolicy::ambient(manatee::FcoseRandomSource::Mulberry32)
+        manatee::FcoseRandomPolicy::seeded(manatee::FcoseRandomSource::Mulberry32, ambient_seed)
     } else {
         manatee::FcoseRandomPolicy::seeded(
             manatee::FcoseRandomSource::Mulberry32,
@@ -652,13 +655,9 @@ fn architecture_fcose_node_bounds_extras<'a>(
 struct ArchitectureFcoseInputPlan<'a> {
     node_ids: Vec<&'a str>,
     compound_ids: Vec<&'a str>,
-    node_index_by_id: FxHashMap<&'a str, usize>,
-    spatial_maps: Vec<IndexMap<&'a str, (i32, i32)>>,
     graph: manatee::algo::fcose::IndexedGraph,
     options: manatee::algo::fcose::IndexedFcoseOptions,
     random_policy: manatee::FcoseRandomPolicy,
-    default_edge_length: f64,
-    compound_padding_px: f64,
 }
 
 struct ArchitectureFcoseInputPlanInput<'m, 'a> {
@@ -1163,13 +1162,9 @@ fn build_architecture_fcose_input_plan<'a>(
     Ok(ArchitectureFcoseInputPlan {
         node_ids,
         compound_ids,
-        node_index_by_id,
-        spatial_maps,
         graph,
         options,
         random_policy: fcose_random_policy,
-        default_edge_length,
-        compound_padding_px,
     })
 }
 
@@ -1358,6 +1353,7 @@ pub fn layout_architecture_diagram(
     effective_config: &Value,
     _text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
+    ambient_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
     let model_json: ArchitectureModel = from_value_ref(model)?;
     let model_view = ArchitectureModelView::from_json(&model_json);
@@ -1366,6 +1362,7 @@ pub fn layout_architecture_diagram(
         effective_config,
         _text_measurer,
         use_manatee_layout,
+        ambient_seed,
     )
 }
 
@@ -1374,9 +1371,16 @@ pub fn layout_architecture_diagram_typed(
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
+    ambient_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
     let model = ArchitectureModelView::from_typed(model);
-    layout_architecture_diagram_model(&model, effective_config, text_measurer, use_manatee_layout)
+    layout_architecture_diagram_model(
+        &model,
+        effective_config,
+        text_measurer,
+        use_manatee_layout,
+        ambient_seed,
+    )
 }
 
 fn layout_architecture_diagram_model(
@@ -1384,25 +1388,8 @@ fn layout_architecture_diagram_model(
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     use_manatee_layout: bool,
+    ambient_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
-    let timing_enabled = std::env::var("MERMAN_ARCHITECTURE_LAYOUT_TIMING")
-        .ok()
-        .as_deref()
-        == Some("1");
-    #[derive(Debug, Default, Clone)]
-    struct ArchitectureLayoutTimings {
-        total: web_time::Duration,
-        build_adjacency_and_components: web_time::Duration,
-        positions_and_centering: web_time::Duration,
-        emit_nodes: web_time::Duration,
-        manatee_prepare: web_time::Duration,
-        manatee_layout: web_time::Duration,
-        build_edges: web_time::Duration,
-        bounds: web_time::Duration,
-    }
-    let mut timings = ArchitectureLayoutTimings::default();
-    let total_start = timing_enabled.then(web_time::Instant::now);
-
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
     let half_icon = icon_size / 2.0;
@@ -1430,8 +1417,10 @@ fn layout_architecture_diagram_model(
         .filter(|v| v.is_finite() && *v >= 1.0)
         .map(|v| v.round() as usize)
         .unwrap_or(2500);
-    let fcose_random_policy =
-        architecture_seed_policy(value_at(effective_config, &["architecture", "seed"]));
+    let fcose_random_policy = architecture_seed_policy(
+        value_at(effective_config, &["architecture", "seed"]),
+        ambient_seed,
+    );
 
     let node_bounds_extras =
         architecture_fcose_node_bounds_extras(ArchitectureFcoseNodeBoundsExtrasInput {
@@ -1441,29 +1430,9 @@ fn layout_architecture_diagram_model(
             font_size_px,
             font_family: font_family.as_str(),
         });
-    if std::env::var("MERMAN_ARCH_DEBUG_NODE_BOUNDS_EXTRAS")
-        .ok()
-        .as_deref()
-        == Some("1")
-    {
-        eprintln!(
-            "[arch-node-bounds-extras] icon_size={:.3} font_size={:.3} nodes={} extras={}",
-            icon_size,
-            font_size_px,
-            model.nodes.len(),
-            node_bounds_extras.len(),
-        );
-    }
-
     let mut nodes: Vec<LayoutNode> = Vec::new();
 
-    let positions_start = timing_enabled.then(web_time::Instant::now);
-    if let Some(s) = positions_start {
-        timings.positions_and_centering = s.elapsed();
-    }
-
     // Emit nodes in Mermaid model order (stable for snapshots and close to upstream).
-    let emit_nodes_start = timing_enabled.then(web_time::Instant::now);
     for n in &model.nodes {
         match n.node_type {
             ArchitectureNodeType::Service | ArchitectureNodeType::Junction => {}
@@ -1488,15 +1457,10 @@ fn layout_architecture_diagram_model(
             label_height: None,
         });
     }
-    if let Some(s) = emit_nodes_start {
-        timings.emit_nodes = s.elapsed();
-    }
-
     let mut fcose_compound_bounds: Vec<ArchitectureCompoundBounds> = Vec::new();
     let mut fcose_debug_stages: Vec<ArchitectureFcoseDebugStage> = Vec::new();
 
     if use_manatee_layout && !nodes.is_empty() {
-        let manatee_prepare_start = timing_enabled.then(web_time::Instant::now);
         let plan = build_architecture_fcose_input_plan(ArchitectureFcoseInputPlanInput {
             model,
             layout_nodes: &nodes,
@@ -1512,35 +1476,6 @@ fn layout_architecture_diagram_model(
             fcose_random_policy,
         })?;
 
-        if std::env::var("MERMAN_ARCH_DEBUG_FCOSE_CONSTRAINTS")
-            .ok()
-            .as_deref()
-            == Some("1")
-        {
-            eprintln!(
-                "[arch-fcose] nodes={} edges={} compounds={} spatial_maps={} index_entries={} default_edge_length={:.6} compound_padding={:.6}",
-                plan.graph.nodes.len(),
-                plan.graph.edges.len(),
-                plan.graph.compounds.len(),
-                plan.spatial_maps.len(),
-                plan.node_index_by_id.len(),
-                plan.default_edge_length,
-                plan.compound_padding_px,
-            );
-            if let Some(a) = &plan.options.alignment_constraint {
-                eprintln!("[arch-fcose] alignment.horizontal={:?}", a.horizontal);
-                eprintln!("[arch-fcose] alignment.vertical={:?}", a.vertical);
-            }
-            eprintln!(
-                "[arch-fcose] relative_placement_constraint={:?}",
-                plan.options.relative_placement_constraint
-            );
-        }
-
-        if let Some(s) = manatee_prepare_start {
-            timings.manatee_prepare = s.elapsed();
-        }
-        let manatee_layout_start = timing_enabled.then(web_time::Instant::now);
         let result = manatee::algo::fcose::layout_indexed_with_random_policy(
             &plan.graph,
             &plan.options,
@@ -1549,10 +1484,6 @@ fn layout_architecture_diagram_model(
         .map_err(|e| Error::InvalidModel {
             message: format!("manatee layout failed: {e}"),
         })?;
-        if let Some(s) = manatee_layout_start {
-            timings.manatee_layout = s.elapsed();
-        }
-
         let projection = project_architecture_fcose_result(&plan, &mut nodes, result);
         fcose_compound_bounds = projection.compound_bounds;
         fcose_debug_stages = projection.debug_stages;
@@ -1567,7 +1498,6 @@ fn layout_architecture_diagram_model(
         font_family.as_str(),
     );
 
-    let build_edges_start = timing_enabled.then(web_time::Instant::now);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len());
     for n in &nodes {
@@ -1745,34 +1675,7 @@ fn layout_architecture_diagram_model(
             stroke_dasharray: None,
         });
     }
-    if let Some(s) = build_edges_start {
-        timings.build_edges = s.elapsed();
-    }
-
-    let bounds_start = timing_enabled.then(web_time::Instant::now);
     let bounds = compute_bounds(&nodes, &edges);
-    if let Some(s) = bounds_start {
-        timings.bounds = s.elapsed();
-    }
-
-    if let Some(s) = total_start {
-        timings.total = s.elapsed();
-        eprintln!(
-            "[layout-timing] diagram=architecture total={:?} adjacency={:?} positions={:?} emit_nodes={:?} manatee_prepare={:?} manatee_layout={:?} build_edges={:?} bounds={:?} nodes={} edges={} groups={} use_manatee_layout={}",
-            timings.total,
-            timings.build_adjacency_and_components,
-            timings.positions_and_centering,
-            timings.emit_nodes,
-            timings.manatee_prepare,
-            timings.manatee_layout,
-            timings.build_edges,
-            timings.bounds,
-            nodes.len(),
-            edges.len(),
-            model.groups.len(),
-            use_manatee_layout,
-        );
-    }
 
     Ok(ArchitectureDiagramLayout {
         nodes,
@@ -1872,8 +1775,6 @@ mod tests {
         let plan = build_test_plan(&model, &layout_nodes, &node_bounds_extras);
 
         assert_eq!(plan.node_ids, vec!["api", "db"]);
-        assert_eq!(plan.node_index_by_id.get("api"), Some(&0));
-        assert_eq!(plan.node_index_by_id.get("db"), Some(&1));
         assert_eq!(plan.graph.nodes.len(), 2);
         assert_eq!(plan.graph.nodes[0].width, 80.0);
         assert_eq!(plan.graph.nodes[0].height, 80.0);
@@ -1944,7 +1845,7 @@ mod tests {
         assert_eq!(super::js_to_uint32(4_294_967_297.0), 1);
         let wraps_to_zero = serde_json::json!(4_294_967_296.0);
         assert_eq!(
-            super::architecture_seed_policy(Some(&wraps_to_zero)).seed(),
+            super::architecture_seed_policy(Some(&wraps_to_zero), 77).seed(),
             Some(0),
             "JavaScript checks seed === 0 before coercing the enabled seed with >>> 0"
         );
@@ -1955,10 +1856,10 @@ mod tests {
         let number_zero = serde_json::json!(0);
         let string_zero = serde_json::json!("0");
 
-        let number_policy = super::architecture_seed_policy(Some(&number_zero));
-        let string_policy = super::architecture_seed_policy(Some(&string_zero));
+        let number_policy = super::architecture_seed_policy(Some(&number_zero), 77);
+        let string_policy = super::architecture_seed_policy(Some(&string_zero), 77);
 
-        assert_eq!(number_policy.seed(), None);
+        assert_eq!(number_policy.seed(), Some(77));
         assert_eq!(string_policy.seed(), Some(0));
         assert_eq!(
             string_policy.source(),

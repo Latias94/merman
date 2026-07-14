@@ -17,6 +17,7 @@ export 'src/merman_ffi.dart'
         MermanTextDirection,
         MermanTextMeasureRequest,
         MermanTextMeasureResult,
+        MermanTextMeasurementPhase,
         MermanTextMeasurer,
         MermanTextWhiteSpace,
         MermanTextWrapMode,

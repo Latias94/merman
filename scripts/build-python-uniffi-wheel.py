@@ -32,7 +32,7 @@ class Measurer(merman.MermanTextMeasurer):
 
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+assert engine.abi_version() == 3
 assert engine.package_version()
 source = "flowchart TD\\nA[Hello] --> B[World]"
 assert "Hello" in engine.render_svg(source, None)
@@ -102,17 +102,18 @@ assert setter_measurer.calls == calls_after_set
 
 
 class FailingMeasurer(merman.MermanTextMeasurer):
+    def __init__(self):
+        self.calls = 0
+
     def measure(self, request):
+        self.calls += 1
         raise RuntimeError("host measurer failed")
 
 
-failing = engine.reusable_engine_with_text_measurer(None, FailingMeasurer())
-try:
-    failing.render_svg(source)
-except merman.MermanError.Binding as error:
-    assert "host measurer failed" in error.message
-else:
-    raise AssertionError("expected host text measurer callback failure")
+failing_measurer = FailingMeasurer()
+failing = engine.reusable_engine_with_text_measurer(None, failing_measurer)
+assert failing.render_svg(source).startswith("<svg")
+assert failing_measurer.calls > 0
 failing.set_text_measurer(Measurer())
 assert failing.render_svg(source).startswith("<svg")
 print("python wheel smoke passed")

@@ -7,7 +7,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     layout: &EventModelingDiagramLayout,
     _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("eventmodeling");
     let theme = PresentationTheme::new(effective_config).eventmodeling();
@@ -21,7 +21,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     let mut fixed_width = fmt_string(layout.total_width);
     let mut fixed_height = fmt_string(layout.total_height);
     let mut max_width = fmt_string(layout.total_width);
-    if options.apply_root_overrides {
+    if options.root_viewport_override_policy().applies_generated() {
         apply_root_viewport_override(
             diagram_id,
             &mut viewbox_attr,

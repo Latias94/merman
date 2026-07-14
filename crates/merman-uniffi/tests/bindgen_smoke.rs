@@ -75,6 +75,10 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose MermanTextMeasureResult"
     );
     assert!(
+        generated.contains("class MermanTextMeasurementPhase"),
+        "generated binding should expose MermanTextMeasurementPhase"
+    );
+    assert!(
         generated.contains("class MermanTextWrapMode"),
         "generated binding should expose MermanTextWrapMode"
     );
@@ -213,6 +217,7 @@ from .merman_uniffi import (
     MermanTextDirection,
     MermanTextMeasureRequest,
     MermanTextMeasureResult,
+    MermanTextMeasurementPhase,
     MermanTextMeasurer,
     MermanTextWhiteSpace,
     MermanTextWrapMode,
@@ -230,6 +235,7 @@ __all__ = [
     "MermanTextDirection",
     "MermanTextMeasureRequest",
     "MermanTextMeasureResult",
+    "MermanTextMeasurementPhase",
     "MermanTextMeasurer",
     "MermanTextWhiteSpace",
     "MermanTextWrapMode",
@@ -244,7 +250,7 @@ from dataclasses import dataclass
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+assert engine.abi_version() == 3
 assert engine.package_version()
 source = "flowchart TD\nA[Hello] --> B[World]"
 
@@ -328,9 +334,14 @@ assert all(rule.configurable for rule in engine.configurable_lint_rule_catalog()
 @dataclass
 class Measurer(merman.MermanTextMeasurer):
     calls: int = 0
+    phases: set = None
+
+    def __post_init__(self):
+        self.phases = set()
 
     def measure(self, request):
         self.calls += 1
+        self.phases.add(request.phase)
         return merman.MermanTextMeasureResult(
             width=max(len(request.text) * 8.0, 1.0),
             height=max(request.line_height, 1.0),
@@ -342,6 +353,7 @@ measurer = Measurer()
 reusable = engine.reusable_engine_with_text_measurer(None, measurer)
 assert "Hello" in reusable.render_svg(source)
 assert measurer.calls > 0
+assert len(measurer.phases) >= 2
 
 setter_measurer = Measurer()
 reusable = engine.reusable_engine(None)

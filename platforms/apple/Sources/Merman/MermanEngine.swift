@@ -114,7 +114,7 @@ private struct MermanLintRuleCatalogResponse: Decodable {
 }
 
 public final class MermanEngine {
-    public static let abiVersion: UInt32 = 2
+    public static let abiVersion: UInt32 = 3
     private static let okCode: Int32 = 0
 
     public let packageVersion: String

@@ -4,7 +4,7 @@ pub(crate) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
     _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let render_settings = crate::sankey::SankeyConfigView::new(effective_config).render_settings();
     let use_max_width = render_settings.use_max_width;
@@ -65,14 +65,16 @@ pub(crate) fn render_sankey_diagram_svg(
     let mut viewbox_attr = format!("{} {} {} {}", fmt(min_x), fmt(min_y), fmt(vb_w), fmt(vb_h));
     let mut w_attr = fmt_string(vb_w);
     let mut h_attr = fmt_string(vb_h);
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_attr,
-        crate::generated::sankey_root_overrides_11_12_2::lookup_sankey_root_viewport_override,
-    );
+    if options.root_viewport_override_policy().applies_generated() {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut viewbox_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_attr,
+            crate::generated::sankey_root_overrides_11_12_2::lookup_sankey_root_viewport_override,
+        );
+    }
 
     let mut out = String::new();
     if use_max_width {

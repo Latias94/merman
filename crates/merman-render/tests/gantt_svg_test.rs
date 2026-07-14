@@ -1,25 +1,37 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::{RenderEnvironment, RenderTimeSnapshot};
 use merman_render::model::{LayoutDiagram, LayoutedDiagram};
 use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn layout_gantt_from_text(text: &str) -> LayoutedDiagram {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
-    layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok")
+    layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok")
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {
-    let out = layout_gantt_from_text(text);
+    let session = RenderEnvironment::parity()
+        .with_time_snapshot(
+            RenderTimeSnapshot::from_unix_millis(1_704_067_200_000, 0)
+                .expect("valid fixed UTC instant"),
+        )
+        .begin_session()
+        .expect("begin render session");
+    let parsed =
+        futures::executor::block_on(Engine::new().parse_diagram(text, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
     render_layouted_svg(
         &out,
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("gantt-config".to_string()),
-            now_ms_override: Some(1_704_067_200_000),
             ..SvgRenderOptions::default()
         },
     )

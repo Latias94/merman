@@ -233,14 +233,21 @@ mod tests {
     use super::*;
     use crate::svg::pipeline::SvgPipeline;
 
+    fn render_session() -> crate::environment::RenderSession {
+        crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap()
+    }
+
     #[test]
     fn scoped_css_injects_after_root_svg_tag_when_no_style_exists() {
         let svg = r#"<svg id="diagram"><rect class="node"/></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(
                 ".node rect, text.label { fill: red; }",
             ))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(out.starts_with(r#"<svg id="diagram"><style"#));
@@ -251,9 +258,10 @@ mod tests {
     fn scoped_css_injects_after_existing_style_for_cascade_order() {
         let svg =
             r#"<svg id="diagram"><style>#diagram .node rect { fill: red; }</style><g/></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(".node rect { fill: green; }"))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         let existing = out.find("fill: red").unwrap();
@@ -267,11 +275,12 @@ mod tests {
     #[test]
     fn scoped_css_can_merge_into_mermaid_generated_stylesheet() {
         let svg = r#"<svg id="diagram"><style>#diagram{fill:red;}</style><g/></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(
                 ScopedCssPostprocessor::new(".node { fill: green; }").with_existing_style_merge(),
             )
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert_eq!(out.matches("<style").count(), 1);
@@ -282,11 +291,12 @@ mod tests {
     #[test]
     fn scoped_css_merge_targets_mermaids_first_global_stylesheet() {
         let svg = r#"<svg id="diagram"><style>.global{fill:red;}</style><g><style>.nested{fill:blue;}</style></g></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(
                 ScopedCssPostprocessor::new(".node { fill: green; }").with_existing_style_merge(),
             )
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(out.contains(".global{fill:red;}#diagram .node { fill: green; }</style>"));
@@ -296,12 +306,13 @@ mod tests {
     #[test]
     fn scoped_css_can_strip_existing_important_before_injection() {
         let svg = r#"<svg id="diagram"><style>.node{fill:red !important;}</style></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(
                 ScopedCssPostprocessor::new(".node { fill: green; }")
                     .with_override_policy(CssOverridePolicy::StripExistingImportant),
             )
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(!out.contains("!important"));
@@ -311,11 +322,12 @@ mod tests {
     #[test]
     fn scoped_css_matches_mermaid_ampersand_selector_namespace() {
         let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(
                 ":not(&){background:green !important}",
             ))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(out.contains("#diagram :not(#diagram) {background:green !important}"));
@@ -324,11 +336,12 @@ mod tests {
     #[test]
     fn scoped_css_scopes_nested_grouping_at_rules_and_drops_unsupported_rules() {
         let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(
                 "@import url('https://example.test/styles.css'); @media (max-width: 600px) { * { fill: red; } } @supports selector(h2 > p) { h2 > p { color: red; } }",
             ))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(!out.contains("@import"));
@@ -341,11 +354,12 @@ mod tests {
     #[test]
     fn scoped_css_keeps_keyframes_unscoped_like_mermaid() {
         let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(
                 "@keyframes dash { to { stroke-dashoffset: 1000; } } .edge { animation: dash 1s; }",
             ))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(out.contains("@keyframes dash { to { stroke-dashoffset: 1000; } }"));
@@ -355,9 +369,10 @@ mod tests {
     #[test]
     fn scoped_css_decodes_mermaid_hash_placeholders_as_css_hashes() {
         let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
         let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(".node { fill: ﬂ°°123456¶ß }"))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(out.contains("#diagram .node { fill: #123456; }"));

@@ -13,12 +13,15 @@ fn render_state_svg_from_text(text: &str) -> String {
 }
 
 fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
     let LayoutDiagram::StateDiagramV2(layout) = &out.layout else {
         panic!("expected StateDiagramV2 layout");
     };
@@ -28,7 +31,7 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
@@ -36,13 +39,16 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
 
 #[test]
 fn state_svg_preserves_incomplete_self_loop_helper_segments() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let text = "stateDiagram-v2\nA --> A: again\n";
     let parsed =
         futures::executor::block_on(Engine::new().parse_diagram(text, ParseOptions::default()))
             .expect("parse ok")
             .expect("diagram detected");
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
     let LayoutDiagram::StateDiagramV2(mut layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
     };
@@ -68,7 +74,7 @@ fn state_svg_preserves_incomplete_self_loop_helper_segments() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -112,13 +118,16 @@ note right of Idle : seeded note"#
 
 #[test]
 fn state_debug_svg_includes_cluster_positioning_metadata() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let text = "stateDiagram-v2\n[*] --> Active\nstate Active {\n  direction TB\n  Idle --> Idle: LOG\n}\n";
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::StateDiagramV2(layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
     };

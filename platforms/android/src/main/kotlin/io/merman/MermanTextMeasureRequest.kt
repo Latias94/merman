@@ -13,4 +13,5 @@ data class MermanTextMeasureRequest(
     val wrapMode: Int,
     val direction: Int,
     val whiteSpace: Int,
+    val phase: Int,
 )

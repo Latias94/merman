@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define MERMAN_ABI_VERSION 2
+#define MERMAN_ABI_VERSION 3
 
 enum {
     MERMAN_OK = 0,
@@ -30,6 +30,14 @@ enum {
     MERMAN_PANIC = 8,
     MERMAN_INTERNAL_ERROR = 9,
     MERMAN_RESOURCE_LIMIT_EXCEEDED = 10
+};
+
+enum {
+    MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT = 0,
+    MERMAN_TEXT_MEASUREMENT_PHASE_WRAP = 1,
+    MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX = 2,
+    MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH = 3,
+    MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY = 4
 };
 
 typedef struct MermanBuffer {
@@ -87,6 +95,7 @@ typedef struct MermanHostTextMeasureRequest {
     int32_t direction;
     int32_t white_space;
     uint8_t has_max_width;
+    int32_t phase;
 } MermanHostTextMeasureRequest;
 
 typedef struct MermanHostTextMeasureResult {

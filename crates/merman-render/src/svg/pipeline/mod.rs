@@ -11,6 +11,7 @@ pub use builtin::{
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
 pub use preset::{SvgPipelinePreset, resvg_safe_svg};
 
+use crate::environment::RenderSession;
 use crate::{Error, Result};
 use std::borrow::Cow;
 use std::fmt;
@@ -97,21 +98,27 @@ impl SvgPipeline {
         self.postprocessors.push(Arc::new(postprocessor));
     }
 
-    pub fn process<'a>(&self, svg: &'a str) -> Result<Cow<'a, str>> {
+    pub fn process<'a>(&self, svg: &'a str, session: &RenderSession) -> Result<Cow<'a, str>> {
         let metadata = SvgPostprocessMetadata::from_svg(svg);
-        self.process_with_metadata(svg, &metadata)
+        self.process_with_metadata(svg, &metadata, session)
     }
 
     pub fn process_with_metadata<'a>(
         &self,
         svg: &'a str,
         metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
     ) -> Result<Cow<'a, str>> {
-        let mut current = preset::apply_preset(self.preset, svg);
+        let mut current = preset::apply_preset(self.preset, svg, session);
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
-            let ctx =
-                SvgPostprocessContext::new(self.preset, index, postprocessor.name(), metadata);
+            let ctx = SvgPostprocessContext::new(
+                self.preset,
+                index,
+                postprocessor.name(),
+                metadata,
+                session,
+            );
             current = postprocessor
                 .process(current, &ctx)
                 .map_err(|err| Error::svg_postprocess(postprocessor.name(), err.to_string()))?;
@@ -120,16 +127,19 @@ impl SvgPipeline {
         Ok(current)
     }
 
-    pub fn process_to_string(&self, svg: &str) -> Result<String> {
-        Ok(self.process(svg)?.into_owned())
+    pub fn process_to_string(&self, svg: &str, session: &RenderSession) -> Result<String> {
+        Ok(self.process(svg, session)?.into_owned())
     }
 
     pub fn process_to_string_with_metadata(
         &self,
         svg: &str,
         metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
     ) -> Result<String> {
-        Ok(self.process_with_metadata(svg, metadata)?.into_owned())
+        Ok(self
+            .process_with_metadata(svg, metadata, session)?
+            .into_owned())
     }
 }
 
@@ -137,10 +147,17 @@ impl SvgPipeline {
 mod tests {
     use super::*;
 
+    fn render_session() -> RenderSession {
+        crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap()
+    }
+
     #[test]
     fn parity_pipeline_preserves_svg_exactly() {
         let svg = r#"<svg><style>@keyframes a{to{opacity:1}}</style><rect width="10"/></svg>"#;
-        let out = SvgPipeline::parity().process(svg).unwrap();
+        let session = render_session();
+        let out = SvgPipeline::parity().process(svg, &session).unwrap();
         assert!(matches!(out, Cow::Borrowed(_)));
         assert_eq!(out, svg);
     }
@@ -148,9 +165,13 @@ mod tests {
     #[test]
     fn readable_pipeline_matches_foreign_object_fallback() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><g transform="translate(10,20)"><foreignObject width="80" height="48"><div xmlns="http://www.w3.org/1999/xhtml"><p>Layer 7\nHTTP</p></div></foreignObject></g></svg>"#;
+        let session = render_session();
+        let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Wrap);
 
-        let expected = super::builtin::foreign_object::foreign_object_fallback_svg(svg);
-        let out = SvgPipeline::readable().process_to_string(svg).unwrap();
+        let expected = super::builtin::foreign_object::foreign_object_fallback_svg(svg, &measurer);
+        let out = SvgPipeline::readable()
+            .process_to_string(svg, &session)
+            .unwrap();
 
         assert_eq!(out, expected);
         assert!(out.contains(">Layer 7</text>"));
@@ -160,8 +181,11 @@ mod tests {
     #[test]
     fn resvg_safe_pipeline_strips_generic_raster_hazards() {
         let svg = r#"<svg id="test" xmlns="http://www.w3.org/2000/svg"><style type="text/css">@keyframes bounce { 0% { transform: scale(1); } 100% { transform: scale(1.1); } } #test :root { --bg: white; } .node rect { animation: dash 1s linear; transform: rotate(45deg); fill: red; }</style><g transform="translate(undefined,NaN)"><foreignObject width="10" height="10"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello</p></div></foreignObject><rect width="10px" height="12px" stroke="" style="fill: ; stroke: #333; transform: rotate(45deg); animation: dash 1s;"/><rect width="10px" height="" fill="hsl(240, 100%, NaN%)"/></g></svg>"#;
+        let session = render_session();
 
-        let out = SvgPipeline::resvg_safe().process_to_string(svg).unwrap();
+        let out = SvgPipeline::resvg_safe()
+            .process_to_string(svg, &session)
+            .unwrap();
 
         assert!(!out.contains("<foreignObject"));
         assert!(!out.contains("@keyframes"));
@@ -210,8 +234,9 @@ mod tests {
         let pipeline = SvgPipeline::readable()
             .with_postprocessor(AppendPass("first"))
             .with_postprocessor(AppendPass("second"));
+        let session = render_session();
 
-        let out = pipeline.process_to_string(svg).unwrap();
+        let out = pipeline.process_to_string(svg, &session).unwrap();
 
         let fallback = out.find("data-merman-foreignobject").unwrap();
         let first = out.find("<!--0:first:Readable").unwrap();
@@ -227,9 +252,10 @@ mod tests {
             .with_diagram_type("flowchart-v2")
             .with_diagram_title("Host Diagram");
         let pipeline = SvgPipeline::parity().with_postprocessor(AppendPass("meta"));
+        let session = render_session();
 
         let out = pipeline
-            .process_to_string_with_metadata(svg, &metadata)
+            .process_to_string_with_metadata(svg, &metadata, &session)
             .unwrap();
 
         assert!(out.contains("<!--0:meta:Parity:flowchart-v2:Host Diagram:host-diagram-->"));
@@ -255,9 +281,10 @@ mod tests {
 
     #[test]
     fn custom_postprocessor_errors_surface_with_pass_name() {
+        let session = render_session();
         let err = SvgPipeline::parity()
             .with_postprocessor(ErrorPass)
-            .process_to_string("<svg/>")
+            .process_to_string("<svg/>", &session)
             .unwrap_err();
 
         let message = err.to_string();

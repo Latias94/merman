@@ -7,15 +7,13 @@
 
 use merman_bindings_core::{BindingEngine, BindingError, BindingStatus};
 #[cfg(feature = "render")]
-use merman_bindings_core::{TextMeasurer as CoreTextMeasurer, VendoredFontMetricsTextMeasurer};
+use merman_bindings_core::{HostTextMeasurementError, HostTextMeasurer};
 use serde_json::Value;
-#[cfg(feature = "render")]
-use std::cell::RefCell;
 #[cfg(feature = "render")]
 use std::sync::Mutex;
 use std::sync::{Arc, OnceLock, RwLock};
 
-pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 2;
+pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 3;
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -121,11 +119,6 @@ impl Drop for ReusableCallbackGuard {
 }
 
 #[cfg(feature = "render")]
-thread_local! {
-    static HOST_TEXT_MEASURE_ERROR: RefCell<Option<MermanError>> = const { RefCell::new(None) };
-}
-
-#[cfg(feature = "render")]
 impl ReusableRenderGuard {
     fn enter(gate: &Arc<Mutex<ReusableRenderGate>>) -> Result<Self, MermanError> {
         let mut state = gate
@@ -168,28 +161,6 @@ impl ReusableCallbackGuard {
             gate: Arc::clone(gate),
         })
     }
-}
-
-#[cfg(feature = "render")]
-fn clear_host_text_measure_error() {
-    HOST_TEXT_MEASURE_ERROR.with(|slot| {
-        *slot.borrow_mut() = None;
-    });
-}
-
-#[cfg(feature = "render")]
-fn record_host_text_measure_error(error: MermanError) {
-    HOST_TEXT_MEASURE_ERROR.with(|slot| {
-        let mut current = slot.borrow_mut();
-        if current.is_none() {
-            *current = Some(error);
-        }
-    });
-}
-
-#[cfg(feature = "render")]
-fn take_host_text_measure_error() -> Option<MermanError> {
-    HOST_TEXT_MEASURE_ERROR.with(|slot| slot.borrow_mut().take())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -262,8 +233,18 @@ pub enum MermanTextWhiteSpace {
     PreWrap,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MermanTextMeasurementPhase {
+    Layout,
+    Wrap,
+    SvgBBox,
+    ComputedLength,
+    Visibility,
+}
+
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct MermanTextMeasureRequest {
+    pub phase: MermanTextMeasurementPhase,
     pub text: String,
     pub font_family: Option<String>,
     pub font_size: f64,
@@ -297,7 +278,6 @@ pub trait MermanTextMeasurer: Send + Sync {
 #[cfg(feature = "render")]
 struct UniffiHostTextMeasurer {
     callback: Arc<dyn MermanTextMeasurer>,
-    fallback: VendoredFontMetricsTextMeasurer,
     render_gate: Arc<Mutex<ReusableRenderGate>>,
 }
 
@@ -309,26 +289,22 @@ impl UniffiHostTextMeasurer {
     ) -> Self {
         Self {
             callback,
-            fallback: VendoredFontMetricsTextMeasurer::default(),
             render_gate,
         }
     }
 
     fn call_host(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> Option<merman_bindings_core::TextMetrics> {
-        let _callback_guard = match ReusableCallbackGuard::enter(&self.render_gate) {
-            Ok(guard) => guard,
-            Err(error) => {
-                record_host_text_measure_error(error);
-                return None;
-            }
-        };
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        let _callback_guard = ReusableCallbackGuard::enter(&self.render_gate)
+            .map_err(|error| HostTextMeasurementError::new(error.to_string()))?;
         let result = match self.callback.measure(MermanTextMeasureRequest {
+            phase: uniffi_measurement_phase(phase),
             text: text.to_string(),
             font_family: style.font_family.clone(),
             font_size: style.font_size,
@@ -343,15 +319,14 @@ impl UniffiHostTextMeasurer {
             white_space: uniffi_white_space(max_width, wrap_mode),
         }) {
             Ok(Some(result)) => result,
-            Ok(None) => return None,
-            Err(error) => {
-                record_host_text_measure_error(error);
-                return None;
-            }
+            Ok(None) => return Ok(None),
+            Err(error) => return Err(HostTextMeasurementError::new(error.to_string())),
         };
 
         let Ok(line_count) = usize::try_from(result.line_count) else {
-            return None;
+            return Err(HostTextMeasurementError::new(
+                "host text measurer returned an out-of-range line_count",
+            ));
         };
         if !result.width.is_finite()
             || !result.height.is_finite()
@@ -359,81 +334,93 @@ impl UniffiHostTextMeasurer {
             || result.height < 0.0
             || line_count == 0
         {
-            return None;
+            return Err(HostTextMeasurementError::new(
+                "host text measurer returned invalid metrics",
+            ));
         }
 
-        Some(merman_bindings_core::TextMetrics {
+        Ok(Some(merman_bindings_core::TextMetrics {
             width: result.width,
             height: result.height,
             line_count,
-        })
-    }
-
-    fn measure_with_fallback(
-        &self,
-        text: &str,
-        style: &merman_bindings_core::TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, max_width, wrap_mode)
-            .unwrap_or_else(|| {
-                self.fallback
-                    .measure_wrapped(text, style, max_width, wrap_mode)
-            })
+        }))
     }
 }
 
 #[cfg(feature = "render")]
-impl CoreTextMeasurer for UniffiHostTextMeasurer {
+impl HostTextMeasurer for UniffiHostTextMeasurer {
     fn measure(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, None, merman_bindings_core::WrapMode::SvgLike)
-            .unwrap_or_else(|| self.fallback.measure(text, style))
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(
+            phase,
+            text,
+            style,
+            None,
+            merman_bindings_core::WrapMode::SvgLike,
+        )
     }
 
     fn measure_wrapped(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.measure_with_fallback(text, style, max_width, wrap_mode)
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(phase, text, style, max_width, wrap_mode)
     }
 
     fn measure_wrapped_with_raw_width(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> (merman_bindings_core::TextMetrics, Option<f64>) {
-        if let Some(metrics) = self.call_host(text, style, max_width, wrap_mode) {
+    ) -> merman_bindings_core::HostMeasurementResult<(merman_bindings_core::TextMetrics, Option<f64>)>
+    {
+        if let Some(metrics) = self.call_host(phase, text, style, max_width, wrap_mode)? {
             let raw_width = max_width
-                .and_then(|_| self.call_host(text, style, None, wrap_mode))
+                .map(|_| self.call_host(phase, text, style, None, wrap_mode))
+                .transpose()?
+                .flatten()
                 .map(|raw| raw.width);
-            return (metrics, raw_width);
+            return Ok(Some((metrics, raw_width)));
         }
-        self.fallback
-            .measure_wrapped_with_raw_width(text, style, max_width, wrap_mode)
+        Ok(None)
     }
 
     fn measure_wrapped_raw(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, max_width, wrap_mode)
-            .unwrap_or_else(|| {
-                self.fallback
-                    .measure_wrapped_raw(text, style, max_width, wrap_mode)
-            })
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(phase, text, style, max_width, wrap_mode)
+    }
+}
+
+#[cfg(feature = "render")]
+fn uniffi_measurement_phase(
+    phase: merman_bindings_core::TextMeasurementPhase,
+) -> MermanTextMeasurementPhase {
+    match phase {
+        merman_bindings_core::TextMeasurementPhase::Layout => MermanTextMeasurementPhase::Layout,
+        merman_bindings_core::TextMeasurementPhase::Wrap => MermanTextMeasurementPhase::Wrap,
+        merman_bindings_core::TextMeasurementPhase::SvgBBox => MermanTextMeasurementPhase::SvgBBox,
+        merman_bindings_core::TextMeasurementPhase::ComputedLength => {
+            MermanTextMeasurementPhase::ComputedLength
+        }
+        merman_bindings_core::TextMeasurementPhase::Visibility => {
+            MermanTextMeasurementPhase::Visibility
+        }
     }
 }
 
@@ -794,7 +781,7 @@ impl MermanReusableEngine {
             measurer,
             Arc::clone(&render_gate),
         ));
-        let inner = base.with_text_measurer(host_text_measurer.clone());
+        let inner = base.with_host_text_measurer(host_text_measurer.clone());
         Ok(Arc::new(Self {
             base,
             render_gate,
@@ -810,7 +797,7 @@ impl MermanReusableEngine {
             measurer,
             Arc::clone(&self.render_gate),
         ));
-        self.replace_render_inner(self.base.with_text_measurer(host_text_measurer))
+        self.replace_render_inner(self.base.with_host_text_measurer(host_text_measurer))
     }
 
     pub fn clear_text_measurer(&self) -> Result<(), MermanError> {
@@ -854,14 +841,7 @@ impl MermanReusableEngine {
     ) -> Result<T, MermanError> {
         let _reentry_guard = self.enter_render_call()?;
         let inner = self.current_inner()?;
-        clear_host_text_measure_error();
-
-        let output = run(inner);
-
-        if let Some(error) = take_host_text_measure_error() {
-            return Err(error);
-        }
-        output
+        run(inner)
     }
 
     #[cfg(feature = "render")]
@@ -1217,7 +1197,7 @@ mod tests {
                 "flowchart TD\nA[Hello]".to_string(),
                 Some(
                     r#"{
-                        "layout": { "text_measurer": "deterministic" },
+                        "environment": { "text_measurement": "deterministic" },
                         "svg": { "diagram_id": "uniffi diagram", "pipeline": "readable" }
                     }"#
                     .to_string(),
@@ -1397,7 +1377,7 @@ mod tests {
     fn reusable_engine_reuses_options() {
         let reusable = MermanReusableEngine::new(Some(
             r#"{
-                "layout": { "text_measurer": "deterministic" },
+                "environment": { "text_measurement": "deterministic" },
                 "svg": { "diagram_id": "uniffi reusable", "pipeline": "readable" }
             }"#
             .to_string(),
@@ -1473,35 +1453,30 @@ mod tests {
 
     #[cfg(feature = "render")]
     #[test]
-    fn reusable_engine_returns_host_text_measurer_errors() {
+    fn reusable_engine_falls_back_when_host_text_measurer_errors() {
         let measurer = FailingTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
 
-        let err = reusable
+        let svg = reusable
             .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
-            .unwrap_err();
+            .unwrap();
 
-        let message = match err {
-            MermanError::Binding { message, .. } => message,
-        };
-        assert!(message.contains("test host measurer failed"));
+        assert!(svg.contains("<svg"));
         assert!(measurer.calls() > 0);
     }
 
     #[cfg(feature = "render")]
     #[test]
-    fn reusable_engine_returns_host_text_measurer_errors_from_layout_json() {
+    fn reusable_engine_layout_falls_back_when_host_text_measurer_errors() {
         let measurer = FailingTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
 
-        let err = reusable
+        let layout = reusable
             .layout_json("flowchart TD\nA[Measured label] --> B[Done]".to_string())
-            .unwrap_err();
+            .unwrap();
 
-        let message = match err {
-            MermanError::Binding { message, .. } => message,
-        };
-        assert!(message.contains("test host measurer failed"));
+        let layout: Value = serde_json::from_str(&layout).unwrap();
+        assert!(layout.get("layout").is_some());
         assert!(measurer.calls() > 0);
     }
 
@@ -1550,11 +1525,8 @@ mod tests {
 
         failing_measurer.release();
 
-        let err = render_handle.join().unwrap().unwrap_err();
-        let message = match err {
-            MermanError::Binding { message, .. } => message,
-        };
-        assert!(message.contains("blocked host measurer failed"));
+        let svg = render_handle.join().unwrap().unwrap();
+        assert!(svg.contains("<svg"));
 
         reusable
             .set_text_measurer(MissingTextMeasurer::new())
@@ -1567,36 +1539,30 @@ mod tests {
 
     #[cfg(feature = "render")]
     #[test]
-    fn reusable_engine_rejects_reentrant_host_text_measurer_calls() {
+    fn reusable_engine_falls_back_after_reentrant_host_mutation_is_rejected() {
         let measurer = ReentrantTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
         measurer.set_engine(reusable.clone());
 
-        let err = reusable
+        let svg = reusable
             .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
-            .unwrap_err();
+            .unwrap();
 
-        let message = match err {
-            MermanError::Binding { message, .. } => message,
-        };
-        assert!(message.contains("reentrant reusable engine render call"));
+        assert!(svg.contains("<svg"));
     }
 
     #[cfg(feature = "render")]
     #[test]
-    fn reusable_engine_rejects_cross_thread_reentrant_host_text_measurer_calls() {
+    fn reusable_engine_falls_back_after_cross_thread_reentrant_mutation_is_rejected() {
         let measurer = CrossThreadReentrantTextMeasurer::new();
         let reusable = MermanReusableEngine::with_text_measurer(None, measurer.clone()).unwrap();
         measurer.set_engine(reusable.clone());
 
-        let err = reusable
+        let svg = reusable
             .render_svg("flowchart TD\nA[Measured label] --> B[Done]".to_string())
-            .unwrap_err();
+            .unwrap();
 
-        let message = match err {
-            MermanError::Binding { message, .. } => message,
-        };
-        assert!(message.contains("reentrant reusable engine render call"));
+        assert!(svg.contains("<svg"));
     }
 
     #[cfg(feature = "render")]

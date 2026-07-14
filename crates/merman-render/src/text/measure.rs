@@ -1,14 +1,21 @@
-//! Text measurement trait shared by renderers and wrapping helpers.
+//! Infallible text measurement trait shared by renderers and wrapping helpers.
 //!
 //! Headless Mermaid layout has to size labels before there is a browser DOM. The built-in
 //! measurers are therefore compatibility profiles, not a promise that every host browser will pick
-//! the same font fallback at display time. Hosts that already own a text stack can implement this
-//! trait and pass it through `LayoutOptions::with_text_measurer` or
-//! `merman::render::HeadlessRenderer::with_text_measurer`.
+//! the same font fallback at display time. Hosts with a complete, infallible text stack can
+//! implement this trait, wrap it in a [`crate::environment::TextMeasurementProfile`], and install
+//! a [`crate::environment::TextMeasurementPolicy`] on the operation-owned
+//! [`crate::environment::RenderEnvironment`]. Fallible host callbacks should implement
+//! [`crate::environment::HostTextMeasurer`] instead; the environment's phase policy owns their
+//! vendored fallback and records its provenance.
 
 use super::{TextMetrics, TextStyle, WrapMode};
 
 /// Measures label text for layout decisions.
+///
+/// This trait is deliberately infallible. Implementations must not call a host and silently choose
+/// their own fallback; that would bypass the operation's phase routing. Use
+/// [`crate::environment::HostTextMeasurer`] for host callbacks that can decline or fail.
 ///
 /// `TextMeasurer` is the extension point for editors and other hosts that need layout to match
 /// their own font system. Implementations should cache aggressively: flowchart/class/sequence

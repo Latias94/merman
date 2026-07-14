@@ -584,7 +584,7 @@ pub(crate) fn render_mindmap_diagram_svg(
     layout: &MindmapDiagramLayout,
     semantic: &serde_json::Value,
     _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
         crate::json::from_value_ref(semantic)?;
@@ -595,7 +595,7 @@ pub(crate) fn render_mindmap_diagram_svg_with_config(
     layout: &MindmapDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &merman_core::MermaidConfig,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
         { crate::json::from_value_ref(semantic)? };
@@ -606,7 +606,7 @@ pub(crate) fn render_mindmap_diagram_svg_model(
     layout: &MindmapDiagramLayout,
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
     _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let config = merman_core::MermaidConfig::from_value(_effective_config.clone());
     render_mindmap_diagram_svg_model_with_config(layout, model, &config, options)
@@ -616,9 +616,9 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
     config: &merman_core::MermaidConfig,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
+    let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = super::super::timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
     fn section<'a>(
@@ -995,14 +995,16 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let mut max_w_attr = fmt_max_width_px(vw);
     let mut w_attr = fmt_string(vw);
     let mut h_attr = fmt_string(vh);
-    apply_root_viewport_override(
-        diagram_id,
-        &mut view_box_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_attr,
-        crate::generated::mindmap_root_overrides_11_12_2::lookup_mindmap_root_viewport_override,
-    );
+    if options.root_viewport_override_policy().applies_generated() {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut view_box_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_attr,
+            crate::generated::mindmap_root_overrides_11_12_2::lookup_mindmap_root_viewport_override,
+        );
+    }
 
     drop(_g_viewbox);
 

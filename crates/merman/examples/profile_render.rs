@@ -1,4 +1,6 @@
-use merman::render::{LayoutOptions, SvgRenderOptions, headless_layout_options, sanitize_svg_id};
+use merman::render::{
+    LayoutOptions, RenderEnvironment, SvgRenderOptions, headless_layout_options, sanitize_svg_id,
+};
 use merman_core::{Engine, ParseOptions};
 use std::env;
 use std::fs;
@@ -147,6 +149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Engine::new();
     let parse_options = ParseOptions::strict();
     let layout_options: LayoutOptions = headless_layout_options();
+    let environment = RenderEnvironment::parity();
     let svg_options = SvgRenderOptions {
         diagram_id: Some(diagram_id_for(&args.input, args.diagram_id.as_deref())),
         ..SvgRenderOptions::default()
@@ -161,6 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &source,
             parse_options,
             &layout_options,
+            &environment,
             duration,
             batch_size,
         )?,
@@ -169,6 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &source,
             parse_options,
             &layout_options,
+            &environment,
             &svg_options,
             duration,
             batch_size,
@@ -231,17 +236,22 @@ fn run_layout(
     source: &str,
     parse_options: ParseOptions,
     layout_options: &LayoutOptions,
+    environment: &RenderEnvironment,
     duration: Duration,
     batch_size: usize,
 ) -> Result<(u64, usize, Duration), Box<dyn std::error::Error>> {
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, parse_options)?
         .ok_or("no Mermaid diagram detected")?;
-    merman_render::layout_parsed_render_layout_only(&parsed, layout_options)?;
+    let session = environment.begin_session()?;
+    merman_render::layout_parsed_render_layout_only(&parsed, layout_options, &session)?;
 
     run_for_duration(duration, batch_size, || {
-        let layouted =
-            merman_render::layout_parsed_render_layout_only(black_box(&parsed), layout_options)?;
+        let layouted = merman_render::layout_parsed_render_layout_only(
+            black_box(&parsed),
+            layout_options,
+            &session,
+        )?;
         black_box(layouted);
         Ok(1)
     })
@@ -252,6 +262,7 @@ fn run_render(
     source: &str,
     parse_options: ParseOptions,
     layout_options: &LayoutOptions,
+    environment: &RenderEnvironment,
     svg_options: &SvgRenderOptions,
     duration: Duration,
     batch_size: usize,
@@ -259,13 +270,15 @@ fn run_render(
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, parse_options)?
         .ok_or("no Mermaid diagram detected")?;
-    let layouted = merman_render::layout_parsed_render_layout_only(&parsed, layout_options)?;
+    let session = environment.begin_session()?;
+    let layouted =
+        merman_render::layout_parsed_render_layout_only(&parsed, layout_options, &session)?;
     merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
         &layouted,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &session,
         svg_options,
     )?;
 
@@ -275,7 +288,7 @@ fn run_render(
             &parsed.model,
             &parsed.meta.effective_config,
             parsed.meta.title.as_deref(),
-            layout_options.text_measurer.as_ref(),
+            &session,
             svg_options,
         )?;
         Ok(svg.len())

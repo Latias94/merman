@@ -58,7 +58,8 @@ Goal:
 
 Approach:
 - Focus on safe Rust + representation changes first (no unsafe in `manatee`).
-- Use timing toggles (`MANATEE_COSE_TIMING=1`, `MERMAN_MINDMAP_LAYOUT_TIMING=1`) when validating hypotheses.
+- Use Criterion or an external profiler for the full layout and `MANATEE_COSE_TIMING=1` for the
+  lower-level COSE implementation when validating hypotheses.
 - Re-run `spotcheck_2026-05-10_mindmap_architecture_canary_pipeline.md` with a longer Criterion
   preset before claiming durable layout movement.
 

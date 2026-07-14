@@ -87,7 +87,11 @@ void main(List<String> args) {
 
   final engine = merman.reusableEngine();
   try {
+    final measurementPhases = <MermanTextMeasurementPhase>{};
     engine.setTextMeasurer((request) {
+      if (request.phase != null) {
+        measurementPhases.add(request.phase!);
+      }
       if (request.text == 'Hello' &&
           request.wrapMode == MermanTextWrapMode.htmlLike) {
         return const MermanTextMeasureResult(
@@ -101,6 +105,9 @@ void main(List<String> args) {
     final measuredSvg = engine.renderSvg(source);
     if (!measuredSvg.contains('<svg') || !measuredSvg.contains('Hello')) {
       throw StateError('reusable engine SVG smoke failed');
+    }
+    if (measurementPhases.length < 2) {
+      throw StateError('text measurement phases were not observable: $measurementPhases');
     }
     final reusableDocument = engine.analyzeDocumentJson(
       documentSource,

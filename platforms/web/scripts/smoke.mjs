@@ -106,7 +106,7 @@ const deterministicTime = {
 const options = {
   ...deterministicTime,
   svg: { pipeline: "readable" },
-  layout: { text_measurer: "deterministic" },
+  environment: { text_measurement: "deterministic" },
 };
 const presetManifest = JSON.parse(
   await readFile(path.join(packageRoot, manifestRel), "utf8")
@@ -142,7 +142,7 @@ class FakeMeasureElement {
 }
 
 assert.equal(api.isMermanInitialized(), true);
-assert.equal(api.abiVersion(), 2);
+assert.equal(api.abiVersion(), 3);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 if (surfaceContract.render) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
@@ -357,7 +357,7 @@ User Testing    :c2, after c1, 5d`;
   assert.match(
     api.renderSvg(rawGantt, {
       svg: { pipeline: "readable" },
-      layout: { text_measurer: "deterministic" },
+      environment: { text_measurement: "deterministic" },
     }),
     /<svg/
   );
@@ -367,8 +367,10 @@ User Testing    :c2, after c1, 5d`;
   assert.match(svg, /Hello/);
 
   let measureCallCount = 0;
+  const measurementPhases = new Set();
   const hostTextMeasurer = (request) => {
     measureCallCount += 1;
+    measurementPhases.add(request.phase);
     return {
       width: Math.max(1, request.text.length * 8),
       height: Math.max(1, request.line_height || request.font_size),
@@ -378,6 +380,12 @@ User Testing    :c2, after c1, 5d`;
   const measuredSvg = api.renderSvgWithTextMeasurer(source, hostTextMeasurer, options);
   assert.match(measuredSvg, /<svg/);
   assert.match(measuredSvg, /Hello/);
+  assert.ok(measurementPhases.size >= 2);
+  assert.ok(
+    [...measurementPhases].every((phase) =>
+      ["layout", "wrap", "svg-bbox", "computed-length", "visibility"].includes(phase)
+    )
+  );
   assert.ok(measureCallCount > 0);
   const measuredLayout = api.layoutJsonWithTextMeasurer(source, hostTextMeasurer, options);
   assert.equal(typeof JSON.parse(measuredLayout), "object");
@@ -403,31 +411,30 @@ User Testing    :c2, after c1, 5d`;
     { width: 1, height: 1, line_count: 0 },
   ]) {
     let fallbackCallCount = 0;
-    assert.throws(
-      () =>
-        api.renderSvgWithTextMeasurer(
-          source,
-          () => {
-            fallbackCallCount += 1;
-            return invalidResult;
-          },
-          options
-        ),
-      /host text measurer returned/
+    const fallbackSvg = api.renderSvgWithTextMeasurer(
+      source,
+      () => {
+        fallbackCallCount += 1;
+        return invalidResult;
+      },
+      options
     );
+    assert.match(fallbackSvg, /<svg/);
+    assert.match(fallbackSvg, /Hello/);
     assert.ok(fallbackCallCount > 0);
   }
-  assert.throws(
-    () =>
-      api.renderSvgWithTextMeasurer(
-        source,
-        () => {
-          throw new Error("host measurer failed");
-        },
-        options
-      ),
-    /host measurer failed/
+  let throwingCallCount = 0;
+  const throwingFallbackSvg = api.renderSvgWithTextMeasurer(
+    source,
+    () => {
+      throwingCallCount += 1;
+      throw new Error("host measurer failed");
+    },
+    options
   );
+  assert.match(throwingFallbackSvg, /<svg/);
+  assert.match(throwingFallbackSvg, /Hello/);
+  assert.ok(throwingCallCount > 0);
 
   assert.equal(typeof api.parseObject(source, deterministicTime), "object");
   assert.equal(typeof api.layoutObject(source, options), "object");
@@ -775,7 +782,7 @@ async function runSameProcessSurfaceSmoke() {
     fixed_today: "2026-06-10",
     fixed_local_offset_minutes: 0,
     svg: { pipeline: "readable" },
-    layout: { text_measurer: "deterministic" },
+    environment: { text_measurement: "deterministic" },
   };
   const core = await import(toPackageSpecifier("./core"));
   const full = await import(toPackageSpecifier("./full"));

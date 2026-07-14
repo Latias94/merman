@@ -86,10 +86,6 @@ impl<'a> GroupRectComputer<'a> {
     }
 
     pub(super) fn compute(&mut self, group_id: &'a str) -> Option<Bounds> {
-        let debug_group = std::env::var("MERMAN_ARCH_DEBUG_GROUP_RECT")
-            .ok()
-            .filter(|value| !value.is_empty());
-
         enum Step<'a> {
             Enter(&'a str),
             Exit(&'a str),
@@ -117,17 +113,10 @@ impl<'a> GroupRectComputer<'a> {
                     }
                 }
                 Step::Exit(id) => {
-                    let debug_this_group = debug_group.as_deref() == Some(id);
                     let mut content: Option<Bounds> = None;
                     if let Some(svcs) = self.services_in_group.get(id) {
                         for svc_id in svcs {
                             if let Some(b) = self.service_bounds.get(svc_id) {
-                                if debug_this_group {
-                                    eprintln!(
-                                        "[arch-group-rect] group={} service={} bounds=({}, {})-({}, {})",
-                                        id, svc_id, b.min_x, b.min_y, b.max_x, b.max_y
-                                    );
-                                }
                                 let mut tmp = content;
                                 extend_bounds(&mut tmp, b.clone());
                                 content = tmp;
@@ -137,12 +126,6 @@ impl<'a> GroupRectComputer<'a> {
                     if let Some(junctions) = self.junctions_in_group.get(id) {
                         for junction_id in junctions {
                             if let Some(b) = self.junction_bounds.get(junction_id) {
-                                if debug_this_group {
-                                    eprintln!(
-                                        "[arch-group-rect] group={} junction={} bounds=({}, {})-({}, {})",
-                                        id, junction_id, b.min_x, b.min_y, b.max_x, b.max_y
-                                    );
-                                }
                                 let mut tmp = content;
                                 extend_bounds(&mut tmp, b.clone());
                                 content = tmp;
@@ -167,12 +150,6 @@ impl<'a> GroupRectComputer<'a> {
                             let Some(b) = self.group_rects.get(child).cloned() else {
                                 continue;
                             };
-                            if debug_this_group {
-                                eprintln!(
-                                    "[arch-group-rect] group={} child-group={} raw=({}, {})-({}, {})",
-                                    id, child, b.min_x, b.min_y, b.max_x, b.max_y
-                                );
-                            }
                             let b = if (b.max_x - b.min_x) > 2.0 * child_group_inset
                                 && (b.max_y - b.min_y) > 2.0 * child_group_inset
                             {
@@ -185,12 +162,6 @@ impl<'a> GroupRectComputer<'a> {
                             } else {
                                 b
                             };
-                            if debug_this_group {
-                                eprintln!(
-                                    "[arch-group-rect] group={} child-group={} inset=({}, {})-({}, {})",
-                                    id, child, b.min_x, b.min_y, b.max_x, b.max_y
-                                );
-                            }
                             let mut tmp = content;
                             extend_bounds(&mut tmp, b);
                             content = tmp;
@@ -203,21 +174,6 @@ impl<'a> GroupRectComputer<'a> {
                     // relocation/element-bbox policy; they are different Cytoscape phases and
                     // should not silently share a generic compound-padding helper.
                     let pad = architecture_svg_group_bbox_padding_px(self.padding_px);
-                    if debug_this_group {
-                        if let Some(content_bounds) = &content {
-                            eprintln!(
-                                "[arch-group-rect] group={} content=({}, {})-({}, {}) pad={}",
-                                id,
-                                content_bounds.min_x,
-                                content_bounds.min_y,
-                                content_bounds.max_x,
-                                content_bounds.max_y,
-                                pad
-                            );
-                        } else {
-                            eprintln!("[arch-group-rect] group={} content=<empty> pad={}", id, pad);
-                        }
-                    }
                     let b = if let Some(content) = content {
                         Bounds {
                             min_x: content.min_x - pad,
@@ -234,12 +190,6 @@ impl<'a> GroupRectComputer<'a> {
                             max_y: self.icon_size_px.max(1.0),
                         }
                     };
-                    if debug_this_group {
-                        eprintln!(
-                            "[arch-group-rect] group={} final=({}, {})-({}, {})",
-                            id, b.min_x, b.min_y, b.max_x, b.max_y
-                        );
-                    }
                     self.group_rects.insert(id, b);
                     self.visiting.remove(id);
                 }

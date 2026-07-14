@@ -38,7 +38,8 @@ use merman_analysis::{AnalysisFactsPayload, AnalysisPayload, Analyzer};
 pub use ascii::render_ascii;
 #[cfg(feature = "render")]
 pub use merman::render::{
-    TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+    HostMeasurementResult, HostTextMeasurementError, HostTextMeasurer, TextMeasurementPhase,
+    TextMetrics, TextStyle, WrapMode,
 };
 #[cfg(feature = "render")]
 pub use render::{layout_json, parse_json, render_svg};

@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 /// C ABI version expected by this Dart binding.
-const int mermanAbiVersion = 2;
+const int mermanAbiVersion = 3;
 
 /// Result status codes returned by the native `merman-ffi` ABI.
 enum MermanStatus {
@@ -153,6 +153,9 @@ final class NativeMermanHostTextMeasureRequest extends Struct {
 
   @Uint8()
   external int hasMaxWidth;
+
+  @Int32()
+  external int phase;
 }
 
 /// Native layout of `MermanHostTextMeasureResult`.
@@ -251,6 +254,28 @@ enum MermanTextWhiteSpace {
   }
 }
 
+/// Render phase requesting a host text measurement.
+enum MermanTextMeasurementPhase {
+  layout(0),
+  wrap(1),
+  svgBBox(2),
+  computedLength(3),
+  visibility(4);
+
+  const MermanTextMeasurementPhase(this.code);
+
+  final int code;
+
+  static MermanTextMeasurementPhase? fromCode(int code) {
+    for (final value in values) {
+      if (value.code == code) {
+        return value;
+      }
+    }
+    return null;
+  }
+}
+
 /// Dart representation of a native host text-measurement request.
 class MermanTextMeasureRequest {
   MermanTextMeasureRequest._(NativeMermanHostTextMeasureRequest native)
@@ -265,7 +290,8 @@ class MermanTextMeasureRequest {
         wordSpacing = native.wordSpacing,
         wrapMode = MermanTextWrapMode.fromCode(native.wrapMode),
         direction = MermanTextDirection.fromCode(native.direction),
-        whiteSpace = MermanTextWhiteSpace.fromCode(native.whiteSpace);
+        whiteSpace = MermanTextWhiteSpace.fromCode(native.whiteSpace),
+        phase = MermanTextMeasurementPhase.fromCode(native.phase);
 
   /// UTF-8 text to measure.
   final String text;
@@ -302,6 +328,9 @@ class MermanTextMeasureRequest {
 
   /// Requested white-space behavior.
   final MermanTextWhiteSpace? whiteSpace;
+
+  /// Render phase requesting this measurement.
+  final MermanTextMeasurementPhase? phase;
 }
 
 /// Dart result for a handled text-measurement request.

@@ -16,7 +16,7 @@ not pass a dynamic library path.
 
 ## Compatibility And Release Notes
 
-This package tracks C ABI version 2. The Dart wrapper checks ABI and struct sizes before it opens
+This package tracks C ABI version 3. The Dart wrapper checks ABI and struct sizes before it opens
 the native library, so stale generated code or mismatched native artifacts fail fast at startup.
 
 For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md) and the shared

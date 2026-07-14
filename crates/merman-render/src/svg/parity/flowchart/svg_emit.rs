@@ -14,7 +14,7 @@ pub(super) fn render_flowchart_v2_svg(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let config = merman_core::MermaidConfig::from_value(effective_config.clone());
     render_flowchart_v2_svg_with_config(layout, semantic, &config, diagram_title, measurer, options)
@@ -31,9 +31,9 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
-    let timing_enabled = timing::render_timing_enabled();
+    let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
 
@@ -58,9 +58,9 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
-    let timing_enabled = timing::render_timing_enabled();
+    let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
 
@@ -96,7 +96,7 @@ fn render_flowchart_v2_svg_with_config_inner(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
     timing: FlowchartSvgTiming<'_>,
 ) -> Result<String> {
     let timing_enabled = timing.enabled;
@@ -230,8 +230,8 @@ fn render_flowchart_v2_svg_with_config_inner(
         ty,
         measurer,
         config: effective_config,
-        math_renderer: options.math_renderer.as_deref(),
-        icon_registry: options.icon_registry.as_deref(),
+        math_renderer: options.math_renderer(),
+        icon_registry: options.icon_registry(),
         node_html_labels,
         edge_html_labels,
         source_backed_edge_label_bboxes: layout.source_backed_edge_label_bboxes,
@@ -241,7 +241,8 @@ fn render_flowchart_v2_svg_with_config_inner(
         node_fill_color,
         default_edge_interpolate,
         default_edge_style,
-        trace_edge_id: std::env::var("MERMAN_TRACE_FLOWCHART_EDGE").ok(),
+        trace_edge_id: options.debug.flowchart_trace_edge_id.as_deref(),
+        trace_output_path: options.debug.flowchart_trace_output_path.as_deref(),
         subgraph_order,
         edge_order,
         nodes_by_id,
@@ -345,7 +346,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         diagram_type,
         model,
         use_max_width,
-        apply_root_overrides: options.apply_root_overrides,
+        root_viewport_override_policy: options.root_viewport_override_policy(),
         diagram_padding,
         bbox_min_x,
         bbox_min_y,

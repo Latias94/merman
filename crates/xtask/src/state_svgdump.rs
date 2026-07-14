@@ -294,13 +294,11 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
                 ))
             })?;
 
-    let layout_opts = merman_render::LayoutOptions {
-        text_measurer: std::sync::Arc::new(
-            merman_render::text::VendoredFontMetricsTextMeasurer::default(),
-        ),
-        ..Default::default()
-    };
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts).map_err(|e| {
+    let layout_opts = merman_render::LayoutOptions::default();
+    let session = merman::render::RenderEnvironment::parity()
+        .begin_session()
+        .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
+    let layouted = merman_render::layout_parsed(&parsed, &layout_opts, &session).map_err(|e| {
         XtaskError::SvgCompareFailed(format!("layout failed for {}: {e}", mmd_path.display()))
     })?;
 
@@ -321,7 +319,7 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
         &layouted.semantic,
         &layouted.meta.effective_config,
         layouted.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &session,
         &svg_opts,
     )
     .map_err(|e| {

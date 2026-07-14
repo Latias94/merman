@@ -7,11 +7,17 @@ use merman_render::svg::{SvgRenderOptions, render_pie_diagram_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .with_text_measurement_policy(
+            merman_render::environment::TextMeasurementPolicy::deterministic(),
+        )
+        .begin_session()
+        .unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::PieDiagram(layout) = out.layout else {
         panic!("expected PieDiagram layout");
     };
@@ -19,11 +25,17 @@ fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
 }
 
 fn render_pie_from_text(text: &str) -> String {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .with_text_measurement_policy(
+            merman_render::environment::TextMeasurementPolicy::deterministic(),
+        )
+        .begin_session()
+        .unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::PieDiagram(layout) = &out.layout else {
         panic!("expected PieDiagram layout");
     };
@@ -32,6 +44,7 @@ fn render_pie_from_text(text: &str) -> String {
         layout,
         &out.semantic,
         &out.meta.effective_config,
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok")

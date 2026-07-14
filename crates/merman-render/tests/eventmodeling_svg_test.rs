@@ -2,9 +2,9 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::RenderEnvironment;
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
-use merman_render::text::VendoredFontMetricsTextMeasurer;
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
 
 #[test]
@@ -39,13 +39,15 @@ data ItemAddedData {
         .unwrap();
     assert_eq!(parsed.meta.diagram_type, "eventmodeling");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let svg = render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("eventmodeling-test".to_string()),
             ..Default::default()
@@ -74,14 +76,9 @@ fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let layout = layout_parsed_render_layout_only(
-        &parsed,
-        &LayoutOptions {
-            text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
-            ..Default::default()
-        },
-    )
-    .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
 
     let LayoutDiagram::EventModelingDiagram(layout) = layout else {
         panic!("expected eventmodeling layout");

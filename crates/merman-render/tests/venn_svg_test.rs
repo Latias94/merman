@@ -7,6 +7,9 @@ use merman_render::svg::{
 use merman_render::{LayoutOptions, layout_parsed, layout_parsed_render_layout_only};
 
 fn render_typed_venn(input: &str) -> (LayoutDiagram, RenderSemanticModel, String) {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse ok")
@@ -14,13 +17,14 @@ fn render_typed_venn(input: &str) -> (LayoutDiagram, RenderSemanticModel, String
     assert_eq!(parsed.meta.diagram_type, "venn");
 
     let layout_options = LayoutOptions::default();
-    let layout = layout_parsed_render_layout_only(&parsed, &layout_options).expect("layout ok");
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &layout_options, &_session).expect("layout ok");
     let svg = render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions {
             diagram_id: Some("venn-test".to_string()),
             ..Default::default()
@@ -86,6 +90,9 @@ style A1 color:#123456
 
 #[test]
 fn venn_semantic_json_path_renders_svg() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let parsed = Engine::new()
         .parse_diagram_sync(
             r##"%%{init: {"venn": {"useMaxWidth": false, "width": 640, "height": 360}}}%%
@@ -101,17 +108,13 @@ union A,B
     assert_eq!(parsed.meta.diagram_type, "venn");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
     let LayoutDiagram::VennDiagram(_) = out.layout else {
         panic!("expected VennDiagram layout");
     };
 
-    let svg = render_layouted_svg(
-        &out,
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render SVG");
+    let svg =
+        render_layouted_svg(&out, &_session, &SvgRenderOptions::default()).expect("render SVG");
 
     assert!(svg.contains(r#"aria-roledescription="venn""#));
     assert!(svg.contains(r#"viewBox="0 0 640 360""#));

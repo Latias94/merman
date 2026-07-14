@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use crate::render::{HeadlessError, LayoutOptions, SvgPipeline, SvgRenderOptions};
+use crate::render::{HeadlessError, LayoutOptions, SvgDebugOptions, SvgPipeline, SvgRenderOptions};
 use merman_core::{Engine, ParseOptions};
 
 #[derive(Debug, thiserror::Error)]
@@ -192,8 +192,20 @@ pub fn render_png_sync(
     svg_options: &SvgRenderOptions,
     raster: &RasterOptions,
 ) -> Result<Option<Vec<u8>>> {
-    super::operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
-        .render_png(svg_options, &SvgPipeline::resvg_safe(), raster)
+    let environment = super::default_render_environment();
+    super::operation::HeadlessOperation::new(
+        engine,
+        text,
+        parse_options,
+        layout_options,
+        &environment,
+    )?
+    .render_png(
+        svg_options,
+        &SvgDebugOptions::default(),
+        &SvgPipeline::resvg_safe(),
+        raster,
+    )
 }
 
 pub fn render_jpeg_sync(
@@ -204,8 +216,20 @@ pub fn render_jpeg_sync(
     svg_options: &SvgRenderOptions,
     raster: &RasterOptions,
 ) -> Result<Option<Vec<u8>>> {
-    super::operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
-        .render_jpeg(svg_options, &SvgPipeline::resvg_safe(), raster)
+    let environment = super::default_render_environment();
+    super::operation::HeadlessOperation::new(
+        engine,
+        text,
+        parse_options,
+        layout_options,
+        &environment,
+    )?
+    .render_jpeg(
+        svg_options,
+        &SvgDebugOptions::default(),
+        &SvgPipeline::resvg_safe(),
+        raster,
+    )
 }
 
 pub fn render_pdf_sync(
@@ -215,8 +239,19 @@ pub fn render_pdf_sync(
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
 ) -> Result<Option<Vec<u8>>> {
-    super::operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
-        .render_pdf(svg_options, &SvgPipeline::resvg_safe())
+    let environment = super::default_render_environment();
+    super::operation::HeadlessOperation::new(
+        engine,
+        text,
+        parse_options,
+        layout_options,
+        &environment,
+    )?
+    .render_pdf(
+        svg_options,
+        &SvgDebugOptions::default(),
+        &SvgPipeline::resvg_safe(),
+    )
 }
 
 pub fn svg_to_png(svg: &str, options: &RasterOptions) -> Result<Vec<u8>> {

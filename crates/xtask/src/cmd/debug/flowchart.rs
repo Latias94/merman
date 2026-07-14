@@ -1336,20 +1336,20 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     // Keep layout snapshots consistent with the in-repo `layout_snapshots_test` harness, which
     // uses the default engine configuration.
     let engine = merman::Engine::new();
-    let measurer: std::sync::Arc<dyn merman_render::text::TextMeasurer + Send + Sync> =
-        std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
     let layout_opts = merman_render::LayoutOptions {
-        text_measurer: std::sync::Arc::clone(&measurer),
         flowchart_elk_backend,
         ..Default::default()
     };
+    let session = merman::render::RenderEnvironment::parity()
+        .begin_session()
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 
     let parsed =
         futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
             .map_err(|e| XtaskError::DebugSvgFailed(format!("parse failed: {e}")))?
             .ok_or_else(|| XtaskError::DebugSvgFailed("no diagram detected".to_string()))?;
 
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts)
+    let layouted = merman_render::layout_parsed(&parsed, &layout_opts, &session)
         .map_err(|e| XtaskError::DebugSvgFailed(format!("layout failed: {e}")))?;
 
     let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
@@ -1374,27 +1374,25 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
         })?;
     }
 
-    // Rust 1.85+ marks environment mutation as `unsafe` due to potential UB when other
-    // threads concurrently read/modify the process environment. `xtask` sets these vars
-    // up-front before invoking rendering code, so this is safe in our usage.
-    unsafe {
-        std::env::set_var("MERMAN_TRACE_FLOWCHART_EDGE", edge_id);
-        std::env::set_var("MERMAN_TRACE_FLOWCHART_OUT", &out);
-    }
-
     let svg_opts = merman_render::svg::SvgRenderOptions {
         diagram_id: Some(fixture_name.to_string()),
         ..Default::default()
     };
+    let debug = merman_render::svg::SvgDebugOptions {
+        flowchart_trace_edge_id: Some(edge_id.to_string()),
+        flowchart_trace_output_path: Some(out.clone()),
+        ..Default::default()
+    };
 
     // Render once to trigger the trace emission inside `merman-render`.
-    let svg = merman_render::svg::render_flowchart_v2_svg(
+    let svg = merman_render::svg::render_flowchart_v2_svg_with_debug(
         layout,
         &layouted.semantic,
         &layouted.meta.effective_config,
         layouted.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &session,
         &svg_opts,
+        &debug,
     )
     .map_err(|e| XtaskError::DebugSvgFailed(format!("render failed: {e}")))?;
 
@@ -1589,15 +1587,20 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
             })?;
 
     let mut layout_opts = merman_render::LayoutOptions::default();
-    if matches!(
+    let measurement_policy = if matches!(
         text_measurer.as_str(),
         "vendored" | "vendored-font" | "vendored-font-metrics"
     ) {
-        layout_opts.text_measurer =
-            std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
-    }
+        merman::render::TextMeasurementPolicy::parity()
+    } else {
+        merman::render::TextMeasurementPolicy::deterministic()
+    };
+    let session = merman::render::RenderEnvironment::parity()
+        .with_text_measurement_policy(measurement_policy)
+        .begin_session()
+        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
     layout_opts.flowchart_elk_backend = flowchart_elk_backend;
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts)
+    let layouted = merman_render::layout_parsed(&parsed, &layout_opts, &session)
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 
     let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {

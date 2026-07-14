@@ -5,8 +5,6 @@
 //! This crate is the only place where the public FFI boundary owns unsafe code. The core
 //! parser/render crates and shared binding facade remain safe Rust APIs.
 
-#[cfg(feature = "render")]
-use merman_bindings_core::TextMeasurer;
 use merman_bindings_core::{BindingEngine, BindingError, BindingStatus, error_payload_json_bytes};
 use std::ffi::c_char;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -18,7 +16,7 @@ use std::sync::Mutex;
 #[cfg(target_os = "android")]
 mod android_jni;
 
-pub const MERMAN_ABI_VERSION: u32 = 2;
+pub const MERMAN_ABI_VERSION: u32 = 3;
 
 const PACKAGE_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
 
@@ -34,6 +32,12 @@ pub const MERMAN_TEXT_WHITE_SPACE_NORMAL: i32 = 0;
 pub const MERMAN_TEXT_WHITE_SPACE_NOWRAP: i32 = 1;
 pub const MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES: i32 = 2;
 pub const MERMAN_TEXT_WHITE_SPACE_PRE_WRAP: i32 = 3;
+
+pub const MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT: i32 = 0;
+pub const MERMAN_TEXT_MEASUREMENT_PHASE_WRAP: i32 = 1;
+pub const MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX: i32 = 2;
+pub const MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH: i32 = 3;
+pub const MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY: i32 = 4;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -126,6 +130,7 @@ pub struct MermanHostTextMeasureRequest {
     pub direction: i32,
     pub white_space: i32,
     pub has_max_width: u8,
+    pub phase: i32,
 }
 
 #[repr(C)]
@@ -147,7 +152,6 @@ pub type MermanHostTextMeasureCallback = unsafe extern "C" fn(
 struct FfiHostTextMeasurer {
     callback: MermanHostTextMeasureCallback,
     user_data: usize,
-    fallback: merman_bindings_core::VendoredFontMetricsTextMeasurer,
 }
 
 #[cfg(feature = "render")]
@@ -159,17 +163,17 @@ impl FfiHostTextMeasurer {
         Self {
             callback,
             user_data: user_data as usize,
-            fallback: merman_bindings_core::VendoredFontMetricsTextMeasurer::default(),
         }
     }
 
     fn call_host(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> Option<merman_bindings_core::TextMetrics> {
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
         let font_family = style.font_family.as_deref().unwrap_or_default().as_bytes();
         let font_weight = style
             .font_weight
@@ -197,93 +201,108 @@ impl FfiHostTextMeasurer {
                     direction: MERMAN_TEXT_DIRECTION_AUTO,
                     white_space: ffi_white_space(max_width, wrap_mode),
                     has_max_width: u8::from(max_width.is_some()),
+                    phase: ffi_measurement_phase(phase),
                 },
                 self.user_data as *mut std::ffi::c_void,
             )
         };
 
-        if result.handled == 0
-            || !result.width.is_finite()
+        if result.handled == 0 {
+            return Ok(None);
+        }
+        if !result.width.is_finite()
             || !result.height.is_finite()
             || result.width < 0.0
             || result.height < 0.0
             || result.line_count == 0
         {
-            return None;
+            return Err(merman_bindings_core::HostTextMeasurementError::new(
+                "host text measurer returned invalid metrics",
+            ));
         }
 
-        Some(merman_bindings_core::TextMetrics {
+        Ok(Some(merman_bindings_core::TextMetrics {
             width: result.width,
             height: result.height,
             line_count: result.line_count,
-        })
-    }
-
-    fn measure_with_fallback(
-        &self,
-        text: &str,
-        style: &merman_bindings_core::TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, max_width, wrap_mode)
-            .unwrap_or_else(|| {
-                self.fallback
-                    .measure_wrapped(text, style, max_width, wrap_mode)
-            })
+        }))
     }
 }
 
 #[cfg(feature = "render")]
-impl merman_bindings_core::TextMeasurer for FfiHostTextMeasurer {
+impl merman_bindings_core::HostTextMeasurer for FfiHostTextMeasurer {
     fn measure(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, None, merman_bindings_core::WrapMode::SvgLike)
-            .unwrap_or_else(|| self.fallback.measure(text, style))
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(
+            phase,
+            text,
+            style,
+            None,
+            merman_bindings_core::WrapMode::SvgLike,
+        )
     }
 
     fn measure_wrapped(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.measure_with_fallback(text, style, max_width, wrap_mode)
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(phase, text, style, max_width, wrap_mode)
     }
 
     fn measure_wrapped_with_raw_width(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> (merman_bindings_core::TextMetrics, Option<f64>) {
-        if let Some(metrics) = self.call_host(text, style, max_width, wrap_mode) {
+    ) -> merman_bindings_core::HostMeasurementResult<(merman_bindings_core::TextMetrics, Option<f64>)>
+    {
+        if let Some(metrics) = self.call_host(phase, text, style, max_width, wrap_mode)? {
             let raw_width = max_width
-                .and_then(|_| self.call_host(text, style, None, wrap_mode))
+                .map(|_| self.call_host(phase, text, style, None, wrap_mode))
+                .transpose()?
+                .flatten()
                 .map(|raw| raw.width);
-            return (metrics, raw_width);
+            return Ok(Some((metrics, raw_width)));
         }
-        self.fallback
-            .measure_wrapped_with_raw_width(text, style, max_width, wrap_mode)
+        Ok(None)
     }
 
     fn measure_wrapped_raw(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, max_width, wrap_mode)
-            .unwrap_or_else(|| {
-                self.fallback
-                    .measure_wrapped_raw(text, style, max_width, wrap_mode)
-            })
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(phase, text, style, max_width, wrap_mode)
+    }
+}
+
+#[cfg(feature = "render")]
+fn ffi_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> i32 {
+    match phase {
+        merman_bindings_core::TextMeasurementPhase::Layout => MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT,
+        merman_bindings_core::TextMeasurementPhase::Wrap => MERMAN_TEXT_MEASUREMENT_PHASE_WRAP,
+        merman_bindings_core::TextMeasurementPhase::SvgBBox => {
+            MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX
+        }
+        merman_bindings_core::TextMeasurementPhase::ComputedLength => {
+            MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH
+        }
+        merman_bindings_core::TextMeasurementPhase::Visibility => {
+            MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY
+        }
     }
 }
 
@@ -1045,7 +1064,7 @@ unsafe fn engine_set_text_measure_callback_impl(
         let engine = unsafe { engine_mut(engine)? };
         if let Some(callback) = callback {
             let measurer = FfiHostTextMeasurer::new(callback, user_data);
-            engine.inner = engine.inner.with_text_measurer(Arc::new(measurer));
+            engine.inner = engine.inner.with_host_text_measurer(Arc::new(measurer));
         } else {
             engine.inner = engine.base.clone();
         }
@@ -1444,7 +1463,8 @@ mod tests {
     #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
-            "layout": { "text_measurer": "deterministic", "viewport_width": 640, "viewport_height": 480 },
+            "environment": { "text_measurement": "deterministic" },
+            "layout": { "viewport_width": 640, "viewport_height": 480 },
             "svg": { "diagram_id": "ffi diagram", "pipeline": "readable" }
         }"#;
         let result = call_render(b"flowchart TD\nA[Hello]", options);
@@ -1783,7 +1803,7 @@ mod tests {
     fn unsupported_ratex_without_feature_returns_unsupported_format() {
         let result = call_render(
             b"flowchart TD\nA[Hello]",
-            br#"{ "layout": { "math_renderer": "ratex" } }"#,
+            br#"{ "environment": { "math_renderer": "ratex" } }"#,
         );
 
         if cfg!(feature = "ratex-math") {
@@ -1928,7 +1948,7 @@ mod tests {
     #[test]
     fn reusable_engine_renders_with_cached_options() {
         let options = br#"{
-            "layout": { "text_measurer": "deterministic" },
+            "environment": { "text_measurement": "deterministic" },
             "svg": { "diagram_id": "ffi engine", "pipeline": "readable" }
         }"#;
         let engine = call_engine(options);

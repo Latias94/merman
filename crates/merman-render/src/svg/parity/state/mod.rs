@@ -76,7 +76,7 @@ pub(super) fn render_state_diagram_v2_svg(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     render::render_state_diagram_v2_svg_impl(
         layout,
@@ -94,7 +94,7 @@ pub(super) fn render_state_diagram_v2_svg_model(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     render::render_state_diagram_v2_svg_model_impl(
         layout,
@@ -109,6 +109,7 @@ pub(super) fn render_state_diagram_v2_svg_model(
 pub(super) fn render_state_diagram_v2_debug_svg(
     layout: &StateDiagramV2Layout,
     options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
 ) -> String {
-    debug_svg::render_state_diagram_v2_debug_svg(layout, options)
+    debug_svg::render_state_diagram_v2_debug_svg(layout, options, debug)
 }

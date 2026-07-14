@@ -3,6 +3,15 @@ import Merman
 
 @main
 struct MermanAppleSmoke {
+    private static let phaseLock = NSLock()
+    private static var observedPhases = Set<Int32>()
+
+    fileprivate static func recordPhase(_ phase: Int32) {
+        phaseLock.lock()
+        observedPhases.insert(phase)
+        phaseLock.unlock()
+    }
+
     static func main() throws {
         let engine = try MermanEngine()
         let source = "flowchart TD\nA[Hello] --> B[World]"
@@ -50,6 +59,12 @@ struct MermanAppleSmoke {
         let reusableSvg = try reusable.renderSvg(source)
         guard reusableSvg.contains("<svg"), reusableSvg.contains("Hello") else {
             throw SmokeError.failed("reusable renderSvg smoke failed")
+        }
+        phaseLock.lock()
+        let phaseCount = observedPhases.count
+        phaseLock.unlock()
+        guard phaseCount >= 2 else {
+            throw SmokeError.failed("host text measurement phases were not observable")
         }
         let reusableDocumentJson = try reusable.analyzeDocumentJsonRaw(
             documentSource,
@@ -274,6 +289,7 @@ private func mermanAppleSmokeMeasureText(
     _ request: MermanTextMeasureRequest,
     _ _: UnsafeMutableRawPointer?
 ) -> MermanTextMeasureResult {
+    MermanAppleSmoke.recordPhase(request.phase)
     let text = mermanSmokeText(request)
     if text == "Hello" {
         return MermanTextMeasureResult(

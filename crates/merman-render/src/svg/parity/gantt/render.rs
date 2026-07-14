@@ -138,7 +138,7 @@ pub(crate) fn render_gantt_diagram_svg(
     layout: &crate::model::GanttDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: GanttDiagramRenderModel = crate::json::from_value_ref(semantic)?;
     render_gantt_diagram_svg_model(layout, &model, effective_config, options)
@@ -148,7 +148,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
     layout: &crate::model::GanttDiagramLayout,
     model: &GanttDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -450,7 +450,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
         let today_x = if layout.tasks.is_empty() {
             f64::NAN
         } else {
-            let now_ms = options.now_ms_override.unwrap_or_else(default_now_ms);
+            let now_ms = options.unix_ms();
             gantt_scale_time_round(now_ms, min_ms, max_ms, range) + layout.left_padding
         };
         let y1 = layout.title_top_margin;
@@ -489,16 +489,4 @@ pub(crate) fn render_gantt_diagram_svg_model(
 
     out.push_str("</svg>\n");
     Ok(out)
-}
-
-fn default_now_ms() -> i64 {
-    #[cfg(feature = "host")]
-    {
-        chrono::Local::now().timestamp_millis()
-    }
-
-    #[cfg(not(feature = "host"))]
-    {
-        0
-    }
 }

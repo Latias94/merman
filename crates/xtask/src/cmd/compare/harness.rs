@@ -357,14 +357,21 @@ pub(crate) fn run_canonical_svg_compare(
         .as_ref()
         .and_then(|guard| guard.node_katex_math_renderer());
 
-    let layout_options = if fact.render_profile == RenderProfile::SequenceMath {
-        merman_render::LayoutOptions {
-            math_renderer: sequence_math_renderer.clone(),
-            ..merman_render::LayoutOptions::headless_svg_defaults()
-        }
-    } else {
-        super::svg_compare_layout_opts()
-    };
+    let layout_options = super::svg_compare_layout_opts();
+    let mut environment = merman::render::RenderEnvironment::parity()
+        .with_root_viewport_override_policy(if request.apply_root_overrides {
+            merman::render::RootViewportOverridePolicy::ApplyGenerated
+        } else {
+            merman::render::RootViewportOverridePolicy::ComputedOnly
+        });
+    if let Some(renderer) = sequence_math_renderer.clone() {
+        environment = environment.with_math_renderer(renderer);
+    }
+    let renderer = merman::render::HeadlessRenderer::new()
+        .with_engine(engine.clone())
+        .with_parse_options(fact.parse_policy.options())
+        .with_layout_options(layout_options)
+        .with_environment(environment);
 
     let dom_mode = request.dom_mode.as_deref().unwrap_or(fact.default_dom_mode);
     let dom_decimals = request.dom_decimals.unwrap_or(3);
@@ -438,14 +445,14 @@ pub(crate) fn run_canonical_svg_compare(
             }
         },
         |state, input| {
-            let semantic = merman::render::prepare_semantic_sync(
-                &engine,
-                input.text,
-                fact.parse_policy.options(),
-                &layout_options,
-            )
-            .map_err(|error| format!("parse failed for {}: {error}", input.fixture_path.display()))?
-            .ok_or_else(|| format!("no diagram detected in {}", input.fixture_path.display()))?;
+            let semantic = renderer
+                .prepare_semantic_sync(input.text)
+                .map_err(|error| {
+                    format!("parse failed for {}: {error}", input.fixture_path.display())
+                })?
+                .ok_or_else(|| {
+                    format!("no diagram detected in {}", input.fixture_path.display())
+                })?;
 
             let prepared = semantic.continue_layout().map_err(|error| {
                 format!(
@@ -466,7 +473,6 @@ pub(crate) fn run_canonical_svg_compare(
             };
             let mut svg_options = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(diagram_id),
-                apply_root_overrides: request.apply_root_overrides,
                 ..Default::default()
             };
 
@@ -486,9 +492,7 @@ pub(crate) fn run_canonical_svg_compare(
                     svg_options.aria_roledescription =
                         is_classdiagram_v2_header.then(|| "classDiagram".to_string());
                 }
-                SpecialistHook::SequenceMath => {
-                    svg_options.math_renderer = sequence_math_renderer.clone();
-                }
+                SpecialistHook::SequenceMath => {}
                 SpecialistHook::FlowchartAdapter
                 | SpecialistHook::ErAdapter
                 | SpecialistHook::GanttAdapter => {

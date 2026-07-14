@@ -36,12 +36,12 @@ impl CachedRenderEngine {
         self.plan.render_svg(source)
     }
 
-    pub(crate) fn with_text_measurer(
+    pub(crate) fn with_host_text_measurer(
         &self,
-        measurer: Arc<dyn crate::TextMeasurer + Send + Sync>,
+        measurer: Arc<dyn crate::HostTextMeasurer>,
     ) -> Self {
         Self {
-            plan: self.plan.with_text_measurer(measurer),
+            plan: self.plan.with_host_text_measurer(measurer),
         }
     }
 
@@ -66,6 +66,12 @@ mod tests {
     use super::*;
     use crate::BindingStatus;
     use serde_json::Value;
+
+    fn render_session() -> merman::render::RenderSession {
+        merman::render::RenderEnvironment::parity()
+            .begin_session()
+            .expect("render session")
+    }
 
     fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
         model["tasks"]
@@ -102,21 +108,34 @@ mod tests {
 
     #[cfg(not(feature = "elk-layout"))]
     #[test]
-    fn render_svg_reports_unsupported_flowchart_elk_without_elk_layout() {
-        let err = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"").unwrap_err();
+    fn render_svg_flowchart_elk_follows_the_resolved_dependency_feature_set() {
+        let result = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"");
 
-        assert_eq!(err.status(), BindingStatus::RenderError);
-        assert!(
-            err.message()
-                .contains("unsupported diagram type for layout: flowchart-elk"),
-            "{err:?}"
-        );
+        match result {
+            Ok(svg) => {
+                // Cargo can unify `merman/elk-layout` from another selected workspace package even
+                // when the binding facade's own feature is disabled.
+                let svg = String::from_utf8(svg).expect("SVG is UTF-8");
+                assert!(svg.contains("<svg"));
+                assert!(svg.contains("Hello"));
+                assert!(svg.contains("World"));
+            }
+            Err(err) => {
+                assert_eq!(err.status(), BindingStatus::RenderError);
+                assert!(
+                    err.message()
+                        .contains("unsupported diagram type for layout: flowchart-elk"),
+                    "{err:?}"
+                );
+            }
+        }
     }
 
     #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
-            "layout": { "text_measurer": "deterministic", "viewport_width": 640, "viewport_height": 480 },
+            "layout": { "viewport_width": 640, "viewport_height": 480 },
+            "environment": { "text_measurement": "deterministic" },
             "svg": { "diagram_id": "bindings core diagram", "pipeline": "readable" }
         }"#;
         let svg =
@@ -183,7 +202,11 @@ B -->|No| D[Debug]";
             ),
             "{svg}"
         );
-        assert!(svg.contains(r#"data-merman-postprocess="scoped-css""#));
+        assert_eq!(
+            svg.matches("<style").count(),
+            1,
+            "site CSS should merge into the existing Mermaid stylesheet: {svg}"
+        );
     }
 
     #[test]
@@ -362,7 +385,10 @@ B -->|No| D[Debug]";
         .unwrap();
         let pipeline = request::pipeline_for_options(&options).unwrap();
         let out = pipeline
-            .process_to_string(r#"<svg id="host"><style>.node{fill:red !important;}</style></svg>"#)
+            .process_to_string(
+                r#"<svg id="host"><style>.node{fill:red !important;}</style></svg>"#,
+                &render_session(),
+            )
             .unwrap();
 
         assert!(
@@ -438,6 +464,7 @@ B -->|No| D[Debug]";
         let out = pipeline
             .process_to_string(
                 r#"<svg id="host"><style>.node{fill:red !important;}</style><g/></svg>"#,
+                &render_session(),
             )
             .unwrap();
 
@@ -458,7 +485,10 @@ B -->|No| D[Debug]";
         .unwrap();
         let pipeline = request::pipeline_for_options(&options).unwrap();
         let out = pipeline
-            .process_to_string(r#"<svg id="host"><path class="edge"/></svg>"#)
+            .process_to_string(
+                r#"<svg id="host"><path class="edge"/></svg>"#,
+                &render_session(),
+            )
             .unwrap();
 
         assert!(!out.contains("@keyframes"), "{out}");
@@ -481,6 +511,7 @@ B -->|No| D[Debug]";
         let out = pipeline
             .process_to_string(
                 r#"<svg id="host" style="max-width: 400px; background-color: white;"><g/></svg>"#,
+                &render_session(),
             )
             .unwrap();
 
@@ -531,7 +562,9 @@ B -->|No| D[Debug]";
         )
         .unwrap();
         let cleanup_pipeline = request::pipeline_for_options(&cleanup_options).unwrap();
-        let cleanup_out = cleanup_pipeline.process_to_string(svg).unwrap();
+        let cleanup_out = cleanup_pipeline
+            .process_to_string(svg, &render_session())
+            .unwrap();
 
         assert_eq!(
             cleanup_out
@@ -559,7 +592,9 @@ B -->|No| D[Debug]";
 
         let default_options = parse_options(br#"{"svg":{"pipeline":"resvg-safe"}}"#).unwrap();
         let default_pipeline = request::pipeline_for_options(&default_options).unwrap();
-        let default_out = default_pipeline.process_to_string(svg).unwrap();
+        let default_out = default_pipeline
+            .process_to_string(svg, &render_session())
+            .unwrap();
         assert_eq!(
             default_out
                 .matches(r#"data-merman-foreignobject="fallback""#)
@@ -573,7 +608,9 @@ B -->|No| D[Debug]";
         )
         .unwrap();
         let cleanup_pipeline = request::pipeline_for_options(&cleanup_options).unwrap();
-        let cleanup_out = cleanup_pipeline.process_to_string(svg).unwrap();
+        let cleanup_out = cleanup_pipeline
+            .process_to_string(svg, &render_session())
+            .unwrap();
 
         assert_eq!(
             cleanup_out
@@ -758,6 +795,18 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
+    fn parse_json_source_limit_uses_dedicated_binding_status() {
+        let err = parse_json(
+            b"flowchart TD\nA[Hello]",
+            br#"{ "resources": { "max_source_bytes": 4 } }"#,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(err.message().contains("max_source_bytes"), "{err:?}");
+    }
+
+    #[test]
     fn resource_limit_error_accepts_analysis_wrapper_options() {
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
@@ -821,23 +870,42 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
-    fn invalid_text_measurer_returns_invalid_argument() {
+    fn invalid_text_measurement_profile_returns_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "layout": { "text_measurer": "typst-font-assets" } }"#,
+            br#"{ "environment": { "text_measurement": "typst-font-assets" } }"#,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("layout.text_measurer"));
+        assert!(err.message().contains("environment.text_measurement"));
         assert!(err.message().contains("typst-font-assets"));
+    }
+
+    #[test]
+    fn legacy_layout_service_fields_are_rejected() {
+        for (legacy_field, replacement) in [
+            (
+                r#"{ "layout": { "text_measurer": "deterministic" } }"#,
+                "environment.text_measurement",
+            ),
+            (
+                r#"{ "layout": { "math_renderer": "ratex" } }"#,
+                "environment.math_renderer",
+            ),
+        ] {
+            let err = render_svg(b"flowchart TD\nA[Hello]", legacy_field.as_bytes()).unwrap_err();
+
+            assert_eq!(err.status(), BindingStatus::OptionsJsonError);
+            assert!(err.message().contains(replacement), "{err:?}");
+        }
     }
 
     #[test]
     fn unsupported_ratex_without_feature_returns_unsupported_format() {
         let result = render_svg(
             b"flowchart TD\nA[Hello]",
-            br#"{ "layout": { "math_renderer": "ratex" } }"#,
+            br#"{ "environment": { "math_renderer": "ratex" } }"#,
         );
 
         if cfg!(feature = "ratex-math") {

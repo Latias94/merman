@@ -72,20 +72,13 @@ Notes:
 - Keep `docs/performance/COMPARISON.md` up-to-date at major checkpoints; for ad-hoc experiments
   prefer writing to `target/bench/`.
 
-## Diagnostic toggles (when you need root cause)
+## Diagnostics (when you need root cause)
 
-These env vars print coarse breakdowns for specific hotspots:
-
-- `MERMAN_RENDER_TIMING=1` (SVG emission sub-timings where available)
-- `MERMAN_MINDMAP_LAYOUT_TIMING=1` (mindmap: measure_nodes / manatee / build_edges / bounds)
-- `MANATEE_COSE_TIMING=1` (manatee COSE-Bilkent internal timing)
-
-Example:
-
-```bash
-$env:MERMAN_MINDMAP_LAYOUT_TIMING="1"; $env:MANATEE_COSE_TIMING="1"
-cargo bench -p merman --features render --bench pipeline -- --exact layout/mindmap_medium --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
-```
+SVG emission timing is an explicit per-request debug choice. Direct `merman-render` callers can
+set `SvgDebugOptions::include_timing_diagnostics` and use a `*_with_debug` render entry point.
+Layout timing is intentionally measured by Criterion or an external profiler instead of hidden
+process-global switches. `MANATEE_COSE_TIMING=1` remains available for the lower-level
+COSE-Bilkent implementation.
 
 ## Reporting conventions
 

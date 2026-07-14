@@ -98,6 +98,8 @@ pub(crate) struct BindingOptions {
     #[cfg(feature = "render")]
     pub(crate) layout: Option<LayoutOptionsJson>,
     #[cfg(feature = "render")]
+    pub(crate) environment: Option<RenderEnvironmentOptionsJson>,
+    #[cfg(feature = "render")]
     pub(crate) svg: Option<SvgOptionsJson>,
 }
 
@@ -176,12 +178,20 @@ pub(crate) struct AsciiThemeOptionsJson {
 
 #[cfg(feature = "render")]
 #[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct LayoutOptionsJson {
     pub(crate) viewport_width: Option<f64>,
     pub(crate) viewport_height: Option<f64>,
-    pub(crate) text_measurer: Option<String>,
-    pub(crate) math_renderer: Option<String>,
     pub(crate) flowchart_elk_backend: Option<String>,
+}
+
+#[cfg(feature = "render")]
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RenderEnvironmentOptionsJson {
+    pub(crate) text_measurement: Option<String>,
+    pub(crate) math_renderer: Option<String>,
+    pub(crate) root_viewport_overrides: Option<String>,
 }
 
 #[cfg(feature = "render")]
@@ -355,6 +365,8 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
             format!("invalid options_json: {err}"),
         )
     })?;
+    #[cfg(feature = "render")]
+    reject_legacy_render_environment_fields(&value)?;
     let mut options: BindingOptions = serde_json::from_value(value.clone()).map_err(|err| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -363,6 +375,25 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
     })?;
     options.analysis = binding_analysis_options_json_from_json_value(&value)?;
     Ok(options)
+}
+
+#[cfg(feature = "render")]
+fn reject_legacy_render_environment_fields(value: &Value) -> Result<(), BindingError> {
+    let Some(layout) = value.get("layout").and_then(Value::as_object) else {
+        return Ok(());
+    };
+    for (legacy, replacement) in [
+        ("text_measurer", "environment.text_measurement"),
+        ("math_renderer", "environment.math_renderer"),
+    ] {
+        if layout.contains_key(legacy) {
+            return Err(BindingError::new(
+                BindingStatus::OptionsJsonError,
+                format!("layout.{legacy} was removed; use {replacement}"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(any(feature = "analysis", feature = "render", feature = "ascii"))]

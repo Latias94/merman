@@ -1,8 +1,64 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layouted_svg, render_treemap_diagram_svg};
+use merman_render::text::{TextMetrics, TextStyle};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Default)]
+struct CountingTreemapHost {
+    calls: AtomicUsize,
+}
+
+impl CountingTreemapHost {
+    fn width(&self, text: &str, style: &TextStyle) -> f64 {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        text.chars().count() as f64 * style.font_size.max(1.0)
+    }
+}
+
+impl HostTextMeasurer for CountingTreemapHost {
+    fn measure(
+        &self,
+        _phase: TextMeasurementPhase,
+        text: &str,
+        style: &TextStyle,
+    ) -> HostMeasurementResult<TextMetrics> {
+        Ok(Some(TextMetrics {
+            width: self.width(text, style),
+            height: style.font_size.max(1.0),
+            line_count: 1,
+        }))
+    }
+
+    fn measure_svg_simple_text_bbox_width_px(
+        &self,
+        _phase: TextMeasurementPhase,
+        text: &str,
+        style: &TextStyle,
+    ) -> HostMeasurementResult<f64> {
+        Ok(Some(self.width(text, style)))
+    }
+}
+
+fn counting_treemap_environment(host: Arc<CountingTreemapHost>) -> RenderEnvironment {
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.treemap-host").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid profile identity");
+    RenderEnvironment::parity().with_text_measurement_policy(TextMeasurementPolicy::host_display(
+        identity,
+        host,
+        TextMeasurementPhase::ALL,
+    ))
+}
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -63,7 +119,10 @@ fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json:
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let session = RenderEnvironment::parity()
+        .begin_session()
+        .expect("begin render session");
+    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
     let LayoutDiagram::TreemapDiagram(layout) = &out.layout else {
         panic!("expected TreemapDiagram layout");
     };
@@ -72,6 +131,7 @@ fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json:
         layout,
         &out.semantic,
         &out.meta.effective_config,
+        &session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg");
@@ -230,13 +290,12 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     assert_eq!(parsed.meta.diagram_type, "error");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    let svg = render_layouted_svg(
-        &out,
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let session = RenderEnvironment::parity()
+        .begin_session()
+        .expect("begin render session");
+    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
+    let svg =
+        render_layouted_svg(&out, &session, &SvgRenderOptions::default()).expect("render svg");
 
     assert!(
         svg.contains(r#"aria-roledescription="error""#) && svg.contains("Syntax error in text"),
@@ -254,7 +313,10 @@ fn treemap_public_json_layout_handles_deep_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let session = RenderEnvironment::parity()
+        .begin_session()
+        .expect("begin render session");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
     let LayoutDiagram::TreemapDiagram(layout) = &out.layout else {
         panic!("expected TreemapDiagram layout");
     };
@@ -262,4 +324,61 @@ fn treemap_public_json_layout_handles_deep_chain() {
     assert_eq!(layout.sections.len(), DEPTH + 1);
     assert_eq!(layout.leaves.len(), 1);
     assert_eq!(layout.leaves[0].name, "leaf");
+}
+
+#[test]
+fn treemap_svg_uses_the_session_measurement_route() {
+    let host = Arc::new(CountingTreemapHost::default());
+    let session = counting_treemap_environment(Arc::clone(&host))
+        .begin_session()
+        .expect("begin render session");
+    let parsed = futures::executor::block_on(Engine::new().parse_diagram(
+        r#"treemap
+"Section"
+  "Measured leaf alpha": 42
+  "Measured leaf bravo": 42
+  "Measured leaf charlie": 42
+  "Measured leaf delta": 42
+  "Measured leaf echo": 42
+  "Measured leaf foxtrot": 42
+  "Measured leaf golf": 42
+  "Measured leaf hotel": 42
+"#,
+        ParseOptions::strict(),
+    ))
+    .expect("parse ok")
+    .expect("diagram detected");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
+    host.calls.store(0, Ordering::Relaxed);
+
+    let host_svg =
+        render_layouted_svg(&out, &session, &SvgRenderOptions::default()).expect("render SVG");
+
+    assert!(
+        host.calls.load(Ordering::Relaxed) > 0,
+        "Treemap must not bypass the session with a family-local vendored measurer"
+    );
+    assert!(
+        session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .any(|entry| {
+                entry.provenance().phase == TextMeasurementPhase::Visibility
+                    && entry.provenance().source
+                        == merman_render::environment::TextMeasurementSource::Host
+            }),
+        "Treemap truncation and visibility checks must use the named visibility phase"
+    );
+
+    let parity_session = RenderEnvironment::parity().begin_session().unwrap();
+    let parity_out =
+        layout_parsed(&parsed, &LayoutOptions::default(), &parity_session).expect("parity layout");
+    let parity_svg =
+        render_layouted_svg(&parity_out, &parity_session, &SvgRenderOptions::default())
+            .expect("parity SVG");
+    assert_ne!(
+        host_svg, parity_svg,
+        "host metrics must change observable geometry"
+    );
 }

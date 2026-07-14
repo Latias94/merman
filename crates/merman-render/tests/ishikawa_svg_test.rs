@@ -2,6 +2,7 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::RenderEnvironment;
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
@@ -19,6 +20,7 @@ fn deep_ishikawa_source(depth: usize) -> String {
 
 #[test]
 fn ishikawa_typed_render_model_outputs_svg() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = r##"---
 config:
   ishikawa:
@@ -45,7 +47,8 @@ ishikawa-beta
         .unwrap();
     assert_eq!(parsed.meta.diagram_type, "ishikawa");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let LayoutDiagram::IshikawaDiagram(ishikawa_layout) = &layout else {
         panic!("expected Ishikawa layout");
     };
@@ -67,7 +70,7 @@ ishikawa-beta
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("ishikawa-test".to_string()),
             ..Default::default()
@@ -173,13 +176,15 @@ ishikawa-beta
 
 #[test]
 fn ishikawa_deep_hierarchy_layout_uses_heap_traversal() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = deep_ishikawa_source(DEEP_ISHIKAWA_RENDER_DEPTH);
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
         .unwrap()
         .unwrap();
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let LayoutDiagram::IshikawaDiagram(layout) = layout else {
         panic!("expected Ishikawa layout");
     };

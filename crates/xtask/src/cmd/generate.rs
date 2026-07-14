@@ -2538,7 +2538,10 @@ pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let session = merman::render::RenderEnvironment::parity()
+                .begin_session()
+                .map_err(|err| format!("render session failed: {err}"))?;
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!("layout failed for {}: {err}", mmd_path.display()));
@@ -2563,7 +2566,7 @@ pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 &layouted.semantic,
                 &layouted.meta.effective_config,
                 layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+                &session,
                 &svg_opts,
             ) {
                 Ok(v) => v,
@@ -2659,7 +2662,10 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let session = merman::render::RenderEnvironment::parity()
+                .begin_session()
+                .map_err(|err| format!("render session failed: {err}"))?;
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!("layout failed for {}: {err}", mmd_path.display()));
@@ -2716,6 +2722,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                         layout,
                         &layouted.semantic,
                         &layouted.meta.effective_config,
+                        &session,
                         &merman_render::svg::SvgRenderOptions::default(),
                     )
                     .map_err(|e| {
@@ -2746,7 +2753,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                         &layouted.semantic,
                         &layouted.meta.effective_config,
                         layouted.meta.title.as_deref(),
-                        layout_opts.text_measurer.as_ref(),
+                        &session,
                         &merman_render::svg::SvgRenderOptions::default(),
                     )
                     .map_err(|e| {
@@ -2762,7 +2769,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                         &layouted.semantic,
                         &layouted.meta.effective_config,
                         layouted.meta.title.as_deref(),
-                        layout_opts.text_measurer.as_ref(),
+                        &session,
                         &merman_render::svg::SvgRenderOptions::default(),
                     )
                     .map_err(|e| {
@@ -2777,6 +2784,7 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                         layout,
                         &layouted.semantic,
                         &layouted.meta.effective_config,
+                        &session,
                         &merman_render::svg::SvgRenderOptions::default(),
                     )
                     .map_err(|e| {
@@ -3238,7 +3246,10 @@ pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let session = merman::render::RenderEnvironment::parity()
+                .begin_session()
+                .map_err(|err| format!("render session failed: {err}"))?;
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!("layout failed for {}: {err}", mmd_path.display()));
@@ -3263,7 +3274,7 @@ pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 &layouted.semantic,
                 &layouted.meta.effective_config,
                 layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+                &session,
                 &svg_opts,
             ) {
                 Ok(v) => v,
@@ -3322,7 +3333,10 @@ pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let session = merman::render::RenderEnvironment::parity()
+                .begin_session()
+                .map_err(|err| format!("render session failed: {err}"))?;
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!("layout failed for {}: {err}", mmd_path.display()));
@@ -3348,7 +3362,7 @@ pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 &layouted.semantic,
                 &layouted.meta.effective_config,
                 layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+                &session,
                 &svg_opts,
             ) {
                 Ok(v) => v,
@@ -3412,7 +3426,10 @@ pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let session = merman::render::RenderEnvironment::parity()
+                .begin_session()
+                .map_err(|err| format!("render session failed: {err}"))?;
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!("layout failed for {}: {err}", mmd_path.display()));
@@ -3439,7 +3456,7 @@ pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 &layouted.semantic,
                 &layouted.meta.effective_config,
                 layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+                &session,
                 &svg_opts,
             ) {
                 Ok(v) => v,
@@ -3503,7 +3520,10 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let session = merman::render::RenderEnvironment::parity()
+                .begin_session()
+                .map_err(|err| format!("render session failed: {err}"))?;
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!("layout failed for {}: {err}", mmd_path.display()));
@@ -3528,7 +3548,7 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 &layouted.semantic,
                 &layouted.meta.effective_config,
                 layouted.meta.title.as_deref(),
-                layout_opts.text_measurer.as_ref(),
+                &session,
                 &svg_opts,
             ) {
                 Ok(v) => v,

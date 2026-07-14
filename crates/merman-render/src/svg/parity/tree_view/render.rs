@@ -15,7 +15,7 @@ pub(crate) fn render_tree_view_diagram_svg(
     layout: &TreeViewDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: TreeViewDiagramRenderModel = crate::json::from_value_ref(semantic)?;
     render_tree_view_diagram_svg_model(layout, &model, effective_config, options)
@@ -25,7 +25,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treeView");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -47,7 +47,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         layout.total_width,
         layout.total_height,
     );
-    let root_overrides = if options.apply_root_overrides {
+    let root_overrides = if options.root_viewport_override_policy().applies_generated() {
         root_svg::resolve_root_overrides(None, None)
     } else {
         None
@@ -89,7 +89,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     }
     let _ = write!(&mut out, "<style>{css}</style>");
     let icon_symbol_ids = tree_view_icon_symbol_ids(layout, diagram_id);
-    push_tree_view_icon_defs(&mut out, &icon_symbol_ids, options.icon_registry.as_deref());
+    push_tree_view_icon_defs(&mut out, &icon_symbol_ids, options.icon_registry());
     out.push_str("<g/>");
     out.push_str(r#"<g class="tree-view">"#);
     let mut next_node = 0usize;

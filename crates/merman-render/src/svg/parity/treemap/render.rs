@@ -24,7 +24,7 @@ pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
     _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     #[derive(Default)]
     struct OrdinalScale {
@@ -298,10 +298,10 @@ pub(crate) fn render_treemap_diagram_svg(
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
 
+    let measurer = options.text_measurer();
     let title = layout.title.as_deref().filter(|t| !t.trim().is_empty());
     let title_shift_y = layout.title_height;
     let title_bbox = title.map(|t| {
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = crate::text::TextStyle {
             font_family: Some(r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()),
             font_size: 14.0,
@@ -493,7 +493,7 @@ pub(crate) fn render_treemap_diagram_svg(
         ty = fmt(layout.title_height)
     );
 
-    let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    let visibility_measurer = options.text_measurer_for(TextMeasurementPhase::Visibility);
     let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
     let section_header_height = TREEMAP_SECTION_HEADER_HEIGHT_PX;
     let section_header_center_y = section_header_height / 2.0;
@@ -606,14 +606,16 @@ pub(crate) fn render_treemap_diagram_svg(
                 font_weight: Some("bold".to_string()),
             };
 
-            if measurer.measure(&label_text, &style).width > actual_available_width {
+            if visibility_measurer.measure(&label_text, &style).width > actual_available_width {
                 let ellipsis = "...";
                 let original = label_text.clone();
                 let mut current = original.clone();
                 while !current.is_empty() {
                     current.pop();
                     if current.is_empty() {
-                        if measurer.measure(ellipsis, &style).width > actual_available_width {
+                        if visibility_measurer.measure(ellipsis, &style).width
+                            > actual_available_width
+                        {
                             label_text.clear();
                         } else {
                             label_text = ellipsis.to_string();
@@ -621,7 +623,9 @@ pub(crate) fn render_treemap_diagram_svg(
                         break;
                     }
                     let candidate = format!("{current}{ellipsis}");
-                    if measurer.measure(&candidate, &style).width <= actual_available_width {
+                    if visibility_measurer.measure(&candidate, &style).width
+                        <= actual_available_width
+                    {
                         label_text = candidate;
                         break;
                     }
@@ -766,7 +770,8 @@ pub(crate) fn render_treemap_diagram_svg(
             loop {
                 let fit_tolerance_px =
                     treemap_leaf_label_fit_tolerance_px(&leaf.name, label_font_size, available_w);
-                if measurer.measure(&leaf.name, &style).width <= available_w + fit_tolerance_px
+                if visibility_measurer.measure(&leaf.name, &style).width
+                    <= available_w + fit_tolerance_px
                     || label_font_size <= min_label_font_size
                 {
                     break;
@@ -801,7 +806,8 @@ pub(crate) fn render_treemap_diagram_svg(
             } else {
                 let fit_tolerance_px =
                     treemap_leaf_label_fit_tolerance_px(&leaf.name, label_font_size, available_w);
-                if measurer.measure(&leaf.name, &style).width > available_w + fit_tolerance_px
+                if visibility_measurer.measure(&leaf.name, &style).width
+                    > available_w + fit_tolerance_px
                     || label_font_size < min_label_font_size
                     || available_h < label_font_size
                 {
@@ -877,7 +883,7 @@ pub(crate) fn render_treemap_diagram_svg(
                     font_size: value_font_size,
                     font_weight: None,
                 };
-                let value_w_px = measurer.measure(&value_text, &style).width;
+                let value_w_px = visibility_measurer.measure(&value_text, &style).width;
                 if value_w_px <= available_w_for_value
                     && value_y + value_font_size <= max_value_bottom_y
                     && value_font_size >= min_value_font_size
@@ -1011,11 +1017,17 @@ mod tests {
             leaves,
         };
 
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&request, &debug, &session);
         let svg = render_treemap_diagram_svg(
             &layout,
             &serde_json::json!({}),
             &serde_json::json!({}),
-            &SvgRenderOptions::default(),
+            &execution,
         )
         .unwrap();
 

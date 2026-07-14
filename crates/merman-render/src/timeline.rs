@@ -782,6 +782,9 @@ mod tests {
 
     #[test]
     fn long_word_wrap_keeps_upstream_activity_line_extent() {
+        let _session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
         let path = workspace_root()
             .join("fixtures")
             .join("timeline")
@@ -793,8 +796,8 @@ mod tests {
             futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
                 .expect("parse ok")
                 .expect("diagram detected");
-        let out =
-            crate::layout_parsed(&parsed, &crate::LayoutOptions::default()).expect("layout ok");
+        let out = crate::layout_parsed(&parsed, &crate::LayoutOptions::default(), &_session)
+            .expect("layout ok");
         let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
             panic!("expected TimelineDiagram layout");
         };
@@ -808,13 +811,16 @@ mod tests {
 
     #[test]
     fn empty_timeline_does_not_invent_pre_title_width() {
+        let _session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
         let engine = Engine::new();
         let parsed =
             futures::executor::block_on(engine.parse_diagram("timeline", ParseOptions::default()))
                 .expect("parse ok")
                 .expect("diagram detected");
-        let out =
-            crate::layout_parsed(&parsed, &crate::LayoutOptions::default()).expect("layout ok");
+        let out = crate::layout_parsed(&parsed, &crate::LayoutOptions::default(), &_session)
+            .expect("layout ok");
         let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
             panic!("expected TimelineDiagram layout");
         };

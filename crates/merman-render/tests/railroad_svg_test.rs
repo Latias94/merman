@@ -8,20 +8,23 @@ expr = sequence(nonterminal("term"), terminal("+"), special("guard")) ;
 "#;
 
 fn render_railroad(site_config: Value) -> (String, Value) {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(site_config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(RAILROAD_SOURCE, ParseOptions::strict())
         .expect("railroad parse succeeds")
         .expect("railroad diagram is detected");
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let layout = layout_parsed_render_layout_only(&parsed, &layout_options)
+    let layout = layout_parsed_render_layout_only(&parsed, &layout_options, &_session)
         .expect("railroad layout succeeds");
     let svg = render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions {
             diagram_id: Some("railroad-theme".to_string()),
             ..Default::default()

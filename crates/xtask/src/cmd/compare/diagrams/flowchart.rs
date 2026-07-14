@@ -276,20 +276,31 @@ fn run_flowchart_compare(
         report_root || matches!(dom_mode.trim(), "parity-root" | "parity_root");
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let mut layout_opts = merman_render::LayoutOptions::default();
-    if matches!(
-        text_measurer.as_str(),
-        "vendored" | "vendored-font" | "vendored-font-metrics"
-    ) {
-        layout_opts.text_measurer =
-            std::sync::Arc::new(merman_render::text::VendoredFontMetricsTextMeasurer::default());
-    }
     let tools_root = crate::cmd::mermaid_cli_root();
     let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
     let flowchart_math_renderer = toolchain_read_guard.node_katex_math_renderer();
-    if let Some(renderer) = flowchart_math_renderer.clone() {
-        layout_opts.math_renderer = Some(renderer);
-    }
     layout_opts.flowchart_elk_backend = flowchart_elk_backend;
+    let text_measurement = match text_measurer.as_str() {
+        "vendored" | "vendored-font" | "vendored-font-metrics" => {
+            merman::render::TextMeasurementPolicy::parity()
+        }
+        "deterministic" => merman::render::TextMeasurementPolicy::deterministic(),
+        other => {
+            return Err(XtaskError::SvgCompareFailed(format!(
+                "unsupported Flowchart text measurer: {other}"
+            )));
+        }
+    };
+    let mut environment = merman::render::RenderEnvironment::parity()
+        .with_text_measurement_policy(text_measurement)
+        .with_root_viewport_override_policy(if apply_root_overrides {
+            merman::render::RootViewportOverridePolicy::ApplyGenerated
+        } else {
+            merman::render::RootViewportOverridePolicy::ComputedOnly
+        });
+    if let Some(renderer) = flowchart_math_renderer.clone() {
+        environment = environment.with_math_renderer(renderer);
+    }
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
         label_deltas: Vec::new(),
@@ -383,12 +394,12 @@ fn run_flowchart_compare(
                 Some(site_config) => engine.clone().with_site_config(site_config),
                 None => engine.clone(),
             };
-            let semantic = match merman::render::prepare_semantic_sync(
-                &fixture_engine,
-                input.text,
-                fact.parse_policy.options(),
-                &layout_opts,
-            ) {
+            let renderer = merman::render::HeadlessRenderer::new()
+                .with_engine(fixture_engine)
+                .with_parse_options(fact.parse_policy.options())
+                .with_layout_options(layout_opts.clone())
+                .with_environment(environment.clone());
+            let semantic = match renderer.prepare_semantic_sync(input.text) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     return Err(format!(
@@ -452,8 +463,6 @@ fn run_flowchart_compare(
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(diagram_id),
                 aria_roledescription: Some(prepared.metadata().diagram_type.clone()),
-                math_renderer: flowchart_math_renderer.clone(),
-                apply_root_overrides,
                 ..Default::default()
             };
 

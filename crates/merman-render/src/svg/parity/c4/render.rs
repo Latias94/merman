@@ -119,7 +119,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -165,14 +165,16 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let mut root_w_attr = fmt_string(width);
     let mut root_h_attr = fmt_string(height + extra_vert_for_title);
 
-    apply_root_viewport_override(
-        diagram_id,
-        &mut root_viewbox,
-        &mut root_w_attr,
-        &mut root_h_attr,
-        &mut root_max_w,
-        crate::generated::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override,
-    );
+    if options.root_viewport_override_policy().applies_generated() {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut root_viewbox,
+            &mut root_w_attr,
+            &mut root_h_attr,
+            &mut root_max_w,
+            crate::generated::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override,
+        );
+    }
 
     let aria_describedby = model
         .acc_descr
@@ -809,7 +811,7 @@ pub(crate) fn render_c4_diagram_svg(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: C4DiagramRenderModel = crate::json::from_value_ref(semantic)?;
     render_c4_diagram_svg_typed(

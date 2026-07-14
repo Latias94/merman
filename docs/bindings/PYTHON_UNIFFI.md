@@ -48,7 +48,7 @@ The package re-exports the generated UniFFI API:
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+assert engine.abi_version() == 3
 print(engine.package_version())
 
 svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -75,6 +75,7 @@ lint_rules = engine.lint_rule_catalog()
 
 class Measurer(merman.MermanTextMeasurer):
     def measure(self, request):
+        print(request.phase)
         return merman.MermanTextMeasureResult(
             width=max(len(request.text) * 8.0, 1.0),
             height=max(request.line_height, 1.0),
@@ -111,11 +112,9 @@ Python GUI or WebView hosts that need label geometry to match their own font sta
 `MermanEngine.reusable_engine_with_text_measurer` when constructing a reusable engine, or call
 `MermanReusableEngine.set_text_measurer` on an existing reusable engine. Use
 `MermanReusableEngine.clear_text_measurer` to restore the engine's original built-in measurer.
-Return
-`None` for requests that the host cannot answer synchronously; merman will fall back to vendored
-metrics for that request. Raise `MermanError` or another callback exception only for host
-measurement failures that should fail the reusable `render_svg` or `layout_json` call; do not
-return exception objects from the callback. Follow
+Inspect `request.phase` to distinguish layout, wrap, SVG bbox, computed-length, and visibility
+work. `None`, invalid metrics, and callback exceptions use the operation's vendored fallback for
+that request instead of failing the reusable render/layout call. Follow
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
 shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
 

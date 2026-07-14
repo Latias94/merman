@@ -45,7 +45,7 @@ int main(void) {
     static const uint8_t source[] = "flowchart TD\nA[Hello] --> B[World]";
     static const uint8_t options[] =
         "{"
-        "\"layout\":{\"text_measurer\":\"deterministic\"},"
+        "\"environment\":{\"text_measurement\":\"deterministic\"},"
         "\"svg\":{\"diagram_id\":\"ffi engine example\",\"pipeline\":\"readable\"}"
         "}";
 

@@ -18,8 +18,7 @@ mod tests {
         ParseCliArgs, RenderCliArgs, RenderFormat, SvgPipelineKind, TextOutputCliArgs,
     };
     use crate::io::OutputTarget;
-    use merman::render::SvgPipeline;
-    use merman::{Engine, ParseOptions};
+    use merman::render::{HeadlessRenderer, RenderEnvironment, SvgPipeline};
 
     fn test_plan(format: RenderFormat) -> RenderPlan {
         RenderPlan {
@@ -47,18 +46,16 @@ mod tests {
     fn diagram_raster_pipeline_uses_resvg_safe_before_cli_postprocessors() {
         let mut plan = test_plan(RenderFormat::Png);
         plan.svg_pipeline = Some(SvgPipelineKind::Readable);
-        let engine = Engine::new();
         let request = RenderRequest {
             plan: &plan,
-            engine: &engine,
-            parse_options: ParseOptions::default(),
-            math_renderer: None,
+            renderer: HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
         };
+        let session = request.renderer.environment().begin_session().unwrap();
         let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
         let out = request
             .postprocess_pipeline()
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(!out.contains("<foreignObject"));
@@ -75,18 +72,16 @@ mod tests {
     #[test]
     fn diagram_svg_pipeline_keeps_parity_base_before_cli_postprocessors() {
         let plan = test_plan(RenderFormat::Svg);
-        let engine = Engine::new();
         let request = RenderRequest {
             plan: &plan,
-            engine: &engine,
-            parse_options: ParseOptions::default(),
-            math_renderer: None,
+            renderer: HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
         };
+        let session = request.renderer.environment().begin_session().unwrap();
         let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
         let out = request
             .postprocess_pipeline()
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(out.contains("<foreignObject"));
@@ -102,18 +97,16 @@ mod tests {
     fn diagram_svg_pipeline_can_request_resvg_safe_before_cli_postprocessors() {
         let mut plan = test_plan(RenderFormat::Svg);
         plan.svg_pipeline = Some(SvgPipelineKind::ResvgSafe);
-        let engine = Engine::new();
         let request = RenderRequest {
             plan: &plan,
-            engine: &engine,
-            parse_options: ParseOptions::default(),
-            math_renderer: None,
+            renderer: HeadlessRenderer::new().with_environment(RenderEnvironment::parity()),
         };
+        let session = request.renderer.environment().begin_session().unwrap();
         let svg = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
         let out = request
             .postprocess_pipeline()
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(!out.contains("<foreignObject"));
@@ -135,7 +128,8 @@ mod tests {
         );
         let svg = r#"<svg id="raw" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
-        let out = pipeline.process_to_string(svg).unwrap();
+        let session = RenderEnvironment::parity().begin_session().unwrap();
+        let out = pipeline.process_to_string(svg, &session).unwrap();
 
         assert!(!out.contains("<foreignObject"));
         assert!(!out.contains("@keyframes bad"));

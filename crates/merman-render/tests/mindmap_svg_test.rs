@@ -4,17 +4,20 @@ use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
 
     render_layouted_svg(
         &out,
-        layout_options.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
             ..SvgRenderOptions::default()
@@ -70,6 +73,9 @@ fn mindmap_svg_emits_mermaid_11_15_classic_dom_surface() {
 
 #[test]
 fn mindmap_public_json_layout_handles_deep_chain() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     const DEPTH: usize = 1200;
     let source = deep_mindmap_chain(DEPTH);
 
@@ -78,7 +84,7 @@ fn mindmap_public_json_layout_handles_deep_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::MindmapDiagram(layout) = &out.layout else {
         panic!("expected MindmapDiagram layout");
     };
@@ -154,6 +160,9 @@ fn mindmap_svg_uses_direct_classic_shapes_for_rounded_and_hexagon_nodes() {
 
 #[test]
 fn mindmap_tidy_tree_config_dispatches_bidirectional_layout() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(
         r#"---
@@ -173,7 +182,7 @@ mindmap
     .expect("parse ok")
     .expect("diagram detected");
 
-    let layout = layout_parsed(&parsed, &LayoutOptions::headless_svg_defaults())
+    let layout = layout_parsed(&parsed, &LayoutOptions::headless_svg_defaults(), &_session)
         .expect("tidy-tree layout ok");
     let LayoutDiagram::MindmapDiagram(layout) = &layout.layout else {
         panic!("expected MindmapDiagram layout");

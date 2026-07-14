@@ -3,6 +3,7 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use merman_core::{Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions};
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{
     IconRegistry, IconSvg, SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config,
@@ -12,17 +13,27 @@ use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
 use std::sync::Arc;
 
 fn render_tree_view_svg_with_options(input: &str, options: SvgRenderOptions) -> String {
+    render_tree_view_svg_with_environment(input, options, &RenderEnvironment::parity())
+}
+
+fn render_tree_view_svg_with_environment(
+    input: &str,
+    options: SvgRenderOptions,
+    environment: &RenderEnvironment,
+) -> String {
+    let session = environment.begin_session().unwrap();
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .expect("TreeView diagram");
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &options,
     )
     .unwrap()
@@ -30,6 +41,7 @@ fn render_tree_view_svg_with_options(input: &str, options: SvgRenderOptions) -> 
 
 #[test]
 fn tree_view_typed_render_model_outputs_svg() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = r##"---
 config:
   treeView:
@@ -54,13 +66,14 @@ treeView-beta
         .unwrap();
     assert_eq!(parsed.meta.diagram_type, "treeView");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let svg = render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("tree-view-test".to_string()),
             ..Default::default()
@@ -84,6 +97,7 @@ treeView-beta
 
 #[test]
 fn tree_view_typed_render_model_outputs_accessibility_nodes() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = r##"treeView-beta
 title TreeView Diagram Title
 accTitle: Accessible TreeView Title
@@ -98,13 +112,14 @@ accDescr: Accessible TreeView Description
         .unwrap();
     assert_eq!(parsed.meta.diagram_type, "treeView");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let svg = render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("tree-view-a11y-test".to_string()),
             ..Default::default()
@@ -122,6 +137,7 @@ accDescr: Accessible TreeView Description
 
 #[test]
 fn tree_view_mermaid_11_16_annotations_render_svg_dom() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = r##"---
 config:
   treeView:
@@ -140,13 +156,14 @@ src/ :::highlight icon(folder) ## source directory
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let svg = render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("tree-view-11-16-test".to_string()),
             ..Default::default()
@@ -185,13 +202,14 @@ App.tsx icon(logos:react)
             IconSvg::new(r#"<path data-icon="registry-override"/>"#, 16.0, 16.0),
         );
     }
-    let svg = render_tree_view_svg_with_options(
+    let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
+    let svg = render_tree_view_svg_with_environment(
         input,
         SvgRenderOptions {
             diagram_id: Some("tree-view-icon-size-test".to_string()),
-            icon_registry: Some(Arc::new(registry)),
             ..Default::default()
         },
+        &environment,
     );
     let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
 
@@ -270,13 +288,14 @@ fn tree_view_registry_icons_preserve_viewbox_and_empty_body_semantics() {
         .with_viewbox(2.0, 3.0, 32.0, 18.0),
     );
     registry.insert("test:empty", IconSvg::new("", 16.0, 16.0));
-    let svg = render_tree_view_svg_with_options(
+    let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
+    let svg = render_tree_view_svg_with_environment(
         "treeView-beta\nRoot\n    Rocket icon(test:rocket)\n    Rocket Again icon(test:rocket)\n    Missing icon(test:missing)\n    Empty icon(test:empty)\n",
         SvgRenderOptions {
             diagram_id: Some("tree-view-registry-test".to_string()),
-            icon_registry: Some(Arc::new(registry)),
             ..Default::default()
         },
+        &environment,
     );
     let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
 
@@ -362,6 +381,7 @@ fn assert_unknown_tree_view_icon(document: &roxmltree::Document<'_>, symbol_id: 
 
 #[test]
 fn tree_view_root_highlight_visual_bounds_fit_inside_viewbox() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = r##"treeView-beta
 root/ :::highlight
 "##;
@@ -370,7 +390,8 @@ root/ :::highlight
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let LayoutDiagram::TreeViewDiagram(tree_view) = &layout else {
         panic!("expected TreeView layout");
     };
@@ -387,7 +408,7 @@ root/ :::highlight
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("tree-view-root-highlight-test".to_string()),
             ..Default::default()
@@ -399,6 +420,7 @@ root/ :::highlight
 
 #[test]
 fn tree_view_multiple_highlights_follow_upstream_width_growth() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = r##"treeView-beta
 root/ :::highlight
     child/ :::highlight
@@ -409,7 +431,8 @@ root/ :::highlight
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let LayoutDiagram::TreeViewDiagram(tree_view) = &layout else {
         panic!("expected TreeView layout");
     };
@@ -436,7 +459,7 @@ root/ :::highlight
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("tree-view-multiple-highlights-test".to_string()),
             ..Default::default()
@@ -498,6 +521,7 @@ fn assert_tree_view_highlights_fit_viewbox(svg: &str) {
 
 #[test]
 fn tree_view_trailing_slash_only_marks_directory_labels() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = r##"treeView-beta
 src/ :::directory-probe
     main.rs :::file-probe
@@ -507,13 +531,14 @@ src/ :::directory-probe
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let svg = render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("tree-view-directory-test".to_string()),
             ..Default::default()
@@ -531,6 +556,7 @@ src/ :::directory-probe
 
 #[test]
 fn tree_view_fixed_size_root_keeps_width_and_height() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let input = r##"---
 config:
   treeView:
@@ -547,13 +573,14 @@ treeView-beta
         .unwrap();
     assert_eq!(parsed.meta.diagram_type, "treeView");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let svg = render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        LayoutOptions::default().text_measurer.as_ref(),
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("tree-view-fixed-test".to_string()),
             ..Default::default()
@@ -570,6 +597,8 @@ treeView-beta
 
 #[test]
 fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     let mut child = TreeViewNodeRenderModel {
         id: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
         level: (MAX_DIAGRAM_NESTING_DEPTH + 1) as i64,
@@ -595,12 +624,8 @@ fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
         ..Default::default()
     };
 
-    let err = layout_tree_view_diagram_typed(
-        &model,
-        &serde_json::json!({}),
-        LayoutOptions::default().text_measurer.as_ref(),
-    )
-    .unwrap_err();
+    let err =
+        layout_tree_view_diagram_typed(&model, &serde_json::json!({}), &measurer).unwrap_err();
 
     assert!(
         err.to_string().contains("treeView nesting depth exceeds"),
@@ -610,6 +635,7 @@ fn tree_view_layout_rejects_typed_model_beyond_nesting_limit() {
 
 #[test]
 fn tree_view_public_layout_accepts_max_allowed_chain() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let mut input = String::from("treeView-beta\n");
     for depth in 0..MAX_DIAGRAM_NESTING_DEPTH {
         input.push_str(&" ".repeat(depth));
@@ -624,7 +650,8 @@ fn tree_view_public_layout_accepts_max_allowed_chain() {
         .unwrap();
     assert_eq!(parsed.meta.diagram_type, "treeView");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default()).unwrap();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
     let LayoutDiagram::TreeViewDiagram(tree_view) = &layout else {
         panic!("expected treeView layout");
     };

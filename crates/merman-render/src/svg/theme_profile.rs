@@ -1437,6 +1437,9 @@ mod tests {
         output.drop_native_duplicate_fallbacks = true;
 
         let compiled = HostThemeProfile::builder().output(output).build().compile();
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
 <text class="task">Make tea</text>
 <g transform="translate(0,0)">
@@ -1447,7 +1450,10 @@ mod tests {
 </g>
 </svg>"##;
 
-        let out = compiled.pipeline().process_to_string(svg).unwrap();
+        let out = compiled
+            .pipeline()
+            .process_to_string(svg, &session)
+            .unwrap();
 
         assert_eq!(
             out.matches(r#"data-merman-foreignobject="fallback""#)
@@ -1510,9 +1516,13 @@ mod tests {
     fn compiled_output_builds_host_pipeline() {
         let compiled = HostThemeProfile::editor_dark().compile();
         let pipeline = compiled.pipeline();
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
         let out = pipeline
             .process_to_string(
                 r#"<svg id="host" style="background-color: white;"><style>.node{fill:red !important;}</style><text>A</text></svg>"#,
+                &session,
             )
             .unwrap();
 

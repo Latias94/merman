@@ -15,6 +15,9 @@ fn fixtures_root() -> PathBuf {
 }
 
 fn render_fixture_svg(rel_fixture_path: impl AsRef<Path>) -> String {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let mmd_path = fixtures_root().join(rel_fixture_path);
     let text = std::fs::read_to_string(&mmd_path)
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", mmd_path.display()));
@@ -25,14 +28,9 @@ fn render_fixture_svg(rel_fixture_path: impl AsRef<Path>) -> String {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::default();
-    let layouted = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let layouted = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
 
-    render_layouted_svg(
-        &layouted,
-        layout_opts.text_measurer.as_ref(),
-        &SvgRenderOptions::default(),
-    )
-    .expect("render ok")
+    render_layouted_svg(&layouted, &_session, &SvgRenderOptions::default()).expect("render ok")
 }
 
 fn contains_malformed_xml_entity_reference(s: &str) -> bool {

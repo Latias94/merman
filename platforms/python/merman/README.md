@@ -11,7 +11,7 @@ for the main library contract.
 
 ## Compatibility And Release Notes
 
-This package tracks UniFFI ABI 2 and is regenerated from the `merman-uniffi` cdylib. The
+This package tracks UniFFI ABI 3 and is regenerated from the `merman-uniffi` cdylib. The
 published PyPI page shows this README together with the metadata links in `pyproject.toml`, so the
 package page can point directly to the binding docs, issues, and changelog.
 
@@ -29,7 +29,7 @@ For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md).
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+assert engine.abi_version() == 3
 print(engine.package_version())
 
 source = "flowchart TD\nA[Hello] --> B[World]"
@@ -52,6 +52,7 @@ family_capabilities = engine.diagram_family_capabilities()
 
 class Measurer(merman.MermanTextMeasurer):
     def measure(self, request):
+        print(request.phase)
         return merman.MermanTextMeasureResult(
             width=max(len(request.text) * 8.0, 1.0),
             height=max(request.line_height, 1.0),
@@ -89,10 +90,9 @@ batch rendering.
 If a Python GUI, browser automation host, or WebView application needs geometry that matches its
 own font stack, create a `MermanReusableEngine` with `reusable_engine_with_text_measurer(...)` or
 call `set_text_measurer(...)` on an existing reusable engine. Call `clear_text_measurer()` to
-restore the engine's original built-in measurer. Return `None` from the callback when a request is
-not handled so merman can fall back to its vendored metrics for that request. Raise `MermanError`
-or another callback exception only for host failures that should make reusable `render_svg` or
-`layout_json` fail instead of silently returning fallback geometry. See
+restore the engine's original built-in measurer. Inspect `request.phase` to distinguish layout,
+wrap, SVG bbox, computed-length, and visibility work. Returning `None`, invalid metrics, or raising
+a callback exception uses the operation's named vendored fallback for that request. See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
 
 ## Generate Locally

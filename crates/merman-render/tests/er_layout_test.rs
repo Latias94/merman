@@ -10,6 +10,9 @@ fn workspace_root() -> PathBuf {
 
 #[test]
 fn er_layout_produces_positions_and_routes() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("er")
@@ -21,7 +24,7 @@ fn er_layout_produces_positions_and_routes() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ErDiagram(layout) = out.layout else {
         panic!("expected ErDiagram layout");
     };
@@ -49,6 +52,9 @@ fn er_layout_produces_positions_and_routes() {
 
 #[test]
 fn er_layout_emits_markers_and_dashes_from_rel_spec() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("er")
@@ -60,7 +66,7 @@ fn er_layout_emits_markers_and_dashes_from_rel_spec() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ErDiagram(layout) = out.layout else {
         panic!("expected ErDiagram layout");
     };

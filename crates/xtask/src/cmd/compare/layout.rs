@@ -29,12 +29,13 @@ pub(crate) fn svg_compare_engine_with_site_config(overrides: serde_json::Value) 
 
 pub(crate) fn svg_compare_layout_opts() -> merman_render::LayoutOptions {
     merman_render::LayoutOptions {
-        text_measurer: std::sync::Arc::new(
-            merman_render::text::VendoredFontMetricsTextMeasurer::default(),
-        ),
         use_manatee_layout: true,
         ..Default::default()
     }
+}
+
+pub(crate) fn svg_compare_environment() -> merman::render::RenderEnvironment {
+    merman::render::RenderEnvironment::parity()
 }
 
 #[cfg(test)]

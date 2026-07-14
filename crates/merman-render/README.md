@@ -35,11 +35,25 @@ Most applications should start with the `merman` crate and `merman::render::Head
 - Math rendering hooks through `MathRenderer`.
 - `SvgPipeline` presets and postprocessors for readable or rasterizer-friendly SVG.
 
+## Render Environment
+
+`RenderEnvironment` owns adapters and policy for one operation: named text-measurement routes,
+math rendering, icons, time, randomness, resource limits, and generated root-viewport overrides.
+Call `begin_session()` once and pass that `RenderSession` through parse/layout, SVG, and any raster
+postprocessing so every phase observes the same snapshot and provenance.
+
+This is a breaking replacement for independently configured layout and SVG services. Text and math
+adapters no longer live in `LayoutOptions`, and render code does not read process-global policy.
+Production request values stay in `SvgRenderOptions`; diagnostics, including timing output, live in
+`SvgDebugOptions` and are accepted only by the explicit `*_with_debug` entry points.
+
 ## Direct Rendering Example
 
 ```rust
 use merman_core::{Engine, ParseOptions};
-use merman_render::{layout_parsed_render_layout_only, LayoutOptions};
+use merman_render::{
+    environment::RenderEnvironment, layout_parsed_render_layout_only, LayoutOptions,
+};
 use merman_render::svg::{
     render_layout_svg_parts_for_render_model_with_config, SvgPipeline, SvgRenderOptions,
 };
@@ -54,7 +68,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let layout = layout_parsed_render_layout_only(&parsed, &layout_options)?;
+    let session = RenderEnvironment::parity().begin_session()?;
+    let layout = layout_parsed_render_layout_only(&parsed, &layout_options, &session)?;
 
     let svg_options = SvgRenderOptions {
         diagram_id: Some("example-diagram".to_string()),
@@ -66,11 +81,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &session,
         &svg_options,
     )?;
 
-    let svg = SvgPipeline::resvg_safe().process_to_string(&svg)?;
+    let svg = SvgPipeline::resvg_safe().process_to_string(&svg, &session)?;
     println!("{svg}");
 
     Ok(())

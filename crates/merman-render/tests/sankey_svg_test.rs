@@ -26,8 +26,17 @@ fn sankey_svg_uses_configured_node_colors_and_outlined_labels() {
     };
 
     let layout = layout_sankey_diagram(&semantic, &config, &measurer).unwrap();
-    let svg = render_sankey_diagram_svg(&layout, &semantic, &config, &SvgRenderOptions::default())
+    let session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
         .unwrap();
+    let svg = render_sankey_diagram_svg(
+        &layout,
+        &semantic,
+        &config,
+        &session,
+        &SvgRenderOptions::default(),
+    )
+    .unwrap();
 
     assert!(
         svg.contains(r##"fill="#112233""##),
@@ -74,10 +83,14 @@ fn sankey_generated_ids_are_prefixed_when_diagram_id_is_provided() {
     };
 
     let layout = layout_sankey_diagram(&semantic, &config, &measurer).unwrap();
+    let session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let svg = render_sankey_diagram_svg(
         &layout,
         &semantic,
         &config,
+        &session,
         &SvgRenderOptions {
             diagram_id: Some("sankey-inline".to_string()),
             ..SvgRenderOptions::default()
@@ -126,8 +139,17 @@ fn sankey_generated_ids_keep_mermaid_style_without_diagram_id() {
     };
 
     let layout = layout_sankey_diagram(&semantic, &config, &measurer).unwrap();
-    let svg = render_sankey_diagram_svg(&layout, &semantic, &config, &SvgRenderOptions::default())
+    let session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
         .unwrap();
+    let svg = render_sankey_diagram_svg(
+        &layout,
+        &semantic,
+        &config,
+        &session,
+        &SvgRenderOptions::default(),
+    )
+    .unwrap();
 
     assert!(
         svg.contains(r#"id="node-1""#),

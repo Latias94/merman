@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 fn assert_no_empty_style_elements(name: &str, svg: &str) {
     let mut cursor = 0;
@@ -43,15 +42,7 @@ fn pipeline_bench_fixtures_are_benchmarkable() {
 
     let engine = merman_core::Engine::new();
     let parse_options = merman_core::ParseOptions::strict();
-    let layout = merman::render::LayoutOptions {
-        viewport_width: 800.0,
-        viewport_height: 600.0,
-        text_measurer: Arc::new(merman::render::VendoredFontMetricsTextMeasurer::default()),
-        math_renderer: None,
-        use_manatee_layout: true,
-        flowchart_elk_backend: Default::default(),
-        resource_limits: Default::default(),
-    };
+    let layout = merman::render::LayoutOptions::headless_svg_defaults();
 
     for path in fixtures {
         let name = path

@@ -46,6 +46,10 @@ pub(super) fn compare_gantt_request(
     let engine = crate::cmd::svg_compare_engine()
         .with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes));
     let layout_opts = crate::cmd::svg_compare_layout_opts();
+    let probe_renderer = merman::render::HeadlessRenderer::new()
+        .with_engine(engine.clone())
+        .with_parse_options(fact.parse_policy.options())
+        .with_layout_options(layout_opts.clone());
 
     merman::time::with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes), || {
         run_svg_compare(
@@ -76,12 +80,7 @@ pub(super) fn compare_gantt_request(
                     .map(str::to_string)
             },
             |_, input| {
-                let semantic = match merman::render::prepare_semantic_sync(
-                    &engine,
-                    input.text,
-                    fact.parse_policy.options(),
-                    &layout_opts,
-                ) {
+                let semantic = match probe_renderer.prepare_semantic_sync(input.text) {
                     Ok(Some(v)) => v,
                     Ok(None) => {
                         return Err(format!(
@@ -115,17 +114,39 @@ pub(super) fn compare_gantt_request(
                         prepared.metadata().diagram_type
                     ));
                 };
-                let now_ms_override = gantt_now_ms_override(input.upstream_svg, layout);
-
-                let svg_opts = merman_render::svg::SvgRenderOptions {
-                    diagram_id: Some(sanitize_svg_id(input.stem)),
-                    now_ms_override,
-                    ..Default::default()
+                let now_ms = gantt_now_ms_override(input.upstream_svg, layout);
+                let final_renderer = if let Some(now_ms) = now_ms {
+                    let snapshot = merman::render::RenderTimeSnapshot::from_unix_millis(
+                        now_ms,
+                        baseline_local_offset_minutes,
+                    )
+                    .map_err(|err| format!("invalid Gantt baseline time: {err}"))?;
+                    probe_renderer
+                        .clone()
+                        .with_fixed_time(snapshot)
+                        .with_diagram_id(&sanitize_svg_id(input.stem))
+                } else {
+                    probe_renderer
+                        .clone()
+                        .with_diagram_id(&sanitize_svg_id(input.stem))
                 };
+                let final_prepared = final_renderer
+                    .prepare_render_sync(input.text)
+                    .map_err(|err| {
+                        format!(
+                            "final Gantt operation failed for {}: {err}",
+                            input.fixture_path.display()
+                        )
+                    })?
+                    .ok_or_else(|| {
+                        format!("no diagram detected in {}", input.fixture_path.display())
+                    })?;
 
-                let local_svg = prepared.render_svg(&svg_opts).map_err(|err| {
-                    format!("render failed for {}: {err}", input.fixture_path.display())
-                })?;
+                let local_svg = final_prepared
+                    .render_svg(final_renderer.svg_options())
+                    .map_err(|err| {
+                        format!("render failed for {}: {err}", input.fixture_path.display())
+                    })?;
 
                 Ok(CompareFixtureResult::Rendered {
                     local_svg,

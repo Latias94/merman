@@ -55,10 +55,9 @@ Typical current interpretation on this fixture set:
 
 ## Micro-timing (render sub-breakdowns)
 
-When optimizing SVG emission, stage timing alone is often too coarse. `merman-render` supports an
-internal breakdown that can be enabled via:
-
-- `MERMAN_RENDER_TIMING=1`
+When optimizing SVG emission, stage timing alone is often too coarse. Direct `merman-render`
+callers can enable the internal breakdown per request with
+`SvgDebugOptions::include_timing_diagnostics` and a `*_with_debug` render entry point.
 
 Example (single fixture run):
 
@@ -167,7 +166,8 @@ Exit criteria:
 - Reduced dagreish edge-proxy overhead in dugong (`perf(dugong): cut dagreish edge-proxy overhead`).
 - Made SVG number/path formatting allocation-free (`fmt_display`, `fmt_path_into`, curve/path emit refactors).
 - Reduced allocations in flowchart/state SVG emission (escape display wrappers, fewer intermediate `String`s).
-- Added an internal render breakdown switch (`MERMAN_RENDER_TIMING=1`) to cheaply localize SVG hotspots.
+- Added an explicit per-request SVG render breakdown to cheaply localize SVG hotspots without
+  process-global policy.
 - Reduced flowchart node render allocations by borrowing node inputs and avoiding style string cloning.
 - Cached RoughJS path generation within state leaf-node rendering (per-render cache; avoids repeated `roughr` work).
 - Optimized state `parity-root` bbox scan to skip `<style>/<defs>` and reuse transform parse buffers.

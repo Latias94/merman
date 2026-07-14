@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use crate::architecture_metrics::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
 use crate::model::Bounds;
-use crate::text::{TextMeasurer, VendoredFontMetricsTextMeasurer, WrapMode};
+use crate::text::{TextMeasurer, WrapMode};
 
 use super::super::{escape_xml_into, fmt};
 use super::foreign_object::{
@@ -25,7 +25,7 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
-    pub(super) text_measurer: &'a VendoredFontMetricsTextMeasurer,
+    pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) content_bounds: &'a mut Option<Bounds>,

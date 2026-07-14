@@ -1,5 +1,6 @@
 use super::builtin::util::extract_root_svg_id;
 use super::preset::SvgPipelinePreset;
+use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SvgPostprocessMetadata {
@@ -65,12 +66,24 @@ impl SvgPostprocessMetadata {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct SvgPostprocessContext<'a> {
     preset: SvgPipelinePreset,
     pass_index: usize,
     pass_name: &'a str,
     metadata: &'a SvgPostprocessMetadata,
+    session: &'a RenderSession,
+}
+
+impl std::fmt::Debug for SvgPostprocessContext<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SvgPostprocessContext")
+            .field("preset", &self.preset)
+            .field("pass_index", &self.pass_index)
+            .field("pass_name", &self.pass_name)
+            .field("metadata", &self.metadata)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<'a> SvgPostprocessContext<'a> {
@@ -79,12 +92,14 @@ impl<'a> SvgPostprocessContext<'a> {
         pass_index: usize,
         pass_name: &'a str,
         metadata: &'a SvgPostprocessMetadata,
+        session: &'a RenderSession,
     ) -> Self {
         Self {
             preset,
             pass_index,
             pass_name,
             metadata,
+            session,
         }
     }
 
@@ -110,6 +125,10 @@ impl<'a> SvgPostprocessContext<'a> {
 
     pub fn svg_id(&self) -> Option<&'a str> {
         self.metadata.svg_id()
+    }
+
+    pub fn text_measurer(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'a> {
+        self.session.text_measurer(phase)
     }
 }
 

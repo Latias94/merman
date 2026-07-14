@@ -149,6 +149,12 @@ fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn fixtures_match_layout_golden_snapshots_when_present() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .with_text_measurement_policy(
+            merman_render::environment::TextMeasurementPolicy::deterministic(),
+        )
+        .begin_session()
+        .unwrap();
     // Pin a fixed local timezone offset so Gantt (and related layout logic) stays deterministic on CI.
     merman_core::time::with_fixed_local_offset_minutes(Some(0), || {
         let fixtures_root = workspace_root().join("fixtures");
@@ -200,7 +206,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                 }
             };
 
-            let layouted = match layout_parsed(&parsed, &layout_opts) {
+            let layouted = match layout_parsed(&parsed, &layout_opts, &_session) {
                 Ok(v) => v,
                 Err(merman_render::Error::UnsupportedDiagram { .. }) => {
                     continue;

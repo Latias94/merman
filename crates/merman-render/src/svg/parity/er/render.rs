@@ -5,6 +5,7 @@ use super::super::*;
 pub(crate) fn render_er_diagram_debug_svg(
     layout: &ErDiagramLayout,
     options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
 ) -> String {
     let mut nodes = layout.nodes.clone();
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
@@ -101,7 +102,7 @@ pub(crate) fn render_er_diagram_debug_svg(
 "##,
     );
 
-    if options.include_edges {
+    if debug.include_edges {
         out.push_str(r#"<g class="edges">"#);
         for e in &edges {
             if e.points.len() >= 2 {
@@ -139,7 +140,7 @@ pub(crate) fn render_er_diagram_debug_svg(
                     fmt(lbl.width.max(1.0)),
                     fmt(lbl.height.max(1.0))
                 );
-                if options.include_edge_id_labels {
+                if debug.include_edge_id_labels {
                     let _ = write!(
                         &mut out,
                         r#"<text class="node-label" x="{}" y="{}">{}</text>"#,
@@ -153,7 +154,7 @@ pub(crate) fn render_er_diagram_debug_svg(
         out.push_str("</g>\n");
     }
 
-    if options.include_nodes {
+    if debug.include_nodes {
         out.push_str(r#"<g class="nodes">"#);
         for n in &nodes {
             render_node(&mut out, n);
@@ -423,7 +424,7 @@ pub(crate) fn render_er_diagram_svg(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: crate::er::ErModel = crate::json::from_value_ref(semantic)?;
     render_er_diagram_svg_model(
@@ -442,7 +443,7 @@ pub(crate) fn render_er_diagram_svg_model(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
@@ -629,14 +630,16 @@ pub(crate) fn render_er_diagram_svg_model(
             vb_w_attr,
         )
     };
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_style,
-        crate::generated::er_root_overrides_11_12_2::lookup_er_root_viewport_override,
-    );
+    if options.root_viewport_override_policy().applies_generated() {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut viewbox_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_style,
+            crate::generated::er_root_overrides_11_12_2::lookup_er_root_viewport_override,
+        );
+    }
 
     let has_acc_title = model.acc_title.as_ref().is_some_and(|s| !s.is_empty());
     let has_acc_descr = model.acc_descr.as_ref().is_some_and(|s| !s.is_empty());
@@ -788,7 +791,7 @@ pub(crate) fn render_er_diagram_svg_model(
     } else {
         out.push_str(r#"<g class="edgePaths">"#);
     }
-    if options.include_edges {
+    if options.debug.include_edges {
         for e in &edges {
             if e.points.len() < 2 {
                 continue;
@@ -850,7 +853,7 @@ pub(crate) fn render_er_diagram_svg_model(
     out.push_str("</g>");
 
     out.push_str(r#"<g class="edgeLabels">"#);
-    if options.include_edges {
+    if options.debug.include_edges {
         for e in &edges {
             let rel_idx = er_rel_idx_from_edge_id(&e.id)
                 .and_then(|idx| model.relationships.get(idx).map(|r| (idx, r)));

@@ -1,6 +1,7 @@
 use merman::render::{
-    LayoutDiagram, LayoutOptions, PreparedRender, SvgRenderOptions, layout_parsed,
-    prepare_render_sync, prepare_semantic_sync, render_layouted_svg, render_svg_sync,
+    HeadlessRenderer, LayoutDiagram, LayoutOptions, PreparedRender, RenderEnvironment,
+    RenderResourceLimits, SvgRenderOptions, prepare_render_sync, prepare_semantic_sync,
+    render_svg_sync,
 };
 use merman::{ParseMetadata, ParseOptions, RenderSemanticModel};
 use std::sync::OnceLock;
@@ -84,9 +85,17 @@ flowchart TD
 A --> B
 "#;
     let engine = merman::Engine::new();
-    let mut layout_options = LayoutOptions::headless_svg_defaults();
-    layout_options.resource_limits.max_flowchart_nodes = Some(0);
-    let semantic = prepare_semantic_sync(&engine, source, ParseOptions::strict(), &layout_options)
+    let renderer = HeadlessRenderer::new()
+        .with_engine(engine)
+        .with_environment(RenderEnvironment::parity())
+        .with_strict_parsing()
+        .with_layout_options(LayoutOptions::headless_svg_defaults())
+        .with_resource_limits(RenderResourceLimits {
+            max_flowchart_nodes: Some(0),
+            ..RenderResourceLimits::unbounded_for_trusted_input()
+        });
+    let semantic = renderer
+        .prepare_semantic_sync(source)
         .unwrap()
         .expect("Flowchart should prepare typed semantics before ELK layout admission");
 
@@ -100,7 +109,8 @@ A --> B
     // Admission can drop the semantic stage here without starting layout.
     drop(semantic);
 
-    let semantic = prepare_semantic_sync(&engine, source, ParseOptions::strict(), &layout_options)
+    let semantic = renderer
+        .prepare_semantic_sync(source)
         .unwrap()
         .expect("the same source should prepare typed semantics again");
     let error = match semantic.continue_layout() {
@@ -147,7 +157,7 @@ fn high_level_render_matches_the_prepared_artifact_path() {
 }
 
 #[test]
-fn prepared_architecture_matches_the_compatibility_json_pipeline() {
+fn prepared_architecture_matches_the_canonical_high_level_operation() {
     let engine = merman::Engine::new();
     let source = r#"architecture-beta
 group platform(cloud)[Platform]
@@ -164,18 +174,6 @@ align row api db
         ..Default::default()
     };
 
-    let compatibility = engine
-        .parse_diagram_sync(source, parse_options)
-        .unwrap()
-        .expect("Architecture should produce compatibility JSON");
-    let compatibility = layout_parsed(&compatibility, &layout_options).unwrap();
-    let compatibility_svg = render_layouted_svg(
-        &compatibility,
-        layout_options.text_measurer.as_ref(),
-        &svg_options,
-    )
-    .unwrap();
-
     let prepared = prepare_render_sync(&engine, source, parse_options, &layout_options)
         .unwrap()
         .expect("Architecture should produce a typed prepared artifact");
@@ -184,6 +182,15 @@ align row api db
         LayoutDiagram::ArchitectureDiagram(_)
     ));
     let prepared_svg = prepared.render_svg(&svg_options).unwrap();
+    let high_level_svg = render_svg_sync(
+        &engine,
+        source,
+        parse_options,
+        &layout_options,
+        &svg_options,
+    )
+    .unwrap()
+    .expect("Architecture should render through the canonical operation");
 
-    assert_eq!(prepared_svg, compatibility_svg);
+    assert_eq!(prepared_svg, high_level_svg);
 }

@@ -5,6 +5,7 @@ use super::*;
 pub(super) fn render_flowchart_v2_debug_svg(
     layout: &FlowchartV2Layout,
     options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
 ) -> String {
     let mut clusters = layout.clusters.clone();
     clusters.sort_by(|a, b| a.id.cmp(&b.id));
@@ -49,15 +50,15 @@ pub(super) fn render_flowchart_v2_debug_svg(
 "#,
     );
 
-    if options.include_clusters {
+    if debug.include_clusters {
         out.push_str(r#"<g class="clusters">"#);
         for c in &clusters {
-            render_cluster(&mut out, c, options.include_cluster_debug_markers);
+            render_cluster(&mut out, c, debug.include_cluster_debug_markers);
         }
         out.push_str("</g>\n");
     }
 
-    if options.include_edges {
+    if debug.include_edges {
         out.push_str(r#"<g class="edges">"#);
         for e in &edges {
             if e.points.len() >= 2 {
@@ -65,7 +66,7 @@ pub(super) fn render_flowchart_v2_debug_svg(
                 push_points_attr(&mut out, &e.points);
                 out.push_str(r#"" />"#);
             }
-            if options.include_edge_id_labels
+            if debug.include_edge_id_labels
                 && let Some(lbl) = &e.label
             {
                 let _ = write!(
@@ -80,7 +81,7 @@ pub(super) fn render_flowchart_v2_debug_svg(
         out.push_str("</g>\n");
     }
 
-    if options.include_nodes {
+    if debug.include_nodes {
         out.push_str(r#"<g class="nodes">"#);
         for n in &nodes {
             if n.is_cluster {

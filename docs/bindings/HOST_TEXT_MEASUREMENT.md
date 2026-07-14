@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Draft
-Last updated: 2026-06-17
+Last updated: 2026-07-14
 
 This guide explains how native hosts should use Merman's text-measurement callback and where the
 remaining headless-rendering limits are. It complements the exact C ABI contract in
@@ -108,7 +108,8 @@ surface that will render the SVG.
 
 ## C ABI Contract Summary
 
-Install a callback on a reusable engine:
+The text-measurement request shape described here requires C ABI v3
+(`MERMAN_ABI_VERSION == 3`). Install a callback on a reusable engine:
 
 ```c
 MermanResult merman_engine_set_text_measure_callback(
@@ -125,10 +126,19 @@ The request includes:
 - `line_height`, `letter_spacing`, and `word_spacing` in CSS pixels.
 - `wrap_mode`, `direction`, and `white_space` constants.
 - Optional `max_width` when wrapping is requested.
+- `phase`, which identifies the operation that requested the measurement:
+  `MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT`, `MERMAN_TEXT_MEASUREMENT_PHASE_WRAP`,
+  `MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX`,
+  `MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH`, or
+  `MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY`.
 
 The callback returns `handled=1` with `width`, `height`, and `line_count`, or `handled=0` to let
-Merman fall back for that single request. Invalid, negative, non-finite, or zero-line results are
-treated as unsupported by higher-level wrappers.
+Merman fall back for that single request. Invalid, negative, non-finite, or zero-line results and
+callback errors reported by a binding wrapper take the same per-request fallback path. They do not
+abort the enclosing layout or render operation; subsequent requests may still use the host callback.
+Higher-level bindings also map a callback exception or error to this per-request fallback. A raw C
+callback must catch any host-language exception before it crosses the C ABI boundary and return
+`handled=0` instead.
 
 Request string pointers are valid only during the callback. Copy or decode them immediately if the
 host text API needs owned strings.
@@ -150,20 +160,23 @@ host text API needs owned strings.
 Use the `MermanTextMeasurer` protocol with a reusable engine:
 
 ```python
-from merman import MermanTextMeasurer, reusable_engine_with_text_measurer
+import merman
 
 
-class PreviewMeasurer(MermanTextMeasurer):
-    def measure_text(self, request):
+class PreviewMeasurer(merman.MermanTextMeasurer):
+    def measure(self, request):
         return None
 
 
-engine = reusable_engine_with_text_measurer(PreviewMeasurer())
+engine = merman.MermanEngine()
+reusable = engine.reusable_engine_with_text_measurer(None, PreviewMeasurer())
 ```
 
 For long-lived preview surfaces, call `set_text_measurer()` when the host text stack becomes
 available and `clear_text_measurer()` before destroying the host-side measurement state. Returning
-`None` from `measure_text()` leaves that single request on Merman's vendored fallback metrics.
+`None` from `measure()` leaves that single request on Merman's vendored fallback metrics. Invalid
+metrics and callback exceptions or errors have the same per-request behavior: Merman uses the
+vendored fallback and continues the enclosing layout or render operation.
 Use `diagram_family_capabilities()` to decide whether a diagram family can render through the
 current Python binding before installing host-specific measurement logic.
 

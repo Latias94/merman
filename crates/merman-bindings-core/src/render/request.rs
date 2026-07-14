@@ -4,11 +4,11 @@ use crate::common::{
     css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
     normalize_option,
 };
-use chrono::TimeZone;
 use merman::render::{
-    DeterministicTextMeasurer, FlowchartElkBackend, HeadlessRenderer, HostThemeAppearance,
-    HostThemePipelinePreset, HostThemePreset, HostThemeProfile, HostThemeRoles,
-    HostThemeRootBackground, LayoutOptions, VendoredFontMetricsTextMeasurer,
+    FlowchartElkBackend, HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset,
+    HostThemePreset, HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
+    MeasurementProfileId, RenderEnvironment, RenderTimeSnapshot, RootViewportOverridePolicy,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use std::sync::Arc;
 
@@ -39,24 +39,24 @@ impl RenderRequestPlan {
         }
     }
 
-    pub(super) fn with_text_measurer(
+    pub(super) fn with_host_text_measurer(
         &self,
-        measurer: Arc<dyn merman::render::TextMeasurer + Send + Sync>,
+        measurer: Arc<dyn merman::render::HostTextMeasurer>,
     ) -> Self {
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("merman.binding-host").expect("static profile id"),
+            concat!("merman-bindings-core@", env!("CARGO_PKG_VERSION")),
+        )
+        .expect("static profile identity");
+        let policy =
+            TextMeasurementPolicy::host_display(identity, measurer, TextMeasurementPhase::ALL);
         Self {
-            renderer: self.renderer.clone().with_text_measurer(measurer),
+            renderer: self.renderer.clone().with_text_measurement_policy(policy),
             pipeline: self.pipeline.clone(),
         }
     }
 
     pub(super) fn parse_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        self.renderer
-            .layout
-            .resource_limits
-            .check_source_bytes(source)
-            .map_err(|err| {
-                BindingError::new(BindingStatus::ResourceLimitExceeded, err.to_string())
-            })?;
         let parsed = self
             .renderer
             .parse_diagram_sync(source)
@@ -176,14 +176,68 @@ impl SvgPipelineOptions {
 fn build_renderer(
     options: &BindingOptions,
 ) -> Result<(HeadlessRenderer, SvgPipelineOptions), BindingError> {
-    let fixed_today = binding_fixed_today(options)?;
-    let fixed_local_offset_minutes = binding_fixed_local_offset_minutes(options)?;
-    let mut renderer = HeadlessRenderer::new()
-        .with_fixed_today(fixed_today)
-        .with_fixed_local_offset_minutes(fixed_local_offset_minutes);
-    if let Some(now_ms) = fixed_today_marker_ms(fixed_today, fixed_local_offset_minutes) {
-        renderer.svg.now_ms_override = Some(now_ms);
+    let mut environment = apply_binding_time_policy(default_render_environment(), options)?;
+    if let Some(resources) = options.analysis.resources.as_ref() {
+        environment = environment.with_resource_limits(binding_resource_limits(resources)?);
     }
+    if let Some(environment_json) = options.environment.as_ref() {
+        if let Some(kind) = environment_json.text_measurement.as_deref() {
+            environment =
+                environment.with_text_measurement_policy(match normalize_option(kind).as_str() {
+                    "vendored" | "parity" => TextMeasurementPolicy::parity(),
+                    "deterministic" => TextMeasurementPolicy::deterministic(),
+                    other => {
+                        return Err(BindingError::new(
+                            BindingStatus::InvalidArgument,
+                            format!("unsupported environment.text_measurement: {other}"),
+                        ));
+                    }
+                });
+        }
+        if let Some(raw_policy) = environment_json.root_viewport_overrides.as_deref() {
+            let policy = match normalize_option(raw_policy).as_str() {
+                "apply-generated" | "apply_generated" | "generated" => {
+                    RootViewportOverridePolicy::ApplyGenerated
+                }
+                "computed-only" | "computed_only" | "computed" | "disabled" => {
+                    RootViewportOverridePolicy::ComputedOnly
+                }
+                other => {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!("unsupported environment.root_viewport_overrides: {other}"),
+                    ));
+                }
+            };
+            environment = environment.with_root_viewport_override_policy(policy);
+        }
+        if let Some(math_renderer) = environment_json.math_renderer.as_deref() {
+            match normalize_option(math_renderer).as_str() {
+                "none" => {}
+                "ratex" => {
+                    #[cfg(feature = "ratex-math")]
+                    {
+                        environment = environment
+                            .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
+                    }
+                    #[cfg(not(feature = "ratex-math"))]
+                    {
+                        return Err(BindingError::new(
+                            BindingStatus::UnsupportedFormat,
+                            "environment.math_renderer=ratex requires the ratex-math feature",
+                        ));
+                    }
+                }
+                other => {
+                    return Err(BindingError::new(
+                        BindingStatus::InvalidArgument,
+                        format!("unsupported environment.math_renderer: {other}"),
+                    ));
+                }
+            }
+        }
+    }
+    let mut renderer = HeadlessRenderer::new().with_environment(environment);
 
     if options
         .analysis
@@ -209,31 +263,12 @@ fn build_renderer(
     }
 
     let mut layout = LayoutOptions::headless_svg_defaults();
-    if let Some(resources) = options.analysis.resources.as_ref() {
-        layout.resource_limits = binding_resource_limits(resources)?;
-    }
     if let Some(layout_json) = options.layout.as_ref() {
         if let Some(width) = layout_json.viewport_width {
             layout.viewport_width = finite_positive(width, "layout.viewport_width")?;
         }
         if let Some(height) = layout_json.viewport_height {
             layout.viewport_height = finite_positive(height, "layout.viewport_height")?;
-        }
-        if let Some(kind) = layout_json.text_measurer.as_deref() {
-            match normalize_option(kind).as_str() {
-                "vendored" => {
-                    layout.text_measurer = Arc::new(VendoredFontMetricsTextMeasurer::default());
-                }
-                "deterministic" => {
-                    layout.text_measurer = Arc::new(DeterministicTextMeasurer::default());
-                }
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported layout.text_measurer: {other}"),
-                    ));
-                }
-            }
         }
         if let Some(backend) = layout_json.flowchart_elk_backend.as_deref() {
             layout.flowchart_elk_backend = match normalize_option(backend).as_str() {
@@ -249,36 +284,6 @@ fn build_renderer(
         }
     }
     renderer = renderer.with_layout_options(layout);
-
-    if let Some(math_renderer) = options
-        .layout
-        .as_ref()
-        .and_then(|layout| layout.math_renderer.as_deref())
-    {
-        match normalize_option(math_renderer).as_str() {
-            "none" => {}
-            "ratex" => {
-                #[cfg(feature = "ratex-math")]
-                {
-                    renderer = renderer
-                        .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
-                }
-                #[cfg(not(feature = "ratex-math"))]
-                {
-                    return Err(BindingError::new(
-                        BindingStatus::UnsupportedFormat,
-                        "layout.math_renderer=ratex requires the ratex-math feature",
-                    ));
-                }
-            }
-            other => {
-                return Err(BindingError::new(
-                    BindingStatus::InvalidArgument,
-                    format!("unsupported layout.math_renderer: {other}"),
-                ));
-            }
-        }
-    }
 
     if let Some(svg) = options.svg.as_ref() {
         if let Some(diagram_id) = svg.diagram_id.as_deref() {
@@ -331,21 +336,56 @@ fn build_renderer(
     Ok((renderer, pipeline))
 }
 
-fn fixed_today_marker_ms(
-    today: Option<chrono::NaiveDate>,
-    offset_minutes: Option<i32>,
-) -> Option<i64> {
-    let today = today?;
-    let offset_minutes = offset_minutes?;
-    let offset = chrono::FixedOffset::east_opt(offset_minutes.checked_mul(60)?)?;
-    let midnight = today.and_hms_opt(0, 0, 0)?;
-    let dt = offset
-        .from_local_datetime(&midnight)
-        .single()
-        .unwrap_or_else(|| {
-            chrono::DateTime::<chrono::FixedOffset>::from_naive_utc_and_offset(midnight, offset)
-        });
-    Some(dt.timestamp_millis())
+fn default_render_environment() -> RenderEnvironment {
+    #[cfg(feature = "core-host")]
+    {
+        RenderEnvironment::host()
+    }
+    #[cfg(not(feature = "core-host"))]
+    {
+        RenderEnvironment::parity()
+    }
+}
+
+fn apply_binding_time_policy(
+    environment: RenderEnvironment,
+    options: &BindingOptions,
+) -> Result<RenderEnvironment, BindingError> {
+    let today = binding_fixed_today(options)?;
+    let requested_offset = binding_fixed_local_offset_minutes(options)?;
+    match (today, requested_offset) {
+        (Some(today), requested_offset) => {
+            let offset_minutes = requested_offset.unwrap_or_else(default_local_offset_minutes);
+            let snapshot = RenderTimeSnapshot::from_unix_millis(
+                fixed_local_midnight_unix_ms(today, offset_minutes),
+                offset_minutes,
+            )
+            .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
+            Ok(environment.with_time_snapshot(snapshot))
+        }
+        (None, Some(offset_minutes)) => environment
+            .with_fixed_local_offset_minutes(offset_minutes)
+            .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string())),
+        (None, None) => Ok(environment),
+    }
+}
+
+fn fixed_local_midnight_unix_ms(today: chrono::NaiveDate, offset_minutes: i32) -> i64 {
+    let local_midnight = today.and_hms_opt(0, 0, 0).expect("valid midnight");
+    let utc_midnight = local_midnight - chrono::TimeDelta::minutes(i64::from(offset_minutes));
+    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(utc_midnight, chrono::Utc)
+        .timestamp_millis()
+}
+
+fn default_local_offset_minutes() -> i32 {
+    #[cfg(feature = "core-host")]
+    {
+        chrono::Local::now().offset().local_minus_utc() / 60
+    }
+    #[cfg(not(feature = "core-host"))]
+    {
+        0
+    }
 }
 
 fn binding_host_theme(
@@ -717,31 +757,76 @@ fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
         merman::render::HeadlessError::Render(err) => {
             BindingError::new(BindingStatus::RenderError, err.to_string())
         }
+        merman::render::HeadlessError::RenderTime(err) => {
+            BindingError::new(BindingStatus::RenderError, err.to_string())
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct AdvancingClock(AtomicUsize);
+
+    impl merman::render::RenderClock for AdvancingClock {
+        fn unix_millis_and_offset(&self) -> (i64, i32) {
+            let tick = self.0.fetch_add(1, Ordering::Relaxed) as i64;
+            (tick * 86_400_000, -60)
+        }
+    }
 
     #[test]
-    fn fixed_today_marker_ms_uses_fixed_local_offset() {
+    fn fixed_local_midnight_uses_fixed_local_offset() {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 10).unwrap();
 
+        assert_eq!(fixed_local_midnight_unix_ms(today, 0), 1_781_049_600_000);
+        assert_eq!(fixed_local_midnight_unix_ms(today, 60), 1_781_046_000_000);
+    }
+
+    #[test]
+    fn fixed_offset_only_preserves_an_advancing_binding_clock() {
+        let options = crate::common::parse_options(br#"{ "fixed_local_offset_minutes": 480 }"#)
+            .expect("binding options");
+        let environment =
+            RenderEnvironment::parity().with_clock(Arc::new(AdvancingClock(AtomicUsize::new(0))));
+        let environment =
+            apply_binding_time_policy(environment, &options).expect("binding time policy");
+
+        let first = environment.begin_session().expect("first session");
+        let second = environment.begin_session().expect("second session");
+
+        assert_eq!(first.time().unix_ms(), 0);
+        assert_eq!(second.time().unix_ms(), 86_400_000);
+        assert_eq!(first.time().local_offset_minutes(), 480);
+        assert_eq!(second.time().local_offset_minutes(), 480);
         assert_eq!(
-            fixed_today_marker_ms(Some(today), Some(0)),
-            Some(1_781_049_600_000)
-        );
-        assert_eq!(
-            fixed_today_marker_ms(Some(today), Some(60)),
-            Some(1_781_046_000_000)
+            first.time(),
+            first.time(),
+            "one operation keeps one snapshot"
         );
     }
 
     #[test]
-    fn fixed_today_marker_ms_requires_explicit_offset() {
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 10).unwrap();
+    fn fixed_today_freezes_the_binding_clock_across_sessions() {
+        let options = crate::common::parse_options(
+            br#"{
+                "fixed_today": "2026-06-10",
+                "fixed_local_offset_minutes": 60
+            }"#,
+        )
+        .expect("binding options");
+        let environment =
+            RenderEnvironment::parity().with_clock(Arc::new(AdvancingClock(AtomicUsize::new(0))));
+        let environment =
+            apply_binding_time_policy(environment, &options).expect("binding time policy");
 
-        assert_eq!(fixed_today_marker_ms(Some(today), None), None);
+        let first = environment.begin_session().expect("first session");
+        let second = environment.begin_session().expect("second session");
+
+        assert_eq!(first.time(), second.time());
+        assert_eq!(first.time().unix_ms(), 1_781_046_000_000);
+        assert_eq!(first.time().local_offset_minutes(), 60);
     }
 }

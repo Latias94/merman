@@ -1,21 +1,22 @@
 use super::{
-    LayoutOptions, LayoutedDiagram, Result, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
-    apply_svg_pipeline_with_metadata,
+    LayoutOptions, LayoutedDiagram, Result, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata,
+    SvgRenderOptions, apply_svg_pipeline_with_metadata,
 };
 use merman_render::{
-    RenderResourceLimits, ResourceLimitExceeded, ResourceLimitPhase, model::LayoutDiagram,
-    text::TextMeasurer,
+    ResourceLimitExceeded, ResourceLimitPhase,
+    environment::{RenderEnvironment, RenderOperationReport, RenderSession},
+    model::LayoutDiagram,
 };
-use std::sync::Arc;
 
 #[cfg(feature = "raster")]
 use super::raster;
 
 pub(super) struct HeadlessOperation<'a> {
-    engine: &'a merman_core::Engine,
+    engine: merman_core::Engine,
     text: &'a str,
     parse_options: merman_core::ParseOptions,
     layout_options: &'a LayoutOptions,
+    session: RenderSession,
 }
 
 /// A canonical typed parse that has not started layout yet.
@@ -25,6 +26,7 @@ pub(super) struct HeadlessOperation<'a> {
 pub struct PreparedSemantic {
     parsed: merman_core::ParsedDiagramRender,
     layout_options: LayoutOptions,
+    session: RenderSession,
 }
 
 impl PreparedSemantic {
@@ -43,14 +45,15 @@ impl PreparedSemantic {
         let Self {
             parsed,
             layout_options,
+            session,
         } = self;
-        let layout = merman_render::layout_parsed_render_layout_only(&parsed, &layout_options)?;
+        let layout =
+            merman_render::layout_parsed_render_layout_only(&parsed, &layout_options, &session)?;
 
         Ok(PreparedRender {
             parsed,
             layout,
-            text_measurer: Arc::clone(&layout_options.text_measurer),
-            resource_limits: layout_options.resource_limits,
+            session,
         })
     }
 }
@@ -80,8 +83,31 @@ impl PreparedSemantic {
 pub struct PreparedRender {
     parsed: merman_core::ParsedDiagramRender,
     layout: LayoutDiagram,
-    text_measurer: Arc<dyn TextMeasurer + Send + Sync>,
-    resource_limits: RenderResourceLimits,
+    session: RenderSession,
+}
+
+/// Complete SVG output plus immutable evidence from the operation-owned session.
+pub struct RenderedSvg {
+    svg: String,
+    report: RenderOperationReport,
+}
+
+impl RenderedSvg {
+    pub fn svg(&self) -> &str {
+        &self.svg
+    }
+
+    pub fn report(&self) -> &RenderOperationReport {
+        &self.report
+    }
+
+    pub fn into_svg(self) -> String {
+        self.svg
+    }
+
+    pub fn into_parts(self) -> (String, RenderOperationReport) {
+        (self.svg, self.report)
+    }
 }
 
 impl PreparedRender {
@@ -102,8 +128,29 @@ impl PreparedRender {
 
     /// Renders SVG once from the prepared semantic model and layout.
     pub fn render_svg(self, svg_options: &SvgRenderOptions) -> Result<String> {
-        self.render_svg_parts(svg_options)
-            .map(RenderedSvgParts::into_svg)
+        self.render_svg_with_debug(svg_options, &SvgDebugOptions::default())
+    }
+
+    pub fn render_svg_with_debug(
+        self,
+        svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
+    ) -> Result<String> {
+        self.render_svg_report_with_debug(svg_options, debug_options)
+            .map(RenderedSvg::into_svg)
+    }
+
+    pub fn render_svg_report(self, svg_options: &SvgRenderOptions) -> Result<RenderedSvg> {
+        self.render_svg_report_with_debug(svg_options, &SvgDebugOptions::default())
+    }
+
+    pub fn render_svg_report_with_debug(
+        self,
+        svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
+    ) -> Result<RenderedSvg> {
+        self.render_svg_parts(svg_options, debug_options)
+            .map(RenderedSvgParts::into_rendered_svg)
     }
 
     /// Renders SVG once and applies the supplied postprocessing pipeline.
@@ -112,27 +159,64 @@ impl PreparedRender {
         svg_options: &SvgRenderOptions,
         pipeline: &SvgPipeline,
     ) -> Result<String> {
-        self.render_svg_parts(svg_options)?
+        self.render_svg_with_pipeline_and_debug(svg_options, &SvgDebugOptions::default(), pipeline)
+    }
+
+    pub fn render_svg_with_pipeline_and_debug(
+        self,
+        svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<String> {
+        self.render_svg_with_pipeline_report_and_debug(svg_options, debug_options, pipeline)
+            .map(RenderedSvg::into_svg)
+    }
+
+    pub fn render_svg_with_pipeline_report(
+        self,
+        svg_options: &SvgRenderOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<RenderedSvg> {
+        self.render_svg_with_pipeline_report_and_debug(
+            svg_options,
+            &SvgDebugOptions::default(),
+            pipeline,
+        )
+    }
+
+    pub fn render_svg_with_pipeline_report_and_debug(
+        self,
+        svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<RenderedSvg> {
+        self.render_svg_parts(svg_options, debug_options)?
             .into_pipeline_svg(pipeline)
     }
 
-    fn render_svg_parts(self, svg_options: &SvgRenderOptions) -> Result<RenderedSvgParts> {
+    fn render_svg_parts(
+        self,
+        svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
+    ) -> Result<RenderedSvgParts> {
         let Self {
             parsed,
             layout,
-            text_measurer,
-            resource_limits,
+            session,
         } = self;
-        let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_metadata(
-            &layout,
-            &parsed.model,
-            &parsed.meta.effective_config,
-            &parsed.meta.diagram_type,
-            parsed.meta.title.as_deref(),
-            text_measurer.as_ref(),
-            svg_options,
-        )?;
-        resource_limits
+        let svg =
+            merman_render::svg::render_layout_svg_parts_for_render_model_with_metadata_and_debug(
+                &layout,
+                &parsed.model,
+                &parsed.meta.effective_config,
+                &parsed.meta.diagram_type,
+                parsed.meta.title.as_deref(),
+                &session,
+                svg_options,
+                debug_options,
+            )?;
+        session
+            .resource_limits()
             .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)
             .map_err(resource_limit_error)?;
 
@@ -140,7 +224,7 @@ impl PreparedRender {
             svg,
             diagram_type: parsed.meta.diagram_type,
             diagram_title: parsed.meta.title,
-            resource_limits,
+            session,
         })
     }
 }
@@ -154,22 +238,30 @@ enum HeadlessRasterOutput<'a> {
 
 impl<'a> HeadlessOperation<'a> {
     pub(super) fn new(
-        engine: &'a merman_core::Engine,
+        engine: &merman_core::Engine,
         text: &'a str,
         parse_options: merman_core::ParseOptions,
         layout_options: &'a LayoutOptions,
-    ) -> Self {
-        Self {
+        environment: &RenderEnvironment,
+    ) -> Result<Self> {
+        let session = environment.begin_session()?;
+        let snapshot = session.time();
+        let engine = engine
+            .clone()
+            .with_fixed_today(Some(snapshot.local_date()))
+            .with_fixed_local_offset_minutes(Some(snapshot.local_offset_minutes()));
+        Ok(Self {
             engine,
             text,
             parse_options,
             layout_options,
-        }
+            session,
+        })
     }
 
     pub(super) fn layout_diagram(&self) -> Result<Option<LayoutedDiagram>> {
-        self.layout_options
-            .resource_limits
+        self.session
+            .resource_limits()
             .check_source_bytes(self.text)
             .map_err(resource_limit_error)?;
         let Some(parsed) = self
@@ -182,10 +274,11 @@ impl<'a> HeadlessOperation<'a> {
         Ok(Some(merman_render::layout_parsed(
             &parsed,
             self.layout_options,
+            &self.session,
         )?))
     }
 
-    pub(super) fn prepare_render(&self) -> Result<Option<PreparedRender>> {
+    pub(super) fn prepare_render(self) -> Result<Option<PreparedRender>> {
         let Some(semantic) = self.prepare_semantic()? else {
             return Ok(None);
         };
@@ -193,9 +286,9 @@ impl<'a> HeadlessOperation<'a> {
         Ok(Some(semantic.continue_layout()?))
     }
 
-    pub(super) fn prepare_semantic(&self) -> Result<Option<PreparedSemantic>> {
-        self.layout_options
-            .resource_limits
+    pub(super) fn prepare_semantic(self) -> Result<Option<PreparedSemantic>> {
+        self.session
+            .resource_limits()
             .check_source_bytes(self.text)
             .map_err(resource_limit_error)?;
         let Some(parsed) = self
@@ -208,68 +301,97 @@ impl<'a> HeadlessOperation<'a> {
         Ok(Some(PreparedSemantic {
             parsed,
             layout_options: self.layout_options.clone(),
+            session: self.session,
         }))
     }
 
-    pub(super) fn render_svg(&self, svg_options: &SvgRenderOptions) -> Result<Option<String>> {
-        let Some(prepared) = self.prepare_render()? else {
-            return Ok(None);
-        };
-
-        Ok(Some(prepared.render_svg(svg_options)?))
-    }
-
-    pub(super) fn render_svg_with_pipeline(
-        &self,
+    pub(super) fn render_svg(
+        self,
         svg_options: &SvgRenderOptions,
-        pipeline: &SvgPipeline,
+        debug_options: &SvgDebugOptions,
     ) -> Result<Option<String>> {
         let Some(prepared) = self.prepare_render()? else {
             return Ok(None);
         };
 
         Ok(Some(
-            prepared.render_svg_with_pipeline(svg_options, pipeline)?,
+            prepared.render_svg_with_debug(svg_options, debug_options)?,
         ))
+    }
+
+    pub(super) fn render_svg_with_pipeline(
+        self,
+        svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
+        pipeline: &SvgPipeline,
+    ) -> Result<Option<String>> {
+        let Some(prepared) = self.prepare_render()? else {
+            return Ok(None);
+        };
+
+        Ok(Some(prepared.render_svg_with_pipeline_and_debug(
+            svg_options,
+            debug_options,
+            pipeline,
+        )?))
     }
 
     #[cfg(feature = "raster")]
     pub(super) fn render_png(
-        &self,
+        self,
         svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
         pipeline: &SvgPipeline,
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        self.render_raster(svg_options, pipeline, HeadlessRasterOutput::Png(raster))
+        self.render_raster(
+            svg_options,
+            debug_options,
+            pipeline,
+            HeadlessRasterOutput::Png(raster),
+        )
     }
 
     #[cfg(feature = "raster")]
     pub(super) fn render_jpeg(
-        &self,
+        self,
         svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
         pipeline: &SvgPipeline,
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
-        self.render_raster(svg_options, pipeline, HeadlessRasterOutput::Jpeg(raster))
+        self.render_raster(
+            svg_options,
+            debug_options,
+            pipeline,
+            HeadlessRasterOutput::Jpeg(raster),
+        )
     }
 
     #[cfg(feature = "raster")]
     pub(super) fn render_pdf(
-        &self,
+        self,
         svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
         pipeline: &SvgPipeline,
     ) -> raster::Result<Option<Vec<u8>>> {
-        self.render_raster(svg_options, pipeline, HeadlessRasterOutput::Pdf)
+        self.render_raster(
+            svg_options,
+            debug_options,
+            pipeline,
+            HeadlessRasterOutput::Pdf,
+        )
     }
 
     #[cfg(feature = "raster")]
     fn render_raster(
-        &self,
+        self,
         svg_options: &SvgRenderOptions,
+        debug_options: &SvgDebugOptions,
         pipeline: &SvgPipeline,
         output: HeadlessRasterOutput<'_>,
     ) -> raster::Result<Option<Vec<u8>>> {
-        let Some(svg) = self.render_svg_with_pipeline(svg_options, pipeline)? else {
+        let Some(svg) = self.render_svg_with_pipeline(svg_options, debug_options, pipeline)? else {
             return Ok(None);
         };
 
@@ -286,33 +408,39 @@ struct RenderedSvgParts {
     svg: String,
     diagram_type: String,
     diagram_title: Option<String>,
-    resource_limits: RenderResourceLimits,
+    session: RenderSession,
 }
 
 impl RenderedSvgParts {
-    fn into_svg(self) -> String {
-        self.svg
+    fn into_rendered_svg(self) -> RenderedSvg {
+        let report = self.session.report();
+        RenderedSvg {
+            svg: self.svg,
+            report,
+        }
     }
 
-    fn into_pipeline_svg(self, pipeline: &SvgPipeline) -> Result<String> {
+    fn into_pipeline_svg(self, pipeline: &SvgPipeline) -> Result<RenderedSvg> {
         let Self {
             svg,
             diagram_type,
             diagram_title,
-            resource_limits,
+            session,
         } = self;
         let metadata = SvgPostprocessMetadata::from_svg(&svg)
             .with_diagram_type(diagram_type)
             .with_optional_diagram_title(diagram_title);
 
-        let out = apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata)?;
-        resource_limits
+        let out = apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata, &session)?;
+        session
+            .resource_limits()
             .check_svg_bytes(&out, ResourceLimitPhase::SvgPostprocess)
             .map_err(resource_limit_error)?;
-        Ok(out)
+        let report = session.report();
+        Ok(RenderedSvg { svg: out, report })
     }
 }
 
-fn resource_limit_error(err: ResourceLimitExceeded) -> super::HeadlessError {
+pub(super) fn resource_limit_error(err: ResourceLimitExceeded) -> super::HeadlessError {
     merman_render::Error::ResourceLimitExceeded(err).into()
 }

@@ -7,11 +7,14 @@ use merman_render::svg::{SvgRenderOptions, render_quadrantchart_diagram_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn render_quadrantchart_svg_from_text(text: &str) -> String {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::QuadrantChartDiagram(layout) = &out.layout else {
         panic!("expected QuadrantChartDiagram layout");
     };

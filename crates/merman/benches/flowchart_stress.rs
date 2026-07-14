@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman::render::{LayoutOptions, SvgRenderOptions, headless_layout_options};
+use merman::render::{LayoutOptions, RenderEnvironment, SvgRenderOptions, headless_layout_options};
 use merman_core::{Engine, ParseOptions};
 use std::hint::black_box;
 
@@ -10,6 +10,7 @@ fn bench_flowchart_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
+    let environment = RenderEnvironment::parity();
 
     let mut group = c.benchmark_group("render_stress");
     group.sample_size(50);
@@ -24,21 +25,20 @@ fn bench_flowchart_stress(c: &mut Criterion) {
             .parse_diagram_for_render_model_sync(input, parse_opts)
             .expect("parse")
             .expect("supported diagram");
-        let layouted =
-            merman_render::layout_parsed_render_layout_only(&parsed, &layout).expect("layout");
+        let session = environment.begin_session().expect("render session");
+        let layouted = merman_render::layout_parsed_render_layout_only(&parsed, &layout, &session)
+            .expect("layout");
         let svg_opts = SvgRenderOptions {
             diagram_id: Some(merman::render::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
-        let text_measurer = layout.text_measurer.clone();
-
         // Pre-check that rendering works once, outside measurement.
         let _ = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
             &layouted,
             &parsed.model,
             &parsed.meta.effective_config,
             parsed.meta.title.as_deref(),
-            text_measurer.as_ref(),
+            &session,
             &svg_opts,
         )
         .expect("render");
@@ -53,7 +53,7 @@ fn bench_flowchart_stress(c: &mut Criterion) {
                             &parsed.model,
                             &parsed.meta.effective_config,
                             parsed.meta.title.as_deref(),
-                            text_measurer.as_ref(),
+                            &session,
                             &svg_opts,
                         )
                         .expect("render");

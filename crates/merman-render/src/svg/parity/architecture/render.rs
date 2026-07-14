@@ -76,7 +76,7 @@ struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
     model: &'a M,
     effective_config: &'a serde_json::Value,
     sanitize_config_opt: Option<&'a merman_core::MermaidConfig>,
-    options: &'a SvgRenderOptions,
+    options: &'a SvgExecution<'a>,
 }
 
 struct ArchitectureTimingState<'a> {
@@ -89,9 +89,9 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     layout: &ArchitectureDiagramLayout,
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
     effective_config: &merman_core::MermaidConfig,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
+    let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = super::super::timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
 
@@ -115,9 +115,9 @@ pub(crate) fn render_architecture_diagram_svg(
     layout: &ArchitectureDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
+    let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = super::super::timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
     let model: ArchitectureModel = {
@@ -144,9 +144,9 @@ pub(crate) fn render_architecture_diagram_svg_with_config(
     layout: &ArchitectureDiagramLayout,
     semantic: &serde_json::Value,
     effective_config: &merman_core::MermaidConfig,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
-    let timing_enabled = super::super::timing::render_timing_enabled();
+    let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = super::super::timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
     let model: ArchitectureModel = {
@@ -221,7 +221,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         node_xy.insert(n.id.as_str(), (n.x, n.y));
     }
 
-    let text_measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+    let text_measurer = options.text_measurer();
 
     let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
 
@@ -322,7 +322,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             arch_font_size_px,
             svg_font_size_px,
             svc.title,
-            &text_measurer,
+            text_measurer,
             text_style,
             compound_text_style,
             wrap_svg_words_to_lines,
@@ -463,7 +463,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             model,
             node_xy: &node_xy,
             settings: &settings,
-            text_measurer: &text_measurer,
+            text_measurer,
             content_bounds: &mut content_bounds,
             junction_bounds: &junction_bounds,
         };
@@ -478,9 +478,9 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             model,
             node_xy: &node_xy,
             settings: &settings,
-            text_measurer: &text_measurer,
+            text_measurer,
             sanitize_config,
-            icon_registry: options.icon_registry.as_deref(),
+            icon_registry: options.icon_registry(),
             content_bounds: &mut content_bounds,
             singleton_icon_text_service_id,
         };
@@ -499,7 +499,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             padding_px,
             icon_size_px,
             use_max_width,
-            trust_content_bounds: options.icon_registry.is_none(),
+            trust_content_bounds: options.icon_registry().is_none(),
         });
     }
 

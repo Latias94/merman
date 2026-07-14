@@ -42,7 +42,7 @@ Times are Criterion mean estimate confidence intervals.
 ## Follow-up
 
 - Re-run a longer canary before claiming release numbers.
-- Use `MERMAN_MINDMAP_LAYOUT_TIMING=1` and `MANATEE_COSE_TIMING=1` if the next Mindmap pass targets
-  the layout internals.
+- Use Criterion or an external profiler for the full layout and `MANATEE_COSE_TIMING=1` if the
+  next Mindmap pass targets the lower-level COSE internals.
 - Re-run the merman-vs-mmdr stage spotcheck after another Architecture layout cleanup to confirm
   whether the cross-repo gap moved, because this run only compares against local Criterion history.

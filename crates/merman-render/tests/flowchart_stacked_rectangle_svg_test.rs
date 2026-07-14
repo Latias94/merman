@@ -1,8 +1,8 @@
 use futures::executor::block_on;
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::{RenderEnvironment, RootViewportOverridePolicy};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_flowchart_v2_svg};
-use merman_render::text::VendoredFontMetricsTextMeasurer;
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn attr_value<'a>(s: &'a str, name: &str) -> &'a str {
@@ -77,6 +77,10 @@ fn assert_close(actual: f64, expected: f64, name: &str) {
 
 #[test]
 fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
+    let _session = RenderEnvironment::parity()
+        .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
@@ -86,10 +90,9 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
     let LayoutDiagram::FlowchartV2(layout) = out.layout else {
         panic!("expected FlowchartV2 layout");
     };
@@ -100,11 +103,8 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            apply_root_overrides: false,
-            ..Default::default()
-        },
+        &_session,
+        &SvgRenderOptions::default(),
     )
     .expect("render svg");
 
@@ -150,6 +150,10 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
 
 #[test]
 fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
+    let _session = RenderEnvironment::parity()
+        .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
+        .begin_session()
+        .unwrap();
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
@@ -159,10 +163,9 @@ fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
         .expect("diagram detected");
 
     let layout_options = LayoutOptions {
-        text_measurer: std::sync::Arc::new(VendoredFontMetricsTextMeasurer::default()),
         ..Default::default()
     };
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
     let LayoutDiagram::FlowchartV2(layout) = out.layout else {
         panic!("expected FlowchartV2 layout");
     };
@@ -172,11 +175,8 @@ fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
-        &SvgRenderOptions {
-            apply_root_overrides: false,
-            ..Default::default()
-        },
+        &_session,
+        &SvgRenderOptions::default(),
     )
     .expect("render svg");
 

@@ -1,7 +1,10 @@
 use futures::executor::block_on;
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::RenderEnvironment;
 use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_state_diagram_v2_debug_svg};
+use merman_render::svg::{
+    SvgDebugOptions, SvgRenderOptions, render_state_diagram_v2_debug_svg_with_debug,
+};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::io::Read;
 
@@ -16,15 +19,19 @@ fn main() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layouted = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let session = RenderEnvironment::parity()
+        .begin_session()
+        .expect("begin render session");
+    let layouted = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
     let LayoutDiagram::StateDiagramV2(layout) = layouted.layout else {
         panic!("expected StateDiagramV2 layout");
     };
 
-    let opts = SvgRenderOptions {
+    let debug = SvgDebugOptions {
         include_edge_id_labels: true,
-        ..SvgRenderOptions::default()
+        ..SvgDebugOptions::default()
     };
-    let svg = render_state_diagram_v2_debug_svg(&layout, &opts);
+    let svg =
+        render_state_diagram_v2_debug_svg_with_debug(&layout, &SvgRenderOptions::default(), &debug);
     print!("{svg}");
 }

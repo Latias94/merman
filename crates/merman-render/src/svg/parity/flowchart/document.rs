@@ -1,12 +1,13 @@
 use super::super::util::{escape_attr, escape_attr_into, escape_xml_into};
 use super::super::{apply_root_viewport_override, fmt, fmt_max_width_px, fmt_string, root_svg};
+use crate::environment::RootViewportOverridePolicy;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub diagram_id: &'a str,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartV2Model,
     pub use_max_width: bool,
-    pub apply_root_overrides: bool,
+    pub root_viewport_override_policy: RootViewportOverridePolicy,
     pub diagram_padding: f64,
     pub bbox_min_x: f64,
     pub bbox_min_y: f64,
@@ -71,7 +72,7 @@ pub(super) fn prepare_flowchart_svg_document(
     let mut max_w_attr = fmt_max_width_px(vb_w);
     let mut w_attr = fmt_string(vb_w);
     let mut h_attr = fmt_string(vb_h);
-    if request.apply_root_overrides {
+    if request.root_viewport_override_policy.applies_generated() {
         apply_root_viewport_override(
             request.diagram_id,
             &mut viewbox_attr,

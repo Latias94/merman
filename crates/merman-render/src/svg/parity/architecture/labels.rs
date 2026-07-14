@@ -443,7 +443,7 @@ pub(super) fn write_architecture_service_title(
     title: &str,
     icon_size_px: f64,
     title_width_px: f64,
-    measurer: &crate::text::VendoredFontMetricsTextMeasurer,
+    measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
 ) {
     let plain_single_line = plain_single_word_title_fits(title, title_width_px, measurer, style);

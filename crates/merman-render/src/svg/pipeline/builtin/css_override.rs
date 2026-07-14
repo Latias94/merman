@@ -234,17 +234,24 @@ mod tests {
     use super::*;
     use crate::svg::pipeline::SvgPipeline;
 
+    fn render_session() -> crate::environment::RenderSession {
+        crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap()
+    }
+
     #[test]
     fn css_override_strips_important_only_when_requested() {
         let svg = r#"<svg><style>.node{fill:red !important;}</style></svg>"#;
+        let session = render_session();
 
         let preserve = SvgPipeline::parity()
             .with_postprocessor(CssOverridePostprocessor::new(CssOverridePolicy::Preserve))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
         let strip = SvgPipeline::parity()
             .with_postprocessor(CssOverridePostprocessor::strip_existing_important())
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert!(preserve.contains("!important"));

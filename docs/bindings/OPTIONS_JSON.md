@@ -7,8 +7,9 @@ All public binding surfaces accept an optional `options_json` string. Passing nu
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
 Swift, Flutter/Dart FFI, and Python UniFFI package.
 
-Unknown fields are ignored. Invalid JSON, invalid UTF-8, unsupported enum values, or non-finite
-numeric values return binding errors instead of panicking.
+Unknown top-level fields are ignored. The `layout` and `environment` service objects reject unknown
+fields so removed service paths cannot be silently ignored. Invalid JSON, invalid UTF-8,
+unsupported enum values, or non-finite numeric values return binding errors instead of panicking.
 
 ## Full Shape
 
@@ -71,9 +72,12 @@ numeric values return binding errors instead of panicking.
   "layout": {
     "viewport_width": 1024,
     "viewport_height": 768,
-    "text_measurer": "vendored",
-    "math_renderer": "none",
     "flowchart_elk_backend": "source-ported"
+  },
+  "environment": {
+    "text_measurement": "vendored",
+    "math_renderer": "none",
+    "root_viewport_overrides": "apply-generated"
   },
   "resources": {
     "profile": "interactive",
@@ -124,7 +128,8 @@ Every field is optional.
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
-| `layout` | object | defaults | Layout and text measurement behavior. |
+| `layout` | object | defaults | Per-request layout dimensions and backend selection. |
+| `environment` | object | defaults | Operation-owned text, math, and root viewport policy. |
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
@@ -320,14 +325,21 @@ that need to classify why a dense Class/ER relation layout used a summary.
 | --- | --- | --- | --- |
 | `layout.viewport_width` | positive finite number | renderer default | Overrides layout viewport width. |
 | `layout.viewport_height` | positive finite number | renderer default | Overrides layout viewport height. |
-| `layout.text_measurer` | string | renderer default | `vendored` or `deterministic`. |
-| `layout.math_renderer` | string | renderer default | `none` or `ratex`. `ratex` requires the `ratex-math` feature. |
 | `layout.flowchart_elk_backend` | string | `source-ported` | `source-ported`, `source_ported`, `source`, or `compat`. Selects the Flowchart ELK backend. |
 
-`text_measurer=deterministic` is useful for repeatable tests. `text_measurer=vendored` uses bundled
-font metrics when available.
 `flowchart_elk_backend=compat` is an alpha fallback for the older lightweight Flowchart ELK backend;
 the default source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port.
+
+## Render Environment Options
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `environment.text_measurement` | string | `vendored` | `vendored`, `parity`, or `deterministic`. |
+| `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `ratex-math` feature. |
+| `environment.root_viewport_overrides` | string | `apply-generated` | `apply-generated`/`generated` or `computed-only`/`disabled`. |
+
+This is a breaking schema change: `layout.text_measurer` and `layout.math_renderer` are rejected.
+Move them to `environment.text_measurement` and `environment.math_renderer`, respectively.
 
 ## Resource Options
 
@@ -456,8 +468,10 @@ Deterministic layout for tests:
 {
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
+  "environment": {
+    "text_measurement": "deterministic"
+  },
   "layout": {
-    "text_measurer": "deterministic",
     "viewport_width": 1024,
     "viewport_height": 768
   }

@@ -5,7 +5,7 @@ use crate::architecture_metrics::{
     architecture_create_text_bbox_height_px, architecture_create_text_bbox_y_range_px,
 };
 use crate::model::Bounds;
-use crate::text::{TextMeasurer, VendoredFontMetricsTextMeasurer};
+use crate::text::TextMeasurer;
 
 use super::super::{escape_xml_into, fmt, fmt_into, fmt_string};
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
@@ -21,7 +21,7 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) model: &'a M,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
-    pub(super) text_measurer: &'a VendoredFontMetricsTextMeasurer,
+    pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
 }
@@ -278,7 +278,7 @@ fn architecture_edge_label_plan(
     edge: super::model::ArchitectureEdgeRef<'_>,
     points: ArchitectureEdgePoints,
     settings: &ArchitectureRenderSettings,
-    text_measurer: &VendoredFontMetricsTextMeasurer,
+    text_measurer: &dyn TextMeasurer,
 ) -> Option<ArchitectureEdgeLabelPlan> {
     let label = edge.title.map(str::trim).filter(|t| !t.is_empty())?;
     let axis = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir)) {

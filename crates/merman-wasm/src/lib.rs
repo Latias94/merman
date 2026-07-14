@@ -23,11 +23,11 @@ pub use editor_language::{
 };
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
-use merman_bindings_core::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
+use merman_bindings_core::{TextMetrics, TextStyle, WrapMode};
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 use serde::Deserialize;
 
-const WASM_ABI_VERSION: u32 = 2;
+const WASM_ABI_VERSION: u32 = 3;
 
 #[derive(Debug, Serialize)]
 struct WasmErrorPayload<'a> {
@@ -72,8 +72,8 @@ pub fn render_svg_with_text_measurer(
         let engine =
             merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
                 .map_err(binding_error_to_js)?;
-        let engine = engine.with_text_measurer(Arc::new(WasmHostTextMeasurer::default()));
-        host_text_measure_result(string_result(engine.render_svg(source.as_bytes())))
+        let engine = engine.with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        string_result(engine.render_svg(source.as_bytes()))
     })
 }
 
@@ -88,8 +88,8 @@ pub fn layout_json_with_text_measurer(
         let engine =
             merman_bindings_core::BindingEngine::new(options_bytes(options_json.as_deref()))
                 .map_err(binding_error_to_js)?;
-        let engine = engine.with_text_measurer(Arc::new(WasmHostTextMeasurer::default()));
-        host_text_measure_result(string_result(engine.layout_json(source.as_bytes())))
+        let engine = engine.with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
+        string_result(engine.layout_json(source.as_bytes()))
     })
 }
 
@@ -271,12 +271,12 @@ fn wasm_error_payload(err: &BindingError) -> WasmErrorPayload<'_> {
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 thread_local! {
     static HOST_TEXT_MEASURE_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
-    static HOST_TEXT_MEASURE_ERROR: RefCell<Option<JsValue>> = const { RefCell::new(None) };
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 #[derive(Debug, Serialize)]
 struct WasmHostTextMeasureRequest<'a> {
+    phase: &'static str,
     text: &'a str,
     font_family: Option<&'a str>,
     font_size: f64,
@@ -302,21 +302,20 @@ struct WasmHostTextMeasureResult {
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
-#[derive(Default)]
-struct WasmHostTextMeasurer {
-    fallback: merman_bindings_core::VendoredFontMetricsTextMeasurer,
-}
+struct WasmHostTextMeasurer;
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 impl WasmHostTextMeasurer {
     fn call_host(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &TextStyle,
         max_width: Option<f64>,
         wrap_mode: WrapMode,
-    ) -> Option<TextMetrics> {
+    ) -> merman_bindings_core::HostMeasurementResult<TextMetrics> {
         let request = WasmHostTextMeasureRequest {
+            phase: wasm_measurement_phase(phase),
             text,
             font_family: style.font_family.as_deref(),
             font_size: style.font_size,
@@ -331,126 +330,109 @@ impl WasmHostTextMeasurer {
             direction: "auto",
             white_space: wasm_white_space(max_width, wrap_mode),
         };
-        let request = serde_wasm_bindgen::to_value(&request).ok()?;
+        let request = serde_wasm_bindgen::to_value(&request)
+            .map_err(|err| merman_bindings_core::HostTextMeasurementError::new(err.to_string()))?;
 
         HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
-            let callback = slot.borrow().clone()?;
-            let value = match callback.call1(&JsValue::NULL, &request) {
-                Ok(value) => value,
-                Err(err) => {
-                    record_host_text_measure_error(err);
-                    return None;
-                }
+            let Some(callback) = slot.borrow().clone() else {
+                return Ok(None);
             };
+            let value = callback.call1(&JsValue::NULL, &request).map_err(|err| {
+                merman_bindings_core::HostTextMeasurementError::new(js_error_message(&err))
+            })?;
             if value.is_null() || value.is_undefined() {
-                return None;
+                return Ok(None);
             }
 
-            let result: WasmHostTextMeasureResult = match serde_wasm_bindgen::from_value(value) {
-                Ok(result) => result,
-                Err(err) => {
-                    record_host_text_measure_error(JsValue::from_str(&err.to_string()));
-                    return None;
-                }
-            };
-            if result.handled == Some(false)
-                || !result.width.is_finite()
+            let result: WasmHostTextMeasureResult =
+                serde_wasm_bindgen::from_value(value).map_err(|err| {
+                    merman_bindings_core::HostTextMeasurementError::new(err.to_string())
+                })?;
+            if result.handled == Some(false) {
+                return Ok(None);
+            }
+            if !result.width.is_finite()
                 || !result.height.is_finite()
                 || result.width < 0.0
                 || result.height < 0.0
             {
-                if result.handled != Some(false) {
-                    record_host_text_measure_error(JsValue::from_str(
-                        "host text measurer returned invalid metrics",
-                    ));
-                }
-                return None;
+                return Err(merman_bindings_core::HostTextMeasurementError::new(
+                    "host text measurer returned invalid metrics",
+                ));
             }
 
             let line_count = result.line_count.unwrap_or(1);
             if line_count == 0 {
-                record_host_text_measure_error(JsValue::from_str(
+                return Err(merman_bindings_core::HostTextMeasurementError::new(
                     "host text measurer returned zero line_count",
                 ));
-                return None;
             }
 
-            Some(TextMetrics {
+            Ok(Some(TextMetrics {
                 width: result.width,
                 height: result.height,
                 line_count,
-            })
+            }))
         })
-    }
-
-    fn measure_with_fallback(
-        &self,
-        text: &str,
-        style: &TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> TextMetrics {
-        self.call_host(text, style, max_width, wrap_mode)
-            .unwrap_or_else(|| {
-                self.fallback
-                    .measure_wrapped(text, style, max_width, wrap_mode)
-            })
     }
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
-impl TextMeasurer for WasmHostTextMeasurer {
-    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-        self.call_host(text, style, None, WrapMode::SvgLike)
-            .unwrap_or_else(|| self.fallback.measure(text, style))
+impl merman_bindings_core::HostTextMeasurer for WasmHostTextMeasurer {
+    fn measure(
+        &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
+        text: &str,
+        style: &TextStyle,
+    ) -> merman_bindings_core::HostMeasurementResult<TextMetrics> {
+        self.call_host(phase, text, style, None, WrapMode::SvgLike)
     }
 
     fn measure_wrapped(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &TextStyle,
         max_width: Option<f64>,
         wrap_mode: WrapMode,
-    ) -> TextMetrics {
-        self.measure_with_fallback(text, style, max_width, wrap_mode)
+    ) -> merman_bindings_core::HostMeasurementResult<TextMetrics> {
+        self.call_host(phase, text, style, max_width, wrap_mode)
     }
 
     fn measure_wrapped_with_raw_width(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &TextStyle,
         max_width: Option<f64>,
         wrap_mode: WrapMode,
-    ) -> (TextMetrics, Option<f64>) {
-        if let Some(metrics) = self.call_host(text, style, max_width, wrap_mode) {
+    ) -> merman_bindings_core::HostMeasurementResult<(TextMetrics, Option<f64>)> {
+        if let Some(metrics) = self.call_host(phase, text, style, max_width, wrap_mode)? {
             let raw_width = max_width
-                .and_then(|_| self.call_host(text, style, None, wrap_mode))
+                .map(|_| self.call_host(phase, text, style, None, wrap_mode))
+                .transpose()?
+                .flatten()
                 .map(|raw| raw.width);
-            return (metrics, raw_width);
+            return Ok(Some((metrics, raw_width)));
         }
-        self.fallback
-            .measure_wrapped_with_raw_width(text, style, max_width, wrap_mode)
+        Ok(None)
     }
 
     fn measure_wrapped_raw(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &TextStyle,
         max_width: Option<f64>,
         wrap_mode: WrapMode,
-    ) -> TextMetrics {
-        self.call_host(text, style, max_width, wrap_mode)
-            .unwrap_or_else(|| {
-                self.fallback
-                    .measure_wrapped_raw(text, style, max_width, wrap_mode)
-            })
+    ) -> merman_bindings_core::HostMeasurementResult<TextMetrics> {
+        self.call_host(phase, text, style, max_width, wrap_mode)
     }
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 struct HostTextMeasureCallbackGuard {
     previous_callback: Option<js_sys::Function>,
-    previous_error: Option<JsValue>,
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
@@ -459,43 +441,30 @@ impl Drop for HostTextMeasureCallbackGuard {
         HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
             slot.replace(self.previous_callback.take());
         });
-        HOST_TEXT_MEASURE_ERROR.with(|slot| {
-            slot.replace(self.previous_error.take());
-        });
     }
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 fn with_host_text_measure_callback<R>(callback: js_sys::Function, f: impl FnOnce() -> R) -> R {
     let previous_callback = HOST_TEXT_MEASURE_CALLBACK.with(|slot| slot.replace(Some(callback)));
-    let previous_error = HOST_TEXT_MEASURE_ERROR.with(|slot| slot.replace(None));
-    let _guard = HostTextMeasureCallbackGuard {
-        previous_callback,
-        previous_error,
-    };
+    let _guard = HostTextMeasureCallbackGuard { previous_callback };
     f()
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
-fn record_host_text_measure_error(err: JsValue) {
-    HOST_TEXT_MEASURE_ERROR.with(|slot| {
-        if slot.borrow().is_none() {
-            slot.replace(Some(err));
-        }
-    });
+fn js_error_message(err: &JsValue) -> String {
+    err.as_string()
+        .unwrap_or_else(|| "host text measurer callback failed".to_string())
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
-fn take_host_text_measure_error() -> Option<JsValue> {
-    HOST_TEXT_MEASURE_ERROR.with(|slot| slot.replace(None))
-}
-
-#[cfg(all(feature = "render", target_arch = "wasm32"))]
-fn host_text_measure_result<T>(result: Result<T, JsValue>) -> Result<T, JsValue> {
-    if let Some(err) = take_host_text_measure_error() {
-        Err(err)
-    } else {
-        result
+fn wasm_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> &'static str {
+    match phase {
+        merman_bindings_core::TextMeasurementPhase::Layout => "layout",
+        merman_bindings_core::TextMeasurementPhase::Wrap => "wrap",
+        merman_bindings_core::TextMeasurementPhase::SvgBBox => "svg-bbox",
+        merman_bindings_core::TextMeasurementPhase::ComputedLength => "computed-length",
+        merman_bindings_core::TextMeasurementPhase::Visibility => "visibility",
     }
 }
 

@@ -25,7 +25,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
     pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
     pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
-    pub(in crate::svg::parity::flowchart) trace_edge_id: Option<String>,
+    pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
+    pub(in crate::svg::parity::flowchart) trace_output_path: Option<&'a std::path::Path>,
     pub(in crate::svg::parity::flowchart) subgraph_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) edge_order: Vec<&'a str>,
     pub(in crate::svg::parity::flowchart) nodes_by_id:

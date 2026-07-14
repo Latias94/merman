@@ -7,13 +7,16 @@ use merman_render::svg::{SvgRenderOptions, render_timeline_diagram_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 
 fn render_timeline_svg_from_text(text: &str) -> String {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
     let LayoutDiagram::TimelineDiagram(layout) = &out.layout else {
         panic!("expected TimelineDiagram layout");
     };
@@ -23,7 +26,7 @@ fn render_timeline_svg_from_text(text: &str) -> String {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("render svg")

@@ -16,6 +16,9 @@ fn deep_c4_boundary_chain(depth: usize) -> String {
 
 #[test]
 fn c4_public_layout_handles_deep_boundary_chain() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     const DEPTH: usize = 1500;
     let source = deep_c4_boundary_chain(DEPTH);
 
@@ -25,7 +28,7 @@ fn c4_public_layout_handles_deep_boundary_chain() {
         .expect("diagram detected");
     assert_eq!(parsed.meta.diagram_type, "c4");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default())
+    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout should not depend on recursive boundary traversal");
     let LayoutDiagram::C4Diagram(c4) = &layout else {
         panic!("expected C4Diagram layout");

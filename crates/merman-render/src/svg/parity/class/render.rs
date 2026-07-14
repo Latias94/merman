@@ -1,4 +1,4 @@
-use super::super::timing::{RenderTimings, TimingGuard, render_timing_enabled};
+use super::super::timing::{RenderTimings, TimingGuard};
 use super::groups::{
     ClassClusterEdgeGroupsRenderContext, ClassClusterEdgeGroupsRenderState,
     render_class_cluster_edge_groups,
@@ -19,7 +19,7 @@ pub(super) fn render_class_diagram_v2_svg_impl(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: ClassSvgModel = crate::json::from_value_ref(semantic)?;
     render_class_diagram_v2_svg_model_impl(
@@ -38,7 +38,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     render_class_diagram_v2_svg_model_impl_inner(
         layout,
@@ -57,7 +57,7 @@ pub(super) fn render_class_diagram_v2_svg_model_impl_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     render_class_diagram_v2_svg_model_impl_inner(
         layout,
@@ -77,9 +77,9 @@ fn render_class_diagram_v2_svg_model_impl_inner(
     borrowed_sanitize_config: Option<&merman_core::MermaidConfig>,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
-    let timing_enabled = render_timing_enabled();
+    let timing_enabled = options.debug.include_timing_diagnostics;
     let total_start = timing_enabled.then(web_time::Instant::now);
     let mut timings = RenderTimings::default();
 

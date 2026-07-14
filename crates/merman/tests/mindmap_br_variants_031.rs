@@ -11,17 +11,7 @@ fn mindmap_br_variants_031_matches_upstream_node_geometry() {
         suppress_errors: false,
     };
 
-    let layout = merman::render::LayoutOptions {
-        viewport_width: 800.0,
-        viewport_height: 600.0,
-        text_measurer: std::sync::Arc::new(
-            merman::render::VendoredFontMetricsTextMeasurer::default(),
-        ),
-        math_renderer: None,
-        use_manatee_layout: true,
-        flowchart_elk_backend: Default::default(),
-        resource_limits: Default::default(),
-    };
+    let layout = merman::render::LayoutOptions::headless_svg_defaults();
 
     let svg_opts = merman::render::SvgRenderOptions {
         diagram_id: Some(DIAGRAM_ID.to_string()),

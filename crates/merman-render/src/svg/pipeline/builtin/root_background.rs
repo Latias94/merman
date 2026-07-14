@@ -120,14 +120,21 @@ mod tests {
     use super::*;
     use crate::svg::pipeline::SvgPipeline;
 
+    fn render_session() -> crate::environment::RenderSession {
+        crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap()
+    }
+
     #[test]
     fn root_background_rewrites_existing_background_color() {
         let svg =
             r#"<svg id="diagram" style="max-width: 400px; background-color: white;"><g/></svg>"#;
+        let session = render_session();
 
         let out = SvgPipeline::parity()
             .with_postprocessor(RootBackgroundPostprocessor::new("#111827"))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert_eq!(
@@ -139,10 +146,11 @@ mod tests {
     #[test]
     fn root_background_adds_missing_style_property() {
         let svg = r#"<svg id="diagram" width="100%"><g/></svg>"#;
+        let session = render_session();
 
         let out = SvgPipeline::parity()
             .with_postprocessor(RootBackgroundPostprocessor::new("transparent"))
-            .process_to_string(svg)
+            .process_to_string(svg, &session)
             .unwrap();
 
         assert_eq!(

@@ -1,3 +1,14 @@
+#[cfg(feature = "core-host")]
+pub use merman_render::environment::SystemRenderClock;
+pub use merman_render::environment::{
+    FixedOffsetRenderClock, FixedRenderClock, FixedRenderSeedSource, HostFallbackReason,
+    HostMeasurementResult, HostTextMeasurementError, HostTextMeasurer, MeasurementProfileId,
+    RenderClock, RenderEnvironment, RenderOperationReport, RenderRandomnessPolicy,
+    RenderSeedOrigin, RenderSession, RenderTimeError, RenderTimeSnapshot,
+    RootViewportOverridePolicy, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
+    TextMeasurementReport, TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
+};
 #[cfg(feature = "ratex-math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
@@ -13,8 +24,8 @@ pub use merman_render::svg::{
     HostThemeProfile, HostThemeProfileBuilder, HostThemeRoles, HostThemeRootBackground,
     IconRegistry, IconRegistryError, IconSvg, RootBackgroundPostprocessor,
     SanitizeCssPostprocessor, SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor,
-    StripForeignObjectPostprocessor, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
-    SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
+    StripForeignObjectPostprocessor, SvgDebugOptions, SvgPipeline, SvgPipelinePreset,
+    SvgPostprocessContext, SvgPostprocessMetadata, SvgPostprocessor, SvgRenderOptions,
     foreign_object_label_fallback_svg_text, resvg_safe_svg, supported_host_theme_presets,
 };
 pub use merman_render::text::{
@@ -26,7 +37,7 @@ pub use merman_render::{
 };
 
 mod operation;
-pub use operation::{PreparedRender, PreparedSemantic};
+pub use operation::{PreparedRender, PreparedSemantic, RenderedSvg};
 
 #[cfg(feature = "raster")]
 pub mod raster;
@@ -37,12 +48,21 @@ pub enum HeadlessError {
     Parse(#[from] merman_core::Error),
     #[error(transparent)]
     Render(#[from] merman_render::Error),
+    #[error(transparent)]
+    RenderTime(#[from] RenderTimeError),
 }
 
 pub type Result<T> = std::result::Result<T, HeadlessError>;
 
-fn resource_limit_error(err: ResourceLimitExceeded) -> HeadlessError {
-    RenderError::ResourceLimitExceeded(err).into()
+fn default_render_environment() -> RenderEnvironment {
+    #[cfg(feature = "core-host")]
+    {
+        RenderEnvironment::host()
+    }
+    #[cfg(not(feature = "core-host"))]
+    {
+        RenderEnvironment::parity()
+    }
 }
 
 /// Converts an arbitrary string into a conservative SVG `id` token suitable for embedding
@@ -162,7 +182,9 @@ pub fn layout_diagram_sync(
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
 ) -> Result<Option<LayoutedDiagram>> {
-    operation::HeadlessOperation::new(engine, text, parse_options, layout_options).layout_diagram()
+    let environment = default_render_environment();
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options, &environment)?
+        .layout_diagram()
 }
 
 /// Returns layout defaults intended for UI integrations that render headless SVG.
@@ -183,18 +205,6 @@ pub async fn layout_diagram(
     layout_diagram_sync(engine, text, parse_options, layout_options)
 }
 
-pub fn render_layouted_svg(
-    diagram: &LayoutedDiagram,
-    measurer: &dyn TextMeasurer,
-    svg_options: &SvgRenderOptions,
-) -> Result<String> {
-    Ok(merman_render::svg::render_layouted_svg(
-        diagram,
-        measurer,
-        svg_options,
-    )?)
-}
-
 /// Parses and lays out one diagram through the canonical typed render path.
 ///
 /// The returned artifact exposes read-only semantic, metadata, and layout views. Rendering it
@@ -206,7 +216,9 @@ pub fn prepare_render_sync(
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
 ) -> Result<Option<PreparedRender>> {
-    operation::HeadlessOperation::new(engine, text, parse_options, layout_options).prepare_render()
+    let environment = default_render_environment();
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options, &environment)?
+        .prepare_render()
 }
 
 /// Parses one diagram through the canonical typed path without starting layout.
@@ -219,7 +231,8 @@ pub fn prepare_semantic_sync(
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
 ) -> Result<Option<PreparedSemantic>> {
-    operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
+    let environment = default_render_environment();
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options, &environment)?
         .prepare_semantic()
 }
 
@@ -231,28 +244,40 @@ pub fn render_svg_sync(
     layout_options: &LayoutOptions,
     svg_options: &SvgRenderOptions,
 ) -> Result<Option<String>> {
-    operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
-        .render_svg(svg_options)
+    let environment = default_render_environment();
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options, &environment)?
+        .render_svg(svg_options, &SvgDebugOptions::default())
 }
 
-pub fn apply_svg_pipeline(svg: &str, pipeline: &SvgPipeline) -> Result<String> {
-    Ok(pipeline.process_to_string(svg)?)
+pub fn apply_svg_pipeline(
+    svg: &str,
+    pipeline: &SvgPipeline,
+    session: &merman_render::environment::RenderSession,
+) -> Result<String> {
+    Ok(pipeline.process_to_string(svg, session)?)
 }
 
 pub fn apply_svg_pipeline_with_metadata(
     svg: &str,
     pipeline: &SvgPipeline,
     metadata: &SvgPostprocessMetadata,
+    session: &merman_render::environment::RenderSession,
 ) -> Result<String> {
-    Ok(pipeline.process_to_string_with_metadata(svg, metadata)?)
+    Ok(pipeline.process_to_string_with_metadata(svg, metadata, session)?)
 }
 
-pub fn svg_readable(svg: &str) -> Result<String> {
-    apply_svg_pipeline(svg, &SvgPipeline::readable())
+pub fn svg_readable(
+    svg: &str,
+    session: &merman_render::environment::RenderSession,
+) -> Result<String> {
+    apply_svg_pipeline(svg, &SvgPipeline::readable(), session)
 }
 
-pub fn svg_resvg_safe(svg: &str) -> Result<String> {
-    apply_svg_pipeline(svg, &SvgPipeline::resvg_safe())
+pub fn svg_resvg_safe(
+    svg: &str,
+    session: &merman_render::environment::RenderSession,
+) -> Result<String> {
+    apply_svg_pipeline(svg, &SvgPipeline::resvg_safe(), session)
 }
 
 pub fn render_svg_with_pipeline_sync(
@@ -263,8 +288,9 @@ pub fn render_svg_with_pipeline_sync(
     svg_options: &SvgRenderOptions,
     pipeline: &SvgPipeline,
 ) -> Result<Option<String>> {
-    operation::HeadlessOperation::new(engine, text, parse_options, layout_options)
-        .render_svg_with_pipeline(svg_options, pipeline)
+    let environment = default_render_environment();
+    operation::HeadlessOperation::new(engine, text, parse_options, layout_options, &environment)?
+        .render_svg_with_pipeline(svg_options, &SvgDebugOptions::default(), pipeline)
 }
 
 /// Synchronous SVG render helper that applies a best-effort readability fallback for
@@ -552,6 +578,42 @@ mod svg_pipeline_tests {
     }
 
     #[test]
+    fn renderer_owned_readable_pipeline_records_postprocess_measurements_in_final_report() {
+        let source = "flowchart TD\nA@{ shape: stadium, label: 'This is a long label that wraps in the pipeline' }";
+        let renderer = HeadlessRenderer::new()
+            .with_environment(RenderEnvironment::parity())
+            .with_diagram_id("pipeline-report");
+        let plain = renderer.render_svg_report_sync(source).unwrap().unwrap();
+        let readable_renderer = renderer.clone().with_svg_pipeline(SvgPipeline::readable());
+        let readable = readable_renderer
+            .render_svg_report_sync(source)
+            .unwrap()
+            .unwrap();
+
+        let wrapped_raw_count = |rendered: &RenderedSvg| {
+            rendered
+                .report()
+                .measurement()
+                .entries()
+                .iter()
+                .filter(|entry| {
+                    entry.provenance().phase == TextMeasurementPhase::Wrap
+                        && entry.provenance().operation == TextMeasurementOperation::WrappedRaw
+                })
+                .map(TextMeasurementSummary::count)
+                .sum::<u64>()
+        };
+
+        assert!(readable.svg().contains("data-merman-foreignobject"));
+        assert!(wrapped_raw_count(&readable) > wrapped_raw_count(&plain));
+        assert_eq!(
+            readable_renderer.render_svg_sync(source).unwrap().unwrap(),
+            readable.svg(),
+            "the string API must only project the report-producing pipeline implementation"
+        );
+    }
+
+    #[test]
     fn render_svg_rejects_source_over_resource_limit_before_parse() {
         let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
             max_source_bytes: Some(4),
@@ -567,6 +629,26 @@ mod svg_pipeline_tests {
         };
         assert_eq!(limit.phase, ResourceLimitPhase::Source);
         assert_eq!(limit.limit, "max_source_bytes");
+    }
+
+    #[test]
+    fn parse_only_entry_points_use_the_environment_source_limit() {
+        let renderer = HeadlessRenderer::new().with_resource_limits(RenderResourceLimits {
+            max_source_bytes: Some(4),
+            ..RenderResourceLimits::unbounded_for_trusted_input()
+        });
+        let source = "flowchart TD\nA --> B";
+
+        for err in [
+            renderer.parse_metadata_sync(source).unwrap_err(),
+            renderer.parse_diagram_sync(source).unwrap_err(),
+        ] {
+            let HeadlessError::Render(RenderError::ResourceLimitExceeded(limit)) = err else {
+                panic!("expected resource limit error");
+            };
+            assert_eq!(limit.phase, ResourceLimitPhase::Source);
+            assert_eq!(limit.limit, "max_source_bytes");
+        }
     }
 
     #[test]
@@ -873,23 +955,18 @@ flowchart TD
     }
 
     #[test]
-    fn headless_renderer_fixed_time_controls_semantic_parse() {
-        let renderer = HeadlessRenderer::new()
-            .with_fixed_today(Some(
-                chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid fixed today"),
-            ))
-            .with_fixed_local_offset_minutes(Some(0));
-        let parsed = renderer
-            .parse_diagram_sync(
-                r#"gantt
+    fn headless_renderer_fixed_time_controls_semantic_parse_and_gantt_svg() {
+        let source = r#"gantt
 dateFormat MM-DD
 section Demo
 Missing year: id1,03-01,1d
 Missing ref: id2,after missing,1d
-"#,
-            )
-            .unwrap()
-            .unwrap();
+"#;
+        let renderer = HeadlessRenderer::new().with_fixed_time(
+            RenderTimeSnapshot::from_unix_millis(1_771_113_600_000, 0)
+                .expect("valid fixed UTC instant"),
+        );
+        let parsed = renderer.parse_diagram_sync(source).unwrap().unwrap();
 
         assert_eq!(
             task_by_id(&parsed.model, "id1")["startTime"].as_i64(),
@@ -899,6 +976,22 @@ Missing ref: id2,after missing,1d
             task_by_id(&parsed.model, "id2")["startTime"].as_i64(),
             Some(1_771_113_600_000)
         );
+
+        let rendered = renderer.render_svg_report_sync(source).unwrap().unwrap();
+        assert_eq!(rendered.report().time().unix_ms(), 1_771_113_600_000);
+        assert_eq!(rendered.report().time().local_offset_minutes(), 0);
+        fn today_line(svg: &str) -> &str {
+            let start = svg.find(r#"<g class="today"><line"#).expect("today marker");
+            let end = svg[start..].find("/>").expect("today marker end") + start + 2;
+            &svg[start..end]
+        }
+
+        let next_month = HeadlessRenderer::new().with_fixed_time(
+            RenderTimeSnapshot::from_unix_millis(1_773_532_800_000, 0)
+                .expect("valid next-month UTC instant"),
+        );
+        let next_svg = next_month.render_svg_sync(source).unwrap().unwrap();
+        assert_ne!(today_line(rendered.svg()), today_line(&next_svg));
     }
 }
 
@@ -908,16 +1001,18 @@ Missing ref: id2,after missing,1d
 /// noisy. It stays runtime-agnostic: all work is CPU-bound and does not perform I/O.
 #[derive(Clone)]
 pub struct HeadlessRenderer {
-    pub engine: merman_core::Engine,
-    pub parse: merman_core::ParseOptions,
-    pub layout: LayoutOptions,
-    pub svg: SvgRenderOptions,
+    engine: merman_core::Engine,
+    parse: merman_core::ParseOptions,
+    environment: RenderEnvironment,
+    layout: LayoutOptions,
+    svg: SvgRenderOptions,
+    svg_debug: SvgDebugOptions,
     /// Optional renderer-owned SVG output pipeline.
     ///
     /// A fresh renderer leaves this unset so `render_svg_sync` keeps the Mermaid-parity SVG
     /// contract. Host theme helpers set this to the compiled profile pipeline so the profile's
     /// output settings travel with the renderer instead of requiring each call to pass them again.
-    pub svg_pipeline: Option<SvgPipeline>,
+    svg_pipeline: Option<SvgPipeline>,
 }
 
 impl Default for HeadlessRenderer {
@@ -925,8 +1020,10 @@ impl Default for HeadlessRenderer {
         Self {
             engine: merman_core::Engine::new(),
             parse: merman_core::ParseOptions::default(),
+            environment: default_render_environment(),
             layout: LayoutOptions::headless_svg_defaults(),
             svg: SvgRenderOptions::default(),
+            svg_debug: SvgDebugOptions::default(),
             svg_pipeline: None,
         }
     }
@@ -935,6 +1032,44 @@ impl Default for HeadlessRenderer {
 impl HeadlessRenderer {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_engine(mut self, engine: merman_core::Engine) -> Self {
+        self.engine = engine;
+        self
+    }
+
+    pub fn engine(&self) -> &merman_core::Engine {
+        &self.engine
+    }
+
+    pub const fn parse_options(&self) -> merman_core::ParseOptions {
+        self.parse
+    }
+
+    pub fn environment(&self) -> &RenderEnvironment {
+        &self.environment
+    }
+
+    pub fn layout_options(&self) -> &LayoutOptions {
+        &self.layout
+    }
+
+    pub fn svg_options(&self) -> &SvgRenderOptions {
+        &self.svg
+    }
+
+    pub const fn svg_debug_options(&self) -> &SvgDebugOptions {
+        &self.svg_debug
+    }
+
+    pub fn svg_pipeline(&self) -> Option<&SvgPipeline> {
+        self.svg_pipeline.as_ref()
+    }
+
+    pub fn with_environment(mut self, environment: RenderEnvironment) -> Self {
+        self.environment = environment;
+        self
     }
 
     pub fn with_site_config(mut self, site_config: merman_core::MermaidConfig) -> Self {
@@ -961,13 +1096,8 @@ impl HeadlessRenderer {
         self
     }
 
-    pub fn with_fixed_today(mut self, today: Option<chrono::NaiveDate>) -> Self {
-        self.engine = self.engine.with_fixed_today(today);
-        self
-    }
-
-    pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
-        self.engine = self.engine.with_fixed_local_offset_minutes(offset_minutes);
+    pub fn with_fixed_time(mut self, snapshot: RenderTimeSnapshot) -> Self {
+        self.environment = self.environment.with_time_snapshot(snapshot);
         self
     }
 
@@ -990,7 +1120,7 @@ impl HeadlessRenderer {
     }
 
     pub fn with_resource_limits(mut self, limits: RenderResourceLimits) -> Self {
-        self.layout.resource_limits = limits;
+        self.environment = self.environment.with_resource_limits(limits);
         self
     }
 
@@ -998,8 +1128,21 @@ impl HeadlessRenderer {
         self.with_resource_limits(RenderResourceLimits::for_profile(profile))
     }
 
+    pub fn with_root_viewport_override_policy(
+        mut self,
+        policy: RootViewportOverridePolicy,
+    ) -> Self {
+        self.environment = self.environment.with_root_viewport_override_policy(policy);
+        self
+    }
+
     pub fn with_svg_options(mut self, svg: SvgRenderOptions) -> Self {
         self.svg = svg;
+        self
+    }
+
+    pub fn with_svg_debug_options(mut self, debug: SvgDebugOptions) -> Self {
+        self.svg_debug = debug;
         self
     }
 
@@ -1008,17 +1151,8 @@ impl HeadlessRenderer {
         self
     }
 
-    /// Use a caller-provided text measurer for layout.
-    ///
-    /// This is the integration seam for hosts that already own a font engine or UI text system.
-    /// The built-in vendored measurer is lightweight and Mermaid-fixture oriented; a host measurer
-    /// can choose platform fonts, fallback rules, shaping, and caching that match the final display
-    /// environment.
-    pub fn with_text_measurer(
-        mut self,
-        measurer: std::sync::Arc<dyn TextMeasurer + Send + Sync>,
-    ) -> Self {
-        self.layout = self.layout.with_text_measurer(measurer);
+    pub fn with_text_measurement_policy(mut self, policy: TextMeasurementPolicy) -> Self {
+        self.environment = self.environment.with_text_measurement_policy(policy);
         self
     }
 
@@ -1026,70 +1160,105 @@ impl HeadlessRenderer {
         mut self,
         renderer: std::sync::Arc<dyn MathRenderer + Send + Sync>,
     ) -> Self {
-        self.layout = self.layout.with_math_renderer(renderer.clone());
-        self.svg.math_renderer = Some(renderer);
+        self.environment = self.environment.with_math_renderer(renderer);
         self
     }
 
     pub fn with_vendored_text_measurer(self) -> Self {
-        self.with_text_measurer(std::sync::Arc::new(
-            VendoredFontMetricsTextMeasurer::default(),
-        ))
+        self.with_text_measurement_policy(TextMeasurementPolicy::parity())
     }
 
     pub fn with_deterministic_text_measurer(self) -> Self {
-        self.with_text_measurer(std::sync::Arc::new(DeterministicTextMeasurer::default()))
+        self.with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+    }
+
+    fn engine_for_session(
+        &self,
+        session: &merman_render::environment::RenderSession,
+    ) -> merman_core::Engine {
+        let snapshot = session.time();
+        self.engine
+            .clone()
+            .with_fixed_today(Some(snapshot.local_date()))
+            .with_fixed_local_offset_minutes(Some(snapshot.local_offset_minutes()))
     }
 
     pub fn parse_metadata_sync(&self, text: &str) -> Result<Option<merman_core::ParseMetadata>> {
-        Ok(self.engine.parse_metadata_sync(text, self.parse)?)
+        let session = self.environment.begin_session()?;
+        session
+            .resource_limits()
+            .check_source_bytes(text)
+            .map_err(operation::resource_limit_error)?;
+        Ok(self
+            .engine_for_session(&session)
+            .parse_metadata_sync(text, self.parse)?)
     }
 
     pub fn parse_diagram_sync(&self, text: &str) -> Result<Option<merman_core::ParsedDiagram>> {
-        Ok(self.engine.parse_diagram_sync(text, self.parse)?)
+        let session = self.environment.begin_session()?;
+        session
+            .resource_limits()
+            .check_source_bytes(text)
+            .map_err(operation::resource_limit_error)?;
+        Ok(self
+            .engine_for_session(&session)
+            .parse_diagram_sync(text, self.parse)?)
     }
 
     pub fn layout_diagram_sync(&self, text: &str) -> Result<Option<LayoutedDiagram>> {
-        layout_diagram_sync(&self.engine, text, self.parse, &self.layout)
+        operation::HeadlessOperation::new(
+            &self.engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+        )?
+        .layout_diagram()
     }
 
     /// Parses and lays out one typed render artifact for inspection before SVG rendering.
     pub fn prepare_render_sync(&self, text: &str) -> Result<Option<PreparedRender>> {
-        prepare_render_sync(&self.engine, text, self.parse, &self.layout)
+        operation::HeadlessOperation::new(
+            &self.engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+        )?
+        .prepare_render()
     }
 
     /// Parses one typed semantic stage for admission before layout starts.
     pub fn prepare_semantic_sync(&self, text: &str) -> Result<Option<PreparedSemantic>> {
-        prepare_semantic_sync(&self.engine, text, self.parse, &self.layout)
-    }
-
-    pub fn render_layouted_svg_sync(&self, diagram: &LayoutedDiagram) -> Result<String> {
-        let svg = render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), &self.svg)?;
-        self.layout
-            .resource_limits
-            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)
-            .map_err(resource_limit_error)?;
-        self.apply_default_svg_pipeline(svg, &diagram.meta)
-    }
-
-    pub fn render_layouted_svg_sync_with(
-        &self,
-        diagram: &LayoutedDiagram,
-        svg: &SvgRenderOptions,
-    ) -> Result<String> {
-        let out = render_layouted_svg(diagram, self.layout.text_measurer.as_ref(), svg)?;
-        self.layout
-            .resource_limits
-            .check_svg_bytes(&out, ResourceLimitPhase::SvgOutput)
-            .map_err(resource_limit_error)?;
-        self.apply_default_svg_pipeline(out, &diagram.meta)
+        operation::HeadlessOperation::new(
+            &self.engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+        )?
+        .prepare_semantic()
     }
 
     pub fn render_svg_sync(&self, text: &str) -> Result<Option<String>> {
-        if let Some(pipeline) = &self.svg_pipeline {
-            return self.render_svg_with_pipeline_sync(text, pipeline);
-        }
-        render_svg_sync(&self.engine, text, self.parse, &self.layout, &self.svg)
+        Ok(self
+            .render_svg_report_sync(text)?
+            .map(RenderedSvg::into_svg))
+    }
+
+    pub fn render_svg_report_sync(&self, text: &str) -> Result<Option<RenderedSvg>> {
+        let Some(prepared) = self.prepare_render_sync(text)? else {
+            return Ok(None);
+        };
+        let rendered = match &self.svg_pipeline {
+            Some(pipeline) => prepared.render_svg_with_pipeline_report_and_debug(
+                &self.svg,
+                &self.svg_debug,
+                pipeline,
+            )?,
+            None => prepared.render_svg_report_with_debug(&self.svg, &self.svg_debug)?,
+        };
+        Ok(Some(rendered))
     }
 
     /// Renders one diagram with additional Mermaid site config defaults.
@@ -1138,14 +1307,24 @@ impl HeadlessRenderer {
         text: &str,
         pipeline: &SvgPipeline,
     ) -> Result<Option<String>> {
-        render_svg_with_pipeline_sync(
-            &self.engine,
-            text,
-            self.parse,
-            &self.layout,
+        Ok(self
+            .render_svg_with_pipeline_report_sync(text, pipeline)?
+            .map(RenderedSvg::into_svg))
+    }
+
+    pub fn render_svg_with_pipeline_report_sync(
+        &self,
+        text: &str,
+        pipeline: &SvgPipeline,
+    ) -> Result<Option<RenderedSvg>> {
+        let Some(prepared) = self.prepare_render_sync(text)? else {
+            return Ok(None);
+        };
+        Ok(Some(prepared.render_svg_with_pipeline_report_and_debug(
             &self.svg,
+            &self.svg_debug,
             pipeline,
-        )
+        )?))
     }
 
     /// Renders SVG and applies a best-effort readability fallback for `<foreignObject>` labels.
@@ -1159,25 +1338,6 @@ impl HeadlessRenderer {
 
     pub fn render_svg_resvg_safe_sync(&self, text: &str) -> Result<Option<String>> {
         self.render_svg_with_pipeline_sync(text, &SvgPipeline::resvg_safe())
-    }
-
-    fn apply_default_svg_pipeline(
-        &self,
-        svg: String,
-        meta: &merman_render::model::LayoutMeta,
-    ) -> Result<String> {
-        let Some(pipeline) = &self.svg_pipeline else {
-            return Ok(svg);
-        };
-        let metadata = SvgPostprocessMetadata::from_svg(&svg)
-            .with_diagram_type(meta.diagram_type.clone())
-            .with_optional_diagram_title(meta.title.clone());
-        let out = apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata)?;
-        self.layout
-            .resource_limits
-            .check_svg_bytes(&out, ResourceLimitPhase::SvgPostprocess)
-            .map_err(resource_limit_error)?;
-        Ok(out)
     }
 
     #[cfg(feature = "raster")]
@@ -1194,8 +1354,14 @@ impl HeadlessRenderer {
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
         let pipeline = self.raster_pipeline();
-        operation::HeadlessOperation::new(&self.engine, text, self.parse, &self.layout)
-            .render_png(&self.svg, &pipeline, raster)
+        operation::HeadlessOperation::new(
+            &self.engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+        )?
+        .render_png(&self.svg, &self.svg_debug, &pipeline, raster)
     }
 
     #[cfg(feature = "raster")]
@@ -1205,14 +1371,26 @@ impl HeadlessRenderer {
         raster: &raster::RasterOptions,
     ) -> raster::Result<Option<Vec<u8>>> {
         let pipeline = self.raster_pipeline();
-        operation::HeadlessOperation::new(&self.engine, text, self.parse, &self.layout)
-            .render_jpeg(&self.svg, &pipeline, raster)
+        operation::HeadlessOperation::new(
+            &self.engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+        )?
+        .render_jpeg(&self.svg, &self.svg_debug, &pipeline, raster)
     }
 
     #[cfg(feature = "raster")]
     pub fn render_pdf_sync(&self, text: &str) -> raster::Result<Option<Vec<u8>>> {
         let pipeline = self.raster_pipeline();
-        operation::HeadlessOperation::new(&self.engine, text, self.parse, &self.layout)
-            .render_pdf(&self.svg, &pipeline)
+        operation::HeadlessOperation::new(
+            &self.engine,
+            text,
+            self.parse,
+            &self.layout,
+            &self.environment,
+        )?
+        .render_pdf(&self.svg, &self.svg_debug, &pipeline)
     }
 }

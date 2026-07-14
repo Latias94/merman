@@ -1,6 +1,6 @@
 //! Trace payload structures for debugging flowchart edge geometry.
 //!
-//! These types are emitted only when tracing is enabled (see `MERMAN_TRACE_FLOWCHART_OUT`).
+//! These types are emitted only when tracing is enabled through [`SvgDebugOptions`].
 
 use super::super::*;
 use super::BoundaryNode;
@@ -142,11 +142,9 @@ pub(in crate::svg::parity::flowchart) fn write_flowchart_edge_trace(
         endpoint_intersection,
     };
 
-    let out_path = std::env::var_os("MERMAN_TRACE_FLOWCHART_OUT")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::path::PathBuf::from(format!("merman_flowchart_edge_trace_{}.json", edge.id))
-        });
+    let default_path =
+        std::path::PathBuf::from(format!("merman_flowchart_edge_trace_{}.json", edge.id));
+    let out_path = ctx.trace_output_path.unwrap_or(default_path.as_path());
     if let Ok(json) = serde_json::to_string_pretty(&trace) {
         let _ = std::fs::write(out_path, json);
     }

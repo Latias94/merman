@@ -171,7 +171,7 @@ jobs:
 
           e = merman.MermanEngine()
           s = 'flowchart TD\nA[Hello] --> B[World]'
-          assert e.abi_version() == 2
+          assert e.abi_version() == 3
           assert e.render_svg(s, None).startswith('<svg')
           assert 'Hello' in e.render_ascii(s, None)
           assert e.validate(s, None).valid
@@ -214,17 +214,18 @@ jobs:
 
 
           class FailingMeasurer(merman.MermanTextMeasurer):
+              def __init__(self):
+                  self.calls = 0
+
               def measure(self, request):
+                  self.calls += 1
                   raise RuntimeError('host measurer failed')
 
 
-          failing = e.reusable_engine_with_text_measurer(None, FailingMeasurer())
-          try:
-              failing.render_svg(s)
-          except merman.MermanError.Binding as error:
-              assert 'host measurer failed' in error.message
-          else:
-              raise AssertionError('expected host text measurer callback failure')
+          failing_measurer = FailingMeasurer()
+          failing = e.reusable_engine_with_text_measurer(None, failing_measurer)
+          assert failing.render_svg(s).startswith('<svg')
+          assert failing_measurer.calls > 0
           failing.set_text_measurer(Measurer())
           assert failing.render_svg(s).startswith('<svg')
           PY

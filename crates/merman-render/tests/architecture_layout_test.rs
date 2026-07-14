@@ -3,13 +3,20 @@ use merman_render::model::{ArchitectureDiagramLayout, LayoutDiagram};
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::headless_svg_defaults())
-        .expect("layout ok");
+    let layout = layout_parsed_render_layout_only(
+        &parsed,
+        &LayoutOptions::headless_svg_defaults(),
+        &_session,
+    )
+    .expect("layout ok");
     match layout {
         LayoutDiagram::ArchitectureDiagram(layout) => *layout,
         other => panic!("expected architecture layout, got {other:?}"),

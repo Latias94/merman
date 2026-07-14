@@ -1,7 +1,7 @@
 #![cfg(feature = "render")]
 
 use merman::MermaidConfig;
-use merman::render::{HeadlessRenderer, RenderResourceLimits};
+use merman::render::{HeadlessRenderer, RenderEnvironment, RenderResourceLimits};
 #[cfg(feature = "raster")]
 use std::io::Cursor;
 use std::sync::Arc;
@@ -128,7 +128,8 @@ fn raw_resvg_safe_pipeline_strips_active_svg_content() {
 <rect width="16" height="16" fill="black"/>
 </svg>"##;
 
-    let out = merman::render::svg_resvg_safe(svg).unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let out = merman::render::svg_resvg_safe(svg, &session).unwrap();
 
     assert_xml_parseable("raw-resvg-safe-active-content", &out);
     let lower = out.to_ascii_lowercase();
@@ -182,11 +183,12 @@ fn resvg_safe_pipeline_strips_active_content_from_trusted_custom_icons() {
             16.0,
         ),
     );
-    let renderer = HeadlessRenderer::new().with_svg_options(merman::render::SvgRenderOptions {
-        diagram_id: Some("security-icon".to_string()),
-        icon_registry: Some(Arc::new(registry)),
-        ..Default::default()
-    });
+    let renderer = HeadlessRenderer::new()
+        .with_environment(RenderEnvironment::parity().with_icon_registry(Arc::new(registry)))
+        .with_svg_options(merman::render::SvgRenderOptions {
+            diagram_id: Some("security-icon".to_string()),
+            ..Default::default()
+        });
     let source = r#"flowchart TD
     A@{ icon: "test:active", label: "A" }
 "#;

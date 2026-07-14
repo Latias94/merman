@@ -1286,19 +1286,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     // GitGraph renders rotated commit labels (e.g. `rotate(-45, ...)`) that are not represented
     // in the precomputed layout bounds. Mirror Mermaid's `setupGraphViewbox(svg.getBBox() + pad)`
     // by computing a headless SVG bbox and patching the root viewBox/max-width.
-    let mut bb_dbg = SvgEmittedBoundsDebug {
-        bounds: Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 0.0,
-            max_y: 0.0,
-        },
-        min_x: None,
-        min_y: None,
-        max_x: None,
-        max_y: None,
-    };
-    let mut b = svg_emitted_bounds_from_svg_inner(&out, Some(&mut bb_dbg)).unwrap_or(Bounds {
+    let mut b = svg_emitted_bounds_from_svg_inner(&out, None).unwrap_or(Bounds {
         min_x: vb_min_x,
         min_y: vb_min_y,
         max_x: vb_min_x + vb_w,
@@ -1326,21 +1314,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     // gitGraph baselines). Use those bounds directly as an `f32` bbox here.
     let pad = VIEWBOX_PADDING_PX as f32;
 
-    fn next_down_f32(v: f32) -> f32 {
-        if v.is_nan() || v == f32::NEG_INFINITY {
-            return v;
-        }
-        if v == 0.0 {
-            return -f32::from_bits(1);
-        }
-        let bits = v.to_bits();
-        if v > 0.0 {
-            f32::from_bits(bits - 1)
-        } else {
-            f32::from_bits(bits + 1)
-        }
-    }
-
     fn next_up_f32(v: f32) -> f32 {
         if v.is_nan() || v == f32::INFINITY {
             return v;
@@ -1366,26 +1339,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
 
     let bbox_x = b.min_x as f32;
     let bbox_y = b.min_y as f32;
-    let dbg_viewbox = std::env::var("MERMAN_DEBUG_GITGRAPH_VIEWBOX").is_ok();
-
-    if dbg_viewbox {
-        if let Some(c) = &bb_dbg.min_x {
-            let raw = c.bounds.min_x as f32;
-            eprintln!(
-                "gitgraph viewbox dbg: before bbox_x={bbox_x:?} raw_min_x={raw:?} next_down={:?}",
-                next_down_f32(raw)
-            );
-        } else {
-            eprintln!("gitgraph viewbox dbg: before bbox_x={bbox_x:?} raw_min_x=<none>");
-        }
-    }
-    if dbg_viewbox {
-        eprintln!(
-            "gitgraph viewbox dbg: after bbox_x={bbox_x:?} bbox_y={bbox_y:?} b.min_x={:?} b.max_x={:?}",
-            b.min_x, b.max_x
-        );
-    }
-
     // Match Chromium's `getBBox()` behavior more closely:
     // - x/y: `f32`-quantized extrema
     // - w/h: computed in `f64`, then rounded to `f32` with an upward bias
@@ -1399,20 +1352,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     };
     let bbox_w = f32_round_up((b.max_x - b.min_x) + title_bbox_w_bias);
     let bbox_h = f32_round_up(b.max_y - b.min_y);
-    let _ = &bb_dbg;
-
     // Mermaid sets the root viewBox from `getBBox()` + padding in JS `Number` (double) space.
     // Keep these computations in `f64` so we match the upstream stringified values exactly.
     let vb_min_x = (bbox_x as f64) - (pad as f64);
     let vb_min_y = (bbox_y as f64) - (pad as f64);
     let vb_w = (bbox_w as f64) + 2.0 * (pad as f64);
     let vb_h = (bbox_h as f64) + 2.0 * (pad as f64);
-    if dbg_viewbox {
-        eprintln!(
-            "gitgraph viewbox dbg: bbox_h={bbox_h:?} bbox_h_bits={} pad={pad:?} vb_min_x={vb_min_x:?} vb_min_y={vb_min_y:?} vb_w={vb_w:?} vb_h={vb_h:?}",
-            bbox_h.to_bits()
-        );
-    }
     let view_box_attr = format!(
         "{} {} {} {}",
         fmt(vb_min_x),

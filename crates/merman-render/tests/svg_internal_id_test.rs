@@ -1,4 +1,5 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::RenderEnvironment;
 use merman_render::svg::{IconRegistry, IconSvg, SvgRenderOptions, render_layouted_svg};
 use merman_render::{LayoutOptions, layout_parsed};
 use std::sync::Arc;
@@ -14,14 +15,23 @@ fn render_svg_from_text(text: &str, diagram_id: &str) -> String {
 }
 
 fn render_svg_from_text_with_options(text: &str, options: &SvgRenderOptions) -> String {
+    render_svg_from_text_with_environment(text, options, &RenderEnvironment::parity())
+}
+
+fn render_svg_from_text_with_environment(
+    text: &str,
+    options: &SvgRenderOptions,
+    environment: &RenderEnvironment,
+) -> String {
+    let session = environment.begin_session().unwrap();
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
-    render_layouted_svg(&out, layout_options.text_measurer.as_ref(), options).expect("render svg")
+    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
+    render_layouted_svg(&out, &session, options).expect("render svg")
 }
 
 fn assert_scoped_marker(svg: &str, diagram_id: &str, local_id: &str) {
@@ -193,16 +203,17 @@ fn flowchart_iconify_internal_ids_are_scoped_per_node() {
         ),
     );
 
-    let svg = render_svg_from_text_with_options(
+    let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
+    let svg = render_svg_from_text_with_environment(
         r#"flowchart TD
 A@{ icon: "test:clip", label: "A" }
 B@{ icon: "test:clip", label: "B" }
 A --> B"#,
         &SvgRenderOptions {
             diagram_id: Some("m15-flowchart-icons".to_string()),
-            icon_registry: Some(Arc::new(registry)),
             ..SvgRenderOptions::default()
         },
+        &environment,
     );
 
     assert!(!svg.contains(r#"id="clip""#), "{svg}");
@@ -224,15 +235,15 @@ fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
     registry.insert("foo:bar-baz", IconSvg::new(icon_body, 16.0, 16.0));
     registry.insert("foo-bar:baz", IconSvg::new(icon_body, 16.0, 16.0));
     registry.insert("foo:bar-baz-2", IconSvg::new(icon_body, 16.0, 16.0));
+    let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
     let options = SvgRenderOptions {
         diagram_id: Some("m15-tree-view-icons".to_string()),
-        icon_registry: Some(Arc::new(registry)),
         ..SvgRenderOptions::default()
     };
     let input = "treeView-beta\nRoot\n    One icon(foo:bar-baz)\n    Two icon(foo-bar:baz)\n    Three icon(foo:bar-baz-2)\n";
 
-    let svg = render_svg_from_text_with_options(input, &options);
-    let repeated_svg = render_svg_from_text_with_options(input, &options);
+    let svg = render_svg_from_text_with_environment(input, &options, &environment);
+    let repeated_svg = render_svg_from_text_with_environment(input, &options, &environment);
 
     assert_eq!(svg, repeated_svg);
     assert!(!svg.contains(r#"id="none""#), "{svg}");

@@ -42,12 +42,15 @@ fn deep_state_composite_chain(depth: usize) -> String {
 }
 
 fn layout_state_from_text(text: &str) -> merman_render::model::StateDiagramV2Layout {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
     };
@@ -69,6 +72,9 @@ fn state_parse_for_render_model_handles_deep_composite_chain() {
 
 #[test]
 fn state_layout_handles_deep_composite_chain() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     const DEPTH: usize = 512;
     let text = deep_state_composite_chain(DEPTH);
 
@@ -77,7 +83,7 @@ fn state_layout_handles_deep_composite_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default())
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session)
         .expect("layout should not depend on recursive cluster extraction");
     let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
@@ -89,6 +95,9 @@ fn state_layout_handles_deep_composite_chain() {
 
 #[test]
 fn state_layout_produces_positions_and_routes() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("state")
@@ -100,7 +109,7 @@ fn state_layout_produces_positions_and_routes() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
     };
@@ -128,13 +137,16 @@ fn state_layout_produces_positions_and_routes() {
 
 #[test]
 fn state_start_and_end_have_fixed_size() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let text = "stateDiagram-v2\n[*] --> A\nA --> [*]\n";
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
     };
@@ -198,6 +210,9 @@ A --> B: owns
 
 #[test]
 fn state_layout_note_groups_contain_notes() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("state")
@@ -209,7 +224,7 @@ fn state_layout_note_groups_contain_notes() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
     };
@@ -234,6 +249,9 @@ fn state_layout_note_groups_contain_notes() {
 
 #[test]
 fn state_layout_composite_and_dividers_contain_children() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("state")
@@ -245,7 +263,7 @@ fn state_layout_composite_and_dividers_contain_children() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
     };
@@ -308,6 +326,9 @@ fn state_layout_composite_and_dividers_contain_children() {
 
 #[test]
 fn state_layout_exposes_one_logical_self_loop_edge() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("state")
@@ -319,7 +340,7 @@ fn state_layout_exposes_one_logical_self_loop_edge() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
         panic!("expected StateDiagramV2 layout");
     };

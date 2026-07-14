@@ -1,9 +1,63 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
+    RenderRandomnessPolicy, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementProfileIdentity,
+};
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
+use merman_render::text::{TextMetrics, TextStyle};
 use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
 use regex::Regex;
+use std::num::NonZeroU64;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Default)]
+struct CountingArchitectureHost {
+    calls: AtomicUsize,
+}
+
+impl HostTextMeasurer for CountingArchitectureHost {
+    fn measure(
+        &self,
+        _phase: TextMeasurementPhase,
+        text: &str,
+        style: &TextStyle,
+    ) -> HostMeasurementResult<TextMetrics> {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        Ok(Some(TextMetrics {
+            width: text.chars().count() as f64 * style.font_size.max(1.0),
+            height: style.font_size.max(1.0),
+            line_count: 1,
+        }))
+    }
+
+    fn measure_svg_text_bbox_x(
+        &self,
+        _phase: TextMeasurementPhase,
+        text: &str,
+        style: &TextStyle,
+    ) -> HostMeasurementResult<(f64, f64)> {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        let half = text.chars().count() as f64 * style.font_size.max(1.0) / 2.0;
+        Ok(Some((half, half)))
+    }
+}
+
+fn counting_architecture_environment(host: Arc<CountingArchitectureHost>) -> RenderEnvironment {
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.architecture-host").expect("valid profile id"),
+        "1",
+    )
+    .expect("valid profile identity");
+    RenderEnvironment::parity().with_text_measurement_policy(TextMeasurementPolicy::host_display(
+        identity,
+        host,
+        TextMeasurementPhase::ALL,
+    ))
+}
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -39,14 +93,18 @@ fn render_architecture_text_with_engine_and_options(
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let layout = layout_parsed_render_layout_only(&parsed, &layout_options).expect("layout ok");
+    let session = RenderEnvironment::parity()
+        .begin_session()
+        .expect("begin render session");
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &layout_options, &session).expect("layout ok");
 
     render_layout_svg_parts_for_render_model_with_config(
         &layout,
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &session,
         options,
     )
     .expect("render SVG")
@@ -416,7 +474,11 @@ fn architecture_cached_service_child_bounds_preserve_svg_output() {
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let layout = layout_parsed_render_layout_only(&parsed, &layout_options).expect("layout ok");
+    let session = RenderEnvironment::parity()
+        .begin_session()
+        .expect("begin render session");
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &layout_options, &session).expect("layout ok");
     let mut layout_without_cached_bounds = layout.clone();
     let LayoutDiagram::ArchitectureDiagram(arch_layout) = &mut layout_without_cached_bounds else {
         panic!("expected architecture layout");
@@ -436,7 +498,7 @@ fn architecture_cached_service_child_bounds_preserve_svg_output() {
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &session,
         &options,
     )
     .expect("render SVG with cached service child bounds");
@@ -445,7 +507,7 @@ fn architecture_cached_service_child_bounds_preserve_svg_output() {
         &parsed.model,
         &parsed.meta.effective_config,
         parsed.meta.title.as_deref(),
-        layout_options.text_measurer.as_ref(),
+        &session,
         &options,
     )
     .expect("render SVG without cached service child bounds");
@@ -467,6 +529,132 @@ fn architecture_icon_text_clamp_uses_architecture_font_size() {
     assert_eq!(
         clamp, 4,
         "iconText clamp should follow default architecture.fontSize=16 with iconSize=80"
+    );
+}
+
+#[test]
+fn architecture_svg_uses_the_session_measurement_route() {
+    let host = Arc::new(CountingArchitectureHost::default());
+    let session = counting_architecture_environment(Arc::clone(&host))
+        .begin_session()
+        .expect("begin render session");
+    let source = "architecture-beta\n  service api(server)[API service]\n";
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let layout_options = LayoutOptions::headless_svg_defaults();
+    let layout =
+        layout_parsed_render_layout_only(&parsed, &layout_options, &session).expect("layout ok");
+    host.calls.store(0, Ordering::Relaxed);
+
+    let host_svg = render_layout_svg_parts_for_render_model_with_config(
+        &layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        &session,
+        &SvgRenderOptions::default(),
+    )
+    .expect("render SVG");
+
+    assert!(
+        host.calls.load(Ordering::Relaxed) > 0,
+        "Architecture must not bypass the session with a family-local vendored measurer"
+    );
+    assert!(
+        session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .any(|entry| {
+                entry.provenance().phase == TextMeasurementPhase::SvgBBox
+                    && entry.provenance().source
+                        == merman_render::environment::TextMeasurementSource::Host
+            }),
+        "Architecture SVG bbox measurements must retain the host phase provenance"
+    );
+
+    let parity_session = RenderEnvironment::parity().begin_session().unwrap();
+    let parity_layout = layout_parsed_render_layout_only(
+        &parsed,
+        &LayoutOptions::headless_svg_defaults(),
+        &parity_session,
+    )
+    .expect("parity layout");
+    let parity_svg = render_layout_svg_parts_for_render_model_with_config(
+        &parity_layout,
+        &parsed.model,
+        &parsed.meta.effective_config,
+        parsed.meta.title.as_deref(),
+        &parity_session,
+        &SvgRenderOptions::default(),
+    )
+    .expect("parity SVG");
+    assert_ne!(
+        host_svg, parity_svg,
+        "host metrics must change observable geometry"
+    );
+}
+
+#[test]
+fn architecture_and_hand_drawn_zero_seeds_share_the_session_seed() {
+    fn render_with_seed(source: &str, ambient_seed: u64) -> (LayoutDiagram, String) {
+        let session = RenderEnvironment::parity()
+            .with_randomness(RenderRandomnessPolicy::pinned(
+                NonZeroU64::new(ambient_seed).unwrap(),
+            ))
+            .begin_session()
+            .expect("begin render session");
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse ok")
+            .expect("diagram detected");
+        let layout = layout_parsed_render_layout_only(
+            &parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            &session,
+        )
+        .expect("layout ok");
+        let svg = render_layout_svg_parts_for_render_model_with_config(
+            &layout,
+            &parsed.model,
+            &parsed.meta.effective_config,
+            parsed.meta.title.as_deref(),
+            &session,
+            &SvgRenderOptions {
+                diagram_id: Some("architecture-session-seed".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("render SVG");
+        (layout, svg)
+    }
+
+    let zero = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 0, "architecture": {"seed": 0}}}%%
+architecture-beta
+  service api(server)[API]
+  service db(database)[Database]
+  api:R --> L:db
+"#;
+    let explicit = r#"%%{init: {"look": "handDrawn", "handDrawnSeed": 77, "architecture": {"seed": 77}}}%%
+architecture-beta
+  service api(server)[API]
+  service db(database)[Database]
+  api:R --> L:db
+"#;
+
+    let (zero_layout, zero_svg) = render_with_seed(zero, 77);
+    let (explicit_layout, explicit_svg) = render_with_seed(explicit, 999);
+
+    assert_eq!(
+        serde_json::to_value(zero_layout).unwrap(),
+        serde_json::to_value(explicit_layout).unwrap(),
+        "architecture.seed=0 must resolve to the operation session seed"
+    );
+    assert_eq!(
+        zero_svg, explicit_svg,
+        "handDrawnSeed=0 must use the same resolved operation seed as Architecture layout"
     );
 }
 

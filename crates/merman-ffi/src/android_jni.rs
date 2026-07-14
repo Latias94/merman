@@ -10,9 +10,9 @@ use jni::{
     JavaVM,
     objects::{Global, JValue},
 };
-#[cfg(feature = "render")]
-use merman_bindings_core::TextMeasurer;
 use merman_bindings_core::{BindingError, BindingStatus};
+#[cfg(feature = "render")]
+use std::cell::Cell;
 use std::ptr;
 #[cfg(feature = "render")]
 use std::sync::Arc;
@@ -27,7 +27,6 @@ struct JniReusableEngine {
 struct JniHostTextMeasurer {
     vm: JavaVM,
     callback: Global<JObject<'static>>,
-    fallback: merman_bindings_core::VendoredFontMetricsTextMeasurer,
 }
 
 #[cfg(feature = "render")]
@@ -36,23 +35,23 @@ impl JniHostTextMeasurer {
     const DEFAULT_FONT_WEIGHT: &'static str = "normal";
 
     fn new(vm: JavaVM, callback: Global<JObject<'static>>) -> Self {
-        Self {
-            vm,
-            callback,
-            fallback: merman_bindings_core::VendoredFontMetricsTextMeasurer::default(),
-        }
+        Self { vm, callback }
     }
 
     fn call_host(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> Option<merman_bindings_core::TextMetrics> {
-        self.vm
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        let callback_failed = Cell::new(false);
+        let result = self
+            .vm
             .attach_current_thread(|env| -> JniResult<Option<merman_bindings_core::TextMetrics>> {
-                let request = new_text_measure_request(env, text, style, max_width, wrap_mode)?;
+                let request =
+                    new_text_measure_request(env, phase, text, style, max_width, wrap_mode)?;
                 let result = env
                     .call_method(
                         self.callback.as_obj(),
@@ -63,7 +62,9 @@ impl JniHostTextMeasurer {
                         &[JValue::Object(&request)],
                     )
                     .and_then(|value| value.l());
-                let Some(result) = recover_host_callback_result(env, result)? else {
+                let Some(result) =
+                    recover_host_callback_result(env, result, &callback_failed)?
+                else {
                     return Ok(None);
                 };
                 if result.is_null() {
@@ -74,19 +75,21 @@ impl JniHostTextMeasurer {
                 let width = env
                     .get_field(&result, jni::jni_str!("width"), jni::jni_sig!(f64))
                     .and_then(|value| value.d());
-                let Some(width) = recover_host_callback_result(env, width)? else {
+                let Some(width) = recover_host_callback_result(env, width, &callback_failed)? else {
                     return Ok(None);
                 };
                 let height = env
                     .get_field(&result, jni::jni_str!("height"), jni::jni_sig!(f64))
                     .and_then(|value| value.d());
-                let Some(height) = recover_host_callback_result(env, height)? else {
+                let Some(height) = recover_host_callback_result(env, height, &callback_failed)? else {
                     return Ok(None);
                 };
                 let line_count = env
                     .get_field(&result, jni::jni_str!("lineCount"), jni::jni_sig!(jlong))
                     .and_then(|value| value.j());
-                let Some(line_count) = recover_host_callback_result(env, line_count)? else {
+                let Some(line_count) =
+                    recover_host_callback_result(env, line_count, &callback_failed)?
+                else {
                     return Ok(None);
                 };
                 if !width.is_finite()
@@ -95,6 +98,7 @@ impl JniHostTextMeasurer {
                     || height < 0.0
                     || line_count <= 0
                 {
+                    callback_failed.set(true);
                     return Ok(None);
                 }
 
@@ -104,22 +108,17 @@ impl JniHostTextMeasurer {
                     line_count: line_count as usize,
                 }))
             })
-            .ok()
-            .flatten()
-    }
-
-    fn measure_with_fallback(
-        &self,
-        text: &str,
-        style: &merman_bindings_core::TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, max_width, wrap_mode)
-            .unwrap_or_else(|| {
-                self.fallback
-                    .measure_wrapped(text, style, max_width, wrap_mode)
-            })
+            .map_err(|err| {
+                merman_bindings_core::HostTextMeasurementError::new(format!(
+                    "JNI host text measurer failed: {err}"
+                ))
+            })?;
+        if callback_failed.get() {
+            return Err(merman_bindings_core::HostTextMeasurementError::new(
+                "JNI host text measurer callback failed or returned invalid metrics",
+            ));
+        }
+        Ok(result)
     }
 }
 
@@ -127,10 +126,14 @@ impl JniHostTextMeasurer {
 fn recover_host_callback_result<T>(
     env: &mut Env<'_>,
     result: JniResult<T>,
+    callback_failed: &Cell<bool>,
 ) -> JniResult<Option<T>> {
     match result {
         Ok(value) => Ok(Some(value)),
-        Err(err) if is_pending_host_exception(env, &err) => Ok(None),
+        Err(err) if is_pending_host_exception(env, &err) => {
+            callback_failed.set(true);
+            Ok(None)
+        }
         Err(err) => Err(err),
     }
 }
@@ -146,55 +149,62 @@ fn is_pending_host_exception(env: &mut Env<'_>, err: &JniError) -> bool {
 }
 
 #[cfg(feature = "render")]
-impl merman_bindings_core::TextMeasurer for JniHostTextMeasurer {
+impl merman_bindings_core::HostTextMeasurer for JniHostTextMeasurer {
     fn measure(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, None, merman_bindings_core::WrapMode::SvgLike)
-            .unwrap_or_else(|| self.fallback.measure(text, style))
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(
+            phase,
+            text,
+            style,
+            None,
+            merman_bindings_core::WrapMode::SvgLike,
+        )
     }
 
     fn measure_wrapped(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.measure_with_fallback(text, style, max_width, wrap_mode)
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(phase, text, style, max_width, wrap_mode)
     }
 
     fn measure_wrapped_with_raw_width(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> (merman_bindings_core::TextMetrics, Option<f64>) {
-        if let Some(metrics) = self.call_host(text, style, max_width, wrap_mode) {
+    ) -> merman_bindings_core::HostMeasurementResult<(merman_bindings_core::TextMetrics, Option<f64>)>
+    {
+        if let Some(metrics) = self.call_host(phase, text, style, max_width, wrap_mode)? {
             let raw_width = max_width
-                .and_then(|_| self.call_host(text, style, None, wrap_mode))
+                .map(|_| self.call_host(phase, text, style, None, wrap_mode))
+                .transpose()?
+                .flatten()
                 .map(|raw| raw.width);
-            return (metrics, raw_width);
+            return Ok(Some((metrics, raw_width)));
         }
-        self.fallback
-            .measure_wrapped_with_raw_width(text, style, max_width, wrap_mode)
+        Ok(None)
     }
 
     fn measure_wrapped_raw(
         &self,
+        phase: merman_bindings_core::TextMeasurementPhase,
         text: &str,
         style: &merman_bindings_core::TextStyle,
         max_width: Option<f64>,
         wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::TextMetrics {
-        self.call_host(text, style, max_width, wrap_mode)
-            .unwrap_or_else(|| {
-                self.fallback
-                    .measure_wrapped_raw(text, style, max_width, wrap_mode)
-            })
+    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        self.call_host(phase, text, style, max_width, wrap_mode)
     }
 }
 
@@ -296,7 +306,7 @@ pub extern "system" fn Java_io_merman_MermanReusableEngine_nativeSetTextMeasurer
             let callback = env.new_global_ref(&measurer)?;
             let vm = env.get_java_vm()?;
             let measurer = JniHostTextMeasurer::new(vm, callback);
-            engine.inner = engine.inner.with_text_measurer(Arc::new(measurer));
+            engine.inner = engine.inner.with_host_text_measurer(Arc::new(measurer));
         }
 
         #[cfg(not(feature = "render"))]
@@ -875,6 +885,7 @@ fn throw_merman_exception(env: &mut Env<'_>, message: impl AsRef<str>) {
 #[cfg(feature = "render")]
 fn new_text_measure_request<'local>(
     env: &mut Env<'local>,
+    phase: merman_bindings_core::TextMeasurementPhase,
     text: &str,
     style: &merman_bindings_core::TextStyle,
     max_width: Option<f64>,
@@ -907,7 +918,7 @@ fn new_text_measure_request<'local>(
     env.new_object(
         jni::jni_str!("io/merman/MermanTextMeasureRequest"),
         jni::jni_sig!(
-            "(Ljava/lang/String;Ljava/lang/String;DLjava/lang/String;Ljava/lang/String;Ljava/lang/Double;DDDIII)V"
+            "(Ljava/lang/String;Ljava/lang/String;DLjava/lang/String;Ljava/lang/String;Ljava/lang/Double;DDDIIII)V"
         ),
         &[
             JValue::Object(&JObject::from(text)),
@@ -922,6 +933,7 @@ fn new_text_measure_request<'local>(
             JValue::Int(jni_wrap_mode(wrap_mode)),
             JValue::Int(super::MERMAN_TEXT_DIRECTION_AUTO),
             JValue::Int(jni_white_space(max_width, wrap_mode)),
+            JValue::Int(super::ffi_measurement_phase(phase)),
         ],
     )
 }

@@ -1,18 +1,14 @@
 use super::plan::RenderPlan;
 use super::svg_pipeline::{svg_metadata, svg_pipeline_from_kind, svg_postprocess_pipeline};
 use crate::cli::{RenderFormat, SvgPipelineKind};
-use crate::config::{engine_for, layout_options, math_renderer, parse_options};
+use crate::config::renderer_for;
 use crate::error::CliError;
 use crate::io::write_output;
-use merman::render::{MathRenderer, SvgPipeline, SvgRenderOptions};
-use merman::{Engine, ParseOptions};
-use std::sync::Arc;
+use merman::render::{HeadlessRenderer, SvgPipeline};
 
 pub(super) struct RenderRequest<'a> {
     pub(super) plan: &'a RenderPlan,
-    pub(super) engine: &'a Engine,
-    pub(super) parse_options: ParseOptions,
-    pub(super) math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
+    pub(super) renderer: HeadlessRenderer,
 }
 
 pub(super) struct RenderedArtifact {
@@ -25,13 +21,10 @@ pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
     plan.warn_for_accepted_compat_options();
     let text = crate::io::read_input(plan.input.as_deref(), plan.quiet)?;
 
-    let engine = engine_for(&plan.parse, &plan.render)?;
-    let math_renderer = math_renderer(plan.render.math_renderer)?;
+    let renderer = renderer_for(&plan.parse, &plan.render, plan.icon_registry.clone())?;
     let request = RenderRequest {
         plan: &plan,
-        engine: &engine,
-        parse_options: parse_options(&plan.parse),
-        math_renderer,
+        renderer,
     };
 
     if plan.is_mmdc_markdown_input() {
@@ -42,24 +35,6 @@ pub(crate) fn run_render(plan: RenderPlan) -> Result<(), CliError> {
 }
 
 impl<'a> RenderRequest<'a> {
-    fn layout_options(&self) -> merman::render::LayoutOptions {
-        layout_options(&self.plan.render, self.math_renderer.clone())
-    }
-
-    fn svg_options(&self) -> SvgRenderOptions {
-        SvgRenderOptions {
-            diagram_id: self
-                .plan
-                .render
-                .svg_id
-                .as_deref()
-                .map(merman::render::sanitize_svg_id),
-            math_renderer: self.math_renderer.clone(),
-            icon_registry: self.plan.icon_registry.clone(),
-            ..Default::default()
-        }
-    }
-
     fn render(&self, text: &str) -> Result<(), CliError> {
         let artifact = self.render_artifact(text)?;
         write_output(self.plan.output.as_ref(), &artifact.bytes)
@@ -76,14 +51,9 @@ impl<'a> RenderRequest<'a> {
         }
 
         let pipeline = self.postprocess_pipeline();
-        let Some(svg) = merman::render::render_svg_with_pipeline_sync(
-            self.engine,
-            text,
-            self.parse_options,
-            &self.layout_options(),
-            &self.svg_options(),
-            &pipeline,
-        )?
+        let Some(svg) = self
+            .renderer
+            .render_svg_with_pipeline_sync(text, &pipeline)?
         else {
             return Err(CliError::NoDiagram);
         };
@@ -120,7 +90,14 @@ impl<'a> RenderRequest<'a> {
 
     fn postprocess_raw_svg_for_raster(&self, svg: &str) -> Result<String, CliError> {
         let pipeline = self.raw_svg_raster_pipeline();
-        Ok(merman::render::apply_svg_pipeline(svg, &pipeline)?)
+        let session = self
+            .renderer
+            .environment()
+            .begin_session()
+            .map_err(merman::render::HeadlessError::from)?;
+        Ok(merman::render::apply_svg_pipeline(
+            svg, &pipeline, &session,
+        )?)
     }
 
     #[cfg(feature = "ascii")]
@@ -135,8 +112,12 @@ impl<'a> RenderRequest<'a> {
             }
         };
         let options = self.plan.apply_text_options(options)?;
-        let Some(rendered) =
-            merman::ascii::render_ascii_sync(self.engine, text, self.parse_options, &options)?
+        let Some(rendered) = merman::ascii::render_ascii_sync(
+            self.renderer.engine(),
+            text,
+            self.renderer.parse_options(),
+            &options,
+        )?
         else {
             return Err(CliError::NoDiagram);
         };

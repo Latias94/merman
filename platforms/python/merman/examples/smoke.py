@@ -5,7 +5,7 @@ import merman
 
 def main() -> None:
     engine = merman.MermanEngine()
-    if engine.abi_version() != 2:
+    if engine.abi_version() != 3:
         raise RuntimeError(f"unexpected ABI version: {engine.abi_version()}")
     if not engine.package_version():
         raise RuntimeError("empty package version")
@@ -94,9 +94,14 @@ def main() -> None:
     @dataclass
     class Measurer(merman.MermanTextMeasurer):
         calls: int = 0
+        phases: set = None
+
+        def __post_init__(self):
+            self.phases = set()
 
         def measure(self, request):
             self.calls += 1
+            self.phases.add(request.phase)
             return merman.MermanTextMeasureResult(
                 width=max(len(request.text) * 8.0, 1.0),
                 height=max(request.line_height, 1.0),
@@ -109,6 +114,8 @@ def main() -> None:
         raise RuntimeError("reusable engine smoke failed")
     if measurer.calls == 0:
         raise RuntimeError("text measurer callback smoke failed")
+    if len(measurer.phases) < 2:
+        raise RuntimeError(f"expected named measurement phases, got {measurer.phases}")
 
     setter_measurer = Measurer()
     reusable = engine.reusable_engine(None)
@@ -129,15 +136,8 @@ def main() -> None:
             raise RuntimeError("host measurer failed")
 
     failing = engine.reusable_engine_with_text_measurer(None, FailingMeasurer())
-    try:
-        failing.render_svg(source)
-    except merman.MermanError.Binding as error:
-        if "host measurer failed" not in error.message:
-            raise RuntimeError(
-                f"unexpected callback error message: {error.message}"
-            ) from error
-    else:
-        raise RuntimeError("failing text measurer did not surface callback error")
+    if "Hello" not in failing.render_svg(source):
+        raise RuntimeError("failing text measurer did not use vendored fallback")
     failing.set_text_measurer(Measurer())
     if "Hello" not in failing.render_svg(source):
         raise RuntimeError("text measurer recovery smoke failed")

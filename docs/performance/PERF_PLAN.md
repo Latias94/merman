@@ -84,8 +84,9 @@ Targets (stage spotcheck):
 
 Work items (safe + deterministic):
 - Reduce fixed-cost around COSE calls (allocation and mapping) in `merman-render/src/mindmap.rs`.
-- Add/keep fine-grained timing toggles (`MANATEE_COSE_TIMING=1`, `MERMAN_MINDMAP_LAYOUT_TIMING=1`) to
-  confirm that changes hit repulsion/spring rather than shifting overhead.
+- Use Criterion or an external profiler for the full layout and `MANATEE_COSE_TIMING=1` for the
+  lower-level COSE implementation to confirm that changes hit repulsion/spring rather than
+  shifting overhead.
 - Consider algorithmic changes only with strict gates:
   - early-exit criteria, iteration caps, or specialized tree layout
   - must preserve golden fixtures and deterministic placements

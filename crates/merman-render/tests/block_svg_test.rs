@@ -12,11 +12,15 @@ fn render_block_svg_from_text(text: &str) -> String {
 }
 
 fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::headless_svg_defaults()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::headless_svg_defaults(), &_session)
+        .expect("layout ok");
     let LayoutDiagram::BlockDiagram(layout) = &out.layout else {
         panic!("expected BlockDiagram layout");
     };

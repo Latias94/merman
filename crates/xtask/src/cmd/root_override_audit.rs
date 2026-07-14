@@ -140,7 +140,7 @@ pub(crate) fn audit_root_overrides(args: Vec<String>) -> Result<(), XtaskError> 
                     "Cross-checks generated root viewport override keys against disabled-root parity-root DOM mismatches."
                 );
                 println!(
-                    "The compare runs execute in child xtask processes with MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1."
+                    "The compare runs execute in child xtask processes with the explicit --no-root-overrides policy."
                 );
                 return Ok(());
             }
@@ -355,7 +355,6 @@ fn run_disabled_root_compare(
     })?;
     let mut command = Command::new(exe);
     command.current_dir(cmd::workspace_root());
-    command.env("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES", "1");
     command.env(ROOT_ATTRS_SNAPSHOT_PATH_ENV, root_attrs_snapshot.path());
     command.arg(format!("compare-{family}-svgs"));
     command.arg("--check-dom");
@@ -365,9 +364,7 @@ fn run_disabled_root_compare(
     command.arg(dom_decimals.to_string());
     command.arg("--out");
     command.arg(report_path);
-    if family == "flowchart" {
-        command.arg("--no-root-overrides");
-    }
+    command.arg("--no-root-overrides");
     if diagram_supports_root_delta_report(family) {
         command.arg("--report-root-all");
     }
@@ -502,7 +499,7 @@ fn render_global_root_override_audit(
         if inventory_only {
             "not-run"
         } else {
-            "disabled via MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES=1"
+            "disabled via explicit --no-root-overrides policy"
         }
     );
     let _ = writeln!(

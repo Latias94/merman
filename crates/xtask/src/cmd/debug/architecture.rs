@@ -3532,9 +3532,16 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         })?;
 
         let layout_opts = svg_compare_layout_opts();
-        let layouted = merman_render::layout_parsed(&parsed, &layout_opts).map_err(|e| {
-            XtaskError::SvgCompareFailed(format!("layout failed for {}: {e}", mmd_path.display()))
-        })?;
+        let session = crate::cmd::svg_compare_environment()
+            .begin_session()
+            .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
+        let layouted =
+            merman_render::layout_parsed(&parsed, &layout_opts, &session).map_err(|e| {
+                XtaskError::SvgCompareFailed(format!(
+                    "layout failed for {}: {e}",
+                    mmd_path.display()
+                ))
+            })?;
 
         let merman_render::model::LayoutDiagram::ArchitectureDiagram(layout) = &layouted.layout
         else {
@@ -3553,6 +3560,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
             layout,
             &layouted.semantic,
             &layouted.meta.effective_config,
+            &session,
             &svg_opts,
         )
         .map_err(|e| {
@@ -4396,9 +4404,16 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
             XtaskError::SvgCompareFailed(format!("no diagram detected in {}", mmd_path.display()))
         })?;
 
-        let layouted = merman_render::layout_parsed(&parsed, &layout_opts).map_err(|e| {
-            XtaskError::SvgCompareFailed(format!("layout failed for {}: {e}", mmd_path.display()))
-        })?;
+        let session = crate::cmd::svg_compare_environment()
+            .begin_session()
+            .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
+        let layouted =
+            merman_render::layout_parsed(&parsed, &layout_opts, &session).map_err(|e| {
+                XtaskError::SvgCompareFailed(format!(
+                    "layout failed for {}: {e}",
+                    mmd_path.display()
+                ))
+            })?;
 
         let merman_render::model::LayoutDiagram::ArchitectureDiagram(layout) = &layouted.layout
         else {
@@ -4413,6 +4428,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
             layout,
             &layouted.semantic,
             &layouted.meta.effective_config,
+            &session,
             &svg_opts,
         )
         .map_err(|e| {

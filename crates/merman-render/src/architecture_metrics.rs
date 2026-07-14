@@ -213,35 +213,6 @@ pub(crate) fn architecture_measure_cytoscape_node_bbox_extras(
     let top = (-contribution.union_bounds.min_y - half_icon).max(0.0);
     let bottom = (contribution.union_bounds.max_y - half_icon).max(0.0);
 
-    if let Some(label_bounds) = &label_bounds {
-        let label_half = label_bounds.half_width;
-
-        if std::env::var("MERMAN_ARCH_DEBUG_CY_BBOX").ok().as_deref() == Some("1") {
-            eprintln!(
-                "[arch-cy-bbox] title={:?} width={:.6} label_half={:.6} scale={:.6} body_bounds=({}, {})-({}, {}) label_bounds={:?} union_bounds=({}, {})-({}, {}) half_w={:.6} extras_lr={:.6} bottom={:.6}",
-                title.map(str::trim).unwrap_or(""),
-                label_bounds.metrics.width,
-                label_half,
-                label_bounds.metrics.applied_scale,
-                contribution.body_bounds.min_x,
-                contribution.body_bounds.min_y,
-                contribution.body_bounds.max_x,
-                contribution.body_bounds.max_y,
-                contribution
-                    .label_bounds
-                    .as_ref()
-                    .map(|b| (b.min_x, b.min_y, b.max_x, b.max_y)),
-                contribution.union_bounds.min_x,
-                contribution.union_bounds.min_y,
-                contribution.union_bounds.max_x,
-                contribution.union_bounds.max_y,
-                half_w,
-                (half_w - half_icon).max(0.0),
-                bottom,
-            );
-        }
-    }
-
     let extra_lr = (half_w - half_icon).max(0.0);
     ArchitectureNodeBBoxExtras {
         left: extra_lr,
@@ -276,10 +247,7 @@ pub(crate) fn architecture_estimate_service_bounds<TLine>(
     wrap_svg_words_to_lines: impl Fn(&str, f64, &dyn TextMeasurer, &TextStyle) -> Vec<TLine>,
     svg_line_plain_text: impl Fn(&TLine) -> String,
     measure_svg_text_bbox_x: impl Fn(&str, &TextStyle) -> (f64, f64),
-) -> ArchitectureServiceBoundsEstimate
-where
-    TLine: std::fmt::Debug,
-{
+) -> ArchitectureServiceBoundsEstimate {
     let emitted_icon_bounds = Bounds {
         min_x: x,
         min_y: y,
@@ -289,10 +257,6 @@ where
     let mut svg_root_bounds = emitted_icon_bounds.clone();
     let mut cytoscape_group_child_contribution =
         architecture_cytoscape_child_contribution_bounds(&emitted_icon_bounds, None);
-    let debug_service = std::env::var("MERMAN_ARCH_DEBUG_SERVICE_BOUNDS")
-        .ok()
-        .filter(|value| !value.is_empty());
-
     if let Some(title) = title.map(str::trim).filter(|t| !t.is_empty()) {
         let lines = wrap_svg_words_to_lines(title, icon_size_px * 1.5, text_measurer, text_style);
         let mut bbox_left_root = 0.0f64;
@@ -324,38 +288,10 @@ where
             compound_text_style,
             arch_font_size_px,
         ) {
-            let label_extra_bottom_compound = cytoscape_label_bounds.bottom_extension_px;
             cytoscape_group_child_contribution = architecture_cytoscape_child_contribution_bounds(
                 &emitted_icon_bounds,
                 Some(&cytoscape_label_bounds),
             );
-
-            if debug_service.as_deref() == Some(title) {
-                let label_bounds = cytoscape_group_child_contribution.label_bounds.as_ref();
-                eprintln!(
-                    "[arch-service-bounds] title={:?} svg_lines={:?} root_lr=({}, {}) root_bottom={} canvas_half={} group_child_bottom={} child_body_bounds=({}, {})-({}, {}) child_label_bounds={:?} group_child_bounds=({}, {})-({}, {}) svg_root_bounds=({}, {})-({}, {})",
-                    title,
-                    lines,
-                    bbox_left_root,
-                    bbox_right_root,
-                    label_extra_bottom_root,
-                    cytoscape_label_bounds.half_width,
-                    label_extra_bottom_compound,
-                    cytoscape_group_child_contribution.body_bounds.min_x,
-                    cytoscape_group_child_contribution.body_bounds.min_y,
-                    cytoscape_group_child_contribution.body_bounds.max_x,
-                    cytoscape_group_child_contribution.body_bounds.max_y,
-                    label_bounds.map(|b| (b.min_x, b.min_y, b.max_x, b.max_y)),
-                    cytoscape_group_child_contribution.union_bounds.min_x,
-                    cytoscape_group_child_contribution.union_bounds.min_y,
-                    cytoscape_group_child_contribution.union_bounds.max_x,
-                    cytoscape_group_child_contribution.union_bounds.max_y,
-                    svg_root_bounds.min_x,
-                    svg_root_bounds.min_y,
-                    svg_root_bounds.max_x,
-                    svg_root_bounds.max_y,
-                );
-            }
         }
     }
 

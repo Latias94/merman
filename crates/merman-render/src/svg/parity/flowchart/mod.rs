@@ -78,8 +78,9 @@ fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<'_> {
 pub(super) fn render_flowchart_v2_debug_svg(
     layout: &FlowchartV2Layout,
     options: &SvgRenderOptions,
+    debug: &SvgDebugOptions,
 ) -> String {
-    debug_svg::render_flowchart_v2_debug_svg(layout, options)
+    debug_svg::render_flowchart_v2_debug_svg(layout, options, debug)
 }
 
 pub(in crate::svg::parity::flowchart) fn flowchart_config_look(
@@ -104,7 +105,7 @@ pub(super) fn render_flowchart_v2_svg(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     svg_emit::render_flowchart_v2_svg(
         layout,
@@ -122,7 +123,7 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     svg_emit::render_flowchart_v2_svg_model_with_config(
         layout,
@@ -140,7 +141,7 @@ pub(super) fn render_flowchart_v2_svg_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     svg_emit::render_flowchart_v2_svg_with_config(
         layout,

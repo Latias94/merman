@@ -18,9 +18,20 @@ export interface ParseOptions {
 export interface LayoutOptions {
   viewport_width?: number;
   viewport_height?: number;
-  text_measurer?: "vendored" | "deterministic";
-  math_renderer?: "none" | "ratex";
   flowchart_elk_backend?: "source-ported" | "source_ported" | "source" | "compat";
+}
+
+export interface RenderEnvironmentOptions {
+  text_measurement?: "vendored" | "parity" | "deterministic";
+  math_renderer?: "none" | "ratex";
+  root_viewport_overrides?:
+    | "apply-generated"
+    | "apply_generated"
+    | "generated"
+    | "computed-only"
+    | "computed_only"
+    | "computed"
+    | "disabled";
 }
 
 export interface ResourceOptions {
@@ -185,6 +196,7 @@ export interface AsciiBindingOptions extends CommonBindingOptions {
 
 export interface SvgBindingOptions extends CommonBindingOptions {
   host_theme?: HostThemeOptions;
+  environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;
   svg?: SvgOptions;
 }
@@ -203,6 +215,7 @@ export type HostTextWhiteSpace =
   | "pre-wrap";
 
 export interface HostTextMeasureRequest {
+  phase: "layout" | "wrap" | "svg-bbox" | "computed-length" | "visibility";
   text: string;
   font_family?: string | null;
   font_size: number;

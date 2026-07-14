@@ -103,11 +103,13 @@ fun runMermanSmoke() {
         var sawSpacingDefaults = false
         val seenMeasureTexts = linkedSetOf<String>()
         val seenWrapModes = linkedSetOf<Int>()
+        val seenPhases = linkedSetOf<Int>()
         val seenMaxWidthStates = linkedSetOf<String>()
 
         fun textMeasureSummary(): String =
             "calls=$measureCalls, texts=${seenMeasureTexts.joinToString("|")}, " +
                 "wrapModes=${seenWrapModes.joinToString("|")}, " +
+                "phases=${seenPhases.joinToString("|")}, " +
                 "maxWidth=${seenMaxWidthStates.joinToString("|")}"
 
         engine.setTextMeasurer { request ->
@@ -118,6 +120,7 @@ fun runMermanSmoke() {
             if (seenWrapModes.size < 8) {
                 seenWrapModes += request.wrapMode
             }
+            seenPhases += request.phase
             if (seenMaxWidthStates.size < 8) {
                 seenMaxWidthStates += if (request.maxWidth == null) "none" else "some"
             }
@@ -147,6 +150,9 @@ fun runMermanSmoke() {
         }
         check(measureCalls > 0) {
             "text measurer callback smoke failed: ${textMeasureSummary()}"
+        }
+        check(seenPhases.size >= 2 && seenPhases.all { it in 0..4 }) {
+            "text measurement phase smoke failed: ${textMeasureSummary()}"
         }
         check(sawCondition && sawNowrap && sawBreakSpaces && sawFontStyle && sawSpacingDefaults) {
             "text measurer request metadata smoke failed: ${textMeasureSummary()}"

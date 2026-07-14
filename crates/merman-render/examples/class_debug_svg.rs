@@ -1,5 +1,6 @@
 use futures::executor::block_on;
 use merman_core::{Engine, ParseOptions};
+use merman_render::environment::RenderEnvironment;
 use merman_render::model::LayoutDiagram;
 use merman_render::svg::{SvgRenderOptions, render_class_diagram_v2_debug_svg};
 use merman_render::{LayoutOptions, layout_parsed};
@@ -16,7 +17,10 @@ fn main() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layouted = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let session = RenderEnvironment::parity()
+        .begin_session()
+        .expect("begin render session");
+    let layouted = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = layouted.layout else {
         panic!("expected ClassDiagramV2 layout");
     };

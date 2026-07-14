@@ -5,6 +5,7 @@ use super::builtin::{
         drop_switch_native_fallbacks, foreign_object_fallback_svg, strip_foreign_objects,
     },
 };
+use crate::environment::{RenderSession, TextMeasurementPhase};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -35,9 +36,12 @@ pub(crate) enum BuiltinSvgStage {
 }
 
 impl BuiltinSvgStage {
-    fn apply<'a>(self, svg: Cow<'a, str>) -> Cow<'a, str> {
+    fn apply<'a>(self, svg: Cow<'a, str>, session: &RenderSession) -> Cow<'a, str> {
         match self {
-            Self::ForeignObjectFallback => Cow::Owned(foreign_object_fallback_svg(&svg)),
+            Self::ForeignObjectFallback => {
+                let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
+                Cow::Owned(foreign_object_fallback_svg(&svg, &measurer))
+            }
             Self::StripForeignObject => Cow::Owned(strip_foreign_objects(&svg)),
             Self::DropSwitchNativeFallbacks => Cow::Owned(drop_switch_native_fallbacks(&svg)),
             Self::SanitizeCss => Cow::Owned(sanitize_style_elements(&svg)),
@@ -60,17 +64,21 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
     }
 }
 
-pub(crate) fn apply_preset(preset: SvgPipelinePreset, svg: &str) -> Cow<'_, str> {
+pub(crate) fn apply_preset<'a>(
+    preset: SvgPipelinePreset,
+    svg: &'a str,
+    session: &RenderSession,
+) -> Cow<'a, str> {
     let mut current = Cow::Borrowed(svg);
     for stage in builtin_stages_for_preset(preset) {
-        current = stage.apply(current);
+        current = stage.apply(current, session);
     }
     current
 }
 
 /// Converts Mermaid-like SVG into a best-effort resvg/usvg compatible SVG string.
-pub fn resvg_safe_svg(svg: &str) -> String {
-    apply_preset(SvgPipelinePreset::ResvgSafe, svg).into_owned()
+pub fn resvg_safe_svg(svg: &str, session: &RenderSession) -> String {
+    apply_preset(SvgPipelinePreset::ResvgSafe, svg, session).into_owned()
 }
 
 #[cfg(test)]
@@ -99,10 +107,13 @@ mod tests {
     #[test]
     fn resvg_safe_function_uses_preset_stage_runner() {
         let svg = r#"<svg><style>@keyframes a{to{opacity:1}}</style><foreignObject width="10" height="10"><div><p>Hello</p></div></foreignObject><rect width="10px" height="NaN"/></svg>"#;
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
 
         assert_eq!(
-            resvg_safe_svg(svg),
-            apply_preset(SvgPipelinePreset::ResvgSafe, svg).into_owned()
+            resvg_safe_svg(svg, &session),
+            apply_preset(SvgPipelinePreset::ResvgSafe, svg, &session).into_owned()
         );
     }
 }

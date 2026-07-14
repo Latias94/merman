@@ -14,7 +14,7 @@ fn header_smoke() {
         r#"
 #include "merman.h"
 
-#if MERMAN_ABI_VERSION != 2
+#if MERMAN_ABI_VERSION != 3
 #error "unexpected merman ABI version"
 #endif
 
@@ -64,6 +64,7 @@ int merman_header_smoke(void) {
     measure_request.word_spacing = 0.0;
     measure_request.direction = MERMAN_TEXT_DIRECTION_AUTO;
     measure_request.white_space = MERMAN_TEXT_WHITE_SPACE_NOWRAP;
+    measure_request.phase = MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT;
     if (MERMAN_WRAP_MODE_HTML_LIKE != 2) {
         return 10;
     }
@@ -75,6 +76,9 @@ int merman_header_smoke(void) {
     }
     if (MERMAN_RESOURCE_LIMIT_EXCEEDED != 10) {
         return 13;
+    }
+    if (MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY != 4) {
+        return 14;
     }
     (void)abi_version;
     (void)package_version;

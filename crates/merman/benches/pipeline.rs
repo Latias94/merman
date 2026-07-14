@@ -1,5 +1,5 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::render::{LayoutOptions, SvgRenderOptions, headless_layout_options};
+use merman::render::{LayoutOptions, RenderEnvironment, SvgRenderOptions, headless_layout_options};
 use merman_core::{DetectorRegistry, Engine, ParseMetadata, ParseOptions};
 use std::hint::black_box;
 
@@ -362,6 +362,7 @@ fn bench_layout(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
+    let environment = RenderEnvironment::parity();
 
     let mut group = c.benchmark_group("layout");
     for (name, input) in fixtures() {
@@ -375,19 +376,22 @@ fn bench_layout(c: &mut Criterion) {
         };
 
         // Pre-check that layout works.
-        if merman_render::layout_parsed_render_layout_only(&parsed, &layout).is_err() {
+        let session = environment.begin_session().expect("render session");
+        if merman_render::layout_parsed_render_layout_only(&parsed, &layout, &session).is_err() {
             eprintln!("[bench][skip][layout] {name}: layout error");
             continue;
         }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), &parsed, |b, data| {
             b.iter(|| {
-                let diagram =
-                    match merman_render::layout_parsed_render_layout_only(black_box(data), &layout)
-                    {
-                        Ok(v) => v,
-                        Err(_) => return,
-                    };
+                let diagram = match merman_render::layout_parsed_render_layout_only(
+                    black_box(data),
+                    &layout,
+                    &session,
+                ) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
                 black_box(layout_digest(&diagram));
             })
         });
@@ -399,6 +403,7 @@ fn bench_render(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
+    let environment = RenderEnvironment::parity();
 
     let mut group = c.benchmark_group("render");
     for (name, input) in fixtures() {
@@ -410,13 +415,15 @@ fn bench_render(c: &mut Criterion) {
                 continue;
             }
         };
-        let layouted = match merman_render::layout_parsed_render_layout_only(&parsed, &layout) {
-            Ok(v) => v,
-            Err(_) => {
-                eprintln!("[bench][skip][render] {name}: layout error");
-                continue;
-            }
-        };
+        let session = environment.begin_session().expect("render session");
+        let layouted =
+            match merman_render::layout_parsed_render_layout_only(&parsed, &layout, &session) {
+                Ok(v) => v,
+                Err(_) => {
+                    eprintln!("[bench][skip][render] {name}: layout error");
+                    continue;
+                }
+            };
 
         let svg_opts = SvgRenderOptions {
             diagram_id: Some(merman::render::sanitize_svg_id(name)),
@@ -429,7 +436,7 @@ fn bench_render(c: &mut Criterion) {
             &parsed.model,
             &parsed.meta.effective_config,
             parsed.meta.title.as_deref(),
-            layout.text_measurer.as_ref(),
+            &session,
             &svg_opts,
         )
         .is_err()
@@ -446,7 +453,7 @@ fn bench_render(c: &mut Criterion) {
                         &parsed.model,
                         &parsed.meta.effective_config,
                         parsed.meta.title.as_deref(),
-                        layout.text_measurer.as_ref(),
+                        &session,
                         &svg_opts,
                     ) {
                         Ok(v) => v,

@@ -1414,9 +1414,11 @@ fn config_file_theme_variables_and_theme_css_affect_svg() {
         svg.contains("#cli-theme-config .node rect { filter: drop-shadow(1px 1px 1px #000); }"),
         "unexpected SVG:\n{svg}"
     );
-    assert!(
-        svg.contains(r#"data-merman-postprocess="scoped-css""#),
-        "unexpected SVG:\n{svg}"
+    assert_eq!(
+        svg.matches("#cli-theme-config .node rect { filter: drop-shadow(1px 1px 1px #000); }")
+            .count(),
+        1,
+        "theme CSS should be scoped and merged exactly once:\n{svg}"
     );
 }
 

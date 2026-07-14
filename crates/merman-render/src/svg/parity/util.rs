@@ -434,10 +434,6 @@ pub(super) fn apply_root_viewport_override(
         return;
     };
 
-    if std::env::var_os("MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES").is_some() {
-        return;
-    }
-
     *viewbox_attr = viewbox.to_string();
     let mut it = viewbox.split_whitespace();
     let _ = it.next(); // min-x

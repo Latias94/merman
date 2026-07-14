@@ -9,6 +9,9 @@ fn workspace_root() -> PathBuf {
 }
 
 fn load_class_layout_fixture(name: &str) -> merman_render::model::ClassDiagramV2Layout {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -20,7 +23,7 @@ fn load_class_layout_fixture(name: &str) -> merman_render::model::ClassDiagramV2
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -33,12 +36,15 @@ fn layout_class_text(
     merman_render::model::ClassDiagramV2Layout,
     serde_json::Value,
 ) {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let engine = Engine::new();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -80,6 +86,9 @@ fn rect_contains(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64), eps: 
 
 #[test]
 fn class_layout_produces_positions_and_routes() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -91,7 +100,7 @@ fn class_layout_produces_positions_and_routes() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -119,6 +128,9 @@ fn class_layout_produces_positions_and_routes() {
 
 #[test]
 fn class_namespaces_contain_member_classes() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -130,7 +142,7 @@ fn class_namespaces_contain_member_classes() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -383,6 +395,9 @@ fn class_layout_v3_namespace_node_order_matches_mermaid_copy_order() {
 
 #[test]
 fn class_layout_svg_title_wrapping_uses_normal_weight_before_bolder_bbox() {
+    let session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -394,16 +409,7 @@ fn class_layout_svg_title_wrapping_uses_normal_weight_before_bolder_bbox() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(
-        &parsed,
-        &LayoutOptions {
-            text_measurer: std::sync::Arc::new(
-                merman_render::text::VendoredFontMetricsTextMeasurer::default(),
-            ),
-            ..LayoutOptions::default()
-        },
-    )
-    .expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -513,6 +519,9 @@ namespace Company.Project.Module {
 
 #[test]
 fn class_terminal_labels_exist_for_cardinalities_fixture() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -524,7 +533,7 @@ fn class_terminal_labels_exist_for_cardinalities_fixture() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -621,6 +630,9 @@ fn class_two_note_tb_layout_keeps_secondary_note_left_of_target() {
 
 #[test]
 fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -632,7 +644,7 @@ fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() 
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -682,6 +694,9 @@ fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() 
 
 #[test]
 fn class_single_glyph_svg_titles_use_upstream_bbox_width() {
+    let session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let text = r#"---
 config:
   htmlLabels: false
@@ -695,16 +710,7 @@ A <|-- B
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(
-        &parsed,
-        &LayoutOptions {
-            text_measurer: std::sync::Arc::new(
-                merman_render::text::VendoredFontMetricsTextMeasurer::default(),
-            ),
-            ..LayoutOptions::default()
-        },
-    )
-    .expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
     let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };

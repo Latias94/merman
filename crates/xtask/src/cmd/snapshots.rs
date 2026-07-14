@@ -244,7 +244,14 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 continue;
             }
 
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts) {
+            let session = match merman::render::RenderEnvironment::parity().begin_session() {
+                Ok(session) => session,
+                Err(err) => {
+                    failures.push(format!("render session failed: {err}"));
+                    continue;
+                }
+            };
+            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
                 Ok(v) => v,
                 Err(merman_render::Error::UnsupportedDiagram { .. }) => {
                     // Layout snapshots are only defined for diagram types currently supported by

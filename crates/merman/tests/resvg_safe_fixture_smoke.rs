@@ -4,6 +4,7 @@ use merman::MermaidConfig;
 use merman::render::HeadlessRenderer;
 use serde_json::{Map, Value};
 use std::collections::BTreeSet;
+#[cfg(feature = "raster")]
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;

@@ -62,7 +62,7 @@ first FFI release candidate:
 The current ABI protocol version is:
 
 ```c
-#define MERMAN_ABI_VERSION 2
+#define MERMAN_ABI_VERSION 3
 ```
 
 ```c
@@ -83,6 +83,14 @@ typedef struct MermanEngineResult {
     MermanEngine* engine;
     MermanBuffer data;
 } MermanEngineResult;
+
+enum {
+    MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT = 0,
+    MERMAN_TEXT_MEASUREMENT_PHASE_WRAP = 1,
+    MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX = 2,
+    MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH = 3,
+    MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY = 4
+};
 
 enum {
     MERMAN_WRAP_MODE_SVG_LIKE = 0,
@@ -121,6 +129,7 @@ typedef struct MermanHostTextMeasureRequest {
     int32_t direction;
     int32_t white_space;
     uint8_t has_max_width;
+    int32_t phase;
 } MermanHostTextMeasureRequest;
 
 typedef struct MermanHostTextMeasureResult {
@@ -284,7 +293,9 @@ The callback applies to future render/layout calls made through that engine. Pas
 `MermanHostTextMeasureRequest` string pointers are UTF-8 byte slices valid only for the duration of
 the callback. The callback must not store them. `max_width` is meaningful only when
 `has_max_width != 0`; `wrap_mode`, `direction`, and `white_space` are the corresponding
-`MERMAN_*` constants. `line_height`, `letter_spacing`, and `word_spacing` are CSS-pixel values.
+`MERMAN_*` constants. `phase` is one of the `MERMAN_TEXT_MEASUREMENT_PHASE_*` constants and tells
+the host which render phase requested the measurement. `line_height`, `letter_spacing`, and
+`word_spacing` are CSS-pixel values.
 
 Return `handled=0` for measurement requests the host does not support. `merman` then falls back
 to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently for
@@ -533,8 +544,8 @@ MermanResult merman_validate_json(
 );
 ```
 
-This ABI v2 function returns `MERMAN_OK` when the validation payload was produced. Invalid source is
-reported in `data`:
+Introduced in ABI v2, this function returns `MERMAN_OK` when the validation payload was produced.
+Invalid source is reported in `data`:
 
 ```json
 {

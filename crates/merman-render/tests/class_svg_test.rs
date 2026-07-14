@@ -20,12 +20,15 @@ fn render_class_svg_from_text(text: &str) -> String {
 }
 
 fn render_class_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -35,7 +38,7 @@ fn render_class_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok")
@@ -74,6 +77,9 @@ fn class_parse_for_render_model_handles_deep_namespace_chain() {
 
 #[test]
 fn class_layout_handles_deep_namespace_chain() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     const DEPTH: usize = 128;
     let source = deep_class_namespace_text(DEPTH);
     let handle = std::thread::Builder::new()
@@ -85,7 +91,8 @@ fn class_layout_handles_deep_namespace_chain() {
                 futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::default()))
                     .expect("parse ok")
                     .expect("diagram detected");
-            let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+            let out =
+                layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
             let LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
                 panic!("expected ClassDiagramV2 layout");
             };
@@ -530,6 +537,9 @@ classDiagram
 
 #[test]
 fn class_debug_svg_renders_terminal_labels() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -541,7 +551,7 @@ fn class_debug_svg_renders_terminal_labels() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -556,6 +566,9 @@ fn class_debug_svg_renders_terminal_labels() {
 
 #[test]
 fn class_svg_generic_title_uses_upstream_max_width_override() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -568,7 +581,7 @@ fn class_svg_generic_title_uses_upstream_max_width_override() {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -578,7 +591,7 @@ fn class_svg_generic_title_uses_upstream_max_width_override() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");
@@ -595,6 +608,9 @@ fn class_svg_generic_title_uses_upstream_max_width_override() {
 
 #[test]
 fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -606,18 +622,17 @@ fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() 
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
 
-    let layout_opts = LayoutOptions::headless_svg_defaults();
     let svg = render_class_diagram_v2_svg(
         layout,
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");
@@ -639,6 +654,9 @@ fn class_svg_namespaces_use_11_15_hierarchical_labels_and_keep_relation_label() 
 
 #[test]
 fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -650,18 +668,17 @@ fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
 
-    let layout_opts = LayoutOptions::headless_svg_defaults();
     let svg = render_class_diagram_v2_svg(
         layout,
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions {
             diagram_id: Some("stress_class_comments_inside_namespaces_024".to_string()),
             ..Default::default()
@@ -685,6 +702,9 @@ fn class_svg_nested_namespace_subgraphs_keep_mermaid_wrapper_structure() {
 
 #[test]
 fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -697,7 +717,7 @@ fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -707,7 +727,7 @@ fn class_svg_multiple_dotted_namespace_subgraphs_use_segment_labels() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions {
             diagram_id: Some("stress_class_nested_namespaces_many_levels_021".to_string()),
             ..Default::default()
@@ -760,6 +780,9 @@ fn class_svg_handles_deep_namespace_subgraph_chain() {
 
 #[test]
 fn class_svg_long_relation_labels_wrap_to_mermaid_html_cap() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -772,7 +795,7 @@ fn class_svg_long_relation_labels_wrap_to_mermaid_html_cap() {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -782,7 +805,7 @@ fn class_svg_long_relation_labels_wrap_to_mermaid_html_cap() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");
@@ -796,6 +819,9 @@ fn class_svg_long_relation_labels_wrap_to_mermaid_html_cap() {
 
 #[test]
 fn class_svg_annotations_and_comment_rows_keep_mermaid_html_caps() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let fixtures: &[(&str, &[&str])] = &[
         (
             "upstream_annotations_in_brackets_spec.mmd",
@@ -853,7 +879,7 @@ fn class_svg_annotations_and_comment_rows_keep_mermaid_html_caps() {
                 .expect("diagram detected");
 
         let layout_opts = LayoutOptions::headless_svg_defaults();
-        let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+        let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
         let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
             panic!("expected ClassDiagramV2 layout");
         };
@@ -863,7 +889,7 @@ fn class_svg_annotations_and_comment_rows_keep_mermaid_html_caps() {
             &out.semantic,
             &out.meta.effective_config,
             out.meta.title.as_deref(),
-            layout_opts.text_measurer.as_ref(),
+            &_session,
             &SvgRenderOptions::default(),
         )
         .expect("svg render ok");
@@ -879,6 +905,9 @@ fn class_svg_annotations_and_comment_rows_keep_mermaid_html_caps() {
 
 #[test]
 fn class_svg_annotation_width_overrides_drive_html_node_bounds() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let fixtures: &[(&str, &[&str])] = &[
         (
             "upstream_annotations_in_brackets_spec.mmd",
@@ -924,7 +953,7 @@ fn class_svg_annotation_width_overrides_drive_html_node_bounds() {
                 .expect("diagram detected");
 
         let layout_opts = LayoutOptions::headless_svg_defaults();
-        let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+        let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
         let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
             panic!("expected ClassDiagramV2 layout");
         };
@@ -934,7 +963,7 @@ fn class_svg_annotation_width_overrides_drive_html_node_bounds() {
             &out.semantic,
             &out.meta.effective_config,
             out.meta.title.as_deref(),
-            layout_opts.text_measurer.as_ref(),
+            &_session,
             &SvgRenderOptions::default(),
         )
         .expect("svg render ok");
@@ -950,6 +979,9 @@ fn class_svg_annotation_width_overrides_drive_html_node_bounds() {
 
 #[test]
 fn class_svg_cardinality_terminals_keep_mermaid_sizes_and_offsets() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -962,7 +994,7 @@ fn class_svg_cardinality_terminals_keep_mermaid_sizes_and_offsets() {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -972,7 +1004,7 @@ fn class_svg_cardinality_terminals_keep_mermaid_sizes_and_offsets() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");
@@ -1004,6 +1036,9 @@ classDiagram
 
 #[test]
 fn class_svg_edge_labels_precede_terminals_in_edge_labels_group() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -1016,7 +1051,7 @@ fn class_svg_edge_labels_precede_terminals_in_edge_labels_group() {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -1026,7 +1061,7 @@ fn class_svg_edge_labels_precede_terminals_in_edge_labels_group() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");
@@ -1054,6 +1089,9 @@ fn class_svg_edge_labels_precede_terminals_in_edge_labels_group() {
 
 #[test]
 fn class_svg_terminal_groups_keep_upstream_dom_order_for_mixed_cardinalities() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -1066,7 +1104,7 @@ fn class_svg_terminal_groups_keep_upstream_dom_order_for_mixed_cardinalities() {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -1076,7 +1114,7 @@ fn class_svg_terminal_groups_keep_upstream_dom_order_for_mixed_cardinalities() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");
@@ -1108,6 +1146,9 @@ fn class_svg_terminal_groups_keep_upstream_dom_order_for_mixed_cardinalities() {
 
 #[test]
 fn class_svg_single_char_title_keeps_upstream_html_max_width() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -1120,7 +1161,7 @@ fn class_svg_single_char_title_keeps_upstream_html_max_width() {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -1130,7 +1171,7 @@ fn class_svg_single_char_title_keeps_upstream_html_max_width() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");
@@ -1148,6 +1189,9 @@ fn class_svg_single_char_title_keeps_upstream_html_max_width() {
 
 #[test]
 fn class_svg_relation_titles_decode_entities_once() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -1160,7 +1204,7 @@ fn class_svg_relation_titles_decode_entities_once() {
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_opts).expect("layout ok");
+    let out = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
@@ -1170,7 +1214,7 @@ fn class_svg_relation_titles_decode_entities_once() {
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");
@@ -1187,6 +1231,9 @@ fn class_svg_relation_titles_decode_entities_once() {
 
 #[test]
 fn class_svg_relation_only_generic_nodes_keep_type_suffix() {
+    let _session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
@@ -1198,18 +1245,17 @@ fn class_svg_relation_only_generic_nodes_keep_type_suffix() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default()).expect("layout ok");
+    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
     let LayoutDiagram::ClassDiagramV2(layout) = &out.layout else {
         panic!("expected ClassDiagramV2 layout");
     };
 
-    let layout_opts = LayoutOptions::default();
     let svg = render_class_diagram_v2_svg(
         layout,
         &out.semantic,
         &out.meta.effective_config,
         out.meta.title.as_deref(),
-        layout_opts.text_measurer.as_ref(),
+        &_session,
         &SvgRenderOptions::default(),
     )
     .expect("svg render ok");

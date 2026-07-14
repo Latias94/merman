@@ -49,7 +49,7 @@ pub(super) fn render_sequence_diagram_svg(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
     let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
@@ -70,7 +70,7 @@ pub(super) fn render_sequence_diagram_svg_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
     render_sequence_diagram_svg_model_with_config(
@@ -89,7 +89,7 @@ pub(super) fn render_sequence_diagram_svg_model_with_config(
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     render_sequence_diagram_svg_inner(
         layout,
@@ -109,7 +109,7 @@ fn render_sequence_diagram_svg_inner(
     sanitize_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let effective_title =
         crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
@@ -147,7 +147,7 @@ fn render_sequence_diagram_svg_inner(
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         sanitize_config,
-        math_renderer: options.math_renderer.as_deref(),
+        math_renderer: options.math_renderer(),
         actor_wrap_width: settings.actor_wrap_width,
         actor_height: settings.actor_height,
         label_box_height: settings.label_box_height,
@@ -184,7 +184,7 @@ fn render_sequence_diagram_svg_inner(
         layout,
         sanitize_config,
         measurer,
-        options.math_renderer.as_deref(),
+        options.math_renderer(),
     );
 
     let interaction_ctx = SequenceInteractionRenderContext {
@@ -193,7 +193,7 @@ fn render_sequence_diagram_svg_inner(
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         sanitize_config,
-        math_renderer: options.math_renderer.as_deref(),
+        math_renderer: options.math_renderer(),
         settings: &settings,
         measurer,
     };
@@ -204,7 +204,7 @@ fn render_sequence_diagram_svg_inner(
         nodes_by_id: &nodes_by_id,
         edges_by_id: &edges_by_id,
         sanitize_config,
-        math_renderer: options.math_renderer.as_deref(),
+        math_renderer: options.math_renderer(),
         measurer,
         message_align: settings.message_align.as_str(),
         diagram_id,

@@ -50,11 +50,11 @@ impl BindingEngine {
     }
 
     #[cfg(feature = "render")]
-    pub fn with_text_measurer(&self, measurer: Arc<dyn crate::TextMeasurer + Send + Sync>) -> Self {
+    pub fn with_host_text_measurer(&self, measurer: Arc<dyn crate::HostTextMeasurer>) -> Self {
         Self {
             #[cfg(feature = "analysis")]
             analyzer: self.analyzer.clone(),
-            render: self.render.with_text_measurer(measurer),
+            render: self.render.with_host_text_measurer(measurer),
             #[cfg(feature = "ascii")]
             ascii: self.ascii.clone(),
         }
@@ -210,7 +210,7 @@ mod tests {
     fn engine_reuses_options_for_rendering() {
         let engine = BindingEngine::new(
             br#"{
-                "layout": { "text_measurer": "deterministic" },
+                "environment": { "text_measurement": "deterministic" },
                 "svg": { "diagram_id": "cached engine", "pipeline": "readable" }
             }"#,
         )

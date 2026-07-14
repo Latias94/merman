@@ -135,7 +135,7 @@ pub(crate) fn render_timeline_diagram_svg(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let _ = semantic;
     render_timeline_diagram_svg_inner(layout, effective_config, diagram_title, measurer, options)
@@ -147,7 +147,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     render_timeline_diagram_svg_inner(layout, effective_config, diagram_title, measurer, options)
 }
@@ -157,7 +157,7 @@ fn render_timeline_diagram_svg_inner(
     effective_config: &serde_json::Value,
     _diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let theme = PresentationTheme::new(effective_config).timeline();
@@ -282,14 +282,16 @@ fn render_timeline_diagram_svg_inner(
     );
     let mut w_attr = fmt(vb_w).to_string();
     let mut h_attr = fmt(vb_h).to_string();
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut w_attr,
-        &mut h_attr,
-        &mut max_w_attr,
-        crate::generated::timeline_root_overrides_11_12_2::lookup_timeline_root_viewport_override,
-    );
+    if options.root_viewport_override_policy().applies_generated() {
+        apply_root_viewport_override(
+            diagram_id,
+            &mut viewbox_attr,
+            &mut w_attr,
+            &mut h_attr,
+            &mut max_w_attr,
+            crate::generated::timeline_root_overrides_11_12_2::lookup_timeline_root_viewport_override,
+        );
+    }
 
     let mut out = String::new();
     if layout.use_max_width {
@@ -505,13 +507,18 @@ mod tests {
             diagram_id: Some("timelineFixed".to_string()),
             ..Default::default()
         };
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .expect("render session");
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&options, &debug, &session);
 
         let svg = render_timeline_diagram_svg_inner(
             &layout,
             &serde_json::json!({}),
             None,
             &crate::text::DeterministicTextMeasurer::default(),
-            &options,
+            &execution,
         )
         .unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;
