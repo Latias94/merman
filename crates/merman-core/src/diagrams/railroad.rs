@@ -1520,11 +1520,12 @@ impl<'a> Lexer<'a> {
                 self.skip_to_line_end();
                 continue;
             }
-            if self.starts_with("---") && self.at_line_start_after_indent() {
-                if let Some(close_rel) = self.remaining()["---".len()..].find("\n---") {
-                    self.pos += "---".len() + close_rel + "\n---".len();
-                    continue;
-                }
+            if self.starts_with("---")
+                && self.at_line_start_after_indent()
+                && let Some(close_rel) = self.remaining()["---".len()..].find("\n---")
+            {
+                self.pos += "---".len() + close_rel + "\n---".len();
+                continue;
             }
 
             if self.pos == before {
@@ -1558,18 +1559,20 @@ impl<'a> Lexer<'a> {
             }));
         }
 
-        if line.trim_start().starts_with("accDescr") && line.contains('{') && !line.contains('}') {
-            if let Some(end_rel) = self.input[line_end..].find('}') {
-                let end = line_end + end_rel + 1;
-                let full = &self.input[token_start..end];
-                if let Some(field) = parse_common_field_block(full, token_start) {
-                    self.pos = end;
-                    return Ok(Some(Token {
-                        kind: TokenKind::Common(field.kind, field.value.text),
-                        span: SourceSpan::new(token_start, end),
-                        selection: field.value.selection,
-                    }));
-                }
+        if line.trim_start().starts_with("accDescr")
+            && line.contains('{')
+            && !line.contains('}')
+            && let Some(end_rel) = self.input[line_end..].find('}')
+        {
+            let end = line_end + end_rel + 1;
+            let full = &self.input[token_start..end];
+            if let Some(field) = parse_common_field_block(full, token_start) {
+                self.pos = end;
+                return Ok(Some(Token {
+                    kind: TokenKind::Common(field.kind, field.value.text),
+                    span: SourceSpan::new(token_start, end),
+                    selection: field.value.selection,
+                }));
             }
         }
 
@@ -2355,20 +2358,20 @@ fn scan_editor_facts_lossy(code: &str, dialect: RailroadDialect) -> EditorSemant
                 prev_ident = Some(token);
             }
             TokenKind::Symbol('=') | TokenKind::ColonColonEq | TokenKind::LeftArrow => {
-                if let Some(name) = prev_ident.take() {
-                    if let TokenKind::Ident(value) = name.kind {
-                        facts.push_expected_syntax(EditorExpectedSyntax::new(
-                            EditorExpectedSyntaxKind::NodeIdentifier,
-                            name.selection,
-                        ));
-                        facts.push_symbol(EditorSemanticSymbol::new(
-                            value,
-                            Some(format!("{detail_prefix} rule")),
-                            EditorSemanticKind::Function,
-                            name.span,
-                            name.selection,
-                        ));
-                    }
+                if let Some(name) = prev_ident.take()
+                    && let TokenKind::Ident(value) = name.kind
+                {
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::NodeIdentifier,
+                        name.selection,
+                    ));
+                    facts.push_symbol(EditorSemanticSymbol::new(
+                        value,
+                        Some(format!("{detail_prefix} rule")),
+                        EditorSemanticKind::Function,
+                        name.span,
+                        name.selection,
+                    ));
                 }
             }
             TokenKind::String(value)

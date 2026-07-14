@@ -695,6 +695,7 @@ fn normalize_original_with_source_map(original: &str) -> (String, SourceMapSegme
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)] // Source-map tests stay next to the remapping implementation.
 mod editor_parse_source_map_tests {
     use super::{EditorParseSourceMap, EditorSourceRemap};
     use crate::{
@@ -1128,6 +1129,9 @@ impl<'a> ParsePipeline<'a> {
         facts
     }
 
+    // These callbacks are the explicit stages of the parse pipeline; bundling them into an
+    // untyped options object would obscure their distinct ownership and lifetimes.
+    #[allow(clippy::too_many_arguments)]
     fn parse_model<T, O>(
         &self,
         timing: ParseTiming,

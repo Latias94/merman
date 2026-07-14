@@ -97,11 +97,11 @@ pub fn parse_eventmodeling_model_for_render(
 
 pub fn parse_eventmodeling_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
+    let lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut saw_header = false;
 
-    while let Some(segment) = lines.next() {
+    for segment in lines {
         let line_start = offset;
         offset += segment.len();
         let line = segment.trim_end_matches(['\n', '\r']);

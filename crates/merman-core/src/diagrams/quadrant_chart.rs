@@ -484,14 +484,14 @@ fn parse_keyword_rest_ci(line: &str, key: &str) -> Option<String> {
 
 pub fn parse_quadrant_chart_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
+    let lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut saw_header = false;
     let mut in_acc_descr_block = false;
     let mut acc_descr_start = 0usize;
     let mut acc_descr_buf = String::new();
 
-    while let Some(segment) = lines.next() {
+    for segment in lines {
         let line_start = offset;
         offset += segment.len();
         let line = strip_line_ending(segment);

@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 lalrpop_util::lalrpop_mod!(
     #[allow(
         clippy::empty_line_after_outer_attr,
+        clippy::large_enum_variant,
         clippy::type_complexity,
         clippy::result_large_err
     )]

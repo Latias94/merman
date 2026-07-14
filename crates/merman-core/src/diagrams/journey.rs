@@ -312,11 +312,11 @@ fn parse_journey_model(code: &str, meta: &ParseMetadata) -> Result<JourneyParseO
 
 pub fn parse_journey_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
+    let lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut header_seen = false;
 
-    while let Some(line) = lines.next() {
+    for line in lines {
         let line_start = offset;
         offset += line.len();
         let line_no_newline = line.strip_suffix('\n').unwrap_or(line);

@@ -543,11 +543,11 @@ pub fn parse_xychart_model_for_render(
 
 pub fn parse_xychart_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
+    let lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut header_seen = false;
 
-    while let Some(segment) = lines.next() {
+    for segment in lines {
         let line_start = offset;
         offset += segment.len();
         let line = strip_line_ending(segment);
@@ -1764,11 +1764,12 @@ fn split_statements_spanned(input: &str) -> Vec<SpannedStatement> {
 
         if in_md {
             cur.push(ch);
-            if ch == '`' && iter.peek().is_some_and(|(_, next)| *next == '"') {
-                if let Some((_quote_idx, quote)) = iter.next() {
-                    cur.push(quote);
-                    in_md = false;
-                }
+            if ch == '`'
+                && iter.peek().is_some_and(|(_, next)| *next == '"')
+                && let Some((_quote_idx, quote)) = iter.next()
+            {
+                cur.push(quote);
+                in_md = false;
             }
             continue;
         }

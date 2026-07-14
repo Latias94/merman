@@ -155,12 +155,12 @@ pub fn parse_tree_view_model_for_render(
 pub fn parse_tree_view_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let line_format = TreeViewLineFormat::from_code(code);
-    let mut lines = code.split_inclusive('\n').peekable();
+    let lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut saw_header = false;
     let mut saw_node = false;
 
-    while let Some(segment) = lines.next() {
+    for segment in lines {
         let line_start = offset;
         offset += segment.len();
         let line = strip_line_ending(segment);

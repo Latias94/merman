@@ -368,6 +368,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)] // Diagnostics tests stay next to their parser adapter.
 mod tests {
     use super::lalrpop_parse_diagnostic;
     use crate::ParseDiagnosticSpanKind;

@@ -284,6 +284,7 @@ pub fn parse_c4_model_for_render(code: &str, meta: &ParseMetadata) -> Result<C4D
     parse_c4_db(code, meta)?.to_render_model()
 }
 
+#[allow(clippy::while_let_on_iterator)] // accDescr recovery advances the same iterator by reference.
 pub fn parse_c4_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let mut header_seen = false;
@@ -533,7 +534,7 @@ fn parse_acc_descr_spanned_c4<'a>(
     }
 
     let mut closed = false;
-    while let Some(segment) = lines.next() {
+    for segment in lines.by_ref() {
         let segment_start = *offset;
         *offset += segment.len();
         let next_line = strip_line_ending(segment);
@@ -827,10 +828,8 @@ fn validate_c4_macro_args(stmt: &SpannedMacroStmt) -> Result<()> {
                 return Err(c4_missing_arg(stmt, "missing relation target"));
             }
         }
-        "UpdateElementStyle" => {
-            if stmt.args.is_empty() {
-                return Err(c4_missing_arg(stmt, "missing style target"));
-            }
+        "UpdateElementStyle" if stmt.args.is_empty() => {
+            return Err(c4_missing_arg(stmt, "missing style target"));
         }
         "UpdateRelStyle" => {
             if stmt.args.is_empty() {

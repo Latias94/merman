@@ -397,13 +397,13 @@ pub fn parse_frontmatter_yaml_fields(
     #[cfg(feature = "full-config")]
     {
         let parsed = crate::yaml_config::parse_yaml_value(input, MAX_CONFIG_NESTING_DEPTH)?;
-        return match parsed {
+        match parsed {
             Value::Object(map) => Ok(map),
             other => {
                 crate::config::drop_value_nonrecursive(other);
                 Ok(Map::new())
             }
-        };
+        }
     }
 
     #[cfg(not(feature = "full-config"))]
@@ -727,10 +727,8 @@ fn sanitize_directive_dictionary(value: &mut Value, kind: DirectiveDictionaryKin
         Value::Object(map) => {
             let blocked_keys = map
                 .iter()
-                .filter_map(|(key, value)| {
-                    (is_suspicious_dictionary_key(key) || !is_valid_value(value))
-                        .then(|| key.clone())
-                })
+                .filter(|(key, value)| is_suspicious_dictionary_key(key) || !is_valid_value(value))
+                .map(|(key, _)| key.clone())
                 .collect::<Vec<_>>();
 
             for key in blocked_keys {

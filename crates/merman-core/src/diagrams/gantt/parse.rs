@@ -850,13 +850,15 @@ fn collect_gantt_click_symbols(
     let statement_span = gantt_statement_span(line, line_start);
 
     push_gantt_delimited_id_symbols(
-        click.ids.text,
-        click.ids.start,
-        ',',
-        "gantt click target",
-        EditorSemanticKind::Variable,
-        Some(EditorExpectedSyntaxKind::NodeIdentifier),
-        statement_span,
+        GanttDelimitedIdSymbols {
+            text: click.ids.text,
+            text_start: click.ids.start,
+            delimiter: ',',
+            detail: "gantt click target",
+            kind: EditorSemanticKind::Variable,
+            expected_syntax: Some(EditorExpectedSyntaxKind::NodeIdentifier),
+            statement_span,
+        },
         facts,
     );
 
@@ -1028,28 +1030,43 @@ fn push_gantt_relative_ref_symbols(
             continue;
         };
         push_gantt_delimited_id_symbols(
-            &field.text[range.clone()],
-            field.start + range.start,
-            ' ',
-            "gantt dependency",
-            EditorSemanticKind::Variable,
-            Some(EditorExpectedSyntaxKind::NodeIdentifier),
-            statement_span,
+            GanttDelimitedIdSymbols {
+                text: &field.text[range.clone()],
+                text_start: field.start + range.start,
+                delimiter: ' ',
+                detail: "gantt dependency",
+                kind: EditorSemanticKind::Variable,
+                expected_syntax: Some(EditorExpectedSyntaxKind::NodeIdentifier),
+                statement_span,
+            },
             facts,
         );
     }
 }
 
-fn push_gantt_delimited_id_symbols(
-    text: &str,
+struct GanttDelimitedIdSymbols<'a> {
+    text: &'a str,
     text_start: usize,
     delimiter: char,
-    detail: &str,
+    detail: &'a str,
     kind: EditorSemanticKind,
     expected_syntax: Option<EditorExpectedSyntaxKind>,
     statement_span: SourceSpan,
+}
+
+fn push_gantt_delimited_id_symbols(
+    request: GanttDelimitedIdSymbols<'_>,
     facts: &mut EditorSemanticFacts,
 ) {
+    let GanttDelimitedIdSymbols {
+        text,
+        text_start,
+        delimiter,
+        detail,
+        kind,
+        expected_syntax,
+        statement_span,
+    } = request;
     let mut segment_start = 0usize;
     for (idx, ch) in text.char_indices() {
         if ch == delimiter {

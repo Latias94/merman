@@ -397,14 +397,14 @@ fn parse_keyword_rest_ci<'a>(line: &'a str, key: &str) -> Option<(&'a str, usize
 
 pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
+    let lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut saw_header = false;
     let mut current_block: Option<RequirementBlockKind> = None;
     let mut acc_descr_block_start = 0usize;
     let mut acc_descr_buf = String::new();
 
-    while let Some(segment) = lines.next() {
+    for segment in lines {
         let line_start = offset;
         offset += segment.len();
         let line = strip_line_ending(segment);
@@ -694,13 +694,15 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
             let directive_start = line.len() - trimmed.len();
             push_requirement_id_symbols(
                 &mut facts,
-                line,
-                line_start,
-                directive_start + "style".len(),
-                &ids,
-                "requirement style target",
-                EditorSemanticKind::Property,
-                EditorSemanticRole::Payload,
+                RequirementIdSymbols {
+                    line,
+                    line_start,
+                    search_start: directive_start + "style".len(),
+                    ids: &ids,
+                    detail: "requirement style target",
+                    kind: EditorSemanticKind::Property,
+                    role: EditorSemanticRole::Payload,
+                },
             );
             push_requirement_style_refs(&mut facts, line, line_start, &styles, "requirement style");
             continue;
@@ -710,13 +712,15 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
             let directive_start = line.len() - trimmed.len();
             push_requirement_id_symbols(
                 &mut facts,
-                line,
-                line_start,
-                directive_start + "classDef".len(),
-                &ids,
-                "requirement class definition",
-                EditorSemanticKind::Property,
-                EditorSemanticRole::Outline,
+                RequirementIdSymbols {
+                    line,
+                    line_start,
+                    search_start: directive_start + "classDef".len(),
+                    ids: &ids,
+                    detail: "requirement class definition",
+                    kind: EditorSemanticKind::Property,
+                    role: EditorSemanticRole::Outline,
+                },
             );
             push_requirement_style_refs(
                 &mut facts,
@@ -742,13 +746,15 @@ pub fn parse_requirement_editor_facts(code: &str, _meta: &ParseMetadata) -> Edit
             );
             push_requirement_id_symbols(
                 &mut facts,
-                line,
-                line_start,
-                targets_start,
-                &ids,
-                "requirement class target",
-                EditorSemanticKind::Namespace,
-                EditorSemanticRole::Entity,
+                RequirementIdSymbols {
+                    line,
+                    line_start,
+                    search_start: targets_start,
+                    ids: &ids,
+                    detail: "requirement class target",
+                    kind: EditorSemanticKind::Namespace,
+                    role: EditorSemanticRole::Entity,
+                },
             );
             continue;
         }
@@ -862,16 +868,26 @@ fn push_requirement_class_refs_from(
     }
 }
 
-fn push_requirement_id_symbols(
-    facts: &mut EditorSemanticFacts,
-    line: &str,
+struct RequirementIdSymbols<'a> {
+    line: &'a str,
     line_start: usize,
     search_start: usize,
-    ids: &[String],
+    ids: &'a [String],
     detail: &'static str,
     kind: EditorSemanticKind,
     role: EditorSemanticRole,
-) {
+}
+
+fn push_requirement_id_symbols(facts: &mut EditorSemanticFacts, request: RequirementIdSymbols<'_>) {
+    let RequirementIdSymbols {
+        line,
+        line_start,
+        search_start,
+        ids,
+        detail,
+        kind,
+        role,
+    } = request;
     let mut cursor = search_start.min(line.len());
     for id in ids {
         if id.is_empty() {

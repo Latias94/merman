@@ -52,12 +52,12 @@ struct IshikawaNodeLine {
 
 pub fn parse_ishikawa_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
+    let lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut header_seen = false;
     let mut emitted_root = false;
 
-    while let Some(segment) = lines.next() {
+    for segment in lines {
         let line_start = offset;
         offset += segment.len();
         let line = strip_line_ending(segment);

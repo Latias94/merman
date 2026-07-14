@@ -336,11 +336,11 @@ pub fn parse_timeline_model_for_render(
 
 pub fn parse_timeline_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let mut lines = code.split_inclusive('\n').peekable();
+    let lines = code.split_inclusive('\n').peekable();
     let mut offset = 0usize;
     let mut header_seen = false;
 
-    while let Some(segment) = lines.next() {
+    for segment in lines {
         let line_start = offset;
         offset += segment.len();
         let line = strip_line_ending(segment);
@@ -402,10 +402,10 @@ pub fn parse_timeline_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorS
 
         let content = line.trim_start();
         let content_start = line_start + (line.len() - content.len());
-        if content.starts_with(':') {
-            let payload = content[1..].trim_start();
+        if let Some(after_colon) = content.strip_prefix(':') {
+            let payload = after_colon.trim_start();
             if !payload.is_empty() {
-                let payload_start = content_start + 1 + content[1..].find(payload).unwrap_or(0);
+                let payload_start = content_start + 1 + after_colon.find(payload).unwrap_or(0);
                 push_timeline_payload_fact(
                     &mut facts,
                     payload,
