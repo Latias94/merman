@@ -1,9 +1,25 @@
+use crate::common_db::{LangiumCommonDbFields, sanitize_acc_descr, sanitize_acc_title};
+use crate::diagrams::langium_common::{
+    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
+};
+use crate::diagrams::scan::physical_line_at;
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 use serde_json::{Value, json};
+use std::collections::{HashMap, HashSet};
+
+#[cfg(test)]
+pub(crate) fn reset_eventmodeling_syntax_construction_count() {
+    crate::diagrams::langium_common::reset_family_syntax_construction_count("eventmodeling");
+}
+
+#[cfg(test)]
+pub(crate) fn eventmodeling_syntax_construction_count() -> usize {
+    crate::diagrams::langium_common::family_syntax_construction_count("eventmodeling")
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EventModelingFrameRenderModel {
@@ -52,165 +68,49 @@ impl EventModelingDiagramRenderModel {
 }
 
 pub fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let model = parse_eventmodeling_model_for_render(code, meta)?;
-    Ok(json!({
+    Ok(construct_eventmodeling_semantic_source(code, meta)
+        .map_err(|failure| *failure.error)?
+        .into_compat_json(meta))
+}
+
+pub(crate) fn parse_eventmodeling_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let source =
+        construct_eventmodeling_semantic_source(code, meta).map_err(|failure| *failure.error)?;
+    let editor_facts = source.editor_facts();
+    Ok((source.into_compat_json(meta), editor_facts))
+}
+
+fn eventmodeling_model_into_json(
+    model: EventModelingDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Value {
+    json!({
         "type": meta.diagram_type,
         "title": model.title,
         "accTitle": model.acc_title,
         "accDescr": model.acc_descr,
         "frames": model.frames,
         "dataEntities": model.data_entities,
-    }))
+    })
 }
 
 pub fn parse_eventmodeling_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<EventModelingDiagramRenderModel> {
-    let body = strip_header(code, meta)?;
-    let mut frames = Vec::new();
-    let mut data_entities = Vec::new();
-    let mut lines = body.lines().peekable();
-
-    while let Some(raw) = lines.next() {
-        let line = raw.trim();
-        if line.is_empty() || line.starts_with("%%") {
-            continue;
-        }
-
-        if starts_with_keyword(line, "data") {
-            data_entities.push(parse_data_entity(line, &mut lines, meta)?);
-            continue;
-        }
-
-        if let Some(frame) = parse_frame_line(line, meta)? {
-            frames.push(frame);
-        }
-    }
-
-    Ok(EventModelingDiagramRenderModel {
-        frames,
-        data_entities,
-        ..Default::default()
-    })
+    Ok(construct_eventmodeling_semantic_source(code, meta)
+        .map_err(|failure| *failure.error)?
+        .into_render_model(meta))
 }
 
-pub fn parse_eventmodeling_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let lines = code.split_inclusive('\n').peekable();
-    let mut offset = 0usize;
-    let mut saw_header = false;
-
-    for segment in lines {
-        let line_start = offset;
-        offset += segment.len();
-        let line = segment.trim_end_matches(['\n', '\r']);
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("%%") {
-            continue;
-        }
-
-        if !saw_header {
-            if !trimmed.starts_with("eventmodeling") {
-                return facts;
-            }
-            saw_header = true;
-            let rel = line.find("eventmodeling").unwrap_or(0);
-            let span = SourceSpan::new(line_start + rel, line_start + rel + "eventmodeling".len());
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Payload,
-                span,
-            ));
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                "eventmodeling".to_string(),
-                Some("eventmodeling header".to_string()),
-                EditorSemanticKind::String,
-                span,
-                span,
-            ));
-            continue;
-        }
-
-        if let Some(frame) = parse_frame_facts(trimmed, line_start) {
-            let name_span = frame.name_span;
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Payload,
-                name_span,
-            ));
-            facts.push_symbol(EditorSemanticSymbol::new(
-                frame.name.clone(),
-                Some("eventmodeling frame".to_string()),
-                EditorSemanticKind::Namespace,
-                frame.name_span,
-                frame.name_span,
-            ));
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                frame.model_entity_type.clone(),
-                Some("eventmodeling entity type".to_string()),
-                EditorSemanticKind::String,
-                frame.model_entity_type_span,
-                frame.model_entity_type_span,
-            ));
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                frame.entity_identifier.clone(),
-                Some("eventmodeling entity identifier".to_string()),
-                EditorSemanticKind::String,
-                frame.entity_identifier_span,
-                frame.entity_identifier_span,
-            ));
-            for source in frame.source_frames {
-                facts.push_symbol(EditorSemanticSymbol::new(
-                    source.text.to_string(),
-                    Some("eventmodeling source frame".to_string()),
-                    EditorSemanticKind::Namespace,
-                    source.span,
-                    source.span,
-                ));
-            }
-            if let Some(data_ref) = frame.data_reference {
-                facts.push_symbol(EditorSemanticSymbol::payload(
-                    data_ref.text.to_string(),
-                    Some("eventmodeling data reference".to_string()),
-                    EditorSemanticKind::String,
-                    data_ref.span,
-                    data_ref.span,
-                ));
-            }
-            if let Some(data_inline) = frame.data_inline_value {
-                facts.push_symbol(EditorSemanticSymbol::payload(
-                    data_inline.text.to_string(),
-                    Some("eventmodeling inline data".to_string()),
-                    EditorSemanticKind::String,
-                    data_inline.span,
-                    data_inline.span,
-                ));
-            }
-            continue;
-        }
-
-        if let Some(data_entity) = parse_data_entity_line(trimmed, line_start) {
-            facts.push_symbol(EditorSemanticSymbol::new(
-                data_entity.name.text.to_string(),
-                Some("eventmodeling data entity".to_string()),
-                EditorSemanticKind::Namespace,
-                data_entity.name.span,
-                data_entity.name.span,
-            ));
-            facts.push_expected_syntax(EditorExpectedSyntax::new(
-                EditorExpectedSyntaxKind::Payload,
-                data_entity.block_span,
-            ));
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                data_entity.block_text.to_string(),
-                Some("eventmodeling data block".to_string()),
-                EditorSemanticKind::String,
-                data_entity.block_span,
-                data_entity.block_span,
-            ));
-        }
+pub fn parse_eventmodeling_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    match construct_eventmodeling_semantic_source(code, meta) {
+        Ok(source) => source.editor_facts(),
+        Err(failure) => failure.into_editor_facts(),
     }
-
-    facts
 }
 
 #[derive(Debug, Clone)]
@@ -221,6 +121,7 @@ struct EventModelingFieldSpan {
 
 #[derive(Debug, Clone)]
 struct EventModelingFrameFacts {
+    frame_kind: String,
     name: String,
     name_span: SourceSpan,
     model_entity_type: String,
@@ -229,343 +130,1373 @@ struct EventModelingFrameFacts {
     entity_identifier_span: SourceSpan,
     source_frames: Vec<EventModelingFieldSpan>,
     data_reference: Option<EventModelingFieldSpan>,
+    data_type: Option<EventModelingFieldSpan>,
     data_inline_value: Option<EventModelingFieldSpan>,
 }
 
 #[derive(Debug, Clone)]
 struct EventModelingDataEntityFacts {
     name: EventModelingFieldSpan,
+    data_type: Option<EventModelingFieldSpan>,
     block_text: String,
     block_span: SourceSpan,
 }
 
-fn parse_frame_facts(line: &str, line_start: usize) -> Option<EventModelingFrameFacts> {
-    let (_frame_kind, rest) = if let Some(rest) = strip_keyword(line, "tf") {
-        ("timeframe", rest)
-    } else if let Some(rest) = strip_keyword(line, "timeframe") {
-        ("timeframe", rest)
-    } else if let Some(rest) = strip_keyword(line, "rf") {
-        ("resetframe", rest)
-    } else if let Some(rest) = strip_keyword(line, "resetframe") {
-        ("resetframe", rest)
-    } else {
-        return None;
-    };
-
-    let rest = rest.trim_start();
-    let mut parts = rest.splitn(4, char::is_whitespace);
-    let name = parts.next()?.to_string();
-    let model_entity_type = parts.next()?.to_string();
-    let entity_identifier = parts.next()?.to_string();
-    let tail = parts.next().unwrap_or("").trim();
-
-    let name_rel = line.find(&name)?;
-    let type_rel = line.find(&model_entity_type)?;
-    let id_rel = line.find(&entity_identifier)?;
-
-    let source_frames = parse_source_frames_spanned(tail, line_start, line);
-    let data_reference = parse_data_reference_spanned(tail, line_start, line);
-    let data_inline_value = parse_inline_data_spanned(tail, line_start, line);
-
-    Some(EventModelingFrameFacts {
-        name: name.clone(),
-        name_span: SourceSpan::new(line_start + name_rel, line_start + name_rel + name.len()),
-        model_entity_type: model_entity_type.clone(),
-        model_entity_type_span: SourceSpan::new(
-            line_start + type_rel,
-            line_start + type_rel + model_entity_type.len(),
-        ),
-        entity_identifier: entity_identifier.clone(),
-        entity_identifier_span: SourceSpan::new(
-            line_start + id_rel,
-            line_start + id_rel + entity_identifier.len(),
-        ),
-        source_frames,
-        data_reference,
-        data_inline_value,
-    })
+#[derive(Debug, Clone)]
+struct EventModelingNoteFacts {
+    source_frame: EventModelingFieldSpan,
+    data_type: Option<EventModelingFieldSpan>,
+    block_text: String,
+    block_span: SourceSpan,
 }
 
-fn parse_source_frames_spanned(
-    tail: &str,
-    line_start: usize,
-    line: &str,
-) -> Vec<EventModelingFieldSpan> {
-    let mut out = Vec::new();
-    let mut search_from = 0usize;
-    while let Some(rel) = tail[search_from..].find("->>") {
-        let arrow = search_from + rel;
-        let after = tail[arrow + 3..].trim_start();
-        let Some(name) = after.split_whitespace().next() else {
-            break;
-        };
-        if name.is_empty() {
-            break;
+#[derive(Debug, Clone)]
+struct EventModelingGwtStatementFacts {
+    model_entity_type: EventModelingFieldSpan,
+    entity_reference: EventModelingFieldSpan,
+}
+
+#[derive(Debug, Clone)]
+struct EventModelingGwtFacts {
+    source_frame: EventModelingFieldSpan,
+    given: Vec<EventModelingGwtStatementFacts>,
+    when: Vec<EventModelingGwtStatementFacts>,
+    then: Vec<EventModelingGwtStatementFacts>,
+}
+
+#[derive(Debug, Clone)]
+struct EventModelingValidationDiagnostic {
+    message: String,
+    span: SourceSpan,
+}
+
+#[derive(Default)]
+struct EventModelingSyntaxFacts {
+    header: Option<EventModelingFieldSpan>,
+    common: LangiumCommonFacts,
+    model_entities: Vec<EventModelingFieldSpan>,
+    frames: Vec<EventModelingFrameFacts>,
+    data_entities: Vec<EventModelingDataEntityFacts>,
+    note_entities: Vec<EventModelingNoteFacts>,
+    gwt_entities: Vec<EventModelingGwtFacts>,
+    validation_diagnostics: Vec<EventModelingValidationDiagnostic>,
+}
+
+struct EventModelingSemanticSource {
+    syntax: EventModelingSyntaxFacts,
+}
+
+struct EventModelingParseFailure {
+    error: Box<Error>,
+    syntax: Box<EventModelingSyntaxFacts>,
+    span: SourceSpan,
+}
+
+impl EventModelingSyntaxFacts {
+    fn editor_facts(&self) -> EditorSemanticFacts {
+        let mut facts = EditorSemanticFacts::new();
+        if let Some(header) = &self.header {
+            facts.push_expected_syntax(EditorExpectedSyntax::new(
+                EditorExpectedSyntaxKind::Payload,
+                header.span,
+            ));
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                header.text.clone(),
+                Some("eventmodeling header".to_string()),
+                EditorSemanticKind::String,
+                header.span,
+                header.span,
+            ));
         }
-        if let Some(line_rel) = line.find(name) {
-            out.push(EventModelingFieldSpan {
-                text: name.to_string(),
-                span: SourceSpan::new(line_start + line_rel, line_start + line_rel + name.len()),
-            });
+        for common in self.common.iter() {
+            push_langium_common_editor_fact(&mut facts, common, "eventmodeling");
         }
-        search_from = arrow + 3;
+        for entity in &self.model_entities {
+            facts.push_symbol(
+                EditorSemanticSymbol::new(
+                    entity.text.clone(),
+                    Some("eventmodeling model entity".to_string()),
+                    EditorSemanticKind::Object,
+                    entity.span,
+                    entity.span,
+                )
+                .with_rename_policy(EditorRenamePolicy::QualifiedIdentifier),
+            );
+        }
+        for frame in &self.frames {
+            push_eventmodeling_frame_facts(&mut facts, frame);
+        }
+        for data_entity in &self.data_entities {
+            push_eventmodeling_data_facts(&mut facts, data_entity);
+        }
+        for note in &self.note_entities {
+            push_eventmodeling_note_facts(&mut facts, note);
+        }
+        for gwt in &self.gwt_entities {
+            push_eventmodeling_gwt_facts(&mut facts, gwt);
+        }
+        for diagnostic in &self.validation_diagnostics {
+            facts.push_diagnostic(&diagnostic.message, Some(diagnostic.span));
+        }
+        facts
     }
-    out
 }
 
-fn parse_data_reference_spanned(
-    tail: &str,
-    line_start: usize,
-    line: &str,
-) -> Option<EventModelingFieldSpan> {
-    let start = tail.find("[[")?;
-    let rest = &tail[start + 2..];
-    let end = rest.find("]]")?;
-    let text = rest[..end].trim();
-    let rel = line.find(text)?;
-    Some(EventModelingFieldSpan {
-        text: text.to_string(),
-        span: SourceSpan::new(line_start + rel, line_start + rel + text.len()),
-    })
+impl EventModelingSemanticSource {
+    fn editor_facts(&self) -> EditorSemanticFacts {
+        self.syntax.editor_facts()
+    }
+
+    fn into_render_model(self, meta: &ParseMetadata) -> EventModelingDiagramRenderModel {
+        let common = LangiumCommonDbFields::from_facts(&self.syntax.common);
+        let frames = self
+            .syntax
+            .frames
+            .into_iter()
+            .map(|frame| EventModelingFrameRenderModel {
+                name: frame.name,
+                frame_kind: frame.frame_kind,
+                model_entity_type: frame.model_entity_type,
+                entity_identifier: sanitize_text(&frame.entity_identifier, &meta.effective_config),
+                source_frames: frame
+                    .source_frames
+                    .into_iter()
+                    .map(|source| source.text)
+                    .collect(),
+                data_inline_value: frame
+                    .data_inline_value
+                    .map(|data| sanitize_text(&data.text, &meta.effective_config)),
+                data_reference: frame.data_reference.map(|data| data.text),
+            })
+            .collect();
+        let data_entities = self
+            .syntax
+            .data_entities
+            .into_iter()
+            .map(|data| EventModelingDataEntityRenderModel {
+                name: data.name.text,
+                data_block_value: sanitize_text(&data.block_text, &meta.effective_config),
+            })
+            .collect();
+        EventModelingDiagramRenderModel {
+            title: common
+                .title
+                .map(|value| sanitize_text(&value, &meta.effective_config)),
+            acc_title: common
+                .acc_title
+                .map(|value| sanitize_acc_title(&value, &meta.effective_config)),
+            acc_descr: common
+                .acc_descr
+                .map(|value| sanitize_acc_descr(&value, &meta.effective_config)),
+            frames,
+            data_entities,
+        }
+    }
+
+    fn into_compat_json(self, meta: &ParseMetadata) -> Value {
+        eventmodeling_model_into_json(self.into_render_model(meta), meta)
+    }
 }
 
-fn parse_inline_data_spanned(
-    tail: &str,
-    line_start: usize,
-    line: &str,
-) -> Option<EventModelingFieldSpan> {
-    let start = tail.find('{')?;
-    let mut depth = 0usize;
-    for (offset, ch) in tail[start..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    let text = tail[start..start + offset + 1].trim();
-                    let rel = line.find(text)?;
-                    return Some(EventModelingFieldSpan {
-                        text: text.to_string(),
-                        span: SourceSpan::new(line_start + rel, line_start + rel + text.len()),
-                    });
+impl EventModelingParseFailure {
+    fn into_editor_facts(self) -> EditorSemanticFacts {
+        let mut facts = self.syntax.editor_facts();
+        facts.mark_recovered_from_parse_error(
+            format!(
+                "eventmodeling parser recovered after parse error: {}",
+                self.error
+            ),
+            Some(self.span),
+        );
+        facts
+    }
+}
+
+fn construct_eventmodeling_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<EventModelingSemanticSource, EventModelingParseFailure> {
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("eventmodeling");
+
+    let mut syntax = EventModelingSyntaxFacts::default();
+    let mut cursor = EventModelingCursor::new(code);
+    if let Err(error) = cursor.skip_hidden(meta) {
+        return Err(eventmodeling_failure(
+            error,
+            syntax,
+            cursor.insertion_span(),
+        ));
+    }
+    match parse_eventmodeling_header_cursor(&mut cursor, meta) {
+        Ok(header) => syntax.header = Some(header),
+        Err(error) => {
+            return Err(eventmodeling_failure(
+                error,
+                syntax,
+                cursor.insertion_span(),
+            ));
+        }
+    }
+
+    loop {
+        if let Err(error) = cursor.skip_hidden(meta) {
+            return Err(eventmodeling_failure(
+                error,
+                syntax,
+                cursor.insertion_span(),
+            ));
+        }
+        if cursor.is_eof() {
+            break;
+        }
+
+        if let Some(parsed) = parse_langium_common(code, cursor.offset()) {
+            cursor.set_offset(cursor.offset() + parsed.consumed);
+            syntax.common.push(parsed.fact);
+            if let Some(diagnostic) = parsed.diagnostic {
+                let error = Error::diagram_parse_insertion_point(
+                    meta.diagram_type.clone(),
+                    diagnostic.message,
+                    diagnostic.span.start,
+                );
+                return Err(eventmodeling_failure(error, syntax, diagnostic.span));
+            }
+            continue;
+        }
+
+        let result = if cursor.starts_keyword("entity") {
+            parse_eventmodeling_entity_cursor(&mut cursor, meta)
+                .map(|entity| syntax.model_entities.push(entity))
+        } else if cursor.starts_keyword("tf") || cursor.starts_keyword("timeframe") {
+            parse_eventmodeling_frame_cursor(&mut cursor, "timeframe", meta)
+                .map(|frame| syntax.frames.push(frame))
+        } else if cursor.starts_keyword("rf") || cursor.starts_keyword("resetframe") {
+            parse_eventmodeling_frame_cursor(&mut cursor, "resetframe", meta)
+                .map(|frame| syntax.frames.push(frame))
+        } else if cursor.starts_keyword("data") {
+            match parse_eventmodeling_data_cursor(&mut cursor, meta) {
+                Ok(data) => {
+                    syntax.data_entities.push(data);
+                    Ok(())
+                }
+                Err(failure) => {
+                    syntax.data_entities.push(*failure.partial);
+                    Err(*failure.error)
                 }
             }
-            _ => {}
+        } else if cursor.starts_keyword("note") {
+            match parse_eventmodeling_note_cursor(&mut cursor, meta) {
+                Ok(note) => {
+                    syntax.note_entities.push(note);
+                    Ok(())
+                }
+                Err(failure) => {
+                    syntax.note_entities.push(*failure.partial);
+                    Err(*failure.error)
+                }
+            }
+        } else if cursor.starts_keyword("gwt") {
+            parse_eventmodeling_gwt_cursor(&mut cursor, meta)
+                .map(|gwt| syntax.gwt_entities.push(gwt))
+        } else {
+            let span = cursor.unknown_statement_span();
+            Err(Error::diagram_parse_exact(
+                meta.diagram_type.clone(),
+                format!(
+                    "unexpected eventmodeling statement: {}",
+                    &code[span.start..span.end]
+                ),
+                span,
+            ))
+        };
+
+        if let Err(error) = result {
+            return Err(eventmodeling_failure(
+                error,
+                syntax,
+                cursor.insertion_span(),
+            ));
         }
+    }
+
+    validate_eventmodeling_semantics(&mut syntax);
+    Ok(EventModelingSemanticSource { syntax })
+}
+
+const EVENTMODELING_ENTITY_TYPES: &[&str] = &[
+    "rmo",
+    "readmodel",
+    "ui",
+    "cmd",
+    "command",
+    "evt",
+    "event",
+    "pcr",
+    "processor",
+];
+const EVENTMODELING_DATA_TYPES: &[&str] = &[
+    "json", "jsobj", "figma", "salt", "uri", "md", "html", "text",
+];
+
+struct EventModelingCursor<'a> {
+    source: &'a str,
+    offset: usize,
+}
+
+impl<'a> EventModelingCursor<'a> {
+    fn new(source: &'a str) -> Self {
+        Self { source, offset: 0 }
+    }
+
+    fn offset(&self) -> usize {
+        self.offset
+    }
+
+    fn set_offset(&mut self, offset: usize) {
+        self.offset = offset.min(self.source.len());
+    }
+
+    fn is_eof(&self) -> bool {
+        self.offset >= self.source.len()
+    }
+
+    fn insertion_span(&self) -> SourceSpan {
+        SourceSpan::new(self.offset, self.offset)
+    }
+
+    fn starts_keyword(&self, keyword: &str) -> bool {
+        let Some(rest) = self.source[self.offset..].strip_prefix(keyword) else {
+            return false;
+        };
+        rest.chars()
+            .next()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric() && ch != '_')
+    }
+
+    fn consume_keyword(&mut self, keyword: &str) -> bool {
+        if !self.starts_keyword(keyword) {
+            return false;
+        }
+        self.offset += keyword.len();
+        true
+    }
+
+    fn starts_literal(&self, literal: &str) -> bool {
+        self.source[self.offset..].starts_with(literal)
+    }
+
+    fn unknown_statement_span(&self) -> SourceSpan {
+        let rest = &self.source[self.offset..];
+        let end = rest.find(['\r', '\n']).unwrap_or(rest.len());
+        let visible = rest[..end].trim_end();
+        let len = if visible.is_empty() {
+            rest.chars().next().map(char::len_utf8).unwrap_or_default()
+        } else {
+            visible.len()
+        };
+        SourceSpan::new(self.offset, self.offset + len)
+    }
+
+    fn skip_hidden(&mut self, meta: &ParseMetadata) -> Result<()> {
+        loop {
+            while self.offset < self.source.len() {
+                let ch = self.source[self.offset..].chars().next().unwrap();
+                if !ch.is_whitespace() {
+                    break;
+                }
+                self.offset += ch.len_utf8();
+            }
+            if self.is_eof() {
+                return Ok(());
+            }
+
+            let rest = &self.source[self.offset..];
+            if rest.starts_with("%%{") {
+                let Some(end) = rest.find("}%%") else {
+                    return Err(Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        "expected closing eventmodeling directive",
+                        self.source.len(),
+                    ));
+                };
+                self.offset += end + 3;
+                continue;
+            }
+            if rest.starts_with("%%") || rest.starts_with("//") {
+                self.offset += rest.find(['\r', '\n']).unwrap_or(rest.len());
+                continue;
+            }
+            if rest.starts_with("/*") {
+                let Some(end) = rest.find("*/") else {
+                    return Err(Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        "expected closing eventmodeling block comment",
+                        self.source.len(),
+                    ));
+                };
+                self.offset += end + 2;
+                continue;
+            }
+            if rest.starts_with("---")
+                && (self.offset == 0
+                    || self.source.as_bytes().get(self.offset.wrapping_sub(1)) == Some(&b'\n'))
+                && let Some(end) = eventmodeling_yaml_end(self.source, self.offset)
+            {
+                self.offset = end;
+                continue;
+            }
+            return Ok(());
+        }
+    }
+
+    fn take_token(
+        &mut self,
+        meta: &ParseMetadata,
+        expected: &str,
+    ) -> Result<EventModelingFieldSpan> {
+        self.skip_hidden(meta)?;
+        let start = self.offset;
+        while self.offset < self.source.len() {
+            let rest = &self.source[self.offset..];
+            let ch = rest.chars().next().unwrap();
+            if ch.is_whitespace()
+                || rest.starts_with("->>")
+                || rest.starts_with("[[")
+                || rest.starts_with("]]")
+                || matches!(ch, '`' | '{' | '}' | '"' | '\'')
+            {
+                break;
+            }
+            self.offset += ch.len_utf8();
+        }
+        if start == self.offset {
+            return Err(Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                expected,
+                start,
+            ));
+        }
+        Ok(EventModelingFieldSpan {
+            text: self.source[start..self.offset].to_string(),
+            span: SourceSpan::new(start, self.offset),
+        })
+    }
+}
+
+fn eventmodeling_yaml_end(source: &str, start: usize) -> Option<usize> {
+    let (_, mut cursor) = physical_line_at(source, start);
+    while cursor <= source.len() {
+        let (line, next) = physical_line_at(source, cursor);
+        if line.trim_end_matches([' ', '\t']) == "---" {
+            return Some(next);
+        }
+        if next == cursor || next == source.len() {
+            break;
+        }
+        cursor = next;
     }
     None
 }
 
-fn parse_data_entity_line(line: &str, line_start: usize) -> Option<EventModelingDataEntityFacts> {
-    let rest = strip_keyword(line, "data")?.trim_start();
-    let mut parts = rest.splitn(2, char::is_whitespace);
-    let name = parts.next()?.trim();
-    let first_tail = parts.next().unwrap_or("").trim();
-    if !first_tail.starts_with('{') {
-        return None;
+fn eventmodeling_failure(
+    error: Error,
+    syntax: EventModelingSyntaxFacts,
+    fallback: SourceSpan,
+) -> EventModelingParseFailure {
+    let span = match &error {
+        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
+        _ => fallback,
+    };
+    EventModelingParseFailure {
+        error: Box::new(error),
+        syntax: Box::new(syntax),
+        span,
     }
-    let name_rel = line.find(name)?;
-    let block_start = line.find('{')?;
-    let block_text = first_tail.trim().to_string();
-    let block_end = line_start + block_start + block_text.len();
-    Some(EventModelingDataEntityFacts {
-        name: EventModelingFieldSpan {
-            text: name.to_string(),
-            span: SourceSpan::new(line_start + name_rel, line_start + name_rel + name.len()),
-        },
-        block_text,
-        block_span: SourceSpan::new(line_start + block_start, block_end),
-    })
 }
 
-fn strip_header<'a>(code: &'a str, meta: &ParseMetadata) -> Result<&'a str> {
-    let trimmed = code.trim_start();
-    let Some(rest) = trimmed.strip_prefix("eventmodeling") else {
-        return Err(parse_error(meta, "expected eventmodeling"));
-    };
-    if rest
-        .chars()
+fn eventmodeling_exact_error(
+    meta: &ParseMetadata,
+    message: impl Into<String>,
+    span: SourceSpan,
+) -> Error {
+    Error::diagram_parse_exact(meta.diagram_type.clone(), message, span)
+}
+
+fn is_eventmodeling_id(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars
         .next()
-        .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn is_eventmodeling_qualified_name(value: &str) -> bool {
+    !value.is_empty() && value.split('.').all(is_eventmodeling_id)
+}
+
+fn take_eventmodeling_id_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+    expected: &str,
+) -> Result<EventModelingFieldSpan> {
+    let field = cursor.take_token(meta, expected)?;
+    if !is_eventmodeling_id(&field.text) {
+        return Err(eventmodeling_exact_error(meta, expected, field.span));
+    }
+    Ok(field)
+}
+
+fn take_eventmodeling_qualified_name_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+    expected: &str,
+) -> Result<EventModelingFieldSpan> {
+    let field = cursor.take_token(meta, expected)?;
+    if !is_eventmodeling_qualified_name(&field.text) {
+        return Err(eventmodeling_exact_error(meta, expected, field.span));
+    }
+    Ok(field)
+}
+
+fn take_eventmodeling_frame_id_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+    expected: &str,
+) -> Result<EventModelingFieldSpan> {
+    let field = cursor.take_token(meta, expected)?;
+    if field.text.is_empty()
+        || field.text.len() > 3
+        || !field.text.bytes().all(|byte| byte.is_ascii_digit())
     {
-        return Err(parse_error(meta, "expected eventmodeling"));
+        return Err(eventmodeling_exact_error(meta, expected, field.span));
     }
-    Ok(rest)
+    Ok(field)
 }
 
-fn parse_frame_line(
-    line: &str,
+fn take_eventmodeling_entity_type_cursor(
+    cursor: &mut EventModelingCursor<'_>,
     meta: &ParseMetadata,
-) -> Result<Option<EventModelingFrameRenderModel>> {
-    let (frame_kind, rest) = if let Some(rest) = strip_keyword(line, "tf") {
-        ("timeframe", rest)
-    } else if let Some(rest) = strip_keyword(line, "timeframe") {
-        ("timeframe", rest)
-    } else if let Some(rest) = strip_keyword(line, "rf") {
-        ("resetframe", rest)
-    } else if let Some(rest) = strip_keyword(line, "resetframe") {
-        ("resetframe", rest)
+) -> Result<EventModelingFieldSpan> {
+    let field = cursor.take_token(meta, "expected eventmodeling entity type")?;
+    if !EVENTMODELING_ENTITY_TYPES.contains(&field.text.as_str()) {
+        return Err(eventmodeling_exact_error(
+            meta,
+            "expected eventmodeling entity type",
+            field.span,
+        ));
+    }
+    Ok(field)
+}
+
+fn parse_eventmodeling_header_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+) -> Result<EventModelingFieldSpan> {
+    let start = cursor.offset();
+    if !cursor.consume_keyword("eventmodeling") {
+        let token =
+            cursor
+                .take_token(meta, "expected eventmodeling")
+                .unwrap_or(EventModelingFieldSpan {
+                    text: String::new(),
+                    span: SourceSpan::new(start, start),
+                });
+        return Err(if token.span.start == token.span.end {
+            Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                "expected eventmodeling",
+                start,
+            )
+        } else {
+            eventmodeling_exact_error(meta, "expected eventmodeling", token.span)
+        });
+    }
+    Ok(EventModelingFieldSpan {
+        text: "eventmodeling".to_string(),
+        span: SourceSpan::new(start, cursor.offset()),
+    })
+}
+
+fn parse_eventmodeling_entity_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+) -> Result<EventModelingFieldSpan> {
+    cursor.consume_keyword("entity");
+    take_eventmodeling_qualified_name_cursor(
+        cursor,
+        meta,
+        "expected eventmodeling model entity name",
+    )
+}
+
+fn parse_eventmodeling_frame_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    frame_kind: &str,
+    meta: &ParseMetadata,
+) -> Result<EventModelingFrameFacts> {
+    if frame_kind == "timeframe" {
+        if !cursor.consume_keyword("timeframe") {
+            cursor.consume_keyword("tf");
+        }
+    } else if !cursor.consume_keyword("resetframe") {
+        cursor.consume_keyword("rf");
+    }
+
+    let name = take_eventmodeling_frame_id_cursor(
+        cursor,
+        meta,
+        "expected eventmodeling frame id with one to three digits",
+    )?;
+    let model_entity_type = take_eventmodeling_entity_type_cursor(cursor, meta)?;
+    let entity_identifier = take_eventmodeling_qualified_name_cursor(
+        cursor,
+        meta,
+        "expected eventmodeling qualified entity identifier",
+    )?;
+
+    let mut source_frames = Vec::new();
+    loop {
+        cursor.skip_hidden(meta)?;
+        if !cursor.starts_literal("->>") {
+            break;
+        }
+        cursor.offset += 3;
+        source_frames.push(take_eventmodeling_frame_id_cursor(
+            cursor,
+            meta,
+            "expected eventmodeling source frame id",
+        )?);
+    }
+
+    cursor.skip_hidden(meta)?;
+    let data_reference = if cursor.starts_literal("[[") {
+        cursor.offset += 2;
+        let reference =
+            take_eventmodeling_id_cursor(cursor, meta, "expected eventmodeling data reference")?;
+        cursor.skip_hidden(meta)?;
+        if !cursor.starts_literal("]]") {
+            return Err(Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                "expected closing ']]' for eventmodeling data reference",
+                cursor.offset(),
+            ));
+        }
+        cursor.offset += 2;
+        Some(reference)
     } else {
-        return Ok(None);
+        None
     };
 
-    let mut parts = rest.trim_start().splitn(4, char::is_whitespace);
-    let name = parts
-        .next()
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| parse_error(meta, "expected eventmodeling frame name"))?;
-    let model_entity_type = parts
-        .next()
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| parse_error(meta, "expected eventmodeling entity type"))?;
-    let entity_identifier = parts
-        .next()
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| parse_error(meta, "expected eventmodeling entity identifier"))?;
-    let tail = parts.next().unwrap_or("").trim();
-
-    let source_frames = parse_source_frames(tail);
-    let data_reference = parse_data_reference(tail);
-    let data_inline_value =
-        parse_inline_data(tail).map(|s| sanitize_text(&s, &meta.effective_config));
-
-    Ok(Some(EventModelingFrameRenderModel {
-        name: name.to_string(),
+    let (data_type, data_inline_value) = parse_eventmodeling_optional_inline(cursor, meta)?;
+    Ok(EventModelingFrameFacts {
         frame_kind: frame_kind.to_string(),
-        model_entity_type: model_entity_type.to_string(),
-        entity_identifier: sanitize_text(entity_identifier, &meta.effective_config),
+        name: name.text,
+        name_span: name.span,
+        model_entity_type: model_entity_type.text,
+        model_entity_type_span: model_entity_type.span,
+        entity_identifier: entity_identifier.text,
+        entity_identifier_span: entity_identifier.span,
         source_frames,
-        data_inline_value,
         data_reference,
-    }))
+        data_type,
+        data_inline_value,
+    })
 }
 
-fn parse_source_frames(tail: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut iter = tail.split_whitespace();
-    while let Some(token) = iter.next() {
-        if token == "->>"
-            && let Some(name) = iter.next()
-        {
-            out.push(trim_trailing_syntax(name).to_string());
-        }
-    }
-    out
-}
-
-fn parse_data_reference(tail: &str) -> Option<String> {
-    let start = tail.find("[[")?;
-    let rest = &tail[start + 2..];
-    let end = rest.find("]]")?;
-    Some(rest[..end].trim().to_string())
-}
-
-fn parse_inline_data(tail: &str) -> Option<String> {
-    let start = tail.find('{')?;
-    let mut depth = 0usize;
-    for (offset, ch) in tail[start..].char_indices() {
-        match ch {
-            '{' => depth += 1,
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return Some(tail[start..start + offset + 1].trim().to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-    Some(tail[start..].trim().to_string())
-}
-
-fn parse_data_entity<'a, I>(
-    line: &str,
-    lines: &mut std::iter::Peekable<I>,
+fn parse_eventmodeling_optional_data_type(
+    cursor: &mut EventModelingCursor<'_>,
     meta: &ParseMetadata,
-) -> Result<EventModelingDataEntityRenderModel>
-where
-    I: Iterator<Item = &'a str>,
-{
-    let rest = strip_keyword(line, "data")
-        .ok_or_else(|| parse_error(meta, "expected eventmodeling data block"))?
-        .trim_start();
-    let mut parts = rest.splitn(2, char::is_whitespace);
-    let name = parts
-        .next()
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| parse_error(meta, "expected eventmodeling data name"))?;
-    let first_tail = parts.next().unwrap_or("");
+) -> Result<Option<EventModelingFieldSpan>> {
+    cursor.skip_hidden(meta)?;
+    if !cursor.starts_literal("`") {
+        return Ok(None);
+    }
+    cursor.offset += 1;
+    let field = cursor.take_token(meta, "expected eventmodeling data type")?;
+    if !EVENTMODELING_DATA_TYPES.contains(&field.text.as_str()) {
+        return Err(eventmodeling_exact_error(
+            meta,
+            format!("unsupported eventmodeling data type '{}'", field.text),
+            field.span,
+        ));
+    }
+    cursor.skip_hidden(meta)?;
+    if !cursor.starts_literal("`") {
+        return Err(Error::diagram_parse_insertion_point(
+            meta.diagram_type.clone(),
+            "expected closing backtick for eventmodeling data type",
+            cursor.offset(),
+        ));
+    }
+    cursor.offset += 1;
+    Ok(Some(field))
+}
 
-    let mut block = String::new();
-    if !first_tail.trim().is_empty() {
-        block.push_str(first_tail.trim());
+fn parse_eventmodeling_optional_inline(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+) -> Result<(
+    Option<EventModelingFieldSpan>,
+    Option<EventModelingFieldSpan>,
+)> {
+    let data_type = parse_eventmodeling_optional_data_type(cursor, meta)?;
+    cursor.skip_hidden(meta)?;
+    let Some(delimiter) = cursor.source[cursor.offset..].chars().next() else {
+        if data_type.is_some() {
+            return Err(Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                "expected eventmodeling inline data",
+                cursor.offset(),
+            ));
+        }
+        return Ok((None, None));
+    };
+    if !matches!(delimiter, '{' | '"' | '\'') {
+        if data_type.is_some() {
+            return Err(Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                "expected eventmodeling inline data",
+                cursor.offset(),
+            ));
+        }
+        return Ok((None, None));
     }
 
-    let mut depth = brace_delta(&block);
-    while depth <= 0 || !block.contains('{') {
-        let Some(next) = lines.peek().copied() else {
-            break;
-        };
-        if !block.is_empty() {
-            block.push('\n');
+    let start = cursor.offset;
+    let rest = &cursor.source[start..];
+    let line_end = rest.find(['\r', '\n']).unwrap_or(rest.len());
+    let line = &rest[..line_end];
+    let end = if delimiter == '{' {
+        line.rfind('}').map(|index| start + index + 1)
+    } else {
+        line[delimiter.len_utf8()..]
+            .rfind(delimiter)
+            .map(|index| start + delimiter.len_utf8() + index + delimiter.len_utf8())
+    }
+    .ok_or_else(|| {
+        Error::diagram_parse_insertion_point(
+            meta.diagram_type.clone(),
+            "expected closing delimiter for eventmodeling inline data",
+            start + line_end,
+        )
+    })?;
+    cursor.offset = end;
+    Ok((
+        data_type,
+        Some(EventModelingFieldSpan {
+            text: cursor.source[start..end].to_string(),
+            span: SourceSpan::new(start, end),
+        }),
+    ))
+}
+
+struct ParsedEventModelingBlock {
+    data_type: Option<EventModelingFieldSpan>,
+    text: String,
+    span: SourceSpan,
+}
+
+struct FailedEventModelingBlock {
+    error: Box<Error>,
+    data_type: Option<EventModelingFieldSpan>,
+    text: String,
+    span: SourceSpan,
+}
+
+fn parse_eventmodeling_block_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+) -> std::result::Result<ParsedEventModelingBlock, FailedEventModelingBlock> {
+    let data_type = match parse_eventmodeling_optional_data_type(cursor, meta) {
+        Ok(data_type) => data_type,
+        Err(error) => {
+            return Err(FailedEventModelingBlock {
+                error: Box::new(error),
+                data_type: None,
+                text: String::new(),
+                span: cursor.insertion_span(),
+            });
         }
-        block.push_str(next);
-        depth += brace_delta(next);
-        lines.next();
-        if block.contains('{') && depth <= 0 {
-            break;
-        }
+    };
+    if let Err(error) = cursor.skip_hidden(meta) {
+        return Err(FailedEventModelingBlock {
+            error: Box::new(error),
+            data_type,
+            text: String::new(),
+            span: cursor.insertion_span(),
+        });
+    }
+    if !cursor.starts_literal("{") {
+        let span = cursor.insertion_span();
+        return Err(FailedEventModelingBlock {
+            error: Box::new(Error::diagram_parse_insertion_point(
+                meta.diagram_type.clone(),
+                "expected eventmodeling data block",
+                span.start,
+            )),
+            data_type,
+            text: String::new(),
+            span,
+        });
     }
 
-    while depth > 0 {
-        let Some(next) = lines.next() else {
-            break;
-        };
-        if !block.is_empty() {
-            block.push('\n');
+    let block_start = cursor.offset;
+    cursor.offset += 1;
+    let after_open = &cursor.source[cursor.offset..];
+    let Some(newline_rel) = after_open.find('\n') else {
+        let span = SourceSpan::new(block_start, cursor.source.len());
+        return Err(FailedEventModelingBlock {
+            error: Box::new(eventmodeling_exact_error(
+                meta,
+                "eventmodeling data block must start on a new line",
+                span,
+            )),
+            data_type,
+            text: cursor.source[block_start..].to_string(),
+            span,
+        });
+    };
+    let before_newline = after_open[..newline_rel]
+        .strip_suffix('\r')
+        .unwrap_or(&after_open[..newline_rel]);
+    if !before_newline
+        .bytes()
+        .all(|byte| matches!(byte, b' ' | b'\t'))
+    {
+        let leading = before_newline
+            .bytes()
+            .take_while(|byte| matches!(byte, b' ' | b'\t'))
+            .count();
+        let span = SourceSpan::new(
+            cursor.offset + leading,
+            cursor.offset + before_newline.len(),
+        );
+        return Err(FailedEventModelingBlock {
+            error: Box::new(eventmodeling_exact_error(
+                meta,
+                "eventmodeling data block must start on a new line",
+                span,
+            )),
+            data_type,
+            text: cursor.source[block_start..cursor.offset + before_newline.len()].to_string(),
+            span,
+        });
+    }
+    cursor.offset += newline_rel + 1;
+
+    let mut line_start = cursor.offset;
+    while line_start < cursor.source.len() {
+        if cursor.source[line_start..].starts_with('}') {
+            let block_end = line_start + 1;
+            let after = &cursor.source[block_end..];
+            if after.is_empty() || after.chars().next().is_some_and(char::is_whitespace) {
+                cursor.offset = block_end;
+                return Ok(ParsedEventModelingBlock {
+                    data_type,
+                    text: cursor.source[block_start..block_end].to_string(),
+                    span: SourceSpan::new(block_start, block_end),
+                });
+            }
         }
-        block.push_str(next);
-        depth += brace_delta(next);
+        let (_, next) = physical_line_at(cursor.source, line_start);
+        if next <= line_start || next == cursor.source.len() {
+            break;
+        }
+        line_start = next;
     }
 
-    Ok(EventModelingDataEntityRenderModel {
-        name: name.to_string(),
-        data_block_value: sanitize_text(block.trim(), &meta.effective_config),
+    let span = SourceSpan::new(block_start, cursor.source.len());
+    cursor.offset = cursor.source.len();
+    Err(FailedEventModelingBlock {
+        error: Box::new(Error::diagram_parse_insertion_point(
+            meta.diagram_type.clone(),
+            "expected closing brace for eventmodeling data block",
+            cursor.source.len(),
+        )),
+        data_type,
+        text: cursor.source[block_start..].to_string(),
+        span,
     })
 }
 
-fn brace_delta(text: &str) -> isize {
-    text.chars().fold(0, |acc, ch| match ch {
-        '{' => acc + 1,
-        '}' => acc - 1,
-        _ => acc,
+struct FailedEventModelingDataCursor {
+    error: Box<Error>,
+    partial: Box<EventModelingDataEntityFacts>,
+}
+
+fn parse_eventmodeling_data_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+) -> std::result::Result<EventModelingDataEntityFacts, FailedEventModelingDataCursor> {
+    cursor.consume_keyword("data");
+    let name =
+        match take_eventmodeling_id_cursor(cursor, meta, "expected eventmodeling data entity name")
+        {
+            Ok(name) => name,
+            Err(error) => {
+                return Err(FailedEventModelingDataCursor {
+                    error: Box::new(error),
+                    partial: Box::new(EventModelingDataEntityFacts {
+                        name: EventModelingFieldSpan {
+                            text: String::new(),
+                            span: cursor.insertion_span(),
+                        },
+                        data_type: None,
+                        block_text: String::new(),
+                        block_span: cursor.insertion_span(),
+                    }),
+                });
+            }
+        };
+    match parse_eventmodeling_block_cursor(cursor, meta) {
+        Ok(block) => Ok(EventModelingDataEntityFacts {
+            name,
+            data_type: block.data_type,
+            block_text: block.text,
+            block_span: block.span,
+        }),
+        Err(block) => Err(FailedEventModelingDataCursor {
+            error: block.error,
+            partial: Box::new(EventModelingDataEntityFacts {
+                name,
+                data_type: block.data_type,
+                block_text: block.text,
+                block_span: block.span,
+            }),
+        }),
+    }
+}
+
+struct FailedEventModelingNoteCursor {
+    error: Box<Error>,
+    partial: Box<EventModelingNoteFacts>,
+}
+
+fn parse_eventmodeling_note_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+) -> std::result::Result<EventModelingNoteFacts, FailedEventModelingNoteCursor> {
+    cursor.consume_keyword("note");
+    let source_frame = match take_eventmodeling_frame_id_cursor(
+        cursor,
+        meta,
+        "expected eventmodeling note source frame",
+    ) {
+        Ok(source) => source,
+        Err(error) => {
+            return Err(FailedEventModelingNoteCursor {
+                error: Box::new(error),
+                partial: Box::new(EventModelingNoteFacts {
+                    source_frame: EventModelingFieldSpan {
+                        text: String::new(),
+                        span: cursor.insertion_span(),
+                    },
+                    data_type: None,
+                    block_text: String::new(),
+                    block_span: cursor.insertion_span(),
+                }),
+            });
+        }
+    };
+    match parse_eventmodeling_block_cursor(cursor, meta) {
+        Ok(block) => Ok(EventModelingNoteFacts {
+            source_frame,
+            data_type: block.data_type,
+            block_text: block.text,
+            block_span: block.span,
+        }),
+        Err(block) => Err(FailedEventModelingNoteCursor {
+            error: block.error,
+            partial: Box::new(EventModelingNoteFacts {
+                source_frame,
+                data_type: block.data_type,
+                block_text: block.text,
+                block_span: block.span,
+            }),
+        }),
+    }
+}
+
+fn is_eventmodeling_top_level_start(cursor: &EventModelingCursor<'_>) -> bool {
+    [
+        "title",
+        "accTitle",
+        "accDescr",
+        "entity",
+        "tf",
+        "timeframe",
+        "rf",
+        "resetframe",
+        "data",
+        "note",
+        "gwt",
+    ]
+    .into_iter()
+    .any(|keyword| cursor.starts_keyword(keyword))
+}
+
+fn parse_eventmodeling_gwt_group(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+    stop_keywords: &[&str],
+) -> Result<Vec<EventModelingGwtStatementFacts>> {
+    let mut statements = Vec::new();
+    loop {
+        cursor.skip_hidden(meta)?;
+        if cursor.is_eof()
+            || stop_keywords
+                .iter()
+                .any(|keyword| cursor.starts_keyword(keyword))
+            || (!statements.is_empty() && is_eventmodeling_top_level_start(cursor))
+        {
+            break;
+        }
+        let model_entity_type = take_eventmodeling_entity_type_cursor(cursor, meta)?;
+        let entity_reference = take_eventmodeling_id_cursor(
+            cursor,
+            meta,
+            "expected eventmodeling gwt model entity reference",
+        )?;
+        statements.push(EventModelingGwtStatementFacts {
+            model_entity_type,
+            entity_reference,
+        });
+    }
+    if statements.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
+            meta.diagram_type.clone(),
+            "expected at least one eventmodeling gwt statement",
+            cursor.offset(),
+        ));
+    }
+    Ok(statements)
+}
+
+fn parse_eventmodeling_gwt_cursor(
+    cursor: &mut EventModelingCursor<'_>,
+    meta: &ParseMetadata,
+) -> Result<EventModelingGwtFacts> {
+    cursor.consume_keyword("gwt");
+    let source_frame = take_eventmodeling_frame_id_cursor(
+        cursor,
+        meta,
+        "expected eventmodeling gwt source frame",
+    )?;
+    cursor.skip_hidden(meta)?;
+    if !cursor.consume_keyword("given") {
+        return Err(Error::diagram_parse_insertion_point(
+            meta.diagram_type.clone(),
+            "expected 'given' in eventmodeling gwt",
+            cursor.offset(),
+        ));
+    }
+    let given = parse_eventmodeling_gwt_group(cursor, meta, &["when", "then"])?;
+    cursor.skip_hidden(meta)?;
+    let when = if cursor.consume_keyword("when") {
+        parse_eventmodeling_gwt_group(cursor, meta, &["then"])?
+    } else {
+        Vec::new()
+    };
+    cursor.skip_hidden(meta)?;
+    if !cursor.consume_keyword("then") {
+        return Err(Error::diagram_parse_insertion_point(
+            meta.diagram_type.clone(),
+            "expected 'then' in eventmodeling gwt",
+            cursor.offset(),
+        ));
+    }
+    let then = parse_eventmodeling_gwt_group(cursor, meta, &[])?;
+    Ok(EventModelingGwtFacts {
+        source_frame,
+        given,
+        when,
+        then,
     })
 }
 
-fn strip_keyword<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
-    let rest = line.strip_prefix(keyword)?;
-    rest.chars()
-        .next()
-        .is_none_or(|ch| ch.is_whitespace())
-        .then_some(rest)
+fn validate_eventmodeling_semantics(syntax: &mut EventModelingSyntaxFacts) {
+    let frame_types: HashMap<String, String> = syntax
+        .frames
+        .iter()
+        .map(|frame| (frame.name.clone(), frame.model_entity_type.clone()))
+        .collect();
+    let data_names: HashSet<&str> = syntax
+        .data_entities
+        .iter()
+        .map(|data| data.name.text.as_str())
+        .collect();
+    let model_entity_names: HashSet<&str> = syntax
+        .model_entities
+        .iter()
+        .map(|entity| entity.text.as_str())
+        .collect();
+    let mut diagnostics = Vec::new();
+
+    for frame in &syntax.frames {
+        for source in &frame.source_frames {
+            let Some(source_type) = frame_types.get(&source.text) else {
+                diagnostics.push(EventModelingValidationDiagnostic {
+                    message: format!("unknown eventmodeling frame reference '{}'", source.text),
+                    span: source.span,
+                });
+                continue;
+            };
+            if let Some((target_label, expected_label, allowed)) =
+                eventmodeling_allowed_source_types(&frame.model_entity_type)
+                && !allowed.contains(&source_type.as_str())
+            {
+                diagnostics.push(EventModelingValidationDiagnostic {
+                    message: format!(
+                        "A {target_label} can only receive input from a {expected_label}, not from '{source_type}'."
+                    ),
+                    span: source.span,
+                });
+            }
+        }
+        if let Some(reference) = &frame.data_reference
+            && !data_names.contains(reference.text.as_str())
+        {
+            diagnostics.push(EventModelingValidationDiagnostic {
+                message: format!("unknown eventmodeling data reference '{}'", reference.text),
+                span: reference.span,
+            });
+        }
+    }
+    for note in &syntax.note_entities {
+        if !frame_types.contains_key(&note.source_frame.text) {
+            diagnostics.push(EventModelingValidationDiagnostic {
+                message: format!(
+                    "unknown eventmodeling frame reference '{}'",
+                    note.source_frame.text
+                ),
+                span: note.source_frame.span,
+            });
+        }
+    }
+    for gwt in &syntax.gwt_entities {
+        if !frame_types.contains_key(&gwt.source_frame.text) {
+            diagnostics.push(EventModelingValidationDiagnostic {
+                message: format!(
+                    "unknown eventmodeling frame reference '{}'",
+                    gwt.source_frame.text
+                ),
+                span: gwt.source_frame.span,
+            });
+        }
+        for statement in gwt.given.iter().chain(&gwt.when).chain(&gwt.then) {
+            if !model_entity_names.contains(statement.entity_reference.text.as_str()) {
+                diagnostics.push(EventModelingValidationDiagnostic {
+                    message: format!(
+                        "unknown eventmodeling model entity reference '{}'",
+                        statement.entity_reference.text
+                    ),
+                    span: statement.entity_reference.span,
+                });
+            }
+        }
+    }
+    syntax.validation_diagnostics = diagnostics;
 }
 
-fn starts_with_keyword(line: &str, keyword: &str) -> bool {
-    strip_keyword(line, keyword).is_some()
+fn eventmodeling_allowed_source_types(
+    target: &str,
+) -> Option<(&'static str, &'static str, &'static [&'static str])> {
+    match target {
+        "cmd" | "command" => Some(("command", "ui or processor", &["ui", "pcr", "processor"])),
+        "evt" | "event" => Some(("event", "command", &["cmd", "command"])),
+        "rmo" | "readmodel" => Some(("read model", "event", &["evt", "event"])),
+        "pcr" | "processor" => Some(("processor", "read model", &["rmo", "readmodel"])),
+        "ui" => Some(("ui", "read model", &["rmo", "readmodel"])),
+        _ => None,
+    }
 }
 
-fn trim_trailing_syntax(value: &str) -> &str {
-    value.trim_matches(|ch: char| ch == ',' || ch == ';')
+fn push_eventmodeling_frame_facts(
+    facts: &mut EditorSemanticFacts,
+    frame: &EventModelingFrameFacts,
+) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        frame.name_span,
+    ));
+    facts.push_symbol(
+        EditorSemanticSymbol::new(
+            frame.name.clone(),
+            Some("eventmodeling frame".to_string()),
+            EditorSemanticKind::Namespace,
+            frame.name_span,
+            frame.name_span,
+        )
+        .with_rename_policy(EditorRenamePolicy::EventModelingFrameId),
+    );
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        frame.model_entity_type.clone(),
+        Some("eventmodeling entity type".to_string()),
+        EditorSemanticKind::String,
+        frame.model_entity_type_span,
+        frame.model_entity_type_span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        frame.entity_identifier.clone(),
+        Some("eventmodeling entity identifier".to_string()),
+        EditorSemanticKind::String,
+        frame.entity_identifier_span,
+        frame.entity_identifier_span,
+    ));
+    for source in &frame.source_frames {
+        facts.push_symbol(
+            EditorSemanticSymbol::new(
+                source.text.clone(),
+                Some("eventmodeling source frame".to_string()),
+                EditorSemanticKind::Namespace,
+                source.span,
+                source.span,
+            )
+            .with_rename_policy(EditorRenamePolicy::EventModelingFrameId),
+        );
+    }
+    for (field, detail) in [
+        (&frame.data_reference, "eventmodeling data reference"),
+        (&frame.data_type, "eventmodeling data type"),
+        (&frame.data_inline_value, "eventmodeling inline data"),
+    ] {
+        if let Some(field) = field {
+            let symbol = if detail == "eventmodeling data reference" {
+                EditorSemanticSymbol::new(
+                    field.text.clone(),
+                    Some(detail.to_string()),
+                    EditorSemanticKind::Namespace,
+                    field.span,
+                    field.span,
+                )
+                .with_rename_policy(EditorRenamePolicy::EventModelingId)
+            } else {
+                EditorSemanticSymbol::payload(
+                    field.text.clone(),
+                    Some(detail.to_string()),
+                    EditorSemanticKind::String,
+                    field.span,
+                    field.span,
+                )
+            };
+            facts.push_symbol(symbol);
+        }
+    }
 }
 
-fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
-    Error::diagram_parse_fallback(meta.diagram_type.clone(), message.into())
+fn push_eventmodeling_data_facts(
+    facts: &mut EditorSemanticFacts,
+    data_entity: &EventModelingDataEntityFacts,
+) {
+    if !data_entity.name.text.is_empty() {
+        facts.push_symbol(
+            EditorSemanticSymbol::new(
+                data_entity.name.text.clone(),
+                Some("eventmodeling data entity".to_string()),
+                EditorSemanticKind::Namespace,
+                data_entity.name.span,
+                data_entity.name.span,
+            )
+            .with_rename_policy(EditorRenamePolicy::EventModelingId),
+        );
+    }
+    if let Some(data_type) = &data_entity.data_type {
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            data_type.text.clone(),
+            Some("eventmodeling data type".to_string()),
+            EditorSemanticKind::String,
+            data_type.span,
+            data_type.span,
+        ));
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        data_entity.block_span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        data_entity.block_text.clone(),
+        Some("eventmodeling data block".to_string()),
+        EditorSemanticKind::String,
+        data_entity.block_span,
+        data_entity.block_span,
+    ));
+}
+
+fn push_eventmodeling_note_facts(facts: &mut EditorSemanticFacts, note: &EventModelingNoteFacts) {
+    if !note.source_frame.text.is_empty() {
+        facts.push_symbol(
+            EditorSemanticSymbol::new(
+                note.source_frame.text.clone(),
+                Some("eventmodeling note source frame".to_string()),
+                EditorSemanticKind::Namespace,
+                note.source_frame.span,
+                note.source_frame.span,
+            )
+            .with_rename_policy(EditorRenamePolicy::EventModelingFrameId),
+        );
+    }
+    if let Some(data_type) = &note.data_type {
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            data_type.text.clone(),
+            Some("eventmodeling data type".to_string()),
+            EditorSemanticKind::String,
+            data_type.span,
+            data_type.span,
+        ));
+    }
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        note.block_span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        note.block_text.clone(),
+        Some("eventmodeling note block".to_string()),
+        EditorSemanticKind::String,
+        note.block_span,
+        note.block_span,
+    ));
+}
+
+fn push_eventmodeling_gwt_facts(facts: &mut EditorSemanticFacts, gwt: &EventModelingGwtFacts) {
+    facts.push_symbol(
+        EditorSemanticSymbol::new(
+            gwt.source_frame.text.clone(),
+            Some("eventmodeling gwt source frame".to_string()),
+            EditorSemanticKind::Namespace,
+            gwt.source_frame.span,
+            gwt.source_frame.span,
+        )
+        .with_rename_policy(EditorRenamePolicy::EventModelingFrameId),
+    );
+    for statement in gwt.given.iter().chain(&gwt.when).chain(&gwt.then) {
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            statement.model_entity_type.text.clone(),
+            Some("eventmodeling entity type".to_string()),
+            EditorSemanticKind::String,
+            statement.model_entity_type.span,
+            statement.model_entity_type.span,
+        ));
+        facts.push_symbol(
+            EditorSemanticSymbol::new(
+                statement.entity_reference.text.clone(),
+                Some("eventmodeling gwt entity reference".to_string()),
+                EditorSemanticKind::Object,
+                statement.entity_reference.span,
+                statement.entity_reference.span,
+            )
+            .with_rename_policy(EditorRenamePolicy::EventModelingId),
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, MermaidConfig, ParseMetadata, ParseOptions};
+    use crate::{
+        EditorSemanticCompleteness, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
+        ParseOptions,
+    };
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -615,6 +1546,7 @@ tf 03 evt Cart.ItemAdded ->> 01 ->> 02
             r#"eventmodeling
 tf 01 cmd AddItem { productId: 7 }
 tf 02 evt ItemAdded [[ItemAddedData]]
+tf 03 evt QuotedData `json`" { "ok": true } "
 
 data ItemAddedData {
   productId: 7
@@ -632,6 +1564,10 @@ data ItemAddedData {
             model.frames[1].data_reference.as_deref(),
             Some("ItemAddedData")
         );
+        assert_eq!(
+            model.frames[2].data_inline_value.as_deref(),
+            Some("\" { \"ok\": true } \"")
+        );
         assert_eq!(model.data_entities.len(), 1);
         assert!(
             model.data_entities[0]
@@ -641,11 +1577,112 @@ data ItemAddedData {
     }
 
     #[test]
+    fn combined_parse_constructs_once_and_preserves_all_projections() {
+        let text = concat!(
+            "eventmodeling\r\n",
+            "tf 01 cmd AddItem { productId: 7 }\r\n",
+            "tf 02 evt ItemAdded ->> 01 [[ItemAddedData]]\r\n",
+            "data ItemAddedData {\r\n",
+            "  productId: 7\r\n",
+            "}\r\n",
+        );
+        let expected_json = parse_eventmodeling(text, &meta()).unwrap();
+        let expected_facts = parse_eventmodeling_editor_facts(text, &meta());
+        let expected_model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
+
+        reset_eventmodeling_syntax_construction_count();
+        let (json, facts) = parse_eventmodeling_json_and_editor_facts(text, &meta()).unwrap();
+
+        assert_eq!(eventmodeling_syntax_construction_count(), 1);
+        assert_eq!(json, expected_json);
+        assert_eq!(facts, expected_facts);
+        assert_eq!(
+            json["frames"],
+            serde_json::to_value(&expected_model.frames).unwrap()
+        );
+        assert_eq!(
+            json["dataEntities"],
+            serde_json::to_value(&expected_model.data_entities).unwrap()
+        );
+
+        let block_start = text.find("{\r\n").unwrap();
+        let block_end = text.rfind('}').unwrap() + 1;
+        let block = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.detail.as_deref() == Some("eventmodeling data block"))
+            .expect("missing multiline data block fact");
+        assert_eq!(block.span, SourceSpan::new(block_start, block_end));
+        assert_eq!(block.selection, block.span);
+        assert_eq!(block.name, &text[block_start..block_end]);
+    }
+
+    #[test]
+    fn data_block_closing_brace_accepts_pinned_trailing_whitespace() {
+        for suffix in ["  \n", "\t"] {
+            let text = format!("eventmodeling\ndata Payload {{\nvalue\n}}{suffix}");
+            let block_start = text.find('{').expect("opening brace");
+            let block_end = text.rfind('}').expect("closing brace") + 1;
+
+            let (json, facts) = parse_eventmodeling_json_and_editor_facts(&text, &meta())
+                .expect("EM_DATA_BLOCK accepts whitespace after its closing brace");
+            let typed = parse_eventmodeling_model_for_render(&text, &meta())
+                .expect("typed projection accepts the same block");
+            let block = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("eventmodeling data block"))
+                .expect("data block semantic fact");
+
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert_eq!(json["dataEntities"][0]["name"], "Payload");
+            assert_eq!(typed.data_entities[0].name, "Payload");
+            assert_eq!(block.span, SourceSpan::new(block_start, block_end));
+            assert_eq!(block.name, text[block_start..block_end]);
+        }
+    }
+
+    #[test]
+    fn incomplete_data_block_recovers_from_the_single_construction() {
+        let text = concat!(
+            "eventmodeling\n",
+            "tf 01 cmd AddItem\n",
+            "data Broken {\n",
+            "  productId: 7\n",
+        );
+        let Error::DiagramParse { diagnostic, .. } =
+            parse_eventmodeling(text, &meta()).unwrap_err()
+        else {
+            panic!("expected eventmodeling parse error");
+        };
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(text.len(), text.len()))
+        );
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
+        );
+
+        reset_eventmodeling_syntax_construction_count();
+        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        assert_eq!(eventmodeling_syntax_construction_count(), 1);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "01"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Broken"));
+        let block_start = text.find('{').unwrap();
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.detail.as_deref() == Some("eventmodeling data block")
+                && symbol.span == SourceSpan::new(block_start, text.len())
+        }));
+    }
+
+    #[test]
     fn parse_eventmodeling_editor_facts_expose_parser_backed_spans() {
         let engine = Engine::new();
         let text = r#"eventmodeling
 tf 01 cmd AddItem { productId: 7 }
-tf 02 evt ItemAdded [[ItemAddedData]] ->> 01
+tf 02 evt ItemAdded ->> 01 [[ItemAddedData]]
 
 data ItemAddedData {
   productId: 7
@@ -674,11 +1711,149 @@ data ItemAddedData {
                 .any(|symbol| symbol.name == "ItemAdded")
         );
         assert!(facts.symbols.iter().any(|symbol| symbol.name == "AddItem"));
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "01" && symbol.rename_policy == EditorRenamePolicy::EventModelingFrameId
+        }));
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "ItemAddedData"
+                && symbol.rename_policy == EditorRenamePolicy::EventModelingId
+        }));
 
         let frame_start = text.find("01").unwrap();
         assert!(facts.expected_syntax.iter().any(|expected| {
             expected.kind == EditorExpectedSyntaxKind::Payload
                 && expected.span == SourceSpan::new(frame_start, frame_start + "01".len())
         }));
+    }
+
+    #[test]
+    fn parses_complete_pinned_langium_grammar_from_one_source() {
+        let text = r#"eventmodeling
+title Checkout flow
+accTitle: Checkout accessibility title
+accDescr {
+  Checkout accessibility description
+}
+entity CartUpdated
+entity ProductChanged
+tf 001 cmd UpdateCart
+tf 002 evt Cart.Updated ->> 001 [[CartData]] `json`{ "ok": true }
+data CartData `json` {
+  { "ok": true }
+}
+note 002 `md` {
+  Cart changed
+}
+gwt 002
+  given
+    evt CartUpdated
+  when
+    cmd ProductChanged
+  then
+    evt CartUpdated
+"#;
+
+        let model = parse_eventmodeling_model_for_render(text, &meta()).unwrap();
+        assert_eq!(model.title.as_deref(), Some("Checkout flow"));
+        assert_eq!(
+            model.acc_title.as_deref(),
+            Some("Checkout accessibility title")
+        );
+        assert_eq!(
+            model.acc_descr.as_deref(),
+            Some("Checkout accessibility description")
+        );
+        assert_eq!(model.frames.len(), 2);
+        assert_eq!(model.data_entities.len(), 1);
+
+        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+        for (name, detail) in [
+            ("CartUpdated", "eventmodeling model entity"),
+            ("CartData", "eventmodeling data entity"),
+            ("002", "eventmodeling note source frame"),
+            ("ProductChanged", "eventmodeling gwt entity reference"),
+        ] {
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == name && symbol.detail.as_deref() == Some(detail)
+                })
+            );
+        }
+        for directive in ["title", "accTitle", "accDescr"] {
+            assert!(
+                facts
+                    .directive_prefixes
+                    .iter()
+                    .any(|item| item == directive)
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_tokens_outside_the_pinned_langium_grammar_with_exact_spans() {
+        for (statement, invalid) in [
+            ("tf 1000 evt Started", "1000"),
+            ("tf xx evt Started", "xx"),
+            ("tf 01 invalid Started", "invalid"),
+            ("tf 01 evt Product..Started", "Product..Started"),
+            ("data Cart `yaml` {\n}\n", "yaml"),
+            ("unknown value", "unknown value"),
+        ] {
+            let text = format!("eventmodeling\n{statement}\n");
+            let Error::DiagramParse { diagnostic, .. } =
+                parse_eventmodeling(&text, &meta()).unwrap_err()
+            else {
+                panic!("expected eventmodeling parse diagnostic for {statement:?}");
+            };
+            let start = text.find(invalid).unwrap();
+            assert_eq!(
+                diagnostic.span(),
+                Some(SourceSpan::new(start, start + invalid.len())),
+                "statement: {statement:?}"
+            );
+            assert_eq!(
+                diagnostic.span_kind(),
+                ParseDiagnosticSpanKind::Exact,
+                "statement: {statement:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn reports_link_and_source_type_validation_without_rejecting_render_semantics() {
+        let text = r#"eventmodeling
+entity KnownEvent
+tf 01 rmo ReadModel
+tf 02 evt Changed ->> 01 [[MissingData]]
+note 99 {
+  unresolved frame
+}
+gwt 02
+  given
+    evt MissingEntity
+  then
+    evt KnownEvent
+"#;
+
+        parse_eventmodeling(text, &meta()).unwrap();
+        let facts = parse_eventmodeling_editor_facts(text, &meta());
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        for expected in [
+            "event can only receive input from a command",
+            "unknown eventmodeling data reference 'MissingData'",
+            "unknown eventmodeling frame reference '99'",
+            "unknown eventmodeling model entity reference 'MissingEntity'",
+        ] {
+            assert!(
+                facts
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains(expected)),
+                "missing validation diagnostic containing {expected:?}: {:?}",
+                facts.diagnostics
+            );
+        }
     }
 }

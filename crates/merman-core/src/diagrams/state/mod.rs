@@ -13,6 +13,10 @@ pub use render_model::{
 
 pub use parse::{parse_state, parse_state_editor_facts, parse_state_model_for_render};
 
+pub(crate) use parse::parse_state_json_and_editor_facts;
+#[cfg(test)]
+pub(crate) use parse::{reset_state_syntax_construction_count, state_syntax_construction_count};
+
 pub(crate) use ast::{ClickStmt, Note, RelationStmt, StateStmt, Stmt};
 
 lalrpop_util::lalrpop_mod!(

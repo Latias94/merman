@@ -10,6 +10,7 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
     ParseMetadata, Result, SourceSpan,
+    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
 };
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -170,6 +171,7 @@ enum GitGraphOperation {
 struct GitGraphCommand {
     operation: GitGraphOperation,
     editor_facts: Vec<GitGraphEditorFact>,
+    statement_span: SourceSpan,
 }
 
 struct GitGraphCommandParseError {
@@ -865,7 +867,7 @@ fn parse_gitgraph_int(value: &SpannedValue) -> Result<i64> {
 
 impl GitGraphCommand {
     fn apply(&self, db: &mut GitGraphDb, effective_config: &MermaidConfig) -> Result<()> {
-        match &self.operation {
+        let result = match &self.operation {
             GitGraphOperation::Commit(commit) => {
                 db.commit(commit.clone(), effective_config);
                 Ok(())
@@ -876,7 +878,8 @@ impl GitGraphCommand {
             GitGraphOperation::CherryPick(cherry_pick) => {
                 db.cherry_pick(cherry_pick.clone(), effective_config)
             }
-        }
+        };
+        result.map_err(|error| error.with_exact_span_if_missing(self.statement_span))
     }
 
     fn push_editor_facts(&self, facts: &mut EditorSemanticFacts) {
@@ -1297,6 +1300,7 @@ fn parse_git_graph_command(
     Ok(Some(GitGraphCommand {
         operation,
         editor_facts,
+        statement_span,
     }))
 }
 
@@ -1384,7 +1388,11 @@ fn push_gitgraph_payload_fact(
 pub fn parse_git_graph_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
     match parse_git_graph_semantic_source(code, meta) {
         Ok(source) => source.editor_facts,
-        Err(_) => scan_git_graph_editor_facts(code),
+        Err(error) => ensure_editor_recovery_from_error(
+            scan_git_graph_editor_facts(code),
+            &error,
+            editor_recovery_fallback_span(code),
+        ),
     }
 }
 
@@ -2011,6 +2019,43 @@ merge feature id:"M1"
             diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
                 && diagnostic.span == Some(SourceSpan::new(start, start + invalid.len()))
                 && diagnostic.message.contains("unexpected checkout argument")
+        }));
+    }
+
+    #[test]
+    fn gitgraph_editor_recovery_reports_database_validation_errors() {
+        let text = concat!(
+            "gitGraph\r\n",
+            "commit id:\"C1\"\r\n",
+            "  checkout missing  \r\n",
+        );
+        let invalid = "checkout missing";
+        let start = text.find(invalid).unwrap();
+        let expected_span = SourceSpan::new(start, start + invalid.len());
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect_err("checkout of an unknown branch must fail strict parsing");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected gitGraph parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), Some(expected_span));
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", text, ParseOptions::strict())
+            .unwrap()
+            .expect("gitGraph editor recovery facts");
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "C1"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "missing"));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(expected_span)
+                && diagnostic.message.contains("not yet created")
         }));
     }
 

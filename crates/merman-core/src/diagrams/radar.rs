@@ -6,6 +6,7 @@ use crate::diagrams::langium_common::{
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
 };
 use serde_json::{Map, Value, json};
 
@@ -26,6 +27,7 @@ struct CurveAst {
     name: SpannedText,
     label: Option<SpannedText>,
     entries: Vec<EntryAst>,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -152,12 +154,14 @@ impl RadarDb {
         self.curves = curves
             .into_iter()
             .map(|curve| {
+                let curve_span = curve.span;
                 let label = curve
                     .label
                     .as_ref()
                     .map(|label| label.text.clone())
                     .unwrap_or_else(|| curve.name.text.clone());
-                let entries = compute_curve_entries(&axes, &curve.entries)?;
+                let entries = compute_curve_entries(&axes, &curve.entries)
+                    .map_err(|error| error.with_exact_span_if_missing(curve_span))?;
                 Ok(RadarRenderCurve {
                     name: curve.name.text,
                     label,
@@ -469,7 +473,11 @@ fn scan_radar_editor_facts(code: &str) -> EditorSemanticFacts {
 pub fn parse_radar_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
     match parse_radar_semantic_source(code, meta) {
         Ok(source) => source.editor_facts,
-        Err(_) => scan_radar_editor_facts(code),
+        Err(error) => ensure_editor_recovery_from_error(
+            scan_radar_editor_facts(code),
+            &error,
+            editor_recovery_fallback_span(code),
+        ),
     }
 }
 
@@ -854,6 +862,7 @@ fn parse_curve(input: &str, input_start: usize) -> std::result::Result<CurveAst,
         name,
         label,
         entries,
+        span: SourceSpan::new(input_start, input_start + input.len()),
     })
 }
 
@@ -1455,6 +1464,42 @@ curve
             diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
                 && diagnostic.span == Some(SourceSpan::new(start, start + invalid.len()))
                 && diagnostic.message.contains("expected entry number")
+        }));
+    }
+
+    #[test]
+    fn radar_editor_recovery_reports_curve_validation_errors() {
+        let text = concat!(
+            "radar-beta\r\n",
+            "axis A[\"Axis A\"], B[\"Axis B\"]\r\n",
+            "  curve sample{A: 1}  \r\n",
+        );
+        let invalid = "sample{A: 1}";
+        let start = text.find(invalid).unwrap();
+        let expected_span = SourceSpan::new(start, start + invalid.len());
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect_err("a detailed curve missing an axis must fail strict parsing");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected radar parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), Some(expected_span));
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("radar", text, ParseOptions::strict())
+            .unwrap()
+            .expect("radar editor recovery facts");
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "sample"));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(expected_span)
+                && diagnostic.message.contains("Missing entry for axis Axis B")
         }));
     }
 

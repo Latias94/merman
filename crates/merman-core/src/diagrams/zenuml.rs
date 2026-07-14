@@ -1,3 +1,6 @@
+use crate::diagrams::sequence::{
+    SequenceActionBuilder, SequenceControlKind, SequenceMessageKind, SequenceParticipantKind,
+};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
@@ -8,22 +11,20 @@ use serde_json::Value;
 ///
 /// Upstream Mermaid integrates ZenUML via the `mermaid-zenuml` external diagram package, which
 /// uses `@zenuml/core` in the browser. `merman` is headless and pure Rust, so for now we implement
-/// a conservative compatibility mode: a small ZenUML subset is translated into Mermaid
-/// `sequenceDiagram` syntax and then parsed by the existing sequence parser.
+/// a conservative compatibility mode: a small ZenUML subset lowers directly into the Sequence
+/// semantic action model.
 ///
-/// Rendering still goes through that translation seam, while editor facts are collected directly
-/// from the original ZenUML source so LSP ranges stay source-mapped for the supported subset.
+/// Rendering and editor facts share one source pass so the supported subset and LSP ranges cannot
+/// drift into separate grammars.
 pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let sequence_code = translate_zenuml_to_sequence(code, meta)?;
-    crate::diagrams::sequence::parse_sequence(&sequence_code, meta)
+    Ok(parse_zenuml_semantic_source(code, meta)?.compat_json(meta))
 }
 
 pub fn parse_zenuml_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<crate::diagrams::sequence::SequenceDiagramRenderModel> {
-    let sequence_code = translate_zenuml_to_sequence(code, meta)?;
-    crate::diagrams::sequence::parse_sequence_model_for_render(&sequence_code, meta)
+    Ok(parse_zenuml_semantic_source(code, meta)?.model)
 }
 
 #[derive(Debug, Clone)]
@@ -32,122 +33,97 @@ struct ZenumlSpannedText {
     span: SourceSpan,
 }
 
-pub fn parse_zenuml_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = collect_zenuml_editor_facts_from_source(code);
-    if let Err(err) = translate_zenuml_to_sequence(code, meta) {
-        facts.mark_recovered_with_diagnostic(
-            format!("zenuml parser recovered after parse error: {err}"),
-            Some(SourceSpan::new(0, code.len())),
-        );
-    }
-    facts
+struct ZenumlSemanticSource {
+    model: crate::diagrams::sequence::SequenceDiagramRenderModel,
+    editor_facts: EditorSemanticFacts,
 }
 
-fn collect_zenuml_editor_facts_from_source(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut offset = 0usize;
-    let mut header_seen = false;
+struct ZenumlSemanticFailure {
+    error: Box<Error>,
+    message: String,
+    span: Option<SourceSpan>,
+    editor_facts: Box<EditorSemanticFacts>,
+}
 
-    for segment in code.split_inclusive('\n') {
-        let line_start = offset;
-        offset += segment.len();
-        let line = segment.trim_end_matches(['\n', '\r']);
-        let mut rest = line.trim_start();
-        if rest.is_empty() {
-            continue;
-        }
+impl ZenumlSemanticFailure {
+    fn into_editor_facts(self) -> EditorSemanticFacts {
+        let mut editor_facts = *self.editor_facts;
+        editor_facts.mark_recovered_from_parse_error(
+            format!(
+                "zenuml parser recovered after parse error: {}",
+                self.message
+            ),
+            self.span,
+        );
+        editor_facts
+    }
+}
 
-        if !header_seen && rest.to_ascii_lowercase().starts_with("zenuml") {
-            header_seen = true;
-            continue;
-        }
-        header_seen = true;
+struct ZenumlTranslation {
+    sequence: SequenceActionBuilder,
+    editor_facts: EditorSemanticFacts,
+    first_error: Option<ZenumlSyntaxDiagnostic>,
+}
 
-        while let Some(after) = rest.strip_prefix('}') {
-            rest = after.trim_start();
-        }
-        if rest.is_empty() || rest.starts_with("//") {
-            continue;
-        }
-        if rest.eq_ignore_ascii_case("@return") || rest.eq_ignore_ascii_case("@reply") {
-            continue;
-        }
+struct ZenumlSyntaxDiagnostic {
+    message: String,
+    span: SourceSpan,
+}
 
-        let stmt_start = line_start + line.find(rest).unwrap_or(0);
+impl ZenumlSemanticSource {
+    fn compat_json(&self, meta: &ParseMetadata) -> Value {
+        self.model.to_compat_json(&meta.diagram_type)
+    }
+}
 
-        if let Some(value) = zenuml_value_after_keyword(rest, "title", stmt_start) {
-            facts.push_directive_prefix("title");
-            push_zenuml_payload(
-                &mut facts,
-                value,
-                "zenuml title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = zenuml_value_after_keyword_ci(rest, "accTitle", stmt_start) {
-            facts.push_directive_prefix("accTitle");
-            push_zenuml_payload(
-                &mut facts,
-                value,
-                "zenuml accessibility title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = zenuml_value_after_keyword_ci(rest, "accDescr", stmt_start) {
-            facts.push_directive_prefix("accDescr");
-            push_zenuml_payload(
-                &mut facts,
-                value,
-                "zenuml accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
+pub(crate) fn parse_zenuml_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let source = parse_zenuml_semantic_source(code, meta)?;
+    let compat = source.compat_json(meta);
+    Ok((compat, source.editor_facts))
+}
 
-        if push_zenuml_assignment_facts(&mut facts, rest, stmt_start) {
-            continue;
-        }
+pub fn parse_zenuml_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    match construct_zenuml_semantic_source(code, meta) {
+        Ok(source) => source.editor_facts,
+        Err(failure) => failure.into_editor_facts(),
+    }
+}
 
-        let rest_no_brace = strip_zenuml_trailing_open_brace(rest).unwrap_or(rest);
-        if push_zenuml_block_or_call_facts(&mut facts, rest_no_brace.trim(), stmt_start).is_some() {
-            continue;
-        }
+fn parse_zenuml_semantic_source(code: &str, meta: &ParseMetadata) -> Result<ZenumlSemanticSource> {
+    construct_zenuml_semantic_source(code, meta).map_err(|failure| *failure.error)
+}
 
-        if let Some(created) = parse_zenuml_creation(rest, stmt_start) {
-            push_zenuml_entity(
-                &mut facts,
-                created,
-                "zenuml participant",
-                EditorSemanticKind::Event,
-            );
-            push_zenuml_payload_tail(&mut facts, rest, stmt_start, "zenuml creation payload");
-            continue;
-        }
+fn construct_zenuml_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<ZenumlSemanticSource, ZenumlSemanticFailure> {
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("zenuml");
 
-        if push_zenuml_participant_decl_facts(&mut facts, rest, stmt_start) {
-            continue;
-        }
-
-        if push_zenuml_message_facts(&mut facts, rest, stmt_start) {
-            continue;
-        }
-
-        if let Some(value) = zenuml_value_after_keyword(rest, "return", stmt_start) {
-            push_zenuml_payload(
-                &mut facts,
-                value,
-                "zenuml return payload",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-
-        facts.mark_recovered();
+    let ZenumlTranslation {
+        sequence,
+        editor_facts,
+        first_error,
+    } = translate_zenuml_syntax(code);
+    if let Some(diagnostic) = first_error {
+        return Err(zenuml_failure(
+            meta,
+            diagnostic.message,
+            Some(diagnostic.span),
+            editor_facts,
+        ));
     }
 
-    facts
+    match sequence.into_render_model(meta) {
+        Ok(model) => Ok(ZenumlSemanticSource {
+            model,
+            editor_facts,
+        }),
+        Err(message) => Err(zenuml_failure(meta, message, None, editor_facts)),
+    }
 }
 
 fn zenuml_value_after_keyword(
@@ -155,9 +131,14 @@ fn zenuml_value_after_keyword(
     keyword: &str,
     stmt_start: usize,
 ) -> Option<ZenumlSpannedText> {
-    let rest = line.strip_prefix(keyword)?;
-    let rest = rest.strip_prefix(|ch: char| ch.is_whitespace())?;
-    zenuml_trimmed_spanned(rest, stmt_start + line.find(rest).unwrap_or(0))
+    let after_keyword = line.strip_prefix(keyword)?;
+    let separator_len = after_keyword
+        .chars()
+        .next()
+        .filter(|ch| ch.is_whitespace())?
+        .len_utf8();
+    let rest = &after_keyword[separator_len..];
+    zenuml_trimmed_spanned(rest, stmt_start + keyword.len() + separator_len)
 }
 
 fn zenuml_value_after_keyword_ci(
@@ -172,224 +153,212 @@ fn zenuml_value_after_keyword_ci(
     zenuml_value_after_keyword(line, prefix, stmt_start)
 }
 
-fn strip_zenuml_trailing_open_brace(line: &str) -> Option<&str> {
-    line.trim_end().strip_suffix('{').map(str::trim_end)
-}
-
-fn push_zenuml_block_or_call_facts(
-    facts: &mut EditorSemanticFacts,
-    line: &str,
-    stmt_start: usize,
-) -> Option<()> {
-    for keyword in [
-        "while", "for", "foreach", "forEach", "loop", "opt", "par", "if", "else if", "catch",
-        "finally",
-    ] {
-        if starts_with_zenuml_word_ci(line, keyword) {
-            let detail = format!("zenuml {keyword} payload");
-            push_zenuml_payload_tail(facts, line, stmt_start, &detail);
-            return Some(());
-        }
-    }
-    if starts_with_zenuml_word_ci(line, "else") || starts_with_zenuml_word_ci(line, "try") {
-        return Some(());
-    }
-
-    if let Some((actor, method)) = parse_zenuml_method_call(line, stmt_start) {
-        push_zenuml_entity(
-            facts,
-            actor,
-            "zenuml participant reference",
-            EditorSemanticKind::Event,
-        );
-        push_zenuml_payload(facts, method, "zenuml message", EditorSemanticKind::String);
-        return Some(());
-    }
-
-    None
-}
-
-fn starts_with_zenuml_word_ci(haystack: &str, word: &str) -> bool {
-    haystack
-        .get(0..word.len())
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(word))
-        && haystack
-            .get(word.len()..word.len() + 1)
-            .is_none_or(|c| c.chars().all(|ch| ch.is_ascii_whitespace() || ch == '('))
-}
-
 fn parse_zenuml_creation(line: &str, stmt_start: usize) -> Option<ZenumlSpannedText> {
     let rest = line.strip_prefix("new ")?;
-    let rest_start = stmt_start + line.find(rest).unwrap_or(0);
-    parse_zenuml_identifier(rest, rest_start)
+    parse_zenuml_identifier(rest, stmt_start + "new ".len())
 }
 
-fn push_zenuml_participant_decl_facts(
-    facts: &mut EditorSemanticFacts,
-    line: &str,
-    stmt_start: usize,
-) -> bool {
+struct ZenumlParticipantDecl {
+    sequence_id: String,
+    sequence_description: Option<String>,
+    sequence_kind: SequenceParticipantKind,
+    entity: ZenumlSpannedText,
+    label: Option<ZenumlSpannedText>,
+}
+
+fn parse_zenuml_participant_decl(line: &str, stmt_start: usize) -> Option<ZenumlParticipantDecl> {
     if let Some(rest) = line.strip_prefix('@') {
         let kind_len = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let kind = &rest[..kind_len];
         let after_kind = &rest[kind_len..];
-        let Some(name) = zenuml_trimmed_spanned(after_kind, stmt_start + 1 + kind_len) else {
-            return false;
+        let name = zenuml_trimmed_spanned(after_kind, stmt_start + 1 + kind_len)?;
+        let sequence_kind = if kind.eq_ignore_ascii_case("actor") {
+            SequenceParticipantKind::Actor
+        } else {
+            SequenceParticipantKind::Participant
         };
-        push_zenuml_entity(facts, name, "zenuml participant", EditorSemanticKind::Event);
-        return true;
+        return Some(ZenumlParticipantDecl {
+            sequence_id: name.text.clone(),
+            sequence_description: None,
+            sequence_kind,
+            entity: name,
+            label: None,
+        });
     }
 
     if let Some((id, label)) = split_zenuml_alias_decl(line, stmt_start) {
-        push_zenuml_entity(
-            facts,
-            id,
-            "zenuml participant alias",
-            EditorSemanticKind::Event,
-        );
-        push_zenuml_payload(
-            facts,
-            label,
-            "zenuml participant label",
-            EditorSemanticKind::String,
-        );
-        return true;
+        return Some(ZenumlParticipantDecl {
+            sequence_id: label.text.clone(),
+            sequence_description: Some(id.text.clone()),
+            sequence_kind: SequenceParticipantKind::Participant,
+            entity: id,
+            label: Some(label),
+        });
     }
 
     if line
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
     {
-        push_zenuml_entity(
-            facts,
-            ZenumlSpannedText {
+        return Some(ZenumlParticipantDecl {
+            sequence_id: line.to_string(),
+            sequence_description: None,
+            sequence_kind: SequenceParticipantKind::Participant,
+            entity: ZenumlSpannedText {
                 text: line.to_string(),
                 span: SourceSpan::new(stmt_start, stmt_start + line.len()),
             },
-            "zenuml participant",
-            EditorSemanticKind::Event,
-        );
-        return true;
+            label: None,
+        });
     }
 
-    false
+    None
+}
+
+fn push_zenuml_participant_facts(
+    facts: &mut EditorSemanticFacts,
+    participant: &ZenumlParticipantDecl,
+) {
+    let detail = if participant.label.is_some() {
+        "zenuml participant alias"
+    } else {
+        "zenuml participant"
+    };
+    push_zenuml_entity(
+        facts,
+        &participant.entity,
+        detail,
+        EditorSemanticKind::Event,
+    );
+    if let Some(label) = participant.label.as_ref() {
+        push_zenuml_payload(
+            facts,
+            label,
+            "zenuml participant label",
+            EditorSemanticKind::String,
+        );
+    }
 }
 
 fn split_zenuml_alias_decl(
     line: &str,
     stmt_start: usize,
 ) -> Option<(ZenumlSpannedText, ZenumlSpannedText)> {
-    let (id_raw, label_raw) = line.split_once(" as ")?;
+    let separator = line.find(" as ")?;
+    let id_raw = &line[..separator];
+    let label_start = separator + " as ".len();
+    let label_raw = &line[label_start..];
     let id = zenuml_trimmed_spanned(id_raw, stmt_start)?;
-    let label_start = stmt_start + line.find(label_raw).unwrap_or(line.len());
-    let label = zenuml_trimmed_spanned(label_raw, label_start)?;
+    let label = zenuml_trimmed_spanned(label_raw, stmt_start + label_start)?;
     Some((id, label))
 }
 
-fn push_zenuml_assignment_facts(
-    facts: &mut EditorSemanticFacts,
-    line: &str,
-    stmt_start: usize,
-) -> bool {
-    let Some(eq) = line.find('=') else {
-        return false;
-    };
+struct ZenumlAssignment {
+    target: ZenumlSpannedText,
+    actor: ZenumlSpannedText,
+    method: ZenumlSpannedText,
+}
+
+fn parse_zenuml_assignment(line: &str, stmt_start: usize) -> Option<ZenumlAssignment> {
+    let eq = line.find('=')?;
     let rhs = line[eq + 1..].trim_start();
     let rhs_start = stmt_start + eq + 1 + line[eq + 1..].len() - rhs.len();
-    let Some((actor, method)) = parse_zenuml_method_call(rhs, rhs_start) else {
-        return false;
-    };
-    push_zenuml_entity(
-        facts,
+    let (actor, method) = parse_zenuml_method_call(rhs, rhs_start)?;
+    let var = line[..eq].split_whitespace().last()?;
+    let rel = line[..eq].rfind(var)?;
+    Some(ZenumlAssignment {
+        target: ZenumlSpannedText {
+            text: var.to_string(),
+            span: SourceSpan::new(stmt_start + rel, stmt_start + rel + var.len()),
+        },
         actor,
+        method,
+    })
+}
+
+fn push_zenuml_assignment_facts(facts: &mut EditorSemanticFacts, assignment: &ZenumlAssignment) {
+    push_zenuml_entity(
+        facts,
+        &assignment.actor,
         "zenuml participant reference",
         EditorSemanticKind::Event,
     );
-    push_zenuml_payload(facts, method, "zenuml message", EditorSemanticKind::String);
-    if let Some(var) = line[..eq].split_whitespace().last()
-        && let Some(rel) = line[..eq].rfind(var)
-    {
-        push_zenuml_payload(
-            facts,
-            ZenumlSpannedText {
-                text: var.to_string(),
-                span: SourceSpan::new(stmt_start + rel, stmt_start + rel + var.len()),
-            },
-            "zenuml assignment target",
-            EditorSemanticKind::Variable,
-        );
-    }
-    true
+    push_zenuml_payload(
+        facts,
+        &assignment.method,
+        "zenuml message",
+        EditorSemanticKind::String,
+    );
+    push_zenuml_payload(
+        facts,
+        &assignment.target,
+        "zenuml assignment target",
+        EditorSemanticKind::Variable,
+    );
 }
 
-fn push_zenuml_message_facts(
-    facts: &mut EditorSemanticFacts,
-    line: &str,
-    stmt_start: usize,
-) -> bool {
-    let Some((lhs, label)) = line
-        .split_once(':')
-        .map_or(Some((line, None)), |(a, b)| Some((a, Some(b))))
-    else {
-        return false;
+struct ZenumlMessage {
+    from: ZenumlSpannedText,
+    to: ZenumlSpannedText,
+    label: Option<ZenumlSpannedText>,
+    reply: bool,
+}
+
+fn parse_zenuml_message(line: &str, stmt_start: usize) -> Option<ZenumlMessage> {
+    let (lhs, label) = if let Some(colon) = line.find(':') {
+        (
+            &line[..colon],
+            zenuml_trimmed_spanned(&line[colon + 1..], stmt_start + colon + 1),
+        )
+    } else {
+        (line, None)
     };
 
-    let Some((from_raw, arrow, to_raw)) = split_zenuml_arrow(lhs) else {
-        return false;
+    let (arrow_start, arrow_len, reply) = if let Some(index) = lhs.find("-->") {
+        (index, "-->".len(), true)
+    } else {
+        let index = lhs.find("->")?;
+        (index, "->".len(), false)
     };
-    let Some(from) = zenuml_trimmed_spanned(from_raw, stmt_start + lhs.find(from_raw).unwrap_or(0))
-    else {
-        return false;
-    };
-    let to_start = stmt_start
-        + lhs
-            .find(to_raw)
-            .unwrap_or(from.span.end.saturating_sub(stmt_start));
-    let Some(to) = zenuml_trimmed_spanned(to_raw, to_start) else {
-        return false;
-    };
-    if arrow != "->" && arrow != "-->" {
-        return false;
-    }
-
-    push_zenuml_entity(
-        facts,
+    let from = zenuml_trimmed_spanned(&lhs[..arrow_start], stmt_start)?;
+    let to_start = arrow_start + arrow_len;
+    let to = zenuml_trimmed_spanned(&lhs[to_start..], stmt_start + to_start)?;
+    Some(ZenumlMessage {
         from,
+        to,
+        label,
+        reply,
+    })
+}
+
+fn push_zenuml_message_facts(facts: &mut EditorSemanticFacts, message: &ZenumlMessage) {
+    push_zenuml_entity(
+        facts,
+        &message.from,
         "zenuml participant reference",
         EditorSemanticKind::Event,
     );
     push_zenuml_entity(
         facts,
-        to,
+        &message.to,
         "zenuml participant reference",
         EditorSemanticKind::Event,
     );
-    if let Some(label) = label {
-        let label_start = stmt_start + line.find(label).unwrap_or(line.len());
-        if let Some(label) = zenuml_trimmed_spanned(label, label_start) {
-            push_zenuml_payload(facts, label, "zenuml message", EditorSemanticKind::String);
-        }
+    if let Some(label) = message.label.as_ref() {
+        push_zenuml_payload(facts, label, "zenuml message", EditorSemanticKind::String);
     }
-    true
-}
-
-fn split_zenuml_arrow(lhs: &str) -> Option<(&str, &str, &str)> {
-    if let Some((from, to)) = lhs.split_once("-->") {
-        return Some((from, "-->", to));
-    }
-    if let Some((from, to)) = lhs.split_once("->") {
-        return Some((from, "->", to));
-    }
-    None
 }
 
 fn parse_zenuml_method_call(
     line: &str,
     stmt_start: usize,
 ) -> Option<(ZenumlSpannedText, ZenumlSpannedText)> {
-    let (actor_raw, method_raw) = line.split_once('.')?;
+    let separator = line.find('.')?;
+    let actor_raw = &line[..separator];
+    let method_start = separator + '.'.len_utf8();
+    let method_raw = &line[method_start..];
     let actor = zenuml_trimmed_spanned(actor_raw, stmt_start)?;
-    let method_start = stmt_start + line.find(method_raw).unwrap_or(line.len());
-    let method = zenuml_trimmed_spanned(method_raw, method_start)?;
+    let method = zenuml_trimmed_spanned(method_raw, stmt_start + method_start)?;
     Some((actor, method))
 }
 
@@ -428,7 +397,7 @@ fn push_zenuml_payload_tail(
     if let Some(payload) =
         zenuml_trimmed_spanned(&line[payload_start..], stmt_start + payload_start)
     {
-        push_zenuml_payload(facts, payload, detail, EditorSemanticKind::String);
+        push_zenuml_payload(facts, &payload, detail, EditorSemanticKind::String);
     }
 }
 
@@ -446,7 +415,7 @@ fn zenuml_trimmed_spanned(raw: &str, raw_start: usize) -> Option<ZenumlSpannedTe
 
 fn push_zenuml_entity(
     facts: &mut EditorSemanticFacts,
-    text: ZenumlSpannedText,
+    text: &ZenumlSpannedText,
     detail: &str,
     kind: EditorSemanticKind,
 ) {
@@ -458,7 +427,7 @@ fn push_zenuml_entity(
         text.span,
     ));
     facts.push_symbol(EditorSemanticSymbol::new(
-        text.text,
+        text.text.clone(),
         Some(detail.to_string()),
         kind,
         text.span,
@@ -468,7 +437,7 @@ fn push_zenuml_entity(
 
 fn push_zenuml_payload(
     facts: &mut EditorSemanticFacts,
-    text: ZenumlSpannedText,
+    text: &ZenumlSpannedText,
     detail: &str,
     kind: EditorSemanticKind,
 ) {
@@ -480,7 +449,7 @@ fn push_zenuml_payload(
         text.span,
     ));
     facts.push_symbol(EditorSemanticSymbol::payload(
-        text.text,
+        text.text.clone(),
         Some(detail.to_string()),
         kind,
         text.span,
@@ -488,8 +457,42 @@ fn push_zenuml_payload(
     ));
 }
 
-fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<String> {
-    let mut out: Vec<String> = vec!["sequenceDiagram".to_string()];
+fn record_zenuml_syntax_error(
+    first_error: &mut Option<ZenumlSyntaxDiagnostic>,
+    statement: &str,
+    statement_start: usize,
+) {
+    if first_error.is_none() {
+        *first_error = Some(ZenumlSyntaxDiagnostic {
+            message: format!("unsupported zenuml statement: {statement}"),
+            span: SourceSpan::new(statement_start, statement_start + statement.len()),
+        });
+    }
+}
+
+fn zenuml_failure(
+    meta: &ParseMetadata,
+    message: impl Into<String>,
+    span: Option<SourceSpan>,
+    editor_facts: EditorSemanticFacts,
+) -> ZenumlSemanticFailure {
+    let message = message.into();
+    let error = match span {
+        Some(span) => Error::diagram_parse_exact(meta.diagram_type.clone(), &message, span),
+        None => Error::diagram_parse_fallback(meta.diagram_type.clone(), &message),
+    };
+    ZenumlSemanticFailure {
+        error: Box::new(error),
+        message,
+        span,
+        editor_facts: Box::new(editor_facts),
+    }
+}
+
+fn translate_zenuml_syntax(code: &str) -> ZenumlTranslation {
+    let mut sequence = SequenceActionBuilder::new();
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut first_error = None;
 
     let mut saw_header = false;
     let mut pending_comments: Vec<String> = Vec::new();
@@ -519,139 +522,9 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
         trimmed.strip_suffix('{').map(str::trim_end)
     }
 
-    fn translate_participant_decl(line: &str) -> Option<String> {
-        // Participant order control:
-        //   Bob
-        //   Alice
-        //
-        // Annotators:
-        //   @Actor Alice
-        //   @Database Bob
-        //
-        // Aliases:
-        //   A as Alice
-        //   J as John
-        let l = line.trim();
-        if l.is_empty() {
-            return None;
-        }
-
-        if let Some(rest) = l.strip_prefix('@') {
-            let (kind, name) = rest.split_once(' ')?;
-            let kind = kind.trim();
-            let name = name.trim();
-            if name.is_empty() {
-                return None;
-            }
-            // Mermaid `sequenceDiagram` supports a limited set of participant kinds in our
-            // headless parser today. Keep this translation conservative so fixtures can be
-            // snapshot-gated deterministically.
-            let kw = if kind.eq_ignore_ascii_case("actor") {
-                "actor"
-            } else {
-                // `@Database`, `@Boundary`, etc. are represented as standard participants.
-                "participant"
-            };
-            return Some(format!("{kw} {name}"));
-        }
-
-        if let Some((id, label)) = l.split_once(" as ") {
-            let id = id.trim();
-            let label = label.trim();
-            if id.is_empty() || label.is_empty() {
-                return None;
-            }
-            // ZenUML uses `A as Alice` where `A` is used in messages and `Alice` is the label.
-            // Mermaid sequence supports `participant Alice as A` (label first, alias second).
-            return Some(format!("participant {label} as {id}"));
-        }
-
-        // Bare participant/actor declaration (single token).
-        if l.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
-        {
-            return Some(format!("participant {l}"));
-        }
-
-        None
-    }
-
-    fn translate_assignment(line: &str) -> Option<(String, String, String)> {
-        // Minimal supported syntax (ZenUML docs "Reply message"):
-        //   a = A.SyncMessage()
-        //   SomeType a = A.SyncMessage()
-        //
-        // Returns (var, actor, call_text).
-        let (lhs, rhs) = line.split_once('=')?;
-        let lhs = lhs.trim();
-        let rhs = rhs.trim();
-        if lhs.is_empty() || rhs.is_empty() {
-            return None;
-        }
-
-        let var = lhs.split_whitespace().last()?.trim();
-        if var.is_empty() {
-            return None;
-        }
-
-        let (actor, call) = rhs.split_once('.')?;
-        let actor = actor.trim();
-        let call = call.trim();
-        if actor.is_empty() || call.is_empty() {
-            return None;
-        }
-
-        Some((var.to_string(), actor.to_string(), call.to_string()))
-    }
-
-    fn translate_message_line(line: &str) -> Option<String> {
-        // Minimal supported syntax:
-        //   Alice->Bob: Hello
-        //   Bob-->Alice: Reply
-        //
-        // Map to Mermaid sequence syntax:
-        //   Alice->>Bob: Hello
-        //   Bob-->>Alice: Reply
-        let (lhs, label) = if let Some((a, b)) = line.split_once(':') {
-            (a.trim(), Some(b.trim()))
-        } else {
-            (line.trim(), None)
-        };
-
-        let (from, arrow, to) = if let Some((a, b)) = lhs.split_once("-->") {
-            (a.trim(), "-->", b.trim())
-        } else if let Some((a, b)) = lhs.split_once("->") {
-            (a.trim(), "->", b.trim())
-        } else {
-            return None;
-        };
-
-        if from.is_empty() || to.is_empty() {
-            return None;
-        }
-
-        let seq_arrow = match arrow {
-            "-->" => "-->>",
-            "->" => "->>",
-            _ => return None,
-        };
-
-        let mut out = String::new();
-        out.push_str(from);
-        out.push_str(seq_arrow);
-        out.push_str(to);
-        if let Some(lbl) = label
-            && !lbl.is_empty()
-        {
-            out.push_str(": ");
-            out.push_str(lbl);
-        }
-        Some(out)
-    }
-
     fn flush_pending_comments_as_notes(
         pending: &mut Vec<String>,
-        out: &mut Vec<String>,
+        sequence: &mut SequenceActionBuilder,
         from: &str,
         to: &str,
     ) {
@@ -663,26 +536,24 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
             if text.is_empty() {
                 continue;
             }
-            // ZenUML comments are rendered above messages/fragments. Approximate this behavior
-            // by emitting a Mermaid sequence note spanning the message participants.
-            out.push(format!("Note over {from},{to}: {text}"));
+            sequence.note_over(from.to_string(), to.to_string(), text.to_string());
         }
     }
 
     let mut stack: Vec<BlockKind> = Vec::new();
 
-    fn par_maybe_and(stack: &mut [BlockKind], out: &mut Vec<String>) {
+    fn par_maybe_and(stack: &mut [BlockKind], sequence: &mut SequenceActionBuilder) {
         let Some(BlockKind::Par { branch_started }) = stack.last_mut() else {
             return;
         };
         if *branch_started {
-            out.push("and".to_string());
+            sequence.control(SequenceControlKind::ParAnd, Some(String::new()));
         } else {
             *branch_started = true;
         }
     }
 
-    fn close_brace(rest: &str, stack: &mut Vec<BlockKind>, out: &mut Vec<String>) {
+    fn close_brace(rest: &str, stack: &mut Vec<BlockKind>, sequence: &mut SequenceActionBuilder) {
         let Some(top) = stack.last() else {
             return;
         };
@@ -703,20 +574,34 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
         let closed = stack.pop();
         match closed {
             Some(BlockKind::SyncCall { actor }) => {
-                out.push(format!("deactivate {actor}"));
+                sequence.deactivate(actor);
             }
-            Some(_) => {
-                out.push("end".to_string());
+            Some(BlockKind::Loop) => {
+                sequence.control(SequenceControlKind::LoopEnd, None);
+            }
+            Some(BlockKind::Opt) => {
+                sequence.control(SequenceControlKind::OptEnd, None);
+            }
+            Some(BlockKind::Par { .. }) => {
+                sequence.control(SequenceControlKind::ParEnd, None);
+            }
+            Some(BlockKind::IfAlt | BlockKind::TryAlt) => {
+                sequence.control(SequenceControlKind::AltEnd, None);
             }
             None => {}
         }
     }
 
-    for raw in code.lines() {
+    let mut source_offset = 0usize;
+    'lines: for segment in code.split_inclusive('\n') {
+        let line_start = source_offset;
+        source_offset += segment.len();
+        let raw = segment.trim_end_matches(['\n', '\r']);
         let mut line = raw.trim();
         if line.is_empty() {
             continue;
         }
+        let mut statement_start = line_start + raw.find(line).unwrap_or_default();
 
         if !saw_header && line.to_ascii_lowercase().starts_with("zenuml") {
             saw_header = true;
@@ -749,8 +634,10 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
                 line = trimmed;
                 break;
             }
-            let rest = trimmed[1..].trim_start();
-            close_brace(rest, &mut stack, &mut out);
+            let after_brace = &trimmed[1..];
+            let rest = after_brace.trim_start();
+            statement_start += 1 + after_brace.len().saturating_sub(rest.len());
+            close_brace(rest, &mut stack, &mut sequence);
             line = rest;
             if line.is_empty() {
                 break;
@@ -762,17 +649,44 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
 
         // Pass through common metadata directives as-is when possible.
         if line.to_ascii_lowercase().starts_with("title ") {
-            out.push(line.to_string());
+            editor_facts.push_directive_prefix("title");
+            if let Some(value) = zenuml_value_after_keyword_ci(line, "title", statement_start) {
+                push_zenuml_payload(
+                    &mut editor_facts,
+                    &value,
+                    "zenuml title",
+                    EditorSemanticKind::String,
+                );
+                sequence.set_title(value.text);
+            }
             pending_comments.clear();
             continue;
         }
         if line.to_ascii_lowercase().starts_with("acctitle ") {
-            out.push(line.to_string());
+            editor_facts.push_directive_prefix("accTitle");
+            if let Some(value) = zenuml_value_after_keyword_ci(line, "accTitle", statement_start) {
+                push_zenuml_payload(
+                    &mut editor_facts,
+                    &value,
+                    "zenuml accessibility title",
+                    EditorSemanticKind::String,
+                );
+                sequence.set_acc_title(value.text);
+            }
             pending_comments.clear();
             continue;
         }
         if line.to_ascii_lowercase().starts_with("accdescr ") {
-            out.push(line.to_string());
+            editor_facts.push_directive_prefix("accDescr");
+            if let Some(value) = zenuml_value_after_keyword_ci(line, "accDescr", statement_start) {
+                push_zenuml_payload(
+                    &mut editor_facts,
+                    &value,
+                    "zenuml accessibility description",
+                    EditorSemanticKind::String,
+                );
+                sequence.set_acc_descr(value.text);
+            }
             pending_comments.clear();
             continue;
         }
@@ -782,34 +696,48 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
             let p = prefix.trim();
             if starts_with_word_ci(p, "else if") {
                 let Some((_, cond)) = p.split_once('(') else {
-                    return Err(Error::diagram_parse_fallback(
-                        meta.diagram_type.clone(),
-                        format!("unsupported zenuml statement: {line}"),
-                    ));
+                    record_zenuml_syntax_error(&mut first_error, line, statement_start);
+                    continue 'lines;
                 };
                 let Some((cond, _)) = cond.rsplit_once(')') else {
-                    return Err(Error::diagram_parse_fallback(
-                        meta.diagram_type.clone(),
-                        format!("unsupported zenuml statement: {line}"),
-                    ));
+                    record_zenuml_syntax_error(&mut first_error, line, statement_start);
+                    continue 'lines;
                 };
+                push_zenuml_payload_tail(
+                    &mut editor_facts,
+                    p,
+                    statement_start,
+                    "zenuml else if payload",
+                );
                 let label = format!("if({})", cond.trim());
-                out.push(format!("else {label}"));
+                sequence.control(SequenceControlKind::AltElse, Some(label));
                 pending_comments.clear();
                 continue;
             }
             if starts_with_word_ci(p, "else") {
-                out.push("else".to_string());
+                sequence.control(SequenceControlKind::AltElse, Some(String::new()));
                 pending_comments.clear();
                 continue;
             }
             if starts_with_word_ci(p, "catch") {
-                out.push("else catch".to_string());
+                push_zenuml_payload_tail(
+                    &mut editor_facts,
+                    p,
+                    statement_start,
+                    "zenuml catch payload",
+                );
+                sequence.control(SequenceControlKind::AltElse, Some("catch".to_string()));
                 pending_comments.clear();
                 continue;
             }
             if starts_with_word_ci(p, "finally") {
-                out.push("else finally".to_string());
+                push_zenuml_payload_tail(
+                    &mut editor_facts,
+                    p,
+                    statement_start,
+                    "zenuml finally payload",
+                );
+                sequence.control(SequenceControlKind::AltElse, Some("finally".to_string()));
                 pending_comments.clear();
                 continue;
             }
@@ -820,43 +748,58 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
             let p = prefix.trim();
 
             if starts_with_word_ci(p, "while") {
-                par_maybe_and(&mut stack, &mut out);
-                out.push(format!("loop {p}"));
+                push_zenuml_payload_tail(
+                    &mut editor_facts,
+                    p,
+                    statement_start,
+                    "zenuml while payload",
+                );
+                par_maybe_and(&mut stack, &mut sequence);
+                sequence.control(SequenceControlKind::LoopStart, Some(p.to_string()));
                 stack.push(BlockKind::Loop);
                 pending_comments.clear();
                 continue;
             }
             if starts_with_word_ci(p, "for")
                 || starts_with_word_ci(p, "foreach")
-                || starts_with_word_ci(p, "forEach")
                 || starts_with_word_ci(p, "loop")
             {
-                par_maybe_and(&mut stack, &mut out);
-                out.push(format!("loop {p}"));
+                push_zenuml_payload_tail(
+                    &mut editor_facts,
+                    p,
+                    statement_start,
+                    "zenuml loop payload",
+                );
+                par_maybe_and(&mut stack, &mut sequence);
+                sequence.control(SequenceControlKind::LoopStart, Some(p.to_string()));
                 stack.push(BlockKind::Loop);
                 pending_comments.clear();
                 continue;
             }
             if starts_with_word_ci(p, "opt") {
-                par_maybe_and(&mut stack, &mut out);
+                push_zenuml_payload_tail(
+                    &mut editor_facts,
+                    p,
+                    statement_start,
+                    "zenuml opt payload",
+                );
+                par_maybe_and(&mut stack, &mut sequence);
                 let label = p.strip_prefix("opt").unwrap_or("").trim();
-                if label.is_empty() {
-                    out.push("opt".to_string());
-                } else {
-                    out.push(format!("opt {label}"));
-                }
+                sequence.control(SequenceControlKind::OptStart, Some(label.to_string()));
                 stack.push(BlockKind::Opt);
                 pending_comments.clear();
                 continue;
             }
             if starts_with_word_ci(p, "par") {
-                par_maybe_and(&mut stack, &mut out);
+                push_zenuml_payload_tail(
+                    &mut editor_facts,
+                    p,
+                    statement_start,
+                    "zenuml par payload",
+                );
+                par_maybe_and(&mut stack, &mut sequence);
                 let label = p.strip_prefix("par").unwrap_or("").trim();
-                if label.is_empty() {
-                    out.push("par".to_string());
-                } else {
-                    out.push(format!("par {label}"));
-                }
+                sequence.control(SequenceControlKind::ParStart, Some(label.to_string()));
                 stack.push(BlockKind::Par {
                     branch_started: false,
                 });
@@ -864,27 +807,32 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
                 continue;
             }
             if starts_with_word_ci(p, "if") {
-                par_maybe_and(&mut stack, &mut out);
+                par_maybe_and(&mut stack, &mut sequence);
                 let Some((_, cond)) = p.split_once('(') else {
-                    return Err(Error::diagram_parse_fallback(
-                        meta.diagram_type.clone(),
-                        format!("unsupported zenuml statement: {line}"),
-                    ));
+                    record_zenuml_syntax_error(&mut first_error, line, statement_start);
+                    continue 'lines;
                 };
                 let Some((cond, _)) = cond.rsplit_once(')') else {
-                    return Err(Error::diagram_parse_fallback(
-                        meta.diagram_type.clone(),
-                        format!("unsupported zenuml statement: {line}"),
-                    ));
+                    record_zenuml_syntax_error(&mut first_error, line, statement_start);
+                    continue 'lines;
                 };
-                out.push(format!("alt if({})", cond.trim()));
+                push_zenuml_payload_tail(
+                    &mut editor_facts,
+                    p,
+                    statement_start,
+                    "zenuml if payload",
+                );
+                sequence.control(
+                    SequenceControlKind::AltStart,
+                    Some(format!("if({})", cond.trim())),
+                );
                 stack.push(BlockKind::IfAlt);
                 pending_comments.clear();
                 continue;
             }
             if starts_with_word_ci(p, "try") {
-                par_maybe_and(&mut stack, &mut out);
-                out.push("alt try".to_string());
+                par_maybe_and(&mut stack, &mut sequence);
+                sequence.control(SequenceControlKind::AltStart, Some("try".to_string()));
                 stack.push(BlockKind::TryAlt);
                 pending_comments.clear();
                 continue;
@@ -894,19 +842,35 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
             //   A.SyncMessage(with, parameters) { ... }
             //
             // Translate to a self-message plus explicit activation scope.
-            if let Some((actor, method)) = p.split_once('.') {
-                let actor = actor.trim();
-                let method = method.trim();
-                if !actor.is_empty() && !method.is_empty() {
-                    par_maybe_and(&mut stack, &mut out);
-                    flush_pending_comments_as_notes(&mut pending_comments, &mut out, actor, actor);
-                    out.push(format!("{actor}->>{actor}: {method}"));
-                    out.push(format!("activate {actor}"));
-                    stack.push(BlockKind::SyncCall {
-                        actor: actor.to_string(),
-                    });
-                    continue;
-                }
+            if let Some((actor, method)) = parse_zenuml_method_call(p, statement_start) {
+                push_zenuml_entity(
+                    &mut editor_facts,
+                    &actor,
+                    "zenuml participant reference",
+                    EditorSemanticKind::Event,
+                );
+                push_zenuml_payload(
+                    &mut editor_facts,
+                    &method,
+                    "zenuml message",
+                    EditorSemanticKind::String,
+                );
+                par_maybe_and(&mut stack, &mut sequence);
+                flush_pending_comments_as_notes(
+                    &mut pending_comments,
+                    &mut sequence,
+                    &actor.text,
+                    &actor.text,
+                );
+                sequence.message(
+                    actor.text.clone(),
+                    actor.text.clone(),
+                    SequenceMessageKind::Solid,
+                    method.text,
+                );
+                sequence.activate(actor.text.clone());
+                stack.push(BlockKind::SyncCall { actor: actor.text });
+                continue;
             }
         }
 
@@ -915,46 +879,45 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
         //   new A2(with, parameters)
         if let Some(rest) = line.strip_prefix("new ") {
             let rest = rest.trim();
-            if rest.is_empty() {
-                return Err(Error::diagram_parse_fallback(
-                    meta.diagram_type.clone(),
-                    format!("unsupported zenuml statement: {line}"),
-                ));
-            }
+            let Some(created) = parse_zenuml_creation(line, statement_start) else {
+                record_zenuml_syntax_error(&mut first_error, line, statement_start);
+                continue 'lines;
+            };
+            push_zenuml_entity(
+                &mut editor_facts,
+                &created,
+                "zenuml participant",
+                EditorSemanticKind::Event,
+            );
+            push_zenuml_payload_tail(
+                &mut editor_facts,
+                line,
+                statement_start,
+                "zenuml creation payload",
+            );
 
-            // Extract a stable id for Mermaid sequence: the leading identifier token.
-            let chars = rest.chars();
-            let mut id = String::new();
-            for ch in chars {
-                if ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' {
-                    id.push(ch);
-                } else {
-                    break;
-                }
-            }
-            if id.is_empty() {
-                return Err(Error::diagram_parse_fallback(
-                    meta.diagram_type.clone(),
-                    format!("unsupported zenuml statement: {line}"),
-                ));
-            }
-
-            par_maybe_and(&mut stack, &mut out);
+            par_maybe_and(&mut stack, &mut sequence);
             pending_comments.clear();
 
             // If the creation has arguments, keep the full text as the label (description).
-            if rest != id {
-                out.push(format!("create participant {id} as {rest}"));
-            } else {
-                out.push(format!("create participant {id}"));
-            }
+            let description = (rest != created.text).then(|| rest.to_string());
+            sequence.create_participant(
+                created.text,
+                description,
+                SequenceParticipantKind::Participant,
+            );
             continue;
         }
 
         // Participants.
-        if let Some(decl) = translate_participant_decl(line) {
-            par_maybe_and(&mut stack, &mut out);
-            out.push(decl);
+        if let Some(decl) = parse_zenuml_participant_decl(line, statement_start) {
+            push_zenuml_participant_facts(&mut editor_facts, &decl);
+            par_maybe_and(&mut stack, &mut sequence);
+            sequence.participant(
+                decl.sequence_id,
+                decl.sequence_description,
+                decl.sequence_kind,
+            );
             // ZenUML comment on a participant is not rendered.
             pending_comments.clear();
             continue;
@@ -962,10 +925,21 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
 
         // Reply assignments must be handled before generic `Actor.Method(...)` parsing, because
         // an assignment line contains a `.` and would otherwise be misinterpreted as a sync call.
-        if let Some((var, actor, call)) = translate_assignment(line) {
-            par_maybe_and(&mut stack, &mut out);
-            flush_pending_comments_as_notes(&mut pending_comments, &mut out, &actor, &actor);
-            out.push(format!("{actor}->>{actor}: {call} => {var}"));
+        if let Some(assignment) = parse_zenuml_assignment(line, statement_start) {
+            push_zenuml_assignment_facts(&mut editor_facts, &assignment);
+            par_maybe_and(&mut stack, &mut sequence);
+            flush_pending_comments_as_notes(
+                &mut pending_comments,
+                &mut sequence,
+                &assignment.actor.text,
+                &assignment.actor.text,
+            );
+            sequence.message(
+                assignment.actor.text.clone(),
+                assignment.actor.text,
+                SequenceMessageKind::Solid,
+                format!("{} => {}", assignment.method.text, assignment.target.text),
+            );
             pending_return_annotator = false;
             continue;
         }
@@ -973,15 +947,33 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
         // Sync messages without blocks:
         //   A.SyncMessage
         //   A.SyncMessage(with, parameters)
-        if let Some((actor, method)) = line.split_once('.') {
-            let actor = actor.trim();
-            let method = method.trim();
-            if !actor.is_empty() && !method.is_empty() {
-                par_maybe_and(&mut stack, &mut out);
-                flush_pending_comments_as_notes(&mut pending_comments, &mut out, actor, actor);
-                out.push(format!("{actor}->>{actor}: {method}"));
-                continue;
-            }
+        if let Some((actor, method)) = parse_zenuml_method_call(line, statement_start) {
+            push_zenuml_entity(
+                &mut editor_facts,
+                &actor,
+                "zenuml participant reference",
+                EditorSemanticKind::Event,
+            );
+            push_zenuml_payload(
+                &mut editor_facts,
+                &method,
+                "zenuml message",
+                EditorSemanticKind::String,
+            );
+            par_maybe_and(&mut stack, &mut sequence);
+            flush_pending_comments_as_notes(
+                &mut pending_comments,
+                &mut sequence,
+                &actor.text,
+                &actor.text,
+            );
+            sequence.message(
+                actor.text.clone(),
+                actor.text,
+                SequenceMessageKind::Solid,
+                method.text,
+            );
+            continue;
         }
 
         // Return statements inside sync call blocks.
@@ -990,57 +982,93 @@ fn translate_zenuml_to_sequence(code: &str, meta: &ParseMetadata) -> Result<Stri
                 BlockKind::SyncCall { actor } => Some(actor.clone()),
                 _ => None,
             }) else {
-                return Err(Error::diagram_parse_fallback(
-                    meta.diagram_type.clone(),
-                    format!("unsupported zenuml statement: {line}"),
-                ));
+                record_zenuml_syntax_error(&mut first_error, line, statement_start);
+                continue 'lines;
             };
-            par_maybe_and(&mut stack, &mut out);
-            flush_pending_comments_as_notes(&mut pending_comments, &mut out, &actor, &actor);
-            out.push(format!("{actor}-->>{actor}: {}", rest.trim()));
+            if let Some(value) = zenuml_value_after_keyword(line, "return", statement_start) {
+                push_zenuml_payload(
+                    &mut editor_facts,
+                    &value,
+                    "zenuml return payload",
+                    EditorSemanticKind::String,
+                );
+            }
+            par_maybe_and(&mut stack, &mut sequence);
+            flush_pending_comments_as_notes(&mut pending_comments, &mut sequence, &actor, &actor);
+            sequence.message(
+                actor.clone(),
+                actor,
+                SequenceMessageKind::Dotted,
+                rest.trim().to_string(),
+            );
             pending_return_annotator = false;
             continue;
         }
 
-        if let Some(mut seq_line) = translate_message_line(line) {
-            par_maybe_and(&mut stack, &mut out);
-            let (lhs, _) = if let Some((a, b)) = line.split_once(':') {
-                (a.trim(), Some(b.trim()))
+        if let Some(message) = parse_zenuml_message(line, statement_start) {
+            push_zenuml_message_facts(&mut editor_facts, &message);
+            par_maybe_and(&mut stack, &mut sequence);
+            flush_pending_comments_as_notes(
+                &mut pending_comments,
+                &mut sequence,
+                &message.from.text,
+                &message.to.text,
+            );
+            let force_reply = pending_return_annotator;
+            pending_return_annotator = false;
+            let kind = if message.reply || force_reply {
+                SequenceMessageKind::Dotted
             } else {
-                (line.trim(), None)
+                SequenceMessageKind::Solid
             };
-            let (from, to) = if let Some((a, b)) = lhs.split_once("-->") {
-                (a.trim(), b.trim())
-            } else if let Some((a, b)) = lhs.split_once("->") {
-                (a.trim(), b.trim())
-            } else {
-                ("", "")
-            };
-            flush_pending_comments_as_notes(&mut pending_comments, &mut out, from, to);
-            if pending_return_annotator {
-                // Convert `->>` to `-->>` for return/reply.
-                seq_line = seq_line.replace("->>", "-->>");
-                pending_return_annotator = false;
-            }
-            out.push(seq_line);
+            sequence.message(
+                message.from.text,
+                message.to.text,
+                kind,
+                message.label.map_or_else(String::new, |label| label.text),
+            );
             continue;
         }
 
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            format!("unsupported zenuml statement: {line}"),
-        ));
+        record_zenuml_syntax_error(&mut first_error, line, statement_start);
     }
 
-    Ok(out.join("\n"))
+    if !saw_header && first_error.is_none() {
+        first_error = Some(ZenumlSyntaxDiagnostic {
+            message: "expected zenuml header".to_string(),
+            span: SourceSpan::new(0, 0),
+        });
+    }
+    if !stack.is_empty() && first_error.is_none() {
+        first_error = Some(ZenumlSyntaxDiagnostic {
+            message: "unterminated zenuml block; expected '}'".to_string(),
+            span: SourceSpan::new(code.len(), code.len()),
+        });
+    }
+
+    ZenumlTranslation {
+        sequence,
+        editor_facts,
+        first_error,
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
-        EditorSemanticCompleteness, EditorSemanticRole, Engine, ParseOptions, RenderSemanticModel,
-        SourceSpan,
+        EditorSemanticCompleteness, EditorSemanticRole, Engine, MermaidConfig, ParseOptions,
+        RenderSemanticModel, SourceSpan,
     };
+
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "zenuml".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
 
     #[test]
     fn zenuml_basic_translates_to_sequence_model() {
@@ -1229,5 +1257,229 @@ new Session(with, params)
                 symbol.name == "Hi" && symbol.role == EditorSemanticRole::Payload
             })
         );
+    }
+
+    #[test]
+    fn zenuml_combined_parse_constructs_once_and_matches_standalone_entrypoints() {
+        let input = r#"zenuml
+title Login Flow
+@Actor Alice
+Bob
+Alice->Bob: Login
+if(accepted) {
+  Bob-->Alice: Ack
+}
+"#;
+        let meta = meta();
+
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("zenuml");
+        crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+        let (combined_json, combined_editor) =
+            parse_zenuml_json_and_editor_facts(input, &meta).unwrap();
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("zenuml"),
+            1,
+            "one combined request must construct ZenUML syntax once"
+        );
+        assert_eq!(
+            crate::diagrams::sequence::sequence_syntax_construction_count(),
+            0,
+            "ZenUML must lower directly to Sequence semantic actions without invoking its parser"
+        );
+
+        assert_eq!(combined_json, parse_zenuml(input, &meta).unwrap());
+        assert_eq!(combined_editor, parse_zenuml_editor_facts(input, &meta));
+    }
+
+    #[test]
+    fn zenuml_typed_and_json_projections_share_one_sequence_model() {
+        let input = "zenuml\ntitle Login Flow\nAlice->Bob: Login\nBob-->Alice: Ack\n";
+        let compat = parse_zenuml(input, &meta()).unwrap();
+        let typed = parse_zenuml_model_for_render(input, &meta()).unwrap();
+
+        assert_eq!(compat, typed.to_compat_json("zenuml"));
+        assert_eq!(typed.title.as_deref(), Some("Login Flow"));
+        assert_eq!(typed.messages.len(), 2);
+    }
+
+    #[test]
+    fn zenuml_direct_actions_match_equivalent_sequence_semantics() {
+        let input = r#"zenuml
+title Demo
+accTitle Screen reader title
+accDescr Screen reader description
+@Actor Alice
+B as Bob
+new Session(with, params)
+Alice->Session: create
+// work note
+Session.Work {
+  return done
+}
+while(active) {
+  Alice->Bob: loop message
+}
+if(ok) {
+  Bob->Alice: accepted
+} else {
+  Bob-->Alice: rejected
+}
+opt optional {
+  Alice->Bob: maybe
+}
+par parallel {
+  Alice->Bob: first
+  Alice->Session: second
+}
+"#;
+        let equivalent_sequence = r#"sequenceDiagram
+title Demo
+accTitle: Screen reader title
+accDescr: Screen reader description
+actor Alice
+participant Bob as B
+create participant Session as Session(with, params)
+Alice->>Session: create
+Note over Session,Session: work note
+Session->>Session: Work
+activate Session
+Session-->>Session: done
+deactivate Session
+loop while(active)
+Alice->>Bob: loop message
+end
+alt if(ok)
+Bob->>Alice: accepted
+else
+Bob-->>Alice: rejected
+end
+opt optional
+Alice->>Bob: maybe
+end
+par parallel
+Alice->>Bob: first
+and
+Alice->>Session: second
+end
+"#;
+
+        let direct = parse_zenuml_model_for_render(input, &meta()).unwrap();
+        let parsed_sequence = crate::diagrams::sequence::parse_sequence_model_for_render(
+            equivalent_sequence,
+            &meta(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            direct.to_compat_json("zenuml"),
+            parsed_sequence.to_compat_json("zenuml")
+        );
+    }
+
+    #[test]
+    fn zenuml_malformed_recovery_reuses_statement_facts_and_exact_original_span() {
+        let input = "zenuml\nAlice\nUnsupported ? statement\nAlice->Bob: Hi\n";
+        let invalid_start = input.find("Unsupported ? statement").unwrap();
+        let invalid_span = SourceSpan::new(
+            invalid_start,
+            invalid_start + "Unsupported ? statement".len(),
+        );
+
+        let error = parse_zenuml(input, &meta()).expect_err("strict parser must reject the line");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected structured ZenUML parse error");
+        };
+        assert!(
+            diagnostic
+                .message()
+                .contains("unsupported zenuml statement")
+        );
+        assert_eq!(diagnostic.span(), Some(invalid_span));
+        assert_eq!(
+            diagnostic.span_kind(),
+            crate::ParseDiagnosticSpanKind::Exact
+        );
+
+        let facts = parse_zenuml_editor_facts(input, &meta());
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.message.contains("unsupported zenuml statement")
+                && diagnostic.span == Some(invalid_span)
+        }));
+        for name in ["Alice", "Hi"] {
+            assert!(
+                facts.symbols.iter().any(|symbol| symbol.name == name),
+                "same-pass recovery lost {name}"
+            );
+        }
+        assert!(
+            !facts
+                .symbols
+                .iter()
+                .any(|symbol| { symbol.name.contains("Unsupported") || symbol.name.contains('?') })
+        );
+    }
+
+    #[test]
+    fn zenuml_unclosed_block_fails_at_eof_and_preserves_recovered_facts() {
+        let input = "zenuml\nAlice\nif(ready) {\n  Alice->Bob: Hi\n";
+        let eof = SourceSpan::new(input.len(), input.len());
+
+        let error = parse_zenuml(input, &meta()).expect_err("unclosed block must fail strictly");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected structured ZenUML parse error");
+        };
+        assert!(diagnostic.message().contains("unterminated zenuml block"));
+        assert_eq!(diagnostic.span(), Some(eof));
+
+        let facts = parse_zenuml_editor_facts(input, &meta());
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.message.contains("unterminated zenuml block") && diagnostic.span == Some(eof)
+        }));
+        for name in ["Alice", "Bob", "Hi"] {
+            assert!(
+                facts.symbols.iter().any(|symbol| symbol.name == name),
+                "same-pass recovery lost {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn zenuml_repeated_values_keep_role_specific_original_spans() {
+        let input = "zenuml\nA as A\nA->A:A\nA.A {\n}\n";
+        let facts = parse_zenuml_editor_facts(input, &meta());
+
+        let alias_line = input.find("A as A").unwrap();
+        let message_line = input.find("A->A:A").unwrap();
+        let call_line = input.rfind("A.A {").unwrap();
+        for (detail, span) in [
+            (
+                "zenuml participant alias",
+                SourceSpan::new(alias_line, alias_line + 1),
+            ),
+            (
+                "zenuml participant label",
+                SourceSpan::new(alias_line + 5, alias_line + 6),
+            ),
+            (
+                "zenuml participant reference",
+                SourceSpan::new(message_line + 3, message_line + 4),
+            ),
+            (
+                "zenuml message",
+                SourceSpan::new(message_line + 5, message_line + 6),
+            ),
+            (
+                "zenuml message",
+                SourceSpan::new(call_line + 2, call_line + 3),
+            ),
+        ] {
+            assert!(facts.symbols.iter().any(|symbol| {
+                symbol.name == "A"
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.selection == span
+            }));
+        }
     }
 }

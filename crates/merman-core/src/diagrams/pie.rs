@@ -6,6 +6,7 @@ use crate::diagrams::langium_common::{
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
 };
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -97,7 +98,11 @@ pub fn parse_pie_model_for_render(
 pub fn parse_pie_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
     match parse_pie_semantic_source(code, meta) {
         Ok(source) => source.editor_facts,
-        Err(_) => recover_pie_editor_facts(code),
+        Err(error) => ensure_editor_recovery_from_error(
+            recover_pie_editor_facts(code),
+            &error,
+            editor_recovery_fallback_span(code),
+        ),
     }
 }
 
@@ -203,12 +208,13 @@ fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSema
     let mut seen = HashSet::new();
     for section in parsed_sections {
         if section.value < 0.0 {
-            return Err(Error::diagram_parse_fallback(
+            return Err(Error::diagram_parse_exact(
                 meta.diagram_type.clone(),
                 format!(
                     "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
                     section.label, section.value
                 ),
+                section.value_span,
             ));
         }
         if seen.insert(section.label.clone()) {
@@ -446,7 +452,10 @@ fn strip_inline_comment(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::parse_pie_editor_facts;
-    use crate::{EditorSemanticCompleteness, Engine, MermaidConfig, ParseMetadata, ParseOptions};
+    use crate::{
+        EditorSemanticCompleteness, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions,
+        SourceSpan,
+    };
 
     fn metadata() -> ParseMetadata {
         ParseMetadata {
@@ -521,6 +530,35 @@ pie showData
             )
             .expect_err("negative values are rejected only after syntax succeeds");
         assert!(parsed.to_string().contains("invalid value: -1"));
+    }
+
+    #[test]
+    fn pie_editor_recovery_reports_negative_value_validation_errors() {
+        let source = "pie\r\n  \"negative\": -1  \r\n\"valid\": 2\r\n";
+        let invalid = "-1";
+        let start = source.find(invalid).unwrap();
+        let expected_span = SourceSpan::new(start, start + invalid.len());
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err("a negative pie value must fail strict parsing");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected pie parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), Some(expected_span));
+
+        let facts = parse_pie_editor_facts(source, &metadata());
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "negative"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(expected_span)
+                && diagnostic
+                    .message
+                    .contains("Negative values are not allowed")
+        }));
     }
 
     #[test]

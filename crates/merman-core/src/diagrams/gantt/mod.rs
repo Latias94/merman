@@ -15,6 +15,9 @@ use datetime::*;
 use model::*;
 
 pub use model::{GanttDiagramRenderModel, GanttRenderTask};
+pub(crate) use parse::parse_gantt_json_and_editor_facts;
+#[cfg(test)]
+pub(crate) use parse::{gantt_syntax_construction_count, reset_gantt_syntax_construction_count};
 pub use parse::{parse_gantt, parse_gantt_editor_facts, parse_gantt_model_for_render};
 
 const ALL_WEEKDAYS_MASK: u8 = 0b0111_1111;

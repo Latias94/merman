@@ -32,6 +32,131 @@ fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
 }
 
 #[test]
+fn gantt_entrypoints_construct_one_semantic_source() {
+    let engine = Engine::new();
+    let text = concat!(
+        "gantt\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Build: build,2026-01-01,2d\n",
+    );
+
+    reset_gantt_syntax_construction_count();
+    engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(gantt_syntax_construction_count(), 1);
+
+    reset_gantt_syntax_construction_count();
+    engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(gantt_syntax_construction_count(), 1);
+
+    reset_gantt_syntax_construction_count();
+    engine
+        .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(gantt_syntax_construction_count(), 1);
+}
+
+#[test]
+fn gantt_combined_projection_constructs_once_and_matches_standalone_entrypoints() {
+    let text = concat!(
+        "gantt\n",
+        "title Delivery roadmap\n",
+        "accTitle: Delivery\n",
+        "accDescr: Delivery tasks\n",
+        "dateFormat YYYY-MM-DD\n",
+        "section Delivery\n",
+        "Build: build,2026-01-01,2d\n",
+        "Ship: ship,after build,1d\n",
+    );
+    let meta = ParseMetadata {
+        diagram_type: "gantt".to_string(),
+        config: MermaidConfig::default(),
+        effective_config: MermaidConfig::default(),
+        title: None,
+    };
+    let standalone_json = parse_gantt(text, &meta).unwrap();
+    let standalone_editor = parse_gantt_editor_facts(text, &meta);
+
+    reset_gantt_syntax_construction_count();
+    let (combined_json, combined_editor) = parse_gantt_json_and_editor_facts(text, &meta).unwrap();
+
+    assert_eq!(gantt_syntax_construction_count(), 1);
+    assert_eq!(combined_json, standalone_json);
+    assert_eq!(combined_editor, standalone_editor);
+}
+
+#[test]
+fn gantt_typed_projection_matches_compatibility_semantics() {
+    let text = concat!(
+        "gantt\n",
+        "title Delivery roadmap\n",
+        "accTitle: Delivery\n",
+        "accDescr: Delivery tasks\n",
+        "dateFormat YYYY-MM-DD\n",
+        "axisFormat %Y-%m-%d\n",
+        "todayMarker stroke-width:2px\n",
+        "section Delivery\n",
+        "Build: crit,build,2026-01-01,2d\n",
+    );
+    let meta = ParseMetadata {
+        diagram_type: "gantt".to_string(),
+        config: MermaidConfig::default(),
+        effective_config: MermaidConfig::default(),
+        title: None,
+    };
+    let compat = parse_gantt(text, &meta).unwrap();
+    let typed = parse_gantt_model_for_render(text, &meta).unwrap();
+
+    assert_eq!(serde_json::to_value(&typed.title).unwrap(), compat["title"]);
+    assert_eq!(
+        serde_json::to_value(&typed.acc_title).unwrap(),
+        compat["accTitle"]
+    );
+    assert_eq!(
+        serde_json::to_value(&typed.acc_descr).unwrap(),
+        compat["accDescr"]
+    );
+    assert_eq!(typed.date_format, compat["dateFormat"]);
+    assert_eq!(typed.axis_format, compat["axisFormat"]);
+    assert_eq!(typed.today_marker, compat["todayMarker"]);
+    assert_eq!(typed.tasks.len(), compat["tasks"].as_array().unwrap().len());
+    assert_eq!(typed.tasks[0].id, compat["tasks"][0]["id"]);
+    assert_eq!(typed.tasks[0].task, compat["tasks"][0]["task"]);
+    assert_eq!(typed.tasks[0].section, compat["tasks"][0]["section"]);
+    assert_eq!(typed.tasks[0].start_ms, compat["tasks"][0]["startTime"]);
+    assert_eq!(typed.tasks[0].end_ms, compat["tasks"][0]["endTime"]);
+}
+
+#[test]
+fn gantt_date_format_consumes_one_separator_and_preserves_extra_whitespace() {
+    for (spacing, expected) in [("  ", " YYYY-MM-DD"), ("   ", "  YYYY-MM-DD")] {
+        let text =
+            format!("gantt\ndateFormat{spacing}YYYY-MM-DD\nsection Demo\nTask: id,2026-01-01,1d\n");
+        let model = parse(&text);
+        assert_eq!(model["dateFormat"], expected);
+
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("gantt", &text, ParseOptions::strict())
+            .unwrap()
+            .expect("gantt editor facts");
+        let value_start = text.find("YYYY-MM-DD").unwrap();
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "YYYY-MM-DD"
+                && symbol.detail.as_deref() == Some("gantt date format")
+                && symbol.selection
+                    == SourceSpan::new(value_start, value_start + "YYYY-MM-DD".len())
+        }));
+    }
+}
+
+#[test]
 fn gantt_editor_facts_preserve_parser_symbol_spans() {
     let text = concat!(
         "gantt\n",
@@ -317,17 +442,33 @@ fn gantt_editor_facts_skip_leading_mermaid_directives() {
 #[test]
 fn gantt_editor_facts_reports_invalid_weekday_diagnostic() {
     let text = "gantt\nweekday foo\n";
+    reset_gantt_syntax_construction_count();
     let facts = Engine::new()
         .parse_editor_semantic_facts_with_type_sync("gantt", text, ParseOptions::strict())
         .unwrap()
         .expect("gantt editor facts");
 
+    assert_eq!(gantt_syntax_construction_count(), 1);
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     let value_start = text.find("foo").unwrap();
     assert!(facts.diagnostics.iter().any(|diagnostic| {
         diagnostic.message.contains("invalid weekday")
             && diagnostic.span == Some(SourceSpan::new(value_start, value_start + "foo".len()))
     }));
+
+    reset_gantt_syntax_construction_count();
+    let Error::DiagramParse { diagnostic, .. } = Engine::new()
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("invalid weekday must fail strict Gantt parsing")
+    else {
+        panic!("invalid weekday returned a non-parse error");
+    };
+    assert_eq!(gantt_syntax_construction_count(), 1);
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(value_start, value_start + "foo".len()))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
 
 #[test]
@@ -1205,6 +1346,7 @@ click id1 href "https://example.com/" garbage tail
 }
 
 #[test]
+#[cfg(feature = "full-sanitization")]
 fn gantt_common_db_sanitizes_title_and_accessibility_fields() {
     let model = parse(
         r#"

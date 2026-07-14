@@ -6,6 +6,23 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static KANBAN_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_kanban_syntax_construction_count() {
+    KANBAN_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn kanban_syntax_construction_count() -> usize {
+    KANBAN_SYNTAX_CONSTRUCTION_COUNT.get()
+}
 
 const NODE_TYPE_DEFAULT: i32 = 0;
 const NODE_TYPE_ROUNDED_RECT: i32 = 1;
@@ -66,11 +83,32 @@ struct KanbanDb {
     next_auto_id: i64,
 }
 
+struct KanbanSemanticSource {
+    db: KanbanDb,
+    editor_facts: EditorSemanticFacts,
+}
+
+struct KanbanParseFailure {
+    error: Box<Error>,
+    editor_facts: Box<EditorSemanticFacts>,
+    span: SourceSpan,
+}
+
+impl KanbanParseFailure {
+    fn into_editor_facts(self) -> EditorSemanticFacts {
+        let mut facts = *self.editor_facts;
+        facts.mark_recovered_from_parse_error(
+            format!("kanban parser recovered after parse error: {}", self.error),
+            Some(self.span),
+        );
+        facts
+    }
+}
+
 #[derive(Debug, Clone)]
 struct SpannedText {
     text: String,
     span: SourceSpan,
-    kind: EditorSemanticKind,
 }
 
 #[derive(Debug, Clone)]
@@ -817,22 +855,38 @@ fn split_node_and_shape_data(
     Ok((rest.trim_end().to_string(), None))
 }
 
-fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
+fn construct_kanban_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<KanbanSemanticSource, KanbanParseFailure> {
+    #[cfg(test)]
+    KANBAN_SYNTAX_CONSTRUCTION_COUNT.set(KANBAN_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
     let mut db = KanbanDb::default();
     db.clear();
+    let mut editor_facts = EditorSemanticFacts::new();
 
     let mut lines = KanbanLineCursor::new(code);
-    let mut found_header = false;
-    let mut header_tail: Option<(String, usize)> = None;
-    while let Some(line) = lines.next() {
+    let header_tail = loop {
+        let Some(line) = lines.next() else {
+            let span = SourceSpan::new(lines.offset(), lines.offset());
+            return Err(KanbanParseFailure {
+                error: Box::new(Error::diagram_parse_insertion_point(
+                    meta.diagram_type.clone(),
+                    "expected kanban header",
+                    span.start,
+                )),
+                editor_facts: Box::new(editor_facts),
+                span,
+            });
+        };
         let t = strip_inline_comment(line.text);
         let trimmed = t.trim();
         if trimmed.is_empty() {
             continue;
         }
         if trimmed.eq_ignore_ascii_case("kanban") {
-            found_header = true;
-            break;
+            break None;
         }
         if starts_with_case_insensitive(trimmed, "kanban")
             && trimmed.len() > "kanban".len()
@@ -841,92 +895,185 @@ fn parse_kanban_db(code: &str, meta: &ParseMetadata) -> Result<KanbanDb> {
                 .next()
                 .is_some_and(|c| c.is_whitespace())
         {
-            found_header = true;
             let after_keyword = &trimmed["kanban".len()..];
             let rest = after_keyword.trim_start();
             if !rest.is_empty() {
                 let after_keyword_start = line.start + t.find(after_keyword).unwrap_or(0);
-                header_tail = Some((after_keyword.to_string(), after_keyword_start));
+                break Some((after_keyword.to_string(), after_keyword_start));
             }
-            break;
+            break None;
         }
-        break;
-    }
+        let rel = line.text.find(trimmed).unwrap_or_default();
+        let span = SourceSpan::new(line.start + rel, line.start + rel + trimmed.len());
+        return Err(KanbanParseFailure {
+            error: Box::new(Error::diagram_parse_exact(
+                meta.diagram_type.clone(),
+                "expected kanban header",
+                span,
+            )),
+            editor_facts: Box::new(editor_facts),
+            span,
+        });
+    };
 
-    if !found_header {
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            "expected kanban header".to_string(),
-        ));
-    }
-
-    if let Some((tail, tail_start)) = &header_tail {
-        let tail = strip_inline_comment(tail);
-        let tail = tail.trim_end();
-        if !tail.trim().is_empty() {
-            let (indent, rest) = split_indent(tail);
-            let rest = rest.trim_end();
-            let rest_start = tail_start + tail.find(rest).unwrap_or(0);
-            if starts_with_case_insensitive(rest, "::icon(") {
-                let after = &rest["::icon(".len()..];
-                if let Some(end) = after.find(')') {
-                    db.decorate_last(None, Some(after[..end].to_string()), &meta.effective_config);
-                }
-            } else if let Some(after) = rest.strip_prefix(":::") {
-                db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
-            } else {
-                let (node_part, shape_data) =
-                    split_node_and_shape_data(&mut lines, rest, rest_start)?;
-                if !node_part.trim().is_empty() {
-                    let (spec, span) = parse_node_spec_for_render(&node_part, tail, *tail_start)?;
-                    db.add_node(indent, spec, span, shape_data, &meta.effective_config)?;
-                }
-            }
-        }
+    if let Some((tail, tail_start)) = &header_tail
+        && let Err(error) = parse_kanban_statement(
+            &mut lines,
+            &mut db,
+            &mut editor_facts,
+            tail,
+            *tail_start,
+            meta,
+        )
+    {
+        let fallback = SourceSpan::new(*tail_start, *tail_start + tail.len());
+        let span = kanban_error_span(&error, fallback);
+        return Err(KanbanParseFailure {
+            error: Box::new(error),
+            editor_facts: Box::new(editor_facts),
+            span,
+        });
     }
 
     while let Some(source_line) = lines.next() {
-        let line = strip_inline_comment(source_line.text);
-        let line = line.trim_end();
-        if line.trim().is_empty() {
-            continue;
+        if let Err(error) = parse_kanban_statement(
+            &mut lines,
+            &mut db,
+            &mut editor_facts,
+            source_line.text,
+            source_line.start,
+            meta,
+        ) {
+            let fallback = SourceSpan::new(
+                source_line.start,
+                source_line.start + source_line.text.len(),
+            );
+            let span = kanban_error_span(&error, fallback);
+            return Err(KanbanParseFailure {
+                error: Box::new(error),
+                editor_facts: Box::new(editor_facts),
+                span,
+            });
         }
-
-        let (indent, rest) = split_indent(line);
-        let rest = rest.trim_end();
-        let rest_start = source_line.start + line.find(rest).unwrap_or(0);
-        if rest.is_empty() {
-            continue;
-        }
-
-        if starts_with_case_insensitive(rest, "::icon(") {
-            let after = &rest["::icon(".len()..];
-            if let Some(end) = after.find(')') {
-                db.decorate_last(None, Some(after[..end].to_string()), &meta.effective_config);
-            }
-            continue;
-        }
-
-        if let Some(after) = rest.strip_prefix(":::") {
-            db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
-            continue;
-        }
-
-        let (node_part, shape_data) = split_node_and_shape_data(&mut lines, rest, rest_start)?;
-        if node_part.trim().is_empty() {
-            continue;
-        }
-
-        let (spec, span) = parse_node_spec_for_render(&node_part, line, source_line.start)?;
-
-        db.add_node(indent, spec, span, shape_data, &meta.effective_config)?;
     }
 
-    Ok(db)
+    Ok(KanbanSemanticSource { db, editor_facts })
+}
+
+fn parse_kanban_statement(
+    lines: &mut KanbanLineCursor<'_>,
+    db: &mut KanbanDb,
+    facts: &mut EditorSemanticFacts,
+    source: &str,
+    source_start: usize,
+    meta: &ParseMetadata,
+) -> Result<()> {
+    let line = strip_inline_comment(source).trim_end();
+    if line.trim().is_empty() {
+        return Ok(());
+    }
+    let (indent, rest) = split_indent(line);
+    let rest = rest.trim_end();
+    if rest.is_empty() {
+        return Ok(());
+    }
+    let rest_start = source_start + line.find(rest).unwrap_or_default();
+
+    if starts_with_case_insensitive(rest, "::icon(") {
+        if let Some(icon) = parse_icon_spanned(rest, rest_start) {
+            db.decorate_last(None, Some(icon.text.clone()), &meta.effective_config);
+            facts.push_directive_prefix("icon");
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                icon.text,
+                Some("kanban icon".to_string()),
+                EditorSemanticKind::String,
+                icon.span,
+                icon.span,
+            ));
+        }
+        return Ok(());
+    }
+
+    if let Some(after) = rest.strip_prefix(":::") {
+        db.decorate_last(Some(after.trim().to_string()), None, &meta.effective_config);
+        if let Some(class_name) = parse_css_class_spanned(rest, rest_start) {
+            facts.push_directive_prefix(":::");
+            facts.push_symbol(EditorSemanticSymbol::payload(
+                class_name.text,
+                Some("kanban class".to_string()),
+                EditorSemanticKind::String,
+                class_name.span,
+                class_name.span,
+            ));
+        }
+        return Ok(());
+    }
+
+    let (node_part, shape_data) = split_node_and_shape_data(lines, rest, rest_start)?;
+    if node_part.trim().is_empty() {
+        return Ok(());
+    }
+    let (spec, span) = parse_node_spec_for_render(&node_part, &node_part, rest_start)?;
+    let fact_name = if spec.id_raw.is_empty() {
+        spec.descr_raw.clone()
+    } else {
+        spec.id_raw.clone()
+    };
+    let fact_kind = kanban_node_editor_kind(spec.ty);
+    db.add_node(indent, spec, span, shape_data, &meta.effective_config)?;
+    let is_section = db.nodes.last().is_some_and(|node| node.parent_id.is_none());
+    if is_section {
+        facts.push_symbol(EditorSemanticSymbol::outline(
+            fact_name,
+            Some("kanban section".to_string()),
+            EditorSemanticKind::Namespace,
+            span,
+            span,
+        ));
+    } else {
+        facts.push_symbol(EditorSemanticSymbol::new(
+            fact_name,
+            Some("kanban item".to_string()),
+            fact_kind,
+            span,
+            span,
+        ));
+    }
+    Ok(())
+}
+
+fn kanban_node_editor_kind(ty: i32) -> EditorSemanticKind {
+    if matches!(
+        ty,
+        NODE_TYPE_CIRCLE | NODE_TYPE_CLOUD | NODE_TYPE_BANG | NODE_TYPE_HEXAGON
+    ) {
+        EditorSemanticKind::Object
+    } else {
+        EditorSemanticKind::Variable
+    }
+}
+
+fn kanban_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
+    match error {
+        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
+        _ => fallback,
+    }
 }
 
 pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let db = parse_kanban_db(code, meta)?;
+    let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
+    Ok(kanban_db_into_json(source.db, meta))
+}
+
+pub(crate) fn parse_kanban_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
+    Ok((kanban_db_into_json(source.db, meta), source.editor_facts))
+}
+
+fn kanban_db_into_json(db: KanbanDb, meta: &ParseMetadata) -> Value {
     let mut out = Map::with_capacity(6);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("sections".to_string(), db.sections_json());
@@ -940,107 +1087,23 @@ pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
-    Ok(Value::Object(out))
+    Value::Object(out)
 }
 
 pub fn parse_kanban_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<KanbanDiagramRenderModel> {
-    let db = parse_kanban_db(code, meta)?;
+    let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
     Ok(KanbanDiagramRenderModel {
-        nodes: db.data_nodes_for_render(&meta.effective_config),
+        nodes: source.db.data_nodes_for_render(&meta.effective_config),
     })
-}
-
-fn parse_node_spec_spanned(
-    trimmed: &str,
-    line: &str,
-    line_start: usize,
-) -> std::result::Result<Option<SpannedText>, String> {
-    if let Some((id, descr, ty, span)) = parse_node_spec_spanned_inner(trimmed, line, line_start)? {
-        let text = if id.is_empty() { descr } else { id };
-        return Ok(Some(SpannedText {
-            text,
-            span,
-            kind: if ty == NODE_TYPE_CIRCLE
-                || ty == NODE_TYPE_CLOUD
-                || ty == NODE_TYPE_BANG
-                || ty == NODE_TYPE_HEXAGON
-            {
-                EditorSemanticKind::Object
-            } else {
-                EditorSemanticKind::Variable
-            },
-        }));
-    }
-    Ok(None)
-}
-
-fn parse_node_spec_spanned_inner(
-    input: &str,
-    line: &str,
-    line_start: usize,
-) -> std::result::Result<Option<(String, String, i32, SourceSpan)>, String> {
-    let input = input.trim_end();
-    if input.is_empty() {
-        return Ok(None);
-    }
-
-    if let Some((start, end)) = node_delimiter_pair_at_start(input) {
-        let (inner, tail) = extract_delimited(input, start, end)?;
-        if !tail.trim().is_empty() {
-            return Err("unexpected trailing input".to_string());
-        }
-        let descr = unquote_node_descr(inner);
-        let ty = node_type_for(start, end);
-        let rel = line.find(inner).unwrap_or(0);
-        return Ok(Some((
-            descr.clone(),
-            descr,
-            ty,
-            SourceSpan::new(line_start + rel, line_start + rel + inner.len()),
-        )));
-    }
-
-    let (id_raw, rest) = split_node_id(input);
-    let id_raw = id_raw.to_string();
-    let rest = rest.trim_end();
-    let id_span = line.find(id_raw.as_str()).unwrap_or(0);
-    if rest.is_empty() {
-        let span_end = line_start + id_span + id_raw.len();
-        return Ok(Some((
-            id_raw.clone(),
-            id_raw,
-            NODE_TYPE_DEFAULT,
-            SourceSpan::new(line_start + id_span, span_end),
-        )));
-    }
-
-    let Some((start, end)) = node_delimiter_pair_at_start(rest) else {
-        return Err("expected node delimiter".to_string());
-    };
-
-    let (inner, tail) = extract_delimited(rest, start, end)?;
-    if !tail.trim().is_empty() {
-        return Err("unexpected trailing input".to_string());
-    }
-
-    let descr = unquote_node_descr(inner);
-    let ty = node_type_for(start, end);
-    let rel = line.find(inner).unwrap_or(id_span);
-    Ok(Some((
-        id_raw,
-        descr,
-        ty,
-        SourceSpan::new(line_start + rel, line_start + rel + inner.len()),
-    )))
 }
 
 fn parse_icon_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
     let t = line.trim_start();
     let prefix = "::icon(";
-    if !t.starts_with(prefix) {
+    if !starts_with_case_insensitive(t, prefix) {
         return None;
     }
     let rest = &t[prefix.len()..];
@@ -1050,7 +1113,6 @@ fn parse_icon_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
     Some(SpannedText {
         text: value.to_string(),
         span: SourceSpan::new(line_start + rel, line_start + rel + value.len()),
-        kind: EditorSemanticKind::String,
     })
 }
 
@@ -1067,171 +1129,23 @@ fn parse_css_class_spanned(line: &str, line_start: usize) -> Option<SpannedText>
     Some(SpannedText {
         text: value.to_string(),
         span: SourceSpan::new(line_start + rel, line_start + rel + value.len()),
-        kind: EditorSemanticKind::String,
     })
 }
 
-pub fn parse_kanban_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut offset = 0usize;
-    let mut header_seen = false;
-    let mut section_level: Option<usize> = None;
-
-    for segment in code.split_inclusive('\n') {
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        let stripped = strip_inline_comment(line);
-        let trimmed = stripped.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        if !header_seen {
-            if !starts_with_case_insensitive(trimmed, "kanban") {
-                return facts;
-            }
-            header_seen = true;
-            if trimmed.len() > "kanban".len() {
-                let after_keyword = &trimmed["kanban".len()..];
-                let rest = after_keyword.trim_start();
-                if !rest.is_empty() {
-                    let indent = after_keyword
-                        .chars()
-                        .take_while(|c| c.is_whitespace())
-                        .count();
-                    section_level.get_or_insert(indent);
-                    let rel = line.find(rest).unwrap_or(0);
-                    if let Some(icon) = parse_icon_spanned(rest, line_start + rel) {
-                        facts.push_directive_prefix("icon");
-                        facts.push_symbol(EditorSemanticSymbol::payload(
-                            icon.text,
-                            Some("kanban icon".to_string()),
-                            EditorSemanticKind::String,
-                            icon.span,
-                            icon.span,
-                        ));
-                    } else if let Some(class_name) = parse_css_class_spanned(rest, line_start + rel)
-                    {
-                        facts.push_directive_prefix(":::");
-                        facts.push_symbol(EditorSemanticSymbol::payload(
-                            class_name.text,
-                            Some("kanban class".to_string()),
-                            EditorSemanticKind::String,
-                            class_name.span,
-                            class_name.span,
-                        ));
-                    } else {
-                        match parse_node_spec_spanned(rest, line, line_start)
-                            .ok()
-                            .flatten()
-                        {
-                            Some(value) => {
-                                facts.push_symbol(EditorSemanticSymbol::outline(
-                                    value.text,
-                                    Some("kanban section".to_string()),
-                                    EditorSemanticKind::Namespace,
-                                    value.span,
-                                    value.span,
-                                ));
-                            }
-                            None => {
-                                facts.mark_recovered_with_diagnostic(
-                                    "Unable to recover kanban node semantics from the header line",
-                                    Some(SourceSpan::new(
-                                        line_start + rel,
-                                        line_start + rel + rest.len(),
-                                    )),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            continue;
-        }
-
-        let (indent, rest) = split_indent(stripped);
-        let rest = rest.trim_end();
-        let rest_offset = line_start + line.find(rest).unwrap_or(0);
-
-        if let Some(icon) = parse_icon_spanned(rest, rest_offset) {
-            facts.push_directive_prefix("icon");
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                icon.text,
-                Some("kanban icon".to_string()),
-                EditorSemanticKind::String,
-                icon.span,
-                icon.span,
-            ));
-            continue;
-        }
-
-        if let Some(class_name) = parse_css_class_spanned(rest, rest_offset) {
-            facts.push_directive_prefix(":::");
-            facts.push_symbol(EditorSemanticSymbol::payload(
-                class_name.text,
-                Some("kanban class".to_string()),
-                EditorSemanticKind::String,
-                class_name.span,
-                class_name.span,
-            ));
-            continue;
-        }
-
-        if let Some(value) = parse_node_spec_spanned(rest, line, line_start)
-            .ok()
-            .flatten()
-        {
-            let is_section = match section_level {
-                Some(level) => indent == level,
-                None => {
-                    section_level = Some(indent);
-                    true
-                }
-            };
-
-            if is_section {
-                facts.push_symbol(EditorSemanticSymbol::outline(
-                    value.text,
-                    Some("kanban section".to_string()),
-                    EditorSemanticKind::Namespace,
-                    value.span,
-                    value.span,
-                ));
-            } else {
-                facts.push_symbol(EditorSemanticSymbol::new(
-                    value.text,
-                    Some("kanban item".to_string()),
-                    value.kind,
-                    value.span,
-                    value.span,
-                ));
-            }
-            continue;
-        } else if rest.contains('[')
-            || rest.contains('(')
-            || rest.contains('{')
-            || rest.contains(')')
-            || rest.contains(']')
-        {
-            facts.mark_recovered_with_diagnostic(
-                "Unable to fully recover kanban node semantics",
-                Some(SourceSpan::new(
-                    line_start + line.find(rest).unwrap_or(0),
-                    line_start + line.find(rest).unwrap_or(0) + rest.len(),
-                )),
-            );
-        }
+pub fn parse_kanban_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    match construct_kanban_semantic_source(code, meta) {
+        Ok(source) => source.editor_facts,
+        Err(failure) => failure.into_editor_facts(),
     }
-
-    facts
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
+    use crate::{
+        EditorSemanticCompleteness, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
+        ParseOptions,
+    };
     use futures::executor::block_on;
 
     fn parse(text: &str) -> Value {
@@ -1248,6 +1162,71 @@ mod tests {
             Error::DiagramParse { diagnostic, .. } => diagnostic,
             other => panic!("expected kanban parse error, got {other:?}"),
         }
+    }
+
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "kanban".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn combined_parse_constructs_once_and_preserves_all_projections() {
+        let text = concat!(
+            "kanban\r\n",
+            "  backlog\r\n",
+            "    task1@{ ticket: MC-1 }\r\n",
+            "    ::icon(star)\r\n",
+            "    :::highlight\r\n",
+        );
+        let expected_json = parse_kanban(text, &meta()).unwrap();
+        let expected_facts = parse_kanban_editor_facts(text, &meta());
+        let expected_model = parse_kanban_model_for_render(text, &meta()).unwrap();
+
+        reset_kanban_syntax_construction_count();
+        let (json, facts) = parse_kanban_json_and_editor_facts(text, &meta()).unwrap();
+
+        assert_eq!(kanban_syntax_construction_count(), 1);
+        assert_eq!(json, expected_json);
+        assert_eq!(facts, expected_facts);
+        let json_ids = json["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|node| node["id"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        let typed_ids = expected_model
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(json_ids, typed_ids);
+
+        for name in ["backlog", "task1", "star", "highlight"] {
+            let start = text.find(name).unwrap();
+            assert!(
+                facts.symbols.iter().any(|symbol| {
+                    symbol.name == name
+                        && symbol.selection == SourceSpan::new(start, start + name.len())
+                }),
+                "missing exact Kanban fact for {name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_editor_input_recovers_from_one_construction() {
+        let text = "kanban\n  backlog[Backlog]\n    broken[Open\n";
+        reset_kanban_syntax_construction_count();
+        let facts = parse_kanban_editor_facts(text, &meta());
+
+        assert_eq!(kanban_syntax_construction_count(), 1);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "backlog"));
+        assert_eq!(facts.diagnostics.len(), 1);
     }
 
     fn sections(model: &Value) -> Vec<Value> {
@@ -1286,9 +1265,11 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert!(facts.diagnostics.iter().any(
-            |diagnostic| diagnostic.message == "Unable to fully recover kanban node semantics"
-        ));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .starts_with("kanban parser recovered after parse error:")
+        }));
         assert!(facts.diagnostics.iter().all(|diagnostic| {
             !diagnostic
                 .message

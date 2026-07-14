@@ -165,6 +165,19 @@ pub enum Error {
 }
 
 impl Error {
+    pub(crate) fn with_exact_span_if_missing(self, span: SourceSpan) -> Self {
+        match self {
+            Self::DiagramParse {
+                diagram_type,
+                diagnostic,
+            } if diagnostic.span().is_none() => Self::DiagramParse {
+                diagram_type,
+                diagnostic: diagnostic.with_span(span, ParseDiagnosticSpanKind::Exact),
+            },
+            other => other,
+        }
+    }
+
     pub fn diagram_parse_fallback(
         diagram_type: impl Into<String>,
         message: impl Into<String>,

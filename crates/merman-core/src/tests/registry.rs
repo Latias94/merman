@@ -25,12 +25,6 @@ struct CharacterizedCapabilities {
     typed: bool,
 }
 
-const STANDARD_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
-    semantic: true,
-    editor: true,
-    combined: false,
-    typed: true,
-};
 const COMBINED_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
     semantic: true,
     editor: true,
@@ -148,7 +142,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "zenuml\n  Alice->Bob: Hello\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -166,7 +160,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "C4Context\nPerson(user, \"User\")\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -175,7 +169,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "kanban\n  Todo\n    item1\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -220,7 +214,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2024-01-01, 1d\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -247,7 +241,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Test\n  risk: low\n  verifymethod: analysis\n}\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -256,7 +250,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "timeline\n2024 : Event\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -274,7 +268,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "stateDiagram-v2\n[*] --> Idle\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -283,7 +277,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "stateDiagram\n[*] --> Idle\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -292,7 +286,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "journey\nsection Work\nTask: 5\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -301,7 +295,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "quadrantChart\nx-axis Low --> High\ny-axis Low --> High\nA: [0.5, 0.5]\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -328,7 +322,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "xychart-beta\nline [10, 30, 20]\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -337,7 +331,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "block\n  a b c\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -346,7 +340,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "eventmodeling\ntf 01 ui Shop.Cart\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -355,7 +349,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "treeView-beta\n  root\n    child\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -373,7 +367,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "ishikawa-beta\n  Effect\n    Cause\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -382,7 +376,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -427,7 +421,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "venn-beta\nset Frontend\nset Backend\nunion Frontend,Backend[\"API\"]\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -1063,6 +1057,7 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
     let engine = crate::Engine::new();
     let selected_profile = crate::selected_baseline_registry_profile();
     let mut malformed_contract_mismatches = Vec::new();
+    let mut recovery_contract_mismatches = Vec::new();
 
     for row in FAMILY_CHARACTERIZATION_MATRIX
         .iter()
@@ -1157,6 +1152,23 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
             row.malformed_source,
             crate::ParseOptions::strict(),
         );
+        if let (Err(_), Ok(Some(facts))) = (&malformed_semantic, &malformed_editor) {
+            if facts.completeness != crate::EditorSemanticCompleteness::Recovered {
+                recovery_contract_mismatches.push(format!(
+                    "{} strict failure returned {:?} editor semantics",
+                    row.variant_id, facts.completeness
+                ));
+            }
+            if !facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span.is_some()
+            }) {
+                recovery_contract_mismatches.push(format!(
+                    "{} strict failure returned editor recovery without a source-backed parser diagnostic: {:?}",
+                    row.variant_id, facts.diagnostics
+                ));
+            }
+        }
         let observed_contract = match (&malformed_semantic, &malformed_editor) {
             (Ok(Some(_)), Ok(Some(_))) => MalformedContract::StrictAcceptsEditorAvailable,
             (Ok(Some(_)), Ok(None)) => MalformedContract::StrictAcceptsEditorUnavailable,
@@ -1184,6 +1196,11 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
         malformed_contract_mismatches.is_empty(),
         "malformed contracts drifted:\n{}",
         malformed_contract_mismatches.join("\n")
+    );
+    assert!(
+        recovery_contract_mismatches.is_empty(),
+        "malformed recovery contracts drifted:\n{}",
+        recovery_contract_mismatches.join("\n")
     );
 }
 
@@ -1242,29 +1259,69 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
         combined,
         BTreeSet::from([
             "architecture",
+            "block",
+            "c4",
             "class",
             "classDiagram",
             "flowchart",
             "flowchart-elk",
             "flowchart-v2",
+            "gantt",
             "gitGraph",
             "info",
+            "journey",
+            "kanban",
             "mindmap",
             "packet",
             "pie",
+            "quadrantChart",
             "radar",
             "railroad",
             "railroadAbnf",
             "railroadEbnf",
             "railroadPeg",
+            "requirement",
             "sankey",
             "sequence",
+            "state",
+            "stateDiagram",
             "swimlane",
+            "timeline",
             "cynefin",
             "er",
             "erDiagram",
+            "eventmodeling",
+            "ishikawa",
+            "treeView",
+            "treemap",
+            "venn",
+            "xychart",
+            "zenuml",
         ])
     );
+}
+
+#[test]
+fn builtin_editor_and_render_capabilities_require_combined_semantic_ownership() {
+    for profile in [BaselineRegistryProfile::Full, BaselineRegistryProfile::Tiny] {
+        for capability in crate::diagram_family_capabilities_for_profile(profile) {
+            if capability.has_semantic_parser && capability.has_editor_parser {
+                assert!(
+                    capability.has_combined_parser,
+                    "{} exposes semantic and editor parsers without one combined construction in {profile:?}",
+                    capability.diagram_type
+                );
+            }
+
+            if capability.has_render_parser {
+                assert!(
+                    capability.has_semantic_parser && capability.has_combined_parser,
+                    "{} exposes a typed render parser without semantic + combined ownership in {profile:?}",
+                    capability.diagram_type
+                );
+            }
+        }
+    }
 }
 
 #[test]

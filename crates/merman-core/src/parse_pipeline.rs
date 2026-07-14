@@ -1006,23 +1006,15 @@ impl<'a> ParsePipeline<'a> {
                 self.finish_editor_semantic_facts(facts, &source_map, directive_prefixes),
             ),
             (RegistryOwner::BuiltIn, None) => {
-                let Some(parser) = family::editor_parser(
-                    self.engine.diagram_registry.profile(),
-                    &meta.diagram_type,
-                ) else {
-                    return Ok(Some(ParsedDiagramWithEditorFacts {
-                        diagram: ParsedDiagram { meta, model },
-                        editor_facts: ParsedEditorFacts::Unavailable,
-                    }));
-                };
-                match parser(editor_input, &meta) {
-                    Ok(facts) => ParsedEditorFacts::Available(self.finish_editor_semantic_facts(
-                        facts,
-                        &source_map,
-                        directive_prefixes,
-                    )),
-                    Err(error) => ParsedEditorFacts::Error(source_map.remap_parse_error(error)),
-                }
+                debug_assert!(
+                    family::editor_parser(
+                        self.engine.diagram_registry.profile(),
+                        &meta.diagram_type,
+                    )
+                    .is_none(),
+                    "built-in families with editor capability must provide a combined semantic parser"
+                );
+                ParsedEditorFacts::Unavailable
             }
         };
 

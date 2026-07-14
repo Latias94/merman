@@ -6,6 +6,7 @@ use crate::diagrams::langium_common::{
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
 };
 use serde_json::{Map, Value, json};
 
@@ -43,6 +44,7 @@ struct PacketBlock {
     end: Option<i64>,
     bits: Option<i64>,
     label: String,
+    numeric_span: SourceSpan,
 }
 
 enum PacketParseOutput {
@@ -104,7 +106,11 @@ pub fn parse_packet_model_for_render(
 pub fn parse_packet_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
     match parse_packet_semantic_source(code, meta) {
         Ok(source) => source.editor_facts,
-        Err(_) => scan_packet_editor_facts(code),
+        Err(error) => ensure_editor_recovery_from_error(
+            scan_packet_editor_facts(code),
+            &error,
+            editor_recovery_fallback_span(code),
+        ),
     }
 }
 
@@ -220,7 +226,7 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
 fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &PacketBlockSpanned) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
-        block.numeric_span,
+        block.semantic.numeric_span,
     ));
     facts.push_symbol(EditorSemanticSymbol::payload(
         block.label.text.to_string(),
@@ -241,28 +247,31 @@ fn populate_packet(blocks: Vec<PacketBlock>, bits_per_row: i64) -> Result<Vec<Pa
         if let (Some(start), Some(end)) = (block.start, block.end)
             && end < start
         {
-            return Err(Error::diagram_parse_fallback(
+            return Err(Error::diagram_parse_exact(
                 "packet".to_string(),
                 format!("Packet block {start} - {end} is invalid. End must be greater than start."),
+                block.numeric_span,
             ));
         }
 
         let start = block.start.unwrap_or(last_bit + 1);
         let end_for_msg = block.end.unwrap_or(start);
         if start != last_bit + 1 {
-            return Err(Error::diagram_parse_fallback(
+            return Err(Error::diagram_parse_exact(
                 "packet".to_string(),
                 format!(
                     "Packet block {start} - {end_for_msg} is not contiguous. It should start from {}.",
                     last_bit + 1
                 ),
+                block.numeric_span,
             ));
         }
 
         if block.bits == Some(0) {
-            return Err(Error::diagram_parse_fallback(
+            return Err(Error::diagram_parse_exact(
                 "packet".to_string(),
                 format!("Packet block {start} is invalid. Cannot have a zero bit field."),
+                block.numeric_span,
             ));
         }
 
@@ -433,8 +442,8 @@ fn parse_packet_block_spanned(line: &str, line_start: usize) -> Option<PacketBlo
             end,
             bits,
             label: decoded_label,
+            numeric_span,
         },
-        numeric_span,
         label,
     })
 }
@@ -549,7 +558,6 @@ struct SpannedText {
 #[derive(Debug, Clone)]
 struct PacketBlockSpanned {
     semantic: PacketBlock,
-    numeric_span: SourceSpan,
     label: SpannedText,
 }
 
@@ -790,6 +798,48 @@ accDescr: Packet accDescription
             diagnostic.message == format!("unexpected packet statement: {invalid}")
                 && diagnostic.span == Some(SourceSpan::new(start, start + invalid.len()))
                 && diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+        }));
+    }
+
+    #[test]
+    fn packet_editor_recovery_reports_post_parse_validation_errors() {
+        let text = concat!(
+            "packet\r\n",
+            "0-7: \"valid\"\r\n",
+            "  9-15: \"not contiguous\"  \r\n",
+        );
+        let invalid = "9-15";
+        let start = text.find(invalid).unwrap();
+        let expected_span = SourceSpan::new(start, start + invalid.len());
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect_err("a non-contiguous packet block must fail strict parsing");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected packet parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), Some(expected_span));
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("packet", text, ParseOptions::strict())
+            .unwrap()
+            .expect("packet editor recovery facts");
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "valid"));
+        assert!(
+            facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "not contiguous")
+        );
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(expected_span)
+                && diagnostic.message.contains("is not contiguous")
         }));
     }
 

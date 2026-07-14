@@ -1,11 +1,26 @@
 use super::*;
-use crate::diagrams::scan::{
-    leading_whitespace_len, starts_with_case_insensitive, strip_line_ending,
-};
+use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, SourceSpan,
 };
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static GANTT_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_gantt_syntax_construction_count() {
+    GANTT_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn gantt_syntax_construction_count() -> usize {
+    GANTT_SYNTAX_CONSTRUCTION_COUNT.get()
+}
 
 fn strip_inline_comment(line: &str) -> &str {
     // Mermaid gantt does not treat `%%` as an inline comment delimiter for statements like `title`
@@ -30,44 +45,6 @@ fn split_statement_suffix(s: &str) -> &str {
         }
     }
     &s[..end]
-}
-
-fn parse_keyword_arg<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
-    let t = line.trim_start();
-    if !starts_with_case_insensitive(t, keyword) {
-        return None;
-    }
-    let after = &t[keyword.len()..];
-    let ws = after.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    let rest = &after[ws.len_utf8()..];
-    Some(split_statement_suffix(rest))
-}
-
-fn parse_keyword_arg_full_line<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
-    let t = line.trim_start();
-    if !starts_with_case_insensitive(t, keyword) {
-        return None;
-    }
-    let after = &t[keyword.len()..];
-    let ws = after.chars().next()?;
-    if !ws.is_whitespace() {
-        return None;
-    }
-    Some(&after[ws.len_utf8()..])
-}
-
-fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !starts_with_case_insensitive(t, key) {
-        return None;
-    }
-    let rest = t[key.len()..].trim_start();
-    let rest = rest.strip_prefix(':')?;
-    // Mermaid gantt's `accTitle:` / `accDescr:` values are end-of-line tokens (not `;`/`#`-terminated).
-    Some(rest.trim().to_string())
 }
 
 fn parse_key_colon_value_spanned<'a>(
@@ -96,54 +73,6 @@ fn parse_key_colon_value_spanned<'a>(
         start: line_start + leading + value_start,
         end: line_start + leading + trimmed.len(),
     })
-}
-
-fn parse_acc_descr_block(cursor: &mut GanttLineCursor<'_>, first_line: &str) -> Option<String> {
-    let t = first_line.trim_start();
-    if !starts_with_case_insensitive(t, "accDescr") {
-        return None;
-    }
-    let rest = t["accDescr".len()..].trim_start();
-    let rest = rest.strip_prefix('{')?;
-
-    let mut buf = String::new();
-    if let Some(end) = rest.find('}') {
-        buf.push_str(&rest[..end]);
-        return Some(buf.trim().to_string());
-    }
-    buf.push_str(rest);
-    buf.push('\n');
-
-    while let Some((line, _line_start)) = cursor.next_line() {
-        if let Some(end) = line.find('}') {
-            buf.push_str(&line[..end]);
-            break;
-        }
-        buf.push_str(line);
-        buf.push('\n');
-    }
-    Some(buf.trim().to_string())
-}
-
-struct GanttLineCursor<'a> {
-    segments: std::str::SplitInclusive<'a, char>,
-    offset: usize,
-}
-
-impl<'a> GanttLineCursor<'a> {
-    fn new(code: &'a str) -> Self {
-        Self {
-            segments: code.split_inclusive('\n'),
-            offset: 0,
-        }
-    }
-
-    fn next_line(&mut self) -> Option<(&'a str, usize)> {
-        let segment = self.segments.next()?;
-        let line_start = self.offset;
-        self.offset += segment.len();
-        Some((strip_line_ending(segment), line_start))
-    }
 }
 
 fn parse_click_statement(
@@ -346,364 +275,10 @@ struct ClickCallParts<'a> {
 }
 
 pub fn parse_gantt_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    collect_gantt_editor_facts_from_lines(code)
-}
-
-fn collect_gantt_editor_facts_from_lines(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let mut header_seen = false;
-    let mut in_frontmatter = false;
-    let mut acc_descr_block = None;
-    let mut offset = 0usize;
-
-    for segment in code.split_inclusive('\n') {
-        let line = strip_line_ending(segment);
-        collect_gantt_editor_line(
-            line,
-            offset,
-            &mut header_seen,
-            &mut in_frontmatter,
-            &mut acc_descr_block,
-            &mut facts,
-        );
-        offset += segment.len();
+    match construct_gantt_semantic_source(code, _meta) {
+        Ok(source) => source.editor_facts,
+        Err(failure) => failure.into_editor_facts(),
     }
-
-    if let Some(block) = acc_descr_block.take() {
-        let diagnostic_span = SourceSpan::new(block.statement_start, block.statement_end);
-        block.emit_symbol(&mut facts);
-        facts.mark_recovered_with_diagnostic(
-            "gantt parser recovered from unterminated accDescr block",
-            Some(diagnostic_span),
-        );
-    }
-
-    facts
-}
-
-fn collect_gantt_editor_line(
-    line: &str,
-    line_start: usize,
-    header_seen: &mut bool,
-    in_frontmatter: &mut bool,
-    acc_descr_block: &mut Option<GanttAccDescrBlock>,
-    facts: &mut EditorSemanticFacts,
-) {
-    let raw_trimmed = line.trim();
-    if *in_frontmatter {
-        if raw_trimmed == "---" {
-            *in_frontmatter = false;
-        }
-        return;
-    }
-    if line_start == 0 && raw_trimmed == "---" {
-        *in_frontmatter = true;
-        return;
-    }
-
-    if let Some(block) = acc_descr_block.as_mut() {
-        if block.accept_continuation_line(line, line_start)
-            && let Some(block) = acc_descr_block.take()
-        {
-            block.emit_symbol(facts);
-        }
-        return;
-    }
-
-    let stripped = strip_inline_comment(line);
-    let trimmed = stripped.trim();
-    if trimmed.is_empty() {
-        return;
-    }
-    if trimmed.starts_with("%%{") {
-        return;
-    }
-
-    if !*header_seen && starts_with_case_insensitive(trimmed, "gantt") {
-        *header_seen = true;
-        if let Some((rest, rest_start)) = gantt_header_rest(stripped, line_start)
-            && !rest.trim().is_empty()
-        {
-            let recognized =
-                collect_gantt_statement_editor_facts(rest, rest_start, acc_descr_block, facts);
-            if !recognized {
-                mark_gantt_recovered_statement(
-                    facts,
-                    "gantt parser recovered from unrecognized statement after header",
-                    rest,
-                    rest_start,
-                );
-            }
-        }
-        return;
-    }
-
-    let missing_header = !*header_seen;
-    if !*header_seen {
-        mark_gantt_recovered_statement(
-            facts,
-            "gantt parser recovered before gantt header",
-            stripped,
-            line_start,
-        );
-    }
-
-    let recognized =
-        collect_gantt_statement_editor_facts(stripped, line_start, acc_descr_block, facts);
-    if !recognized && !missing_header {
-        mark_gantt_recovered_statement(
-            facts,
-            "gantt parser recovered from unrecognized statement",
-            stripped,
-            line_start,
-        );
-    }
-}
-
-fn mark_gantt_recovered_statement(
-    facts: &mut EditorSemanticFacts,
-    message: &'static str,
-    line: &str,
-    line_start: usize,
-) {
-    facts.mark_recovered_with_diagnostic(message, Some(gantt_statement_span(line, line_start)));
-}
-
-fn gantt_header_rest(line: &str, line_start: usize) -> Option<(&str, usize)> {
-    let trimmed = line.trim_start();
-    if !starts_with_case_insensitive(trimmed, "gantt") {
-        return None;
-    }
-
-    let leading = line.len().saturating_sub(trimmed.len());
-    let after_start = leading + "gantt".len();
-    let after = &line[after_start..];
-    let whitespace_len: usize = after
-        .chars()
-        .take_while(|ch| ch.is_whitespace())
-        .map(char::len_utf8)
-        .sum();
-    Some((
-        &after[whitespace_len..],
-        line_start + after_start + whitespace_len,
-    ))
-}
-
-fn collect_gantt_statement_editor_facts(
-    line: &str,
-    line_start: usize,
-    acc_descr_block: &mut Option<GanttAccDescrBlock>,
-    facts: &mut EditorSemanticFacts,
-) -> bool {
-    let stripped = strip_inline_comment(line);
-    let trimmed = stripped.trim();
-    if trimmed.is_empty() {
-        return true;
-    }
-
-    if let Some(format) = parse_gantt_keyword_arg_spanned(stripped, line_start, "dateFormat", true)
-    {
-        facts.push_directive_prefix("dateFormat");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            format,
-            "gantt date format",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if starts_with_case_insensitive(trimmed, "inclusiveEndDates") {
-        facts.push_directive_prefix("inclusiveEndDates");
-        return true;
-    }
-    if starts_with_case_insensitive(trimmed, "topAxis") {
-        facts.push_directive_prefix("topAxis");
-        return true;
-    }
-    if let Some(format) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true)
-    {
-        facts.push_directive_prefix("axisFormat");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            format,
-            "gantt axis format",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if let Some(interval) =
-        parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true)
-    {
-        facts.push_directive_prefix("tickInterval");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            interval,
-            "gantt tick interval",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if let Some(includes) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true)
-    {
-        facts.push_directive_prefix("includes");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            includes,
-            "gantt includes",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if let Some(excludes) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true)
-    {
-        facts.push_directive_prefix("excludes");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            excludes,
-            "gantt excludes",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if let Some(marker) =
-        parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false)
-    {
-        facts.push_directive_prefix("todayMarker");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            marker,
-            "gantt today marker",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if let Some(day) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
-        facts.push_directive_prefix("weekday");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            day,
-            "gantt weekday",
-            EditorSemanticKind::String,
-            facts,
-        );
-        let day_value = day.trim();
-        let day_text = day_value
-            .map(|value| value.text.to_lowercase())
-            .unwrap_or_default();
-        if !matches!(
-            day_text.as_str(),
-            "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
-        ) {
-            facts.mark_recovered_with_diagnostic(
-                "gantt parser recovered from invalid weekday",
-                day_value.map(SpannedText::span),
-            );
-        }
-        return true;
-    }
-    if let Some(day) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
-        facts.push_directive_prefix("weekend");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            day,
-            "gantt weekend",
-            EditorSemanticKind::String,
-            facts,
-        );
-        let day_value = day.trim();
-        let day_text = day_value
-            .map(|value| value.text.to_lowercase())
-            .unwrap_or_default();
-        if !matches!(day_text.as_str(), "friday" | "saturday") {
-            facts.mark_recovered_with_diagnostic(
-                "gantt parser recovered from invalid weekend",
-                day_value.map(SpannedText::span),
-            );
-        }
-        return true;
-    }
-    if let Some(title) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
-        facts.push_directive_prefix("title");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            title,
-            "gantt title",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if let Some(section) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {
-        facts.push_directive_prefix("section");
-        collect_gantt_section_symbol(stripped, line_start, section, facts);
-        return true;
-    }
-    if let Some(acc_title) = parse_key_colon_value_spanned(stripped, line_start, "accTitle") {
-        facts.push_directive_prefix("accTitle");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            acc_title,
-            "gantt accessibility title",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if let Some(acc_descr) = parse_key_colon_value_spanned(stripped, line_start, "accDescr") {
-        facts.push_directive_prefix("accDescr");
-        push_gantt_payload_symbol(
-            stripped,
-            line_start,
-            acc_descr,
-            "gantt accessibility description",
-            EditorSemanticKind::String,
-            facts,
-        );
-        return true;
-    }
-    if let Some(block) = GanttAccDescrBlock::start(stripped, line_start) {
-        facts.push_directive_prefix("accDescr");
-        if block.is_complete() {
-            block.emit_symbol(facts);
-        } else {
-            *acc_descr_block = Some(block);
-        }
-        return true;
-    }
-    match parse_click_statement(stripped, line_start) {
-        Ok(Some(click)) => {
-            facts.push_directive_prefix("click");
-            collect_gantt_click_symbols(stripped, line_start, click, facts);
-            return true;
-        }
-        Ok(None) => {}
-        Err(message) => {
-            facts.push_directive_prefix("click");
-            facts.mark_recovered_with_diagnostic(
-                format!("gantt parser recovered from {message}"),
-                Some(gantt_statement_span(stripped, line_start)),
-            );
-            return true;
-        }
-    }
-
-    collect_gantt_task_symbols(stripped, line_start, facts)
 }
 
 fn parse_gantt_keyword_arg_spanned<'a>(
@@ -721,7 +296,9 @@ fn parse_gantt_keyword_arg_spanned<'a>(
     if !ws.is_whitespace() {
         return None;
     }
-    let ws_len = leading_whitespace_len(after);
+    // The pinned Jison actions use `substr(keyword.len() + 1)`: one delimiter is consumed and
+    // any additional whitespace remains part of the DB value.
+    let ws_len = ws.len_utf8();
     let rest_start = keyword.len() + ws_len;
     let rest = &after[ws_len..];
     let text = if terminates_at_statement_suffix {
@@ -814,7 +391,25 @@ impl GanttAccDescrBlock {
         }
     }
 
-    fn emit_symbol(self, facts: &mut EditorSemanticFacts) {
+    fn consume_remaining(mut self, cursor: &mut LineCursor<'_>) -> Self {
+        while !self.complete {
+            let Some((line, line_start)) = cursor.next_line() else {
+                break;
+            };
+            self.accept_continuation_line(line, line_start);
+        }
+        self
+    }
+
+    fn value(&self) -> &str {
+        self.body.trim()
+    }
+
+    fn statement_span(&self) -> SourceSpan {
+        SourceSpan::new(self.statement_start, self.statement_end)
+    }
+
+    fn emit_symbol(&self, facts: &mut EditorSemanticFacts) {
         let text = self.body.trim();
         if text.is_empty() {
             return;
@@ -947,44 +542,11 @@ fn gantt_statement_span(line: &str, line_start: usize) -> SourceSpan {
     )
 }
 
-fn collect_gantt_task_symbols(
-    line: &str,
-    line_start: usize,
-    facts: &mut EditorSemanticFacts,
-) -> bool {
-    let task_stmt = line.trim_start();
-    let leading = line.len().saturating_sub(task_stmt.len());
-    let Some(colon) = task_stmt.find(':') else {
-        return false;
-    };
-
-    let task_txt = &task_stmt[..colon];
-    let task_data = split_statement_suffix(&task_stmt[colon + 1..]);
-    if task_txt.is_empty() || task_data.trim().is_empty() {
-        return true;
-    }
-
-    let statement_span =
-        SourceSpan::new(line_start + leading, line_start + leading + task_stmt.len());
-    collect_gantt_task_data_symbols(
-        task_data,
-        line_start + leading + colon + 1,
-        statement_span,
-        facts,
-    );
-    true
-}
-
-fn collect_gantt_task_data_symbols(
-    task_data: &str,
-    task_data_start: usize,
+fn collect_gantt_task_field_symbols(
+    fields: &[SpannedText<'_>],
     statement_span: SourceSpan,
     facts: &mut EditorSemanticFacts,
 ) {
-    let fields = split_gantt_fields(task_data, task_data_start)
-        .into_iter()
-        .filter_map(SpannedText::trim)
-        .collect::<Vec<_>>();
     let mut field_start = 0usize;
     while fields
         .get(field_start)
@@ -1174,23 +736,70 @@ impl<'a> SpannedText<'a> {
 }
 
 pub fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let Some(db) = parse_gantt_db(code, meta)? else {
+    let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(json!({}));
     };
-    gantt_db_to_json(db, meta)
+    Ok(gantt_db_to_json(db, meta))
 }
 
 pub fn parse_gantt_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<GanttDiagramRenderModel> {
-    let Some(mut db) = parse_gantt_db(code, meta)? else {
+    let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(GanttDiagramRenderModel::default());
     };
-    gantt_db_to_render_model(&mut db)
+    gantt_db_to_render_model(db)
 }
 
-fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
+pub(crate) fn parse_gantt_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let GanttSemanticSource { db, editor_facts } = parse_gantt_semantic_source(code, meta)?;
+    let json = db
+        .map(|db| gantt_db_to_json(db, meta))
+        .unwrap_or_else(|| json!({}));
+    Ok((json, editor_facts))
+}
+
+struct GanttSemanticSource {
+    db: Option<GanttDb>,
+    editor_facts: EditorSemanticFacts,
+}
+
+struct GanttSemanticFailure {
+    error: Box<Error>,
+    editor_facts: EditorSemanticFacts,
+}
+
+impl GanttSemanticFailure {
+    fn into_editor_facts(mut self) -> EditorSemanticFacts {
+        let (message, span) = match self.error.as_ref() {
+            Error::DiagramParse { diagnostic, .. } => {
+                (diagnostic.message().to_string(), diagnostic.span())
+            }
+            error => (error.to_string(), None),
+        };
+        self.editor_facts.mark_recovered_from_parse_error(
+            format!("gantt parser recovered after parse error: {message}"),
+            span,
+        );
+        self.editor_facts
+    }
+}
+
+fn parse_gantt_semantic_source(code: &str, meta: &ParseMetadata) -> Result<GanttSemanticSource> {
+    construct_gantt_semantic_source(code, meta).map_err(|failure| *failure.error)
+}
+
+fn construct_gantt_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<GanttSemanticSource, GanttSemanticFailure> {
+    #[cfg(test)]
+    GANTT_SYNTAX_CONSTRUCTION_COUNT.set(GANTT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
     let mut db = GanttDb::default();
     db.clear();
     db.set_security_level(meta.effective_config.get_str("securityLevel"));
@@ -1198,8 +807,10 @@ fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
         db.set_display_mode(dm);
     }
 
-    let mut cursor = GanttLineCursor::new(code);
+    let mut cursor = LineCursor::new(code);
     let mut header_seen = false;
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut first_error = None;
 
     while let Some((line, line_start)) = cursor.next_line() {
         let stripped = strip_inline_comment(line);
@@ -1220,28 +831,72 @@ fn parse_gantt_db(code: &str, meta: &ParseMetadata) -> Result<Option<GanttDb>> {
                         line_start + trimmed_start + "gantt".len() + rest_offset,
                         &mut db,
                         &mut cursor,
-                    )?;
+                        &mut editor_facts,
+                    )
+                    .unwrap_or_else(|error| {
+                        first_error.get_or_insert(error);
+                    });
                 }
                 continue;
             }
-            return Err(Error::diagram_parse_fallback(
+            first_error.get_or_insert(Error::diagram_parse_exact(
                 "gantt".to_string(),
                 "expected gantt header".to_string(),
+                gantt_statement_span(stripped, line_start),
             ));
+            parse_gantt_statement(
+                stripped,
+                line_start,
+                &mut db,
+                &mut cursor,
+                &mut editor_facts,
+            )
+            .unwrap_or_else(|error| {
+                first_error.get_or_insert(error);
+            });
+            continue;
         }
 
-        parse_gantt_statement(stripped, line_start, &mut db, &mut cursor)?;
+        parse_gantt_statement(
+            stripped,
+            line_start,
+            &mut db,
+            &mut cursor,
+            &mut editor_facts,
+        )
+        .unwrap_or_else(|error| {
+            first_error.get_or_insert(error);
+        });
+    }
+
+    if let Some(error) = first_error {
+        return Err(GanttSemanticFailure {
+            error: Box::new(error),
+            editor_facts,
+        });
     }
 
     if !header_seen {
-        return Ok(None);
+        return Ok(GanttSemanticSource {
+            db: None,
+            editor_facts,
+        });
     }
 
-    Ok(Some(db))
+    if let Err(error) = db.finalize_tasks() {
+        return Err(GanttSemanticFailure {
+            error: Box::new(error),
+            editor_facts,
+        });
+    }
+    Ok(GanttSemanticSource {
+        db: Some(db),
+        editor_facts,
+    })
 }
 
-fn gantt_db_to_json(mut db: GanttDb, meta: &ParseMetadata) -> Result<Value> {
-    let tasks = db.get_tasks()?;
+fn gantt_db_to_json(mut db: GanttDb, meta: &ParseMetadata) -> Value {
+    let tasks = db.take_tasks();
     let tasks_json: Vec<Value> = tasks
         .into_iter()
         .map(|t| {
@@ -1281,7 +936,7 @@ fn gantt_db_to_json(mut db: GanttDb, meta: &ParseMetadata) -> Result<Value> {
         })
         .collect();
 
-    Ok(json!({
+    json!({
         "type": meta.diagram_type,
         "title": if db.diagram_title.is_empty() { None::<String> } else { Some(db.diagram_title) },
         "accTitle": if db.acc_title.is_empty() { None::<String> } else { Some(db.acc_title) },
@@ -1301,12 +956,12 @@ fn gantt_db_to_json(mut db: GanttDb, meta: &ParseMetadata) -> Result<Value> {
         "tasks": tasks_json,
         "links": db.links,
         "clickEvents": db.click_events,
-    }))
+    })
 }
 
-fn gantt_db_to_render_model(db: &mut GanttDb) -> Result<GanttDiagramRenderModel> {
+fn gantt_db_to_render_model(mut db: GanttDb) -> Result<GanttDiagramRenderModel> {
     let tasks = db
-        .get_tasks()?
+        .take_tasks()
         .into_iter()
         .map(raw_task_to_render_task)
         .collect::<Result<Vec<_>>>()?;
@@ -1368,7 +1023,8 @@ fn parse_gantt_statement(
     line: &str,
     line_start: usize,
     db: &mut GanttDb,
-    cursor: &mut GanttLineCursor<'_>,
+    cursor: &mut LineCursor<'_>,
+    facts: &mut EditorSemanticFacts,
 ) -> Result<()> {
     let stripped = strip_inline_comment(line);
     let t = stripped.trim();
@@ -1376,39 +1032,104 @@ fn parse_gantt_statement(
         return Ok(());
     }
 
-    if let Some(v) = parse_keyword_arg(stripped, "dateFormat") {
-        db.set_date_format(v);
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "dateFormat", true) {
+        facts.push_directive_prefix("dateFormat");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt date format",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_date_format(v.text);
         return Ok(());
     }
     if starts_with_case_insensitive(t, "inclusiveEndDates") {
+        facts.push_directive_prefix("inclusiveEndDates");
         db.enable_inclusive_end_dates();
         return Ok(());
     }
     if starts_with_case_insensitive(t, "topAxis") {
+        facts.push_directive_prefix("topAxis");
         db.enable_top_axis();
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "axisFormat") {
-        db.set_axis_format(v);
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "axisFormat", true) {
+        facts.push_directive_prefix("axisFormat");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt axis format",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_axis_format(v.text);
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "tickInterval") {
-        db.set_tick_interval(v.trim());
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "tickInterval", true) {
+        facts.push_directive_prefix("tickInterval");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt tick interval",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_tick_interval(v.text.trim());
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "includes") {
-        db.set_includes(v);
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "includes", true) {
+        facts.push_directive_prefix("includes");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt includes",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_includes(v.text);
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg(stripped, "excludes") {
-        db.set_excludes(v);
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "excludes", true) {
+        facts.push_directive_prefix("excludes");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt excludes",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_excludes(v.text);
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg_full_line(stripped, "todayMarker") {
-        db.set_today_marker(v.trim());
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "todayMarker", false) {
+        facts.push_directive_prefix("todayMarker");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt today marker",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_today_marker(v.text.trim());
         return Ok(());
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekday", false) {
+        facts.push_directive_prefix("weekday");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt weekday",
+            EditorSemanticKind::String,
+            facts,
+        );
         let trimmed_day = v.trim();
         let day = trimmed_day
             .map(|value| value.text.to_lowercase())
@@ -1430,6 +1151,15 @@ fn parse_gantt_statement(
         return Ok(());
     }
     if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "weekend", false) {
+        facts.push_directive_prefix("weekend");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt weekend",
+            EditorSemanticKind::String,
+            facts,
+        );
         let trimmed_day = v.trim();
         let day = trimmed_day
             .map(|value| value.text.to_lowercase())
@@ -1447,28 +1177,68 @@ fn parse_gantt_statement(
         db.set_weekend(&day);
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg_full_line(stripped, "title") {
-        db.set_diagram_title(v.trim());
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "title", false) {
+        facts.push_directive_prefix("title");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt title",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_diagram_title(v.text.trim());
         return Ok(());
     }
-    if let Some(v) = parse_keyword_arg_full_line(stripped, "section") {
-        db.add_section(v.trim());
+    if let Some(v) = parse_gantt_keyword_arg_spanned(stripped, line_start, "section", false) {
+        facts.push_directive_prefix("section");
+        collect_gantt_section_symbol(stripped, line_start, v, facts);
+        db.add_section(v.text.trim());
         return Ok(());
     }
-    if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
-        db.set_acc_title(&v);
+    if let Some(v) = parse_key_colon_value_spanned(stripped, line_start, "accTitle") {
+        facts.push_directive_prefix("accTitle");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt accessibility title",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_acc_title(v.text.trim());
         return Ok(());
     }
-    if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
-        db.set_acc_descr(&v);
+    if let Some(v) = parse_key_colon_value_spanned(stripped, line_start, "accDescr") {
+        facts.push_directive_prefix("accDescr");
+        push_gantt_payload_symbol(
+            stripped,
+            line_start,
+            v,
+            "gantt accessibility description",
+            EditorSemanticKind::String,
+            facts,
+        );
+        db.set_acc_descr(v.text.trim());
         return Ok(());
     }
-    if let Some(v) = parse_acc_descr_block(cursor, stripped) {
-        db.set_acc_descr(&v);
+    if let Some(block) = GanttAccDescrBlock::start(stripped, line_start) {
+        facts.push_directive_prefix("accDescr");
+        let block = block.consume_remaining(cursor);
+        db.set_acc_descr(block.value());
+        block.emit_symbol(facts);
+        if !block.is_complete() {
+            facts.mark_recovered_from_parse_error(
+                "gantt parser recovered from unterminated accDescr block",
+                Some(block.statement_span()),
+            );
+        }
         return Ok(());
     }
     match parse_click_statement(stripped, line_start) {
         Ok(Some(click)) => {
+            facts.push_directive_prefix("click");
+            collect_gantt_click_symbols(stripped, line_start, click, facts);
             if let Some(call) = click.call {
                 db.set_click_event(
                     click.ids.text,
@@ -1483,6 +1253,7 @@ fn parse_gantt_statement(
         }
         Ok(None) => {}
         Err(message) => {
+            facts.push_directive_prefix("click");
             return Err(Error::diagram_parse_exact(
                 "gantt".to_string(),
                 message,
@@ -1494,20 +1265,32 @@ fn parse_gantt_statement(
     let task_stmt = stripped.trim_start();
 
     let Some(colon) = task_stmt.find(':') else {
-        return Err(Error::diagram_parse_fallback(
+        return Err(Error::diagram_parse_exact(
             "gantt".to_string(),
             format!("unrecognized statement: {t}"),
+            gantt_statement_span(stripped, line_start),
         ));
     };
 
     // Mermaid passes `taskTxt` through to the DB without trimming. This preserves any trailing
     // whitespace before the `:` delimiter (e.g. `Task1 :id,...` yields `Task1 `).
     let task_txt = &task_stmt[..colon];
-    let mut task_data = task_stmt[colon + 1..].to_string();
-    task_data = split_statement_suffix(&task_data).to_string();
+    let task_data = split_statement_suffix(&task_stmt[colon + 1..]);
     if task_txt.is_empty() || task_data.trim().is_empty() {
         return Ok(());
     }
-    db.add_task(task_txt, &format!(":{task_data}"));
+    let leading = stripped.len().saturating_sub(task_stmt.len());
+    let statement_span =
+        SourceSpan::new(line_start + leading, line_start + leading + task_stmt.len());
+    let fields = split_gantt_fields(task_data, line_start + leading + colon + 1);
+    let editor_fields = fields
+        .iter()
+        .copied()
+        .filter_map(SpannedText::trim)
+        .collect::<Vec<_>>();
+    collect_gantt_task_field_symbols(&editor_fields, statement_span, facts);
+    let field_text = fields.iter().map(|field| field.text).collect::<Vec<_>>();
+    let task_info = db.parse_task_info(&field_text);
+    db.add_task(task_txt, &format!(":{task_data}"), task_info);
     Ok(())
 }

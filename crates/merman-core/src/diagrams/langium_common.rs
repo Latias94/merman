@@ -153,6 +153,10 @@ impl LangiumCommonFacts {
         self.ordered.push(fact);
     }
 
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &LangiumCommonFact> {
+        self.ordered.iter()
+    }
+
     #[cfg(test)]
     fn ordered(&self) -> &[LangiumCommonFact] {
         &self.ordered

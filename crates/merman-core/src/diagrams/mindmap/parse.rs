@@ -7,6 +7,7 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
     EditorSemanticDiagnostic, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
     ParseMetadata, Result, SourceSpan,
+    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
 };
 
 use super::db::{MindmapDb, MindmapParseConfig};
@@ -104,6 +105,7 @@ fn mindmap_db_from_events(
     for event in events {
         match event {
             MindmapParsedEvent::Node(node) => {
+                let selection = node.selection;
                 db.add_node(
                     super::db::MindmapNodeInput {
                         indent_level: node.indent as i32,
@@ -115,7 +117,8 @@ fn mindmap_db_from_events(
                     },
                     &meta.effective_config,
                     parse_config,
-                )?;
+                )
+                .map_err(|error| error.with_exact_span_if_missing(selection))?;
             }
             MindmapParsedEvent::Class(class) => {
                 db.decorate_last(Some(class.value), None, &meta.effective_config);
@@ -130,11 +133,25 @@ fn mindmap_db_from_events(
 }
 
 pub fn parse_mindmap_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    let parsed = match parse_mindmap_lines(code, meta, true) {
-        Ok(parsed) => parsed,
-        Err(_) => return EditorSemanticFacts::new(),
-    };
-    mindmap_editor_facts_from_parsed(&parsed)
+    match parse_mindmap_semantic_source(code, meta) {
+        Ok(source) => {
+            let facts = source.editor_facts();
+            match source.into_db(meta) {
+                Ok(_) => facts,
+                Err(error) => ensure_editor_recovery_from_error(
+                    facts,
+                    &error,
+                    editor_recovery_fallback_span(code),
+                ),
+            }
+        }
+        Err(error) => {
+            let facts = parse_mindmap_lines(code, meta, true)
+                .map(|parsed| mindmap_editor_facts_from_parsed(&parsed))
+                .unwrap_or_default();
+            ensure_editor_recovery_from_error(facts, &error, editor_recovery_fallback_span(code))
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

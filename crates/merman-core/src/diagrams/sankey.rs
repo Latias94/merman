@@ -2,6 +2,7 @@ use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -206,7 +207,11 @@ pub fn parse_sankey_model_for_render(
 pub fn parse_sankey_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
     match parse_sankey_semantic_source(code, meta) {
         Ok(source) => source.editor_facts(),
-        Err(_) => recover_sankey_editor_facts(code, meta),
+        Err(error) => ensure_editor_recovery_from_error(
+            recover_sankey_editor_facts(code, meta),
+            &error,
+            editor_recovery_fallback_span(code),
+        ),
     }
 }
 
@@ -862,5 +867,37 @@ A,B,0.597
             quoted.selection,
             SourceSpan::new(quoted_start, quoted_start + "C, source".len())
         );
+    }
+
+    #[test]
+    fn sankey_editor_recovery_reports_missing_csv_records() {
+        let text = "  sankey-beta\r\n  ";
+        let header_start = text.find("sankey-beta").unwrap();
+        let error_span = SourceSpan::new(header_start, header_start + "sankey-beta".len());
+        let engine = Engine::new();
+
+        let error = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect_err("a Sankey header without records must fail strict parsing");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected Sankey parse diagnostic");
+        };
+        assert_eq!(diagnostic.span(), Some(error_span));
+
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("sankey", text, ParseOptions::strict())
+            .unwrap()
+            .expect("Sankey editor recovery facts");
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(error_span)
+                && diagnostic
+                    .message
+                    .contains("expected sankey header followed by csv")
+        }));
     }
 }

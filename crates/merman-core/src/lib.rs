@@ -41,7 +41,7 @@ pub use diagram::{
     RenderSemanticParser,
 };
 pub use editor::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticCompleteness,
     EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
     EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, EditorSpanCoordinateSpace,
     SourceSpan,

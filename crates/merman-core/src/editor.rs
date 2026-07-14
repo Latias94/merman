@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::error::{ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan};
+use crate::error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan};
 
 /// Byte span in the parser input that produced an editor-visible semantic fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +61,23 @@ pub enum EditorSemanticRole {
     Payload,
 }
 
+/// Grammar-owned validation policy for renaming an entity occurrence.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorRenamePolicy {
+    /// The symbol is not an addressable rename target.
+    None,
+    /// Mermaid's common identifier form: Unicode alphanumeric characters, `_`, or `-`.
+    #[default]
+    Identifier,
+    /// Dot-separated ASCII identifiers.
+    QualifiedIdentifier,
+    /// Event Modeling `EM_ID`: an ASCII identifier beginning with a letter or `_`.
+    EventModelingId,
+    /// Event Modeling frame id: one to three ASCII digits.
+    EventModelingFrameId,
+}
+
 impl EditorSemanticRole {
     pub fn contributes_completion(self) -> bool {
         matches!(self, Self::Entity)
@@ -82,6 +99,7 @@ pub struct EditorSemanticSymbol {
     pub detail: Option<String>,
     pub kind: EditorSemanticKind,
     pub role: EditorSemanticRole,
+    pub rename_policy: EditorRenamePolicy,
     pub span: SourceSpan,
     pub selection: SourceSpan,
 }
@@ -146,14 +164,25 @@ impl EditorSemanticSymbol {
         span: SourceSpan,
         selection: SourceSpan,
     ) -> Self {
+        let rename_policy = if role == EditorSemanticRole::Entity {
+            EditorRenamePolicy::Identifier
+        } else {
+            EditorRenamePolicy::None
+        };
         Self {
             name: name.into(),
             detail,
             kind,
             role,
+            rename_policy,
             span,
             selection,
         }
+    }
+
+    pub fn with_rename_policy(mut self, rename_policy: EditorRenamePolicy) -> Self {
+        self.rename_policy = rename_policy;
+        self
     }
 }
 
@@ -279,6 +308,47 @@ impl EditorSemanticFacts {
     pub fn push_expected_syntax(&mut self, expected: EditorExpectedSyntax) {
         self.expected_syntax.push(expected);
     }
+}
+
+pub(crate) fn editor_recovery_fallback_span(source: &str) -> SourceSpan {
+    let mut line_start = 0;
+    for segment in source.split_inclusive('\n') {
+        let line = segment.strip_suffix('\n').unwrap_or(segment);
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            let start = line_start + line.find(trimmed).unwrap_or_default();
+            return SourceSpan::new(start, start + trimmed.len());
+        }
+        line_start += segment.len();
+    }
+    SourceSpan::new(source.len(), source.len())
+}
+
+pub(crate) fn ensure_editor_recovery_from_error(
+    mut facts: EditorSemanticFacts,
+    error: &Error,
+    fallback_span: SourceSpan,
+) -> EditorSemanticFacts {
+    let (message, span) = match error {
+        Error::DiagramParse { diagnostic, .. } => (
+            diagnostic.message().to_string(),
+            diagnostic.span().unwrap_or(fallback_span),
+        ),
+        other => (other.to_string(), fallback_span),
+    };
+    let already_reported = facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.message == message
+            && diagnostic.span == Some(span)
+    });
+    if already_reported {
+        facts.mark_recovered();
+        return facts;
+    }
+
+    facts.mark_recovered_from_parse_error(message, Some(span));
+    facts
 }
 
 pub(crate) fn lalrpop_recovery_span<T, E>(

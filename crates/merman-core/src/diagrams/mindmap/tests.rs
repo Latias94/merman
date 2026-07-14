@@ -384,6 +384,56 @@ fn mindmap_editor_facts_preserve_prior_symbols_when_later_node_is_invalid() {
 }
 
 #[test]
+fn mindmap_editor_facts_report_database_validation_errors() {
+    let text = "mindmap\r\n    root\r\n    fakeRoot\r\n";
+    let invalid = "fakeRoot";
+    let start = text.find(invalid).unwrap();
+    let expected_span = SourceSpan::new(start, start + invalid.len());
+    let engine = Engine::new();
+
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("multiple mindmap roots must fail strict parsing");
+    let crate::Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("expected mindmap parse diagnostic");
+    };
+    assert_eq!(diagnostic.span(), Some(expected_span));
+
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .unwrap()
+        .expect("mindmap editor recovery facts");
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "root"));
+    assert!(facts.symbols.iter().any(|symbol| symbol.name == "fakeRoot"));
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(expected_span)
+            && diagnostic.message.contains("There can be only one root")
+    }));
+}
+
+#[test]
+fn mindmap_editor_facts_report_invalid_header() {
+    let text = "  mindmap-beta\r\nroot\r\n";
+    let invalid = "mindmap-beta";
+    let start = text.find(invalid).unwrap();
+    let expected_span = SourceSpan::new(start, start + invalid.len());
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("mindmap", text, ParseOptions::strict())
+        .unwrap()
+        .expect("mindmap editor recovery facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.symbols.is_empty());
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(expected_span)
+            && diagnostic.message.contains("expected mindmap header")
+    }));
+}
+
+#[test]
 fn mindmap_multiline_markdown_string_node_description_is_parsed() {
     let model = parse(
         "mindmap\n    id1[\"`**Root** with\n\

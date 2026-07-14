@@ -1,66 +1,172 @@
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorSemanticSymbol, Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseMetadata, Result,
+    SourceSpan,
     editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use serde_json::Value;
+#[cfg(test)]
+use std::cell::Cell;
 
 use super::db::StateDb;
 use super::{Lexer, StateDiagramRenderModel, Stmt, Tok};
 
+#[cfg(test)]
+thread_local! {
+    static STATE_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn reset_state_syntax_construction_count() {
+    STATE_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn state_syntax_construction_count() -> usize {
+    STATE_SYNTAX_CONSTRUCTION_COUNT.get()
+}
+
+type StateLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
+type StateGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
+
+struct StateSyntax {
+    events: Vec<StateLexicalEvent>,
+}
+
+impl StateSyntax {
+    fn lex(code: &str) -> Self {
+        #[cfg(test)]
+        STATE_SYNTAX_CONSTRUCTION_COUNT.set(STATE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
+
+        let mut events = Vec::new();
+        let mut lexer = Lexer::new(code);
+        let mut last_position = lexer.position();
+        while let Some(event) = lexer.next() {
+            let current_position = lexer.position();
+            let must_stop = event.is_err() && current_position == last_position;
+            events.push(event);
+            if must_stop {
+                break;
+            }
+            last_position = current_position;
+        }
+
+        Self { events }
+    }
+
+    fn editor_facts(&self, code: &str) -> EditorSemanticFacts {
+        collect_state_editor_facts_from_events(&self.events, code)
+    }
+
+    fn into_document(self) -> std::result::Result<Vec<Stmt>, StateGrammarError> {
+        super::state_grammar::RootParser::new().parse(self.events)
+    }
+}
+
+struct StateSemanticSource {
+    db: StateDb,
+    editor_facts: EditorSemanticFacts,
+}
+
+struct StateSemanticFailure {
+    error: Box<StateGrammarError>,
+    editor_facts: EditorSemanticFacts,
+}
+
+impl StateSemanticFailure {
+    fn into_parse_error(self, meta: &ParseMetadata, fallback_offset: usize) -> Error {
+        Error::diagram_parse_diagnostic(
+            meta.diagram_type.clone(),
+            state_parse_diagnostic(&self.error, fallback_offset),
+        )
+    }
+
+    fn into_editor_facts(mut self, fallback_offset: usize) -> EditorSemanticFacts {
+        let span = match self.error.as_ref() {
+            lalrpop_util::ParseError::User { error } => error
+                .span
+                .unwrap_or_else(|| SourceSpan::new(fallback_offset, fallback_offset)),
+            _ => lalrpop_recovery_span(&self.error, fallback_offset),
+        };
+        self.editor_facts.mark_recovered_from_parse_error(
+            format!(
+                "state parser recovered after parse error: {}",
+                format_lalrpop_parse_error(self.error.as_ref())
+            ),
+            Some(span),
+        );
+        self.editor_facts
+    }
+}
+
+fn state_parse_diagnostic(error: &StateGrammarError, fallback_offset: usize) -> ParseDiagnostic {
+    let diagnostic = lalrpop_parse_diagnostic(error, fallback_offset);
+    match error {
+        lalrpop_util::ParseError::UnrecognizedToken {
+            token: (start, Tok::Newline, end),
+            ..
+        } if start == end && *end == fallback_offset => diagnostic.with_span(
+            SourceSpan::new(*start, *end),
+            ParseDiagnosticSpanKind::InsertionPoint,
+        ),
+        _ => diagnostic,
+    }
+}
+
 pub fn parse_state(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let mut doc = super::state_grammar::RootParser::new()
-        .parse(Lexer::new(code))
-        .map_err(|e| {
-            Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(&e, code.len()),
-            )
-        })?;
-
-    let mut divider_cnt = 0usize;
-    assign_divider_ids(&mut doc, &mut divider_cnt);
-
-    let mut db = StateDb::new();
-    db.set_root_doc(doc);
-    db.to_model(meta)
+    parse_state_semantic_source(code, meta)?.db.to_model(meta)
 }
 
 pub fn parse_state_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<StateDiagramRenderModel> {
-    let mut doc = super::state_grammar::RootParser::new()
-        .parse(Lexer::new(code))
-        .map_err(|e| {
-            Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(&e, code.len()),
-            )
-        })?;
+    parse_state_semantic_source(code, meta)?
+        .db
+        .to_model_for_render_typed(meta)
+}
+
+pub(crate) fn parse_state_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let StateSemanticSource { db, editor_facts } = parse_state_semantic_source(code, meta)?;
+    Ok((db.to_model(meta)?, editor_facts))
+}
+
+pub fn parse_state_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    match construct_state_semantic_source(code) {
+        Ok(source) => source.editor_facts,
+        Err(failure) => failure.into_editor_facts(code.len()),
+    }
+}
+
+fn parse_state_semantic_source(code: &str, meta: &ParseMetadata) -> Result<StateSemanticSource> {
+    construct_state_semantic_source(code)
+        .map_err(|failure| failure.into_parse_error(meta, code.len()))
+}
+
+fn construct_state_semantic_source(
+    code: &str,
+) -> std::result::Result<StateSemanticSource, StateSemanticFailure> {
+    let syntax = StateSyntax::lex(code);
+    let editor_facts = syntax.editor_facts(code);
+    let mut doc = match syntax.into_document() {
+        Ok(doc) => doc,
+        Err(error) => {
+            return Err(StateSemanticFailure {
+                error: Box::new(error),
+                editor_facts,
+            });
+        }
+    };
 
     let mut divider_cnt = 0usize;
     assign_divider_ids(&mut doc, &mut divider_cnt);
 
     let mut db = StateDb::new();
     db.set_root_doc(doc);
-    db.to_model_for_render_typed(meta)
-}
-
-pub fn parse_state_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let parse_result = super::state_grammar::RootParser::new().parse(Lexer::new(code));
-    let mut facts = state_editor_facts_from_events(collect_state_editor_events(code));
-    if let Err(error) = parse_result {
-        let span = lalrpop_recovery_span(&error, code.len());
-        facts.mark_recovered_from_parse_error(
-            format!(
-                "state parser recovered after parse error: {}",
-                format_lalrpop_parse_error(&error)
-            ),
-            Some(span),
-        );
-    }
-    facts
+    Ok(StateSemanticSource { db, editor_facts })
 }
 
 fn assign_divider_ids(stmts: &mut [Stmt], cnt: &mut usize) {
@@ -197,8 +303,10 @@ struct StatePendingEntity {
     kind: EditorSemanticKind,
 }
 
-fn collect_state_editor_events(code: &str) -> Vec<StateEditorEvent> {
-    let mut lexer = Lexer::new(code);
+fn collect_state_editor_facts_from_events(
+    lexical_events: &[StateLexicalEvent],
+    code: &str,
+) -> EditorSemanticFacts {
     let mut collector = StateTokenFactCollector {
         code,
         context: StateTokenContext::Default,
@@ -210,23 +318,11 @@ fn collect_state_editor_events(code: &str) -> Vec<StateEditorEvent> {
         relation_target_seen: false,
     };
     let mut events = Vec::new();
-    let mut last_position = lexer.position();
-    while let Some(result) = lexer.next() {
-        let current_position = lexer.position();
-        match result {
-            Ok((start, token, end)) => {
-                collector.collect_token(token, start, end, &mut events);
-            }
-            Err(_) => {
-                if current_position == last_position {
-                    break;
-                }
-            }
-        }
-        last_position = current_position;
+    for (start, token, end) in lexical_events.iter().flatten() {
+        collector.collect_token(token.clone(), *start, *end, &mut events);
     }
     collector.flush_pending_entity(&mut events);
-    events
+    state_editor_facts_from_events(events)
 }
 
 struct StateTokenFactCollector<'a> {

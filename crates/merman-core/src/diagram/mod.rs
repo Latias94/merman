@@ -189,7 +189,6 @@ pub struct ParsedDiagram {
 pub enum ParsedEditorFacts {
     Available(EditorSemanticFacts),
     Unavailable,
-    Error(Error),
 }
 
 /// Parsed semantic JSON plus editor-facing semantic facts from the same preprocessing pass.

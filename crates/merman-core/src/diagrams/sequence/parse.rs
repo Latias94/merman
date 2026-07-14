@@ -181,17 +181,38 @@ fn construct_sequence_semantic_source(
         }
     };
 
-    let mut db = SequenceDb::new(wrap_enabled);
-    for action in actions {
-        if let Err(message) = db.apply(action) {
+    let db = match build_sequence_db(actions, wrap_enabled) {
+        Ok(db) => db,
+        Err(message) => {
             return Err(Box::new(SequenceSemanticFailure::Db {
                 message,
                 editor_facts,
             }));
         }
-    }
+    };
 
     Ok(SequenceSemanticSource { db, editor_facts })
+}
+
+fn build_sequence_db(
+    actions: Vec<super::Action>,
+    wrap_enabled: Option<bool>,
+) -> std::result::Result<SequenceDb, String> {
+    let mut db = SequenceDb::new(wrap_enabled);
+    for action in actions {
+        db.apply(action)?;
+    }
+    Ok(db)
+}
+
+impl super::SequenceActionBuilder {
+    pub(crate) fn into_render_model(
+        self,
+        meta: &ParseMetadata,
+    ) -> std::result::Result<SequenceDiagramRenderModel, String> {
+        build_sequence_db(self.into_actions(), sequence_wrap_enabled(meta))
+            .map(SequenceDb::into_render_model)
+    }
 }
 
 fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {

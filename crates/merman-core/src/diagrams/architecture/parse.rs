@@ -837,10 +837,19 @@ fn handle_header_error(
     start: usize,
     len: usize,
 ) -> Result<ArchitectureTrace> {
-    let error = Error::diagram_parse_fallback(
-        meta.diagram_type.clone(),
-        "expected architecture-beta header",
-    );
+    let error = if len == 0 {
+        Error::diagram_parse_insertion_point(
+            meta.diagram_type.clone(),
+            "expected architecture-beta header",
+            start,
+        )
+    } else {
+        Error::diagram_parse_exact(
+            meta.diagram_type.clone(),
+            "expected architecture-beta header",
+            SourceSpan::new(start, start + len),
+        )
+    };
     if mode == ArchitectureParseMode::Strict {
         return Err(error);
     }

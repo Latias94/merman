@@ -289,9 +289,12 @@ impl GanttDb {
         self.set_class(ids, "clickable");
     }
 
-    pub(super) fn add_task(&mut self, descr: &str, data: &str) {
+    pub(super) fn parse_task_info(&mut self, fields: &[&str]) -> TaskInfo {
+        parse_task_data(&mut self.task_cnt, fields)
+    }
+
+    pub(super) fn add_task(&mut self, descr: &str, data: &str, task_info: TaskInfo) {
         let prev_task_id = self.last_task_id.clone();
-        let task_info = parse_task_data(&mut self.task_cnt, data);
         let order = if task_info.vert {
             -1
         } else {
@@ -408,7 +411,7 @@ impl GanttDb {
         Ok(())
     }
 
-    pub(super) fn get_tasks(&mut self) -> Result<Vec<RawTask>> {
+    pub(super) fn finalize_tasks(&mut self) -> Result<()> {
         let mut all = self.compile_tasks()?;
         let max_depth = 10;
         let mut iters = 0;
@@ -416,7 +419,11 @@ impl GanttDb {
             all = self.compile_tasks()?;
             iters += 1;
         }
-        Ok(self.raw_tasks.clone())
+        Ok(())
+    }
+
+    pub(super) fn take_tasks(&mut self) -> Vec<RawTask> {
+        std::mem::take(&mut self.raw_tasks)
     }
 }
 
@@ -483,9 +490,8 @@ fn merge_list_lower(existing: &mut Vec<String>, txt: &str) {
     }
 }
 
-fn parse_task_data(task_cnt: &mut i64, data_str: &str) -> TaskInfo {
-    let ds = data_str.strip_prefix(':').unwrap_or(data_str);
-    let mut data: Vec<String> = ds.split(',').map(|s| s.to_string()).collect();
+fn parse_task_data(task_cnt: &mut i64, fields: &[&str]) -> TaskInfo {
+    let mut data: Vec<String> = fields.iter().map(|field| (*field).to_string()).collect();
 
     let mut active = false;
     let mut done = false;

@@ -1,4 +1,4 @@
-use crate::diagrams::scan::strip_line_ending;
+use crate::diagrams::scan::leading_whitespace_len;
 use crate::sanitize::sanitize_text;
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -6,6 +6,23 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static XYCHART_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+fn reset_xychart_syntax_construction_count() {
+    XYCHART_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+fn xychart_syntax_construction_count() -> usize {
+    XYCHART_SYNTAX_CONSTRUCTION_COUNT.get()
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -293,6 +310,68 @@ struct Plot {
 struct ParsedDataPoint {
     value: f64,
     label: String,
+    label_span: Option<SourceSpan>,
+}
+
+struct XyChartSemanticSource {
+    model: Option<XyChartDiagramRenderModel>,
+    editor_facts: EditorSemanticFacts,
+}
+
+struct XyChartSemanticFailure {
+    error: Box<Error>,
+    editor_facts: EditorSemanticFacts,
+}
+
+impl XyChartSemanticFailure {
+    fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
+        Self {
+            error: Box::new(error),
+            editor_facts,
+        }
+    }
+
+    fn into_error(self) -> Error {
+        *self.error
+    }
+
+    fn into_editor_facts(mut self) -> EditorSemanticFacts {
+        let (message, span) = match self.error.as_ref() {
+            Error::DiagramParse { diagnostic, .. } => {
+                (diagnostic.message().to_string(), diagnostic.span())
+            }
+            error => (error.to_string(), None),
+        };
+        self.editor_facts.mark_recovered_from_parse_error(
+            format!("xychart parser recovered after parse error: {message}"),
+            span,
+        );
+        self.editor_facts
+    }
+}
+
+enum ParsedAxisData {
+    None,
+    Band {
+        categories: Vec<String>,
+        source: SpannedText,
+    },
+    Range {
+        min: f64,
+        max: f64,
+        source: SpannedText,
+    },
+}
+
+struct ParsedAxisStatement {
+    title: Option<SpannedText>,
+    data: ParsedAxisData,
+}
+
+struct ParsedPlotStatement {
+    title: Option<SpannedText>,
+    data: Vec<ParsedDataPoint>,
+    data_source: SpannedText,
 }
 
 #[derive(Debug, Clone)]
@@ -526,230 +605,320 @@ impl XyChartState {
     }
 }
 
-pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let Some(model) = parse_xychart_model(code, meta)? else {
-        return Ok(json!({}));
+fn xychart_failure(
+    error: Error,
+    meta: &ParseMetadata,
+    fallback_span: SourceSpan,
+    editor_facts: &EditorSemanticFacts,
+) -> XyChartSemanticFailure {
+    let error = match error {
+        Error::DiagramParse {
+            diagram_type,
+            diagnostic,
+        } if diagnostic.span().is_some() => Error::DiagramParse {
+            diagram_type,
+            diagnostic,
+        },
+        Error::DiagramParse { diagnostic, .. } => Error::diagram_parse_exact(
+            meta.diagram_type.clone(),
+            diagnostic.message(),
+            fallback_span,
+        ),
+        error => {
+            Error::diagram_parse_exact(meta.diagram_type.clone(), error.to_string(), fallback_span)
+        }
     };
-
-    Ok(model.to_compat_json(meta))
+    XyChartSemanticFailure::new(error, editor_facts.clone())
 }
 
-pub fn parse_xychart_model_for_render(
+fn push_xychart_axis_facts(
+    facts: &mut EditorSemanticFacts,
+    axis: &ParsedAxisStatement,
+    detail: &'static str,
+) {
+    if let Some(title) = axis.title.as_ref() {
+        push_xychart_payload_fact(
+            facts,
+            title.as_str(),
+            SourceSpan::new(title.start, title.end),
+            detail,
+            EditorSemanticKind::String,
+        );
+    }
+    let source = match &axis.data {
+        ParsedAxisData::None => None,
+        ParsedAxisData::Band { source, .. } | ParsedAxisData::Range { source, .. } => Some(source),
+    };
+    if let Some(source) = source {
+        push_xychart_payload_fact(
+            facts,
+            source.as_str(),
+            SourceSpan::new(source.start, source.end),
+            detail,
+            EditorSemanticKind::String,
+        );
+    }
+}
+
+fn apply_x_axis_statement(
+    axis: ParsedAxisStatement,
+    state: &mut XyChartState,
+    meta: &ParseMetadata,
+) {
+    state.set_x_axis_title(axis.title.as_ref().map_or("", SpannedText::as_str), meta);
+    match axis.data {
+        ParsedAxisData::None => {}
+        ParsedAxisData::Band { categories, .. } => state.set_x_axis_band(categories, meta),
+        ParsedAxisData::Range { min, max, .. } => state.set_x_axis_range(min, max),
+    }
+}
+
+fn apply_y_axis_statement(
+    axis: ParsedAxisStatement,
+    state: &mut XyChartState,
+    meta: &ParseMetadata,
+) {
+    state.set_y_axis_title(axis.title.as_ref().map_or("", SpannedText::as_str), meta);
+    if let ParsedAxisData::Range { min, max, .. } = axis.data {
+        state.set_y_axis_range(min, max);
+    }
+}
+
+fn push_xychart_plot_statement_facts(
+    facts: &mut EditorSemanticFacts,
+    plot: &ParsedPlotStatement,
+    detail: &'static str,
+) {
+    if let Some(title) = plot.title.as_ref() {
+        push_xychart_payload_fact(
+            facts,
+            title.as_str(),
+            SourceSpan::new(title.start, title.end),
+            detail,
+            EditorSemanticKind::String,
+        );
+    }
+    push_xychart_payload_fact(
+        facts,
+        plot.data_source.as_str(),
+        SourceSpan::new(plot.data_source.start, plot.data_source.end),
+        detail,
+        EditorSemanticKind::String,
+    );
+    for point in &plot.data {
+        let Some(span) = point.label_span else {
+            continue;
+        };
+        push_xychart_payload_fact(
+            facts,
+            &point.label,
+            span,
+            if detail == "xychart line" {
+                "xychart line data label"
+            } else {
+                "xychart bar data label"
+            },
+            EditorSemanticKind::String,
+        );
+    }
+}
+
+fn construct_xychart_semantic_source(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<XyChartDiagramRenderModel> {
-    Ok(parse_xychart_model(code, meta)?.unwrap_or_else(empty_render_model))
-}
+) -> std::result::Result<XyChartSemanticSource, XyChartSemanticFailure> {
+    #[cfg(test)]
+    XYCHART_SYNTAX_CONSTRUCTION_COUNT.set(XYCHART_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-pub fn parse_xychart_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let lines = code.split_inclusive('\n').peekable();
-    let mut offset = 0usize;
-    let mut header_seen = false;
+    let statements = split_statements_spanned(code);
+    let mut statements = statements
+        .into_iter()
+        .filter(|statement| !statement.text.trim().is_empty());
+    let Some(header) = statements.next() else {
+        return Ok(XyChartSemanticSource {
+            model: None,
+            editor_facts: EditorSemanticFacts::new(),
+        });
+    };
 
-    for segment in lines {
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        let stripped = strip_inline_comment(line);
-        let trimmed = stripped.trim();
-        if trimmed.is_empty() {
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut state = XyChartState::new(meta);
+    let header_trimmed = header.text.trim();
+    let header_start = header.trimmed_start();
+    let header_span = SourceSpan::new(header_start, header_start + header_trimmed.len());
+    parse_header(&header.text, &mut state)
+        .map_err(|error| xychart_failure(error, meta, header_span, &editor_facts))?;
+    if let Some((prefix_len, _)) = header_token_len_and_rest(header_trimmed) {
+        editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
+            SourceSpan::new(header_start, header_start + prefix_len),
+        ));
+    }
+
+    let mut title = None;
+    let mut acc_title = None;
+    let mut acc_descr = None;
+
+    for statement in statements {
+        let statement_start = statement.trimmed_start();
+        let statement_text = statement.text.trim();
+        if statement_text.is_empty() {
+            continue;
+        }
+        let statement_span =
+            SourceSpan::new(statement_start, statement_start + statement_text.len());
+
+        if let Some(rest) = strip_keyword(statement_text, "title") {
+            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+            let value = parse_text_source(rest, rest_start)
+                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
+            editor_facts.push_directive_prefix("title");
+            push_xychart_payload_fact(
+                &mut editor_facts,
+                value.as_str(),
+                SourceSpan::new(value.start, value.end),
+                "xychart title",
+                EditorSemanticKind::String,
+            );
+            title = Some(value.text.trim().to_string());
             continue;
         }
 
-        if !header_seen {
-            if let Some((prefix_len, _rest)) = header_token_len_and_rest(trimmed) {
-                let header_rel = line.find(trimmed).unwrap_or(0);
-                facts.push_expected_syntax(EditorExpectedSyntax::new(
-                    EditorExpectedSyntaxKind::Payload,
-                    SourceSpan::new(
-                        line_start + header_rel,
-                        line_start + header_rel + prefix_len,
-                    ),
-                ));
-                header_seen = true;
-            }
-            continue;
-        }
-
-        if let Some(rest) = strip_keyword(trimmed, "title") {
-            if let Some(value) = parse_text_spanned(rest, line, line_start) {
-                facts.push_directive_prefix("title");
+        if let Some(rest) = strip_keyword(statement_text, "accTitle") {
+            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+            let value = parse_colon_value_source(rest, rest_start, "accTitle")
+                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
+            editor_facts.push_directive_prefix("accTitle");
+            if !value.text.is_empty() {
                 push_xychart_payload_fact(
-                    &mut facts,
-                    value.as_str(),
-                    SourceSpan::new(value.start, value.end),
-                    "xychart title",
-                    EditorSemanticKind::String,
-                );
-            }
-            continue;
-        }
-        if let Some(rest) = strip_keyword(trimmed, "accTitle") {
-            if let Some(value) = parse_colon_value_spanned(rest, line, line_start) {
-                facts.push_directive_prefix("accTitle");
-                push_xychart_payload_fact(
-                    &mut facts,
+                    &mut editor_facts,
                     value.as_str(),
                     SourceSpan::new(value.start, value.end),
                     "xychart accessibility title",
                     EditorSemanticKind::String,
                 );
             }
+            acc_title = Some(value.text);
             continue;
         }
-        if let Some(rest) = strip_keyword(trimmed, "accDescr") {
-            if let Some(value) = parse_acc_descr_spanned(rest, line, line_start) {
-                facts.push_directive_prefix("accDescr");
+
+        if let Some(rest) = strip_keyword(statement_text, "accDescr") {
+            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+            let value = parse_acc_descr_source(rest, rest_start)
+                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
+            editor_facts.push_directive_prefix("accDescr");
+            if !value.text.is_empty() {
                 push_xychart_payload_fact(
-                    &mut facts,
+                    &mut editor_facts,
                     value.as_str(),
                     SourceSpan::new(value.start, value.end),
                     "xychart accessibility description",
                     EditorSemanticKind::String,
                 );
             }
-            continue;
-        }
-        if let Some(rest) = strip_keyword(trimmed, "x-axis") {
-            if let Some(value) = parse_axis_title_or_categories_spanned(rest, line, line_start) {
-                push_xychart_payload_fact(
-                    &mut facts,
-                    value.as_str(),
-                    SourceSpan::new(value.start, value.end),
-                    "xychart x-axis",
-                    EditorSemanticKind::String,
-                );
-            }
-            continue;
-        }
-        if let Some(rest) = strip_keyword(trimmed, "y-axis") {
-            if let Some(value) = parse_axis_title_or_categories_spanned(rest, line, line_start) {
-                push_xychart_payload_fact(
-                    &mut facts,
-                    value.as_str(),
-                    SourceSpan::new(value.start, value.end),
-                    "xychart y-axis",
-                    EditorSemanticKind::String,
-                );
-            }
-            continue;
-        }
-        if let Some(rest) = strip_keyword(trimmed, "line") {
-            push_xychart_plot_facts(&mut facts, rest, line, line_start, "xychart line");
-            continue;
-        }
-        if let Some(rest) = strip_keyword(trimmed, "bar") {
-            push_xychart_plot_facts(&mut facts, rest, line, line_start, "xychart bar");
-            continue;
-        }
-    }
-
-    facts
-}
-
-fn parse_xychart_model(
-    code: &str,
-    meta: &ParseMetadata,
-) -> Result<Option<XyChartDiagramRenderModel>> {
-    let statements = split_statements_spanned(code);
-
-    let mut it = statements
-        .into_iter()
-        .filter(|statement| !statement.text.trim().is_empty());
-    let Some(header_stmt) = it.next() else {
-        return Ok(None);
-    };
-
-    let mut state = XyChartState::new(meta);
-    parse_header(&header_stmt.text, &mut state)?;
-
-    let mut title: Option<String> = None;
-    let mut acc_title: Option<String> = None;
-    let mut acc_descr: Option<String> = None;
-
-    for stmt in it {
-        let stmt_start = stmt.trimmed_start();
-        let stmt = stmt.text.trim();
-        if stmt.is_empty() {
+            acc_descr = Some(value.text);
             continue;
         }
 
-        if let Some(rest) = strip_keyword(stmt, "title") {
-            let t = parse_text(rest)?;
-            title = Some(t.trim().to_string());
-            continue;
-        }
-        if let Some(rest) = strip_keyword(stmt, "accTitle") {
-            let rest = rest.trim_start();
-            let Some(v) = rest.strip_prefix(':') else {
-                return Err(Error::diagram_parse_fallback(
-                    "xychart".to_string(),
-                    "expected ':' after accTitle".to_string(),
-                ));
-            };
-            acc_title = Some(v.trim().to_string());
-            continue;
-        }
-        if let Some(rest) = strip_keyword(stmt, "accDescr") {
-            let rest = rest.trim_start();
-            if let Some(v) = rest.strip_prefix(':') {
-                acc_descr = Some(v.trim().to_string());
-                continue;
-            }
-            if let Some(after) = rest.strip_prefix('{') {
-                let Some(end) = after.find('}') else {
-                    return Err(Error::diagram_parse_fallback(
-                        "xychart".to_string(),
-                        "unterminated accDescr block".to_string(),
-                    ));
-                };
-                let trailing = &after[end + 1..];
-                if !trailing.trim().is_empty() {
-                    return Err(Error::diagram_parse_fallback(
-                        "xychart".to_string(),
-                        "unexpected trailing tokens after accDescr block".to_string(),
-                    ));
-                }
-                acc_descr = Some(after[..end].trim().to_string());
-                continue;
-            }
-            return Err(Error::diagram_parse_fallback(
-                "xychart".to_string(),
-                "expected ':' or '{' after accDescr".to_string(),
-            ));
-        }
-
-        if let Some(rest) = strip_keyword(stmt, "x-axis") {
-            parse_x_axis(rest, &mut state, meta)?;
-            continue;
-        }
-        if let Some(rest) = strip_keyword(stmt, "y-axis") {
-            parse_y_axis(rest, &mut state, meta)?;
-            continue;
-        }
-        if let Some(rest) = strip_keyword(stmt, "line") {
-            let rest_start = stmt_start + stmt.len().saturating_sub(rest.len());
-            let (plot_title, data) = parse_plot_stmt_spanned(rest, rest_start)?;
-            state.add_line_data(plot_title_value(&plot_title, meta), data, meta);
-            continue;
-        }
-        if let Some(rest) = strip_keyword(stmt, "bar") {
-            let rest_start = stmt_start + stmt.len().saturating_sub(rest.len());
-            let (plot_title, data) = parse_plot_stmt_spanned(rest, rest_start)?;
-            state.add_bar_data(plot_title_value(&plot_title, meta), data);
+        if let Some(rest) = strip_keyword(statement_text, "x-axis") {
+            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+            let axis = parse_x_axis_source(rest, rest_start)
+                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
+            push_xychart_axis_facts(&mut editor_facts, &axis, "xychart x-axis");
+            apply_x_axis_statement(axis, &mut state, meta);
             continue;
         }
 
-        return Err(Error::diagram_parse_fallback(
-            "xychart".to_string(),
-            format!("unexpected xychart statement: {stmt}"),
+        if let Some(rest) = strip_keyword(statement_text, "y-axis") {
+            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+            let axis = parse_y_axis_source(rest, rest_start)
+                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
+            push_xychart_axis_facts(&mut editor_facts, &axis, "xychart y-axis");
+            apply_y_axis_statement(axis, &mut state, meta);
+            continue;
+        }
+
+        if let Some(rest) = strip_keyword(statement_text, "line") {
+            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+            let plot = parse_plot_stmt_source(rest, rest_start)
+                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
+            push_xychart_plot_statement_facts(&mut editor_facts, &plot, "xychart line");
+            state.add_line_data(
+                plot.title
+                    .as_ref()
+                    .and_then(|title| plot_title_value(title.as_str(), meta)),
+                plot.data,
+                meta,
+            );
+            continue;
+        }
+
+        if let Some(rest) = strip_keyword(statement_text, "bar") {
+            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+            let plot = parse_plot_stmt_source(rest, rest_start)
+                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
+            push_xychart_plot_statement_facts(&mut editor_facts, &plot, "xychart bar");
+            state.add_bar_data(
+                plot.title
+                    .as_ref()
+                    .and_then(|title| plot_title_value(title.as_str(), meta)),
+                plot.data,
+            );
+            continue;
+        }
+
+        return Err(XyChartSemanticFailure::new(
+            Error::diagram_parse_exact(
+                meta.diagram_type.clone(),
+                format!("unexpected xychart statement: {statement_text}"),
+                statement_span,
+            ),
+            editor_facts,
         ));
     }
 
-    Ok(Some(
-        state.into_render_model(title, acc_title, acc_descr, meta),
-    ))
+    Ok(XyChartSemanticSource {
+        model: Some(state.into_render_model(title, acc_title, acc_descr, meta)),
+        editor_facts,
+    })
+}
+
+pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
+    let source = construct_xychart_semantic_source(code, meta)
+        .map_err(XyChartSemanticFailure::into_error)?;
+    let Some(model) = source.model else {
+        return Ok(json!({}));
+    };
+    Ok(model.to_compat_json(meta))
+}
+
+pub(crate) fn parse_xychart_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let XyChartSemanticSource {
+        model,
+        editor_facts,
+    } = construct_xychart_semantic_source(code, meta)
+        .map_err(XyChartSemanticFailure::into_error)?;
+    let model = model.map_or_else(|| json!({}), |model| model.to_compat_json(meta));
+    Ok((model, editor_facts))
+}
+
+pub fn parse_xychart_model_for_render(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<XyChartDiagramRenderModel> {
+    construct_xychart_semantic_source(code, meta)
+        .map(|source| source.model.unwrap_or_else(empty_render_model))
+        .map_err(XyChartSemanticFailure::into_error)
+}
+
+pub fn parse_xychart_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    match construct_xychart_semantic_source(code, meta) {
+        Ok(source) => source.editor_facts,
+        Err(failure) => failure.into_editor_facts(),
+    }
 }
 
 fn plot_title_value(title: &str, meta: &ParseMetadata) -> Option<String> {
@@ -846,102 +1015,6 @@ fn strip_keyword<'a>(stmt: &'a str, kw: &str) -> Option<&'a str> {
     Some(&s[kw.len()..])
 }
 
-fn parse_text_spanned(input: &str, line: &str, line_start: usize) -> Option<SpannedText> {
-    let (value, _tail) = parse_text_prefix(input).ok()?;
-    let value_rel = line.find(&value)?;
-    let start = line_start + value_rel;
-    let len = value.len();
-    Some(SpannedText {
-        text: value,
-        start,
-        end: start + len,
-    })
-}
-
-fn parse_colon_value_spanned(input: &str, line: &str, line_start: usize) -> Option<SpannedText> {
-    let rest = input.trim_start();
-    let rest = rest.strip_prefix(':')?;
-    let value = rest.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    let start = line_start + value_rel;
-    Some(SpannedText {
-        text: value.to_string(),
-        start,
-        end: start + value.len(),
-    })
-}
-
-fn parse_acc_descr_spanned(input: &str, line: &str, line_start: usize) -> Option<SpannedText> {
-    let rest = input.trim_start();
-    if let Some(v) = rest.strip_prefix(':') {
-        let value = v.trim();
-        if value.is_empty() {
-            return None;
-        }
-        let value_rel = line.find(value)?;
-        let start = line_start + value_rel;
-        return Some(SpannedText {
-            text: value.to_string(),
-            start,
-            end: start + value.len(),
-        });
-    }
-    let after = rest.strip_prefix('{')?;
-    let end = after.find('}')?;
-    let value = after[..end].trim();
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = line.find(value)?;
-    let start = line_start + value_rel;
-    Some(SpannedText {
-        text: value.to_string(),
-        start,
-        end: start + value.len(),
-    })
-}
-
-fn parse_axis_title_or_categories_spanned(
-    input: &str,
-    line: &str,
-    line_start: usize,
-) -> Option<SpannedText> {
-    let rest = input.trim_start();
-    if rest.is_empty() {
-        return None;
-    }
-    if rest.starts_with('[') {
-        let start_rel = line.find('[')? + 1;
-        let end_rel = line.rfind(']')?;
-        if end_rel <= start_rel {
-            return None;
-        }
-        let value = line[start_rel..end_rel].trim();
-        if value.is_empty() {
-            return None;
-        }
-        let value_rel = line.find(value)?;
-        let start = line_start + value_rel;
-        return Some(SpannedText {
-            text: value.to_string(),
-            start,
-            end: start + value.len(),
-        });
-    }
-    let (title, _tail) = parse_text_prefix(rest).ok()?;
-    let title_rel = line.find(&title)?;
-    let start = line_start + title_rel;
-    let len = title.len();
-    Some(SpannedText {
-        text: title,
-        start,
-        end: start + len,
-    })
-}
-
 fn push_xychart_payload_fact(
     facts: &mut EditorSemanticFacts,
     text: &str,
@@ -960,90 +1033,6 @@ fn push_xychart_payload_fact(
         span,
         span,
     ));
-}
-
-fn push_xychart_plot_facts(
-    facts: &mut EditorSemanticFacts,
-    input: &str,
-    line: &str,
-    line_start: usize,
-    detail: &'static str,
-) {
-    if let Some(title) = parse_text_prefix_spanned(input, line, line_start) {
-        push_xychart_payload_fact(
-            facts,
-            title.as_str(),
-            SourceSpan::new(title.start, title.end),
-            detail,
-            EditorSemanticKind::String,
-        );
-    }
-    if let Some(open) = line.find('[') {
-        let close = line.rfind(']').unwrap_or(line.len());
-        if close > open + 1 {
-            let value = line[open + 1..close].trim();
-            if !value.is_empty() {
-                let value_rel = line.find(value).unwrap_or(open + 1);
-                let start = line_start + value_rel;
-                push_xychart_payload_fact(
-                    facts,
-                    value,
-                    SourceSpan::new(start, start + value.len()),
-                    detail,
-                    EditorSemanticKind::String,
-                );
-            }
-            push_xychart_point_label_facts(facts, line, line_start, open + 1, close, detail);
-        }
-    }
-}
-
-fn push_xychart_point_label_facts(
-    facts: &mut EditorSemanticFacts,
-    line: &str,
-    line_start: usize,
-    inner_start: usize,
-    inner_end: usize,
-    detail: &'static str,
-) {
-    let mut idx = inner_start;
-    while idx < inner_end {
-        let Some(open_rel) = line[idx..inner_end].find('"') else {
-            break;
-        };
-        let open = idx + open_rel;
-        let body_start = open + 1;
-        let Some(close_rel) = line[body_start..inner_end].find('"') else {
-            break;
-        };
-        let close = body_start + close_rel;
-        let label = &line[body_start..close];
-        let span = SourceSpan::new(line_start + body_start, line_start + close);
-        facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::Payload,
-            span,
-        ));
-        facts.push_symbol(EditorSemanticSymbol::payload(
-            label.to_string(),
-            Some(format!("{detail} data label")),
-            EditorSemanticKind::String,
-            span,
-            span,
-        ));
-        idx = close + 1;
-    }
-}
-
-fn parse_text_prefix_spanned(input: &str, line: &str, line_start: usize) -> Option<SpannedText> {
-    let (title, _rest) = parse_text_prefix(input).ok()?;
-    let title_rel = line.find(&title)?;
-    let start = line_start + title_rel;
-    let len = title.len();
-    Some(SpannedText {
-        text: title,
-        start,
-        end: start + len,
-    })
 }
 
 #[derive(Debug, Clone)]
@@ -1081,64 +1070,224 @@ impl<'a> SpannedSlice<'a> {
             end: self.start + leading + trimmed_len,
         }
     }
+
+    fn to_text(self) -> SpannedText {
+        SpannedText {
+            text: self.text.to_string(),
+            start: self.start,
+            end: self.end,
+        }
+    }
 }
 
-fn strip_inline_comment(line: &str) -> &str {
-    match line.find("%%") {
-        Some(idx) => &line[..idx],
-        None => line,
-    }
-}
-
-fn parse_text(input: &str) -> Result<String> {
-    let t = input.trim_start();
-    if let Some(body) = t.strip_prefix("\"`") {
-        let Some(end) = body.find("`\"") else {
-            return Err(Error::diagram_parse_fallback(
-                "xychart".to_string(),
-                "unterminated markdown string".to_string(),
-            ));
-        };
-        let s = &body[..end];
-        let rest = &body[end + 2..];
-        if !rest.trim().is_empty() {
-            return Err(Error::diagram_parse_fallback(
-                "xychart".to_string(),
-                "unexpected trailing tokens after text".to_string(),
-            ));
-        }
-        return Ok(s.to_string());
-    }
-
-    if let Some(body) = t.strip_prefix('"') {
-        let Some(end) = body.find('"') else {
-            return Err(Error::diagram_parse_fallback(
-                "xychart".to_string(),
-                "unterminated string".to_string(),
-            ));
-        };
-        let s = &body[..end];
-        let rest = &body[end + 1..];
-        if !rest.trim().is_empty() {
-            return Err(Error::diagram_parse_fallback(
-                "xychart".to_string(),
-                "unexpected trailing tokens after text".to_string(),
-            ));
-        }
-        return Ok(s.to_string());
-    }
-
-    let mut out = String::new();
-    for part in t.split_whitespace() {
-        out.push_str(part);
-    }
-    if out.is_empty() {
-        return Err(Error::diagram_parse_fallback(
+fn parse_text_source(input: &str, input_start: usize) -> Result<SpannedText> {
+    let (value, tail) = parse_text_prefix_source(input, input_start)?;
+    let trailing = tail.trim();
+    if !trailing.text.is_empty() {
+        return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
-            "expected text".to_string(),
+            "unexpected trailing tokens after text".to_string(),
+            SourceSpan::new(trailing.start, trailing.end),
         ));
     }
-    Ok(out)
+    Ok(value)
+}
+
+fn parse_text_prefix_source<'a>(
+    input: &'a str,
+    input_start: usize,
+) -> Result<(SpannedText, SpannedSlice<'a>)> {
+    let leading = leading_whitespace_len(input);
+    let text = &input[leading..];
+    let text_start = input_start + leading;
+    if text.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "expected text".to_string(),
+            text_start,
+        ));
+    }
+
+    if let Some(body) = text.strip_prefix("\"`") {
+        let Some(end) = body.find("`\"") else {
+            return Err(Error::diagram_parse_insertion_point(
+                "xychart".to_string(),
+                "unterminated markdown string".to_string(),
+                input_start + input.len(),
+            ));
+        };
+        let value_start = text_start + 2;
+        let tail_start = 2 + end + 2;
+        return Ok((
+            SpannedText {
+                text: body[..end].to_string(),
+                start: value_start,
+                end: value_start + end,
+            },
+            SpannedSlice::new(
+                &text[tail_start..],
+                text_start + tail_start,
+                input_start + input.len(),
+            ),
+        ));
+    }
+
+    if let Some(body) = text.strip_prefix('"') {
+        let Some(end) = body.find('"') else {
+            return Err(Error::diagram_parse_insertion_point(
+                "xychart".to_string(),
+                "unterminated string".to_string(),
+                input_start + input.len(),
+            ));
+        };
+        let value_start = text_start + 1;
+        let tail_start = 1 + end + 1;
+        return Ok((
+            SpannedText {
+                text: body[..end].to_string(),
+                start: value_start,
+                end: value_start + end,
+            },
+            SpannedSlice::new(
+                &text[tail_start..],
+                text_start + tail_start,
+                input_start + input.len(),
+            ),
+        ));
+    }
+
+    let bracket_start = text.find('[');
+    let range_start = range_suffix_start(text);
+    let arrow_start = text.find("-->").filter(|offset| {
+        *offset == 0
+            || text[..*offset]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_whitespace)
+    });
+    let tail_rel = [bracket_start, range_start, arrow_start]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(text.len());
+    let raw_value = &text[..tail_rel];
+    let value_len = raw_value.trim_end().len();
+    let raw_value = &raw_value[..value_len];
+    if raw_value.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "expected text".to_string(),
+            text_start,
+        ));
+    }
+
+    let mut value = String::new();
+    for (offset, ch) in raw_value.char_indices() {
+        if ch.is_whitespace() {
+            continue;
+        }
+        if !is_text_token_char(ch) {
+            return Err(Error::diagram_parse_exact(
+                "xychart".to_string(),
+                format!("unexpected token in text: {ch}"),
+                SourceSpan::new(text_start + offset, text_start + offset + ch.len_utf8()),
+            ));
+        }
+        value.push(ch);
+    }
+    if value.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "expected text".to_string(),
+            text_start,
+        ));
+    }
+
+    Ok((
+        SpannedText {
+            text: value,
+            start: text_start,
+            end: text_start + raw_value.len(),
+        },
+        SpannedSlice::new(
+            &text[tail_rel..],
+            text_start + tail_rel,
+            input_start + input.len(),
+        ),
+    ))
+}
+
+fn is_text_token_char(ch: char) -> bool {
+    ch.is_alphanumeric() || matches!(ch, '&' | '+' | '=' | '*' | '.' | '#' | '-' | '_')
+}
+
+fn range_suffix_start(input: &str) -> Option<usize> {
+    input.char_indices().find_map(|(offset, _)| {
+        if offset == 0
+            || !input[..offset]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_whitespace)
+        {
+            return None;
+        }
+        let (_, tail) = take_number_token(&input[offset..])?;
+        tail.trim_start().starts_with("-->").then_some(offset)
+    })
+}
+
+fn parse_colon_value_source(input: &str, input_start: usize, keyword: &str) -> Result<SpannedText> {
+    let input = SpannedSlice::new(input, input_start, input_start + input.len()).trim();
+    let Some(value) = input.text.strip_prefix(':') else {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            format!("expected ':' after {keyword}"),
+            input.start,
+        ));
+    };
+    Ok(SpannedSlice::new(value, input.start + 1, input.end)
+        .trim()
+        .to_text())
+}
+
+fn parse_acc_descr_source(input: &str, input_start: usize) -> Result<SpannedText> {
+    let input = SpannedSlice::new(input, input_start, input_start + input.len()).trim();
+    if input.text.starts_with(':') {
+        return Ok(
+            SpannedSlice::new(&input.text[1..], input.start + 1, input.end)
+                .trim()
+                .to_text(),
+        );
+    }
+
+    let Some(body) = input.text.strip_prefix('{') else {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "expected ':' or '{' after accDescr".to_string(),
+            input.start,
+        ));
+    };
+    let Some(close) = body.find('}') else {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "unterminated accDescr block".to_string(),
+            input.end,
+        ));
+    };
+    let trailing =
+        SpannedSlice::new(&body[close + 1..], input.start + 1 + close + 1, input.end).trim();
+    if !trailing.text.is_empty() {
+        return Err(Error::diagram_parse_exact(
+            "xychart".to_string(),
+            "unexpected trailing tokens after accDescr block".to_string(),
+            SourceSpan::new(trailing.start, trailing.end),
+        ));
+    }
+    Ok(
+        SpannedSlice::new(&body[..close], input.start + 1, input.start + 1 + close)
+            .trim()
+            .to_text(),
+    )
 }
 
 fn parse_number(s: &str) -> Option<f64> {
@@ -1146,185 +1295,244 @@ fn parse_number(s: &str) -> Option<f64> {
     if t.is_empty() {
         return None;
     }
-    // Accept +, -, integers, decimals, and leading dot decimals.
-    let ok = t
-        .chars()
-        .all(|c| c.is_ascii_digit() || c == '+' || c == '-' || c == '.');
-    if !ok {
+    let unsigned = t
+        .strip_prefix('+')
+        .or_else(|| t.strip_prefix('-'))
+        .unwrap_or(t);
+    let valid = if let Some(fraction) = unsigned.strip_prefix('.') {
+        !fraction.is_empty() && fraction.chars().all(|ch| ch.is_ascii_digit())
+    } else if let Some((integer, fraction)) = unsigned.split_once('.') {
+        !integer.is_empty()
+            && !fraction.is_empty()
+            && integer.chars().all(|ch| ch.is_ascii_digit())
+            && fraction.chars().all(|ch| ch.is_ascii_digit())
+    } else {
+        !unsigned.is_empty() && unsigned.chars().all(|ch| ch.is_ascii_digit())
+    };
+    if !valid {
         return None;
     }
     t.parse::<f64>().ok()
 }
 
-fn parse_x_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> Result<()> {
-    let t = rest.trim();
-    if t.is_empty() {
-        return Err(Error::diagram_parse_fallback(
+fn parse_x_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatement> {
+    let input = SpannedSlice::new(rest, rest_start, rest_start + rest.len()).trim();
+    if input.text.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
             "x-axis requires data".to_string(),
+            input.start,
         ));
     }
 
-    if t.starts_with('[') {
-        state.set_x_axis_title("", meta);
-        let cats = parse_text_list_in_brackets(t)?;
-        state.set_x_axis_band(cats, meta);
-        return Ok(());
+    if input.text.starts_with('[') {
+        let (categories, source) = parse_text_list_source(input.text, input.start)?;
+        return Ok(ParsedAxisStatement {
+            title: None,
+            data: ParsedAxisData::Band { categories, source },
+        });
+    }
+    if let Some((min, max, source)) = try_parse_range_source(input.text, input.start)? {
+        return Ok(ParsedAxisStatement {
+            title: None,
+            data: ParsedAxisData::Range { min, max, source },
+        });
     }
 
-    if let Some((min, max)) = try_parse_range(t)? {
-        state.set_x_axis_title("", meta);
-        state.set_x_axis_range(min, max);
-        return Ok(());
+    let (title, tail) = parse_text_prefix_source(input.text, input.start)?;
+    let tail = tail.trim();
+    if tail.text.is_empty() {
+        return Ok(ParsedAxisStatement {
+            title: Some(title),
+            data: ParsedAxisData::None,
+        });
     }
-
-    let (title, tail) = parse_text_prefix(t)?;
-    state.set_x_axis_title(&title, meta);
-    let tail = tail.trim_start();
-    if tail.is_empty() {
-        return Ok(());
+    if tail.text.starts_with('[') {
+        let (categories, source) = parse_text_list_source(tail.text, tail.start)?;
+        return Ok(ParsedAxisStatement {
+            title: Some(title),
+            data: ParsedAxisData::Band { categories, source },
+        });
     }
-    if tail.starts_with('[') {
-        let cats = parse_text_list_in_brackets(tail)?;
-        state.set_x_axis_band(cats, meta);
-        return Ok(());
+    if let Some((min, max, source)) = try_parse_range_source(tail.text, tail.start)? {
+        return Ok(ParsedAxisStatement {
+            title: Some(title),
+            data: ParsedAxisData::Range { min, max, source },
+        });
     }
-    if let Some((min, max)) = try_parse_range(tail)? {
-        state.set_x_axis_range(min, max);
-        return Ok(());
-    }
-
-    Err(Error::diagram_parse_fallback(
+    Err(Error::diagram_parse_exact(
         "xychart".to_string(),
         "invalid x-axis data".to_string(),
+        SourceSpan::new(tail.start, tail.end),
     ))
 }
 
-fn parse_y_axis(rest: &str, state: &mut XyChartState, meta: &ParseMetadata) -> Result<()> {
-    let t = rest.trim();
-    if t.is_empty() {
-        return Err(Error::diagram_parse_fallback(
+fn parse_y_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatement> {
+    let input = SpannedSlice::new(rest, rest_start, rest_start + rest.len()).trim();
+    if input.text.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
             "y-axis requires data".to_string(),
+            input.start,
         ));
     }
-
-    if let Some((min, max)) = try_parse_range(t)? {
-        state.set_y_axis_title("", meta);
-        state.set_y_axis_range(min, max);
-        return Ok(());
-    }
-
-    if t.starts_with('[') {
-        return Err(Error::diagram_parse_fallback(
+    if input.text.starts_with('[') {
+        return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
             "y-axis does not support band data".to_string(),
+            SourceSpan::new(input.start, input.end),
         ));
     }
-
-    let (title, tail) = parse_text_prefix(t)?;
-    state.set_y_axis_title(&title, meta);
-    let tail = tail.trim_start();
-    if tail.is_empty() {
-        return Ok(());
+    if let Some((min, max, source)) = try_parse_range_source(input.text, input.start)? {
+        return Ok(ParsedAxisStatement {
+            title: None,
+            data: ParsedAxisData::Range { min, max, source },
+        });
     }
 
-    if tail.starts_with('[') {
-        return Err(Error::diagram_parse_fallback(
+    let (title, tail) = parse_text_prefix_source(input.text, input.start)?;
+    let tail = tail.trim();
+    if tail.text.is_empty() {
+        return Ok(ParsedAxisStatement {
+            title: Some(title),
+            data: ParsedAxisData::None,
+        });
+    }
+    if tail.text.starts_with('[') {
+        return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
             "y-axis does not support band data".to_string(),
+            SourceSpan::new(tail.start, tail.end),
         ));
     }
-
-    if let Some((min, max)) = try_parse_range(tail)? {
-        state.set_y_axis_range(min, max);
-        return Ok(());
+    if let Some((min, max, source)) = try_parse_range_source(tail.text, tail.start)? {
+        return Ok(ParsedAxisStatement {
+            title: Some(title),
+            data: ParsedAxisData::Range { min, max, source },
+        });
     }
-
-    Err(Error::diagram_parse_fallback(
+    Err(Error::diagram_parse_exact(
         "xychart".to_string(),
         "invalid y-axis data".to_string(),
+        SourceSpan::new(tail.start, tail.end),
     ))
 }
 
-fn parse_plot_stmt_spanned(
-    rest: &str,
-    rest_start: usize,
-) -> Result<(String, Vec<ParsedDataPoint>)> {
-    let leading = rest.len().saturating_sub(rest.trim_start().len());
-    let t = rest.trim_start();
-    let t_start = rest_start + leading;
-    if t.is_empty() {
-        return Err(Error::diagram_parse_fallback(
+fn parse_plot_stmt_source(rest: &str, rest_start: usize) -> Result<ParsedPlotStatement> {
+    let input = SpannedSlice::new(rest, rest_start, rest_start + rest.len()).trim();
+    if input.text.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
             "plot requires data".to_string(),
+            input.start,
         ));
     }
 
-    if t.starts_with('[') {
-        let data = parse_data_point_list_in_brackets_spanned(t, t_start)?;
-        if data.is_empty() {
-            return Err(Error::diagram_parse_fallback(
+    let (title, data_input) = if input.text.starts_with('[') {
+        (None, input)
+    } else {
+        let (title, tail) = parse_text_prefix_source(input.text, input.start)?;
+        let tail = tail.trim();
+        if tail.text.is_empty() {
+            return Err(Error::diagram_parse_insertion_point(
                 "xychart".to_string(),
-                "plot data cannot be empty".to_string(),
+                "plot data missing".to_string(),
+                input.end,
             ));
         }
-        return Ok((String::new(), data));
-    }
-
-    let (title, tail) = parse_text_prefix(t)?;
-    let tail_start = t_start + t.len().saturating_sub(tail.len());
-    let tail_leading = tail.len().saturating_sub(tail.trim_start().len());
-    let tail = tail.trim_start();
-    let tail_start = tail_start + tail_leading;
-    if !tail.starts_with('[') {
-        return Err(Error::diagram_parse_fallback(
-            "xychart".to_string(),
-            "plot data missing".to_string(),
-        ));
-    }
-    let data = parse_data_point_list_in_brackets_spanned(tail, tail_start)?;
-    if data.is_empty() {
-        return Err(Error::diagram_parse_fallback(
-            "xychart".to_string(),
-            "plot data cannot be empty".to_string(),
-        ));
-    }
-    Ok((title, data))
+        if !tail.text.starts_with('[') {
+            return Err(Error::diagram_parse_exact(
+                "xychart".to_string(),
+                "plot data missing".to_string(),
+                SourceSpan::new(tail.start, tail.end),
+            ));
+        }
+        (Some(title), tail)
+    };
+    let (data, data_source) =
+        parse_data_point_list_in_brackets_spanned(data_input.text, data_input.start)?;
+    Ok(ParsedPlotStatement {
+        title,
+        data,
+        data_source,
+    })
 }
 
-fn try_parse_range(input: &str) -> Result<Option<(f64, f64)>> {
-    let mut s = input.trim_start();
-    let Some((a_str, tail)) = take_number_token(s) else {
+fn try_parse_range_source(
+    input: &str,
+    input_start: usize,
+) -> Result<Option<(f64, f64, SpannedText)>> {
+    let input = SpannedSlice::new(input, input_start, input_start + input.len()).trim();
+    let Some((first, after_first)) = take_number_token(input.text) else {
         return Ok(None);
     };
-    s = tail.trim_start();
-    if !s.starts_with("-->") {
+    let after_first_start = input.start + first.len();
+    let after_first = SpannedSlice::new(after_first, after_first_start, input.end).trim();
+    if !after_first.text.starts_with("-->") {
         return Ok(None);
     }
-    s = &s[3..];
-    let Some((b_str, tail)) = take_number_token(s.trim_start()) else {
-        return Err(Error::diagram_parse_fallback(
+
+    let second_input = SpannedSlice::new(
+        &after_first.text[3..],
+        after_first.start + 3,
+        after_first.end,
+    )
+    .trim();
+    let Some((second, trailing)) = take_number_token(second_input.text) else {
+        if second_input.text.is_empty() {
+            return Err(Error::diagram_parse_insertion_point(
+                "xychart".to_string(),
+                "expected number".to_string(),
+                second_input.start,
+            ));
+        }
+        let token_len = second_input
+            .text
+            .find(char::is_whitespace)
+            .unwrap_or(second_input.text.len());
+        return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
-            "expected number".to_string(),
+            format!("invalid number: {}", &second_input.text[..token_len]),
+            SourceSpan::new(second_input.start, second_input.start + token_len),
         ));
     };
-    if !tail.trim().is_empty() {
-        return Err(Error::diagram_parse_fallback(
+    let trailing_start = second_input.start + second.len();
+    let trailing = SpannedSlice::new(trailing, trailing_start, second_input.end).trim();
+    if !trailing.text.is_empty() {
+        return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
             "unexpected trailing tokens after range".to_string(),
+            SourceSpan::new(trailing.start, trailing.end),
         ));
     }
-    let a = parse_number(&a_str).ok_or_else(|| {
-        Error::diagram_parse_fallback("xychart".to_string(), "invalid number".to_string())
+
+    let first_value = parse_number(first).ok_or_else(|| {
+        Error::diagram_parse_exact(
+            "xychart".to_string(),
+            format!("invalid number: {first}"),
+            SourceSpan::new(input.start, input.start + first.len()),
+        )
     })?;
-    let b = parse_number(&b_str).ok_or_else(|| {
-        Error::diagram_parse_fallback("xychart".to_string(), "invalid number".to_string())
+    let second_value = parse_number(second).ok_or_else(|| {
+        Error::diagram_parse_exact(
+            "xychart".to_string(),
+            format!("invalid number: {second}"),
+            SourceSpan::new(second_input.start, second_input.start + second.len()),
+        )
     })?;
-    Ok(Some((a, b)))
+    let source_end = second_input.start + second.len();
+    Ok(Some((
+        first_value,
+        second_value,
+        SpannedText {
+            text: input.text[..source_end - input.start].to_string(),
+            start: input.start,
+            end: source_end,
+        },
+    )))
 }
 
-fn take_number_token(input: &str) -> Option<(String, &str)> {
+fn take_number_token(input: &str) -> Option<(&str, &str)> {
     let mut idx = 0usize;
     for (i, ch) in input.char_indices() {
         if i == 0 && (ch == '+' || ch == '-') {
@@ -1340,76 +1548,51 @@ fn take_number_token(input: &str) -> Option<(String, &str)> {
     if idx == 0 {
         return None;
     }
-    Some((input[..idx].to_string(), &input[idx..]))
+    Some((&input[..idx], &input[idx..]))
 }
 
-fn parse_text_prefix(input: &str) -> Result<(String, &str)> {
-    let t = input.trim_start();
-    if let Some(body) = t.strip_prefix("\"`") {
-        let Some(end) = body.find("`\"") else {
-            return Err(Error::diagram_parse_fallback(
-                "xychart".to_string(),
-                "unterminated markdown string".to_string(),
-            ));
-        };
-        let s = &body[..end];
-        let rest = &body[end + 2..];
-        return Ok((s.to_string(), rest));
-    }
-    if let Some(body) = t.strip_prefix('"') {
-        let Some(end) = body.find('"') else {
-            return Err(Error::diagram_parse_fallback(
-                "xychart".to_string(),
-                "unterminated string".to_string(),
-            ));
-        };
-        let s = &body[..end];
-        let rest = &body[end + 1..];
-        return Ok((s.to_string(), rest));
-    }
-    let mut end = t.len();
-    for (i, ch) in t.char_indices() {
-        if ch.is_whitespace() || ch == '[' {
-            end = i;
-            break;
-        }
-    }
-    let head = &t[..end];
-    if head.is_empty() {
-        return Err(Error::diagram_parse_fallback(
+fn parse_text_list_source(input: &str, input_start: usize) -> Result<(Vec<String>, SpannedText)> {
+    let (inner, inner_start) = extract_bracket_inner_spanned(input, input_start)?;
+    let source = SpannedSlice::new(inner, inner_start, inner_start + inner.len()).trim();
+    if source.text.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
-            "expected text".to_string(),
+            "empty category".to_string(),
+            source.start,
         ));
     }
-    Ok((head.to_string(), &t[end..]))
-}
 
-fn parse_text_list_in_brackets(input: &str) -> Result<Vec<String>> {
-    let t = input.trim_start();
-    let inner = extract_bracket_inner(t)?;
-    let parts = split_top_level_commas(inner);
-    let mut out = Vec::new();
-    for p in parts {
-        let p = p.trim();
-        if p.is_empty() {
-            return Err(Error::diagram_parse_fallback(
+    let mut categories = Vec::new();
+    for part in split_top_level_commas_spanned(inner, inner_start) {
+        let part = part.trim();
+        if part.text.is_empty() {
+            return Err(Error::diagram_parse_insertion_point(
                 "xychart".to_string(),
                 "empty category".to_string(),
+                part.start,
             ));
         }
-        out.push(parse_text(p)?);
+        categories.push(parse_text_source(part.text, part.start)?.text);
     }
-    Ok(out)
+    Ok((categories, source.to_text()))
 }
 
 fn parse_data_point_list_in_brackets_spanned(
     input: &str,
     input_start: usize,
-) -> Result<Vec<ParsedDataPoint>> {
+) -> Result<(Vec<ParsedDataPoint>, SpannedText)> {
     let leading = input.len().saturating_sub(input.trim_start().len());
     let t = input.trim_start();
     let t_start = input_start + leading;
     let (inner, inner_start) = extract_bracket_inner_spanned(t, t_start)?;
+    let source = SpannedSlice::new(inner, inner_start, inner_start + inner.len()).trim();
+    if source.text.is_empty() {
+        return Err(Error::diagram_parse_insertion_point(
+            "xychart".to_string(),
+            "plot data cannot be empty".to_string(),
+            source.start,
+        ));
+    }
     let parts = split_top_level_commas_spanned(inner, inner_start);
     let mut out = Vec::new();
     for part in parts {
@@ -1423,7 +1606,7 @@ fn parse_data_point_list_in_brackets_spanned(
         }
         out.push(parse_data_point_spanned(trimmed)?);
     }
-    Ok(out)
+    Ok((out, source.to_text()))
 }
 
 fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
@@ -1447,7 +1630,11 @@ fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
         })?;
         let label =
             parse_data_point_label_spanned(&part.text[quote_rel..], part.start + quote_rel)?;
-        return Ok(ParsedDataPoint { value, label });
+        return Ok(ParsedDataPoint {
+            value,
+            label: label.text,
+            label_span: Some(SourceSpan::new(label.start, label.end)),
+        });
     }
 
     let value = parse_number(part.text).ok_or_else(|| {
@@ -1460,10 +1647,11 @@ fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
     Ok(ParsedDataPoint {
         value,
         label: String::new(),
+        label_span: None,
     })
 }
 
-fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<String> {
+fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<SpannedText> {
     let Some(body) = input.strip_prefix('"') else {
         return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
@@ -1490,73 +1678,11 @@ fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<Str
             ),
         ));
     }
-    Ok(body[..end].to_string())
-}
-
-fn extract_bracket_inner(input: &str) -> Result<&str> {
-    let t = input.trim_start();
-    if !t.starts_with('[') {
-        return Err(Error::diagram_parse_fallback(
-            "xychart".to_string(),
-            "expected '['".to_string(),
-        ));
-    }
-    let mut in_quote = false;
-    let mut in_md = false;
-    let mut idx = 1usize;
-    while idx < t.len() {
-        let rest = &t[idx..];
-        let ch = rest.chars().next().unwrap();
-        if in_md {
-            if rest.starts_with("`\"") {
-                in_md = false;
-                idx += 2;
-                continue;
-            }
-            idx += ch.len_utf8();
-            continue;
-        }
-        if in_quote {
-            if ch == '"' {
-                in_quote = false;
-            }
-            idx += ch.len_utf8();
-            continue;
-        }
-        if rest.starts_with("\"`") {
-            in_md = true;
-            idx += 2;
-            continue;
-        }
-        if ch == '"' {
-            in_quote = true;
-            idx += ch.len_utf8();
-            continue;
-        }
-        if ch == '[' {
-            return Err(Error::diagram_parse_fallback(
-                "xychart".to_string(),
-                "unbalanced '['".to_string(),
-            ));
-        }
-        if ch == ']' {
-            let inner = &t[1..idx];
-            let rest = &t[idx + 1..];
-            if !rest.trim().is_empty() {
-                return Err(Error::diagram_parse_fallback(
-                    "xychart".to_string(),
-                    "unexpected trailing tokens after ']'".to_string(),
-                ));
-            }
-            return Ok(inner);
-        }
-        idx += ch.len_utf8();
-    }
-
-    Err(Error::diagram_parse_fallback(
-        "xychart".to_string(),
-        "unbalanced ']'".to_string(),
-    ))
+    Ok(SpannedText {
+        text: body[..end].to_string(),
+        start: input_start + 1,
+        end: input_start + 1 + end,
+    })
 }
 
 fn extract_bracket_inner_spanned(input: &str, input_start: usize) -> Result<(&str, usize)> {
@@ -1631,53 +1757,6 @@ fn extract_bracket_inner_spanned(input: &str, input_start: usize) -> Result<(&st
         "unbalanced ']'".to_string(),
         t_start + t.len(),
     ))
-}
-
-fn split_top_level_commas(input: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let mut in_quote = false;
-    let mut in_md = false;
-    let mut start = 0usize;
-    let mut i = 0usize;
-    while i < input.len() {
-        let rest = &input[i..];
-        let ch = rest.chars().next().unwrap();
-        if in_md {
-            if rest.starts_with("`\"") {
-                in_md = false;
-                i += 2;
-                continue;
-            }
-            i += ch.len_utf8();
-            continue;
-        }
-        if in_quote {
-            if ch == '"' {
-                in_quote = false;
-            }
-            i += ch.len_utf8();
-            continue;
-        }
-        if rest.starts_with("\"`") {
-            in_md = true;
-            i += 2;
-            continue;
-        }
-        if ch == '"' {
-            in_quote = true;
-            i += ch.len_utf8();
-            continue;
-        }
-        if ch == ',' {
-            out.push(&input[start..i]);
-            i += ch.len_utf8();
-            start = i;
-            continue;
-        }
-        i += ch.len_utf8();
-    }
-    out.push(&input[start..]);
-    out
 }
 
 fn split_top_level_commas_spanned(input: &str, input_start: usize) -> Vec<SpannedSlice<'_>> {
@@ -1796,7 +1875,7 @@ fn split_statements_spanned(input: &str) -> Vec<SpannedStatement> {
             continue;
         }
 
-        if ch == '%' && iter.peek().is_some_and(|(_, next)| *next == '%') {
+        if brace_depth == 0 && ch == '%' && iter.peek().is_some_and(|(_, next)| *next == '%') {
             let mut next_statement_start = input.len();
             for (comment_idx, comment_ch) in iter.by_ref() {
                 if comment_ch == '\n' {
@@ -1848,7 +1927,10 @@ fn split_statements_spanned(input: &str) -> Vec<SpannedStatement> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, ParseDiagnosticSpanKind, ParseOptions};
+    use crate::{
+        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole, Engine,
+        ParseDiagnosticSpanKind, ParseOptions,
+    };
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -2059,5 +2141,240 @@ bar [1, 2]
             Some(SourceSpan::new(token_start, token_start + "-4aa5".len()))
         );
         assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn xychart_rejects_trailing_decimal_point_like_pinned_jison() {
+        let text = "xychart\nbar [1.]\n";
+        let engine = Engine::new();
+        let err = block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = err else {
+            panic!("expected xychart parse error");
+        };
+        let token_start = text.find("1.").expect("invalid number token");
+
+        assert_eq!(diagnostic.message(), "invalid number: 1.");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(token_start, token_start + "1.".len()))
+        );
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+    }
+
+    #[test]
+    fn xychart_entrypoints_and_combined_projection_construct_once() {
+        let engine = Engine::new();
+        let text = concat!(
+            "xychart horizontal\n",
+            "title \"Revenue; Growth\"; accTitle: Revenue chart\n",
+            "accDescr {\n",
+            "  Quarterly %% literal\n",
+            "  projection\n",
+            "}\n",
+            "x-axis \"Fiscal quarter\" [Q1, \"Q 2\"]\n",
+            "y-axis Revenue 0 --> 100\n",
+            "line \"Forecast line\" [23 \"Low\", 45 \"High\"]\n",
+            "bar \"Actual bars\" [20, 40]\n",
+        );
+        let parsed = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect("standalone XYChart JSON parse succeeds")
+            .expect("standalone XYChart JSON parse returns a diagram");
+        let standalone_editor = parse_xychart_editor_facts(text, &parsed.meta);
+
+        reset_xychart_syntax_construction_count();
+        let standalone_json =
+            parse_xychart(text, &parsed.meta).expect("XYChart JSON projection succeeds");
+        assert_eq!(xychart_syntax_construction_count(), 1);
+
+        reset_xychart_syntax_construction_count();
+        let typed = parse_xychart_model_for_render(text, &parsed.meta)
+            .expect("XYChart typed projection succeeds");
+        assert_eq!(xychart_syntax_construction_count(), 1);
+
+        reset_xychart_syntax_construction_count();
+        parse_xychart_editor_facts(text, &parsed.meta);
+        assert_eq!(xychart_syntax_construction_count(), 1);
+
+        reset_xychart_syntax_construction_count();
+        let (combined_json, combined_editor) =
+            parse_xychart_json_and_editor_facts(text, &parsed.meta)
+                .expect("XYChart combined projection succeeds");
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        for field in [
+            "orientation",
+            "title",
+            "accTitle",
+            "accDescr",
+            "xAxis",
+            "yAxis",
+            "plots",
+            "type",
+            "config",
+        ] {
+            assert_eq!(
+                combined_json[field], standalone_json[field],
+                "XYChart combined {field} drift"
+            );
+        }
+        assert_eq!(combined_editor, standalone_editor);
+
+        let typed = serde_json::to_value(typed).expect("XYChart typed model serializes");
+        for field in [
+            "orientation",
+            "title",
+            "accTitle",
+            "accDescr",
+            "xAxis",
+            "yAxis",
+        ] {
+            assert_eq!(typed[field], combined_json[field], "XYChart {field} drift");
+        }
+        let typed_plots = typed["plots"].as_array().expect("typed plots");
+        let compat_plots = combined_json["plots"].as_array().expect("compat plots");
+        assert_eq!(typed_plots.len(), compat_plots.len());
+        for (typed, compat) in typed_plots.iter().zip(compat_plots) {
+            for field in ["type", "values", "data", "pointLabels"] {
+                assert_eq!(
+                    typed.get(field),
+                    compat.get(field),
+                    "XYChart plot {field} drift"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn xychart_editor_projection_preserves_multiline_and_nested_payload_spans() {
+        let engine = Engine::new();
+        let text = concat!(
+            "xychart\n",
+            "title \"Revenue plan\"\n",
+            "accTitle: Revenue chart\n",
+            "accDescr {\n",
+            "  Quarterly %% literal\n",
+            "  projection\n",
+            "}\n",
+            "x-axis \"Fiscal quarter\" [Q1, \"Q 2\"]\n",
+            "y-axis Revenue 0 --> 100\n",
+            "line \"Forecast line\" [23 \"Low\", 45 \"High\"]\n",
+        );
+        let parsed = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect("XYChart parse succeeds")
+            .expect("XYChart model");
+        let facts = parse_xychart_editor_facts(text, &parsed.meta);
+
+        let assert_payload = |name: &str, detail: &str, start: usize| {
+            let symbol = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.name == name
+                        && symbol.detail.as_deref() == Some(detail)
+                        && symbol.selection.start == start
+                })
+                .unwrap_or_else(|| panic!("missing {detail} payload {name:?} at {start}"));
+            assert_eq!(symbol.role, EditorSemanticRole::Payload);
+            assert_eq!(symbol.selection, SourceSpan::new(start, start + name.len()));
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span == symbol.selection
+            }));
+        };
+
+        for (name, detail, start) in [
+            (
+                "Revenue plan",
+                "xychart title",
+                text.find("Revenue plan").expect("title source"),
+            ),
+            (
+                "Revenue chart",
+                "xychart accessibility title",
+                text.find("Revenue chart")
+                    .expect("accessibility title source"),
+            ),
+            (
+                "Quarterly %% literal\n  projection",
+                "xychart accessibility description",
+                text.find("Quarterly %% literal")
+                    .expect("accessibility description source"),
+            ),
+            (
+                "Fiscal quarter",
+                "xychart x-axis",
+                text.find("Fiscal quarter").expect("x-axis title source"),
+            ),
+            (
+                "Q1, \"Q 2\"",
+                "xychart x-axis",
+                text.find("Q1, \"Q 2\"").expect("x-axis data source"),
+            ),
+            (
+                "Revenue",
+                "xychart y-axis",
+                text.find("y-axis Revenue").expect("y-axis source") + "y-axis ".len(),
+            ),
+            (
+                "0 --> 100",
+                "xychart y-axis",
+                text.find("0 --> 100").expect("y-axis data source"),
+            ),
+            (
+                "Forecast line",
+                "xychart line",
+                text.find("Forecast line").expect("plot title source"),
+            ),
+            (
+                "23 \"Low\", 45 \"High\"",
+                "xychart line",
+                text.find("23 \"Low\", 45 \"High\"")
+                    .expect("plot data source"),
+            ),
+            (
+                "Low",
+                "xychart line data label",
+                text.find("Low").expect("low label source"),
+            ),
+            (
+                "High",
+                "xychart line data label",
+                text.find("High").expect("high label source"),
+            ),
+        ] {
+            assert_payload(name, detail, start);
+        }
+    }
+
+    #[test]
+    fn xychart_malformed_plot_recovers_prior_parser_facts() {
+        let engine = Engine::new();
+        let text = concat!(
+            "xychart\n",
+            "title Revenue\n",
+            "x-axis [Q1, Q2]\n",
+            "bar [23, -4aa5]\n",
+        );
+        let invalid_start = text.find("-4aa5").expect("invalid number token");
+        reset_xychart_syntax_construction_count();
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .expect("XYChart editor recovery succeeds")
+            .expect("XYChart editor facts are available");
+
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Revenue" && symbol.role == EditorSemanticRole::Payload
+        }));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span
+                    == Some(SourceSpan::new(
+                        invalid_start,
+                        invalid_start + "-4aa5".len(),
+                    ))
+        }));
     }
 }

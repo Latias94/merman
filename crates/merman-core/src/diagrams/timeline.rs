@@ -1,11 +1,29 @@
 use crate::diagrams::scan::{
-    split_statement_suffix_hash_or_semi, starts_with_case_insensitive, strip_line_ending,
+    LineCursor, leading_whitespace_len, split_statement_suffix_hash_or_semi,
+    starts_with_case_insensitive,
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 use serde_json::{Value, json};
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static TIMELINE_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+fn reset_timeline_syntax_construction_count() {
+    TIMELINE_SYNTAX_CONSTRUCTION_COUNT.set(0);
+}
+
+#[cfg(test)]
+fn timeline_syntax_construction_count() -> usize {
+    TIMELINE_SYNTAX_CONSTRUCTION_COUNT.get()
+}
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TimelineRenderTask {
@@ -87,9 +105,41 @@ impl TimelineDb {
     }
 }
 
-enum TimelineParseOutput {
-    Empty,
-    Model(TimelineDiagramRenderModel),
+struct TimelineSemanticSource {
+    model: Option<TimelineDiagramRenderModel>,
+    editor_facts: EditorSemanticFacts,
+}
+
+struct TimelineSemanticFailure {
+    error: Box<Error>,
+    editor_facts: EditorSemanticFacts,
+}
+
+impl TimelineSemanticFailure {
+    fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
+        Self {
+            error: Box::new(error),
+            editor_facts,
+        }
+    }
+
+    fn into_error(self) -> Error {
+        *self.error
+    }
+
+    fn into_editor_facts(mut self) -> EditorSemanticFacts {
+        let (message, span) = match self.error.as_ref() {
+            Error::DiagramParse { diagnostic, .. } => {
+                (diagnostic.message().to_string(), diagnostic.span())
+            }
+            error => (error.to_string(), None),
+        };
+        self.editor_facts.mark_recovered_from_parse_error(
+            format!("timeline parser recovered after parse error: {message}"),
+            span,
+        );
+        self.editor_facts
+    }
 }
 
 fn parse_keyword_arg_full_line_after_one_ws<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
@@ -175,6 +225,26 @@ fn push_timeline_payload_fact(
     ));
 }
 
+fn push_timeline_payload_fact_spanned(
+    facts: &mut EditorSemanticFacts,
+    text: &str,
+    span: SourceSpan,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+) {
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
+        span,
+    ));
+    facts.push_symbol(EditorSemanticSymbol::payload(
+        text.to_string(),
+        Some(detail.to_string()),
+        kind,
+        span,
+        span,
+    ));
+}
+
 #[derive(Debug, Clone, Copy)]
 struct SpannedText<'a> {
     text: &'a str,
@@ -192,61 +262,62 @@ fn parse_key_colon_value_hash_or_semi(line: &str, key: &str) -> Option<String> {
     Some(split_statement_suffix_hash_or_semi(rest).trim().to_string())
 }
 
-struct TimelineLineCursor<'a> {
-    segments: std::str::SplitInclusive<'a, char>,
-    offset: usize,
-}
-
-impl<'a> TimelineLineCursor<'a> {
-    fn new(code: &'a str) -> Self {
-        Self {
-            segments: code.split_inclusive('\n'),
-            offset: 0,
-        }
-    }
-
-    fn next_line(&mut self) -> Option<(&'a str, usize)> {
-        let segment = self.segments.next()?;
-        let line_start = self.offset;
-        self.offset += segment.len();
-        Some((strip_line_ending(segment), line_start))
-    }
+struct TimelineBlockText {
+    text: String,
+    span: SourceSpan,
 }
 
 fn parse_acc_descr_block_spanned(
-    cursor: &mut TimelineLineCursor<'_>,
+    cursor: &mut LineCursor<'_>,
     first_line: &str,
-) -> Option<String> {
+    first_line_start: usize,
+) -> Option<TimelineBlockText> {
     let t = first_line.trim_start();
     if !starts_with_case_insensitive(t, "accDescr") {
         return None;
     }
     let rest = t["accDescr".len()..].trim_start();
     let rest = rest.strip_prefix('{')?;
+    let open = first_line.find('{')?;
+    let content_start = first_line_start + open + 1;
 
     let mut buf = String::new();
     if let Some(end) = rest.find('}') {
         buf.push_str(&rest[..end]);
-        return Some(buf.trim().to_string());
+        return Some(TimelineBlockText {
+            text: buf.trim().to_string(),
+            span: SourceSpan::new(content_start, content_start + end),
+        });
     }
     buf.push_str(rest);
     buf.push('\n');
 
-    while let Some((line, _line_start)) = cursor.next_line() {
+    let mut content_end = cursor.offset();
+    while let Some((line, line_start)) = cursor.next_line() {
         if let Some(end) = line.find('}') {
             buf.push_str(&line[..end]);
+            content_end = line_start + end;
             break;
         }
         buf.push_str(line);
         buf.push('\n');
+        content_end = line_start + line.len();
     }
-    Some(buf.trim().to_string())
+    Some(TimelineBlockText {
+        text: buf.trim().to_string(),
+        span: SourceSpan::new(content_start, content_end.max(content_start)),
+    })
+}
+
+struct TimelineEventText {
+    text: String,
+    span: SourceSpan,
 }
 
 fn split_events_from_colon_whitespace_spanned(
     input: &str,
     input_start: usize,
-) -> Result<Vec<String>> {
+) -> Result<Vec<TimelineEventText>> {
     let mut s = input;
     let mut s_start = input_start;
     let mut out = Vec::new();
@@ -302,7 +373,10 @@ fn split_events_from_colon_whitespace_spanned(
             Some(i) => (&s[..i], &s[i..]),
             None => (s, ""),
         };
-        out.push(event.to_string());
+        out.push(TimelineEventText {
+            text: event.to_string(),
+            span: SourceSpan::new(s_start, s_start + event.len()),
+        });
         s = rest;
         s_start += event.len();
     }
@@ -311,160 +385,69 @@ fn split_events_from_colon_whitespace_spanned(
 }
 
 pub fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    match parse_timeline_model(code, meta)? {
-        TimelineParseOutput::Empty => Ok(json!({})),
-        TimelineParseOutput::Model(model) => Ok(json!({
-            "type": meta.diagram_type,
-            "title": model.title,
-            "accTitle": model.acc_title,
-            "accDescr": model.acc_descr,
-            "sections": model.sections,
-            "tasks": model.tasks,
-        })),
-    }
+    let source = construct_timeline_semantic_source(code, meta)
+        .map_err(TimelineSemanticFailure::into_error)?;
+    Ok(source
+        .model
+        .map_or_else(|| json!({}), |model| timeline_model_into_json(model, meta)))
+}
+
+pub(crate) fn parse_timeline_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let TimelineSemanticSource {
+        model,
+        editor_facts,
+    } = construct_timeline_semantic_source(code, meta)
+        .map_err(TimelineSemanticFailure::into_error)?;
+    let model = model.map_or_else(|| json!({}), |model| timeline_model_into_json(model, meta));
+    Ok((model, editor_facts))
+}
+
+fn timeline_model_into_json(model: TimelineDiagramRenderModel, meta: &ParseMetadata) -> Value {
+    json!({
+        "type": meta.diagram_type,
+        "title": model.title,
+        "accTitle": model.acc_title,
+        "accDescr": model.acc_descr,
+        "sections": model.sections,
+        "tasks": model.tasks,
+    })
 }
 
 pub fn parse_timeline_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<TimelineDiagramRenderModel> {
-    match parse_timeline_model(code, meta)? {
-        TimelineParseOutput::Empty => Ok(TimelineDiagramRenderModel::default()),
-        TimelineParseOutput::Model(model) => Ok(model),
+    construct_timeline_semantic_source(code, meta)
+        .map(|source| source.model.unwrap_or_default())
+        .map_err(TimelineSemanticFailure::into_error)
+}
+
+pub fn parse_timeline_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    match construct_timeline_semantic_source(code, meta) {
+        Ok(source) => source.editor_facts,
+        Err(failure) => failure.into_editor_facts(),
     }
 }
 
-pub fn parse_timeline_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let lines = code.split_inclusive('\n').peekable();
-    let mut offset = 0usize;
-    let mut header_seen = false;
+fn construct_timeline_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<TimelineSemanticSource, TimelineSemanticFailure> {
+    #[cfg(test)]
+    TIMELINE_SYNTAX_CONSTRUCTION_COUNT.set(TIMELINE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    for segment in lines {
-        let line_start = offset;
-        offset += segment.len();
-        let line = strip_line_ending(segment);
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("%%") {
-            continue;
-        }
-
-        if !header_seen {
-            if starts_with_case_insensitive(trimmed, "timeline") {
-                header_seen = true;
-            }
-            continue;
-        }
-
-        if let Some(value) = parse_keyword_arg_full_line_after_one_ws(line, "title") {
-            facts.push_directive_prefix("title");
-            push_timeline_payload_fact(
-                &mut facts,
-                value,
-                line_start + line.find(value).unwrap_or(0),
-                "timeline title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_key_colon_value_spanned(line, line_start, "accTitle") {
-            facts.push_directive_prefix("accTitle");
-            push_timeline_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "timeline accessibility title",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_key_colon_value_spanned(line, line_start, "accDescr") {
-            facts.push_directive_prefix("accDescr");
-            push_timeline_payload_fact(
-                &mut facts,
-                value.text,
-                value.start,
-                "timeline accessibility description",
-                EditorSemanticKind::String,
-            );
-            continue;
-        }
-        if let Some(value) = parse_section_value_spanned(line, line_start) {
-            facts.push_symbol(EditorSemanticSymbol::outline(
-                value.text.to_string(),
-                Some("timeline section".to_string()),
-                EditorSemanticKind::Namespace,
-                SourceSpan::new(line_start, line_start + line.len()),
-                SourceSpan::new(value.start, value.end),
-            ));
-            continue;
-        }
-
-        let content = line.trim_start();
-        let content_start = line_start + (line.len() - content.len());
-        if let Some(after_colon) = content.strip_prefix(':') {
-            let payload = after_colon.trim_start();
-            if !payload.is_empty() {
-                let payload_start = content_start + 1 + after_colon.find(payload).unwrap_or(0);
-                push_timeline_payload_fact(
-                    &mut facts,
-                    payload,
-                    payload_start,
-                    "timeline event",
-                    EditorSemanticKind::String,
-                );
-            }
-            continue;
-        }
-
-        let colon = content.find(':').unwrap_or(content.len());
-        let task_name = content[..colon].trim();
-        if task_name.is_empty() {
-            continue;
-        }
-        let task_start = content_start + content[..colon].find(task_name).unwrap_or(0);
-        let task_end = task_start + task_name.len();
-        facts.push_expected_syntax(EditorExpectedSyntax::new(
-            EditorExpectedSyntaxKind::NodeIdentifier,
-            SourceSpan::new(task_start, task_end),
-        ));
-        facts.push_symbol(EditorSemanticSymbol::new(
-            task_name.to_string(),
-            Some("timeline task".to_string()),
-            EditorSemanticKind::Event,
-            SourceSpan::new(content_start, line_start + line.len()),
-            SourceSpan::new(task_start, task_end),
-        ));
-
-        if colon < content.len() {
-            let payload = content[colon + 1..].trim_start();
-            if !payload.is_empty() {
-                let payload_start =
-                    content_start + colon + 1 + content[colon + 1..].find(payload).unwrap_or(0);
-                push_timeline_payload_fact(
-                    &mut facts,
-                    payload,
-                    payload_start,
-                    "timeline event",
-                    EditorSemanticKind::String,
-                );
-            }
-        }
-    }
-
-    facts
-}
-
-fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelineParseOutput> {
     let mut db = TimelineDb::default();
     db.clear();
-
-    let mut lines = TimelineLineCursor::new(code);
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut lines = LineCursor::new(code);
     let mut header_seen = false;
 
     while let Some((line, line_start)) = lines.next_line() {
         let t = line.trim();
-        if t.is_empty() {
+        if t.is_empty() || t.starts_with('#') || t.starts_with("%%") {
             continue;
         }
 
@@ -472,42 +455,97 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
             if starts_with_case_insensitive(t, "timeline") {
                 header_seen = true;
                 let rest = t["timeline".len()..].trim_start();
-                if !rest.is_empty() {
-                    return Err(Error::diagram_parse_fallback(
-                        meta.diagram_type.clone(),
-                        "unexpected content after timeline header".to_string(),
+                if !rest.is_empty()
+                    && !rest.eq_ignore_ascii_case("LR")
+                    && !rest.eq_ignore_ascii_case("TD")
+                {
+                    let start = line_start + line.find(rest).unwrap_or(line.len());
+                    return Err(TimelineSemanticFailure::new(
+                        Error::diagram_parse_exact(
+                            meta.diagram_type.clone(),
+                            "unexpected content after timeline header",
+                            SourceSpan::new(start, start + rest.len()),
+                        ),
+                        editor_facts,
                     ));
                 }
                 continue;
             }
-            return Err(Error::diagram_parse_fallback(
-                meta.diagram_type.clone(),
-                "expected timeline header".to_string(),
+            let start = line_start + leading_whitespace_len(line);
+            return Err(TimelineSemanticFailure::new(
+                Error::diagram_parse_exact(
+                    meta.diagram_type.clone(),
+                    "expected timeline header",
+                    SourceSpan::new(start, line_start + line.len()),
+                ),
+                editor_facts,
             ));
         }
 
         let stripped = line.trim_start();
-        if stripped.starts_with('#') {
-            continue;
-        }
-
         if let Some(v) = parse_title_value(line) {
+            editor_facts.push_directive_prefix("title");
+            let start = line_start + line.find(&v).unwrap_or(line.len());
+            push_timeline_payload_fact(
+                &mut editor_facts,
+                &v,
+                start,
+                "timeline title",
+                EditorSemanticKind::String,
+            );
             db.title = v;
             continue;
         }
         if let Some(v) = parse_key_colon_value_hash_or_semi(line, "accTitle") {
+            editor_facts.push_directive_prefix("accTitle");
+            if let Some(value) = parse_key_colon_value_spanned(line, line_start, "accTitle") {
+                push_timeline_payload_fact(
+                    &mut editor_facts,
+                    value.text,
+                    value.start,
+                    "timeline accessibility title",
+                    EditorSemanticKind::String,
+                );
+            }
             db.acc_title = v;
             continue;
         }
         if let Some(v) = parse_key_colon_value_hash_or_semi(line, "accDescr") {
+            editor_facts.push_directive_prefix("accDescr");
+            if let Some(value) = parse_key_colon_value_spanned(line, line_start, "accDescr") {
+                push_timeline_payload_fact(
+                    &mut editor_facts,
+                    value.text,
+                    value.start,
+                    "timeline accessibility description",
+                    EditorSemanticKind::String,
+                );
+            }
             db.acc_descr = v;
             continue;
         }
-        if let Some(v) = parse_acc_descr_block_spanned(&mut lines, line) {
-            db.acc_descr = v;
+        if let Some(v) = parse_acc_descr_block_spanned(&mut lines, line, line_start) {
+            editor_facts.push_directive_prefix("accDescr");
+            push_timeline_payload_fact_spanned(
+                &mut editor_facts,
+                &v.text,
+                v.span,
+                "timeline accessibility description",
+                EditorSemanticKind::String,
+            );
+            db.acc_descr = v.text;
             continue;
         }
         if let Some(v) = parse_section_value(line) {
+            if let Some(value) = parse_section_value_spanned(line, line_start) {
+                editor_facts.push_symbol(EditorSemanticSymbol::outline(
+                    value.text.to_string(),
+                    Some("timeline section".to_string()),
+                    EditorSemanticKind::Namespace,
+                    SourceSpan::new(line_start, line_start + line.len()),
+                    SourceSpan::new(value.start, value.end),
+                ));
+            }
             db.add_section(&v);
             continue;
         }
@@ -515,9 +553,18 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
         let trimmed = stripped;
         let trimmed_start = line_start + line.len().saturating_sub(trimmed.len());
         if trimmed.starts_with(':') {
-            let events = split_events_from_colon_whitespace_spanned(trimmed, trimmed_start)?;
+            let events = split_events_from_colon_whitespace_spanned(trimmed, trimmed_start)
+                .map_err(|error| TimelineSemanticFailure::new(error, editor_facts.clone()))?;
             for e in events {
-                db.add_event(&e)?;
+                db.add_event(&e.text)
+                    .map_err(|error| TimelineSemanticFailure::new(error, editor_facts.clone()))?;
+                push_timeline_payload_fact_spanned(
+                    &mut editor_facts,
+                    &e.text,
+                    e.span,
+                    "timeline event",
+                    EditorSemanticKind::String,
+                );
             }
             continue;
         }
@@ -533,6 +580,20 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
         if period.trim().is_empty() {
             continue;
         }
+        let task_name = period.trim();
+        let task_start = trimmed_start + period.find(task_name).unwrap_or(0);
+        let task_span = SourceSpan::new(task_start, task_start + task_name.len());
+        editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
+            task_span,
+        ));
+        editor_facts.push_symbol(EditorSemanticSymbol::outline(
+            task_name.to_string(),
+            Some("timeline task".to_string()),
+            EditorSemanticKind::Event,
+            SourceSpan::new(trimmed_start, line_start + line.len()),
+            task_span,
+        ));
         db.add_task(&period);
 
         let rest = &trimmed[end..];
@@ -544,49 +605,51 @@ fn parse_timeline_model(code: &str, meta: &ParseMetadata) -> Result<TimelinePars
         }
         if rest.starts_with(':') {
             let rest_start = trimmed_start + end;
-            let events = split_events_from_colon_whitespace_spanned(rest, rest_start)?;
+            let events = split_events_from_colon_whitespace_spanned(rest, rest_start)
+                .map_err(|error| TimelineSemanticFailure::new(error, editor_facts.clone()))?;
             for e in events {
-                db.add_event(&e)?;
+                db.add_event(&e.text)
+                    .map_err(|error| TimelineSemanticFailure::new(error, editor_facts.clone()))?;
+                push_timeline_payload_fact_spanned(
+                    &mut editor_facts,
+                    &e.text,
+                    e.span,
+                    "timeline event",
+                    EditorSemanticKind::String,
+                );
             }
             continue;
         }
-        return Err(Error::diagram_parse_fallback(
-            meta.diagram_type.clone(),
-            format!("unrecognized statement: {trimmed}"),
+        return Err(TimelineSemanticFailure::new(
+            Error::diagram_parse_exact(
+                meta.diagram_type.clone(),
+                format!("unrecognized statement: {trimmed}"),
+                SourceSpan::new(trimmed_start + end, line_start + line.len()),
+            ),
+            editor_facts,
         ));
     }
 
-    if !header_seen {
-        return Ok(TimelineParseOutput::Empty);
-    }
-
-    Ok(TimelineParseOutput::Model(TimelineDiagramRenderModel {
-        title: if db.title.is_empty() {
-            None
-        } else {
-            Some(db.title)
-        },
-        acc_title: if db.acc_title.is_empty() {
-            None
-        } else {
-            Some(db.acc_title)
-        },
-        acc_descr: if db.acc_descr.is_empty() {
-            None
-        } else {
-            Some(db.acc_descr)
-        },
+    let model = header_seen.then(|| TimelineDiagramRenderModel {
+        title: (!db.title.is_empty()).then_some(db.title),
+        acc_title: (!db.acc_title.is_empty()).then_some(db.acc_title),
+        acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
         sections: db.sections,
         tasks: db.tasks,
-    }))
+    });
+    Ok(TimelineSemanticSource {
+        model,
+        editor_facts,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        EditorExpectedSyntaxKind, EditorSemanticKind, EditorSemanticRole, Engine,
-        ParseDiagnosticSpanKind, ParseOptions, SourceSpan,
+        EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticDiagnosticKind,
+        EditorSemanticKind, EditorSemanticRole, Engine, ParseDiagnosticSpanKind, ParseOptions,
+        SourceSpan,
     };
     use futures::executor::block_on;
 
@@ -889,17 +952,20 @@ task2: event2: event3\n";
                 && symbol.kind == EditorSemanticKind::Namespace
                 && symbol.role == EditorSemanticRole::Outline
         }));
-        assert!(
-            facts
-                .symbols
-                .iter()
-                .any(|symbol| symbol.name == "task1" && symbol.kind == EditorSemanticKind::Event)
-        );
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "task1"
+                && symbol.kind == EditorSemanticKind::Event
+                && symbol.role == EditorSemanticRole::Outline
+        }));
 
         let task_start = text.find("task1").unwrap();
         let event_start = text.find("event1").unwrap();
 
         assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(task_start, task_start + "task1".len())
+        }));
+        assert!(!facts.expected_syntax.iter().any(|expected| {
             expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
                 && expected.span == SourceSpan::new(task_start, task_start + "task1".len())
         }));
@@ -907,5 +973,103 @@ task2: event2: event3\n";
             expected.kind == EditorExpectedSyntaxKind::Payload
                 && expected.span == SourceSpan::new(event_start, event_start + "event1".len())
         }));
+    }
+
+    #[test]
+    fn timeline_entrypoints_and_combined_projection_construct_once() {
+        let engine = Engine::new();
+        let text = concat!(
+            "timeline\n",
+            "title Delivery\n",
+            "accTitle: Delivery timeline\n",
+            "accDescr: Delivery milestones\n",
+            "section Build\n",
+            "Implement parser: API ready: Tests green\n",
+        );
+        let parsed = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect("standalone Timeline JSON parse succeeds")
+            .expect("standalone Timeline JSON parse returns a diagram");
+        let standalone_editor = parse_timeline_editor_facts(text, &parsed.meta);
+
+        reset_timeline_syntax_construction_count();
+        parse_timeline(text, &parsed.meta).expect("Timeline JSON projection succeeds");
+        assert_eq!(timeline_syntax_construction_count(), 1);
+
+        reset_timeline_syntax_construction_count();
+        let typed = parse_timeline_model_for_render(text, &parsed.meta)
+            .expect("Timeline typed projection succeeds");
+        assert_eq!(timeline_syntax_construction_count(), 1);
+
+        reset_timeline_syntax_construction_count();
+        parse_timeline_editor_facts(text, &parsed.meta);
+        assert_eq!(timeline_syntax_construction_count(), 1);
+
+        reset_timeline_syntax_construction_count();
+        let (combined_json, combined_editor) =
+            parse_timeline_json_and_editor_facts(text, &parsed.meta)
+                .expect("Timeline combined projection succeeds");
+        assert_eq!(timeline_syntax_construction_count(), 1);
+        assert_eq!(combined_json, parsed.model);
+        assert_eq!(combined_editor, standalone_editor);
+
+        let typed = serde_json::to_value(typed).expect("Timeline typed model serializes");
+        for field in ["title", "accTitle", "accDescr", "sections", "tasks"] {
+            assert_eq!(typed[field], combined_json[field], "Timeline {field} drift");
+        }
+    }
+
+    #[test]
+    fn timeline_malformed_event_recovers_prior_parser_facts_once() {
+        let engine = Engine::new();
+        let text = "timeline\nsection Build\nImplement parser:event\n";
+        let colon = text.find(':').expect("malformed event colon");
+
+        reset_timeline_syntax_construction_count();
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("timeline", text, ParseOptions::strict())
+            .expect("Timeline editor recovery succeeds")
+            .expect("Timeline editor facts are available");
+
+        assert_eq!(timeline_syntax_construction_count(), 1);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Build" && symbol.role == EditorSemanticRole::Outline
+        }));
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "Implement parser" && symbol.role == EditorSemanticRole::Outline
+        }));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(SourceSpan::new(colon + 1, colon + 1))
+        }));
+    }
+
+    #[test]
+    fn timeline_eof_terminates_multiline_acc_descr_like_pinned_jison() {
+        let text = "timeline\naccDescr {\n  partial description\n";
+        let meta = ParseMetadata {
+            diagram_type: "timeline".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        };
+
+        reset_timeline_syntax_construction_count();
+        let (model, facts) = parse_timeline_json_and_editor_facts(text, &meta)
+            .expect("pinned Jison accepts EOF in the multiline accessibility state");
+        assert_eq!(timeline_syntax_construction_count(), 1);
+        assert_eq!(model["accDescr"], json!("partial description"));
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert!(facts.diagnostics.is_empty());
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "partial description" && symbol.role == EditorSemanticRole::Payload
+        }));
+
+        reset_timeline_syntax_construction_count();
+        let typed = parse_timeline_model_for_render(text, &meta)
+            .expect("typed projection accepts the same pinned Jison input");
+        assert_eq!(timeline_syntax_construction_count(), 1);
+        assert_eq!(typed.acc_descr.as_deref(), Some("partial description"));
     }
 }

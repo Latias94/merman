@@ -3,6 +3,40 @@ pub(crate) fn strip_line_ending(segment: &str) -> &str {
     segment.strip_suffix('\r').unwrap_or(segment)
 }
 
+pub(crate) struct LineCursor<'a> {
+    segments: std::str::SplitInclusive<'a, char>,
+    offset: usize,
+}
+
+impl<'a> LineCursor<'a> {
+    pub(crate) fn new(code: &'a str) -> Self {
+        Self {
+            segments: code.split_inclusive('\n'),
+            offset: 0,
+        }
+    }
+
+    pub(crate) fn next_line(&mut self) -> Option<(&'a str, usize)> {
+        let segment = self.segments.next()?;
+        let line_start = self.offset;
+        self.offset += segment.len();
+        Some((strip_line_ending(segment), line_start))
+    }
+
+    pub(crate) fn offset(&self) -> usize {
+        self.offset
+    }
+}
+
+pub(crate) fn physical_line_at(source: &str, offset: usize) -> (&str, usize) {
+    let rest = &source[offset..];
+    let (segment, next_offset) = match rest.find('\n') {
+        Some(relative_newline) => (&rest[..=relative_newline], offset + relative_newline + 1),
+        None => (rest, source.len()),
+    };
+    (strip_line_ending(segment), next_offset)
+}
+
 pub(crate) fn starts_with_case_insensitive(haystack: &str, needle: &str) -> bool {
     if haystack.len() < needle.len() {
         return false;
@@ -71,8 +105,9 @@ pub(crate) fn split_statement_suffix_hash_or_semi(s: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        leading_whitespace_len, split_ascii_indent, split_indent, split_indent_by,
-        split_statement_suffix_hash_or_semi, starts_with_case_insensitive, strip_line_ending,
+        LineCursor, leading_whitespace_len, physical_line_at, split_ascii_indent, split_indent,
+        split_indent_by, split_statement_suffix_hash_or_semi, starts_with_case_insensitive,
+        strip_line_ending,
     };
 
     #[test]
@@ -80,6 +115,30 @@ mod tests {
         assert_eq!(strip_line_ending("line\n"), "line");
         assert_eq!(strip_line_ending("line\r\n"), "line");
         assert_eq!(strip_line_ending("line"), "line");
+    }
+
+    #[test]
+    fn line_cursor_tracks_utf8_byte_offsets_and_strips_endings() {
+        let mut cursor = LineCursor::new("alpha\r\n\u{03b2}eta");
+
+        assert_eq!(cursor.next_line(), Some(("alpha", 0)));
+        assert_eq!(cursor.offset(), "alpha\r\n".len());
+        assert_eq!(cursor.next_line(), Some(("\u{03b2}eta", "alpha\r\n".len())));
+        assert_eq!(cursor.offset(), "alpha\r\n\u{03b2}eta".len());
+        assert_eq!(cursor.next_line(), None);
+    }
+
+    #[test]
+    fn physical_line_at_tracks_next_offset_and_strips_endings() {
+        let source = "first\r\nsecond\r";
+        let second_start = "first\r\n".len();
+
+        assert_eq!(physical_line_at(source, 0), ("first", second_start));
+        assert_eq!(
+            physical_line_at(source, second_start),
+            ("second", source.len())
+        );
+        assert_eq!(physical_line_at(source, source.len()), ("", source.len()));
     }
 
     #[test]
