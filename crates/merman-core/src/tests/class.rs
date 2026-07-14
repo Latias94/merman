@@ -749,6 +749,80 @@ fn parse_class_editor_facts_preserve_click_call_callback_name_span_after_whitesp
 }
 
 #[test]
+fn parse_class_editor_facts_preserve_every_crlf_unicode_occurrence_and_payload_span() {
+    let engine = Engine::new();
+    let text = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  theme: dark\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "classDiagram-v2\r\n",
+        "namespace 公司 {\r\n",
+        "  class 顧客[\"客戶\"] {\r\n",
+        "    +查詢(id) 結果\r\n",
+        "  }\r\n",
+        "  note for 顧客 \"Primary customer\"\r\n",
+        "}\r\n",
+        "class 訂單\r\n",
+        "顧客 \"1\" *-- \"many\" 訂單 : owns 群組\r\n",
+        "note for 顧客 \"Important account\"\r\n",
+        "click 顧客 call open(customerId) \"Open customer\"\r\n",
+        "cssClass \"顧客,訂單\" service\r\n",
+        "style 顧客 fill:#fff\r\n",
+    );
+    let facts = engine
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
+        .unwrap()
+        .expect("Class editor facts");
+
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    for name in ["顧客", "訂單"] {
+        let expected = text
+            .match_indices(name)
+            .map(|(start, value)| SourceSpan::new(start, start + value.len()))
+            .collect::<Vec<_>>();
+        let actual = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.name == name)
+            .map(|symbol| symbol.selection)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual, expected,
+            "Class lost or collapsed a {name:?} occurrence"
+        );
+    }
+
+    let payload = |name: &str, detail: &str| {
+        facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing Class payload {name:?} ({detail})"))
+    };
+    for (name, detail) in [
+        ("客戶", "class display label"),
+        ("1", "class relation multiplicity"),
+        ("many", "class relation multiplicity"),
+        ("owns 群組", "class relation label"),
+        ("Primary customer", "class note"),
+        ("Important account", "class note"),
+        ("open", "class callback"),
+        ("customerId", "class callback args"),
+        ("Open customer", "class interaction string"),
+        ("fill:#fff", "class style"),
+    ] {
+        let start = text.find(name).unwrap();
+        assert_eq!(
+            payload(name, detail).selection,
+            SourceSpan::new(start, start + name.len()),
+            "Class payload {name:?} span drifted"
+        );
+    }
+}
+
+#[test]
 fn parse_class_editor_facts_record_expected_node_identifier_spans() {
     let engine = Engine::new();
     let text = "classDiagram\nclassDef service fill:#eee\n";
@@ -780,6 +854,7 @@ fn parse_class_editor_facts_recovers_from_incomplete_input() {
 fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
     let engine = Engine::new();
     let text = "classDiagram\nclass User {\n  +name";
+    crate::diagrams::class::reset_class_syntax_construction_count();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
         .unwrap()
@@ -787,12 +862,33 @@ fn parse_class_editor_facts_stop_after_non_advancing_lexer_error() {
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(text.len(), text.len()))
+    }));
+
+    crate::diagrams::class::reset_class_syntax_construction_count();
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("strict Class parsing rejects an unterminated body");
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("unterminated Class body returned a non-parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(text.len(), text.len()))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
 
 #[test]
 fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
     let engine = Engine::new();
     let text = "classDiagram\n\"\nclass User\n";
+    let invalid_start = text.find('"').unwrap();
+    crate::diagrams::class::reset_class_syntax_construction_count();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("classDiagram", text, ParseOptions::strict())
         .unwrap()
@@ -800,4 +896,23 @@ fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
     assert!(facts.symbols.iter().any(|symbol| symbol.name == "User"));
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    assert!(facts.diagnostics.iter().any(|diagnostic| {
+        diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+            && diagnostic.span == Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    }));
+
+    crate::diagrams::class::reset_class_syntax_construction_count();
+    let error = engine
+        .parse_diagram_sync(text, ParseOptions::strict())
+        .expect_err("strict Class parsing rejects an unterminated string");
+    assert_eq!(crate::diagrams::class::class_syntax_construction_count(), 1);
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        panic!("unterminated Class string returned a non-parse error");
+    };
+    assert_eq!(
+        diagnostic.span(),
+        Some(SourceSpan::new(invalid_start, invalid_start + 1))
+    );
+    assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }

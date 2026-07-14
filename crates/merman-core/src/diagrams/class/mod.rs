@@ -18,13 +18,15 @@ pub(super) const MERMAID_DOM_ID_PREFIX: &str = "classId-";
 
 mod ast;
 mod db;
-mod fast;
 mod lexer;
 mod parse;
 
 #[cfg(test)]
 mod tests;
 
+pub(crate) use parse::parse_class_json_and_editor_facts;
+#[cfg(test)]
+pub(crate) use parse::{class_syntax_construction_count, reset_class_syntax_construction_count};
 pub use parse::{parse_class, parse_class_editor_facts, parse_class_typed};
 
 pub(crate) use ast::{Action, Relation, RelationData};

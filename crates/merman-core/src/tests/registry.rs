@@ -184,7 +184,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "classDiagram\nclass Animal\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -193,7 +193,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "classDiagram\nclass Animal\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -1242,6 +1242,8 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
         combined,
         BTreeSet::from([
             "architecture",
+            "class",
+            "classDiagram",
             "flowchart",
             "flowchart-elk",
             "flowchart-v2",
@@ -1357,6 +1359,30 @@ fn sequence_combined_parse_constructs_family_syntax_once() {
         crate::diagrams::sequence::sequence_syntax_construction_count(),
         1,
         "one combined request must construct Sequence syntax once"
+    );
+}
+
+#[test]
+fn class_combined_parse_constructs_family_syntax_once() {
+    crate::diagrams::class::reset_class_syntax_construction_count();
+
+    let parsed = crate::Engine::new()
+        .parse_diagram_with_editor_facts_sync(
+            "classDiagram-v2\nclass Customer\nCustomer --> Order : places\n",
+            crate::ParseOptions::strict(),
+        )
+        .expect("Class combined parse succeeds")
+        .expect("Class combined parse returns a diagram");
+
+    assert_eq!(parsed.diagram.meta.diagram_type, "classDiagram");
+    assert!(matches!(
+        parsed.editor_facts,
+        crate::ParsedEditorFacts::Available(_)
+    ));
+    assert_eq!(
+        crate::diagrams::class::class_syntax_construction_count(),
+        1,
+        "one combined request must construct Class syntax once"
     );
 }
 
@@ -1521,6 +1547,77 @@ fn er_combined_projections_match_standalone_and_typed_public_entrypoints() {
     compat.as_object_mut().unwrap().remove("type");
     compat.as_object_mut().unwrap().remove("constants");
     assert_eq!(compat, typed, "ER JSON and typed projections drifted");
+}
+
+#[test]
+fn class_combined_projections_match_standalone_and_typed_public_entrypoints() {
+    let engine = crate::Engine::new().with_site_config({
+        let mut config = crate::MermaidConfig::empty_object();
+        config.set_value("securityLevel", serde_json::json!("loose"));
+        config
+    });
+    let source = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  securityLevel: loose\r\n",
+        "  class:\r\n",
+        "    hierarchicalNamespaces: true\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "classDiagram-v2\r\n",
+        "accTitle: <script>bad()</script><b>Class map</b>\r\n",
+        "accDescr: <script>bad()</script><b>Class relationships</b>\r\n",
+        "direction LR\r\n",
+        "namespace 公司.平台[\"Platform Layer\"] {\r\n",
+        "  class 顧客[\"Customer\"] {\r\n",
+        "    +id: String\r\n",
+        "    +find(value) Result~T~$\r\n",
+        "  }\r\n",
+        "  note for 顧客 \"Primary customer\"\r\n",
+        "}\r\n",
+        "class 訂單\r\n",
+        "顧客 \"1\" *-- \"many\" 訂單 : owns\r\n",
+        "<<service>> 顧客\r\n",
+        "note \"Floating note\"\r\n",
+        "classDef service fill:#fff,color:red\r\n",
+        "class 訂單:::service\r\n",
+        "cssClass \"顧客,訂單\" service\r\n",
+        "style 顧客 stroke:#000\r\n",
+        "click 顧客 call open(customerId) \"Open customer\"\r\n",
+        "link 訂單 \"https://example.com/orders\" \"Orders\" _blank\r\n",
+        "callback 訂單 \"refreshOrders\" \"Refresh orders\"\r\n",
+    );
+    let compat =
+        assert_combined_projections_match_standalone(&engine, "classDiagram", source, None);
+
+    let typed = engine
+        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+        .expect("Class typed parse succeeds")
+        .expect("Class typed parse returns a diagram");
+    let crate::RenderSemanticModel::Class(typed) = typed.model else {
+        panic!("Class typed parse returned a different family");
+    };
+    let typed = serde_json::to_value(typed).expect("Class typed model serializes");
+    assert_eq!(compat, typed, "Class JSON and typed projections drifted");
+
+    assert_eq!(typed["direction"], "LR");
+    assert_eq!(typed["classes"]["顧客"]["label"], "Customer");
+    assert_eq!(typed["classes"]["顧客"]["parent"], "公司.平台");
+    assert_eq!(typed["relations"][0]["relationTitle1"], "1");
+    assert_eq!(typed["relations"][0]["relationTitle2"], "many");
+    assert_eq!(typed["relations"][0]["title"], "owns");
+    assert_eq!(typed["notes"].as_array().unwrap().len(), 2);
+    assert_eq!(typed["notes"][0]["parent"], "公司.平台");
+    assert!(
+        typed["notes"][1].get("parent").is_none(),
+        "floating Class notes preserve Mermaid's absent parent field"
+    );
+    assert_eq!(typed["classes"]["顧客"]["callback"]["function"], "open");
+    assert_eq!(typed["classes"]["顧客"]["callbackEffective"], true);
+    assert_eq!(typed["classes"]["訂單"]["linkTarget"], "_blank");
+    for field in ["accTitle", "accDescr"] {
+        assert!(!typed[field].as_str().unwrap().contains("<script>"));
+    }
 }
 
 #[test]

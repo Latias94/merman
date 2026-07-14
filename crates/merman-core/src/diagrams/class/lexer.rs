@@ -61,11 +61,12 @@ pub(crate) enum Tok {
 #[error("{message}")]
 pub(crate) struct LexError {
     pub message: String,
+    pub span: crate::SourceSpan,
 }
 
 impl crate::error::ParseErrorSourceSpan for LexError {
     fn source_span(&self) -> Option<crate::SourceSpan> {
-        None
+        Some(self.span)
     }
 }
 
@@ -199,6 +200,7 @@ impl<'input> Lexer<'input> {
             let Some(end_rel) = self.input[self.pos..].find('}') else {
                 return Some(Err(LexError {
                     message: "Unterminated accDescr block; missing '}'".to_string(),
+                    span: crate::SourceSpan::new(self.pos - 1, self.pos),
                 }));
             };
             let body = self.input[self.pos..self.pos + end_rel].to_string();
@@ -366,6 +368,7 @@ impl<'input> Lexer<'input> {
         let Some(end_rel) = self.input[self.pos..].find(')') else {
             return Some(Err(LexError {
                 message: "Unterminated callback arguments; missing ')'".to_string(),
+                span: crate::SourceSpan::new(start, self.pos),
             }));
         };
         let args = self.input[self.pos..self.pos + end_rel].trim().to_string();
@@ -506,6 +509,7 @@ impl<'input> Lexer<'input> {
         let Some(rel_end) = self.input[self.pos..].find('"') else {
             return Some(Err(LexError {
                 message: "Unterminated string literal; missing '\"'".to_string(),
+                span: crate::SourceSpan::new(start, self.pos),
             }));
         };
         let s = self.input[self.pos..self.pos + rel_end].to_string();
@@ -595,6 +599,7 @@ impl<'input> Lexer<'input> {
         if self.pos >= self.input.len() {
             return Some(Err(LexError {
                 message: "EOF inside class body".to_string(),
+                span: crate::SourceSpan::new(self.pos, self.pos),
             }));
         }
         if self.peek() == Some(b'}') {
@@ -603,6 +608,7 @@ impl<'input> Lexer<'input> {
         if self.peek() == Some(b'{') {
             return Some(Err(LexError {
                 message: "Unexpected '{' inside class body".to_string(),
+                span: crate::SourceSpan::new(self.pos, self.pos + 1),
             }));
         }
         // Newlines inside a class body are ignored by Mermaid's lexer.
@@ -630,6 +636,7 @@ impl<'input> Iterator for Lexer<'input> {
                 if self.mode == Mode::ClassBody {
                     return Some(Err(LexError {
                         message: "EOF inside class body".to_string(),
+                        span: crate::SourceSpan::new(self.pos, self.pos),
                     }));
                 }
                 return None;
@@ -704,6 +711,7 @@ impl<'input> Iterator for Lexer<'input> {
             let _ = self.bump();
             return Some(Err(LexError {
                 message: format!("Unexpected character at {start}"),
+                span: crate::SourceSpan::new(start, self.pos),
             }));
         }
     }
