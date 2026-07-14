@@ -140,6 +140,24 @@ pub struct C4BoundaryRenderModel {
     pub border_color: Option<String>,
     #[serde(default, rename = "fontColor", skip_serializing_if = "Option::is_none")]
     pub font_color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadowing: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shape: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub techn: Option<Value>,
+    #[serde(
+        default,
+        rename = "legendText",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub legend_text: Option<Value>,
+    #[serde(
+        default,
+        rename = "legendSprite",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub legend_sprite: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -322,7 +340,7 @@ impl C4ParseFailure {
 
 pub fn parse_c4(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_c4_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    Ok(source.db.to_model(meta))
+    source.db.to_model(meta)
 }
 
 pub fn parse_c4_model_for_render(code: &str, meta: &ParseMetadata) -> Result<C4DiagramRenderModel> {
@@ -337,7 +355,41 @@ pub(crate) fn parse_c4_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = construct_c4_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    Ok((source.db.to_model(meta), source.editor_facts))
+    Ok((source.db.to_model(meta)?, source.editor_facts))
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &C4DiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let mut out = Map::with_capacity(11);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("c4Type".to_string(), Value::String(model.c4_type.clone()));
+    out.insert("title".to_string(), json!(&model.title));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("wrap".to_string(), Value::Bool(model.wrap));
+    out.insert("layout".to_string(), json!(&model.layout));
+    out.insert("shapes".to_string(), json!(&model.shapes));
+    let mut boundaries = json!(&model.boundaries);
+    if let Some(boundaries) = boundaries.as_array_mut() {
+        for boundary in boundaries {
+            let Some(boundary) = boundary.as_object_mut() else {
+                continue;
+            };
+            if boundary.get("alias").and_then(Value::as_str) == Some("global") {
+                boundary.entry("tags".to_string()).or_insert(Value::Null);
+                boundary.entry("link".to_string()).or_insert(Value::Null);
+            }
+        }
+    }
+    out.insert("boundaries".to_string(), boundaries);
+    out.insert("rels".to_string(), json!(&model.rels));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
 }
 
 pub fn parse_c4_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
@@ -1298,66 +1350,8 @@ impl C4Db {
         Ok(())
     }
 
-    fn to_model(&self, meta: &ParseMetadata) -> Value {
-        let mut layout = Map::with_capacity(2);
-        layout.insert(
-            "c4ShapeInRow".to_string(),
-            Value::Number(self.c4_shape_in_row.into()),
-        );
-        layout.insert(
-            "c4BoundaryInRow".to_string(),
-            Value::Number(self.c4_boundary_in_row.into()),
-        );
-
-        let mut out = Map::with_capacity(12);
-        out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-        out.insert("c4Type".to_string(), Value::String(self.c4_type.clone()));
-        out.insert(
-            "title".to_string(),
-            if self.title.is_empty() {
-                Value::Null
-            } else {
-                Value::String(self.title.clone())
-            },
-        );
-        out.insert("accTitle".to_string(), Value::Null);
-        out.insert(
-            "accDescr".to_string(),
-            if self.acc_descr.is_empty() {
-                Value::Null
-            } else {
-                Value::String(self.acc_descr.clone())
-            },
-        );
-        out.insert("wrap".to_string(), Value::Bool(self.wrap_enabled));
-        out.insert("layout".to_string(), Value::Object(layout));
-        out.insert(
-            "shapes".to_string(),
-            Value::Array(
-                self.shapes
-                    .iter()
-                    .map(|m| Value::Object(m.clone()))
-                    .collect(),
-            ),
-        );
-        out.insert(
-            "boundaries".to_string(),
-            Value::Array(
-                self.boundaries
-                    .iter()
-                    .map(|m| Value::Object(m.clone()))
-                    .collect(),
-            ),
-        );
-        out.insert(
-            "rels".to_string(),
-            Value::Array(self.rels.iter().map(|m| Value::Object(m.clone())).collect()),
-        );
-        out.insert(
-            "config".to_string(),
-            crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
-        );
-        Value::Object(out)
+    fn to_model(&self, meta: &ParseMetadata) -> Result<Value> {
+        render_model_to_compat_json(&self.to_render_model()?, meta)
     }
 
     fn to_render_model(&self) -> Result<C4DiagramRenderModel> {
@@ -1509,6 +1503,11 @@ fn c4_boundary_render_model_from_map(obj: &Map<String, Value>) -> Result<C4Bound
         bg_color: c4_optional_string(obj, "bgColor")?,
         border_color: c4_optional_string(obj, "borderColor")?,
         font_color: c4_optional_string(obj, "fontColor")?,
+        shadowing: c4_optional_value(obj, "shadowing"),
+        shape: c4_optional_value(obj, "shape"),
+        techn: c4_optional_value(obj, "techn"),
+        legend_text: c4_optional_value(obj, "legendText"),
+        legend_sprite: c4_optional_value(obj, "legendSprite"),
     })
 }
 
@@ -1999,6 +1998,23 @@ mod tests {
         assert_eq!(c4_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
         assert_eq!(facts, expected_facts);
+        assert_eq!(
+            render_model_to_compat_json(&expected_model, &meta()).unwrap(),
+            json,
+            "C4 typed compatibility projection drifted"
+        );
+        assert!(
+            json["boundaries"][0]
+                .get("link")
+                .is_some_and(Value::is_null),
+            "the global C4 boundary must preserve Mermaid's explicit link:null"
+        );
+        assert!(
+            json["boundaries"][0]
+                .get("tags")
+                .is_some_and(Value::is_null),
+            "the global C4 boundary must preserve Mermaid's explicit tags:null"
+        );
         assert_eq!(json["title"].as_str(), expected_model.title.as_deref());
         assert_eq!(
             json["shapes"].as_array().unwrap().len(),

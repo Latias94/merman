@@ -78,7 +78,6 @@ pub(crate) struct FlowSubGraph {
 struct FlowchartSemanticSource {
     keyword: String,
     direction: Option<String>,
-    effective_direction: Option<String>,
     acc_title: Option<String>,
     acc_descr: Option<String>,
     class_defs: IndexMap<String, Vec<String>>,
@@ -92,8 +91,8 @@ struct FlowchartSemanticSource {
 }
 
 pub fn parse_flowchart(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse_flowchart_semantic_source(code, meta)?
-        .into_compat_json(&meta.diagram_type, &meta.effective_config))
+    let model = parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)?;
+    render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_flowchart_json_and_editor_facts(
@@ -107,7 +106,8 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
     collect_accessibility_directive_prefixes(original_code, &mut facts);
     collect_expected_syntax_from_tokens(&code, &mut facts);
     let model = parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)?
-        .into_compat_json(&meta.diagram_type, &meta.effective_config);
+        .into_render_model(meta)?;
+    let model = render_model_to_compat_json(&model, meta)?;
     Ok((model, facts))
 }
 
@@ -116,6 +116,35 @@ pub fn parse_flowchart_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<FlowchartV2Model> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &FlowchartV2Model,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let mut value =
+        serde_json::to_value(model).expect("Flowchart typed model must remain JSON-serializable");
+    let root = value.as_object_mut().ok_or_else(|| {
+        Error::diagram_parse_fallback(
+            meta.diagram_type.clone(),
+            "flowchart typed model did not serialize to an object".to_string(),
+        )
+    })?;
+    root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    if model
+        .warning_facts
+        .iter()
+        .any(|fact| fact.rule_id == FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID)
+    {
+        root.insert("direction".to_string(), Value::Null);
+    }
+    if !model.warning_facts.is_empty() {
+        root.insert(
+            "warnings".to_string(),
+            json!(legacy_warning_messages(&model.warning_facts)),
+        );
+    }
+    Ok(value)
 }
 
 pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
@@ -233,12 +262,9 @@ fn parse_flowchart_semantic_source_from_ast(
     let direction = ast.direction;
     let mut warning_facts = build_warning_facts;
     warning_facts.extend(flowchart_warning_facts(&direction, ast.header_span));
-    let effective_direction = direction.clone().or_else(|| Some("TB".to_string()));
-
     Ok(FlowchartSemanticSource {
         keyword: ast.keyword,
         direction,
-        effective_direction,
         acc_descr,
         acc_title,
         class_defs,
@@ -1136,78 +1162,20 @@ fn push_flowchart_token_symbol(
 }
 
 impl FlowchartSemanticSource {
-    fn into_compat_json(self, diagram_type: &str, config: &MermaidConfig) -> Value {
-        let FlowchartSemanticSource {
-            keyword,
-            direction,
-            acc_title,
-            acc_descr,
-            class_defs,
-            tooltips,
-            edge_defaults,
-            vertex_calls,
-            mut nodes,
-            edges,
-            subgraphs,
-            warning_facts,
-            ..
-        } = self;
-
-        if diagram_type == "flowchart-elk" {
-            append_missing_subgraph_nodes(&mut nodes, &subgraphs);
-        }
-
-        let mut model = json!({
-            "type": diagram_type,
-            "keyword": keyword,
-            "direction": direction,
-            "accTitle": acc_title,
-            "accDescr": acc_descr,
-            "classDefs": class_defs,
-            "tooltips": tooltips,
-            "edgeDefaults": {
-                "style": edge_defaults.style,
-                "interpolate": edge_defaults.interpolate,
-            },
-            "vertexCalls": vertex_calls,
-            "nodes": nodes
-                .into_iter()
-                .map(|node| flow_node_to_json(node, config))
-                .collect::<Vec<_>>(),
-            "edges": edges
-                .into_iter()
-                .map(|edge| flow_edge_to_json(edge, config))
-                .collect::<Vec<_>>(),
-            "subgraphs": subgraphs
-                .into_iter()
-                .map(flow_subgraph_to_json)
-                .collect::<Vec<_>>(),
-        });
-
-        if !warning_facts.is_empty() {
-            let warnings = legacy_warning_messages(&warning_facts);
-            model["warningFacts"] = json!(warning_facts);
-            model["warnings"] = json!(warnings);
-        }
-
-        model
-    }
-
     fn into_render_model(self, meta: &ParseMetadata) -> Result<FlowchartV2Model> {
         let FlowchartSemanticSource {
             acc_descr,
             acc_title,
             class_defs,
-            direction: _,
             edge_defaults,
             vertex_calls,
             mut nodes,
             edges,
             subgraphs,
             warning_facts,
-            effective_direction,
             tooltips,
-            keyword: _,
+            keyword,
+            direction,
         } = self;
 
         if meta.diagram_type == "flowchart-elk" {
@@ -1215,10 +1183,11 @@ impl FlowchartSemanticSource {
         }
 
         Ok(FlowchartV2Model {
+            keyword,
             acc_descr,
             acc_title,
             class_defs,
-            direction: effective_direction,
+            direction: direction.or_else(|| Some("TB".to_string())),
             edge_defaults: Some(FlowEdgeDefaults {
                 style: edge_defaults.style,
                 interpolate: edge_defaults.interpolate,
@@ -1272,31 +1241,6 @@ fn append_missing_subgraph_nodes(nodes: &mut Vec<Node>, subgraphs: &[FlowSubGrap
     }
 }
 
-fn flow_node_to_json(n: Node, config: &MermaidConfig) -> Value {
-    let layout_shape = layout_shape_for_node(&n);
-    let label = sanitized_node_label(&n, config);
-
-    json!({
-        "id": n.id,
-        "label": label,
-        "labelType": title_kind_str(&n.label_type),
-        "shape": n.shape,
-        "layoutShape": layout_shape,
-        "icon": n.icon,
-        "form": n.form,
-        "pos": n.pos,
-        "img": n.img,
-        "constraint": n.constraint,
-        "assetWidth": n.asset_width,
-        "assetHeight": n.asset_height,
-        "styles": n.styles,
-        "classes": n.classes,
-        "link": n.link,
-        "linkTarget": n.link_target,
-        "haveCallback": n.have_callback,
-    })
-}
-
 fn flow_node_to_model(n: Node, config: &MermaidConfig) -> FlowNode {
     let layout_shape = layout_shape_for_node(&n);
     let label = sanitized_node_label(&n, config);
@@ -1306,6 +1250,7 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> FlowNode {
         label: Some(label),
         label_type: Some(title_kind_str(&n.label_type).to_string()),
         layout_shape: Some(layout_shape),
+        shape: n.shape,
         icon: n.icon,
         form: n.form,
         pos: n.pos,
@@ -1319,28 +1264,6 @@ fn flow_node_to_model(n: Node, config: &MermaidConfig) -> FlowNode {
         link_target: n.link_target,
         have_callback: n.have_callback,
     }
-}
-
-fn flow_edge_to_json(e: Edge, config: &MermaidConfig) -> Value {
-    let label = sanitized_optional_label(e.label.as_deref(), config);
-
-    json!({
-        "from": e.from,
-        "to": e.to,
-        "id": e.id,
-        "isUserDefinedId": e.is_user_defined_id,
-        "arrow": e.link.end,
-        "type": e.link.edge_type,
-        "stroke": e.link.stroke,
-        "length": e.link.length,
-        "label": label,
-        "labelType": title_kind_str(&e.label_type),
-        "style": e.style,
-        "classes": e.classes,
-        "interpolate": e.interpolate,
-        "animate": e.animate,
-        "animation": e.animation,
-    })
 }
 
 fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<FlowEdge> {
@@ -1359,6 +1282,8 @@ fn flow_edge_to_model(e: Edge, meta: &ParseMetadata) -> Result<FlowEdge> {
         label,
         label_type: Some(title_kind_str(&e.label_type).to_string()),
         edge_type: Some(e.link.edge_type),
+        arrow: e.link.end,
+        is_user_defined_id: e.is_user_defined_id,
         stroke: Some(e.link.stroke),
         length: e.link.length,
         style: e.style,
@@ -1413,20 +1338,6 @@ fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
     // `entityDecode(...)`. In our headless pipeline we decode into Unicode during parsing so
     // layout + SVG output match upstream.
     crate::entities::decode_mermaid_entities_to_unicode(input)
-}
-
-fn flow_subgraph_to_json(sg: FlowSubGraph) -> Value {
-    let title = crate::entities::decode_mermaid_entities_to_unicode(&sg.title).into_owned();
-    json!({
-        "id": sg.id,
-        "nodes": sg.nodes,
-        "title": title,
-        "classes": sg.classes,
-        "styles": sg.styles,
-        "dir": sg.dir,
-        "hasExplicitDir": sg.has_explicit_dir,
-        "labelType": sg.label_type,
-    })
 }
 
 fn flow_subgraph_to_model(sg: FlowSubGraph) -> FlowSubgraph {

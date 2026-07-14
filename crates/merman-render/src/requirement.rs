@@ -1,4 +1,3 @@
-use crate::json::from_value_ref;
 use crate::model::{
     Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
 };
@@ -247,15 +246,6 @@ fn prefixed_nonempty_line(prefix: &str, value: &str) -> String {
     } else {
         format!("{prefix}{value}")
     }
-}
-
-pub fn layout_requirement_diagram(
-    model: &Value,
-    effective_config: &Value,
-    text_measurer: &dyn TextMeasurer,
-) -> Result<RequirementDiagramLayout> {
-    let model: RequirementDiagramRenderModel = from_value_ref(model)?;
-    layout_requirement_diagram_typed(&model, effective_config, text_measurer)
 }
 
 pub fn layout_requirement_diagram_typed(

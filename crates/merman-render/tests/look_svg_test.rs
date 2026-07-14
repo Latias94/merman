@@ -3,32 +3,35 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
+use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RootViewportOverridePolicy};
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_svg(diagram_id: &str, source: &str) -> String {
-    let _session = RenderEnvironment::parity()
+    let session = RenderEnvironment::parity()
         .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
         .begin_session()
         .unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = block_on(engine.parse_diagram(source, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
 
-    render_layouted_svg(
-        &out,
-        &_session,
-        &SvgRenderOptions {
-            diagram_id: Some(diagram_id.to_string()),
-            ..SvgRenderOptions::default()
-        },
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 struct LookDomCase {

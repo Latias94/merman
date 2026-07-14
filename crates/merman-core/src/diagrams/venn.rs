@@ -433,7 +433,8 @@ pub fn parse_venn_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemant
 }
 
 pub fn parse_venn(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse_venn_semantic_source(code, meta)?.compat_json(meta))
+    let source = parse_venn_semantic_source(code, meta)?;
+    render_model_to_compat_json(&source.model, meta)
 }
 
 pub(crate) fn parse_venn_json_and_editor_facts(
@@ -441,7 +442,7 @@ pub(crate) fn parse_venn_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = parse_venn_semantic_source(code, meta)?;
-    let compat = source.compat_json(meta);
+    let compat = render_model_to_compat_json(&source.model, meta)?;
     Ok((compat, source.editor_facts))
 }
 
@@ -452,18 +453,19 @@ pub fn parse_venn_model_for_render(
     Ok(parse_venn_semantic_source(code, meta)?.model)
 }
 
-impl VennSemanticSource {
-    fn compat_json(&self, meta: &ParseMetadata) -> Value {
-        json!({
-            "type": meta.diagram_type,
-            "title": self.model.title,
-            "accTitle": self.model.acc_title,
-            "accDescr": self.model.acc_descr,
-            "subsets": self.model.subsets,
-            "textNodes": self.model.text_nodes,
-            "styleEntries": self.model.style_entries,
-        })
-    }
+pub(crate) fn render_model_to_compat_json(
+    model: &VennDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    Ok(json!({
+        "type": meta.diagram_type,
+        "title": &model.title,
+        "accTitle": &model.acc_title,
+        "accDescr": &model.acc_descr,
+        "subsets": &model.subsets,
+        "textNodes": &model.text_nodes,
+        "styleEntries": &model.style_entries,
+    }))
 }
 
 fn parse_venn_semantic_source(code: &str, meta: &ParseMetadata) -> Result<VennSemanticSource> {
@@ -1617,6 +1619,10 @@ style A,B fill:#ff6b6b, color:red
         let compat = parse_venn(text, &meta()).unwrap();
         let typed = parse_venn_model_for_render(text, &meta()).unwrap();
 
+        assert_eq!(
+            render_model_to_compat_json(&typed, &meta()).unwrap(),
+            compat
+        );
         assert_eq!(typed.title.as_deref(), Some("\"Product overlap\""));
         assert_eq!(compat["title"], json!(typed.title));
         assert_eq!(compat["accTitle"], json!(typed.acc_title));

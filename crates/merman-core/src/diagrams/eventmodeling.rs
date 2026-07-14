@@ -68,9 +68,9 @@ impl EventModelingDiagramRenderModel {
 }
 
 pub fn parse_eventmodeling(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(construct_eventmodeling_semantic_source(code, meta)
+    construct_eventmodeling_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
-        .into_compat_json(meta))
+        .into_compat_json(meta)
 }
 
 pub(crate) fn parse_eventmodeling_json_and_editor_facts(
@@ -80,21 +80,21 @@ pub(crate) fn parse_eventmodeling_json_and_editor_facts(
     let source =
         construct_eventmodeling_semantic_source(code, meta).map_err(|failure| *failure.error)?;
     let editor_facts = source.editor_facts();
-    Ok((source.into_compat_json(meta), editor_facts))
+    Ok((source.into_compat_json(meta)?, editor_facts))
 }
 
-fn eventmodeling_model_into_json(
-    model: EventModelingDiagramRenderModel,
+pub(crate) fn render_model_to_compat_json(
+    model: &EventModelingDiagramRenderModel,
     meta: &ParseMetadata,
-) -> Value {
-    json!({
+) -> Result<Value> {
+    Ok(json!({
         "type": meta.diagram_type,
-        "title": model.title,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "frames": model.frames,
-        "dataEntities": model.data_entities,
-    })
+        "title": &model.title,
+        "accTitle": &model.acc_title,
+        "accDescr": &model.acc_descr,
+        "frames": &model.frames,
+        "dataEntities": &model.data_entities,
+    }))
 }
 
 pub fn parse_eventmodeling_model_for_render(
@@ -293,8 +293,9 @@ impl EventModelingSemanticSource {
         }
     }
 
-    fn into_compat_json(self, meta: &ParseMetadata) -> Value {
-        eventmodeling_model_into_json(self.into_render_model(meta), meta)
+    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
+        let model = self.into_render_model(meta);
+        render_model_to_compat_json(&model, meta)
     }
 }
 
@@ -1595,6 +1596,10 @@ data ItemAddedData {
 
         assert_eq!(eventmodeling_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
+        assert_eq!(
+            render_model_to_compat_json(&expected_model, &meta()).unwrap(),
+            expected_json
+        );
         assert_eq!(facts, expected_facts);
         assert_eq!(
             json["frames"],

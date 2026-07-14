@@ -452,13 +452,13 @@ fn run_flowchart_compare(
                 }
             };
 
-            let merman_render::model::LayoutDiagram::FlowchartV2(_) = prepared.layout() else {
+            if prepared.family_kind() != merman::render::RenderFamilyKind::Flowchart {
                 return Err(format!(
-                    "unexpected layout type for {}: {}",
+                    "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    prepared.metadata().diagram_type
+                    prepared.family_kind()
                 ));
-            };
+            }
 
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(diagram_id),

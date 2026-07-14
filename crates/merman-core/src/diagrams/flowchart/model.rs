@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowchartV2Model {
+    #[serde(default)]
+    pub keyword: String,
     #[serde(default, rename = "accDescr")]
     pub acc_descr: Option<String>,
     #[serde(default, rename = "accTitle")]
@@ -55,6 +57,8 @@ pub struct FlowNode {
     #[serde(rename = "layoutShape")]
     pub layout_shape: Option<String>,
     #[serde(default)]
+    pub shape: Option<String>,
+    #[serde(default)]
     pub icon: Option<String>,
     #[serde(default)]
     pub form: Option<String>,
@@ -90,6 +94,10 @@ pub struct FlowEdge {
     pub label_type: Option<String>,
     #[serde(default, rename = "type")]
     pub edge_type: Option<String>,
+    #[serde(default)]
+    pub arrow: String,
+    #[serde(default, rename = "isUserDefinedId")]
+    pub is_user_defined_id: bool,
     #[serde(default)]
     pub stroke: Option<String>,
     #[serde(default)]

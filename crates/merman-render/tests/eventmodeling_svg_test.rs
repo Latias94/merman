@@ -1,11 +1,12 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions};
-use merman_render::environment::RenderEnvironment;
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
-use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::eventmodeling::layout_eventmodeling_diagram_typed;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 #[test]
 fn eventmodeling_typed_render_model_outputs_svg() {
@@ -40,20 +41,17 @@ data ItemAddedData {
     assert_eq!(parsed.meta.diagram_type, "eventmodeling");
 
     let session = RenderEnvironment::parity().begin_session().unwrap();
-    let layout =
-        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
-    let svg = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions {
-            diagram_id: Some("eventmodeling-test".to_string()),
-            ..Default::default()
-        },
-    )
-    .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("eventmodeling-test".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+    let svg = rendered.svg();
 
     assert!(svg.contains(r#"aria-roledescription="eventmodeling""#));
     assert!(svg.contains(r#"width="100%""#));
@@ -76,13 +74,17 @@ fn eventmodeling_docs_minimum_layout_tracks_upstream_html_label_metrics() {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    let session = RenderEnvironment::parity().begin_session().unwrap();
-    let layout =
-        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
-
-    let LayoutDiagram::EventModelingDiagram(layout) = layout else {
-        panic!("expected eventmodeling layout");
+    let RenderSemanticModel::EventModeling(model) = &parsed.model else {
+        panic!("expected eventmodeling render model");
     };
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let layout = layout_eventmodeling_diagram_typed(
+        model,
+        parsed.meta.effective_config.as_value(),
+        &measurer,
+    )
+    .unwrap();
 
     assert_close(layout.total_width, 1_157.666_666_666_666_7, 1.0);
     assert_close(layout.boxes[0].width, 134.0, 2.0);

@@ -1,26 +1,30 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::model::{ArchitectureDiagramLayout, LayoutDiagram};
-use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::architecture::layout_architecture_diagram_typed;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::model::ArchitectureDiagramLayout;
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let layout = layout_parsed_render_layout_only(
-        &parsed,
-        &LayoutOptions::headless_svg_defaults(),
-        &_session,
+    let RenderSemanticModel::Architecture(model) = &parsed.model else {
+        panic!("expected architecture render model");
+    };
+    let options = LayoutOptions::headless_svg_defaults();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+
+    layout_architecture_diagram_typed(
+        model,
+        parsed.meta.effective_config.as_value(),
+        &measurer,
+        options.use_manatee_layout,
+        session.seed().seed().get(),
     )
-    .expect("layout ok");
-    match layout {
-        LayoutDiagram::ArchitectureDiagram(layout) => *layout,
-        other => panic!("expected architecture layout, got {other:?}"),
-    }
+    .expect("layout ok")
 }
 
 fn node_center(layout: &ArchitectureDiagramLayout, id: &str) -> (f64, f64) {

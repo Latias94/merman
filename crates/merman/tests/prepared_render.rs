@@ -1,52 +1,20 @@
+use merman::ParseOptions;
 use merman::render::{
-    HeadlessRenderer, LayoutDiagram, LayoutOptions, PreparedRender, RenderEnvironment,
-    RenderResourceLimits, SvgRenderOptions, prepare_render_sync, prepare_semantic_sync,
-    render_svg_sync,
+    HeadlessRenderer, LayoutOptions, PreparedRender, RenderEnvironment, RenderResourceLimits,
+    SvgRenderOptions, prepare_render_sync, prepare_semantic_sync, render_svg_sync,
 };
-use merman::{ParseMetadata, ParseOptions, RenderSemanticModel};
-use std::sync::OnceLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-static INFO_PARSE_CALLS: AtomicUsize = AtomicUsize::new(0);
-static INFO_PARSER: OnceLock<merman::diagram::RenderSemanticParser> = OnceLock::new();
-
-fn counting_info_parser(
-    code: &str,
-    meta: &ParseMetadata,
-) -> merman_core::Result<RenderSemanticModel> {
-    INFO_PARSE_CALLS.fetch_add(1, Ordering::SeqCst);
-    INFO_PARSER
-        .get()
-        .expect("the original Info parser should be installed")(code, meta)
-}
 
 fn assert_info_artifact(prepared: &PreparedRender) {
     assert_eq!(prepared.metadata().diagram_type, "info");
-    assert_eq!(prepared.semantic_kind(), "info");
-    assert!(matches!(
-        prepared.layout(),
-        LayoutDiagram::InfoDiagram(layout) if !layout.version.is_empty()
-    ));
+    assert_eq!(
+        prepared.family_kind(),
+        merman::render::RenderFamilyKind::Info
+    );
 }
 
 #[test]
-fn staged_render_exposes_one_typed_parse_and_layout_before_svg() {
-    let mut engine = merman::Engine::new();
-    let original_parser = engine
-        .render_diagram_registry()
-        .get("info")
-        .expect("Info should have a typed render parser");
-    if let Some(installed) = INFO_PARSER.get() {
-        assert_eq!(*installed as usize, original_parser as usize);
-    } else {
-        INFO_PARSER
-            .set(original_parser)
-            .expect("the original Info parser should only be installed once");
-    }
-    engine
-        .render_diagram_registry_mut()
-        .insert("info", counting_info_parser);
-    INFO_PARSE_CALLS.store(0, Ordering::SeqCst);
+fn staged_render_advances_one_opaque_artifact_before_svg() {
+    let engine = merman::Engine::new();
 
     let layout_options = LayoutOptions::headless_svg_defaults();
     let semantic = prepare_semantic_sync(&engine, "info", ParseOptions::strict(), &layout_options)
@@ -55,14 +23,21 @@ fn staged_render_exposes_one_typed_parse_and_layout_before_svg() {
 
     assert_eq!(semantic.metadata().diagram_type, "info");
     assert_eq!(semantic.semantic_kind(), "info");
-    assert_eq!(INFO_PARSE_CALLS.load(Ordering::SeqCst), 1);
 
     let prepared = semantic
         .continue_layout()
         .expect("Info semantics should produce a typed layout");
 
     assert_info_artifact(&prepared);
-    assert_eq!(INFO_PARSE_CALLS.load(Ordering::SeqCst), 1);
+
+    let compatibility = engine
+        .parse_diagram_sync("info", ParseOptions::strict())
+        .unwrap()
+        .expect("Info should expose compatibility JSON");
+    let layout_json = prepared.layout_json().unwrap();
+    assert_eq!(layout_json["meta"]["diagram_type"], "info");
+    assert_eq!(layout_json["semantic"], compatibility.model);
+    assert!(layout_json["layout"]["InfoDiagram"].is_object());
 
     let svg = prepared
         .render_svg(&SvgRenderOptions {
@@ -72,7 +47,6 @@ fn staged_render_exposes_one_typed_parse_and_layout_before_svg() {
         .unwrap();
 
     assert!(svg.contains(r#"id="prepared-info""#), "{svg}");
-    assert_eq!(INFO_PARSE_CALLS.load(Ordering::SeqCst), 1);
 }
 
 #[test]
@@ -139,8 +113,10 @@ fn high_level_render_matches_the_prepared_artifact_path() {
         .unwrap()
         .expect("Flowchart should prepare a render artifact");
     assert_eq!(prepared.metadata().diagram_type, "flowchart-v2");
-    assert_eq!(prepared.semantic_kind(), "flowchart");
-    assert!(matches!(prepared.layout(), LayoutDiagram::FlowchartV2(_)));
+    assert_eq!(
+        prepared.family_kind(),
+        merman::render::RenderFamilyKind::Flowchart
+    );
 
     let prepared_svg = prepared.render_svg(&svg_options).unwrap();
     let high_level_svg = render_svg_sync(
@@ -154,6 +130,46 @@ fn high_level_render_matches_the_prepared_artifact_path() {
     .expect("Flowchart should render through the high-level helper");
 
     assert_eq!(prepared_svg, high_level_svg);
+}
+
+#[test]
+fn prepared_gantt_exposes_owned_time_axis_diagnostics() {
+    let source = r#"---
+config:
+  gantt:
+    useWidth: 130
+    leftPadding: 10
+    rightPadding: 20
+---
+gantt
+dateFormat x
+section Delivery
+First: first,-1,1ms
+Second: second,after first,2ms
+"#;
+    let prepared = prepare_render_sync(
+        &merman::Engine::new(),
+        source,
+        ParseOptions::strict(),
+        &LayoutOptions::headless_svg_defaults(),
+    )
+    .unwrap()
+    .expect("Gantt should produce a prepared render artifact");
+
+    assert_eq!(
+        prepared.family_kind(),
+        merman::render::RenderFamilyKind::Gantt
+    );
+    let diagnostics = prepared
+        .gantt_time_axis_diagnostics()
+        .expect("Gantt tasks should expose time-axis diagnostics");
+    prepared
+        .render_svg(&SvgRenderOptions::default())
+        .expect("Gantt should render through the prepared artifact");
+
+    assert_eq!(diagnostics.unix_millis_at_rendered_x(10.0), Some(-1));
+    assert_eq!(diagnostics.unix_millis_at_rendered_x(77.0), Some(1));
+    assert_eq!(diagnostics.unix_millis_at_rendered_x(44.0), None);
 }
 
 #[test]
@@ -177,10 +193,10 @@ align row api db
     let prepared = prepare_render_sync(&engine, source, parse_options, &layout_options)
         .unwrap()
         .expect("Architecture should produce a typed prepared artifact");
-    assert!(matches!(
-        prepared.layout(),
-        LayoutDiagram::ArchitectureDiagram(_)
-    ));
+    assert_eq!(
+        prepared.family_kind(),
+        merman::render::RenderFamilyKind::Architecture
+    );
     let prepared_svg = prepared.render_svg(&svg_options).unwrap();
     let high_level_svg = render_svg_sync(
         &engine,

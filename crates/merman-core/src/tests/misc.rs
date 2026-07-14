@@ -1169,6 +1169,18 @@ fn parse_lenient_failures_use_error_diagram_across_engine_entrypoints() {
     assert_suppressed_error_render_diagram(&parsed);
 }
 
+#[test]
+fn explicit_error_diagram_uses_the_typed_builtin_render_model() {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync("error", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+
+    assert_suppressed_error_render_diagram(&parsed);
+    assert!(parsed.model.supports_diagram_type("error"));
+    assert!(!parsed.model.supports_diagram_type("flowchart-v2"));
+}
+
 fn assert_suppressed_error_diagram(parsed: &ParsedDiagram) {
     assert_eq!(parsed.meta.diagram_type, "error");
     assert_eq!(parsed.model["type"], json!("error"));
@@ -1177,8 +1189,14 @@ fn assert_suppressed_error_diagram(parsed: &ParsedDiagram) {
 fn assert_suppressed_error_render_diagram(parsed: &ParsedDiagramRender) {
     assert_eq!(parsed.meta.diagram_type, "error");
     match &parsed.model {
-        RenderSemanticModel::Json(model) => assert_eq!(model["type"], json!("error")),
-        other => panic!("suppressed parse failures must render through JSON, got {other:?}"),
+        RenderSemanticModel::Error(model) => {
+            assert_eq!(model.diagram_type, "error");
+            assert_eq!(
+                serde_json::to_value(model).unwrap(),
+                json!({ "type": "error" })
+            );
+        }
+        other => panic!("suppressed parse failures must use the typed error model, got {other:?}"),
     }
 }
 
@@ -1193,8 +1211,11 @@ fn render_semantic_model_kind_reports_canonical_names() {
     let er = render_model_for("erDiagram\nCUSTOMER ||--o{ ORDER : places");
     assert_eq!(er.kind(), "er");
 
-    let json_model = RenderSemanticModel::Json(json!({ "type": "custom" }));
-    assert_eq!(json_model.kind(), "json");
+    let custom_model = RenderSemanticModel::CustomJson(CustomJsonRenderModel::new(
+        "custom-model",
+        json!({ "type": "custom" }),
+    ));
+    assert_eq!(custom_model.kind(), "custom-json");
 }
 
 #[test]
@@ -1215,20 +1236,25 @@ fn render_semantic_model_supports_diagram_type_aliases() {
     assert!(er.supports_diagram_type("erDiagram"));
     assert!(!er.supports_diagram_type("classDiagram"));
 
-    let json_model = RenderSemanticModel::Json(json!({ "type": "custom" }));
-    assert!(json_model.supports_diagram_type("unknown-plugin"));
+    let custom_model = RenderSemanticModel::CustomJson(CustomJsonRenderModel::new(
+        "unknown-plugin",
+        json!({ "type": "custom" }),
+    ));
+    assert!(custom_model.supports_diagram_type("unknown-plugin"));
+    assert!(!custom_model.supports_diagram_type("flowchart-v2"));
+
+    let builtin_named_custom = RenderSemanticModel::CustomJson(CustomJsonRenderModel::new(
+        "flowchart-v2",
+        json!({ "type": "custom" }),
+    ));
+    assert!(!builtin_named_custom.supports_diagram_type("flowchart-v2"));
 }
 
 #[test]
 #[cfg(feature = "full")]
 fn render_parser_registry_drives_typed_alias_parse() {
     let engine = Engine::new();
-    assert!(
-        engine
-            .render_diagram_registry()
-            .get("flowchart-elk")
-            .is_some()
-    );
+    assert!(engine.render_diagram_registry().contains("flowchart-elk"));
 
     let parsed = engine
         .parse_diagram_for_render_model_with_type_sync(
@@ -1245,26 +1271,41 @@ fn render_parser_registry_drives_typed_alias_parse() {
 }
 
 #[test]
-fn render_parser_registry_falls_back_to_json_registry_for_custom_diagrams() {
+fn custom_semantic_parser_projects_an_explicit_json_render_boundary() {
     let mut engine = Engine::new();
     engine
         .diagram_registry_mut()
         .insert("customDiagram", custom_json_parser);
+    let source = "%%{init: { 'securityLevel': 'strict' }}%%\ncustomDiagram\npayload";
 
     let parsed = engine
         .parse_diagram_for_render_model_with_type_sync(
             "customDiagram",
-            "customDiagram\npayload",
+            source,
             ParseOptions::strict(),
         )
         .unwrap()
         .unwrap();
 
     assert_eq!(parsed.meta.diagram_type, "customDiagram");
-    match parsed.model {
-        RenderSemanticModel::Json(model) => assert_eq!(model["type"], json!("customDiagram")),
-        other => panic!("custom render fallback should use JSON model, got {other:?}"),
-    }
+    let RenderSemanticModel::CustomJson(model) = parsed.model else {
+        panic!("custom semantic parsers must produce an explicit CustomJson render boundary");
+    };
+    assert_eq!(model.model_name(), "customDiagram");
+    assert_eq!(
+        model.provenance(),
+        CustomJsonProvenance::SemanticRegistryOverlay
+    );
+    assert_eq!(model.value()["type"], json!("customDiagram"));
+    assert_eq!(
+        model.value()["title"],
+        json!(expected_custom_title_after_sanitization())
+    );
+    let payload_start = source.find("payload").unwrap();
+    assert_eq!(
+        model.value()["warningFacts"][0]["span"],
+        json!({ "start": payload_start, "end": payload_start + "payload".len() })
+    );
 }
 
 #[test]
@@ -1289,15 +1330,17 @@ fn custom_semantic_overlay_does_not_inherit_builtin_family_capabilities() {
             )
             .unwrap()
             .unwrap();
-        match parsed.model {
-            RenderSemanticModel::Json(model) => {
-                assert_eq!(model["owner"], json!("custom-semantic"));
-                assert_eq!(model["diagramType"], json!(diagram_type));
-            }
-            other => panic!(
-                "custom semantic overlay for {diagram_type} inherited built-in typed model: {other:?}"
-            ),
-        }
+        let RenderSemanticModel::CustomJson(model) = parsed.model else {
+            panic!("custom semantic overlay for {diagram_type} inherited a built-in typed model");
+        };
+        assert_eq!(model.model_name(), diagram_type);
+        assert_eq!(
+            model.provenance(),
+            CustomJsonProvenance::SemanticRegistryOverlay
+        );
+        assert_eq!(model.value()["owner"], json!("custom-semantic"));
+        assert_eq!(model.value()["diagramType"], json!(diagram_type));
+        assert!(!RenderSemanticModel::CustomJson(model).supports_diagram_type(diagram_type));
 
         assert!(
             engine
@@ -1408,18 +1451,33 @@ fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
         .render_diagram_registry_mut()
         .insert("flowchart-v2", custom_overlay_render_parser);
 
+    let source = "%%{init: { 'securityLevel': 'strict' }}%%\nflowchart TD\nA-->B";
     let parsed = engine
         .parse_diagram_for_render_model_with_type_sync(
             "flowchart-v2",
-            "flowchart TD\nA-->B",
+            source,
             ParseOptions::strict(),
         )
         .unwrap()
         .unwrap();
-    let RenderSemanticModel::Json(model) = parsed.model else {
-        panic!("explicit custom render overlay should select its own render model");
+    let RenderSemanticModel::CustomJson(model) = parsed.model else {
+        panic!("explicit custom render overlay should select an explicit CustomJson model");
     };
-    assert_eq!(model["owner"], json!("custom-render"));
+    assert_eq!(model.model_name(), "custom-flowchart-model");
+    assert_eq!(
+        model.provenance(),
+        CustomJsonProvenance::RenderRegistryOverlay
+    );
+    assert_eq!(model.value()["owner"], json!("custom-render"));
+    assert_eq!(
+        model.value()["title"],
+        json!(expected_custom_title_after_sanitization())
+    );
+    let edge_start = source.find("A-->B").unwrap();
+    assert_eq!(
+        model.value()["warningFacts"][0]["span"],
+        json!({ "start": edge_start, "end": edge_start + "A-->B".len() })
+    );
 }
 
 #[test]
@@ -1445,7 +1503,13 @@ fn tiny_profile_allows_custom_architecture_semantics_without_builtin_capability_
         )
         .unwrap()
         .unwrap();
-    assert!(matches!(rendered.model, RenderSemanticModel::Json(_)));
+    let RenderSemanticModel::CustomJson(model) = rendered.model else {
+        panic!("custom Architecture semantics should remain an explicit JSON boundary");
+    };
+    assert_eq!(
+        model.provenance(),
+        CustomJsonProvenance::SemanticRegistryOverlay
+    );
     assert!(
         engine
             .parse_editor_semantic_facts_with_type_sync(
@@ -1459,14 +1523,9 @@ fn tiny_profile_allows_custom_architecture_semantics_without_builtin_capability_
 }
 
 #[test]
-fn render_parser_registry_rejects_builtin_json_fallback_without_typed_parser() {
+fn missing_builtin_typed_parser_does_not_fall_back_to_custom_json() {
     let mut engine = Engine::new();
-    assert!(
-        engine
-            .render_diagram_registry_mut()
-            .remove("flowchart-v2")
-            .is_some()
-    );
+    assert!(engine.render_diagram_registry_mut().remove("flowchart-v2"));
 
     let err = engine
         .parse_diagram_for_render_model_with_type_sync(
@@ -1478,11 +1537,23 @@ fn render_parser_registry_rejects_builtin_json_fallback_without_typed_parser() {
     let message = err.to_string();
 
     assert!(message.contains("missing a typed render parser"));
-    assert!(message.contains("JSON render fallback is reserved"));
+    assert!(message.contains("custom JSON boundary is reserved"));
 }
 
-fn custom_json_parser(_code: &str, _meta: &ParseMetadata) -> Result<serde_json::Value> {
-    Ok(json!({ "type": "customDiagram" }))
+fn custom_json_parser(code: &str, _meta: &ParseMetadata) -> Result<serde_json::Value> {
+    let payload_start = code.find("payload").unwrap();
+    Ok(json!({
+        "type": "customDiagram",
+        "title": "<script>discarded</script><b>custom</b>",
+        "warningFacts": [{
+            "ruleId": "custom.semantic.warning",
+            "message": "custom semantic warning",
+            "span": {
+                "start": payload_start,
+                "end": payload_start + "payload".len(),
+            },
+        }],
+    }))
 }
 
 fn custom_overlay_json_parser(_code: &str, meta: &ParseMetadata) -> Result<serde_json::Value> {
@@ -1492,11 +1563,34 @@ fn custom_overlay_json_parser(_code: &str, meta: &ParseMetadata) -> Result<serde
     }))
 }
 
-fn custom_overlay_render_parser(_code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel> {
-    Ok(RenderSemanticModel::Json(json!({
-        "owner": "custom-render",
-        "diagramType": meta.diagram_type,
-    })))
+fn custom_overlay_render_parser(code: &str, meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {
+    let edge_start = code.find("A-->B").unwrap();
+    Ok(CustomJsonRenderModel::new(
+        "custom-flowchart-model",
+        json!({
+            "owner": "custom-render",
+            "diagramType": meta.diagram_type,
+            "title": "<script>discarded</script><b>custom</b>",
+            "warningFacts": [{
+                "ruleId": "custom.render.warning",
+                "message": "custom render warning",
+                "span": {
+                    "start": edge_start,
+                    "end": edge_start + "A-->B".len(),
+                },
+            }],
+        }),
+    ))
+}
+
+#[cfg(feature = "full-sanitization")]
+fn expected_custom_title_after_sanitization() -> &'static str {
+    "<b>custom</b>"
+}
+
+#[cfg(not(feature = "full-sanitization"))]
+fn expected_custom_title_after_sanitization() -> &'static str {
+    "&lt;script&gt;discarded&lt;/script&gt;&lt;b&gt;custom&lt;/b&gt;"
 }
 
 fn detect_generic_custom(text: &str, _config: &mut MermaidConfig) -> bool {

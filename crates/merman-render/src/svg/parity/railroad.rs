@@ -2,17 +2,6 @@ use super::*;
 use crate::model::RailroadElementLayout;
 use merman_core::diagrams::railroad::RailroadDiagramRenderModel;
 
-pub(crate) fn render_railroad_diagram_svg(
-    layout: &RailroadDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: RailroadDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_railroad_diagram_svg_model(layout, &model, effective_config, measurer, options)
-}
-
 pub(crate) fn render_railroad_diagram_svg_model(
     layout: &RailroadDiagramLayout,
     model: &RailroadDiagramRenderModel,

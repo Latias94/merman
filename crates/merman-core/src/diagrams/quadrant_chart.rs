@@ -1146,7 +1146,7 @@ fn construct_quadrant_chart_semantic_source(
 pub fn parse_quadrant_chart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_quadrant_chart_semantic_source(code, meta)
         .map_err(QuadrantSemanticFailure::into_error)?;
-    Ok(quadrant_chart_model_into_json(source.model, meta))
+    render_model_to_compat_json(&source.model, meta)
 }
 
 pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
@@ -1158,24 +1158,27 @@ pub(crate) fn parse_quadrant_chart_json_and_editor_facts(
         editor_facts,
     } = construct_quadrant_chart_semantic_source(code, meta)
         .map_err(QuadrantSemanticFailure::into_error)?;
-    Ok((quadrant_chart_model_into_json(model, meta), editor_facts))
+    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
 }
 
-fn quadrant_chart_model_into_json(model: QuadrantChartRenderModel, meta: &ParseMetadata) -> Value {
+pub(crate) fn render_model_to_compat_json(
+    model: &QuadrantChartRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
     let mut out = Map::with_capacity(9);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("title".to_string(), json!(model.title));
-    out.insert("accTitle".to_string(), json!(model.acc_title));
-    out.insert("accDescr".to_string(), json!(model.acc_descr));
-    out.insert("quadrants".to_string(), json!(model.quadrants));
-    out.insert("axes".to_string(), json!(model.axes));
-    out.insert("points".to_string(), json!(model.points));
-    out.insert("classes".to_string(), json!(model.classes));
+    out.insert("title".to_string(), json!(&model.title));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("quadrants".to_string(), json!(&model.quadrants));
+    out.insert("axes".to_string(), json!(&model.axes));
+    out.insert("points".to_string(), json!(&model.points));
+    out.insert("classes".to_string(), json!(&model.classes));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
-    Value::Object(out)
+    Ok(Value::Object(out))
 }
 
 pub fn parse_quadrant_chart_model_for_render(
@@ -1475,7 +1478,6 @@ Project A:::priority : [0.2, 0.8]
             "quadrantChart\n",
             "title Delivery portfolio\n",
             "accTitle: Portfolio\n",
-            "accDescr: Delivery portfolio\n",
             "x-axis Low --> High\n",
             "y-axis Bottom --> Top\n",
             "quadrant-1 Invest\n",
@@ -1508,6 +1510,13 @@ Project A:::priority : [0.2, 0.8]
         assert_eq!(quadrant_syntax_construction_count(), 1);
         assert_eq!(combined_json, parsed.model);
         assert_eq!(combined_editor, standalone_editor);
+        assert_eq!(
+            render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
+            combined_json
+        );
+        assert_eq!(combined_json["type"], json!("quadrantChart"));
+        assert!(combined_json["config"].is_object());
+        assert_eq!(combined_json["accDescr"], Value::Null);
 
         let typed = serde_json::to_value(typed).expect("Quadrant typed model serializes");
         for field in [

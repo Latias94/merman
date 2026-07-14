@@ -20,6 +20,8 @@ pub struct GanttDiagramRenderModel {
     pub includes: Vec<String>,
     #[serde(default)]
     pub excludes: Vec<String>,
+    #[serde(default, rename = "inclusiveEndDates")]
+    pub inclusive_end_dates: bool,
     #[serde(default, rename = "displayMode")]
     pub display_mode: String,
     #[serde(default, rename = "topAxis")]
@@ -29,10 +31,32 @@ pub struct GanttDiagramRenderModel {
     #[serde(default)]
     pub weekend: String,
     #[serde(default)]
+    pub sections: Vec<String>,
+    #[serde(default)]
     pub tasks: Vec<GanttRenderTask>,
+    #[serde(default)]
+    pub links: HashMap<String, String>,
+    #[serde(default, rename = "clickEvents")]
+    pub click_events: HashMap<String, GanttRenderClickEvent>,
+    #[serde(skip)]
+    pub(super) compatibility_output: CompatibilityOutputState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum CompatibilityOutputState {
+    Empty,
+    #[default]
+    Model,
 }
 
 impl GanttDiagramRenderModel {
+    pub(super) fn empty_compatibility_output() -> Self {
+        Self {
+            compatibility_output: CompatibilityOutputState::Empty,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -40,7 +64,7 @@ impl GanttDiagramRenderModel {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct GanttRenderTask {
     pub id: String,
     pub task: String,
@@ -61,12 +85,59 @@ pub struct GanttRenderTask {
     pub vert: bool,
     #[serde(default)]
     pub order: i64,
+    #[serde(default, rename = "prevTaskId")]
+    pub prev_task_id: Option<String>,
+    #[serde(default)]
+    pub processed: bool,
+    #[serde(default, rename = "manualEndTime")]
+    pub manual_end_time: bool,
+    #[serde(default)]
+    pub raw: GanttRenderTaskRaw,
     #[serde(rename = "startTime")]
     pub start_ms: i64,
     #[serde(rename = "endTime")]
     pub end_ms: i64,
     #[serde(default, rename = "renderEndTime")]
     pub render_end_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct GanttRenderTaskRaw {
+    pub data: String,
+    #[serde(rename = "startTime")]
+    pub start_time: GanttRenderTaskStart,
+    #[serde(rename = "endTime")]
+    pub end_time: GanttRenderTaskEnd,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type")]
+pub enum GanttRenderTaskStart {
+    #[serde(rename = "prevTaskEnd")]
+    PrevTaskEnd { id: Option<String> },
+    #[serde(rename = "getStartDate")]
+    GetStartDate {
+        #[serde(rename = "startData")]
+        start_data: String,
+    },
+}
+
+impl Default for GanttRenderTaskStart {
+    fn default() -> Self {
+        Self::PrevTaskEnd { id: None }
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct GanttRenderTaskEnd {
+    pub data: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GanttRenderClickEvent {
+    pub function_name: String,
+    pub function_args: Vec<String>,
+    pub raw_function_args: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -104,13 +175,6 @@ pub(super) struct RawTask {
     pub(super) end_time: Option<DateTimeFixed>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub(super) struct ClickEvent {
-    function_name: String,
-    function_args: Vec<String>,
-    raw_function_args: Option<String>,
-}
-
 #[derive(Debug, Clone, Default)]
 pub(super) struct GanttDb {
     pub(super) acc_title: String,
@@ -124,7 +188,7 @@ pub(super) struct GanttDb {
     pub(super) includes: Vec<String>,
     pub(super) excludes: Vec<String>,
     pub(super) links: HashMap<String, String>,
-    pub(super) click_events: HashMap<String, ClickEvent>,
+    pub(super) click_events: HashMap<String, GanttRenderClickEvent>,
 
     pub(super) sections: Vec<String>,
     pub(super) current_section: String,
@@ -277,7 +341,7 @@ impl GanttDb {
                     };
                     self.click_events.insert(
                         id.to_string(),
-                        ClickEvent {
+                        GanttRenderClickEvent {
                             function_name: function_name.to_string(),
                             function_args: args,
                             raw_function_args: function_args.map(|s| s.to_string()),

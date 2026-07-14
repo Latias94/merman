@@ -279,52 +279,43 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
     })?;
 
     let engine = merman::Engine::new();
-    let parsed =
-        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
-            .map_err(|e| {
-                XtaskError::SvgCompareFailed(format!(
-                    "parse failed for {}: {e}",
-                    mmd_path.display()
-                ))
-            })?
-            .ok_or_else(|| {
-                XtaskError::SvgCompareFailed(format!(
-                    "no diagram detected in {}",
-                    mmd_path.display()
-                ))
-            })?;
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
+    )
+    .map_err(|e| {
+        XtaskError::SvgCompareFailed(format!("parse failed for {}: {e}", mmd_path.display()))
+    })?
+    .ok_or_else(|| {
+        XtaskError::SvgCompareFailed(format!("no diagram detected in {}", mmd_path.display()))
+    })?;
 
     let layout_opts = merman_render::LayoutOptions::default();
     let session = merman::render::RenderEnvironment::parity()
         .begin_session()
         .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts, &session).map_err(|e| {
+    let artifact = merman_render::family::prepare(parsed, &layout_opts, session).map_err(|e| {
         XtaskError::SvgCompareFailed(format!("layout failed for {}: {e}", mmd_path.display()))
     })?;
 
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = &layouted.layout else {
+    if artifact.family_kind() != merman_render::family::RenderFamilyKind::State {
         return Err(XtaskError::SvgCompareFailed(format!(
             "unexpected layout type for {}: {}",
             mmd_path.display(),
-            layouted.meta.diagram_type
+            artifact.metadata().diagram_type
         )));
-    };
+    }
 
     let svg_opts = merman_render::svg::SvgRenderOptions {
         diagram_id: Some(fixture.to_string()),
         ..Default::default()
     };
-    let local_svg = merman_render::svg::render_state_diagram_v2_svg(
-        layout,
-        &layouted.semantic,
-        &layouted.meta.effective_config,
-        layouted.meta.title.as_deref(),
-        &session,
-        &svg_opts,
-    )
-    .map_err(|e| {
-        XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
-    })?;
+    let local_svg = artifact
+        .render_svg(&svg_opts, &merman_render::svg::SvgDebugOptions::default())
+        .map_err(|e| {
+            XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
+        })?
+        .into_parts()
+        .0;
 
     let local_svg_path = out_svg_dir.join(format!("{fixture}.local.svg"));
     let upstream_svg_path = out_svg_dir.join(format!("{fixture}.upstream.svg"));

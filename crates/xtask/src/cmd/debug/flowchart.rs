@@ -1,11 +1,60 @@
 //! Flowchart debug utilities.
 
 use crate::XtaskError;
+use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::{ParsedDiagramRender, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderSession, TextMeasurementPhase};
+use merman_render::model::FlowchartV2Layout;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+
+fn flowchart_model(parsed: &ParsedDiagramRender) -> Result<&FlowchartV2Model, XtaskError> {
+    let RenderSemanticModel::Flowchart(model) = &parsed.model else {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "expected Flowchart render model, got {}",
+            parsed.model.kind()
+        )));
+    };
+    Ok(model)
+}
+
+fn layout_flowchart_render_model(
+    parsed: &ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: &RenderSession,
+) -> Result<FlowchartV2Layout, XtaskError> {
+    let model = flowchart_model(parsed)?;
+    session
+        .resource_limits()
+        .check_flowchart_complexity(model)
+        .map_err(|error| XtaskError::DebugSvgFailed(error.to_string()))?;
+
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let uses_elk = parsed.meta.diagram_type == "flowchart-elk"
+        || parsed.meta.effective_config.get_str("layout") == Some("elk");
+    let layout = if uses_elk {
+        merman_render::flowchart::elk::layout_flowchart_elk_typed(
+            model,
+            &parsed.meta.effective_config,
+            &measurer,
+            session.math_renderer(),
+            options.flowchart_elk_backend,
+        )
+    } else {
+        merman_render::flowchart::layout_flowchart_v2_typed(
+            model,
+            &parsed.meta.effective_config,
+            &measurer,
+            session.math_renderer(),
+        )
+    };
+
+    layout.map_err(|error| XtaskError::DebugSvgFailed(error.to_string()))
+}
 
 pub(crate) fn debug_flowchart_svg_roots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut fixture: Option<String> = None;
@@ -1344,20 +1393,15 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
         .begin_session()
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
 
-    let parsed =
-        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
-            .map_err(|e| XtaskError::DebugSvgFailed(format!("parse failed: {e}")))?
-            .ok_or_else(|| XtaskError::DebugSvgFailed("no diagram detected".to_string()))?;
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
+    )
+    .map_err(|e| XtaskError::DebugSvgFailed(format!("parse failed: {e}")))?
+    .ok_or_else(|| XtaskError::DebugSvgFailed("no diagram detected".to_string()))?;
+    flowchart_model(&parsed)?;
 
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts, &session)
+    let artifact = merman_render::family::prepare(parsed, &layout_opts, session)
         .map_err(|e| XtaskError::DebugSvgFailed(format!("layout failed: {e}")))?;
-
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
-        return Err(XtaskError::DebugSvgFailed(format!(
-            "expected flowchart-v2 layout, got {}",
-            layouted.meta.diagram_type
-        )));
-    };
 
     let out = out.unwrap_or_else(|| {
         workspace_root
@@ -1385,18 +1429,12 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     };
 
     // Render once to trigger the trace emission inside `merman-render`.
-    let svg = merman_render::svg::render_flowchart_v2_svg_with_debug(
-        layout,
-        &layouted.semantic,
-        &layouted.meta.effective_config,
-        layouted.meta.title.as_deref(),
-        &session,
-        &svg_opts,
-        &debug,
-    )
-    .map_err(|e| XtaskError::DebugSvgFailed(format!("render failed: {e}")))?;
+    let rendered = artifact
+        .render_svg(&svg_opts, &debug)
+        .map_err(|e| XtaskError::DebugSvgFailed(format!("render failed: {e}")))?;
+    let svg = rendered.svg();
 
-    if let Ok(doc) = roxmltree::Document::parse(&svg)
+    if let Ok(doc) = roxmltree::Document::parse(svg)
         && let Some(dp) = find_data_points(&doc, edge_id)
         && let Some(json) = decode_data_points_json(&dp)
     {
@@ -1576,15 +1614,13 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
         .with_fixed_today(Some(
             chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
         ));
-    let parsed =
-        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
-            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
-            .ok_or_else(|| {
-                XtaskError::DebugSvgFailed(format!(
-                    "no diagram detected in {}",
-                    fixture_path.display()
-                ))
-            })?;
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
+    )
+    .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+    .ok_or_else(|| {
+        XtaskError::DebugSvgFailed(format!("no diagram detected in {}", fixture_path.display()))
+    })?;
 
     let mut layout_opts = merman_render::LayoutOptions::default();
     let measurement_policy = if matches!(
@@ -1600,21 +1636,13 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
         .begin_session()
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
     layout_opts.flowchart_elk_backend = flowchart_elk_backend;
-    let layouted = merman_render::layout_parsed(&parsed, &layout_opts, &session)
-        .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
-
-    let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
-        return Err(XtaskError::DebugSvgFailed(format!(
-            "unexpected layout type: {}",
-            layouted.meta.diagram_type
-        )));
-    };
+    let layout = layout_flowchart_render_model(&parsed, &layout_opts, &session)?;
 
     println!("fixture: {}", fixture_path.display());
-    if let Some(title) = layouted.meta.title.as_deref() {
+    if let Some(title) = parsed.meta.title.as_deref() {
         println!("title: {}", title);
     }
-    println!("diagram_type: {}", layouted.meta.diagram_type);
+    println!("diagram_type: {}", parsed.meta.diagram_type);
     println!("text_measurer: {}", text_measurer);
     println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!();
@@ -1828,21 +1856,18 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
         .with_fixed_today(Some(
             chrono::NaiveDate::from_ymd_opt(2026, 2, 15).expect("valid date"),
         ));
-    let parsed =
-        futures::executor::block_on(engine.parse_diagram(&text, merman::ParseOptions::default()))
-            .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
-            .ok_or_else(|| {
-                XtaskError::DebugSvgFailed(format!(
-                    "no diagram detected in {}",
-                    fixture_path.display()
-                ))
-            })?;
-    let model: merman_core::diagrams::flowchart::FlowchartV2Model =
-        serde_json::from_value(parsed.model.clone())?;
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
+    )
+    .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?
+    .ok_or_else(|| {
+        XtaskError::DebugSvgFailed(format!("no diagram detected in {}", fixture_path.display()))
+    })?;
+    let model = flowchart_model(&parsed)?;
 
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
     let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph_for_backend(
-        &model,
+        model,
         &parsed.meta.effective_config,
         &measurer,
         None,

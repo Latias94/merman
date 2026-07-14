@@ -1,57 +1,50 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{
-    SvgRenderOptions, render_state_diagram_v2_debug_svg, render_state_diagram_v2_svg,
+use merman_core::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::family;
+use merman_render::state::{
+    layout_state_diagram_v2_typed, render_state_diagram_v2_typed_with_debug,
 };
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_state_svg_from_text(text: &str) -> String {
     render_state_svg_from_text_with_engine(Engine::new(), text)
 }
 
 fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare State artifact");
 
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::StateDiagramV2(layout) = &out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
-
-    render_state_diagram_v2_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render State artifact")
+        .svg()
+        .to_string()
 }
 
 #[test]
 fn state_svg_preserves_incomplete_self_loop_helper_segments() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let text = "stateDiagram-v2\nA --> A: again\n";
-    let parsed =
-        futures::executor::block_on(Engine::new().parse_diagram(text, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::StateDiagramV2(mut layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let RenderSemanticModel::State(model) = parsed.model else {
+        panic!("expected State render model");
     };
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let mut layout =
+        layout_state_diagram_v2_typed(&model, parsed.meta.effective_config.as_value(), &measurer)
+            .expect("typed State layout");
 
     let logical = layout
         .edges
@@ -69,13 +62,14 @@ fn state_svg_preserves_incomplete_self_loop_helper_segments() {
     layout.edges.retain(|edge| edge.id != logical.id);
     layout.edges.extend([first, middle]);
 
-    let svg = render_state_diagram_v2_svg(
+    let svg = render_state_diagram_v2_typed_with_debug(
         &layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
+        &model,
+        parsed.meta.effective_config.as_value(),
+        parsed.meta.title.as_deref(),
+        &session,
         &SvgRenderOptions::default(),
+        &SvgDebugOptions::default(),
     )
     .expect("render svg");
 
@@ -114,30 +108,6 @@ note right of Idle : seeded note"#
     );
 
     render_state_svg_from_text_with_engine(legacy_init_theme_compat_engine(), &source)
-}
-
-#[test]
-fn state_debug_svg_includes_cluster_positioning_metadata() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
-    let text = "stateDiagram-v2\n[*] --> Active\nstate Active {\n  direction TB\n  Idle --> Idle: LOG\n}\n";
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
-
-    let opts = SvgRenderOptions::default();
-    let svg = render_state_diagram_v2_debug_svg(&layout, &opts);
-
-    assert!(svg.contains(r#"id="cluster-Active""#));
-    assert!(svg.contains(r#"data-diff="#));
-    assert!(svg.contains(r#"data-offset-y="#));
 }
 
 #[test]

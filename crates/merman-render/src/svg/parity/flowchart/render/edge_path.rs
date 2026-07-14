@@ -12,10 +12,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     scratch: &mut FlowchartEdgeDataPointsScratch,
     edge_cache: Option<&FxHashMap<&str, FlowchartEdgePathCacheEntry>>,
 ) {
-    let trace_enabled = ctx
-        .trace_edge_id
-        .as_deref()
-        .is_some_and(|id| id == edge.id.as_str());
+    let trace_enabled = ctx.trace_edge_id.is_some_and(|id| id == edge.id.as_str());
 
     let cached_geom = (!trace_enabled)
         .then(|| {

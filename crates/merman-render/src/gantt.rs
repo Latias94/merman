@@ -1,11 +1,10 @@
+use crate::Result;
 use crate::config::{config_bool as cfg_bool, config_f64 as cfg_f64};
-use crate::json::from_value_ref;
 use crate::model::{
     Bounds, GanttAxisTickLayout, GanttDiagramLayout, GanttExcludeRangeLayout, GanttRowLayout,
     GanttSectionTitleLayout, GanttTaskBarLayout, GanttTaskLabelLayout, GanttTaskLayout,
 };
 use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
-use crate::{Error, Result};
 use chrono::{Datelike, FixedOffset, Timelike};
 use std::collections::{HashMap, hash_map::Entry};
 
@@ -973,15 +972,6 @@ fn build_ticks(
         cur = next;
     }
     ticks
-}
-
-pub fn layout_gantt_diagram(
-    model: &serde_json::Value,
-    config: &serde_json::Value,
-    text_measurer: &dyn TextMeasurer,
-) -> Result<GanttDiagramLayout> {
-    let model: GanttDiagramRenderModel = from_value_ref(model).map_err(Error::Json)?;
-    layout_gantt_diagram_typed(&model, config, text_measurer)
 }
 
 pub fn layout_gantt_diagram_typed(

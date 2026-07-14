@@ -1,47 +1,44 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
-use merman_render::model::{LayoutDiagram, XyChartDiagramLayout};
-use merman_render::svg::{SvgRenderOptions, render_xychart_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::family;
+use merman_render::model::XyChartDiagramLayout;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::xychart::layout_xychart_diagram_typed;
 
 fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let LayoutDiagram::XyChartDiagram(layout) = out.layout else {
-        panic!("expected XyChartDiagram layout");
+    let RenderSemanticModel::XyChart(model) = &parsed.model else {
+        panic!("expected XYChart render model");
     };
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
-    *layout
+    layout_xychart_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+        .expect("layout ok")
 }
 
 fn render_xychart_svg_from_text(text: &str) -> String {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let LayoutDiagram::XyChartDiagram(layout) = &out.layout else {
-        panic!("expected XyChartDiagram layout");
-    };
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
-    render_xychart_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 fn text_tag_by_text<'a>(svg: &'a str, text: &str) -> &'a str {

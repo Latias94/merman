@@ -12,7 +12,28 @@ pub(crate) type FlowNode = merman_core::diagrams::flowchart::FlowNode;
 pub(crate) type FlowEdge = merman_core::diagrams::flowchart::FlowEdge;
 pub(crate) type FlowSubgraph = merman_core::diagrams::flowchart::FlowSubgraph;
 
-pub use layout::{layout_flowchart_v2, layout_flowchart_v2_typed};
+pub use layout::layout_flowchart_v2_typed;
+
+/// Renders a typed Flowchart model and matching layout without compatibility JSON.
+pub fn render_flowchart_v2_typed_with_debug(
+    layout: &crate::model::FlowchartV2Layout,
+    model: &merman_core::diagrams::flowchart::FlowchartV2Model,
+    effective_config: &merman_core::MermaidConfig,
+    diagram_title: Option<&str>,
+    session: &crate::environment::RenderSession,
+    options: &crate::svg::SvgRenderOptions,
+    debug: &crate::svg::SvgDebugOptions,
+) -> crate::Result<String> {
+    crate::svg::render_flowchart_v2_svg_model_with_config_and_debug(
+        layout,
+        model,
+        effective_config,
+        diagram_title,
+        session,
+        options,
+        debug,
+    )
+}
 
 pub(crate) use config::FlowchartConfigView;
 pub(crate) use label::{

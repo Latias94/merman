@@ -2,9 +2,10 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_block_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_block_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
@@ -12,26 +13,19 @@ fn render_block_svg_from_text(text: &str) -> String {
 }
 
 fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::headless_svg_defaults(), &_session)
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("layout ok");
-    let LayoutDiagram::BlockDiagram(layout) = &out.layout else {
-        panic!("expected BlockDiagram layout");
-    };
 
-    render_block_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("svg render ok")
+        .svg()
+        .to_owned()
 }
 
 fn deep_block_chain(depth: usize) -> String {

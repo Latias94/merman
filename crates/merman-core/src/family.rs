@@ -5,7 +5,7 @@
 
 use crate::baseline::BaselineRegistryProfile;
 use crate::detect::DetectorFn;
-use crate::diagram::{DiagramSemanticParser, RenderSemanticModel, RenderSemanticParser};
+use crate::diagram::{BuiltInRenderSemanticParser, DiagramSemanticParser, RenderSemanticModel};
 use crate::{EditorSemanticFacts, MermaidConfig, ParseMetadata, Result};
 use serde_json::Value;
 use std::sync::OnceLock;
@@ -38,7 +38,7 @@ pub(crate) struct RenderParserFact {
     pub(crate) id: &'static str,
     pub(crate) metadata_id: Option<&'static str>,
     pub(crate) model_kind: &'static str,
-    pub(crate) parser: RenderSemanticParser,
+    pub(crate) parser: BuiltInRenderSemanticParser,
 }
 
 #[derive(Clone, Copy)]
@@ -657,6 +657,11 @@ macro_rules! render_parser {
 }
 
 render_parser!(
+    render_error,
+    crate::diagrams::error_diagram::parse_error_model_for_render,
+    RenderSemanticModel::Error
+);
+render_parser!(
     render_mindmap,
     crate::diagrams::mindmap::parse_mindmap_model_for_render,
     RenderSemanticModel::Mindmap
@@ -902,7 +907,7 @@ struct FamilyVariantDefinition {
     semantic: Option<Ordered<DiagramSemanticParser>>,
     editor: Option<Ordered<EditorSemanticParser>>,
     combined: Option<Ordered<CombinedSemanticParser>>,
-    typed_render: Option<Ordered<RenderSemanticParser>>,
+    typed_render: Option<Ordered<BuiltInRenderSemanticParser>>,
     render_model_kind: Option<&'static str>,
     metadata: Option<MetadataDefinition>,
     headers: &'static [HeaderDefinition],
@@ -1153,8 +1158,8 @@ const ERROR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     semantic: Some(ordered(0, crate::diagrams::error_diagram::parse_error)),
     editor: None,
     combined: None,
-    typed: None,
-    render_kind: None,
+    typed: Some(ordered(38, render_error)),
+    render_kind: Some("error"),
     metadata: None,
     headers: &[],
     config_alias_order: None,

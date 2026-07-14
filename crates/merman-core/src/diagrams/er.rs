@@ -333,32 +333,40 @@ impl ErDb {
     }
 
     fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
-        let mut value = serde_json::to_value(self.into_render_model())
-            .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e.to_string()))?;
-        let Value::Object(obj) = &mut value else {
-            return Ok(value);
-        };
-
-        obj.insert("type".to_string(), json!(meta.diagram_type));
-        obj.insert(
-            "constants".to_string(),
-            json!({
-                "cardinality": {
-                    "zeroOrOne": "ZERO_OR_ONE",
-                    "zeroOrMore": "ZERO_OR_MORE",
-                    "oneOrMore": "ONE_OR_MORE",
-                    "onlyOne": "ONLY_ONE",
-                    "mdParent": "MD_PARENT",
-                },
-                "identification": {
-                    "nonIdentifying": "NON_IDENTIFYING",
-                    "identifying": "IDENTIFYING",
-                }
-            }),
-        );
-
-        Ok(value)
+        let model = self.into_render_model();
+        render_model_to_compat_json(&model, meta)
     }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &ErDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let mut value = serde_json::to_value(model)
+        .map_err(|e| Error::diagram_parse_fallback(meta.diagram_type.clone(), e.to_string()))?;
+    let Value::Object(obj) = &mut value else {
+        return Ok(value);
+    };
+
+    obj.insert("type".to_string(), json!(meta.diagram_type));
+    obj.insert(
+        "constants".to_string(),
+        json!({
+            "cardinality": {
+                "zeroOrOne": "ZERO_OR_ONE",
+                "zeroOrMore": "ZERO_OR_MORE",
+                "oneOrMore": "ONE_OR_MORE",
+                "onlyOne": "ONLY_ONE",
+                "mdParent": "MD_PARENT",
+            },
+            "identification": {
+                "nonIdentifying": "NON_IDENTIFYING",
+                "identifying": "IDENTIFYING",
+            }
+        }),
+    );
+
+    Ok(value)
 }
 
 fn split_styles(raw: &str) -> Vec<String> {
@@ -1548,5 +1556,41 @@ impl<'input> Iterator for Lexer<'input> {
                 SourceSpan::new(start, self.pos),
             )));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MermaidConfig;
+
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "er".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    #[test]
+    fn er_typed_projection_matches_complete_compat_json() {
+        let text = concat!(
+            "erDiagram\n",
+            "accTitle: Orders\n",
+            "CUSTOMER ||--o{ ORDER : places\n",
+        );
+        let meta = meta();
+        let compat = parse_er(text, &meta).unwrap();
+        let typed = parse_er_model_for_render(text, &meta).unwrap();
+        let projection = render_model_to_compat_json(&typed, &meta).unwrap();
+
+        assert_eq!(projection, compat);
+        assert_eq!(projection["type"], json!("er"));
+        assert_eq!(projection["accDescr"], Value::Null);
+        assert_eq!(
+            projection["constants"]["cardinality"]["onlyOne"],
+            json!("ONLY_ONE")
+        );
     }
 }

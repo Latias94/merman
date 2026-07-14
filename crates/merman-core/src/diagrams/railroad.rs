@@ -500,15 +500,9 @@ impl RailroadSemanticSource {
         editor_facts_from_model(&self.model, self.dialect)
     }
 
-    fn into_compat_json(mut self, meta: &ParseMetadata) -> Value {
+    fn into_compat_json(mut self, meta: &ParseMetadata) -> Result<Value> {
         self.model.sanitize_common_db_fields(&meta.effective_config);
-        json!({
-            "type": meta.diagram_type,
-            "title": self.model.title,
-            "accTitle": self.model.acc_title,
-            "accDescr": self.model.acc_descr,
-            "rules": self.model.rules,
-        })
+        render_model_to_compat_json(&self.model, meta)
     }
 
     fn into_render_model(mut self, meta: &ParseMetadata) -> RailroadDiagramRenderModel {
@@ -522,7 +516,7 @@ fn parse_railroad_for_dialect(
     meta: &ParseMetadata,
     dialect: RailroadDialect,
 ) -> Result<Value> {
-    Ok(parse_railroad_semantic_source(code, meta, dialect)?.into_compat_json(meta))
+    parse_railroad_semantic_source(code, meta, dialect)?.into_compat_json(meta)
 }
 
 fn parse_railroad_model_for_render_dialect(
@@ -561,8 +555,21 @@ fn parse_railroad_json_and_editor_facts_for_dialect(
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = parse_railroad_semantic_source(code, meta, dialect)?;
     let editor_facts = source.editor_facts();
-    let model = source.into_compat_json(meta);
+    let model = source.into_compat_json(meta)?;
     Ok((model, editor_facts))
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &RailroadDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    Ok(json!({
+        "type": meta.diagram_type,
+        "title": &model.title,
+        "accTitle": &model.acc_title,
+        "accDescr": &model.acc_descr,
+        "rules": &model.rules,
+    }))
 }
 
 fn parse_railroad_semantic_source(
@@ -2450,5 +2457,36 @@ mod tests {
         let (min, max) = parse_abnf_repeat_bounds(&huge).expect("all-digit repeat bound");
         assert!(min.is_infinite());
         assert!(max.is_infinite());
+    }
+
+    #[test]
+    fn typed_render_models_project_exact_compatibility_json_for_every_alias() {
+        let cases = [
+            ("railroad", "railroad-beta\nentry = terminal(\"value\") ;\n"),
+            ("railroadEbnf", "railroad-ebnf-beta\nentry = \"value\" ;\n"),
+            ("railroadAbnf", "railroad-abnf-beta\nentry = \"value\" ;\n"),
+            ("railroadPeg", "railroad-peg-beta\nentry <- \"value\" ;\n"),
+        ];
+        let engine = crate::Engine::new();
+
+        for (diagram_type, source) in cases {
+            let compat = engine
+                .parse_diagram_sync(source, crate::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let typed = engine
+                .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let crate::RenderSemanticModel::Railroad(model) = typed.model else {
+                panic!("expected Railroad render model for {diagram_type}");
+            };
+
+            assert_eq!(typed.meta.diagram_type, diagram_type);
+            assert_eq!(
+                render_model_to_compat_json(&model, &typed.meta).unwrap(),
+                compat.model
+            );
+        }
     }
 }

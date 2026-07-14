@@ -155,7 +155,8 @@ struct ArenaNode {
 }
 
 pub fn parse_tree_view(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse_tree_view_semantic_source(code, meta)?.compat_json(meta))
+    let source = parse_tree_view_semantic_source(code, meta)?;
+    render_model_to_compat_json(&source.render_model, meta)
 }
 
 pub(crate) fn parse_tree_view_json_and_editor_facts(
@@ -163,7 +164,7 @@ pub(crate) fn parse_tree_view_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = parse_tree_view_semantic_source(code, meta)?;
-    let compat = source.compat_json(meta);
+    let compat = render_model_to_compat_json(&source.render_model, meta)?;
     Ok((compat, source.editor_facts))
 }
 
@@ -181,19 +182,20 @@ pub fn parse_tree_view_editor_facts(code: &str, meta: &ParseMetadata) -> EditorS
     }
 }
 
-impl TreeViewSemanticSource {
-    fn compat_json(&self, meta: &ParseMetadata) -> Value {
-        let mut nodes = Vec::new();
-        flatten_nodes(&self.render_model.root, &mut nodes);
-        json!({
-            "type": meta.diagram_type,
-            "title": self.render_model.title,
-            "accTitle": self.render_model.acc_title,
-            "accDescr": self.render_model.acc_descr,
-            "root": tree_view_node_to_value(&self.render_model.root),
-            "nodes": nodes,
-        })
-    }
+pub(crate) fn render_model_to_compat_json(
+    model: &TreeViewDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let mut nodes = Vec::new();
+    flatten_nodes(&model.root, &mut nodes);
+    Ok(json!({
+        "type": meta.diagram_type,
+        "title": model.title,
+        "accTitle": model.acc_title,
+        "accDescr": model.acc_descr,
+        "root": tree_view_node_to_value(&model.root),
+        "nodes": nodes,
+    }))
 }
 
 fn parse_tree_view_semantic_source(
@@ -1332,6 +1334,7 @@ treeView-beta
         let compat = parse_tree_view(text, &meta).unwrap();
         let typed = parse_tree_view_model_for_render(text, &meta).unwrap();
 
+        assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
         assert_eq!(compat["title"], json!(typed.title));
         assert_eq!(compat["accTitle"], json!(typed.acc_title));
         assert_eq!(compat["accDescr"], json!(typed.acc_descr));

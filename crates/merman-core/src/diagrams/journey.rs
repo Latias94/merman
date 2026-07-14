@@ -56,9 +56,25 @@ pub struct JourneyDiagramRenderModel {
     pub tasks: Vec<JourneyRenderTask>,
     #[serde(default)]
     pub actors: Vec<String>,
+    #[serde(skip)]
+    compatibility_output: CompatibilityOutputState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum CompatibilityOutputState {
+    Empty,
+    #[default]
+    Model,
 }
 
 impl JourneyDiagramRenderModel {
+    fn empty_compatibility_output() -> Self {
+        Self {
+            compatibility_output: CompatibilityOutputState::Empty,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -264,9 +280,10 @@ fn strip_comment_prefix(line: &str) -> &str {
 pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_journey_semantic_source(code, meta)
         .map_err(JourneySemanticFailure::into_error)?;
-    Ok(source
-        .model
-        .map_or_else(|| json!({}), |model| journey_model_into_json(model, meta)))
+    match source.model {
+        Some(model) => render_model_to_compat_json(&model, meta),
+        None => Ok(json!({})),
+    }
 }
 
 pub(crate) fn parse_journey_json_and_editor_facts(
@@ -278,20 +295,29 @@ pub(crate) fn parse_journey_json_and_editor_facts(
         editor_facts,
     } = construct_journey_semantic_source(code, meta)
         .map_err(JourneySemanticFailure::into_error)?;
-    let model = model.map_or_else(|| json!({}), |model| journey_model_into_json(model, meta));
+    let model = match model {
+        Some(model) => render_model_to_compat_json(&model, meta)?,
+        None => json!({}),
+    };
     Ok((model, editor_facts))
 }
 
-fn journey_model_into_json(model: JourneyDiagramRenderModel, meta: &ParseMetadata) -> Value {
-    json!({
+pub(crate) fn render_model_to_compat_json(
+    model: &JourneyDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    if model.compatibility_output == CompatibilityOutputState::Empty {
+        return Ok(json!({}));
+    }
+    Ok(json!({
         "type": meta.diagram_type,
-        "title": model.title,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "sections": model.sections,
-        "tasks": model.tasks,
-        "actors": model.actors,
-    })
+        "title": &model.title,
+        "accTitle": &model.acc_title,
+        "accDescr": &model.acc_descr,
+        "sections": &model.sections,
+        "tasks": &model.tasks,
+        "actors": &model.actors,
+    }))
 }
 
 pub fn parse_journey_model_for_render(
@@ -299,7 +325,11 @@ pub fn parse_journey_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<JourneyDiagramRenderModel> {
     construct_journey_semantic_source(code, meta)
-        .map(|source| source.model.unwrap_or_default())
+        .map(|source| {
+            source
+                .model
+                .unwrap_or_else(JourneyDiagramRenderModel::empty_compatibility_output)
+        })
         .map_err(JourneySemanticFailure::into_error)
 }
 
@@ -541,6 +571,7 @@ fn construct_journey_semantic_source(
         actors,
         sections: db.sections,
         tasks: db.tasks,
+        compatibility_output: CompatibilityOutputState::Model,
     });
     Ok(JourneySemanticSource {
         model,
@@ -791,7 +822,6 @@ A task: 5: Alice, Bob\n";
             "journey\n",
             "title Checkout journey\n",
             "accTitle: Checkout\n",
-            "accDescr: Customer checkout journey\n",
             "section Payment\n",
             "Confirm order: 5: Alice, Bob\n",
         );
@@ -822,11 +852,31 @@ A task: 5: Alice, Bob\n";
         assert_eq!(combined_json, parsed.model);
         assert_eq!(combined_editor, standalone_editor);
 
-        let typed = serde_json::to_value(typed).expect("Journey typed model serializes");
-        for field in [
-            "title", "accTitle", "accDescr", "sections", "tasks", "actors",
-        ] {
-            assert_eq!(typed[field], combined_json[field], "Journey {field} drift");
+        assert_eq!(
+            render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
+            combined_json
+        );
+        assert_eq!(parsed.model["type"], "journey");
+        assert!(parsed.model["accDescr"].is_null());
+    }
+
+    #[test]
+    fn journey_typed_projection_preserves_empty_and_header_only_output_states() {
+        let meta = ParseMetadata {
+            diagram_type: "journey".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        };
+        for source in ["", "journey"] {
+            let compat = parse_journey(source, &meta).unwrap();
+            let typed = parse_journey_model_for_render(source, &meta).unwrap();
+
+            assert_eq!(
+                render_model_to_compat_json(&typed, &meta).unwrap(),
+                compat,
+                "projection drift for {source:?}"
+            );
         }
     }
 

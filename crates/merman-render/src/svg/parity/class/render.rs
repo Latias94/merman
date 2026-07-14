@@ -13,44 +13,6 @@ use super::settings::ClassRenderSettings;
 use super::viewbox::{ClassViewBoxContext, class_viewbox_attrs};
 use super::*;
 
-pub(super) fn render_class_diagram_v2_svg_impl(
-    layout: &ClassDiagramV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: ClassSvgModel = crate::json::from_value_ref(semantic)?;
-    render_class_diagram_v2_svg_model_impl(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-pub(super) fn render_class_diagram_v2_svg_model_impl(
-    layout: &ClassDiagramV2Layout,
-    model: &ClassSvgModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    render_class_diagram_v2_svg_model_impl_inner(
-        layout,
-        model,
-        effective_config,
-        None,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(super) fn render_class_diagram_v2_svg_model_impl_with_config(
     layout: &ClassDiagramV2Layout,
     model: &ClassSvgModel,

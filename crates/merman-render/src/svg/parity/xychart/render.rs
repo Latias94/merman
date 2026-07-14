@@ -4,7 +4,6 @@ use super::super::*;
 
 pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
-    _semantic: &serde_json::Value,
     _effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {

@@ -13,15 +13,6 @@ mod config;
 
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 
-pub fn layout_kanban_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<KanbanDiagramLayout> {
-    let model: KanbanDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_kanban_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_kanban_diagram_typed(
     model: &KanbanDiagramRenderModel,
     effective_config: &serde_json::Value,
@@ -195,9 +186,22 @@ pub fn layout_kanban_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use super::layout_kanban_diagram;
+    use super::layout_kanban_diagram_typed;
     use crate::text::DeterministicTextMeasurer;
+    use merman_core::diagrams::kanban::{KanbanDiagramRenderModel, KanbanRenderNode};
     use serde_json::json;
+
+    fn section(id: &str, label: &str) -> KanbanRenderNode {
+        let mut node = KanbanRenderNode::new(id, label);
+        node.is_group = true;
+        node
+    }
+
+    fn item(id: &str, label: &str, parent_id: &str) -> KanbanRenderNode {
+        let mut node = KanbanRenderNode::new(id, label);
+        node.parent_id = Some(parent_id.to_string());
+        node
+    }
 
     #[test]
     fn kanban_geometry_constants_match_mermaid() {
@@ -210,20 +214,19 @@ mod tests {
 
     #[test]
     fn kanban_layout_uses_mermaid_padding() {
-        let semantic = json!({
-            "type": "kanban",
-            "nodes": [
-                {"id": "todo", "label": "Todo", "isGroup": true},
-                {"id": "doing", "label": "Doing", "isGroup": true},
-                {"id": "task-1", "label": "Task", "parentId": "todo"}
-            ]
-        });
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "Todo"),
+                section("doing", "Doing"),
+                item("task-1", "Task", "todo"),
+            ],
+        };
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
         };
 
-        let layout = layout_kanban_diagram(&semantic, &json!({}), &measurer).unwrap();
+        let layout = layout_kanban_diagram_typed(&model, &json!({}), &measurer).unwrap();
 
         assert_eq!(layout.padding, super::KANBAN_SECTION_PADDING_PX);
         assert!(layout.use_max_width);
@@ -235,19 +238,16 @@ mod tests {
 
     #[test]
     fn kanban_layout_uses_mermaid_mindmap_viewport_config_precedence() {
-        let semantic = json!({
-            "type": "kanban",
-            "nodes": [
-                {"id": "todo", "label": "Todo", "isGroup": true}
-            ]
-        });
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![section("todo", "Todo")],
+        };
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
         };
 
-        let layout = layout_kanban_diagram(
-            &semantic,
+        let layout = layout_kanban_diagram_typed(
+            &model,
             &json!({
                 "mindmap": {
                     "padding": 3,

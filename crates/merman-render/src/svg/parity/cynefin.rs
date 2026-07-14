@@ -1,17 +1,6 @@
 use super::*;
 use merman_core::diagrams::cynefin::CynefinDiagramRenderModel;
 
-pub(crate) fn render_cynefin_diagram_svg(
-    layout: &CynefinDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: CynefinDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_cynefin_diagram_svg_model(layout, &model, effective_config, diagram_title, options)
-}
-
 pub(crate) fn render_cynefin_diagram_svg_model(
     layout: &CynefinDiagramLayout,
     model: &CynefinDiagramRenderModel,

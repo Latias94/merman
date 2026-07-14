@@ -53,8 +53,16 @@ pub(crate) fn legacy_warning_messages(facts: &[DiagramWarningFact]) -> Vec<Strin
 /// Parser used by the semantic JSON path for one Mermaid diagram family.
 pub type DiagramSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<Value>;
 
-/// Parser used by the typed render-model path for one Mermaid diagram family.
-pub type RenderSemanticParser = fn(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel>;
+/// Parser used by the built-in typed render-model path for one Mermaid diagram family.
+pub(crate) type BuiltInRenderSemanticParser =
+    fn(code: &str, meta: &ParseMetadata) -> Result<RenderSemanticModel>;
+
+/// Parser used by a custom render-model registry overlay.
+///
+/// Custom adapters intentionally return only a named JSON model. Built-in typed variants are
+/// reserved for the pinned family catalog and cannot be manufactured through this interface.
+pub type CustomJsonRenderParser =
+    fn(code: &str, meta: &ParseMetadata) -> Result<CustomJsonRenderModel>;
 
 /// Ownership of a parser resolved from a built-in registry plus its custom overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,13 +206,71 @@ pub struct ParsedDiagramWithEditorFacts {
     pub editor_facts: ParsedEditorFacts,
 }
 
+/// Origin of a custom JSON render model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CustomJsonProvenance {
+    /// Produced by a custom semantic JSON parser because no custom render parser was registered.
+    SemanticRegistryOverlay,
+    /// Produced by an explicitly registered custom render-model parser.
+    RenderRegistryOverlay,
+}
+
+/// Explicit non-built-in JSON model boundary for custom parser adapters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomJsonRenderModel {
+    model_name: String,
+    value: Value,
+    provenance: CustomJsonProvenance,
+}
+
+impl CustomJsonRenderModel {
+    /// Creates the result of a custom render-model registry parser.
+    pub fn new(model_name: impl Into<String>, value: Value) -> Self {
+        Self {
+            model_name: model_name.into(),
+            value,
+            provenance: CustomJsonProvenance::RenderRegistryOverlay,
+        }
+    }
+
+    pub(crate) fn from_semantic_registry(model_name: impl Into<String>, value: Value) -> Self {
+        Self {
+            model_name: model_name.into(),
+            value,
+            provenance: CustomJsonProvenance::SemanticRegistryOverlay,
+        }
+    }
+
+    /// Returns the adapter-defined model name.
+    pub fn model_name(&self) -> &str {
+        &self.model_name
+    }
+
+    /// Returns the custom JSON payload.
+    pub fn value(&self) -> &Value {
+        &self.value
+    }
+
+    /// Consumes the wrapper and returns the custom JSON payload.
+    pub fn into_value(self) -> Value {
+        self.value
+    }
+
+    /// Returns which custom registry path produced the model.
+    pub fn provenance(&self) -> CustomJsonProvenance {
+        self.provenance
+    }
+}
+
 /// Typed semantic model used by the headless renderer.
 ///
 /// Most public callers should use [`ParsedDiagram`] when they need JSON output. This enum is for
 /// render paths that benefit from typed data and avoiding a JSON round trip.
 #[derive(Debug, Clone)]
 pub enum RenderSemanticModel {
-    Json(Value),
+    Error(crate::diagrams::error_diagram::ErrorDiagramRenderModel),
+    CustomJson(CustomJsonRenderModel),
     Mindmap(crate::diagrams::mindmap::MindmapDiagramRenderModel),
     State(crate::diagrams::state::StateDiagramRenderModel),
     Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
@@ -236,11 +302,159 @@ pub enum RenderSemanticModel {
     Venn(crate::diagrams::venn::VennDiagramRenderModel),
 }
 
+mod builtin_render_semantic_private {
+    pub trait Sealed {}
+}
+
+/// Family-owned typed semantic data that can project the public compatibility JSON contract.
+///
+/// This trait is sealed because built-in family membership is defined by the pinned Mermaid
+/// catalog. Consumers can use it generically but cannot manufacture a new built-in family.
+pub trait BuiltinRenderSemantic: builtin_render_semantic_private::Sealed {
+    fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value>;
+}
+
+macro_rules! impl_builtin_render_semantic {
+    ($model:path, $project:path) => {
+        impl builtin_render_semantic_private::Sealed for $model {}
+
+        impl BuiltinRenderSemantic for $model {
+            fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value> {
+                $project(self, meta)
+            }
+        }
+    };
+}
+
+impl_builtin_render_semantic!(
+    crate::diagrams::error_diagram::ErrorDiagramRenderModel,
+    crate::diagrams::error_diagram::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::mindmap::MindmapDiagramRenderModel,
+    crate::diagrams::mindmap::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::state::StateDiagramRenderModel,
+    crate::diagrams::state::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::sequence::SequenceDiagramRenderModel,
+    crate::diagrams::sequence::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::flowchart::FlowchartV2Model,
+    crate::diagrams::flowchart::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::architecture::ArchitectureDiagramRenderModel,
+    crate::diagrams::architecture::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::models::class_diagram::ClassDiagram,
+    crate::diagrams::class::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::c4::C4DiagramRenderModel,
+    crate::diagrams::c4::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::cynefin::CynefinDiagramRenderModel,
+    crate::diagrams::cynefin::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::railroad::RailroadDiagramRenderModel,
+    crate::diagrams::railroad::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::kanban::KanbanDiagramRenderModel,
+    crate::diagrams::kanban::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::gantt::GanttDiagramRenderModel,
+    crate::diagrams::gantt::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::pie::PieDiagramRenderModel,
+    crate::diagrams::pie::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::packet::PacketDiagramRenderModel,
+    crate::diagrams::packet::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::timeline::TimelineDiagramRenderModel,
+    crate::diagrams::timeline::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::journey::JourneyDiagramRenderModel,
+    crate::diagrams::journey::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::requirement::RequirementDiagramRenderModel,
+    crate::diagrams::requirement::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::sankey::SankeyDiagramRenderModel,
+    crate::diagrams::sankey::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::radar::RadarDiagramRenderModel,
+    crate::diagrams::radar::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::info::InfoDiagramRenderModel,
+    crate::diagrams::info::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::treemap::TreemapDiagramRenderModel,
+    crate::diagrams::treemap::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::block::BlockDiagramRenderModel,
+    crate::diagrams::block::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::er::ErDiagramRenderModel,
+    crate::diagrams::er::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::quadrant_chart::QuadrantChartRenderModel,
+    crate::diagrams::quadrant_chart::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::xychart::XyChartDiagramRenderModel,
+    crate::diagrams::xychart::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::git_graph::GitGraphRenderModel,
+    crate::diagrams::git_graph::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::tree_view::TreeViewDiagramRenderModel,
+    crate::diagrams::tree_view::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::ishikawa::IshikawaDiagramRenderModel,
+    crate::diagrams::ishikawa::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::eventmodeling::EventModelingDiagramRenderModel,
+    crate::diagrams::eventmodeling::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::venn::VennDiagramRenderModel,
+    crate::diagrams::venn::render_model_to_compat_json
+);
+
 impl RenderSemanticModel {
     /// Applies Mermaid common DB sanitization to family-owned typed fields.
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &MermaidConfig) {
         match self {
-            Self::Json(v) => crate::common_db::apply_common_db_sanitization(v, config),
+            Self::Error(_) => {}
+            Self::CustomJson(v) => {
+                crate::common_db::apply_common_db_sanitization(&mut v.value, config);
+            }
             Self::Mindmap(_) => {}
             Self::State(v) => v.sanitize_common_db_fields(config),
             Self::Sequence(v) => v.sanitize_common_db_fields(config),
@@ -278,7 +492,9 @@ impl RenderSemanticModel {
         mut remap: impl FnMut(&mut DiagramWarningFact),
     ) {
         match self {
-            Self::Json(v) => Self::remap_json_warning_fact_spans(v, &mut remap),
+            Self::CustomJson(v) => {
+                Self::remap_json_warning_fact_spans(&mut v.value, &mut remap);
+            }
             Self::Flowchart(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
             Self::Block(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
             Self::GitGraph(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
@@ -315,7 +531,8 @@ impl RenderSemanticModel {
     /// Returns a stable family label for diagnostics and timing output.
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Json(_) => "json",
+            Self::Error(_) => "error",
+            Self::CustomJson(_) => "custom-json",
             Self::Mindmap(_) => "mindmap",
             Self::State(_) => "state",
             Self::Sequence(_) => "sequence",
@@ -348,10 +565,53 @@ impl RenderSemanticModel {
         }
     }
 
+    /// Projects this family-owned typed model into the public compatibility JSON shape.
+    ///
+    /// Built-in families delegate to their own lossless projector. This never reparses source;
+    /// custom adapters retain their explicitly named JSON boundary.
+    pub fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value> {
+        match self {
+            Self::Error(model) => model.compatibility_json(meta),
+            Self::CustomJson(model) => Ok(crate::config::clone_value_nonrecursive(model.value())),
+            Self::Mindmap(model) => model.compatibility_json(meta),
+            Self::State(model) => model.compatibility_json(meta),
+            Self::Sequence(model) => model.compatibility_json(meta),
+            Self::Flowchart(model) => model.compatibility_json(meta),
+            Self::Architecture(model) => model.compatibility_json(meta),
+            Self::Class(model) => model.compatibility_json(meta),
+            Self::C4(model) => model.compatibility_json(meta),
+            Self::Cynefin(model) => model.compatibility_json(meta),
+            Self::Railroad(model) => model.compatibility_json(meta),
+            Self::Kanban(model) => model.compatibility_json(meta),
+            Self::Gantt(model) => model.compatibility_json(meta),
+            Self::Pie(model) => model.compatibility_json(meta),
+            Self::Packet(model) => model.compatibility_json(meta),
+            Self::Timeline(model) => model.compatibility_json(meta),
+            Self::Journey(model) => model.compatibility_json(meta),
+            Self::Requirement(model) => model.compatibility_json(meta),
+            Self::Sankey(model) => model.compatibility_json(meta),
+            Self::Radar(model) => model.compatibility_json(meta),
+            Self::Info(model) => model.compatibility_json(meta),
+            Self::Treemap(model) => model.compatibility_json(meta),
+            Self::Block(model) => model.compatibility_json(meta),
+            Self::Er(model) => model.compatibility_json(meta),
+            Self::QuadrantChart(model) => model.compatibility_json(meta),
+            Self::XyChart(model) => model.compatibility_json(meta),
+            Self::GitGraph(model) => model.compatibility_json(meta),
+            Self::TreeView(model) => model.compatibility_json(meta),
+            Self::Ishikawa(model) => model.compatibility_json(meta),
+            Self::EventModeling(model) => model.compatibility_json(meta),
+            Self::Venn(model) => model.compatibility_json(meta),
+        }
+    }
+
     /// Returns whether this typed model can represent the given Mermaid diagram type id.
     pub fn supports_diagram_type(&self, diagram_type: &str) -> bool {
         match self {
-            Self::Json(_) => true,
+            Self::CustomJson(model) => {
+                !crate::family::is_builtin_diagram_type(diagram_type)
+                    && model.model_name() == diagram_type
+            }
             other => {
                 crate::family::render_model_kind_supports_diagram_type(other.kind(), diagram_type)
             }
@@ -362,9 +622,15 @@ impl RenderSemanticModel {
 /// Registry for typed render-model parsers keyed by Mermaid diagram type id.
 #[derive(Debug, Clone)]
 pub struct RenderDiagramRegistry {
-    builtins: HashMap<&'static str, RenderSemanticParser>,
-    overlays: HashMap<&'static str, RenderSemanticParser>,
+    builtins: HashMap<&'static str, BuiltInRenderSemanticParser>,
+    overlays: HashMap<&'static str, CustomJsonRenderParser>,
     profile: BaselineRegistryProfile,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum ResolvedRenderParser {
+    BuiltIn(BuiltInRenderSemanticParser),
+    Custom(CustomJsonRenderParser),
 }
 
 impl Default for RenderDiagramRegistry {
@@ -387,40 +653,29 @@ impl RenderDiagramRegistry {
         }
     }
 
-    /// Registers or replaces the typed render parser for a Mermaid diagram type id.
-    pub fn insert(&mut self, diagram_type: &'static str, parser: RenderSemanticParser) {
+    /// Registers or replaces a custom JSON render-model parser for a diagram type id.
+    pub fn insert(&mut self, diagram_type: &'static str, parser: CustomJsonRenderParser) {
         self.overlays.insert(diagram_type, parser);
     }
 
-    /// Looks up a typed render parser by Mermaid diagram type id.
-    pub fn get(&self, diagram_type: &str) -> Option<RenderSemanticParser> {
-        self.resolve(diagram_type).map(|resolved| resolved.parser)
+    /// Returns whether a built-in or custom render-model parser is registered for the id.
+    pub fn contains(&self, diagram_type: &str) -> bool {
+        self.resolve(diagram_type).is_some()
     }
 
-    pub(crate) fn resolve(
-        &self,
-        diagram_type: &str,
-    ) -> Option<ResolvedParser<RenderSemanticParser>> {
+    pub(crate) fn resolve(&self, diagram_type: &str) -> Option<ResolvedRenderParser> {
         if let Some(parser) = self.overlays.get(diagram_type).copied() {
-            return Some(ResolvedParser {
-                parser,
-                owner: RegistryOwner::Custom,
-            });
+            return Some(ResolvedRenderParser::Custom(parser));
         }
         self.builtins
             .get(diagram_type)
             .copied()
-            .map(|parser| ResolvedParser {
-                parser,
-                owner: RegistryOwner::BuiltIn,
-            })
+            .map(ResolvedRenderParser::BuiltIn)
     }
 
     #[cfg(test)]
-    pub(crate) fn remove(&mut self, diagram_type: &str) -> Option<RenderSemanticParser> {
-        self.overlays
-            .remove(diagram_type)
-            .or_else(|| self.builtins.remove(diagram_type))
+    pub(crate) fn remove(&mut self, diagram_type: &str) -> bool {
+        self.overlays.remove(diagram_type).is_some() || self.builtins.remove(diagram_type).is_some()
     }
 
     /// Builds the full typed render parser registry for the repository's pinned Mermaid baseline.

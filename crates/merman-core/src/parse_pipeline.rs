@@ -4,8 +4,9 @@ use crate::{
     preprocess_diagram, preprocess_diagram_with_known_type, runtime, sanitize, theme,
 };
 use diagram::{
-    DiagramWarningFact, ParsedDiagram, ParsedDiagramRender, ParsedDiagramWithEditorFacts,
-    ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
+    CustomJsonRenderModel, DiagramWarningFact, ParsedDiagram, ParsedDiagramRender,
+    ParsedDiagramWithEditorFacts, ParsedEditorFacts, RegistryOwner, RenderSemanticModel,
+    ResolvedRenderParser,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -1232,32 +1233,31 @@ impl<'a> ParsePipeline<'a> {
             .render_diagram_registry
             .resolve(&meta.diagram_type);
 
-        if let Some(render) = render
-            && render.owner == RegistryOwner::Custom
-        {
-            return (render.parser)(code, meta);
+        if let Some(ResolvedRenderParser::Custom(parser)) = render {
+            return parser(code, meta).map(RenderSemanticModel::CustomJson);
         }
 
         if let Some(semantic) = semantic
             && semantic.owner == RegistryOwner::Custom
         {
-            return (semantic.parser)(code, meta).map(RenderSemanticModel::Json);
+            return (semantic.parser)(code, meta).map(|value| {
+                RenderSemanticModel::CustomJson(CustomJsonRenderModel::from_semantic_registry(
+                    meta.diagram_type.clone(),
+                    value,
+                ))
+            });
         }
 
-        if let Some(render) = render {
-            debug_assert_eq!(render.owner, RegistryOwner::BuiltIn);
-            return (render.parser)(code, meta);
+        if let Some(ResolvedRenderParser::BuiltIn(parser)) = render {
+            return parser(code, meta);
         }
 
         if let Some(semantic) = semantic {
             debug_assert_eq!(semantic.owner, RegistryOwner::BuiltIn);
-            if meta.diagram_type == "error" {
-                return (semantic.parser)(code, meta).map(RenderSemanticModel::Json);
-            }
             return Err(Error::diagram_parse_fallback(
                 meta.diagram_type.clone(),
                 format!(
-                    "built-in diagram type `{}` is missing a typed render parser; JSON render fallback is reserved for error and custom diagram adapters",
+                    "built-in diagram type `{}` is missing a typed render parser; the custom JSON boundary is reserved for custom registry adapters",
                     meta.diagram_type
                 ),
             ));

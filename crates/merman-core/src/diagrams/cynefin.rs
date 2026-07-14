@@ -90,7 +90,7 @@ pub fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(&meta.effective_config);
 
-    Ok(cynefin_model_into_json(model, meta))
+    render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_cynefin_json_and_editor_facts(
@@ -102,18 +102,21 @@ pub(crate) fn parse_cynefin_json_and_editor_facts(
         editor_facts,
     } = parse_cynefin_semantic_source(code, meta)?;
     model.sanitize_common_db_fields(&meta.effective_config);
-    Ok((cynefin_model_into_json(model, meta), editor_facts))
+    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
 }
 
-fn cynefin_model_into_json(model: CynefinDiagramModel, meta: &ParseMetadata) -> Value {
-    json!({
+pub(crate) fn render_model_to_compat_json(
+    model: &CynefinDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    Ok(json!({
         "type": meta.diagram_type,
-        "title": model.title,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "domains": model.domains,
-        "transitions": model.transitions,
-    })
+        "title": &model.title,
+        "accTitle": &model.acc_title,
+        "accDescr": &model.acc_descr,
+        "domains": &model.domains,
+        "transitions": &model.transitions,
+    }))
 }
 
 pub fn parse_cynefin_model_for_render(
@@ -677,5 +680,34 @@ mod tests {
                     && diagnostic.span == Some(SourceSpan::new(start, start + invalid.len()))
             }));
         }
+    }
+
+    #[test]
+    fn typed_render_model_projects_exact_compatibility_json() {
+        let source = concat!(
+            "cynefin-beta\n",
+            "title Cynefin Map\n",
+            "accTitle: Accessible Map\n",
+            "complex\n",
+            "  \"Probe\"\n",
+            "complex --> complicated : \"Sense\"\n",
+        );
+        let engine = crate::Engine::new();
+        let compat = engine
+            .parse_diagram_sync(source, crate::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let typed = engine
+            .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let crate::RenderSemanticModel::Cynefin(model) = typed.model else {
+            panic!("expected Cynefin render model");
+        };
+
+        assert_eq!(
+            render_model_to_compat_json(&model, &typed.meta).unwrap(),
+            compat.model
+        );
     }
 }

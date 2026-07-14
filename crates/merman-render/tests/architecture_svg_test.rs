@@ -1,13 +1,17 @@
-use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::architecture::{
+    layout_architecture_diagram_typed, render_architecture_diagram_typed_with_debug,
+};
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
-    RenderRandomnessPolicy, TextMeasurementPhase, TextMeasurementPolicy,
+    RenderRandomnessPolicy, RenderSession, TextMeasurementPhase, TextMeasurementPolicy,
     TextMeasurementProfileIdentity,
 };
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
+use merman_render::family;
+use merman_render::model::ArchitectureDiagramLayout;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, TextStyle};
-use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
 use regex::Regex;
 use std::num::NonZeroU64;
 use std::path::PathBuf;
@@ -96,16 +100,50 @@ fn render_architecture_text_with_engine_and_options(
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("begin render session");
-    let layout =
-        layout_parsed_render_layout_only(&parsed, &layout_options, &session).expect("layout ok");
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
 
-    render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
+    artifact
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render SVG")
+        .svg()
+        .to_owned()
+}
+
+fn layout_architecture_typed(
+    parsed: &ParsedDiagramRender,
+    options: &LayoutOptions,
+    session: &RenderSession,
+) -> ArchitectureDiagramLayout {
+    let RenderSemanticModel::Architecture(model) = &parsed.model else {
+        panic!("expected architecture render model");
+    };
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    layout_architecture_diagram_typed(
+        model,
+        parsed.meta.effective_config.as_value(),
+        &measurer,
+        options.use_manatee_layout,
+        session.seed().seed().get(),
+    )
+    .expect("layout ok")
+}
+
+fn render_architecture_typed(
+    parsed: &ParsedDiagramRender,
+    layout: &ArchitectureDiagramLayout,
+    session: &RenderSession,
+    options: &SvgRenderOptions,
+) -> String {
+    let RenderSemanticModel::Architecture(model) = &parsed.model else {
+        panic!("expected architecture render model");
+    };
+    render_architecture_diagram_typed_with_debug(
+        layout,
+        model,
         &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &session,
+        session,
         options,
+        &SvgDebugOptions::default(),
     )
     .expect("render SVG")
 }
@@ -477,40 +515,25 @@ fn architecture_cached_service_child_bounds_preserve_svg_output() {
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("begin render session");
-    let layout =
-        layout_parsed_render_layout_only(&parsed, &layout_options, &session).expect("layout ok");
+    let layout = layout_architecture_typed(&parsed, &layout_options, &session);
     let mut layout_without_cached_bounds = layout.clone();
-    let LayoutDiagram::ArchitectureDiagram(arch_layout) = &mut layout_without_cached_bounds else {
-        panic!("expected architecture layout");
-    };
     assert!(
-        !arch_layout.cytoscape_service_bounds.is_empty(),
+        !layout_without_cached_bounds
+            .cytoscape_service_bounds
+            .is_empty(),
         "expected layout to expose Architecture service child bounds"
     );
-    arch_layout.cytoscape_service_bounds.clear();
+    layout_without_cached_bounds
+        .cytoscape_service_bounds
+        .clear();
 
     let options = SvgRenderOptions {
         diagram_id: Some("architecture-cache-parity".to_string()),
         ..Default::default()
     };
-    let with_cached_bounds = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &session,
-        &options,
-    )
-    .expect("render SVG with cached service child bounds");
-    let without_cached_bounds = render_layout_svg_parts_for_render_model_with_config(
-        &layout_without_cached_bounds,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &session,
-        &options,
-    )
-    .expect("render SVG without cached service child bounds");
+    let with_cached_bounds = render_architecture_typed(&parsed, &layout, &session, &options);
+    let without_cached_bounds =
+        render_architecture_typed(&parsed, &layout_without_cached_bounds, &session, &options);
 
     assert_eq!(with_cached_bounds, without_cached_bounds);
 }
@@ -544,19 +567,11 @@ fn architecture_svg_uses_the_session_measurement_route() {
         .expect("parse ok")
         .expect("diagram detected");
     let layout_options = LayoutOptions::headless_svg_defaults();
-    let layout =
-        layout_parsed_render_layout_only(&parsed, &layout_options, &session).expect("layout ok");
+    let layout = layout_architecture_typed(&parsed, &layout_options, &session);
     host.calls.store(0, Ordering::Relaxed);
 
-    let host_svg = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render SVG");
+    let host_svg =
+        render_architecture_typed(&parsed, &layout, &session, &SvgRenderOptions::default());
 
     assert!(
         host.calls.load(Ordering::Relaxed) > 0,
@@ -576,21 +591,17 @@ fn architecture_svg_uses_the_session_measurement_route() {
     );
 
     let parity_session = RenderEnvironment::parity().begin_session().unwrap();
-    let parity_layout = layout_parsed_render_layout_only(
+    let parity_layout = layout_architecture_typed(
         &parsed,
         &LayoutOptions::headless_svg_defaults(),
         &parity_session,
-    )
-    .expect("parity layout");
-    let parity_svg = render_layout_svg_parts_for_render_model_with_config(
+    );
+    let parity_svg = render_architecture_typed(
+        &parsed,
         &parity_layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
         &parity_session,
         &SvgRenderOptions::default(),
-    )
-    .expect("parity SVG");
+    );
     assert_ne!(
         host_svg, parity_svg,
         "host metrics must change observable geometry"
@@ -599,7 +610,7 @@ fn architecture_svg_uses_the_session_measurement_route() {
 
 #[test]
 fn architecture_and_hand_drawn_zero_seeds_share_the_session_seed() {
-    fn render_with_seed(source: &str, ambient_seed: u64) -> (LayoutDiagram, String) {
+    fn render_with_seed(source: &str, ambient_seed: u64) -> (ArchitectureDiagramLayout, String) {
         let session = RenderEnvironment::parity()
             .with_randomness(RenderRandomnessPolicy::pinned(
                 NonZeroU64::new(ambient_seed).unwrap(),
@@ -610,24 +621,17 @@ fn architecture_and_hand_drawn_zero_seeds_share_the_session_seed() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse ok")
             .expect("diagram detected");
-        let layout = layout_parsed_render_layout_only(
+        let layout =
+            layout_architecture_typed(&parsed, &LayoutOptions::headless_svg_defaults(), &session);
+        let svg = render_architecture_typed(
             &parsed,
-            &LayoutOptions::headless_svg_defaults(),
-            &session,
-        )
-        .expect("layout ok");
-        let svg = render_layout_svg_parts_for_render_model_with_config(
             &layout,
-            &parsed.model,
-            &parsed.meta.effective_config,
-            parsed.meta.title.as_deref(),
             &session,
             &SvgRenderOptions {
                 diagram_id: Some("architecture-session-seed".to_string()),
                 ..Default::default()
             },
-        )
-        .expect("render SVG");
+        );
         (layout, svg)
     }
 

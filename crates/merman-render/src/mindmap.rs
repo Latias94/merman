@@ -1,5 +1,4 @@
 use crate::config::{config_f64_css_px, config_string};
-use crate::json::from_value_ref;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextMetrics, TextStyle};
@@ -335,27 +334,6 @@ fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode], content_min: f64) {
         n.x += dx;
         n.y += dy;
     }
-}
-
-pub fn layout_mindmap_diagram(
-    model: &Value,
-    effective_config: &Value,
-    text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
-) -> Result<MindmapDiagramLayout> {
-    let model = MindmapModel {
-        nodes: model
-            .get("nodes")
-            .map(from_value_ref)
-            .transpose()?
-            .unwrap_or_default(),
-        edges: model
-            .get("edges")
-            .map(from_value_ref)
-            .transpose()?
-            .unwrap_or_default(),
-    };
-    layout_mindmap_diagram_model(&model, effective_config, text_measurer, use_manatee_layout)
 }
 
 pub fn layout_mindmap_diagram_typed(

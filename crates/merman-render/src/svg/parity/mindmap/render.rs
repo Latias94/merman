@@ -580,38 +580,6 @@ fn mindmap_css(diagram_id: &str, effective_config: &serde_json::Value) -> String
     out
 }
 
-pub(crate) fn render_mindmap_diagram_svg(
-    layout: &MindmapDiagramLayout,
-    semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
-        crate::json::from_value_ref(semantic)?;
-    render_mindmap_diagram_svg_model(layout, &model, _effective_config, options)
-}
-
-pub(crate) fn render_mindmap_diagram_svg_with_config(
-    layout: &MindmapDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: merman_core::diagrams::mindmap::MindmapDiagramRenderModel =
-        { crate::json::from_value_ref(semantic)? };
-    render_mindmap_diagram_svg_model_with_config(layout, &model, effective_config, options)
-}
-
-pub(crate) fn render_mindmap_diagram_svg_model(
-    layout: &MindmapDiagramLayout,
-    model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
-    _effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let config = merman_core::MermaidConfig::from_value(_effective_config.clone());
-    render_mindmap_diagram_svg_model_with_config(layout, model, &config, options)
-}
-
 pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,

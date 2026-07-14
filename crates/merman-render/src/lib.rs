@@ -24,6 +24,7 @@ pub mod environment;
 pub mod er;
 pub mod error;
 pub mod eventmodeling;
+pub mod family;
 pub mod flowchart;
 pub mod gantt;
 mod generated;
@@ -32,7 +33,6 @@ mod host_time;
 pub mod info;
 pub mod ishikawa;
 pub mod journey;
-mod json;
 pub mod kanban;
 pub mod math;
 mod mermaid_style;
@@ -62,11 +62,8 @@ pub mod xychart;
 pub(crate) use host_time::{Duration, Instant};
 
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
-use crate::model::{LayoutDiagram, LayoutMeta, LayoutedDiagram};
 use merman_core::diagrams::flowchart::FlowchartV2Model;
 use merman_core::models::class_diagram::ClassDiagram;
-use merman_core::{ParsedDiagram, ParsedDiagramRender, RenderSemanticModel};
-use serde_json::Value;
 
 pub use resources::{
     ClassComplexity, FlowchartComplexity, RenderResourceLimits, RenderResourceProfile,
@@ -79,6 +76,14 @@ pub enum Error {
     UnsupportedDiagram { diagram_type: String },
     #[error("invalid semantic model: {message}")]
     InvalidModel { message: String },
+    #[error(
+        "custom JSON model `{model_name}` from {provenance:?} cannot render diagram type `{diagram_type}`"
+    )]
+    NonRenderableCustomModel {
+        diagram_type: String,
+        model_name: String,
+        provenance: merman_core::CustomJsonProvenance,
+    },
     #[error("SVG postprocessor `{pass}` failed: {message}")]
     SvgPostprocess { pass: String, message: String },
     #[error(transparent)]
@@ -142,14 +147,14 @@ impl LayoutOptions {
     }
 }
 
-struct LayoutExecution<'a> {
+pub(crate) struct LayoutExecution<'a> {
     request: &'a LayoutOptions,
     session: &'a RenderSession,
     text_measurer: RoutedTextMeasurer<'a>,
 }
 
 impl<'a> LayoutExecution<'a> {
-    fn new(request: &'a LayoutOptions, session: &'a RenderSession) -> Self {
+    pub(crate) fn new(request: &'a LayoutOptions, session: &'a RenderSession) -> Self {
         Self {
             request,
             session,
@@ -157,19 +162,19 @@ impl<'a> LayoutExecution<'a> {
         }
     }
 
-    fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
+    pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
         &self.text_measurer
     }
 
-    fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
+    pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
         self.session.math_renderer()
     }
 
-    const fn resource_limits(&self) -> RenderResourceLimits {
+    pub(crate) const fn resource_limits(&self) -> RenderResourceLimits {
         self.session.resource_limits()
     }
 
-    const fn ambient_seed(&self) -> u64 {
+    pub(crate) const fn ambient_seed(&self) -> u64 {
         self.session.seed().seed().get()
     }
 }
@@ -179,259 +184,6 @@ impl std::ops::Deref for LayoutExecution<'_> {
 
     fn deref(&self) -> &Self::Target {
         self.request
-    }
-}
-
-pub fn layout_parsed(
-    parsed: &ParsedDiagram,
-    options: &LayoutOptions,
-    session: &RenderSession,
-) -> Result<LayoutedDiagram> {
-    let meta = LayoutMeta::from_parse_metadata(&parsed.meta);
-    let layout = layout_parsed_layout_only(parsed, options, session)?;
-
-    Ok(LayoutedDiagram {
-        meta,
-        semantic: crate::json::clone_value_nonrecursive(&parsed.model),
-        layout,
-    })
-}
-
-pub fn layout_parsed_layout_only(
-    parsed: &ParsedDiagram,
-    options: &LayoutOptions,
-    session: &RenderSession,
-) -> Result<LayoutDiagram> {
-    let execution = LayoutExecution::new(options, session);
-    let diagram_type = parsed.meta.diagram_type.as_str();
-    let title = parsed.meta.title.as_deref();
-    layout_json_by_type(
-        diagram_type,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        title,
-        &execution,
-    )
-}
-
-pub fn layout_parsed_render_layout_only(
-    parsed: &ParsedDiagramRender,
-    options: &LayoutOptions,
-    session: &RenderSession,
-) -> Result<LayoutDiagram> {
-    let execution = LayoutExecution::new(options, session);
-    layout_parsed_render_layout_only_in_execution(parsed, &execution)
-}
-
-fn layout_parsed_render_layout_only_in_execution(
-    parsed: &ParsedDiagramRender,
-    options: &LayoutExecution<'_>,
-) -> Result<LayoutDiagram> {
-    let diagram_type = parsed.meta.diagram_type.as_str();
-    let effective_config = parsed.meta.effective_config.as_value();
-    let title = parsed.meta.title.as_deref();
-
-    if !parsed.model.supports_diagram_type(diagram_type) {
-        return Err(Error::InvalidModel {
-            message: format!(
-                "unexpected render model variant {} for diagram type: {diagram_type}",
-                parsed.model.kind()
-            ),
-        });
-    }
-
-    match &parsed.model {
-        #[cfg(feature = "cytoscape-layout")]
-        RenderSemanticModel::Mindmap(model) => Ok(LayoutDiagram::MindmapDiagram(Box::new(
-            mindmap::layout_mindmap_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-                options.use_manatee_layout,
-            )?,
-        ))),
-        #[cfg(not(feature = "cytoscape-layout"))]
-        RenderSemanticModel::Mindmap(_) => Err(Error::UnsupportedDiagram {
-            diagram_type: diagram_type.to_string(),
-        }),
-        #[cfg(feature = "cytoscape-layout")]
-        RenderSemanticModel::Architecture(model) => Ok(LayoutDiagram::ArchitectureDiagram(
-            Box::new(architecture::layout_architecture_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-                options.use_manatee_layout,
-                options.ambient_seed(),
-            )?),
-        )),
-        #[cfg(not(feature = "cytoscape-layout"))]
-        RenderSemanticModel::Architecture(_) => Err(Error::UnsupportedDiagram {
-            diagram_type: diagram_type.to_string(),
-        }),
-        RenderSemanticModel::Flowchart(model) => Ok(LayoutDiagram::FlowchartV2(Box::new(
-            layout_flowchart_typed_by_engine(
-                diagram_type,
-                model,
-                &parsed.meta.effective_config,
-                options,
-            )?,
-        ))),
-        RenderSemanticModel::State(model) => Ok(LayoutDiagram::StateDiagramV2(Box::new(
-            state::layout_state_diagram_v2_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::Sequence(model) => Ok(LayoutDiagram::SequenceDiagram(Box::new(
-            sequence::layout_sequence_diagram_typed_with_title(
-                model,
-                title,
-                effective_config,
-                options.text_measurer(),
-                options.math_renderer(),
-            )?,
-        ))),
-        RenderSemanticModel::Class(model) => Ok(LayoutDiagram::ClassDiagramV2(Box::new(
-            layout_class_typed_by_engine(
-                diagram_type,
-                model,
-                &parsed.meta.effective_config,
-                options,
-            )?,
-        ))),
-        RenderSemanticModel::C4(model) => Ok(LayoutDiagram::C4Diagram(Box::new(
-            c4::layout_c4_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-                options.viewport_width,
-                options.viewport_height,
-            )?,
-        ))),
-        RenderSemanticModel::Cynefin(model) => Ok(LayoutDiagram::CynefinDiagram(Box::new(
-            cynefin::layout_cynefin_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::Railroad(model) => Ok(LayoutDiagram::RailroadDiagram(Box::new(
-            railroad::layout_railroad_diagram_typed_for_type(
-                model,
-                diagram_type,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::Kanban(model) => Ok(LayoutDiagram::KanbanDiagram(Box::new(
-            kanban::layout_kanban_diagram_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::Gantt(model) => Ok(LayoutDiagram::GanttDiagram(Box::new(
-            gantt::layout_gantt_diagram_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::Pie(model) => Ok(LayoutDiagram::PieDiagram(Box::new(
-            pie::layout_pie_diagram_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::Packet(model) => Ok(LayoutDiagram::PacketDiagram(Box::new(
-            packet::layout_packet_diagram_typed(
-                model,
-                title,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::Timeline(model) => Ok(LayoutDiagram::TimelineDiagram(Box::new(
-            timeline::layout_timeline_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::Journey(model) => Ok(LayoutDiagram::JourneyDiagram(Box::new(
-            journey::layout_journey_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::Requirement(model) => Ok(LayoutDiagram::RequirementDiagram(Box::new(
-            requirement::layout_requirement_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::Sankey(model) => Ok(LayoutDiagram::SankeyDiagram(Box::new(
-            sankey::layout_sankey_diagram_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::Radar(model) => Ok(LayoutDiagram::RadarDiagram(Box::new(
-            radar::layout_radar_diagram_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::Info(model) => Ok(LayoutDiagram::InfoDiagram(Box::new(
-            info::layout_info_diagram_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::Treemap(model) => Ok(LayoutDiagram::TreemapDiagram(Box::new(
-            treemap::layout_treemap_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::Block(model) => Ok(LayoutDiagram::BlockDiagram(Box::new(
-            block::layout_block_diagram_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::Er(model) => Ok(LayoutDiagram::ErDiagram(Box::new(
-            er::layout_er_diagram_typed(model, effective_config, options.text_measurer())?,
-        ))),
-        RenderSemanticModel::QuadrantChart(model) => Ok(LayoutDiagram::QuadrantChartDiagram(
-            Box::new(quadrantchart::layout_quadrantchart_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?),
-        )),
-        RenderSemanticModel::XyChart(model) => Ok(LayoutDiagram::XyChartDiagram(Box::new(
-            xychart::layout_xychart_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::GitGraph(model) => Ok(LayoutDiagram::GitGraphDiagram(Box::new(
-            gitgraph::layout_gitgraph_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::TreeView(model) => Ok(LayoutDiagram::TreeViewDiagram(Box::new(
-            tree_view::layout_tree_view_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::Ishikawa(model) => Ok(LayoutDiagram::IshikawaDiagram(Box::new(
-            ishikawa::layout_ishikawa_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?,
-        ))),
-        RenderSemanticModel::EventModeling(model) => Ok(LayoutDiagram::EventModelingDiagram(
-            Box::new(eventmodeling::layout_eventmodeling_diagram_typed(
-                model,
-                effective_config,
-                options.text_measurer(),
-            )?),
-        )),
-        RenderSemanticModel::Venn(model) => Ok(LayoutDiagram::VennDiagram(Box::new(
-            venn::layout_venn_diagram_typed(model, title, effective_config)?,
-        ))),
-        RenderSemanticModel::Json(semantic) => layout_json_by_type(
-            diagram_type,
-            semantic,
-            &parsed.meta.effective_config,
-            title,
-            options,
-        ),
     }
 }
 
@@ -447,7 +199,7 @@ fn class_uses_elk_layout(effective_config: &merman_core::MermaidConfig) -> bool 
         || effective_config.get_str("class.defaultRenderer") == Some("elk")
 }
 
-fn layout_class_typed_by_engine(
+pub(crate) fn layout_class_typed_by_engine(
     diagram_type: &str,
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
@@ -460,25 +212,6 @@ fn layout_class_typed_by_engine(
     options.resource_limits().check_class_complexity(model)?;
     class::layout_class_diagram_v2_typed_with_config(
         model,
-        effective_config,
-        options.text_measurer(),
-    )
-}
-
-fn layout_class_json_by_engine(
-    diagram_type: &str,
-    semantic: &Value,
-    effective_config: &merman_core::MermaidConfig,
-    options: &LayoutExecution<'_>,
-) -> Result<model::ClassDiagramV2Layout> {
-    let model: ClassDiagram = crate::json::from_value_ref(semantic)?;
-    if class_uses_elk_layout(effective_config) {
-        return layout_class_elk_typed_by_feature(diagram_type, &model, effective_config, options);
-    }
-
-    options.resource_limits().check_class_complexity(&model)?;
-    class::layout_class_diagram_v2_typed_with_config(
-        &model,
         effective_config,
         options.text_measurer(),
     )
@@ -511,7 +244,7 @@ fn layout_class_elk_typed_by_feature(
     })
 }
 
-fn layout_flowchart_typed_by_engine(
+pub(crate) fn layout_flowchart_typed_by_engine(
     diagram_type: &str,
     model: &FlowchartV2Model,
     effective_config: &merman_core::MermaidConfig,
@@ -568,279 +301,73 @@ fn layout_flowchart_elk_typed_by_feature(
     })
 }
 
-fn layout_flowchart_json_by_engine(
-    diagram_type: &str,
-    semantic: &Value,
-    effective_config: &merman_core::MermaidConfig,
-    options: &LayoutExecution<'_>,
-) -> Result<model::FlowchartV2Layout> {
-    if flowchart_uses_elk_layout(diagram_type, effective_config) {
-        return layout_flowchart_elk_json_by_feature(
-            diagram_type,
-            semantic,
-            effective_config,
-            options,
-        );
-    }
-
-    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
-    options
-        .resource_limits()
-        .check_flowchart_complexity(&model)?;
-    flowchart::layout_flowchart_v2(
-        semantic,
-        effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-    )
-}
-
-#[cfg(feature = "elk-layout")]
-fn layout_flowchart_elk_json_by_feature(
-    _diagram_type: &str,
-    semantic: &Value,
-    effective_config: &merman_core::MermaidConfig,
-    options: &LayoutExecution<'_>,
-) -> Result<model::FlowchartV2Layout> {
-    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
-    options
-        .resource_limits()
-        .check_flowchart_complexity(&model)?;
-    flowchart::elk::layout_flowchart_elk(
-        semantic,
-        effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-        options.flowchart_elk_backend,
-    )
-}
-
-#[cfg(not(feature = "elk-layout"))]
-fn layout_flowchart_elk_json_by_feature(
-    diagram_type: &str,
-    _semantic: &Value,
-    _effective_config: &merman_core::MermaidConfig,
-    _options: &LayoutExecution<'_>,
-) -> Result<model::FlowchartV2Layout> {
-    Err(Error::UnsupportedDiagram {
-        diagram_type: diagram_type.to_string(),
-    })
-}
-
-fn layout_json_by_type(
-    diagram_type: &str,
-    semantic: &Value,
-    effective_config: &merman_core::MermaidConfig,
-    title: Option<&str>,
-    options: &LayoutExecution<'_>,
-) -> Result<LayoutDiagram> {
-    let effective_config_value = effective_config.as_value();
-
-    match diagram_type {
-        "error" => Ok(LayoutDiagram::ErrorDiagram(Box::new(
-            error::layout_error_diagram(semantic, effective_config_value, options.text_measurer())?,
-        ))),
-        "block" => Ok(LayoutDiagram::BlockDiagram(Box::new(
-            block::layout_block_diagram(semantic, effective_config_value, options.text_measurer())?,
-        ))),
-        #[cfg(feature = "cytoscape-layout")]
-        "architecture" => Ok(LayoutDiagram::ArchitectureDiagram(Box::new(
-            architecture::layout_architecture_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-                options.use_manatee_layout,
-                options.ambient_seed(),
-            )?,
-        ))),
-        #[cfg(not(feature = "cytoscape-layout"))]
-        "architecture" => Err(Error::UnsupportedDiagram {
-            diagram_type: diagram_type.to_string(),
-        }),
-        "requirement" => Ok(LayoutDiagram::RequirementDiagram(Box::new(
-            requirement::layout_requirement_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "radar" => Ok(LayoutDiagram::RadarDiagram(Box::new(
-            radar::layout_radar_diagram(semantic, effective_config_value, options.text_measurer())?,
-        ))),
-        "treemap" => Ok(LayoutDiagram::TreemapDiagram(Box::new(
-            treemap::layout_treemap_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "venn" => Ok(LayoutDiagram::VennDiagram(Box::new(
-            venn::layout_venn_diagram(semantic, title, effective_config_value)?,
-        ))),
-        "flowchart-v2" | "flowchart-elk" => Ok(LayoutDiagram::FlowchartV2(Box::new(
-            layout_flowchart_json_by_engine(diagram_type, semantic, effective_config, options)?,
-        ))),
-        "stateDiagram" => Ok(LayoutDiagram::StateDiagramV2(Box::new(
-            state::layout_state_diagram_v2(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "classDiagram" | "class" => Ok(LayoutDiagram::ClassDiagramV2(Box::new(
-            layout_class_json_by_engine(diagram_type, semantic, effective_config, options)?,
-        ))),
-        "er" | "erDiagram" => Ok(LayoutDiagram::ErDiagram(Box::new(er::layout_er_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer(),
-        )?))),
-        "sequence" | "zenuml" => Ok(LayoutDiagram::SequenceDiagram(Box::new(
-            sequence::layout_sequence_diagram_with_title(
-                semantic,
-                title,
-                effective_config_value,
-                options.text_measurer(),
-                options.math_renderer(),
-            )?,
-        ))),
-        "info" => Ok(LayoutDiagram::InfoDiagram(Box::new(
-            info::layout_info_diagram(semantic, effective_config_value, options.text_measurer())?,
-        ))),
-        "packet" => Ok(LayoutDiagram::PacketDiagram(Box::new(
-            packet::layout_packet_diagram(
-                semantic,
-                title,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "timeline" => Ok(LayoutDiagram::TimelineDiagram(Box::new(
-            timeline::layout_timeline_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "gantt" => Ok(LayoutDiagram::GanttDiagram(Box::new(
-            gantt::layout_gantt_diagram(semantic, effective_config_value, options.text_measurer())?,
-        ))),
-        "c4" => Ok(LayoutDiagram::C4Diagram(Box::new(c4::layout_c4_diagram(
-            semantic,
-            effective_config_value,
-            options.text_measurer(),
-            options.viewport_width,
-            options.viewport_height,
-        )?))),
-        "cynefin" => Ok(LayoutDiagram::CynefinDiagram(Box::new(
-            cynefin::layout_cynefin_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "railroad" | "railroadEbnf" | "railroadAbnf" | "railroadPeg" => Ok(
-            LayoutDiagram::RailroadDiagram(Box::new(railroad::layout_railroad_diagram_for_type(
-                semantic,
-                diagram_type,
-                effective_config_value,
-                options.text_measurer(),
-            )?)),
-        ),
-        "journey" => Ok(LayoutDiagram::JourneyDiagram(Box::new(
-            journey::layout_journey_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "gitGraph" => Ok(LayoutDiagram::GitGraphDiagram(Box::new(
-            gitgraph::layout_gitgraph_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "kanban" => Ok(LayoutDiagram::KanbanDiagram(Box::new(
-            kanban::layout_kanban_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "pie" => Ok(LayoutDiagram::PieDiagram(Box::new(
-            pie::layout_pie_diagram(semantic, effective_config_value, options.text_measurer())?,
-        ))),
-        "xychart" => Ok(LayoutDiagram::XyChartDiagram(Box::new(
-            xychart::layout_xychart_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "quadrantChart" => Ok(LayoutDiagram::QuadrantChartDiagram(Box::new(
-            quadrantchart::layout_quadrantchart_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        #[cfg(feature = "cytoscape-layout")]
-        "mindmap" => Ok(LayoutDiagram::MindmapDiagram(Box::new(
-            mindmap::layout_mindmap_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-                options.use_manatee_layout,
-            )?,
-        ))),
-        #[cfg(not(feature = "cytoscape-layout"))]
-        "mindmap" => Err(Error::UnsupportedDiagram {
-            diagram_type: diagram_type.to_string(),
-        }),
-        "sankey" => Ok(LayoutDiagram::SankeyDiagram(Box::new(
-            sankey::layout_sankey_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "treeView" => Ok(LayoutDiagram::TreeViewDiagram(Box::new(
-            tree_view::layout_tree_view_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "ishikawa" => Ok(LayoutDiagram::IshikawaDiagram(Box::new(
-            ishikawa::layout_ishikawa_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        "eventmodeling" => Ok(LayoutDiagram::EventModelingDiagram(Box::new(
-            eventmodeling::layout_eventmodeling_diagram(
-                semantic,
-                effective_config_value,
-                options.text_measurer(),
-            )?,
-        ))),
-        other => Err(Error::UnsupportedDiagram {
-            diagram_type: other.to_string(),
-        }),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use merman_core::{Engine, ParseOptions};
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    use merman_core::{ParsedDiagramRender, RenderSemanticModel};
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    fn flowchart_layout(
+        parsed: &ParsedDiagramRender,
+        options: &LayoutOptions,
+        session: &RenderSession,
+    ) -> model::FlowchartV2Layout {
+        let RenderSemanticModel::Flowchart(model) = &parsed.model else {
+            panic!("expected flowchart render model");
+        };
+        layout_flowchart_typed_by_engine(
+            &parsed.meta.diagram_type,
+            model,
+            &parsed.meta.effective_config,
+            &LayoutExecution::new(options, session),
+        )
+        .expect("flowchart layout")
+    }
+
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    fn class_layout(
+        parsed: &ParsedDiagramRender,
+        options: &LayoutOptions,
+        session: &RenderSession,
+    ) -> model::ClassDiagramV2Layout {
+        let RenderSemanticModel::Class(model) = &parsed.model else {
+            panic!("expected class render model");
+        };
+        layout_class_typed_by_engine(
+            &parsed.meta.diagram_type,
+            model,
+            &parsed.meta.effective_config,
+            &LayoutExecution::new(options, session),
+        )
+        .expect("class layout")
+    }
+
+    fn render_source(
+        source: &str,
+        layout_options: &LayoutOptions,
+        svg_options: &crate::svg::SvgRenderOptions,
+    ) -> String {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("parse")
+            .expect("diagram");
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
+        crate::family::prepare(parsed, layout_options, session)
+            .expect("prepare")
+            .render_svg(svg_options, &crate::svg::SvgDebugOptions::default())
+            .expect("render")
+            .svg()
+            .to_owned()
+    }
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_accepts_diagram_type_aliases() {
-        let _session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -852,16 +379,17 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let layout =
-            layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
-                .unwrap();
-        assert!(matches!(layout, LayoutDiagram::FlowchartV2(_)));
+        let artifact = crate::family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+        assert_eq!(
+            artifact.family_kind(),
+            crate::family::RenderFamilyKind::Flowchart
+        );
     }
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_uses_elk_for_flowchart_default_renderer_config() {
-        let _session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -880,12 +408,7 @@ A-->B
             .unwrap();
 
         assert_eq!(parsed.meta.diagram_type, "flowchart-elk");
-        let layout =
-            layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
-                .unwrap();
-        let LayoutDiagram::FlowchartV2(layout) = layout else {
-            panic!("expected flowchart layout");
-        };
+        let layout = flowchart_layout(&parsed, &LayoutOptions::default(), &session);
         let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
         let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
         assert!(b.y > a.y);
@@ -911,7 +434,10 @@ A-->B
             .begin_session()
             .unwrap();
 
-        let err = layout_parsed_render_layout_only(&parsed, &options, &session).unwrap_err();
+        let err = match crate::family::prepare(parsed, &options, session) {
+            Err(error) => error,
+            Ok(_) => panic!("expected resource limit error"),
+        };
 
         let Error::ResourceLimitExceeded(limit) = err else {
             panic!("expected resource limit error");
@@ -923,7 +449,7 @@ A-->B
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_uses_elk_for_class_layout_config() {
-        let _session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -942,12 +468,7 @@ Animal <|-- Duck
             .unwrap();
 
         assert_eq!(parsed.meta.diagram_type, "classDiagram");
-        let layout =
-            layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
-                .unwrap();
-        let LayoutDiagram::ClassDiagramV2(layout) = layout else {
-            panic!("expected class layout");
-        };
+        let layout = class_layout(&parsed, &LayoutOptions::default(), &session);
         let animal = layout
             .nodes
             .iter()
@@ -965,7 +486,7 @@ Animal <|-- Duck
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
     fn render_model_dispatch_uses_elk_for_class_default_renderer_config() {
-        let _session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -985,12 +506,7 @@ Animal <|-- Duck
             .unwrap();
 
         assert_eq!(parsed.meta.diagram_type, "class");
-        let layout =
-            layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
-                .unwrap();
-        let LayoutDiagram::ClassDiagramV2(layout) = layout else {
-            panic!("expected class layout");
-        };
+        let layout = class_layout(&parsed, &LayoutOptions::default(), &session);
         let animal = layout
             .nodes
             .iter()
@@ -1024,7 +540,10 @@ Animal <|-- Duck
             .begin_session()
             .unwrap();
 
-        let err = layout_parsed_render_layout_only(&parsed, &options, &session).unwrap_err();
+        let err = match crate::family::prepare(parsed, &options, session) {
+            Err(error) => error,
+            Ok(_) => panic!("expected resource limit error"),
+        };
 
         let Error::ResourceLimitExceeded(limit) = err else {
             panic!("expected resource limit error");
@@ -1035,9 +554,12 @@ Animal <|-- Duck
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
-    fn json_dispatch_rejects_flowchart_over_edge_resource_limit() {
+    fn typed_dispatch_rejects_flowchart_over_edge_resource_limit() {
         let parsed = Engine::new()
-            .parse_diagram_sync("flowchart TD\nA-->B\nB-->C\nC-->D", ParseOptions::strict())
+            .parse_diagram_for_render_model_sync(
+                "flowchart TD\nA-->B\nB-->C\nC-->D",
+                ParseOptions::strict(),
+            )
             .unwrap()
             .unwrap();
         let options = LayoutOptions::default();
@@ -1049,7 +571,10 @@ Animal <|-- Duck
             .begin_session()
             .unwrap();
 
-        let err = layout_parsed(&parsed, &options, &session).unwrap_err();
+        let err = match crate::family::prepare(parsed, &options, session) {
+            Err(error) => error,
+            Ok(_) => panic!("expected resource limit error"),
+        };
 
         let Error::ResourceLimitExceeded(limit) = err else {
             panic!("expected resource limit error");
@@ -1060,9 +585,9 @@ Animal <|-- Duck
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
-    fn json_dispatch_rejects_class_over_edge_resource_limit() {
+    fn typed_dispatch_rejects_class_over_edge_resource_limit() {
         let parsed = Engine::new()
-            .parse_diagram_sync(
+            .parse_diagram_for_render_model_sync(
                 "classDiagram\nAnimal <|-- Duck\nDuck <|-- Mallard",
                 ParseOptions::strict(),
             )
@@ -1077,7 +602,10 @@ Animal <|-- Duck
             .begin_session()
             .unwrap();
 
-        let err = layout_parsed(&parsed, &options, &session).unwrap_err();
+        let err = match crate::family::prepare(parsed, &options, session) {
+            Err(error) => error,
+            Ok(_) => panic!("expected resource limit error"),
+        };
 
         let Error::ResourceLimitExceeded(limit) = err else {
             panic!("expected resource limit error");
@@ -1088,26 +616,15 @@ Animal <|-- Duck
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
-    fn render_layouted_svg_preserves_flowchart_elk_roledescription() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
-        let parsed = Engine::new()
-            .parse_diagram_sync("flowchart-elk TD\nA-->B;", ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-
-        let layout_options = LayoutOptions::default();
-        let layouted = layout_parsed(&parsed, &layout_options, &_session).unwrap();
-        let svg = crate::svg::render_layouted_svg(
-            &layouted,
-            &_session,
+    fn canonical_svg_preserves_flowchart_elk_roledescription() {
+        let svg = render_source(
+            "flowchart-elk TD\nA-->B;",
+            &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions {
                 diagram_id: Some("elk-smoke".to_string()),
                 ..Default::default()
             },
-        )
-        .unwrap();
+        );
 
         assert!(svg.contains(r#"aria-roledescription="flowchart-elk""#));
         assert!(svg.contains("elk-smoke_flowchart-elk-pointEnd"));
@@ -1140,38 +657,24 @@ Animal <|-- Duck
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
-    fn render_layouted_svg_uses_elk_adapter_dom_for_flowchart_layout_elk() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
-        let parsed = Engine::new()
-            .parse_diagram_sync(
-                r#"---
+    fn canonical_svg_uses_elk_adapter_dom_for_flowchart_layout_elk() {
+        let svg = render_source(
+            r#"---
 config:
   layout: elk
 ---
 flowchart LR
 A{A} --> B & C
 "#,
-                ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap();
-
-        let layout_options = LayoutOptions {
-            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
-            ..Default::default()
-        };
-        let layouted = layout_parsed(&parsed, &layout_options, &_session).unwrap();
-        let svg = crate::svg::render_layouted_svg(
-            &layouted,
-            &_session,
+            &LayoutOptions {
+                flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
+                ..Default::default()
+            },
             &crate::svg::SvgRenderOptions {
                 diagram_id: Some("elk-layout-smoke".to_string()),
                 ..Default::default()
             },
-        )
-        .unwrap();
+        );
 
         assert!(svg.contains(r#"aria-roledescription="flowchart-v2""#));
         assert!(svg.contains("elk-layout-smoke_flowchart-v2-pointEnd"));
@@ -1203,25 +706,12 @@ A{A} --> B & C
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
-    fn render_layouted_svg_uses_right_angle_edges_for_flowchart_elk() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
-        let parsed = Engine::new()
-            .parse_diagram_sync("flowchart-elk LR\nA --> B\nA --> C", ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-
-        let layout_options = LayoutOptions {
-            ..Default::default()
-        };
-        let layouted = layout_parsed(&parsed, &layout_options, &_session).unwrap();
-        let svg = crate::svg::render_layouted_svg(
-            &layouted,
-            &_session,
+    fn canonical_svg_uses_right_angle_edges_for_flowchart_elk() {
+        let svg = render_source(
+            "flowchart-elk LR\nA --> B\nA --> C",
+            &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions::default(),
-        )
-        .unwrap();
+        );
 
         let path = edge_path_chunk(&svg, "L_A_B_0");
         let d = edge_path_d(path);
@@ -1233,13 +723,9 @@ A{A} --> B & C
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
-    fn render_layouted_svg_keeps_source_ported_elk_rect_edge_boundary_points() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
-        let parsed = Engine::new()
-            .parse_diagram_sync(
-                r#"---
+    fn canonical_svg_keeps_source_ported_elk_rect_edge_boundary_points() {
+        let svg = render_source(
+            r#"---
 config:
   htmlLabels: true
   flowchart:
@@ -1249,22 +735,12 @@ config:
 flowchart-elk LR
 id1(Start)-->id2(Stop)
 "#,
-                ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap();
-
-        let layout_options = LayoutOptions {
-            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
-            ..Default::default()
-        };
-        let layouted = layout_parsed(&parsed, &layout_options, &_session).unwrap();
-        let svg = crate::svg::render_layouted_svg(
-            &layouted,
-            &_session,
+            &LayoutOptions {
+                flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
+                ..Default::default()
+            },
             &crate::svg::SvgRenderOptions::default(),
-        )
-        .unwrap();
+        );
 
         let path = edge_path_chunk(&svg, "L_id1_id2_0");
         let d = edge_path_d(path);
@@ -1284,26 +760,15 @@ id1(Start)-->id2(Stop)
 
     #[cfg(all(feature = "core-full", feature = "elk-layout"))]
     #[test]
-    fn render_layouted_svg_keeps_source_ported_elk_self_loop_edges() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
-        let parsed = Engine::new()
-            .parse_diagram_sync("flowchart-elk TD\nA --> A", ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-
-        let layout_options = LayoutOptions {
-            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
-            ..Default::default()
-        };
-        let layouted = layout_parsed(&parsed, &layout_options, &_session).unwrap();
-        let svg = crate::svg::render_layouted_svg(
-            &layouted,
-            &_session,
+    fn canonical_svg_keeps_source_ported_elk_self_loop_edges() {
+        let svg = render_source(
+            "flowchart-elk TD\nA --> A",
+            &LayoutOptions {
+                flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
+                ..Default::default()
+            },
             &crate::svg::SvgRenderOptions::default(),
-        )
-        .unwrap();
+        );
 
         let path = edge_path_chunk(&svg, "L_A_A_0");
         let d = edge_path_d(path);
@@ -1327,7 +792,7 @@ id1(Start)-->id2(Stop)
     #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
     #[test]
     fn render_model_dispatch_rejects_flowchart_elk_without_feature() {
-        let _session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -1339,8 +804,10 @@ id1(Start)-->id2(Stop)
             .unwrap()
             .unwrap();
 
-        let err = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
-            .unwrap_err();
+        let err = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
+            Err(error) => error,
+            Ok(_) => panic!("expected unsupported diagram error"),
+        };
         assert!(matches!(
             err,
             Error::UnsupportedDiagram { diagram_type } if diagram_type == "flowchart-elk"
@@ -1350,7 +817,7 @@ id1(Start)-->id2(Stop)
     #[cfg(all(feature = "core-full", not(feature = "elk-layout")))]
     #[test]
     fn render_model_dispatch_rejects_class_elk_without_feature() {
-        let _session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap();
         let parsed = Engine::new()
@@ -1367,8 +834,10 @@ Animal <|-- Duck
             .unwrap()
             .unwrap();
 
-        let err = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
-            .unwrap_err();
+        let err = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
+            Err(error) => error,
+            Ok(_) => panic!("expected unsupported diagram error"),
+        };
         assert!(matches!(
             err,
             Error::UnsupportedDiagram { diagram_type } if diagram_type == "classDiagram"
@@ -1377,7 +846,7 @@ Animal <|-- Duck
 
     #[test]
     fn render_model_dispatch_rejects_mismatched_typed_model() {
-        let _session = crate::environment::RenderEnvironment::parity()
+        let session = crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap();
         let mut parsed = Engine::new()
@@ -1389,8 +858,10 @@ Animal <|-- Duck
             .unwrap();
         parsed.meta.diagram_type = "flowchart-v2".to_string();
 
-        let err = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
-            .unwrap_err();
+        let err = match crate::family::prepare(parsed, &LayoutOptions::default(), session) {
+            Err(error) => error,
+            Ok(_) => panic!("expected invalid model error"),
+        };
         let message = err.to_string();
         assert!(message.contains("sequence"));
         assert!(message.contains("flowchart-v2"));
@@ -1398,9 +869,6 @@ Animal <|-- Duck
 
     #[test]
     fn render_model_dispatch_renders_cynefin_svg() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
         let source = r#"cynefin-beta
   title Team Practices
   accTitle: Cynefin map
@@ -1411,25 +879,14 @@ Animal <|-- Duck
     "Architecture review"
   complex --> complicated : "Pattern emerges"
 "#;
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-        let layout_options = LayoutOptions::default();
-        let layout = layout_parsed_render_layout_only(&parsed, &layout_options, &_session).unwrap();
-        let svg = crate::svg::render_layout_svg_parts_for_render_model_with_metadata(
-            &layout,
-            &parsed.model,
-            &parsed.meta.effective_config,
-            &parsed.meta.diagram_type,
-            parsed.meta.title.as_deref(),
-            &_session,
+        let svg = render_source(
+            source,
+            &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions {
                 diagram_id: Some("cynefin-test".to_string()),
                 ..Default::default()
             },
-        )
-        .unwrap();
+        );
 
         assert!(svg.contains(r#"aria-roledescription="cynefin""#));
         assert!(svg.contains(r#"<g class="cynefin-backgrounds">"#));
@@ -1476,33 +933,19 @@ Animal <|-- Duck
 
     #[test]
     fn render_model_dispatch_keeps_whitespace_cynefin_transition_labels() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
         let source = r#"cynefin-beta
   complex
   complicated
   complex --> complicated : "   "
 "#;
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-        let layout_options = LayoutOptions::default();
-        let layout = layout_parsed_render_layout_only(&parsed, &layout_options, &_session).unwrap();
-        let svg = crate::svg::render_layout_svg_parts_for_render_model_with_metadata(
-            &layout,
-            &parsed.model,
-            &parsed.meta.effective_config,
-            &parsed.meta.diagram_type,
-            parsed.meta.title.as_deref(),
-            &_session,
+        let svg = render_source(
+            source,
+            &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions {
                 diagram_id: Some("cynefin-whitespace".to_string()),
                 ..Default::default()
             },
-        )
-        .unwrap();
+        );
 
         assert!(
             svg.contains(r#"class="cynefinArrowLabel""#),
@@ -1512,33 +955,19 @@ Animal <|-- Duck
 
     #[test]
     fn render_model_dispatch_renders_railroad_svg() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
         let source = r#"railroad-beta
 accTitle: Railroad grammar
 accDescr: Expression grammar
 expr = sequence(nonterminal("term"), optional(special("guard")), zeroOrMore(terminal("+"))) ;
 "#;
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap();
-        let layout_options = LayoutOptions::default();
-        let layout = layout_parsed_render_layout_only(&parsed, &layout_options, &_session).unwrap();
-        let svg = crate::svg::render_layout_svg_parts_for_render_model_with_metadata(
-            &layout,
-            &parsed.model,
-            &parsed.meta.effective_config,
-            &parsed.meta.diagram_type,
-            parsed.meta.title.as_deref(),
-            &_session,
+        let svg = render_source(
+            source,
+            &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions {
                 diagram_id: Some("railroad-test".to_string()),
                 ..Default::default()
             },
-        )
-        .unwrap();
+        );
 
         assert!(svg.contains(r#"aria-roledescription="railroad""#));
         assert!(svg.contains(r#"class="railroad-diagram""#));

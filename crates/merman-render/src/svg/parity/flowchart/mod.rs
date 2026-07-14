@@ -2,7 +2,6 @@ use super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 mod css;
-mod debug_svg;
 mod defs;
 mod document;
 mod edge;
@@ -75,14 +74,6 @@ fn escape_attr(text: &str) -> super::util::EscapeAttrDisplay<'_> {
     escape_attr_display(text)
 }
 
-pub(super) fn render_flowchart_v2_debug_svg(
-    layout: &FlowchartV2Layout,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> String {
-    debug_svg::render_flowchart_v2_debug_svg(layout, options, debug)
-}
-
 pub(in crate::svg::parity::flowchart) fn flowchart_config_look(
     config: &merman_core::MermaidConfig,
 ) -> &str {
@@ -99,24 +90,6 @@ pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
 
 mod svg_emit;
 
-pub(super) fn render_flowchart_v2_svg(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    svg_emit::render_flowchart_v2_svg(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(super) fn render_flowchart_v2_svg_model_with_config(
     layout: &FlowchartV2Layout,
     model: &crate::flowchart::FlowchartV2Model,
@@ -128,24 +101,6 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
     svg_emit::render_flowchart_v2_svg_model_with_config(
         layout,
         model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-pub(super) fn render_flowchart_v2_svg_with_config(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    svg_emit::render_flowchart_v2_svg_with_config(
-        layout,
-        semantic,
         effective_config,
         diagram_title,
         measurer,

@@ -83,6 +83,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
             label: Some(String::new()),
             label_type: None,
             layout_shape: None,
+            shape: None,
             icon: None,
             form: None,
             pos: None,

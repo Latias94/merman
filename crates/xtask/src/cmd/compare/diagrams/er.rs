@@ -199,13 +199,13 @@ fn run_er_compare(
                 }
             };
 
-            let merman_render::model::LayoutDiagram::ErDiagram(_) = prepared.layout() else {
+            if prepared.family_kind() != merman::render::RenderFamilyKind::Er {
                 return Err(format!(
-                    "unexpected layout type for {}: {}",
+                    "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    prepared.metadata().diagram_type
+                    prepared.family_kind()
                 ));
-            };
+            }
 
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(input.stem.to_string()),

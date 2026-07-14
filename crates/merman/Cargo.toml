@@ -26,7 +26,7 @@ features = ["render", "ascii", "raster", "ratex-math"]
 default = ["core-full", "core-host"]
 core-full = ["merman-core/full", "merman-ascii?/core-full", "merman-render?/core-full"]
 core-host = ["merman-core/host", "merman-ascii?/core-host", "merman-render?/host"]
-render = ["dep:merman-render", "dep:thiserror"]
+render = ["dep:merman-render", "dep:serde_json", "dep:thiserror"]
 ascii = ["dep:merman-ascii", "dep:thiserror"]
 cytoscape-layout = ["render", "merman-render/cytoscape-layout"]
 elk-layout = ["render", "merman-render/elk-layout"]
@@ -46,6 +46,7 @@ chrono.workspace = true
 merman-core.workspace = true
 merman-ascii = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true }

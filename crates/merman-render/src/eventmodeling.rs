@@ -34,15 +34,6 @@ const HTML_LABEL_TEXT_WIDTH_OFFSET: f64 = 6.0;
 const HTML_LABEL_DATA_WIDTH_SCALE: f64 = 1.047;
 const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
-pub fn layout_eventmodeling_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<EventModelingDiagramLayout> {
-    let model: EventModelingDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_eventmodeling_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_eventmodeling_diagram_typed(
     model: &EventModelingDiagramRenderModel,
     effective_config: &Value,

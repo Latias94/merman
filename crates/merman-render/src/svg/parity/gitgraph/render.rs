@@ -491,42 +491,6 @@ fn parse_gitgraph_label_font_size_px(raw: &str) -> f64 {
         .max(1.0)
 }
 
-pub(crate) fn render_gitgraph_diagram_svg(
-    layout: &crate::model::GitGraphDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let diagram_title = semantic
-        .get("title")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|title| !title.is_empty())
-        .or(diagram_title);
-    let acc_title = semantic
-        .get("accTitle")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
-    let acc_descr = semantic
-        .get("accDescr")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim_end_matches('\n'))
-        .filter(|s| !s.is_empty());
-
-    render_gitgraph_diagram_svg_with_accessibility(
-        layout,
-        acc_title,
-        acc_descr,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(crate) fn render_gitgraph_diagram_svg_model(
     layout: &crate::model::GitGraphDiagramLayout,
     model: &merman_core::diagrams::git_graph::GitGraphRenderModel,
@@ -1465,37 +1429,6 @@ mod tests {
             r#"class="gitTitleText" xmlns="http://www.w3.org/2000/svg">Body &amp; Title</text>"#
         ));
         assert!(!svg.contains("Metadata Title"));
-    }
-
-    #[test]
-    fn gitgraph_compat_body_title_renders_and_overrides_metadata_title() {
-        let layout = lr_merge_layout(-2.0);
-        let semantic = json!({
-            "title": "Body & Title",
-            "accTitle": null,
-            "accDescr": null
-        });
-        let measurer = crate::text::DeterministicTextMeasurer::default();
-        let options = SvgRenderOptions::default();
-
-        let body_only =
-            render_gitgraph_diagram_svg(&layout, &semantic, &json!({}), None, &measurer, &options)
-                .expect("render compatibility gitGraph SVG with body title");
-        assert!(body_only.contains(
-            r#"class="gitTitleText" xmlns="http://www.w3.org/2000/svg">Body &amp; Title</text>"#
-        ));
-
-        let with_metadata = render_gitgraph_diagram_svg(
-            &layout,
-            &semantic,
-            &json!({}),
-            Some("Metadata Title"),
-            &measurer,
-            &options,
-        )
-        .expect("render compatibility gitGraph SVG with competing metadata title");
-        assert!(with_metadata.contains("Body &amp; Title"));
-        assert!(!with_metadata.contains("Metadata Title"));
     }
 
     #[test]

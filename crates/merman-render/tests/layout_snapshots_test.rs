@@ -3,7 +3,8 @@ mod common;
 
 use common::legacy_init_theme_compat_config;
 use merman_core::{Engine, ParseOptions};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::family;
 use regex::Regex;
 use serde_json::Value as JsonValue;
 use std::fs;
@@ -149,12 +150,10 @@ fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn fixtures_match_layout_golden_snapshots_when_present() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let environment = merman_render::environment::RenderEnvironment::parity()
         .with_text_measurement_policy(
             merman_render::environment::TextMeasurementPolicy::deterministic(),
-        )
-        .begin_session()
-        .unwrap();
+        );
     // Pin a fixed local timezone offset so Gantt (and related layout logic) stays deterministic on CI.
     merman_core::time::with_fixed_local_offset_minutes(Some(0), || {
         let fixtures_root = workspace_root().join("fixtures");
@@ -189,7 +188,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                 }
             };
 
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
+            let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
                 &text,
                 ParseOptions {
                     suppress_errors: true,
@@ -206,7 +205,9 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                 }
             };
 
-            let layouted = match layout_parsed(&parsed, &layout_opts, &_session) {
+            let diagram_type = parsed.meta.diagram_type.clone();
+            let session = environment.begin_session().expect("begin render session");
+            let artifact = match family::prepare(parsed, &layout_opts, session) {
                 Ok(v) => v,
                 Err(merman_render::Error::UnsupportedDiagram { .. }) => {
                     continue;
@@ -217,15 +218,26 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                 }
             };
 
-            let mut layout_json =
-                serde_json::to_value(&layouted.layout).expect("serialize layout to JSON");
+            let mut layout_json = match artifact.layout_json() {
+                Ok(mut artifact_json) => artifact_json
+                    .get_mut("layout")
+                    .map(JsonValue::take)
+                    .expect("layout artifact contains layout projection"),
+                Err(err) => {
+                    failures.push(format!(
+                        "layout serialization failed for {}: {err}",
+                        mmd_path.display()
+                    ));
+                    continue;
+                }
+            };
             round_json_numbers(&mut layout_json, 3);
 
             let mut actual = serde_json::json!({
-                "diagramType": parsed.meta.diagram_type,
+                "diagramType": diagram_type,
                 "layout": layout_json,
             });
-            normalize_dynamic_fields(&parsed.meta.diagram_type, &mut actual);
+            normalize_dynamic_fields(&diagram_type, &mut actual);
 
             let expected_text = match fs::read_to_string(&golden_path) {
                 Ok(v) => v,
@@ -248,7 +260,7 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
                     continue;
                 }
             };
-            normalize_dynamic_fields(&parsed.meta.diagram_type, &mut expected);
+            normalize_dynamic_fields(&diagram_type, &mut expected);
 
             if actual != expected {
                 failures.push(format!(

@@ -102,36 +102,46 @@ fn gantt_typed_projection_matches_compatibility_semantics() {
         "dateFormat YYYY-MM-DD\n",
         "axisFormat %Y-%m-%d\n",
         "todayMarker stroke-width:2px\n",
+        "inclusiveEndDates\n",
         "section Delivery\n",
         "Build: crit,build,2026-01-01,2d\n",
+        "click build href \"https://example.com/\" onBuild\n",
     );
+    let effective_config = MermaidConfig::from_value(json!({ "securityLevel": "loose" }));
     let meta = ParseMetadata {
         diagram_type: "gantt".to_string(),
         config: MermaidConfig::default(),
-        effective_config: MermaidConfig::default(),
+        effective_config,
         title: None,
     };
     let compat = parse_gantt(text, &meta).unwrap();
     let typed = parse_gantt_model_for_render(text, &meta).unwrap();
 
-    assert_eq!(serde_json::to_value(&typed.title).unwrap(), compat["title"]);
-    assert_eq!(
-        serde_json::to_value(&typed.acc_title).unwrap(),
-        compat["accTitle"]
-    );
-    assert_eq!(
-        serde_json::to_value(&typed.acc_descr).unwrap(),
-        compat["accDescr"]
-    );
-    assert_eq!(typed.date_format, compat["dateFormat"]);
-    assert_eq!(typed.axis_format, compat["axisFormat"]);
-    assert_eq!(typed.today_marker, compat["todayMarker"]);
-    assert_eq!(typed.tasks.len(), compat["tasks"].as_array().unwrap().len());
-    assert_eq!(typed.tasks[0].id, compat["tasks"][0]["id"]);
-    assert_eq!(typed.tasks[0].task, compat["tasks"][0]["task"]);
-    assert_eq!(typed.tasks[0].section, compat["tasks"][0]["section"]);
-    assert_eq!(typed.tasks[0].start_ms, compat["tasks"][0]["startTime"]);
-    assert_eq!(typed.tasks[0].end_ms, compat["tasks"][0]["endTime"]);
+    assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
+    assert_eq!(compat["type"], "gantt");
+    assert!(compat["tickInterval"].is_null());
+    assert_eq!(compat["links"]["build"], "https://example.com/");
+    assert_eq!(compat["clickEvents"]["build"]["function_name"], "onBuild");
+}
+
+#[test]
+fn gantt_typed_projection_preserves_empty_and_header_only_output_states() {
+    let meta = ParseMetadata {
+        diagram_type: "gantt".to_string(),
+        config: MermaidConfig::empty_object(),
+        effective_config: MermaidConfig::empty_object(),
+        title: None,
+    };
+    for source in ["", "gantt"] {
+        let compat = parse_gantt(source, &meta).unwrap();
+        let typed = parse_gantt_model_for_render(source, &meta).unwrap();
+
+        assert_eq!(
+            render_model_to_compat_json(&typed, &meta).unwrap(),
+            compat,
+            "projection drift for {source:?}"
+        );
+    }
 }
 
 #[test]

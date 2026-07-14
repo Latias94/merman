@@ -959,17 +959,8 @@ fn line_path(points: &[(f64, f64)]) -> Option<String> {
     Some(out)
 }
 
-pub(crate) fn layout_xychart_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    text_measurer: &dyn TextMeasurer,
-) -> Result<XyChartDiagramLayout> {
-    let model: XyChartDiagramRenderModel =
-        crate::json::from_value_ref(semantic).map_err(Error::Json)?;
-    layout_xychart_diagram_typed(&model, effective_config, text_measurer)
-}
-
-pub(crate) fn layout_xychart_diagram_typed(
+/// Lays out a typed XYChart render model without a compatibility-JSON round trip.
+pub fn layout_xychart_diagram_typed(
     model: &XyChartDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,

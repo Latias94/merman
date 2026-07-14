@@ -889,7 +889,7 @@ pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let Some(model) = source.model else {
         return Ok(json!({}));
     };
-    Ok(model.to_compat_json(meta))
+    render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_xychart_json_and_editor_facts(
@@ -901,7 +901,10 @@ pub(crate) fn parse_xychart_json_and_editor_facts(
         editor_facts,
     } = construct_xychart_semantic_source(code, meta)
         .map_err(XyChartSemanticFailure::into_error)?;
-    let model = model.map_or_else(|| json!({}), |model| model.to_compat_json(meta));
+    let model = match model {
+        Some(model) => render_model_to_compat_json(&model, meta)?,
+        None => json!({}),
+    };
     Ok((model, editor_facts))
 }
 
@@ -912,6 +915,13 @@ pub fn parse_xychart_model_for_render(
     construct_xychart_semantic_source(code, meta)
         .map(|source| source.model.unwrap_or_else(empty_render_model))
         .map_err(XyChartSemanticFailure::into_error)
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &XyChartDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    Ok(model.to_compat_json(meta))
 }
 
 pub fn parse_xychart_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
@@ -2242,6 +2252,28 @@ bar [1, 2]
                 );
             }
         }
+    }
+
+    #[test]
+    fn xychart_typed_projection_matches_complete_compat_json() {
+        let text = "xychart\nx-axis [Q1, Q2]\nline [1, 2]\n";
+        let engine = Engine::new();
+        let parsed = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect("XYChart compatibility parse succeeds")
+            .expect("XYChart compatibility parse returns a diagram");
+        let typed = parse_xychart_model_for_render(text, &parsed.meta)
+            .expect("XYChart typed parse succeeds");
+
+        let projection = render_model_to_compat_json(&typed, &parsed.meta)
+            .expect("XYChart compatibility projection succeeds");
+
+        assert_eq!(projection, parsed.model);
+        assert_eq!(projection["type"], json!("xychart"));
+        assert!(projection["config"].is_object());
+        assert_eq!(projection["title"], Value::Null);
+        assert_eq!(projection["accTitle"], Value::Null);
+        assert_eq!(projection["accDescr"], Value::Null);
     }
 
     #[test]

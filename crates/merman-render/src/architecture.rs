@@ -3,7 +3,6 @@ use crate::architecture_metrics::{
     architecture_measure_cytoscape_node_bbox_extras, architecture_node_bbox_extras_to_manatee,
 };
 use crate::config::{config_f64, json_f64, value_at};
-use crate::json::from_value_ref;
 use crate::model::{
     ArchitectureCompoundBounds, ArchitectureCytoscapeServiceBounds,
     ArchitectureCytoscapeServiceLabelMetrics, ArchitectureDiagramLayout,
@@ -17,7 +16,6 @@ use merman_core::diagrams::architecture::{
     ArchitectureDiagramRenderModel, ArchitectureLayoutDirection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
-use serde::Deserialize;
 use serde_json::Value;
 
 fn architecture_relative_placement_constraints<'a>(
@@ -123,62 +121,10 @@ fn config_bool(cfg: &Value, path: &[&str]) -> Option<bool> {
     cur.as_bool()
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureNodeModel {
-    id: String,
-    #[serde(rename = "type")]
-    node_type: String,
-    #[serde(default)]
-    title: Option<String>,
-    #[serde(default, rename = "in")]
-    in_group: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureEdgeModel {
-    #[serde(rename = "lhsId", alias = "lhs")]
-    lhs_id: String,
-    #[serde(rename = "rhsId", alias = "rhs")]
-    rhs_id: String,
-    #[serde(default, rename = "lhsDir")]
-    lhs_dir: Option<String>,
-    #[serde(default, rename = "rhsDir")]
-    rhs_dir: Option<String>,
-    #[serde(default)]
-    title: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureGroupModel {
-    id: String,
-    #[serde(default, rename = "in")]
-    in_group: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureModel {
-    #[serde(default)]
-    nodes: Vec<ArchitectureNodeModel>,
-    #[serde(default)]
-    groups: Vec<ArchitectureGroupModel>,
-    #[serde(default)]
-    edges: Vec<ArchitectureEdgeModel>,
-    #[serde(default, rename = "layoutHints")]
-    layout_hints: Vec<ArchitectureLayoutHintModel>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct ArchitectureLayoutHintModel {
-    direction: String,
-    #[serde(default)]
-    members: Vec<String>,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArchitectureNodeType {
     Service,
     Junction,
-    Other,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -470,67 +416,6 @@ struct ArchitectureModelView<'a> {
 }
 
 impl<'a> ArchitectureModelView<'a> {
-    fn from_json(model: &'a ArchitectureModel) -> Self {
-        let nodes = model
-            .nodes
-            .iter()
-            .map(|n| ArchitectureNodeView {
-                id: n.id.as_str(),
-                node_type: match n.node_type.as_str() {
-                    "service" => ArchitectureNodeType::Service,
-                    "junction" => ArchitectureNodeType::Junction,
-                    _ => ArchitectureNodeType::Other,
-                },
-                title: n.title.as_deref(),
-                in_group: n.in_group.as_deref(),
-            })
-            .collect();
-
-        let groups = model
-            .groups
-            .iter()
-            .map(|g| ArchitectureGroupView {
-                id: g.id.as_str(),
-                in_group: g.in_group.as_deref(),
-            })
-            .collect();
-
-        let edges = model
-            .edges
-            .iter()
-            .map(|e| ArchitectureEdgeView {
-                lhs_id: e.lhs_id.as_str(),
-                rhs_id: e.rhs_id.as_str(),
-                lhs_dir: e.lhs_dir.as_deref().and_then(|s| s.chars().next()),
-                rhs_dir: e.rhs_dir.as_deref().and_then(|s| s.chars().next()),
-                title: e.title.as_deref(),
-            })
-            .collect();
-
-        let layout_hints = model
-            .layout_hints
-            .iter()
-            .filter_map(|hint| {
-                let direction = match hint.direction.as_str() {
-                    "row" => ArchitectureLayoutDirection::Row,
-                    "column" => ArchitectureLayoutDirection::Column,
-                    _ => return None,
-                };
-                Some(ArchitectureLayoutHintView {
-                    direction,
-                    members: hint.members.iter().map(String::as_str).collect(),
-                })
-            })
-            .collect();
-
-        Self {
-            nodes,
-            groups,
-            edges,
-            layout_hints,
-        }
-    }
-
     fn from_typed(model: &'a ArchitectureDiagramRenderModel) -> Self {
         let nodes = model
             .nodes
@@ -1348,24 +1233,6 @@ fn project_architecture_fcose_result(
     }
 }
 
-pub fn layout_architecture_diagram(
-    model: &Value,
-    effective_config: &Value,
-    _text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
-    ambient_seed: u64,
-) -> Result<ArchitectureDiagramLayout> {
-    let model_json: ArchitectureModel = from_value_ref(model)?;
-    let model_view = ArchitectureModelView::from_json(&model_json);
-    layout_architecture_diagram_model(
-        &model_view,
-        effective_config,
-        _text_measurer,
-        use_manatee_layout,
-        ambient_seed,
-    )
-}
-
 pub fn layout_architecture_diagram_typed(
     model: &ArchitectureDiagramRenderModel,
     effective_config: &Value,
@@ -1380,6 +1247,25 @@ pub fn layout_architecture_diagram_typed(
         text_measurer,
         use_manatee_layout,
         ambient_seed,
+    )
+}
+
+/// Renders a typed Architecture model and layout without compatibility JSON.
+pub fn render_architecture_diagram_typed_with_debug(
+    layout: &ArchitectureDiagramLayout,
+    model: &ArchitectureDiagramRenderModel,
+    effective_config: &merman_core::MermaidConfig,
+    session: &crate::environment::RenderSession,
+    options: &crate::svg::SvgRenderOptions,
+    debug: &crate::svg::SvgDebugOptions,
+) -> Result<String> {
+    crate::svg::render_architecture_diagram_svg_model_with_config_and_debug(
+        layout,
+        model,
+        effective_config,
+        session,
+        options,
+        debug,
     )
 }
 
@@ -1434,15 +1320,6 @@ fn layout_architecture_diagram_model(
 
     // Emit nodes in Mermaid model order (stable for snapshots and close to upstream).
     for n in &model.nodes {
-        match n.node_type {
-            ArchitectureNodeType::Service | ArchitectureNodeType::Junction => {}
-            other => {
-                return Err(Error::InvalidModel {
-                    message: format!("unsupported architecture node type: {other:?}"),
-                });
-            }
-        }
-
         nodes.push(LayoutNode {
             id: n.id.to_string(),
             // Cytoscape nodes default to `{ x: 0, y: 0 }` centers before the first layout run.

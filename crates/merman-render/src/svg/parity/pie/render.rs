@@ -156,16 +156,6 @@ fn apply_empty_pie_root_viewport(
     true
 }
 
-pub(crate) fn render_pie_diagram_svg(
-    layout: &PieDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_pie_diagram_svg_model(layout, &model, effective_config, options)
-}
-
 pub(crate) fn render_pie_diagram_svg_model(
     layout: &PieDiagramLayout,
     model: &PieDiagramRenderModel,

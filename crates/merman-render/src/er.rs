@@ -11,7 +11,6 @@ mod config;
 use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 
-pub(crate) type ErModel = merman_core::diagrams::er::ErDiagramRenderModel;
 pub(crate) type ErEntity = merman_core::diagrams::er::ErEntityRenderModel;
 pub(crate) type ErRelationship = merman_core::diagrams::er::ErRelationshipRenderModel;
 pub(crate) type ErClassDef = merman_core::diagrams::er::ErClassDefRenderModel;
@@ -618,15 +617,6 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
         "MD_PARENT" => None,
         _ => None,
     }
-}
-
-pub fn layout_er_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<ErDiagramLayout> {
-    let model: ErModel = crate::json::from_value_ref(semantic)?;
-    layout_er_diagram_typed(&model, effective_config, measurer)
 }
 
 pub fn layout_er_diagram_typed(

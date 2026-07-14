@@ -105,32 +105,6 @@ pub(crate) fn sequence_block_widths_for_render(
     .collect()
 }
 
-pub fn layout_sequence_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<SequenceDiagramLayout> {
-    layout_sequence_diagram_with_title(semantic, None, effective_config, measurer, math_renderer)
-}
-
-pub fn layout_sequence_diagram_with_title(
-    semantic: &Value,
-    diagram_title: Option<&str>,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<SequenceDiagramLayout> {
-    let model: SequenceDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_sequence_diagram_typed_with_title(
-        &model,
-        diagram_title,
-        effective_config,
-        measurer,
-        math_renderer,
-    )
-}
-
 pub fn layout_sequence_diagram_typed(
     model: &SequenceDiagramRenderModel,
     effective_config: &Value,

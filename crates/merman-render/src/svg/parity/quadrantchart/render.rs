@@ -4,7 +4,6 @@ use super::super::*;
 
 pub(crate) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
-    _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {

@@ -1,9 +1,9 @@
 use futures::executor::block_on;
 use merman_core::{Engine, ParseOptions};
+use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_er_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::io::Read;
 
 fn main() {
@@ -13,28 +13,16 @@ fn main() {
         .expect("read stdin");
 
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(&input, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(&input, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout_options = LayoutOptions::default();
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("begin render session");
-    let layouted = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let LayoutDiagram::ErDiagram(layout) = &layouted.layout else {
-        panic!("expected ErDiagram layout");
-    };
-
-    let svg = render_er_diagram_svg(
-        layout,
-        &layouted.semantic,
-        &layouted.meta.effective_config,
-        layouted.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
-
-    print!("{svg}");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg");
+    print!("{}", rendered.svg());
 }

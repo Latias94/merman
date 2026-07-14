@@ -1,5 +1,7 @@
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use merman::render::{LayoutOptions, RenderEnvironment, SvgRenderOptions, headless_layout_options};
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
+use merman::render::{
+    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
+};
 use merman_core::{DetectorRegistry, Engine, ParseMetadata, ParseOptions};
 use std::hint::black_box;
 
@@ -163,53 +165,6 @@ fn frontmatter_fixtures() -> Vec<(&'static str, &'static str)> {
             include_str!("fixtures/frontmatter_deep_config.mmd"),
         ),
     ]
-}
-
-fn layout_digest(layout: &merman_render::model::LayoutDiagram) -> u64 {
-    use merman_render::model::LayoutDiagram;
-
-    fn mix(acc: u64, v: u64) -> u64 {
-        acc.rotate_left(7) ^ v.wrapping_mul(0x9E37_79B9_7F4A_7C15)
-    }
-
-    fn f64_bits(v: f64) -> u64 {
-        v.to_bits()
-    }
-
-    fn digest_nodes_edges(
-        nodes: &[merman_render::model::LayoutNode],
-        edges: &[merman_render::model::LayoutEdge],
-    ) -> u64 {
-        let mut acc: u64 = 0;
-        for n in nodes.iter().take(16) {
-            acc = mix(acc, f64_bits(n.x));
-            acc = mix(acc, f64_bits(n.y));
-            acc = mix(acc, f64_bits(n.width));
-            acc = mix(acc, f64_bits(n.height));
-        }
-        for e in edges.iter().take(16) {
-            if let Some(p) = e.points.first() {
-                acc = mix(acc, f64_bits(p.x));
-                acc = mix(acc, f64_bits(p.y));
-            }
-            if let Some(p) = e.points.last() {
-                acc = mix(acc, f64_bits(p.x));
-                acc = mix(acc, f64_bits(p.y));
-            }
-        }
-        acc
-    }
-
-    match layout {
-        // Cheap, layout-dependent digests to keep the optimizer honest without serializing.
-        LayoutDiagram::FlowchartV2(v) => digest_nodes_edges(&v.nodes, &v.edges),
-        LayoutDiagram::SequenceDiagram(v) => digest_nodes_edges(&v.nodes, &v.edges),
-        LayoutDiagram::StateDiagramV2(v) => digest_nodes_edges(&v.nodes, &v.edges),
-        LayoutDiagram::ClassDiagramV2(v) => digest_nodes_edges(&v.nodes, &v.edges),
-        LayoutDiagram::ArchitectureDiagram(v) => digest_nodes_edges(&v.nodes, &v.edges),
-        LayoutDiagram::MindmapDiagram(v) => digest_nodes_edges(&v.nodes, &v.edges),
-        _ => 0,
-    }
 }
 
 fn bench_parse(c: &mut Criterion) {
@@ -376,24 +331,32 @@ fn bench_layout(c: &mut Criterion) {
         };
 
         // Pre-check that layout works.
-        let session = environment.begin_session().expect("render session");
-        if merman_render::layout_parsed_render_layout_only(&parsed, &layout, &session).is_err() {
+        if merman_render::family::prepare(
+            parsed.clone(),
+            &layout,
+            environment.begin_session().expect("render session"),
+        )
+        .is_err()
+        {
             eprintln!("[bench][skip][layout] {name}: layout error");
             continue;
         }
 
         group.bench_with_input(BenchmarkId::from_parameter(name), &parsed, |b, data| {
-            b.iter(|| {
-                let diagram = match merman_render::layout_parsed_render_layout_only(
-                    black_box(data),
-                    &layout,
-                    &session,
-                ) {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
-                black_box(layout_digest(&diagram));
-            })
+            b.iter_batched(
+                || {
+                    (
+                        (*data).clone(),
+                        environment.begin_session().expect("render session"),
+                    )
+                },
+                |(parsed, session)| {
+                    let artifact =
+                        merman_render::family::prepare(parsed, &layout, session).expect("layout");
+                    black_box(artifact);
+                },
+                BatchSize::SmallInput,
+            )
         });
     }
     group.finish();
@@ -415,52 +378,47 @@ fn bench_render(c: &mut Criterion) {
                 continue;
             }
         };
-        let session = environment.begin_session().expect("render session");
-        let layouted =
-            match merman_render::layout_parsed_render_layout_only(&parsed, &layout, &session) {
-                Ok(v) => v,
-                Err(_) => {
-                    eprintln!("[bench][skip][render] {name}: layout error");
-                    continue;
-                }
-            };
-
         let svg_opts = SvgRenderOptions {
             diagram_id: Some(merman::render::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
 
         // Pre-check that SVG rendering works.
-        if merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-            &layouted,
-            &parsed.model,
-            &parsed.meta.effective_config,
-            parsed.meta.title.as_deref(),
-            &session,
-            &svg_opts,
-        )
-        .is_err()
+        let preflight = merman_render::family::prepare(
+            parsed.clone(),
+            &layout,
+            environment.begin_session().expect("render session"),
+        );
+        let Ok(preflight) = preflight else {
+            eprintln!("[bench][skip][render] {name}: layout error");
+            continue;
+        };
+        if preflight
+            .render_svg(&svg_opts, &SvgDebugOptions::default())
+            .is_err()
         {
             eprintln!("[bench][skip][render] {name}: svg render error");
             continue;
         }
 
-        group.bench_with_input(BenchmarkId::from_parameter(name), &layouted, |b, data| {
-            b.iter(|| {
-                let svg =
-                    match merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-                        black_box(data),
-                        &parsed.model,
-                        &parsed.meta.effective_config,
-                        parsed.meta.title.as_deref(),
-                        &session,
-                        &svg_opts,
-                    ) {
-                        Ok(v) => v,
-                        Err(_) => return,
-                    };
-                black_box(svg.len());
-            })
+        group.bench_with_input(BenchmarkId::from_parameter(name), &parsed, |b, data| {
+            b.iter_batched(
+                || {
+                    merman_render::family::prepare(
+                        (*data).clone(),
+                        &layout,
+                        environment.begin_session().expect("render session"),
+                    )
+                    .expect("prepare")
+                },
+                |artifact| {
+                    let svg = artifact
+                        .render_svg(&svg_opts, &SvgDebugOptions::default())
+                        .expect("render");
+                    black_box(svg.svg().len());
+                },
+                BatchSize::SmallInput,
+            )
         });
     }
     group.finish();

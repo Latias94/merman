@@ -8,7 +8,8 @@ use std::collections::hash_map::Entry;
 use super::{
     Note, StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
     StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
-    StateDiagramRenderState, StateDiagramRenderStyleClass, StateStmt, Stmt,
+    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass, StateStmt,
+    Stmt,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -35,31 +36,6 @@ struct StateRecord {
     styles: Vec<String>,
     text_styles: Vec<String>,
     start: Option<bool>,
-}
-
-impl StateRecord {
-    fn to_json(&self, doc: Option<Value>) -> Value {
-        let mut obj = Map::new();
-        obj.insert("id".to_string(), Value::String(self.id.clone()));
-        obj.insert("type".to_string(), Value::String(self.ty.clone()));
-        obj.insert(
-            "descriptions".to_string(),
-            string_array_value(&self.descriptions),
-        );
-        obj.insert("doc".to_string(), doc.unwrap_or(Value::Null));
-        obj.insert(
-            "note".to_string(),
-            self.note.as_ref().map(note_to_json).unwrap_or(Value::Null),
-        );
-        obj.insert("classes".to_string(), string_array_value(&self.classes));
-        obj.insert("styles".to_string(), string_array_value(&self.styles));
-        obj.insert(
-            "textStyles".to_string(),
-            string_array_value(&self.text_styles),
-        );
-        obj.insert("start".to_string(), option_bool_value(self.start));
-        Value::Object(obj)
-    }
 }
 
 #[derive(Debug, Default)]
@@ -405,108 +381,8 @@ impl StateDb {
     }
 
     pub(super) fn to_model(&self, meta: &ParseMetadata) -> Result<Value> {
-        let mut doc_json_by_state_id = root_state_doc_json_by_id(&self.root_doc);
-        let mut states_json = Map::new();
-        for id in &self.state_order {
-            let Some(state) = self.states.get(id) else {
-                continue;
-            };
-            let doc = doc_json_by_state_id.remove(&state.id);
-            states_json.insert(state.id.clone(), state.to_json(doc));
-        }
-
-        let relations_json: Vec<Value> = self
-            .relations
-            .iter()
-            .map(|r| {
-                json!({
-                    "id1": r.id1,
-                    "id2": r.id2,
-                    "relationTitle": r.relation_title,
-                })
-            })
-            .collect();
-
-        let style_classes_json: serde_json::Map<String, Value> = self
-            .style_classes
-            .iter()
-            .map(|(k, sc)| {
-                (
-                    k.clone(),
-                    json!({
-                        "id": sc.id,
-                        "styles": sc.styles,
-                        "textStyles": sc.text_styles,
-                    }),
-                )
-            })
-            .collect();
-
-        let look = meta
-            .effective_config
-            .as_value()
-            .as_object()
-            .and_then(|o| o.get("look"))
-            .cloned()
-            .unwrap_or(Value::Null);
-
-        let (nodes_json, edges_json) = build_layout_data(
-            &self.root_doc,
-            &self.states,
-            &self.style_classes,
-            &meta.effective_config,
-            &look,
-        )
-        .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
-
-        let links_json: serde_json::Map<String, Value> = self
-            .links
-            .iter()
-            .map(|(k, links)| {
-                let mut out_links: Vec<Value> = links
-                    .iter()
-                    .map(|l| {
-                        json!({
-                            "url": l.url,
-                            "tooltip": l.tooltip,
-                        })
-                    })
-                    .collect();
-                let v = if out_links.len() == 1 {
-                    out_links.pop().unwrap_or(Value::Null)
-                } else {
-                    Value::Array(out_links)
-                };
-                (k.clone(), v)
-            })
-            .collect();
-
-        let mut root = Map::new();
-        root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-        // Mermaid's `StateDB.getData()` returns a layout-ready `{ nodes, edges, other, config, direction }`.
-        // We keep additional keys (`states`, `relations`, `styleClasses`, `links`) to help downstream
-        // integrations and parity debugging.
-        root.insert("nodes".to_string(), Value::Array(nodes_json));
-        root.insert("edges".to_string(), Value::Array(edges_json));
-        root.insert("other".to_string(), Value::Object(Map::new()));
-        root.insert(
-            "config".to_string(),
-            crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
-        );
-        root.insert(
-            "direction".to_string(),
-            Value::String(self.direction.clone().unwrap_or_else(|| "TB".to_string())),
-        );
-        root.insert("accTitle".to_string(), option_string_value(&self.acc_title));
-        root.insert("accDescr".to_string(), option_string_value(&self.acc_descr));
-        root.insert("states".to_string(), Value::Object(states_json));
-        root.insert("relations".to_string(), Value::Array(relations_json));
-        root.insert(
-            "styleClasses".to_string(),
-            Value::Object(style_classes_json),
-        );
-        root.insert("links".to_string(), Value::Object(links_json));
-        Ok(Value::Object(root))
+        let model = self.to_model_for_render_typed(meta)?;
+        super::render_model_to_compat_json(&model, meta)
     }
 
     pub(super) fn to_model_for_render_typed(
@@ -521,6 +397,7 @@ impl StateDb {
         )
         .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
 
+        let mut doc_json_by_state_id = root_state_doc_json_by_id(&self.root_doc);
         let states: HashMap<String, StateDiagramRenderState> = self
             .state_order
             .iter()
@@ -530,7 +407,30 @@ impl StateDb {
                     position: n.position.clone(),
                     text: n.text.clone(),
                 });
-                (s.id.clone(), StateDiagramRenderState { note })
+                (
+                    s.id.clone(),
+                    StateDiagramRenderState {
+                        id: s.id.clone(),
+                        state_type: s.ty.clone(),
+                        descriptions: s.descriptions.clone(),
+                        doc: doc_json_by_state_id.remove(&s.id),
+                        note,
+                        classes: s.classes.clone(),
+                        styles: s.styles.clone(),
+                        text_styles: s.text_styles.clone(),
+                        start: s.start,
+                    },
+                )
+            })
+            .collect();
+
+        let relations = self
+            .relations
+            .iter()
+            .map(|relation| StateDiagramRenderRelation {
+                id1: relation.id1.clone(),
+                id2: relation.id2.clone(),
+                relation_title: relation.relation_title.clone(),
             })
             .collect();
 
@@ -579,6 +479,7 @@ impl StateDb {
             acc_descr: self.acc_descr.clone(),
             nodes,
             edges,
+            relations,
             links,
             states,
             style_classes,
@@ -600,12 +501,6 @@ struct Link {
 }
 
 const DEFAULT_NESTED_DOC_DIR: &str = "TB";
-
-const G_EDGE_STYLE: &str = "fill:none";
-const G_EDGE_ARROWHEADSTYLE: &str = "fill: #333";
-const G_EDGE_LABELPOS: &str = "c";
-const G_EDGE_LABELTYPE: &str = "text";
-const G_EDGE_THICKNESS: &str = "normal";
 
 const DOMID_STATE: &str = "state";
 const DOMID_TYPE_SPACER: &str = "----";
@@ -648,17 +543,6 @@ fn option_string_value(value: &Option<String>) -> Value {
         .as_ref()
         .map(|v| Value::String(v.clone()))
         .unwrap_or(Value::Null)
-}
-
-fn option_bool_value(value: Option<bool>) -> Value {
-    value.map(Value::Bool).unwrap_or(Value::Null)
-}
-
-fn note_to_json(note: &Note) -> Value {
-    let mut obj = Map::new();
-    obj.insert("position".to_string(), option_string_value(&note.position));
-    obj.insert("text".to_string(), Value::String(note.text.clone()));
-    Value::Object(obj)
 }
 
 fn drop_doc_nonrecursive(doc: Vec<Stmt>) {
@@ -765,27 +649,6 @@ fn compiled_styles(css_classes: &str, classes: &IndexMap<String, StyleClass>) ->
     out
 }
 
-fn upsert_node(nodes: &mut Vec<Value>, index: &mut HashMap<String, usize>, node: Value) {
-    let Some(id) = node.get("id").and_then(|v| v.as_str()) else {
-        return;
-    };
-    match index.entry(id.to_string()) {
-        Entry::Occupied(o) => {
-            if let Some(dst) = nodes.get_mut(*o.get())
-                && let (Some(dst_obj), Some(src_obj)) = (dst.as_object_mut(), node.as_object())
-            {
-                for (k, v) in src_obj {
-                    dst_obj.insert(k.clone(), v.clone());
-                }
-            }
-        }
-        Entry::Vacant(v) => {
-            v.insert(nodes.len());
-            nodes.push(node);
-        }
-    }
-}
-
 fn upsert_node_typed(
     nodes: &mut Vec<StateDiagramRenderNode>,
     index: &mut HashMap<String, usize>,
@@ -816,10 +679,6 @@ fn arrow_type_end_for_look_name(look: Option<&str>) -> &'static str {
     } else {
         "arrow_barb"
     }
-}
-
-fn arrow_type_end_for_look(look: &Value) -> &'static str {
-    arrow_type_end_for_look_name(look.as_str())
 }
 
 fn build_layout_data_typed(
@@ -1014,6 +873,7 @@ fn build_layout_data_typed(
             description: None,
             dom_id,
             is_group: entry.is_group,
+            node_type: entry.node_type.clone(),
             parent_id: entry.parent_id.clone(),
             css_classes: entry.css_classes.clone(),
             css_compiled_styles: Vec::new(),
@@ -1052,6 +912,7 @@ fn build_layout_data_typed(
                 description: None,
                 dom_id: group_dom_id,
                 is_group: true,
+                node_type: Some("group".to_string()),
                 parent_id: None,
                 css_classes: node.css_classes.clone(),
                 css_compiled_styles: Vec::new(),
@@ -1073,6 +934,7 @@ fn build_layout_data_typed(
                 description: None,
                 dom_id: note_dom_id,
                 is_group: entry.is_group,
+                node_type: entry.node_type.clone(),
                 parent_id: Some(parent_node_id.clone()),
                 css_classes: CSS_DIAGRAM_NOTE.to_string(),
                 css_compiled_styles: Vec::new(),
@@ -1147,369 +1009,7 @@ fn build_layout_data_typed(
             return Err("Group nodes can only have label".to_string());
         }
         node.label = Some(label0);
-        if !rest.is_empty() {
-            node.description = Some(rest);
-        }
-    }
-
-    Ok((nodes, edges))
-}
-
-fn build_layout_data(
-    root_doc: &[Stmt],
-    states: &HashMap<String, StateRecord>,
-    classes: &IndexMap<String, StyleClass>,
-    config: &MermaidConfig,
-    look: &Value,
-) -> std::result::Result<(Vec<Value>, Vec<Value>), String> {
-    let mut nodes: Vec<Value> = Vec::new();
-    let mut edges: Vec<Value> = Vec::new();
-    let mut node_index: HashMap<String, usize> = HashMap::new();
-
-    let mut node_db: HashMap<String, NodeScratch> = HashMap::new();
-    let mut graph_item_count: usize = 0;
-
-    struct JsonLayoutContext<'a> {
-        states: &'a HashMap<String, StateRecord>,
-        classes: &'a IndexMap<String, StyleClass>,
-        config: &'a MermaidConfig,
-        look: &'a Value,
-        nodes: &'a mut Vec<Value>,
-        node_index: &'a mut HashMap<String, usize>,
-        edges: &'a mut Vec<Value>,
-        node_db: &'a mut HashMap<String, NodeScratch>,
-        graph_item_count: &'a mut usize,
-    }
-
-    fn setup_doc(
-        ctx: &mut JsonLayoutContext<'_>,
-        parent: Option<&StateStmt>,
-        doc: &[Stmt],
-        alt_flag: bool,
-    ) -> std::result::Result<(), String> {
-        struct DocFrame<'a> {
-            parent: Option<&'a StateStmt>,
-            doc: &'a [Stmt],
-            index: usize,
-            alt_flag: bool,
-        }
-
-        let mut stack = vec![DocFrame {
-            parent,
-            doc,
-            index: 0,
-            alt_flag,
-        }];
-
-        while let Some(frame) = stack.last_mut() {
-            let Some(item) = frame.doc.get(frame.index) else {
-                stack.pop();
-                continue;
-            };
-            frame.index += 1;
-            let parent = frame.parent;
-            let alt_flag = frame.alt_flag;
-
-            match item {
-                Stmt::State(s) => {
-                    data_fetcher(ctx, parent, s, alt_flag)?;
-                    if let Some(doc) = s.doc.as_ref() {
-                        stack.push(DocFrame {
-                            parent: Some(s),
-                            doc,
-                            index: 0,
-                            alt_flag: !alt_flag,
-                        });
-                    }
-                }
-                Stmt::Relation(relation) => {
-                    let relation = relation.as_ref();
-                    data_fetcher(ctx, parent, &relation.state1, alt_flag)?;
-                    data_fetcher(ctx, parent, &relation.state2, alt_flag)?;
-
-                    let edge_label_raw = relation.description.clone().unwrap_or_default();
-                    let edge_label = sanitize_text(&edge_label_raw, ctx.config);
-                    ctx.edges.push(json!({
-                        "id": format!("edge{}", *ctx.graph_item_count),
-                        "start": relation.state1.id,
-                        "end": relation.state2.id,
-                        "arrowhead": "normal",
-                        "arrowTypeEnd": arrow_type_end_for_look(ctx.look),
-                        "style": G_EDGE_STYLE,
-                        "labelStyle": "",
-                        "label": edge_label,
-                        "arrowheadStyle": G_EDGE_ARROWHEADSTYLE,
-                        "labelpos": G_EDGE_LABELPOS,
-                        "labelType": G_EDGE_LABELTYPE,
-                        "thickness": G_EDGE_THICKNESS,
-                        "classes": CSS_EDGE,
-                        "look": ctx.look,
-                    }));
-                    *ctx.graph_item_count += 1;
-                }
-                _ => {}
-            }
-        }
-        Ok(())
-    }
-
-    fn data_fetcher(
-        ctx: &mut JsonLayoutContext<'_>,
-        parent: Option<&StateStmt>,
-        parsed_item: &StateStmt,
-        alt_flag: bool,
-    ) -> std::result::Result<(), String> {
-        let item_id = parsed_item.id.clone();
-        if item_id == "root" || item_id.is_empty() {
-            return Ok(());
-        }
-
-        let states = ctx.states;
-        let classes = ctx.classes;
-        let config = ctx.config;
-        let look = ctx.look;
-
-        let db_state = states.get(&item_id);
-        let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
-        let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
-
-        let entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
-            let mut css_classes = String::new();
-            if !class_str.trim().is_empty() {
-                css_classes.push_str(class_str.trim());
-                css_classes.push(' ');
-            }
-            css_classes.push_str(CSS_DIAGRAM_STATE);
-
-            let mut shape = SHAPE_STATE.to_string();
-            if parsed_item.start == Some(true) {
-                shape = SHAPE_START.to_string();
-            } else if parsed_item.start == Some(false) {
-                shape = SHAPE_END.to_string();
-            }
-            if parsed_item.ty != "default" {
-                shape = parsed_item.ty.clone();
-            }
-
-            NodeScratch {
-                id: item_id.clone(),
-                shape,
-                label: json!(sanitize_text(&item_id, config)),
-                css_classes,
-                css_styles: styles.clone(),
-                node_type: None,
-                dir: None,
-                explicit_dir: None,
-                is_group: false,
-                parent_id: None,
-            }
-        });
-
-        apply_state_descriptions(
-            entry,
-            &item_id,
-            parsed_item.description.as_deref(),
-            &parsed_item.descriptions,
-            config,
-        );
-
-        // Group handling (composite states)
-        if entry.node_type.is_none()
-            && let Some(doc) = parsed_item.doc.as_ref()
-        {
-            entry.node_type = Some("group".to_string());
-            entry.is_group = true;
-            let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
-            entry.dir = Some(dir);
-            entry.explicit_dir = Some(doc.iter().any(|stmt| matches!(stmt, Stmt::Direction(_))));
-            entry.shape = if parsed_item.ty == "divider" {
-                SHAPE_DIVIDER.to_string()
-            } else {
-                SHAPE_GROUP.to_string()
-            };
-
-            let mut css = entry.css_classes.clone();
-            css.push(' ');
-            css.push_str(CSS_DIAGRAM_CLUSTER);
-            if alt_flag {
-                css.push(' ');
-                css.push_str(CSS_DIAGRAM_CLUSTER_ALT);
-            }
-            entry.css_classes = css;
-        }
-
-        if let Some(p) = parent
-            && p.id != "root"
-        {
-            entry.parent_id = Some(p.id.clone());
-        }
-
-        let mut node_data = json!({
-            "labelStyle": "",
-            "shape": entry.shape,
-            "label": entry.label,
-            "cssClasses": entry.css_classes,
-            "cssCompiledStyles": [],
-            "cssStyles": entry.css_styles,
-            "id": entry.id,
-            "dir": entry.dir,
-            "domId": state_dom_id(&item_id, *ctx.graph_item_count, None),
-            "type": entry.node_type,
-            "isGroup": entry.is_group,
-            "padding": 8,
-            "rx": 10,
-            "ry": 10,
-            "look": look,
-            "parentId": entry.parent_id,
-            "centerLabel": true,
-        });
-
-        if let Some(explicit_dir) = entry.explicit_dir
-            && let Some(obj) = node_data.as_object_mut()
-        {
-            obj.insert("explicitDir".to_string(), json!(explicit_dir));
-        }
-
-        if node_data["shape"].as_str() == Some(SHAPE_DIVIDER) {
-            node_data["label"] = json!("");
-        }
-
-        // Notes create a note node + note group + note edge
-        if let Some(mut n) = parsed_item.note.clone() {
-            let flowchart_padding = config
-                .as_value()
-                .as_object()
-                .and_then(|o| o.get("flowchart"))
-                .and_then(|v| v.as_object())
-                .and_then(|o| o.get("padding"))
-                .cloned()
-                .unwrap_or(Value::Null);
-
-            n.text = sanitize_text(&n.text, config);
-
-            let note_id = format!("{item_id}{NOTE_ID}-{}", *ctx.graph_item_count);
-            let parent_node_id = format!("{item_id}{PARENT_ID}");
-            let note_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(NOTE));
-            let group_dom_id = state_dom_id(&item_id, *ctx.graph_item_count, Some(PARENT));
-
-            let group_data = json!({
-                "labelStyle": "",
-                "shape": SHAPE_NOTEGROUP,
-                "label": n.text,
-                "cssClasses": entry.css_classes,
-                "cssStyles": [],
-                "cssCompiledStyles": [],
-                "id": parent_node_id,
-                "domId": group_dom_id,
-                "type": "group",
-                "isGroup": true,
-                "padding": 16,
-                "look": look,
-                "position": n.position,
-            });
-
-            let note_data = json!({
-                "labelStyle": "",
-                "shape": SHAPE_NOTE,
-                "label": n.text,
-                "cssClasses": CSS_DIAGRAM_NOTE,
-                "cssStyles": [],
-                "cssCompiledStyles": [],
-                "id": note_id,
-                "domId": note_dom_id,
-                "type": entry.node_type,
-                "isGroup": entry.is_group,
-                "padding": flowchart_padding,
-                "look": look,
-                "position": n.position,
-                "parentId": format!("{item_id}{PARENT_ID}"),
-            });
-
-            upsert_node(ctx.nodes, ctx.node_index, group_data);
-            upsert_node(ctx.nodes, ctx.node_index, note_data.clone());
-            upsert_node(ctx.nodes, ctx.node_index, node_data.clone());
-
-            // style compilation after insertion
-            for id in [parent_node_id.as_str(), note_id.as_str(), item_id.as_str()] {
-                if let Some(idx) = ctx.node_index.get(id).copied() {
-                    let css = ctx.nodes[idx]["cssClasses"].as_str().unwrap_or("");
-                    let compiled = compiled_styles(css, classes);
-                    if let Some(obj) = ctx.nodes[idx].as_object_mut() {
-                        obj.insert("cssCompiledStyles".to_string(), json!(compiled));
-                    }
-                }
-            }
-
-            let (mut from, mut to) = (item_id.clone(), note_id);
-            if n.position.as_deref() == Some("left of") {
-                std::mem::swap(&mut from, &mut to);
-            }
-
-            ctx.edges.push(json!({
-                "id": format!("{from}-{to}"),
-                "start": from,
-                "end": to,
-                "arrowhead": "none",
-                "arrowTypeEnd": "",
-                "style": G_EDGE_STYLE,
-                "labelStyle": "",
-                "classes": CSS_EDGE_NOTE_EDGE,
-                "arrowheadStyle": G_EDGE_ARROWHEADSTYLE,
-                "labelpos": G_EDGE_LABELPOS,
-                "labelType": G_EDGE_LABELTYPE,
-                "thickness": G_EDGE_THICKNESS,
-                "look": look,
-            }));
-            *ctx.graph_item_count += 1;
-        } else {
-            let css = node_data["cssClasses"].as_str().unwrap_or("");
-            let compiled = compiled_styles(css, classes);
-            if let Some(obj) = node_data.as_object_mut() {
-                obj.insert("cssCompiledStyles".to_string(), json!(compiled));
-            }
-            upsert_node(ctx.nodes, ctx.node_index, node_data);
-        }
-
-        Ok(())
-    }
-
-    {
-        let mut ctx = JsonLayoutContext {
-            states,
-            classes,
-            config,
-            look,
-            nodes: &mut nodes,
-            node_index: &mut node_index,
-            edges: &mut edges,
-            node_db: &mut node_db,
-            graph_item_count: &mut graph_item_count,
-        };
-        setup_doc(&mut ctx, None, root_doc, false)?;
-    }
-
-    // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
-    for node in nodes.iter_mut() {
-        let Some(obj) = node.as_object_mut() else {
-            continue;
-        };
-        let Some(label_val) = obj.get("label").cloned() else {
-            continue;
-        };
-        let Some(arr) = label_val.as_array() else {
-            continue;
-        };
-        if arr.is_empty() {
-            continue;
-        }
-        let label0 = arr[0].clone();
-        let rest: Vec<Value> = arr.iter().skip(1).cloned().collect();
-
-        if obj.get("isGroup").and_then(|v| v.as_bool()) == Some(true) && !rest.is_empty() {
-            return Err("Group nodes can only have label".to_string());
-        }
-        obj.insert("label".to_string(), label0);
-        obj.insert("description".to_string(), Value::Array(rest));
+        node.description = Some(rest);
     }
 
     Ok((nodes, edges))

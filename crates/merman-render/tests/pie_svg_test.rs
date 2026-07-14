@@ -1,53 +1,50 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
-use merman_render::model::{LayoutDiagram, PieDiagramLayout};
-use merman_render::svg::{SvgRenderOptions, render_pie_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy};
+use merman_render::family;
+use merman_render::model::PieDiagramLayout;
+use merman_render::pie::layout_pie_diagram_typed;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn layout_pie_from_text(text: &str) -> PieDiagramLayout {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .with_text_measurement_policy(
-            merman_render::environment::TextMeasurementPolicy::deterministic(),
-        )
-        .begin_session()
-        .unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let LayoutDiagram::PieDiagram(layout) = out.layout else {
-        panic!("expected PieDiagram layout");
+    let RenderSemanticModel::Pie(model) = &parsed.model else {
+        panic!("expected pie render model");
     };
-    *layout
+    let session = RenderEnvironment::parity()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .unwrap();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+
+    layout_pie_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+        .expect("layout ok")
 }
 
 fn render_pie_from_text(text: &str) -> String {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .with_text_measurement_policy(
-            merman_render::environment::TextMeasurementPolicy::deterministic(),
-        )
-        .begin_session()
-        .unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let LayoutDiagram::PieDiagram(layout) = &out.layout else {
-        panic!("expected PieDiagram layout");
-    };
+    let session = RenderEnvironment::parity()
+        .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
+        .begin_session()
+        .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
-    render_pie_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &_session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("svg render ok")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("svg render ok")
+        .svg()
+        .to_owned()
 }
 
 fn root_viewbox_width(svg: &str) -> f64 {

@@ -355,15 +355,6 @@ fn expand_bounds_for_node_text(
     }
 }
 
-pub fn layout_timeline_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<TimelineDiagramLayout> {
-    let model: TimelineDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_timeline_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_timeline_diagram_typed(
     model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
@@ -724,7 +715,8 @@ pub fn layout_timeline_diagram_typed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::{Engine, ParseOptions};
+    use crate::environment::{RenderEnvironment, TextMeasurementPhase};
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::path::PathBuf;
 
     const LONG_WORD: &str = "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious";
@@ -733,6 +725,20 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
+    }
+
+    fn layout_timeline(source: &str) -> TimelineDiagramLayout {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .expect("parse ok")
+            .expect("diagram detected");
+        let RenderSemanticModel::Timeline(model) = &parsed.model else {
+            panic!("expected timeline render model");
+        };
+        let session = RenderEnvironment::parity().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        layout_timeline_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+            .expect("layout ok")
     }
 
     #[test]
@@ -782,25 +788,13 @@ mod tests {
 
     #[test]
     fn long_word_wrap_keeps_upstream_activity_line_extent() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
         let path = workspace_root()
             .join("fixtures")
             .join("timeline")
             .join("upstream_long_word_wrap.mmd");
         let text = std::fs::read_to_string(&path).expect("fixture");
 
-        let engine = Engine::new();
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
-        let out = crate::layout_parsed(&parsed, &crate::LayoutOptions::default(), &_session)
-            .expect("layout ok");
-        let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
-            panic!("expected TimelineDiagram layout");
-        };
+        let layout = layout_timeline(&text);
 
         let actual = layout.activity_line.x2;
         assert!(
@@ -811,19 +805,7 @@ mod tests {
 
     #[test]
     fn empty_timeline_does_not_invent_pre_title_width() {
-        let _session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
-        let engine = Engine::new();
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram("timeline", ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
-        let out = crate::layout_parsed(&parsed, &crate::LayoutOptions::default(), &_session)
-            .expect("layout ok");
-        let crate::model::LayoutDiagram::TimelineDiagram(layout) = out.layout else {
-            panic!("expected TimelineDiagram layout");
-        };
+        let layout = layout_timeline("timeline");
 
         assert_eq!(layout.pre_title_box_width, 0.0);
         assert_eq!(layout.activity_line.x1, 150.0);

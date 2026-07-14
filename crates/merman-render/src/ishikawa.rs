@@ -23,15 +23,6 @@ mod config;
 pub(crate) use config::IshikawaConfigView;
 use config::IshikawaLayoutSettings;
 
-pub fn layout_ishikawa_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<IshikawaDiagramLayout> {
-    let model: IshikawaDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_ishikawa_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_ishikawa_diagram_typed(
     model: &IshikawaDiagramRenderModel,
     effective_config: &Value,

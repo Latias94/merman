@@ -1,7 +1,8 @@
 use merman_core::{Engine, ParseOptions};
+use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
-use merman_render::svg::{IconRegistry, IconSvg, SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::family;
+use merman_render::svg::{IconRegistry, IconSvg, SvgDebugOptions, SvgRenderOptions};
 use std::sync::Arc;
 
 fn render_svg_from_text(text: &str, diagram_id: &str) -> String {
@@ -25,13 +26,19 @@ fn render_svg_from_text_with_environment(
 ) -> String {
     let session = environment.begin_session().unwrap();
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
 
     let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    render_layouted_svg(&out, &session, options).expect("render svg")
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    artifact
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 fn assert_scoped_marker(svg: &str, diagram_id: &str, local_id: &str) {

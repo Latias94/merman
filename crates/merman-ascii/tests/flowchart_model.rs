@@ -149,6 +149,7 @@ fn assert_rectangular_terminal_grid(rendered: &str) {
 
 fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartV2Model {
     FlowchartV2Model {
+        keyword: "graph".to_string(),
         acc_descr: None,
         acc_title: None,
         class_defs: Default::default(),
@@ -160,6 +161,7 @@ fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartV2Mo
             label: Some(label.to_string()),
             label_type: None,
             layout_shape: Some(layout_shape.to_string()),
+            shape: None,
             icon: None,
             form: None,
             pos: None,
@@ -742,6 +744,7 @@ fn flowchart_parser_long_subgraph_title_wraps_to_multiple_rows() {
 fn render_model_subgraph_direction_override_renders_local_left_right_layout_without_cross_boundary_edges()
  {
     let model = merman_core::diagrams::flowchart::FlowchartV2Model {
+        keyword: "graph".to_string(),
         acc_descr: None,
         acc_title: None,
         class_defs: Default::default(),
@@ -754,6 +757,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
                 label: Some("A".to_string()),
                 label_type: None,
                 layout_shape: None,
+                shape: None,
                 icon: None,
                 form: None,
                 pos: None,
@@ -772,6 +776,7 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
                 label: Some("B".to_string()),
                 label_type: None,
                 layout_shape: None,
+                shape: None,
                 icon: None,
                 form: None,
                 pos: None,
@@ -793,6 +798,8 @@ fn render_model_subgraph_direction_override_renders_local_left_right_layout_with
             label: None,
             label_type: None,
             edge_type: Some("arrow_point".to_string()),
+            arrow: "-->".to_string(),
+            is_user_defined_id: false,
             stroke: Some("normal".to_string()),
             interpolate: None,
             classes: Vec::new(),

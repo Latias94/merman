@@ -1822,15 +1822,6 @@ fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: 
     extras.insert(key.to_string(), obj);
 }
 
-pub fn layout_class_diagram_v2_with_config(
-    semantic: &Value,
-    effective_config: &merman_core::MermaidConfig,
-    measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramV2Layout> {
-    let model: ClassDiagramModel = crate::json::from_value_ref(semantic)?;
-    layout_class_diagram_v2_typed_with_config(&model, effective_config, measurer)
-}
-
 pub fn layout_class_diagram_v2_typed_with_config(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
@@ -1843,16 +1834,6 @@ pub fn layout_class_diagram_v2_typed_with_config(
         measurer,
         ClassLayoutEngine::Dagre,
     )
-}
-
-#[cfg(feature = "elk-layout")]
-pub fn layout_class_diagram_v2_elk_with_config(
-    semantic: &Value,
-    effective_config: &merman_core::MermaidConfig,
-    measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramV2Layout> {
-    let model: ClassDiagramModel = crate::json::from_value_ref(semantic)?;
-    layout_class_diagram_v2_elk_typed_with_config(&model, effective_config, measurer)
 }
 
 #[cfg(feature = "elk-layout")]

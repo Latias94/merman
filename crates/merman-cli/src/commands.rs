@@ -102,10 +102,10 @@ fn run_parse(args: ParseArgs) -> Result<(), CliError> {
 fn run_layout(args: LayoutArgs) -> Result<(), CliError> {
     let text = read_input(args.input.as_deref(), false)?;
     let renderer = renderer_for(&args.parse, &args.render, None)?;
-    let Some(layouted) = renderer.layout_diagram_sync(&text)? else {
+    let Some(layout_json) = renderer.layout_json_sync(&text)? else {
         return Err(CliError::NoDiagram);
     };
-    print_json(&layouted, args.pretty)
+    print_json(&layout_json, args.pretty)
 }
 
 fn run_lint(args: LintArgs) -> Result<i32, CliError> {

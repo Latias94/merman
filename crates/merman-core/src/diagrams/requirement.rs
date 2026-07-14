@@ -342,7 +342,7 @@ fn push_styles(out: &mut Vec<String>, styles: &[String]) {
 
 pub fn parse_requirement(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_requirement_semantic_source(code, meta)?.model;
-    Ok(requirement_model_to_value(model, meta))
+    render_model_to_compat_json(&model, meta)
 }
 
 pub fn parse_requirement_model_for_render(
@@ -360,7 +360,7 @@ pub(crate) fn parse_requirement_json_and_editor_facts(
         model,
         editor_facts,
     } = parse_requirement_semantic_source(code, meta)?;
-    Ok((requirement_model_to_value(model, meta), editor_facts))
+    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
 }
 
 struct RequirementSemanticSource {
@@ -598,21 +598,24 @@ fn push_requirement_style_refs(
     }
 }
 
-fn requirement_model_to_value(model: RequirementDiagramRenderModel, meta: &ParseMetadata) -> Value {
+pub(crate) fn render_model_to_compat_json(
+    model: &RequirementDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
     let mut out = Map::with_capacity(9);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("accTitle".to_string(), json!(model.acc_title));
-    out.insert("accDescr".to_string(), json!(model.acc_descr));
-    out.insert("direction".to_string(), json!(model.direction));
-    out.insert("requirements".to_string(), json!(model.requirements));
-    out.insert("elements".to_string(), json!(model.elements));
-    out.insert("relationships".to_string(), json!(model.relationships));
-    out.insert("classes".to_string(), json!(model.classes));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("direction".to_string(), json!(&model.direction));
+    out.insert("requirements".to_string(), json!(&model.requirements));
+    out.insert("elements".to_string(), json!(&model.elements));
+    out.insert("relationships".to_string(), json!(&model.relationships));
+    out.insert("classes".to_string(), json!(&model.classes));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
-    Value::Object(out)
+    Ok(Value::Object(out))
 }
 
 fn parse_requirement_semantic_source(
@@ -2005,7 +2008,11 @@ mod tests {
             "classDef critical fill:#f9f\n",
             "login - verifies -> api\n",
         );
-        let meta = test_meta();
+        let mut meta = test_meta();
+        meta.effective_config = MermaidConfig::from_value(json!({
+            "theme": "forest",
+            "securityLevel": "strict"
+        }));
         let standalone_json = parse_requirement(text, &meta).unwrap();
         let standalone_editor = parse_requirement_editor_facts(text, &meta);
 
@@ -2023,7 +2030,6 @@ mod tests {
         let text = concat!(
             "requirementDiagram\n",
             "accTitle: Login requirements\n",
-            "accDescr: Login behavior\n",
             "direction LR\n",
             "requirement login {\n",
             "  id: REQ-1\n",
@@ -2039,19 +2045,11 @@ mod tests {
         let meta = test_meta();
         let compat = parse_requirement(text, &meta).unwrap();
         let typed = parse_requirement_model_for_render(text, &meta).unwrap();
-        let typed = serde_json::to_value(typed).unwrap();
 
-        for field in [
-            "accTitle",
-            "accDescr",
-            "direction",
-            "requirements",
-            "elements",
-            "relationships",
-            "classes",
-        ] {
-            assert_eq!(typed[field], compat[field], "projection drift at {field}");
-        }
+        assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
+        assert_eq!(compat["type"], "requirement");
+        assert_eq!(compat["config"], meta.effective_config.as_value().clone());
+        assert!(compat["accDescr"].is_null());
     }
 
     #[test]

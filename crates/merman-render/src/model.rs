@@ -1,27 +1,6 @@
-use merman_core::ParseMetadata;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::sync::Arc;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutMeta {
-    pub diagram_type: String,
-    pub title: Option<String>,
-    pub config: Value,
-    pub effective_config: Value,
-}
-
-impl LayoutMeta {
-    pub fn from_parse_metadata(meta: &ParseMetadata) -> Self {
-        Self {
-            diagram_type: meta.diagram_type.clone(),
-            title: meta.title.clone(),
-            config: meta.config.as_value().clone(),
-            effective_config: meta.effective_config.as_value().clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bounds {
@@ -1488,45 +1467,4 @@ pub struct ErrorDiagramLayout {
     pub viewbox_width: f64,
     pub viewbox_height: f64,
     pub max_width_px: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum LayoutDiagram {
-    BlockDiagram(Box<BlockDiagramLayout>),
-    RequirementDiagram(Box<RequirementDiagramLayout>),
-    ArchitectureDiagram(Box<ArchitectureDiagramLayout>),
-    MindmapDiagram(Box<MindmapDiagramLayout>),
-    SankeyDiagram(Box<SankeyDiagramLayout>),
-    RadarDiagram(Box<RadarDiagramLayout>),
-    TreemapDiagram(Box<TreemapDiagramLayout>),
-    VennDiagram(Box<VennDiagramLayout>),
-    XyChartDiagram(Box<XyChartDiagramLayout>),
-    QuadrantChartDiagram(Box<QuadrantChartDiagramLayout>),
-    FlowchartV2(Box<FlowchartV2Layout>),
-    StateDiagramV2(Box<StateDiagramV2Layout>),
-    ClassDiagramV2(Box<ClassDiagramV2Layout>),
-    ErDiagram(Box<ErDiagramLayout>),
-    SequenceDiagram(Box<SequenceDiagramLayout>),
-    InfoDiagram(Box<InfoDiagramLayout>),
-    PacketDiagram(Box<PacketDiagramLayout>),
-    TimelineDiagram(Box<TimelineDiagramLayout>),
-    PieDiagram(Box<PieDiagramLayout>),
-    JourneyDiagram(Box<JourneyDiagramLayout>),
-    KanbanDiagram(Box<KanbanDiagramLayout>),
-    GitGraphDiagram(Box<GitGraphDiagramLayout>),
-    TreeViewDiagram(Box<TreeViewDiagramLayout>),
-    IshikawaDiagram(Box<IshikawaDiagramLayout>),
-    EventModelingDiagram(Box<EventModelingDiagramLayout>),
-    CynefinDiagram(Box<CynefinDiagramLayout>),
-    RailroadDiagram(Box<RailroadDiagramLayout>),
-    GanttDiagram(Box<GanttDiagramLayout>),
-    C4Diagram(Box<C4DiagramLayout>),
-    ErrorDiagram(Box<ErrorDiagramLayout>),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LayoutedDiagram {
-    pub meta: LayoutMeta,
-    pub semantic: Value,
-    pub layout: LayoutDiagram,
 }

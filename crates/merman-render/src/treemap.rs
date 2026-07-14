@@ -5,7 +5,6 @@ use merman_core::diagrams::treemap::{
     TreemapDiagramRenderModel, TreemapNodeRenderModel as TreemapNode,
 };
 use serde_json::Value;
-use std::collections::HashMap;
 
 pub(crate) const TREEMAP_SECTION_INNER_PADDING_PX: f64 = 10.0;
 pub(crate) const TREEMAP_SECTION_HEADER_HEIGHT_PX: f64 = 25.0;
@@ -367,121 +366,6 @@ fn position_node(
     }
 
     squarify(nodes, idx, x0, y0, x1, y1);
-}
-
-pub fn layout_treemap_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    _measurer: &dyn crate::text::TextMeasurer,
-) -> Result<TreemapDiagramLayout> {
-    let model = treemap_model_from_semantic(semantic)?;
-    layout_treemap_diagram_typed(&model, effective_config, _measurer)
-}
-
-fn treemap_model_from_semantic(semantic: &Value) -> Result<TreemapDiagramRenderModel> {
-    let root = semantic
-        .get("root")
-        .ok_or_else(|| invalid_treemap_model("missing root"))?;
-
-    Ok(TreemapDiagramRenderModel {
-        acc_title: optional_string_field(semantic, "accTitle")?,
-        acc_descr: optional_string_field(semantic, "accDescr")?,
-        title: optional_string_field(semantic, "title")?,
-        root: treemap_node_from_value(root)?,
-    })
-}
-
-fn treemap_node_from_value(root: &Value) -> Result<TreemapNode> {
-    let mut models: HashMap<*const Value, TreemapNode> = HashMap::new();
-    let mut stack = vec![(root, false)];
-
-    while let Some((node_value, visited)) = stack.pop() {
-        let node_ptr = std::ptr::from_ref(node_value);
-        if visited {
-            let children = optional_children_array(node_value)?.map(|children| {
-                children
-                    .iter()
-                    .filter_map(|child| models.remove(&std::ptr::from_ref(child)))
-                    .collect::<Vec<_>>()
-            });
-            models.insert(
-                node_ptr,
-                TreemapNode {
-                    name: required_string_field(node_value, "name")?,
-                    children,
-                    value: optional_value_field(node_value, "value"),
-                    class_selector: optional_string_field(node_value, "classSelector")?,
-                    css_compiled_styles: optional_string_vec_field(
-                        node_value,
-                        "cssCompiledStyles",
-                    )?,
-                },
-            );
-        } else {
-            stack.push((node_value, true));
-            if let Some(children) = optional_children_array(node_value)? {
-                for child in children.iter().rev() {
-                    stack.push((child, false));
-                }
-            }
-        }
-    }
-
-    models
-        .remove(&std::ptr::from_ref(root))
-        .ok_or_else(|| invalid_treemap_model("root projection failed"))
-}
-
-fn optional_children_array(value: &Value) -> Result<Option<&Vec<Value>>> {
-    match value.get("children") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Array(children)) => Ok(Some(children)),
-        Some(_) => Err(invalid_treemap_model("children must be an array")),
-    }
-}
-
-fn required_string_field(value: &Value, field: &str) -> Result<String> {
-    match value.get(field) {
-        Some(Value::String(v)) => Ok(v.clone()),
-        _ => Err(invalid_treemap_model(format!("{field} must be a string"))),
-    }
-}
-
-fn optional_string_field(value: &Value, field: &str) -> Result<Option<String>> {
-    match value.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(v)) => Ok(Some(v.clone())),
-        Some(_) => Err(invalid_treemap_model(format!("{field} must be a string"))),
-    }
-}
-
-fn optional_string_vec_field(value: &Value, field: &str) -> Result<Option<Vec<String>>> {
-    match value.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Array(values)) => values
-            .iter()
-            .map(|v| {
-                v.as_str()
-                    .map(str::to_string)
-                    .ok_or_else(|| invalid_treemap_model(format!("{field} must contain strings")))
-            })
-            .collect::<Result<Vec<_>>>()
-            .map(Some),
-        Some(_) => Err(invalid_treemap_model(format!("{field} must be an array"))),
-    }
-}
-
-fn optional_value_field(value: &Value, field: &str) -> Option<Value> {
-    value
-        .get(field)
-        .filter(|v| !v.is_null())
-        .map(crate::json::clone_value_nonrecursive)
-}
-
-fn invalid_treemap_model(message: impl Into<String>) -> Error {
-    Error::InvalidModel {
-        message: format!("invalid treemap semantic model: {}", message.into()),
-    }
 }
 
 pub fn layout_treemap_diagram_typed(

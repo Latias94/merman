@@ -1,38 +1,44 @@
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{
-    SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config, render_layouted_svg,
-    render_venn_diagram_svg_model,
-};
-use merman_render::{LayoutOptions, layout_parsed, layout_parsed_render_layout_only};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::model::VennDiagramLayout;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::venn::layout_venn_diagram_typed;
 
-fn render_typed_venn(input: &str) -> (LayoutDiagram, RenderSemanticModel, String) {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
     assert_eq!(parsed.meta.diagram_type, "venn");
 
-    let layout_options = LayoutOptions::default();
-    let layout =
-        layout_parsed_render_layout_only(&parsed, &layout_options, &_session).expect("layout ok");
-    let svg = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &_session,
-        &SvgRenderOptions {
-            diagram_id: Some("venn-test".to_string()),
-            ..Default::default()
-        },
-    )
-    .expect("render SVG");
+    let layout = {
+        let RenderSemanticModel::Venn(model) = &parsed.model else {
+            panic!("expected Venn render model");
+        };
+        layout_venn_diagram_typed(
+            model,
+            parsed.meta.title.as_deref(),
+            parsed.meta.effective_config.as_value(),
+        )
+        .expect("layout ok")
+    };
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let svg = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("venn-test".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render SVG")
+        .svg()
+        .to_owned();
 
-    (layout, parsed.model, svg)
+    (layout, svg)
 }
 
 #[test]
@@ -44,8 +50,8 @@ set B["Editor"]:14
 union A,B["Shared"]:4
 "##;
 
-    let (layout, _model, svg) = render_typed_venn(input);
-    assert!(matches!(layout, LayoutDiagram::VennDiagram(_)));
+    let (layout, svg) = render_typed_venn(input);
+    assert_eq!(layout.areas.len(), 3);
     assert!(svg.contains(r#"aria-roledescription="venn""#));
     assert!(svg.contains(r#"viewBox="0 0 800 450""#));
     assert!(svg.contains(r#"<text class="venn-title""#));
@@ -73,7 +79,7 @@ style A,B fill:#00ffcc, color:#003333
 style A1 color:#123456
 "##;
 
-    let (_layout, _model, svg) = render_typed_venn(input);
+    let (_layout, svg) = render_typed_venn(input);
 
     assert!(svg.contains(r#"style="fill: #ff6b6b; fill-opacity: 0.42; stroke: #202020; stroke-width: 7; stroke-opacity: 0.95;""#));
     assert!(svg.contains(r#"style="font-size: 24px; fill: #101010;""#));
@@ -89,12 +95,10 @@ style A1 color:#123456
 }
 
 #[test]
-fn venn_semantic_json_path_renders_svg() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+fn venn_canonical_typed_path_renders_svg() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let parsed = Engine::new()
-        .parse_diagram_sync(
+        .parse_diagram_for_render_model_sync(
             r##"%%{init: {"venn": {"useMaxWidth": false, "width": 640, "height": 360}}}%%
 venn-beta
 set A
@@ -107,14 +111,16 @@ union A,B
         .expect("diagram detected");
     assert_eq!(parsed.meta.diagram_type, "venn");
 
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::VennDiagram(_) = out.layout else {
-        panic!("expected VennDiagram layout");
-    };
-
-    let svg =
-        render_layouted_svg(&out, &_session, &SvgRenderOptions::default()).expect("render SVG");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    assert_eq!(
+        artifact.family_kind(),
+        merman_render::family::RenderFamilyKind::Venn
+    );
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render SVG")
+        .svg()
+        .to_owned();
 
     assert!(svg.contains(r#"aria-roledescription="venn""#));
     assert!(svg.contains(r#"viewBox="0 0 640 360""#));
@@ -124,30 +130,16 @@ union A,B
 }
 
 #[test]
-fn venn_typed_wrapper_renders_model_directly() {
+fn venn_typed_layout_and_canonical_renderer_agree() {
     let input = r##"venn-beta
 set A
 set B
 union A,B
 "##;
 
-    let (layout, model, _svg) = render_typed_venn(input);
-    let LayoutDiagram::VennDiagram(layout) = layout else {
-        panic!("expected VennDiagram layout");
-    };
-    let RenderSemanticModel::Venn(model) = model else {
-        panic!("expected Venn render model");
-    };
+    let (layout, svg) = render_typed_venn(input);
 
-    let svg = render_venn_diagram_svg_model(
-        &layout,
-        &model,
-        &serde_json::json!({}),
-        None,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render SVG");
-
+    assert_eq!(layout.areas.len(), 3);
     assert!(svg.contains(r#"aria-roledescription="venn""#));
     assert!(svg.contains(r#"class="venn-area venn-circle venn-set-0""#));
 }

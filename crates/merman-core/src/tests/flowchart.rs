@@ -32,6 +32,15 @@ fn parse_diagram_flowchart_basic_graph() {
             "subgraphs": []
         })
     );
+
+    let typed = crate::diagrams::flowchart::parse_flowchart_model_for_render(text, &res.meta)
+        .expect("flowchart typed model");
+    assert_eq!(
+        crate::diagrams::flowchart::render_model_to_compat_json(&typed, &res.meta)
+            .expect("flowchart compatibility projection"),
+        res.model,
+        "Flowchart typed compatibility projection must preserve the exact public JSON"
+    );
 }
 
 #[test]

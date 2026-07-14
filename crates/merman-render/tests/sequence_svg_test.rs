@@ -1,15 +1,16 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::LayoutOptions;
 use merman_render::environment::{
-    RenderEnvironment, RootViewportOverridePolicy, TextMeasurementPolicy,
+    RenderEnvironment, RenderSession, RootViewportOverridePolicy, TextMeasurementPhase,
+    TextMeasurementPolicy,
 };
-use merman_render::model::{LayoutDiagram, LayoutEdge, LayoutPoint, SequenceDiagramLayout};
-use merman_render::svg::{
-    SvgRenderOptions, render_sequence_diagram_debug_svg, render_sequence_diagram_svg,
-};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::family;
+use merman_render::model::{LayoutEdge, SequenceDiagramLayout};
+use merman_render::sequence::layout_sequence_diagram_typed_with_title;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
 #[cfg(feature = "ratex-math")]
 use std::sync::Arc;
@@ -18,6 +19,32 @@ fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
+}
+
+fn parse_sequence_for_render(engine: &Engine, text: &str) -> ParsedDiagramRender {
+    engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected")
+}
+
+fn layout_sequence_from_parsed(
+    parsed: &ParsedDiagramRender,
+    session: &RenderSession,
+) -> SequenceDiagramLayout {
+    let RenderSemanticModel::Sequence(model) = &parsed.model else {
+        panic!("expected Sequence render model");
+    };
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+
+    layout_sequence_diagram_typed_with_title(
+        model,
+        parsed.meta.title.as_deref(),
+        parsed.meta.effective_config.as_value(),
+        &measurer,
+        session.math_renderer(),
+    )
+    .expect("typed Sequence layout")
 }
 
 fn extract_self_closing_tags<'a>(s: &'a str, tag_name: &str) -> Vec<&'a str> {
@@ -94,57 +121,30 @@ fn render_sequence_svg_from_fixture_with_options(
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare Sequence artifact");
 
-    let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-
-    render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &session,
-        options,
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render Sequence artifact")
+        .svg()
+        .to_string()
 }
 
-fn render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture: &str) -> String {
+fn sequence_layout_json_from_fixture(fixture: &str) -> serde_json::Value {
     let session = RenderEnvironment::parity().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("sequence")
         .join(fixture);
     let text = std::fs::read_to_string(&path).expect("fixture");
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-    let layout_options = LayoutOptions::headless_svg_defaults();
-    let layouted = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let encoded = serde_json::to_vec(&layouted).expect("serialize layouted diagram");
-    let roundtripped: merman_render::model::LayoutedDiagram =
-        serde_json::from_slice(&encoded).expect("deserialize layouted diagram");
-    let LayoutDiagram::SequenceDiagram(layout) = &roundtripped.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
 
-    render_sequence_diagram_svg(
-        layout,
-        &roundtripped.semantic,
-        &roundtripped.meta.effective_config,
-        roundtripped.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render roundtripped svg")
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare Sequence artifact")
+        .layout_json()
+        .expect("project Sequence layout JSON")
 }
 
 fn render_sequence_svg_from_text(text: &str) -> String {
@@ -157,25 +157,15 @@ fn render_sequence_svg_from_text_with_engine(engine: Engine, text: &str) -> Stri
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = parse_sequence_for_render(&engine, text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
 
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-
-    render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact")
+        .svg()
+        .to_string()
 }
 
 fn render_sequence_svg_with_theme_variables(
@@ -186,31 +176,22 @@ fn render_sequence_svg_with_theme_variables(
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-    let mut effective_config = out.meta.effective_config.clone();
-    effective_config
+    let mut parsed = parse_sequence_for_render(&Engine::new(), text);
+    parsed
+        .meta
+        .effective_config
+        .as_value_mut()
         .as_object_mut()
         .expect("effective config object")
         .insert("themeVariables".to_string(), theme_variables);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
 
-    render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &effective_config,
-        out.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact")
+        .svg()
+        .to_string()
 }
 
 fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
@@ -218,16 +199,8 @@ fn layout_sequence_from_text(text: &str) -> SequenceDiagramLayout {
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .begin_session()
         .unwrap();
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-    *layout
+    let parsed = parse_sequence_for_render(&Engine::new(), text);
+    layout_sequence_from_parsed(&parsed, &session)
 }
 
 #[test]
@@ -352,7 +325,11 @@ fn sequence_no_longer_depends_on_historical_root_overrides() {
 #[test]
 fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
     let fixture = "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd";
-    let svg = render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture);
+    let svg = render_sequence_svg_from_fixture_with_options(
+        fixture,
+        &SvgRenderOptions::default(),
+        RootViewportOverridePolicy::ApplyGenerated,
+    );
     let group_start = svg
         .find(r#"<g data-et="control-structure" data-id="i17">"#)
         .unwrap_or_else(|| panic!("missing nested opt control group: {svg}"));
@@ -384,22 +361,47 @@ fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
 }
 
 #[test]
-fn sequence_block_wraps_survive_layout_json_roundtrip() {
+fn sequence_layout_json_preserves_family_wire_shape() {
     for fixture in [
         "upstream_cypress_sequencediagram_spec_should_render_a_single_and_nested_opt_with_long_test_overflowing_037.mmd",
         "upstream_alt_multiple_elses_spec.mmd",
         "upstream_par_multiple_ands_spec.mmd",
         "upstream_critical_with_options_spec.mmd",
     ] {
-        let direct = render_sequence_svg_from_fixture_with_options(
-            fixture,
-            &SvgRenderOptions::default(),
-            RootViewportOverridePolicy::ApplyGenerated,
-        );
-        let roundtripped = render_sequence_svg_from_fixture_after_layout_json_roundtrip(fixture);
+        let layout_json = sequence_layout_json_from_fixture(fixture);
         assert_eq!(
-            roundtripped, direct,
-            "layout JSON roundtrip changed Sequence SVG for {fixture}"
+            layout_json.pointer("/meta/diagram_type"),
+            Some(&serde_json::Value::String("sequence".to_string())),
+            "unexpected Sequence metadata projection for {fixture}"
+        );
+        assert_eq!(
+            layout_json.pointer("/semantic/type"),
+            Some(&serde_json::Value::String("sequence".to_string())),
+            "unexpected Sequence semantic projection for {fixture}"
+        );
+        assert!(
+            layout_json
+                .pointer("/semantic/messages")
+                .is_some_and(serde_json::Value::is_array),
+            "Sequence semantic messages must remain an array for {fixture}: {layout_json}"
+        );
+        let layout = layout_json
+            .pointer("/layout/SequenceDiagram")
+            .and_then(serde_json::Value::as_object)
+            .unwrap_or_else(|| {
+                panic!("missing SequenceDiagram layout projection for {fixture}: {layout_json}")
+            });
+        assert!(
+            ["nodes", "edges", "clusters"]
+                .into_iter()
+                .all(|key| layout.get(key).is_some_and(serde_json::Value::is_array)),
+            "Sequence layout collections must remain arrays for {fixture}: {layout_json}"
+        );
+        assert!(
+            layout
+                .get("bounds")
+                .is_some_and(serde_json::Value::is_object),
+            "Sequence layout bounds must remain an object for {fixture}: {layout_json}"
         );
     }
 }
@@ -527,95 +529,6 @@ end"##,
 }
 
 #[test]
-fn sequence_debug_svg_renders_generic_polyline_points() {
-    let layout = SequenceDiagramLayout {
-        nodes: Vec::new(),
-        clusters: Vec::new(),
-        bounds: None,
-        edges: vec![LayoutEdge {
-            id: "generic-edge".to_string(),
-            from: "a".to_string(),
-            to: "b".to_string(),
-            from_cluster: None,
-            to_cluster: None,
-            points: vec![
-                LayoutPoint { x: -0.0, y: 0.0 },
-                LayoutPoint { x: 1.5, y: -2.0 },
-                LayoutPoint { x: 3.25, y: 4.5 },
-            ],
-            label: None,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        }],
-    };
-
-    let svg = render_sequence_diagram_debug_svg(&layout, &SvgRenderOptions::default());
-
-    assert!(
-        svg.contains(r#"<polyline class="edge" points="0,0 1.5,-2 3.25,4.5" />"#),
-        "expected generic sequence debug edges to render a shared-helper point list"
-    );
-}
-
-#[test]
-fn sequence_debug_svg_marker_ids_are_prefixed_when_diagram_id_is_provided() {
-    let layout = SequenceDiagramLayout {
-        nodes: Vec::new(),
-        clusters: Vec::new(),
-        bounds: None,
-        edges: vec![LayoutEdge {
-            id: "msg-1".to_string(),
-            from: "a".to_string(),
-            to: "b".to_string(),
-            from_cluster: None,
-            to_cluster: None,
-            points: vec![
-                LayoutPoint { x: 10.0, y: 20.0 },
-                LayoutPoint { x: 100.0, y: 20.0 },
-            ],
-            label: None,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        }],
-    };
-
-    let svg = render_sequence_diagram_debug_svg(
-        &layout,
-        &SvgRenderOptions {
-            diagram_id: Some("sequence-debug-inline".to_string()),
-            ..SvgRenderOptions::default()
-        },
-    );
-
-    assert!(
-        svg.contains(r#"id="sequence-debug-inline-arrowhead""#),
-        "expected scoped sequence debug marker id: {svg}"
-    );
-    assert!(
-        svg.contains(r#"marker-end="url(#sequence-debug-inline-arrowhead)""#),
-        "expected scoped sequence debug marker reference: {svg}"
-    );
-    assert!(
-        !svg.contains(r#"id="arrowhead""#),
-        "expected no bare sequence debug marker id: {svg}"
-    );
-    assert!(
-        !svg.contains(r#"marker-end="url(#arrowhead)""#),
-        "expected no bare sequence debug marker reference: {svg}"
-    );
-}
-
-#[test]
 fn sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode() {
     let session = RenderEnvironment::parity().begin_session().unwrap();
     let path = workspace_root()
@@ -624,16 +537,8 @@ fn sequence_note_width_expands_for_literal_br_backslash_t_in_vendored_mode() {
         .join("html_br_variants_and_wrap.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let layout = layout_sequence_from_parsed(&parsed, &session);
 
     let note = layout
         .nodes
@@ -867,18 +772,12 @@ fn sequence_long_leftof_notes_drop_the_stale_width_slack() {
             .join("sequence")
             .join(fixture);
         let text = std::fs::read_to_string(&path).expect("fixture");
-        let parsed =
-            futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-                .expect("parse ok")
-                .expect("diagram detected");
+        let parsed = parse_sequence_for_render(&engine, &text);
         let session = RenderEnvironment::parity()
             .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
             .begin_session()
             .unwrap();
-        let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
-        let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-            panic!("expected SequenceDiagram layout");
-        };
+        let layout = layout_sequence_from_parsed(&parsed, &session);
         let note = layout
             .nodes
             .iter()
@@ -903,23 +802,17 @@ fn sequence_frontmatter_title_expands_layout_root_y() {
         .join("upstream_html_demos_sequence_sequence_diagram_demos_002.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
     assert_eq!(parsed.meta.title.as_deref(), Some("With forced menus"));
+    let RenderSemanticModel::Sequence(model) = &parsed.model else {
+        panic!("expected Sequence render model");
+    };
     assert!(
-        parsed
-            .model
-            .get("title")
-            .is_none_or(|title| title.is_null()),
+        model.title.is_none(),
         "frontmatter title should stay in parse metadata, not the sequence semantic title"
     );
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
+    let layout = layout_sequence_from_parsed(&parsed, &session);
     let bounds = layout.bounds.as_ref().expect("sequence root bounds");
     assert_eq!(bounds.min_y, -50.0);
 }
@@ -956,15 +849,8 @@ fn sequence_central_connection_rtl_layout_matches_fixture_golden_spacing() {
         );
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let layout = layout_sequence_from_parsed(&parsed, &session);
 
     let actor_center = |id: &str| {
         layout
@@ -1023,30 +909,17 @@ participant B
 A->>B: $$x^2$$
 Note right of B: $$x^2$$
 "#;
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
     let environment = RenderEnvironment::parity()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
     let session = environment.begin_session().unwrap();
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-
-    let svg = render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let parsed = parse_sequence_for_render(&Engine::new(), text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact");
+    let svg = rendered.svg();
 
     assert!(
         svg.contains(r#"width="0.97153em""#),
@@ -1075,30 +948,17 @@ fn sequence_docs_math_fixture_renders_supported_ratex_formulas() {
         .join("upstream_docs_math_sequence_002.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
     let environment = RenderEnvironment::parity()
         .with_text_measurement_policy(TextMeasurementPolicy::deterministic())
         .with_math_renderer(Arc::new(merman_render::math::RatexMathRenderer));
     let session = environment.begin_session().unwrap();
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let LayoutDiagram::SequenceDiagram(layout) = &out.layout else {
-        panic!("expected SequenceDiagram layout");
-    };
-
-    let svg = render_sequence_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let parsed = parse_sequence_for_render(&Engine::new(), &text);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence artifact");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence artifact");
+    let svg = rendered.svg();
 
     let inline_formula_count = svg
         .matches(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 "#)

@@ -4,7 +4,7 @@ use crate::{
     EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -517,108 +517,6 @@ impl ArchitectureDb {
         Ok(())
     }
 
-    fn edges_json(&self) -> Vec<Value> {
-        self.edges
-            .iter()
-            .map(|e| {
-                json!({
-                    "lhsId": e.lhs_id,
-                    "lhsDir": e.lhs_dir.to_string(),
-                    "lhsInto": e.lhs_into,
-                    "lhsGroup": e.lhs_group,
-                    "rhsId": e.rhs_id,
-                    "rhsDir": e.rhs_dir.to_string(),
-                    "rhsInto": e.rhs_into,
-                    "rhsGroup": e.rhs_group,
-                    "title": e.title,
-                })
-            })
-            .collect()
-    }
-
-    fn groups_json(&self) -> Vec<Value> {
-        self.ordered_group_ids()
-            .into_iter()
-            .filter_map(|id| self.groups.get(id))
-            .map(|g| {
-                json!({
-                    "id": g.id,
-                    "icon": g.icon,
-                    "title": g.title,
-                    "in": g.in_group,
-                })
-            })
-            .collect()
-    }
-
-    fn nodes_json(&self) -> Vec<Value> {
-        self.ordered_node_ids()
-            .into_iter()
-            .filter_map(|id| self.nodes.get(id))
-            .map(|n| {
-                let edges: Vec<Value> = n
-                    .edges
-                    .iter()
-                    .filter_map(|idx| self.edges.get(*idx))
-                    .map(|e| {
-                        json!({
-                            "lhsId": e.lhs_id,
-                            "lhsDir": e.lhs_dir.to_string(),
-                            "lhsInto": e.lhs_into,
-                            "lhsGroup": e.lhs_group,
-                            "rhsId": e.rhs_id,
-                            "rhsDir": e.rhs_dir.to_string(),
-                            "rhsInto": e.rhs_into,
-                            "rhsGroup": e.rhs_group,
-                            "title": e.title,
-                        })
-                    })
-                    .collect();
-
-                let ty = match n.ty {
-                    ArchitectureNodeType::Service => "service",
-                    ArchitectureNodeType::Junction => "junction",
-                };
-
-                json!({
-                    "id": n.id,
-                    "type": ty,
-                    "edges": edges,
-                    "icon": n.icon,
-                    "iconText": n.icon_text,
-                    "title": n.title,
-                    "in": n.in_group,
-                })
-            })
-            .collect()
-    }
-
-    fn services_json(&self) -> Vec<Value> {
-        self.nodes_json()
-            .into_iter()
-            .filter(|n| n.get("type").and_then(|v| v.as_str()) == Some("service"))
-            .collect()
-    }
-
-    fn junctions_json(&self) -> Vec<Value> {
-        self.nodes_json()
-            .into_iter()
-            .filter(|n| n.get("type").and_then(|v| v.as_str()) == Some("junction"))
-            .collect()
-    }
-
-    fn layout_hints_json(&self) -> Vec<Value> {
-        self.layout_hints
-            .iter()
-            .map(|hint| {
-                json!({
-                    "direction": hint.direction.as_str(),
-                    "members": hint.members,
-                })
-            })
-            .collect()
-    }
-
     fn layout_hints_json_model(&self) -> Vec<ArchitectureRenderLayoutHint> {
         self.layout_hints
             .iter()
@@ -809,6 +707,117 @@ impl ArchitectureDiagramRenderModel {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
     }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &ArchitectureDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
+    if meta.config.as_value().get("layout").is_none()
+        && let Some(obj) = config.as_object_mut()
+    {
+        obj.insert("layout".to_string(), Value::String("dagre".to_string()));
+    }
+
+    let edges = model
+        .edges
+        .iter()
+        .map(architecture_render_edge_to_compat_json)
+        .collect::<Vec<_>>();
+    let nodes = model
+        .nodes
+        .iter()
+        .map(|node| architecture_render_node_to_compat_json(node, &edges))
+        .collect::<Vec<_>>();
+    let services = nodes
+        .iter()
+        .filter(|node| node.get("type").and_then(Value::as_str) == Some("service"))
+        .cloned()
+        .collect();
+    let junctions = nodes
+        .iter()
+        .filter(|node| node.get("type").and_then(Value::as_str) == Some("junction"))
+        .cloned()
+        .collect();
+
+    let mut out = Map::with_capacity(11);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("title".to_string(), json!(&model.title));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert(
+        "groups".to_string(),
+        Value::Array(
+            model
+                .groups
+                .iter()
+                .map(|group| {
+                    json!({
+                        "id": group.id,
+                        "icon": group.icon,
+                        "title": group.title,
+                        "in": group.in_group,
+                    })
+                })
+                .collect(),
+        ),
+    );
+    out.insert("nodes".to_string(), Value::Array(nodes));
+    out.insert("services".to_string(), Value::Array(services));
+    out.insert("junctions".to_string(), Value::Array(junctions));
+    out.insert("edges".to_string(), Value::Array(edges));
+    out.insert(
+        "layoutHints".to_string(),
+        Value::Array(
+            model
+                .layout_hints
+                .iter()
+                .map(|hint| {
+                    json!({
+                        "direction": hint.direction.as_str(),
+                        "members": hint.members,
+                    })
+                })
+                .collect(),
+        ),
+    );
+    out.insert("config".to_string(), config);
+    Ok(Value::Object(out))
+}
+
+fn architecture_render_edge_to_compat_json(edge: &ArchitectureRenderEdge) -> Value {
+    json!({
+        "lhsId": edge.lhs_id,
+        "lhsDir": edge.lhs_dir.to_string(),
+        "lhsInto": edge.lhs_into,
+        "lhsGroup": edge.lhs_group,
+        "rhsId": edge.rhs_id,
+        "rhsDir": edge.rhs_dir.to_string(),
+        "rhsInto": edge.rhs_into,
+        "rhsGroup": edge.rhs_group,
+        "title": edge.title,
+    })
+}
+
+fn architecture_render_node_to_compat_json(
+    node: &ArchitectureRenderNode,
+    edges: &[Value],
+) -> Value {
+    json!({
+        "id": node.id,
+        "type": node.node_type,
+        "edges": node
+            .edge_indices
+            .iter()
+            .filter_map(|index| edges.get(*index))
+            .cloned()
+            .collect::<Vec<_>>(),
+        "icon": node.icon,
+        "iconText": node.icon_text,
+        "title": node.title,
+        "in": node.in_group,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1230,6 +1239,12 @@ service api "\b\f\n\r\t\v\0\"quote\"\\tail"
         let json = source.compat_json(&meta);
         let render = source.render_model();
         let facts = source.editor_facts();
+
+        assert_eq!(
+            render_model_to_compat_json(&render, &meta).unwrap(),
+            json,
+            "Architecture typed compatibility projection drifted"
+        );
 
         assert_eq!(json["services"][0]["iconText"], expected);
         assert_eq!(render.nodes[0].icon_text.as_deref(), Some(expected));

@@ -48,9 +48,25 @@ pub struct TimelineDiagramRenderModel {
     pub sections: Vec<String>,
     #[serde(default)]
     pub tasks: Vec<TimelineRenderTask>,
+    #[serde(skip)]
+    compatibility_output: CompatibilityOutputState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum CompatibilityOutputState {
+    Empty,
+    #[default]
+    Model,
 }
 
 impl TimelineDiagramRenderModel {
+    fn empty_compatibility_output() -> Self {
+        Self {
+            compatibility_output: CompatibilityOutputState::Empty,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -387,9 +403,10 @@ fn split_events_from_colon_whitespace_spanned(
 pub fn parse_timeline(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_timeline_semantic_source(code, meta)
         .map_err(TimelineSemanticFailure::into_error)?;
-    Ok(source
-        .model
-        .map_or_else(|| json!({}), |model| timeline_model_into_json(model, meta)))
+    match source.model {
+        Some(model) => render_model_to_compat_json(&model, meta),
+        None => Ok(json!({})),
+    }
 }
 
 pub(crate) fn parse_timeline_json_and_editor_facts(
@@ -401,19 +418,28 @@ pub(crate) fn parse_timeline_json_and_editor_facts(
         editor_facts,
     } = construct_timeline_semantic_source(code, meta)
         .map_err(TimelineSemanticFailure::into_error)?;
-    let model = model.map_or_else(|| json!({}), |model| timeline_model_into_json(model, meta));
+    let model = match model {
+        Some(model) => render_model_to_compat_json(&model, meta)?,
+        None => json!({}),
+    };
     Ok((model, editor_facts))
 }
 
-fn timeline_model_into_json(model: TimelineDiagramRenderModel, meta: &ParseMetadata) -> Value {
-    json!({
+pub(crate) fn render_model_to_compat_json(
+    model: &TimelineDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    if model.compatibility_output == CompatibilityOutputState::Empty {
+        return Ok(json!({}));
+    }
+    Ok(json!({
         "type": meta.diagram_type,
-        "title": model.title,
-        "accTitle": model.acc_title,
-        "accDescr": model.acc_descr,
-        "sections": model.sections,
-        "tasks": model.tasks,
-    })
+        "title": &model.title,
+        "accTitle": &model.acc_title,
+        "accDescr": &model.acc_descr,
+        "sections": &model.sections,
+        "tasks": &model.tasks,
+    }))
 }
 
 pub fn parse_timeline_model_for_render(
@@ -421,7 +447,11 @@ pub fn parse_timeline_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<TimelineDiagramRenderModel> {
     construct_timeline_semantic_source(code, meta)
-        .map(|source| source.model.unwrap_or_default())
+        .map(|source| {
+            source
+                .model
+                .unwrap_or_else(TimelineDiagramRenderModel::empty_compatibility_output)
+        })
         .map_err(TimelineSemanticFailure::into_error)
 }
 
@@ -636,6 +666,7 @@ fn construct_timeline_semantic_source(
         acc_descr: (!db.acc_descr.is_empty()).then_some(db.acc_descr),
         sections: db.sections,
         tasks: db.tasks,
+        compatibility_output: CompatibilityOutputState::Model,
     });
     Ok(TimelineSemanticSource {
         model,
@@ -982,7 +1013,6 @@ task2: event2: event3\n";
             "timeline\n",
             "title Delivery\n",
             "accTitle: Delivery timeline\n",
-            "accDescr: Delivery milestones\n",
             "section Build\n",
             "Implement parser: API ready: Tests green\n",
         );
@@ -1013,9 +1043,31 @@ task2: event2: event3\n";
         assert_eq!(combined_json, parsed.model);
         assert_eq!(combined_editor, standalone_editor);
 
-        let typed = serde_json::to_value(typed).expect("Timeline typed model serializes");
-        for field in ["title", "accTitle", "accDescr", "sections", "tasks"] {
-            assert_eq!(typed[field], combined_json[field], "Timeline {field} drift");
+        assert_eq!(
+            render_model_to_compat_json(&typed, &parsed.meta).unwrap(),
+            combined_json
+        );
+        assert_eq!(parsed.model["type"], "timeline");
+        assert!(parsed.model["accDescr"].is_null());
+    }
+
+    #[test]
+    fn timeline_typed_projection_preserves_empty_and_header_only_output_states() {
+        let meta = ParseMetadata {
+            diagram_type: "timeline".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        };
+        for source in ["", "timeline"] {
+            let compat = parse_timeline(source, &meta).unwrap();
+            let typed = parse_timeline_model_for_render(source, &meta).unwrap();
+
+            assert_eq!(
+                render_model_to_compat_json(&typed, &meta).unwrap(),
+                compat,
+                "projection drift for {source:?}"
+            );
         }
     }
 

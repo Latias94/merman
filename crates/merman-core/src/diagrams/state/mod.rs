@@ -5,10 +5,11 @@ mod db;
 mod parse;
 mod render_model;
 
+pub(crate) use render_model::render_model_to_compat_json;
 pub use render_model::{
     StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
     StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
-    StateDiagramRenderState, StateDiagramRenderStyleClass,
+    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
 };
 
 pub use parse::{parse_state, parse_state_editor_facts, parse_state_model_for_render};

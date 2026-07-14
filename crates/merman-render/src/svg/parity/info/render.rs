@@ -1,7 +1,6 @@
 use super::super::*;
 pub(crate) fn render_info_diagram_svg(
     layout: &InfoDiagramLayout,
-    _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {

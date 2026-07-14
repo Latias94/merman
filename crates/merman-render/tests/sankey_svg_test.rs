@@ -1,42 +1,39 @@
-use merman_render::sankey::layout_sankey_diagram;
-use merman_render::svg::{SvgRenderOptions, render_sankey_diagram_svg};
-use merman_render::text::DeterministicTextMeasurer;
-use serde_json::json;
+use merman_core::{Engine, ParseOptions};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+
+fn render_sankey(source: &str, options: &SvgRenderOptions) -> String {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("layout ok")
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render SVG")
+        .svg()
+        .to_owned()
+}
 
 #[test]
 fn sankey_svg_uses_configured_node_colors_and_outlined_labels() {
-    let semantic = json!({
-        "graph": {
-            "nodes": [{"id": "A"}, {"id": "B"}],
-            "links": [{"source": "A", "target": "B", "value": 10.0}]
-        }
-    });
-    let config = json!({
-        "sankey": {
-            "nodeColors": {
-                "A": "#112233",
-                "B": "rebeccapurple"
-            },
-            "labelStyle": "outlined"
-        }
-    });
-    let measurer = DeterministicTextMeasurer {
-        char_width_factor: 8.0,
-        line_height_factor: 16.0,
-    };
-
-    let layout = layout_sankey_diagram(&semantic, &config, &measurer).unwrap();
-    let session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
-    let svg = render_sankey_diagram_svg(
-        &layout,
-        &semantic,
-        &config,
-        &session,
+    let svg = render_sankey(
+        r##"---
+config:
+  sankey:
+    nodeColors:
+      A: "#112233"
+      B: rebeccapurple
+    labelStyle: outlined
+---
+sankey-beta
+A,B,10
+"##,
         &SvgRenderOptions::default(),
-    )
-    .unwrap();
+    );
 
     assert!(
         svg.contains(r##"fill="#112233""##),
@@ -70,33 +67,13 @@ fn sankey_svg_uses_configured_node_colors_and_outlined_labels() {
 
 #[test]
 fn sankey_generated_ids_are_prefixed_when_diagram_id_is_provided() {
-    let semantic = json!({
-        "graph": {
-            "nodes": [{"id": "A"}, {"id": "B"}],
-            "links": [{"source": "A", "target": "B", "value": 10.0}]
-        }
-    });
-    let config = json!({});
-    let measurer = DeterministicTextMeasurer {
-        char_width_factor: 8.0,
-        line_height_factor: 16.0,
-    };
-
-    let layout = layout_sankey_diagram(&semantic, &config, &measurer).unwrap();
-    let session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
-    let svg = render_sankey_diagram_svg(
-        &layout,
-        &semantic,
-        &config,
-        &session,
+    let svg = render_sankey(
+        "sankey-beta\nA,B,10\n",
         &SvgRenderOptions {
             diagram_id: Some("sankey-inline".to_string()),
             ..SvgRenderOptions::default()
         },
-    )
-    .unwrap();
+    );
 
     assert!(
         svg.contains(r#"id="sankey-inline-node-1""#),
@@ -126,30 +103,7 @@ fn sankey_generated_ids_are_prefixed_when_diagram_id_is_provided() {
 
 #[test]
 fn sankey_generated_ids_keep_mermaid_style_without_diagram_id() {
-    let semantic = json!({
-        "graph": {
-            "nodes": [{"id": "A"}, {"id": "B"}],
-            "links": [{"source": "A", "target": "B", "value": 10.0}]
-        }
-    });
-    let config = json!({});
-    let measurer = DeterministicTextMeasurer {
-        char_width_factor: 8.0,
-        line_height_factor: 16.0,
-    };
-
-    let layout = layout_sankey_diagram(&semantic, &config, &measurer).unwrap();
-    let session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
-    let svg = render_sankey_diagram_svg(
-        &layout,
-        &semantic,
-        &config,
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .unwrap();
+    let svg = render_sankey("sankey-beta\nA,B,10\n", &SvgRenderOptions::default());
 
     assert!(
         svg.contains(r#"id="node-1""#),

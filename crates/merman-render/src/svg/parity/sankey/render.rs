@@ -2,7 +2,6 @@ use super::super::*;
 
 pub(crate) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
-    _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<String> {

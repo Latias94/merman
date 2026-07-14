@@ -41,7 +41,7 @@ const ERROR_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities 
     semantic: true,
     editor: false,
     combined: false,
-    typed: false,
+    typed: true,
 };
 const UNSUPPORTED_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
     semantic: false,
@@ -835,8 +835,9 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
 
     let error = family_capability(full, "error");
     assert_eq!(error.metadata_id, None);
+    assert_eq!(error.render_model_kind, Some("error"));
     assert!(error.has_semantic_parser);
-    assert!(!error.has_render_parser);
+    assert!(error.has_render_parser);
 
     let swimlane = family_capability(full, "swimlane");
     assert_eq!(swimlane.metadata_id, None);
@@ -1239,8 +1240,9 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
     );
 
     let error = family_capability(full, "error");
-    assert!(error.has_detector && error.has_semantic_parser);
-    assert!(!error.has_editor_parser && !error.has_combined_parser && !error.has_render_parser);
+    assert!(error.has_detector && error.has_semantic_parser && error.has_render_parser);
+    assert!(!error.has_editor_parser && !error.has_combined_parser);
+    assert_eq!(error.render_model_kind, Some("error"));
 
     let wardley = family_capability(full, "wardley");
     assert!(wardley.has_detector && wardley.has_header);
@@ -1314,6 +1316,10 @@ fn builtin_editor_and_render_capabilities_require_combined_semantic_ownership() 
             }
 
             if capability.has_render_parser {
+                if capability.diagram_type == "error" {
+                    assert!(capability.has_semantic_parser);
+                    continue;
+                }
                 assert!(
                     capability.has_semantic_parser && capability.has_combined_parser,
                     "{} exposes a typed render parser without semantic + combined ownership in {profile:?}",
@@ -1965,11 +1971,11 @@ fn tiny_parser_projection_excludes_full_only_large_features() {
     assert!(tiny_semantic.get("flowchart").is_some());
 
     let tiny_render = RenderDiagramRegistry::pinned_mermaid_baseline_tiny();
-    assert!(tiny_render.get("mindmap").is_none());
-    assert!(tiny_render.get("architecture").is_none());
-    assert!(tiny_render.get("flowchart-elk").is_none());
-    assert!(tiny_render.get("flowchart-v2").is_some());
-    assert!(tiny_render.get("flowchart").is_some());
+    assert!(!tiny_render.contains("mindmap"));
+    assert!(!tiny_render.contains("architecture"));
+    assert!(!tiny_render.contains("flowchart-elk"));
+    assert!(tiny_render.contains("flowchart-v2"));
+    assert!(tiny_render.contains("flowchart"));
 }
 
 #[cfg(not(feature = "full"))]
@@ -2049,13 +2055,7 @@ fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static 
 fn permits_parser_only_semantic_fact(id: &str) -> bool {
     matches!(
         id,
-        "error"
-            | "swimlane"
-            | "cynefin"
-            | "railroad"
-            | "railroadEbnf"
-            | "railroadAbnf"
-            | "railroadPeg"
+        "swimlane" | "cynefin" | "railroad" | "railroadEbnf" | "railroadAbnf" | "railroadPeg"
     )
 }
 

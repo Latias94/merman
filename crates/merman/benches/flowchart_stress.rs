@@ -1,5 +1,7 @@
-use criterion::{Criterion, criterion_group, criterion_main};
-use merman::render::{LayoutOptions, RenderEnvironment, SvgRenderOptions, headless_layout_options};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use merman::render::{
+    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
+};
 use merman_core::{Engine, ParseOptions};
 use std::hint::black_box;
 
@@ -25,42 +27,48 @@ fn bench_flowchart_stress(c: &mut Criterion) {
             .parse_diagram_for_render_model_sync(input, parse_opts)
             .expect("parse")
             .expect("supported diagram");
-        let session = environment.begin_session().expect("render session");
-        let layouted = merman_render::layout_parsed_render_layout_only(&parsed, &layout, &session)
-            .expect("layout");
         let svg_opts = SvgRenderOptions {
             diagram_id: Some(merman::render::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
         };
         // Pre-check that rendering works once, outside measurement.
-        let _ = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-            &layouted,
-            &parsed.model,
-            &parsed.meta.effective_config,
-            parsed.meta.title.as_deref(),
-            &session,
-            &svg_opts,
+        merman_render::family::prepare(
+            parsed.clone(),
+            &layout,
+            environment.begin_session().expect("render session"),
         )
+        .expect("prepare")
+        .render_svg(&svg_opts, &SvgDebugOptions::default())
         .expect("render");
 
+        let render_layout = layout.clone();
+        let render_environment = environment.clone();
         group.bench_function(name, move |b| {
-            b.iter(|| {
-                let mut acc: usize = 0;
-                for _ in 0..repeats {
-                    let svg =
-                        merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-                            black_box(&layouted),
-                            &parsed.model,
-                            &parsed.meta.effective_config,
-                            parsed.meta.title.as_deref(),
-                            &session,
-                            &svg_opts,
-                        )
-                        .expect("render");
-                    acc ^= svg.len();
-                }
-                black_box(acc);
-            });
+            b.iter_batched(
+                || {
+                    (0..repeats)
+                        .map(|_| {
+                            merman_render::family::prepare(
+                                parsed.clone(),
+                                &render_layout,
+                                render_environment.begin_session().expect("render session"),
+                            )
+                            .expect("prepare")
+                        })
+                        .collect::<Vec<_>>()
+                },
+                |artifacts| {
+                    let mut acc: usize = 0;
+                    for artifact in artifacts {
+                        let svg = artifact
+                            .render_svg(&svg_opts, &SvgDebugOptions::default())
+                            .expect("render");
+                        acc ^= svg.svg().len();
+                    }
+                    black_box(acc);
+                },
+                BatchSize::LargeInput,
+            );
         });
     }
 

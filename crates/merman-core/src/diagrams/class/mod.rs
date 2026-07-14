@@ -31,3 +31,19 @@ pub use parse::{parse_class, parse_class_editor_facts, parse_class_typed};
 
 pub(crate) use ast::{Action, Relation, RelationData};
 pub(crate) use lexer::{LexError, Tok};
+
+pub(crate) fn render_model_to_compat_json(
+    model: &crate::models::class_diagram::ClassDiagram,
+    meta: &crate::ParseMetadata,
+) -> crate::Result<serde_json::Value> {
+    let mut value =
+        serde_json::to_value(model).expect("Class typed model must remain JSON-serializable");
+    value
+        .as_object_mut()
+        .expect("Class typed model must serialize to a JSON object")
+        .insert(
+            "type".to_string(),
+            serde_json::Value::String(meta.diagram_type.clone()),
+        );
+    Ok(value)
+}

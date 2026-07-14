@@ -130,15 +130,6 @@ fn journey_actor_legend_line_width_px(
     }
 }
 
-pub fn layout_journey_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<JourneyDiagramLayout> {
-    let model: JourneyDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_journey_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_journey_diagram_typed(
     model: &JourneyDiagramRenderModel,
     effective_config: &serde_json::Value,

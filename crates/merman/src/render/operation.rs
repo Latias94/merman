@@ -1,11 +1,10 @@
 use super::{
-    LayoutOptions, LayoutedDiagram, Result, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata,
-    SvgRenderOptions, apply_svg_pipeline_with_metadata,
+    LayoutOptions, Result, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
+    apply_svg_pipeline_with_metadata,
 };
 use merman_render::{
     ResourceLimitExceeded, ResourceLimitPhase,
     environment::{RenderEnvironment, RenderOperationReport, RenderSession},
-    model::LayoutDiagram,
 };
 
 #[cfg(feature = "raster")]
@@ -47,22 +46,16 @@ impl PreparedSemantic {
             layout_options,
             session,
         } = self;
-        let layout =
-            merman_render::layout_parsed_render_layout_only(&parsed, &layout_options, &session)?;
-
-        Ok(PreparedRender {
-            parsed,
-            layout,
-            session,
-        })
+        let artifact = merman_render::family::prepare(parsed, &layout_options, session)?;
+        Ok(PreparedRender { artifact })
     }
 }
 
 /// A canonical typed render that has completed parsing and layout exactly once.
 ///
-/// The artifact exposes borrowed semantic, metadata, and layout views so callers can collect
-/// diagnostics or derive request policy before rendering. SVG rendering consumes the artifact,
-/// which prevents the prepared parse/layout result from being rendered more than once.
+/// The artifact exposes metadata, a stable semantic family label, and compatibility layout JSON.
+/// SVG rendering consumes it, which prevents the prepared parse/layout result from being rendered
+/// more than once while keeping the typed semantic/layout pair opaque and internally consistent.
 ///
 /// ```compile_fail
 /// use merman::render::{LayoutOptions, SvgRenderOptions, prepare_render_sync};
@@ -81,9 +74,7 @@ impl PreparedSemantic {
 /// let _second = prepared.render_svg(&options); // `prepared` was consumed above.
 /// ```
 pub struct PreparedRender {
-    parsed: merman_core::ParsedDiagramRender,
-    layout: LayoutDiagram,
-    session: RenderSession,
+    artifact: merman_render::family::FamilyRenderArtifact,
 }
 
 /// Complete SVG output plus immutable evidence from the operation-owned session.
@@ -113,17 +104,24 @@ impl RenderedSvg {
 impl PreparedRender {
     /// Returns preprocessed metadata for diagnostics and request policy.
     pub fn metadata(&self) -> &merman_core::ParseMetadata {
-        &self.parsed.meta
+        self.artifact.metadata()
     }
 
-    /// Returns the family-owned typed semantic variant name without exposing mutable pairing.
-    pub fn semantic_kind(&self) -> &'static str {
-        self.parsed.model.kind()
+    /// Returns the paired built-in render family without exposing its semantic or layout types.
+    pub fn family_kind(&self) -> super::RenderFamilyKind {
+        self.artifact.family_kind()
     }
 
-    /// Returns the typed layout produced from this artifact's semantic model.
-    pub fn layout(&self) -> &LayoutDiagram {
-        &self.layout
+    /// Returns an owned inverse projection of the Gantt time axis for parity diagnostics.
+    pub fn gantt_time_axis_diagnostics(
+        &self,
+    ) -> Option<merman_render::family::GanttTimeAxisDiagnostics> {
+        self.artifact.gantt_time_axis_diagnostics()
+    }
+
+    /// Serializes metadata, compatibility semantics, and typed layout from this artifact.
+    pub fn layout_json(&self) -> Result<serde_json::Value> {
+        Ok(self.artifact.layout_json()?)
     }
 
     /// Renders SVG once from the prepared semantic model and layout.
@@ -199,31 +197,13 @@ impl PreparedRender {
         svg_options: &SvgRenderOptions,
         debug_options: &SvgDebugOptions,
     ) -> Result<RenderedSvgParts> {
-        let Self {
-            parsed,
-            layout,
-            session,
-        } = self;
-        let svg =
-            merman_render::svg::render_layout_svg_parts_for_render_model_with_metadata_and_debug(
-                &layout,
-                &parsed.model,
-                &parsed.meta.effective_config,
-                &parsed.meta.diagram_type,
-                parsed.meta.title.as_deref(),
-                &session,
-                svg_options,
-                debug_options,
-            )?;
-        session
-            .resource_limits()
-            .check_svg_bytes(&svg, ResourceLimitPhase::SvgOutput)
-            .map_err(resource_limit_error)?;
+        let rendered = self.artifact.render_svg(svg_options, debug_options)?;
+        let (svg, metadata, session) = rendered.into_parts();
 
         Ok(RenderedSvgParts {
             svg,
-            diagram_type: parsed.meta.diagram_type,
-            diagram_title: parsed.meta.title,
+            diagram_type: metadata.diagram_type,
+            diagram_title: metadata.title,
             session,
         })
     }
@@ -259,23 +239,11 @@ impl<'a> HeadlessOperation<'a> {
         })
     }
 
-    pub(super) fn layout_diagram(&self) -> Result<Option<LayoutedDiagram>> {
-        self.session
-            .resource_limits()
-            .check_source_bytes(self.text)
-            .map_err(resource_limit_error)?;
-        let Some(parsed) = self
-            .engine
-            .parse_diagram_sync(self.text, self.parse_options)?
-        else {
+    pub(super) fn layout_json(self) -> Result<Option<serde_json::Value>> {
+        let Some(prepared) = self.prepare_render()? else {
             return Ok(None);
         };
-
-        Ok(Some(merman_render::layout_parsed(
-            &parsed,
-            self.layout_options,
-            &self.session,
-        )?))
+        Ok(Some(prepared.layout_json()?))
     }
 
     pub(super) fn prepare_render(self) -> Result<Option<PreparedRender>> {

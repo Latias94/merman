@@ -106,15 +106,18 @@ pub(super) fn compare_gantt_request(
                     }
                 };
 
-                let merman_render::model::LayoutDiagram::GanttDiagram(layout) = prepared.layout()
-                else {
+                if prepared.family_kind() != merman::render::RenderFamilyKind::Gantt {
                     return Err(format!(
-                        "unexpected layout type for {}: {}",
+                        "unexpected render family for {}: {}",
                         input.fixture_path.display(),
-                        prepared.metadata().diagram_type
+                        prepared.family_kind()
                     ));
-                };
-                let now_ms = gantt_now_ms_override(input.upstream_svg, layout);
+                }
+                let now_ms = gantt_upstream_today_x(input.upstream_svg).and_then(|today_x| {
+                    prepared
+                        .gantt_time_axis_diagnostics()
+                        .and_then(|diagnostics| diagnostics.unix_millis_at_rendered_x(today_x))
+                });
                 let final_renderer = if let Some(now_ms) = now_ms {
                     let snapshot = merman::render::RenderTimeSnapshot::from_unix_millis(
                         now_ms,
@@ -169,10 +172,7 @@ pub(super) fn compare_gantt_request(
     })
 }
 
-fn gantt_now_ms_override(
-    upstream_svg: &str,
-    layout: &merman_render::model::GanttDiagramLayout,
-) -> Option<i64> {
+fn gantt_upstream_today_x(upstream_svg: &str) -> Option<f64> {
     let doc = roxmltree::Document::parse(upstream_svg).ok()?;
     let x1 = doc
         .descendants()
@@ -185,85 +185,27 @@ fn gantt_now_ms_override(
         })
         .and_then(|n| n.attribute("x1"))
         .and_then(|v| v.parse::<f64>().ok())?;
-    if !x1.is_finite() {
-        return None;
-    }
-
-    let min_ms = layout.tasks.iter().map(|t| t.start_ms).min()?;
-    let max_ms = layout.tasks.iter().map(|t| t.end_ms).max()?;
-    if max_ms <= min_ms {
-        return None;
-    }
-    let range = (layout.width - layout.left_padding - layout.right_padding).max(1.0);
-
-    let target_x = x1;
-    let span = (max_ms - min_ms) as f64;
-    let scaled = target_x - layout.left_padding;
-    if !(span.is_finite() && scaled.is_finite() && range.is_finite()) {
-        return None;
-    }
-    let est = (min_ms as f64) + span * (scaled / range);
-    if !est.is_finite() {
-        return None;
-    }
-    let mut lo = est.round() as i64;
-    let mut hi = lo;
-    let mut step: i64 = 1;
-
-    let mut guard = 0;
-    while guard < 80 {
-        guard += 1;
-        let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
-        if x_lo.is_nan() {
-            return None;
-        }
-        if x_lo <= target_x {
-            break;
-        }
-        hi = lo;
-        lo = lo.saturating_sub(step);
-        step = step.saturating_mul(2);
-    }
-
-    guard = 0;
-    step = 1;
-    while guard < 80 {
-        guard += 1;
-        let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
-        if x_hi.is_nan() {
-            return None;
-        }
-        if x_hi >= target_x {
-            break;
-        }
-        lo = hi;
-        hi = hi.saturating_add(step);
-        step = step.saturating_mul(2);
-    }
-
-    let x_lo = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
-    let x_hi = gantt_today_x(hi, min_ms, max_ms, range, layout.left_padding);
-    if !(x_lo <= target_x && target_x <= x_hi) {
-        return None;
-    }
-
-    while lo < hi {
-        let mid = lo + (hi - lo) / 2;
-        let x_mid = gantt_today_x(mid, min_ms, max_ms, range, layout.left_padding);
-        if x_mid < target_x {
-            lo = mid.saturating_add(1);
-        } else {
-            hi = mid;
-        }
-    }
-    let x = gantt_today_x(lo, min_ms, max_ms, range, layout.left_padding);
-    if x == target_x { Some(lo) } else { None }
+    x1.is_finite().then_some(x1)
 }
 
-fn gantt_today_x(now_ms: i64, min_ms: i64, max_ms: i64, range: f64, left_padding: f64) -> f64 {
-    if max_ms <= min_ms {
-        return left_padding + (range / 2.0).round();
+#[cfg(test)]
+mod tests {
+    use super::gantt_upstream_today_x;
+
+    #[test]
+    fn upstream_today_x_requires_an_exact_class_token_and_finite_coordinate() {
+        assert_eq!(
+            gantt_upstream_today_x(r#"<svg><line class="grid today active" x1="77" /></svg>"#),
+            Some(77.0)
+        );
+        assert_eq!(
+            gantt_upstream_today_x(r#"<svg><line class="not-today" x1="77" /></svg>"#),
+            None
+        );
+        assert_eq!(
+            gantt_upstream_today_x(r#"<svg><line class="today" x1="NaN" /></svg>"#),
+            None
+        );
+        assert_eq!(gantt_upstream_today_x("<svg>"), None);
     }
-    let t = (now_ms - min_ms) as f64 / (max_ms - min_ms) as f64;
-    left_padding + (t * range).round()
 }

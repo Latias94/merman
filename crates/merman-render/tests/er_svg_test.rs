@@ -1,7 +1,7 @@
 use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_er_diagram_debug_svg, render_er_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use regex::Regex;
 use std::path::PathBuf;
 
@@ -22,64 +22,32 @@ fn edge_labels_group(svg: &str) -> &str {
     &svg[start..end]
 }
 
-#[test]
-fn er_debug_svg_renders() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+fn render_er_svg_from_text(text: &str, options: &SvgRenderOptions) -> String {
+    let session = merman_render::environment::RenderEnvironment::parity()
         .begin_session()
         .unwrap();
-    let path = workspace_root()
-        .join("fixtures")
-        .join("er")
-        .join("basic.mmd");
-    let text = std::fs::read_to_string(&path).expect("fixture");
-
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
 
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let LayoutDiagram::ErDiagram(layout) = out.layout else {
-        panic!("expected ErDiagram layout");
-    };
-
-    let svg = render_er_diagram_debug_svg(&layout, &SvgRenderOptions::default());
-    assert!(svg.contains("<svg"));
-    assert!(svg.contains("edge-label-box") || svg.contains("polyline"));
-    assert!(svg.contains("marker") && svg.contains("ONLY_ONE_START"));
+    artifact
+        .render_svg(options, &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 #[test]
 fn er_svg_renders_entities_and_relationships() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("er")
         .join("upstream_attributes_styles_classes.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
-        panic!("expected ErDiagram layout");
-    };
-
-    let svg = render_er_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let svg = render_er_svg_from_text(&text, &SvgRenderOptions::default());
 
     assert!(svg.contains(r#"id="merman-entity-BOOK-0""#));
     assert!(svg.contains(r#"data-look="classic""#));
@@ -111,34 +79,12 @@ fn er_svg_renders_entities_and_relationships() {
 
 #[test]
 fn er_svg_uses_configured_look_in_dom_attributes() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let text = r#"%%{init: {"look": "neo"}}%%
 erDiagram
   CUSTOMER ||--o{ ORDER : places
 "#;
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
-        panic!("expected ErDiagram layout");
-    };
-
-    let svg = render_er_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
 
     assert!(
         svg.contains(r#"data-look="neo""#),
@@ -152,9 +98,6 @@ erDiagram
 
 #[test]
 fn er_svg_renders_diagram_title_and_viewbox_includes_it() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let text = r#"---
 title: Diagram Title
 ---
@@ -162,26 +105,7 @@ erDiagram
   A ||--o{ B : has
 "#;
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
-        panic!("expected ErDiagram layout");
-    };
-
-    let svg = render_er_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
 
     assert!(svg.contains(r#"class="erDiagramTitleText""#));
     assert!(svg.contains(">Diagram Title<"));
@@ -190,9 +114,6 @@ erDiagram
 
 #[test]
 fn er_svg_forest_theme_renders_root_gradient() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let text = r#"---
 config:
   theme: forest
@@ -201,29 +122,13 @@ erDiagram
   A ||--|| B : owns
 "#;
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
-        panic!("expected ErDiagram layout");
-    };
-
-    let svg = render_er_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
+    let svg = render_er_svg_from_text(
+        text,
         &SvgRenderOptions {
             diagram_id: Some("er_theme_gradient".to_string()),
             ..SvgRenderOptions::default()
         },
-    )
-    .expect("render svg");
+    );
 
     assert!(
         svg.contains(r#"<linearGradient id="er_theme_gradient-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">"#),
@@ -233,34 +138,12 @@ erDiagram
 
 #[test]
 fn er_svg_relationship_labels_follow_root_htmllabels_not_flowchart_htmllabels() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let text = r#"%%{init: {"htmlLabels": true, "flowchart": {"htmlLabels": false}}}%%
 erDiagram
   A ||--|| B : owns
 "#;
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
-        panic!("expected ErDiagram layout");
-    };
-
-    let svg = render_er_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
 
     let edge_labels = edge_labels_group(&svg);
     assert!(svg.contains(r#"class="nodeLabel markdown-node-label""#));
@@ -273,34 +156,12 @@ erDiagram
 
 #[test]
 fn er_svg_relationship_labels_follow_flowchart_htmllabels_when_root_unset() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let text = r#"%%{init: {"flowchart": {"htmlLabels": false}}}%%
 erDiagram
   A ||--|| B : owns
 "#;
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let layout_options = LayoutOptions::default();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::ErDiagram(layout) = &out.layout else {
-        panic!("expected ErDiagram layout");
-    };
-
-    let svg = render_er_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
+    let svg = render_er_svg_from_text(text, &SvgRenderOptions::default());
 
     let edge_labels = edge_labels_group(&svg);
     assert!(

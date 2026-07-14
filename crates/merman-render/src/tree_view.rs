@@ -24,15 +24,6 @@ pub(crate) const TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE: f64 = 2.0;
 pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
     TREE_VIEW_HIGHLIGHT_RECT_EXTENSION + TREE_VIEW_HIGHLIGHT_VIEWPORT_CLEARANCE;
 
-pub fn layout_tree_view_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<TreeViewDiagramLayout> {
-    let model: TreeViewDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_tree_view_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_tree_view_diagram_typed(
     model: &TreeViewDiagramRenderModel,
     effective_config: &Value,

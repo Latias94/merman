@@ -2,34 +2,26 @@ mod common;
 
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_timeline_diagram_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::environment::RenderEnvironment;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_timeline_svg_from_text(text: &str) -> String {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let engine = legacy_init_theme_compat_engine();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("layout ok");
 
-    let layout_options = LayoutOptions::headless_svg_defaults();
-    let out = layout_parsed(&parsed, &layout_options, &_session).expect("layout ok");
-    let LayoutDiagram::TimelineDiagram(layout) = &out.layout else {
-        panic!("expected TimelineDiagram layout");
-    };
-
-    render_timeline_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        out.meta.title.as_deref(),
-        &_session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 #[test]

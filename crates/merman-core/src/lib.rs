@@ -9,6 +9,7 @@
 pub mod baseline;
 pub mod common;
 pub mod common_db;
+mod compatibility_json;
 pub mod config;
 pub mod detect;
 pub mod diagram;
@@ -34,11 +35,12 @@ mod yaml_config;
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{
-    BLOCK_WIDTH_WARNING_RULE_ID, DiagramRegistry, DiagramSemanticParser, DiagramWarningFact,
-    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
-    GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, ParsedDiagram, ParsedDiagramRender,
-    ParsedDiagramWithEditorFacts, ParsedEditorFacts, RenderDiagramRegistry, RenderSemanticModel,
-    RenderSemanticParser,
+    BLOCK_WIDTH_WARNING_RULE_ID, BuiltinRenderSemantic, CustomJsonProvenance,
+    CustomJsonRenderModel, CustomJsonRenderParser, DiagramRegistry, DiagramSemanticParser,
+    DiagramWarningFact, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID,
+    FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
+    ParsedDiagram, ParsedDiagramRender, ParsedDiagramWithEditorFacts, ParsedEditorFacts,
+    RenderDiagramRegistry, RenderSemanticModel,
 };
 pub use editor::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticCompleteness,

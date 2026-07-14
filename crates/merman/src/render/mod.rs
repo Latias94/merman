@@ -9,10 +9,10 @@ pub use merman_render::environment::{
     TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
     TextMeasurementReport, TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
 };
+pub use merman_render::family::RenderFamilyKind;
 #[cfg(feature = "ratex-math")]
 pub use merman_render::math::RatexMathRenderer;
 pub use merman_render::math::{MathRenderer, NoopMathRenderer};
-pub use merman_render::model::{LayoutDiagram, LayoutedDiagram};
 pub use merman_render::resources::{
     ClassComplexity, FlowchartComplexity, RenderResourceLimits, RenderResourceProfile,
     ResourceLimitExceeded, ResourceLimitPhase,
@@ -33,7 +33,7 @@ pub use merman_render::text::{
     VendoredFontMetricsTextMeasurer, WrapMode,
 };
 pub use merman_render::{
-    Error as RenderError, FlowchartElkBackend, LayoutOptions, Result as RenderResult, layout_parsed,
+    Error as RenderError, FlowchartElkBackend, LayoutOptions, Result as RenderResult,
 };
 
 mod operation;
@@ -175,16 +175,16 @@ mod sanitize_svg_id_tests {
     }
 }
 
-/// Synchronous layout helper (executor-free).
-pub fn layout_diagram_sync(
+/// Parses and lays out one diagram as compatibility JSON (executor-free).
+pub fn layout_json_sync(
     engine: &merman_core::Engine,
     text: &str,
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
-) -> Result<Option<LayoutedDiagram>> {
+) -> Result<Option<serde_json::Value>> {
     let environment = default_render_environment();
     operation::HeadlessOperation::new(engine, text, parse_options, layout_options, &environment)?
-        .layout_diagram()
+        .layout_json()
 }
 
 /// Returns layout defaults intended for UI integrations that render headless SVG.
@@ -194,22 +194,21 @@ pub fn headless_layout_options() -> LayoutOptions {
     LayoutOptions::headless_svg_defaults()
 }
 
-pub async fn layout_diagram(
+pub async fn layout_json(
     engine: &merman_core::Engine,
     text: &str,
     parse_options: merman_core::ParseOptions,
     layout_options: &LayoutOptions,
-) -> Result<Option<LayoutedDiagram>> {
+) -> Result<Option<serde_json::Value>> {
     // This async API is runtime-agnostic: layout is CPU-bound and does not perform I/O.
     // It executes synchronously and does not yield.
-    layout_diagram_sync(engine, text, parse_options, layout_options)
+    layout_json_sync(engine, text, parse_options, layout_options)
 }
 
 /// Parses and lays out one diagram through the canonical typed render path.
 ///
-/// The returned artifact exposes read-only semantic, metadata, and layout views. Rendering it
-/// consumes the artifact so diagnostics and request policy can inspect exactly the parse/layout
-/// result that produces the SVG.
+/// The returned artifact exposes metadata and compatibility layout JSON while keeping its typed
+/// semantic/layout pair opaque. Rendering consumes the same artifact that completed layout.
 pub fn prepare_render_sync(
     engine: &merman_core::Engine,
     text: &str,
@@ -497,23 +496,25 @@ mod svg_pipeline_tests {
     }
 
     #[test]
-    fn layout_helpers_share_headless_operation_semantics() {
+    fn layout_json_helpers_share_the_complete_typed_operation_projection() {
         let source = "flowchart TD\nA[Hello] --> B[World]";
         let renderer = HeadlessRenderer::new().with_lenient_parsing();
         let free_layout =
-            layout_diagram_sync(&renderer.engine, source, renderer.parse, &renderer.layout)
+            layout_json_sync(&renderer.engine, source, renderer.parse, &renderer.layout)
                 .unwrap()
                 .unwrap();
-        let renderer_layout = renderer.layout_diagram_sync(source).unwrap().unwrap();
+        let renderer_layout = renderer.layout_json_sync(source).unwrap().unwrap();
 
-        assert_eq!(free_layout.semantic, renderer_layout.semantic);
+        assert_eq!(free_layout, renderer_layout);
         assert_eq!(
-            free_layout.meta.diagram_type,
-            renderer_layout.meta.diagram_type
+            renderer_layout["meta"]["diagram_type"],
+            serde_json::json!("flowchart-v2")
         );
+        assert!(renderer_layout["semantic"].is_object());
+        assert!(renderer_layout["layout"]["FlowchartV2"].is_object());
         assert!(
             renderer
-                .layout_diagram_sync("not a mermaid diagram")
+                .layout_json_sync("not a mermaid diagram")
                 .unwrap()
                 .is_none()
         );
@@ -1205,7 +1206,7 @@ impl HeadlessRenderer {
             .parse_diagram_sync(text, self.parse)?)
     }
 
-    pub fn layout_diagram_sync(&self, text: &str) -> Result<Option<LayoutedDiagram>> {
+    pub fn layout_json_sync(&self, text: &str) -> Result<Option<serde_json::Value>> {
         operation::HeadlessOperation::new(
             &self.engine,
             text,
@@ -1213,7 +1214,7 @@ impl HeadlessRenderer {
             &self.layout,
             &self.environment,
         )?
-        .layout_diagram()
+        .layout_json()
     }
 
     /// Parses and lays out one typed render artifact for inspection before SVG rendering.

@@ -58,3 +58,4 @@ unicode-width.workspace = true
 [dev-dependencies]
 futures.workspace = true
 regex.workspace = true
+syn.workspace = true

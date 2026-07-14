@@ -6,7 +6,6 @@ use crate::model::{
 
 pub(crate) fn render_ishikawa_diagram_svg(
     layout: &IshikawaDiagramLayout,
-    _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {

@@ -68,17 +68,6 @@ fn packet_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
     out
 }
 
-pub(crate) fn render_packet_diagram_svg(
-    layout: &PacketDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: PacketDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_packet_diagram_svg_model(layout, &model, effective_config, diagram_title, options)
-}
-
 pub(crate) fn render_packet_diagram_svg_model(
     layout: &PacketDiagramLayout,
     model: &PacketDiagramRenderModel,

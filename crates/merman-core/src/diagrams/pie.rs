@@ -21,9 +21,25 @@ pub struct PieDiagramRenderModel {
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub sections: Vec<PieRenderSection>,
+    #[serde(skip)]
+    compatibility_output: CompatibilityOutputState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum CompatibilityOutputState {
+    Empty,
+    #[default]
+    Model,
 }
 
 impl PieDiagramRenderModel {
+    fn empty_compatibility_output() -> Self {
+        Self {
+            compatibility_output: CompatibilityOutputState::Empty,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -49,10 +65,7 @@ struct PieSemanticSource {
 }
 
 pub fn parse_pie(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(pie_output_to_json(
-        parse_pie_semantic_source(code, meta)?.output,
-        meta,
-    ))
+    pie_output_to_json(parse_pie_semantic_source(code, meta)?.output, meta)
 }
 
 pub(crate) fn parse_pie_json_and_editor_facts(
@@ -63,22 +76,32 @@ pub(crate) fn parse_pie_json_and_editor_facts(
         output,
         editor_facts,
     } = parse_pie_semantic_source(code, meta)?;
-    Ok((pie_output_to_json(output, meta), editor_facts))
+    Ok((pie_output_to_json(output, meta)?, editor_facts))
 }
 
-fn pie_output_to_json(output: PieParseOutput, meta: &ParseMetadata) -> Value {
+fn pie_output_to_json(output: PieParseOutput, meta: &ParseMetadata) -> Result<Value> {
     match output {
-        PieParseOutput::Empty => json!({}),
-        PieParseOutput::ExpectedPie => json!({ "error": "expected pie" }),
-        PieParseOutput::Model(model) => json!({
+        PieParseOutput::Empty => Ok(json!({})),
+        PieParseOutput::ExpectedPie => Ok(json!({ "error": "expected pie" })),
+        PieParseOutput::Model(model) => render_model_to_compat_json(&model, meta),
+    }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &PieDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    if model.compatibility_output == CompatibilityOutputState::Empty {
+        return Ok(json!({}));
+    }
+    Ok(json!({
             "type": meta.diagram_type,
             "showData": model.show_data,
-            "title": model.title,
-            "accTitle": model.acc_title,
-            "accDescr": model.acc_descr,
-            "sections": model.sections,
-        }),
-    }
+            "title": &model.title,
+            "accTitle": &model.acc_title,
+            "accDescr": &model.acc_descr,
+            "sections": &model.sections,
+    }))
 }
 
 pub fn parse_pie_model_for_render(
@@ -86,7 +109,7 @@ pub fn parse_pie_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<PieDiagramRenderModel> {
     match parse_pie_semantic_source(code, meta)?.output {
-        PieParseOutput::Empty => Ok(PieDiagramRenderModel::default()),
+        PieParseOutput::Empty => Ok(PieDiagramRenderModel::empty_compatibility_output()),
         PieParseOutput::ExpectedPie => Err(Error::diagram_parse_fallback(
             meta.diagram_type.clone(),
             "expected pie".to_string(),
@@ -234,6 +257,7 @@ fn parse_pie_semantic_source(code: &str, meta: &ParseMetadata) -> Result<PieSema
             acc_title: common.acc_title,
             acc_descr: common.acc_descr,
             sections,
+            compatibility_output: CompatibilityOutputState::Model,
         }),
         editor_facts,
     })
@@ -451,7 +475,7 @@ fn strip_inline_comment(line: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_pie_editor_facts;
+    use super::*;
     use crate::{
         EditorSemanticCompleteness, Engine, Error, MermaidConfig, ParseMetadata, ParseOptions,
         SourceSpan,
@@ -463,6 +487,33 @@ mod tests {
             config: MermaidConfig::default(),
             effective_config: MermaidConfig::default(),
             title: None,
+        }
+    }
+
+    #[test]
+    fn pie_typed_projection_matches_complete_compatibility_json() {
+        let text = "pie showData\n\"A\": 1\n\"B\": 2\n";
+        let meta = metadata();
+        let compat = parse_pie(text, &meta).unwrap();
+        let typed = parse_pie_model_for_render(text, &meta).unwrap();
+
+        assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
+        assert_eq!(compat["type"], "pie");
+        assert!(compat["title"].is_null());
+    }
+
+    #[test]
+    fn pie_typed_projection_preserves_empty_and_header_only_output_states() {
+        let meta = metadata();
+        for source in ["", "pie"] {
+            let compat = parse_pie(source, &meta).unwrap();
+            let typed = parse_pie_model_for_render(source, &meta).unwrap();
+
+            assert_eq!(
+                render_model_to_compat_json(&typed, &meta).unwrap(),
+                compat,
+                "projection drift for {source:?}"
+            );
         }
     }
 

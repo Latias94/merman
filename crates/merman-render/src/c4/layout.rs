@@ -1,5 +1,4 @@
 use super::{C4Conf, C4ConfigView, C4Model, measure_c4_text};
-use crate::json::from_value_ref;
 use crate::model::{
     Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
     C4TextBlockLayout, LayoutPoint,
@@ -735,7 +734,8 @@ fn layout_inside_boundary(
     Ok(())
 }
 
-pub(crate) fn layout_c4_diagram_typed(
+/// Lays out a typed C4 render model without a compatibility-JSON round trip.
+pub fn layout_c4_diagram_typed(
     model: &C4DiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
@@ -952,23 +952,6 @@ pub(crate) fn layout_c4_diagram_typed(
         shapes: shapes_out,
         rels: rels_out,
     })
-}
-
-pub(crate) fn layout_c4_diagram(
-    model: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-    viewport_width: f64,
-    viewport_height: f64,
-) -> Result<C4DiagramLayout> {
-    let model: C4DiagramRenderModel = from_value_ref(model)?;
-    layout_c4_diagram_typed(
-        &model,
-        effective_config,
-        measurer,
-        viewport_width,
-        viewport_height,
-    )
 }
 
 #[cfg(test)]

@@ -106,16 +106,6 @@ fn radar_css(diagram_id: &str, theme: &RadarTheme) -> String {
     out
 }
 
-pub(crate) fn render_radar_diagram_svg(
-    layout: &RadarDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: RadarDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_radar_diagram_svg_model(layout, &model, effective_config, options)
-}
-
 pub(crate) fn render_radar_diagram_svg_model(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramRenderModel,

@@ -2,7 +2,6 @@ use super::*;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 mod context;
-mod debug_svg;
 mod edge;
 mod links;
 mod node;
@@ -70,24 +69,6 @@ struct StateRenderCtx<'a> {
 
 mod render;
 
-pub(super) fn render_state_diagram_v2_svg(
-    layout: &StateDiagramV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    render::render_state_diagram_v2_svg_impl(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(super) fn render_state_diagram_v2_svg_model(
     layout: &StateDiagramV2Layout,
     model: &StateSvgModel,
@@ -104,12 +85,4 @@ pub(super) fn render_state_diagram_v2_svg_model(
         measurer,
         options,
     )
-}
-
-pub(super) fn render_state_diagram_v2_debug_svg(
-    layout: &StateDiagramV2Layout,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> String {
-    debug_svg::render_state_diagram_v2_debug_svg(layout, options, debug)
 }

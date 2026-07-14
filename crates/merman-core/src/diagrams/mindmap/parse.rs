@@ -1,7 +1,6 @@
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 #[cfg(all(test, feature = "full"))]
 use std::cell::Cell;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticCompleteness,
@@ -14,8 +13,6 @@ use super::db::{MindmapDb, MindmapParseConfig};
 use super::render_model::MindmapDiagramRenderModel;
 use super::utils::{NodeSpec, parse_node_spec, strip_inline_comment};
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
-
-static MINDMAP_DIAGRAM_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(all(test, feature = "full"))]
 thread_local! {
@@ -33,7 +30,8 @@ pub(crate) fn mindmap_syntax_construction_count() -> usize {
 }
 
 pub fn parse_mindmap(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    parse_mindmap_semantic_source(code, meta)?.into_compat_json(meta)
+    let model = parse_mindmap_semantic_source(code, meta)?.into_render_model(meta)?;
+    super::render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_mindmap_json_and_editor_facts(
@@ -42,7 +40,8 @@ pub(crate) fn parse_mindmap_json_and_editor_facts(
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = parse_mindmap_semantic_source(code, meta)?;
     let editor_facts = source.editor_facts();
-    let model = source.into_compat_json(meta)?;
+    let model = source.into_render_model(meta)?;
+    let model = super::render_model_to_compat_json(&model, meta)?;
     Ok((model, editor_facts))
 }
 
@@ -78,10 +77,6 @@ impl MindmapSemanticSource {
             nodes: db.to_layout_nodes_for_render(root_id, &meta.effective_config),
             edges: db.to_edges_for_render(root_id, &meta.effective_config),
         })
-    }
-
-    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
-        mindmap_db_to_compat_json(self.into_db(meta)?, meta)
     }
 }
 
@@ -504,87 +499,4 @@ fn parse_mindmap_lines(
     }
 
     Ok(out)
-}
-
-fn mindmap_db_to_compat_json(mut db: MindmapDb, meta: &ParseMetadata) -> Result<Value> {
-    let Some(root_id) = db.get_mindmap().map(|n| n.id) else {
-        let mut final_config =
-            crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
-        if meta.config.as_value().get("layout").is_none()
-            && let Some(obj) = final_config.as_object_mut()
-        {
-            obj.insert(
-                "layout".to_string(),
-                Value::String("cose-bilkent".to_string()),
-            );
-        }
-
-        let mut out = Map::with_capacity(3);
-        out.insert("nodes".to_string(), Value::Array(Vec::new()));
-        out.insert("edges".to_string(), Value::Array(Vec::new()));
-        out.insert("config".to_string(), final_config);
-        return Ok(Value::Object(out));
-    };
-    db.assign_sections(root_id, None);
-    let nodes = db.to_layout_node_values(root_id, &meta.effective_config);
-    let edges = db.to_edge_values(root_id, &meta.effective_config);
-
-    let mut final_config =
-        crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
-    if meta.config.as_value().get("layout").is_none()
-        && let Some(obj) = final_config.as_object_mut()
-    {
-        obj.insert(
-            "layout".to_string(),
-            Value::String("cose-bilkent".to_string()),
-        );
-    }
-
-    let mut shapes = Map::new();
-    for n in nodes.iter() {
-        let Some(node) = n.as_object() else {
-            continue;
-        };
-        let Some(id) = node.get("id").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        let shape = node.get("shape").cloned().unwrap_or(Value::Null);
-        let width = node.get("width").cloned().unwrap_or(Value::Null);
-        let height = node.get("height").cloned().unwrap_or(Value::Null);
-        let padding = node.get("padding").cloned().unwrap_or(Value::Null);
-        shapes.insert(
-            id.to_string(),
-            json!({
-                "shape": shape,
-                "width": width,
-                "height": height,
-                "padding": padding,
-            }),
-        );
-    }
-
-    let diagram_id = MINDMAP_DIAGRAM_ID_COUNTER.fetch_add(1, Ordering::Relaxed) + 1;
-
-    let mut out = Map::new();
-    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("nodes".to_string(), Value::Array(nodes));
-    out.insert("edges".to_string(), Value::Array(edges));
-    out.insert("config".to_string(), final_config);
-    out.insert("rootNode".to_string(), db.to_root_node_value(root_id));
-    out.insert(
-        "markers".to_string(),
-        Value::Array(vec![Value::String("point".to_string())]),
-    );
-    out.insert("direction".to_string(), Value::String("TB".to_string()));
-    out.insert("nodeSpacing".to_string(), json!(50));
-    out.insert("rankSpacing".to_string(), json!(50));
-    out.insert("shapes".to_string(), Value::Object(shapes));
-    // Mermaid uses a random UUID v4 here. For performance and determinism, keep a cheap
-    // monotonic id that is unique within the current process. Snapshot tests normalize this
-    // field to "<dynamic>".
-    out.insert(
-        "diagramId".to_string(),
-        Value::String(format!("mindmap-{diagram_id}")),
-    );
-    Ok(Value::Object(out))
 }

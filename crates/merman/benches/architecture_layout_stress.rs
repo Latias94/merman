@@ -1,6 +1,9 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman::render::{LayoutOptions, RenderEnvironment, headless_layout_options};
-use merman_core::{Engine, ParseOptions};
+use merman::render::{
+    LayoutOptions, RenderEnvironment, TextMeasurementPhase, headless_layout_options,
+};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::architecture::layout_architecture_diagram_typed;
 use std::hint::black_box;
 
 const ARCH_REASONABLE_HEIGHT: &str =
@@ -18,6 +21,11 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
         .parse_diagram_for_render_model_sync(ARCH_REASONABLE_HEIGHT, parse_opts)
         .expect("parse")
         .expect("supported diagram");
+    let RenderSemanticModel::Architecture(model) = &parsed.model else {
+        panic!("expected architecture render model");
+    };
+    let ambient_seed = session.seed().seed().get();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
     let mut group = c.benchmark_group("layout_stress");
     group.sample_size(50);
@@ -28,19 +36,16 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
         b.iter(|| {
             let mut acc: usize = 0;
             for _ in 0..50usize {
-                let layouted = merman_render::layout_parsed_render_layout_only(
-                    black_box(&parsed),
-                    &layout,
-                    &session,
+                let layouted = layout_architecture_diagram_typed(
+                    black_box(model),
+                    parsed.meta.effective_config.as_value(),
+                    &measurer,
+                    layout.use_manatee_layout,
+                    ambient_seed,
                 )
                 .expect("layout");
-                match layouted {
-                    merman_render::model::LayoutDiagram::ArchitectureDiagram(layouted) => {
-                        acc ^= layouted.nodes.len();
-                        acc ^= layouted.edges.len();
-                    }
-                    _ => unreachable!("expected architecture layout"),
-                }
+                acc ^= layouted.nodes.len();
+                acc ^= layouted.edges.len();
             }
             black_box(acc);
         });

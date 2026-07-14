@@ -43,46 +43,6 @@ fn scoped_sequence_base_defs(diagram_id: &str) -> String {
     defs
 }
 
-pub(super) fn render_sequence_diagram_svg(
-    layout: &SequenceDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let sanitize_config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
-    render_sequence_diagram_svg_inner(
-        layout,
-        &model,
-        effective_config,
-        &sanitize_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-pub(super) fn render_sequence_diagram_svg_with_config(
-    layout: &SequenceDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: SequenceSvgModel = crate::json::from_value_ref(semantic)?;
-    render_sequence_diagram_svg_model_with_config(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(super) fn render_sequence_diagram_svg_model_with_config(
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,

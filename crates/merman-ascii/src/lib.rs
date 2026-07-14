@@ -211,6 +211,7 @@ mod tests {
 
     fn empty_flowchart() -> FlowchartV2Model {
         FlowchartV2Model {
+            keyword: "graph".to_string(),
             acc_descr: None,
             acc_title: None,
             class_defs: Default::default(),
@@ -231,6 +232,7 @@ mod tests {
             label: Some(id.to_string()),
             label_type: None,
             layout_shape: None,
+            shape: None,
             icon: None,
             form: None,
             pos: None,
@@ -254,6 +256,8 @@ mod tests {
             label: None,
             label_type: None,
             edge_type: None,
+            arrow: "-->".to_string(),
+            is_user_defined_id: false,
             stroke: None,
             interpolate: None,
             classes: Vec::new(),

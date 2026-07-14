@@ -12,11 +12,21 @@ use serde_json::{Value, json};
 pub struct InfoDiagramRenderModel {
     #[serde(rename = "showInfo")]
     pub show_info: bool,
+    #[serde(skip)]
+    compat_output: InfoCompatOutput,
+}
+
+#[derive(Debug, Clone, Default)]
+enum InfoCompatOutput {
+    Empty,
+    ExpectedInfoError,
+    #[default]
+    Model,
 }
 
 enum InfoParseOutput {
     Empty,
-    Error(Value),
+    ExpectedInfoError,
     Model(InfoDiagramRenderModel),
 }
 
@@ -26,10 +36,8 @@ struct InfoSemanticSource {
 }
 
 pub fn parse_info(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(info_output_to_json(
-        parse_info_semantic_source(code, meta)?.output,
-        meta,
-    ))
+    let model = info_output_into_render_model(parse_info_semantic_source(code, meta)?.output);
+    render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_info_json_and_editor_facts(
@@ -40,28 +48,45 @@ pub(crate) fn parse_info_json_and_editor_facts(
         output,
         editor_facts,
     } = parse_info_semantic_source(code, meta)?;
-    Ok((info_output_to_json(output, meta), editor_facts))
+    let model = info_output_into_render_model(output);
+    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
 }
 
-fn info_output_to_json(output: InfoParseOutput, meta: &ParseMetadata) -> Value {
+fn info_output_into_render_model(output: InfoParseOutput) -> InfoDiagramRenderModel {
     match output {
-        InfoParseOutput::Empty => json!({}),
-        InfoParseOutput::Error(v) => v,
-        InfoParseOutput::Model(model) => json!({
+        InfoParseOutput::Empty => InfoDiagramRenderModel {
+            show_info: false,
+            compat_output: InfoCompatOutput::Empty,
+        },
+        InfoParseOutput::ExpectedInfoError => InfoDiagramRenderModel {
+            show_info: false,
+            compat_output: InfoCompatOutput::ExpectedInfoError,
+        },
+        InfoParseOutput::Model(model) => model,
+    }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &InfoDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    Ok(match &model.compat_output {
+        InfoCompatOutput::Empty => json!({}),
+        InfoCompatOutput::ExpectedInfoError => json!({ "error": "expected info" }),
+        InfoCompatOutput::Model => json!({
             "type": meta.diagram_type,
             "showInfo": model.show_info,
         }),
-    }
+    })
 }
 
 pub fn parse_info_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<InfoDiagramRenderModel> {
-    match parse_info_semantic_source(code, meta)?.output {
-        InfoParseOutput::Empty | InfoParseOutput::Error(_) => Ok(InfoDiagramRenderModel::default()),
-        InfoParseOutput::Model(model) => Ok(model),
-    }
+    Ok(info_output_into_render_model(
+        parse_info_semantic_source(code, meta)?.output,
+    ))
 }
 
 pub fn parse_info_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
@@ -120,7 +145,7 @@ fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSe
         }
         InfoHeader::ExpectedInfo => {
             return Ok(InfoSemanticSource {
-                output: InfoParseOutput::Error(json!({ "error": "expected info" })),
+                output: InfoParseOutput::ExpectedInfoError,
                 editor_facts: EditorSemanticFacts::new(),
             });
         }
@@ -167,7 +192,10 @@ fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSe
     }
 
     Ok(InfoSemanticSource {
-        output: InfoParseOutput::Model(InfoDiagramRenderModel { show_info }),
+        output: InfoParseOutput::Model(InfoDiagramRenderModel {
+            show_info,
+            compat_output: InfoCompatOutput::Model,
+        }),
         editor_facts,
     })
 }
@@ -380,5 +408,33 @@ mod tests {
                         source.find("showInfo").unwrap() + "showInfo".len(),
                     ))
         }));
+    }
+
+    #[test]
+    fn info_typed_projection_preserves_empty_error_and_model_outputs() {
+        let meta = test_meta();
+        for source in ["", "flowchart A", "info\n", "info showInfo\n"] {
+            let compat = parse_info(source, &meta).unwrap();
+            let typed = parse_info_model_for_render(source, &meta).unwrap();
+            assert_eq!(
+                render_model_to_compat_json(&typed, &meta).unwrap(),
+                compat,
+                "Info projection drifted for {source:?}"
+            );
+        }
+
+        assert_eq!(parse_info("", &meta).unwrap(), json!({}));
+        assert_eq!(
+            parse_info("flowchart A", &meta).unwrap(),
+            json!({ "error": "expected info" })
+        );
+        assert_eq!(
+            parse_info("info\n", &meta).unwrap(),
+            json!({ "type": "info", "showInfo": false })
+        );
+        assert_eq!(
+            render_model_to_compat_json(&InfoDiagramRenderModel::default(), &meta).unwrap(),
+            json!({ "type": "info", "showInfo": false })
+        );
     }
 }

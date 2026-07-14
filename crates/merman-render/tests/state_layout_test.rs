@@ -1,5 +1,7 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::model::StateDiagramV2Layout;
+use merman_render::state::layout_state_diagram_v2_typed;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -41,20 +43,26 @@ fn deep_state_composite_chain(depth: usize) -> String {
     input
 }
 
-fn layout_state_from_text(text: &str) -> merman_render::model::StateDiagramV2Layout {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+fn layout_state_from_text(text: &str) -> StateDiagramV2Layout {
+    layout_state_from_text_with_options(text, ParseOptions::default())
+}
+
+fn layout_state_from_text_with_options(
+    text: &str,
+    parse_options: ParseOptions,
+) -> StateDiagramV2Layout {
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(text, parse_options)
         .expect("parse ok")
         .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
+    let RenderSemanticModel::State(model) = parsed.model else {
+        panic!("expected State render model");
     };
-    *layout
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+
+    layout_state_diagram_v2_typed(&model, parsed.meta.effective_config.as_value(), &measurer)
+        .expect("typed State layout")
 }
 
 #[test]
@@ -72,22 +80,10 @@ fn state_parse_for_render_model_handles_deep_composite_chain() {
 
 #[test]
 fn state_layout_handles_deep_composite_chain() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     const DEPTH: usize = 512;
     let text = deep_state_composite_chain(DEPTH);
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::strict()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session)
-        .expect("layout should not depend on recursive cluster extraction");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text_with_options(&text, ParseOptions::strict());
 
     assert!(layout.clusters.iter().any(|cluster| cluster.id == "S0"));
     assert!(layout.nodes.iter().any(|node| node.id == "Leaf"));
@@ -95,24 +91,13 @@ fn state_layout_handles_deep_composite_chain() {
 
 #[test]
 fn state_layout_produces_positions_and_routes() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("state")
         .join("basic.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(&text);
 
     assert!(layout.nodes.len() >= 3);
     assert!(layout.edges.len() >= 3);
@@ -137,19 +122,8 @@ fn state_layout_produces_positions_and_routes() {
 
 #[test]
 fn state_start_and_end_have_fixed_size() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let text = "stateDiagram-v2\n[*] --> A\nA --> [*]\n";
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(text);
 
     let mut by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -210,24 +184,13 @@ A --> B: owns
 
 #[test]
 fn state_layout_note_groups_contain_notes() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("state")
         .join("upstream_stateDiagram_v2_note_statements_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(&text);
 
     let mut node_by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -249,24 +212,13 @@ fn state_layout_note_groups_contain_notes() {
 
 #[test]
 fn state_layout_composite_and_dividers_contain_children() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("state")
         .join("upstream_stateDiagram_v2_concurrent_state_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(&text);
 
     let mut node_by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -326,24 +278,13 @@ fn state_layout_composite_and_dividers_contain_children() {
 
 #[test]
 fn state_layout_exposes_one_logical_self_loop_edge() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("state")
         .join("upstream_stateDiagram_v2_composite_self_link_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = out.layout else {
-        panic!("expected StateDiagramV2 layout");
-    };
+    let layout = layout_state_from_text(&text);
 
     let self_loop = layout
         .edges

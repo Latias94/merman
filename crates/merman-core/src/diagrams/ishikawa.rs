@@ -88,15 +88,16 @@ impl IshikawaSemanticSource {
         nodes_to_render_model(self.nodes)
     }
 
-    fn into_compat_json(self, meta: &ParseMetadata) -> Value {
-        ishikawa_model_into_json(self.into_render_model(meta), meta)
+    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
+        let model = self.into_render_model(meta);
+        render_model_to_compat_json(&model, meta)
     }
 }
 
 pub fn parse_ishikawa(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(construct_ishikawa_semantic_source(code, meta)
+    construct_ishikawa_semantic_source(code, meta)
         .map_err(|failure| *failure.error)?
-        .into_compat_json(meta))
+        .into_compat_json(meta)
 }
 
 pub(crate) fn parse_ishikawa_json_and_editor_facts(
@@ -106,10 +107,13 @@ pub(crate) fn parse_ishikawa_json_and_editor_facts(
     let source =
         construct_ishikawa_semantic_source(code, meta).map_err(|failure| *failure.error)?;
     let editor_facts = source.editor_facts();
-    Ok((source.into_compat_json(meta), editor_facts))
+    Ok((source.into_compat_json(meta)?, editor_facts))
 }
 
-fn ishikawa_model_into_json(model: IshikawaDiagramRenderModel, meta: &ParseMetadata) -> Value {
+pub(crate) fn render_model_to_compat_json(
+    model: &IshikawaDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
     let mut nodes = Vec::new();
     let root = if let Some(root) = &model.root {
         flatten_nodes(root, 0, &mut nodes);
@@ -122,19 +126,34 @@ fn ishikawa_model_into_json(model: IshikawaDiagramRenderModel, meta: &ParseMetad
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert(
         "title".to_string(),
-        model.title.map(Value::String).unwrap_or(Value::Null),
+        model
+            .title
+            .as_ref()
+            .cloned()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     out.insert(
         "accTitle".to_string(),
-        model.acc_title.map(Value::String).unwrap_or(Value::Null),
+        model
+            .acc_title
+            .as_ref()
+            .cloned()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     out.insert(
         "accDescr".to_string(),
-        model.acc_descr.map(Value::String).unwrap_or(Value::Null),
+        model
+            .acc_descr
+            .as_ref()
+            .cloned()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
     );
     out.insert("root".to_string(), root);
     out.insert("nodes".to_string(), Value::Array(nodes));
-    Value::Object(out)
+    Ok(Value::Object(out))
 }
 
 pub fn parse_ishikawa_model_for_render(
@@ -554,6 +573,10 @@ Cause B
 
         assert_eq!(ishikawa_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
+        assert_eq!(
+            render_model_to_compat_json(&expected_model, &meta()).unwrap(),
+            expected_json
+        );
         assert_eq!(facts, expected_facts);
         assert_eq!(
             json["root"],

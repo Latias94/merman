@@ -1,5 +1,7 @@
-use criterion::{Criterion, criterion_group, criterion_main};
-use merman::render::{LayoutOptions, RenderEnvironment, SvgRenderOptions, headless_layout_options};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use merman::render::{
+    LayoutOptions, RenderEnvironment, SvgDebugOptions, SvgRenderOptions, headless_layout_options,
+};
 use merman_core::{Engine, ParseOptions};
 use std::hint::black_box;
 
@@ -10,23 +12,26 @@ fn bench_architecture_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
     let layout: LayoutOptions = headless_layout_options();
-    let session = RenderEnvironment::parity()
-        .begin_session()
-        .expect("render session");
+    let environment = RenderEnvironment::parity();
 
     let parsed = engine
         .parse_diagram_for_render_model_sync(ARCH_MANY_SERVICES_ONE_GROUP, parse_opts)
         .expect("parse")
         .expect("supported diagram");
-    let layouted = merman_render::layout_parsed_render_layout_only(&parsed, &layout, &session)
-        .expect("layout");
-
     let svg_opts = SvgRenderOptions {
         diagram_id: Some(merman::render::sanitize_svg_id(
             "stress_architecture_batch3_many_services_one_group_059",
         )),
         ..SvgRenderOptions::default()
     };
+    merman_render::family::prepare(
+        parsed.clone(),
+        &layout,
+        environment.begin_session().expect("render session"),
+    )
+    .expect("prepare")
+    .render_svg(&svg_opts, &SvgDebugOptions::default())
+    .expect("render");
 
     let mut group = c.benchmark_group("render_stress");
     group.sample_size(50);
@@ -34,22 +39,31 @@ fn bench_architecture_stress(c: &mut Criterion) {
     // Architecture render is very fast (µs-scale) on medium fixtures, so we batch to get stable
     // signals from per-render fixed-cost changes.
     group.bench_function("architecture_many_services_one_group_x200", move |b| {
-        b.iter(|| {
-            let mut acc: usize = 0;
-            for _ in 0..200usize {
-                let svg = merman_render::svg::render_layout_svg_parts_for_render_model_with_config(
-                    black_box(&layouted),
-                    &parsed.model,
-                    &parsed.meta.effective_config,
-                    parsed.meta.title.as_deref(),
-                    &session,
-                    &svg_opts,
-                )
-                .expect("render");
-                acc ^= svg.len();
-            }
-            black_box(acc);
-        });
+        b.iter_batched(
+            || {
+                (0..200)
+                    .map(|_| {
+                        merman_render::family::prepare(
+                            parsed.clone(),
+                            &layout,
+                            environment.begin_session().expect("render session"),
+                        )
+                        .expect("prepare")
+                    })
+                    .collect::<Vec<_>>()
+            },
+            |artifacts| {
+                let mut acc: usize = 0;
+                for artifact in artifacts {
+                    let svg = artifact
+                        .render_svg(&svg_opts, &SvgDebugOptions::default())
+                        .expect("render");
+                    acc ^= svg.svg().len();
+                }
+                black_box(acc);
+            },
+            BatchSize::LargeInput,
+        );
     });
 
     group.finish();

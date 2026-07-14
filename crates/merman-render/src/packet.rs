@@ -7,16 +7,6 @@ mod config;
 
 pub(crate) use config::PacketConfigView;
 
-pub fn layout_packet_diagram(
-    semantic: &serde_json::Value,
-    diagram_title: Option<&str>,
-    effective_config: &serde_json::Value,
-    _measurer: &dyn TextMeasurer,
-) -> Result<PacketDiagramLayout> {
-    let model: PacketDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_packet_diagram_typed(&model, diagram_title, effective_config, _measurer)
-}
-
 pub fn layout_packet_diagram_typed(
     model: &PacketDiagramRenderModel,
     diagram_title: Option<&str>,

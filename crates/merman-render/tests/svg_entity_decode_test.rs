@@ -1,7 +1,8 @@
 use futures::executor::block_on;
 use merman_core::{Engine, ParseOptions};
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::LayoutOptions;
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::{Path, PathBuf};
 
 fn workspace_root() -> PathBuf {
@@ -15,7 +16,7 @@ fn fixtures_root() -> PathBuf {
 }
 
 fn render_fixture_svg(rel_fixture_path: impl AsRef<Path>) -> String {
-    let _session = merman_render::environment::RenderEnvironment::parity()
+    let session = merman_render::environment::RenderEnvironment::parity()
         .begin_session()
         .unwrap();
     let mmd_path = fixtures_root().join(rel_fixture_path);
@@ -23,14 +24,18 @@ fn render_fixture_svg(rel_fixture_path: impl AsRef<Path>) -> String {
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", mmd_path.display()));
 
     let engine = Engine::new();
-    let parsed = block_on(engine.parse_diagram(&text, ParseOptions::default()))
+    let parsed = block_on(engine.parse_diagram_for_render_model(&text, ParseOptions::default()))
         .expect("parse ok")
         .expect("diagram detected");
 
     let layout_opts = LayoutOptions::default();
-    let layouted = layout_parsed(&parsed, &layout_opts, &_session).expect("layout ok");
+    let artifact = family::prepare(parsed, &layout_opts, session).expect("layout ok");
 
-    render_layouted_svg(&layouted, &_session, &SvgRenderOptions::default()).expect("render ok")
+    artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render ok")
+        .svg()
+        .to_owned()
 }
 
 fn contains_malformed_xml_entity_reference(s: &str) -> bool {

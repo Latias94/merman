@@ -6,16 +6,6 @@ use crate::model::LayoutPoint;
 
 // Block diagram SVG renderer implementation (split from parity.rs).
 
-pub(crate) fn render_block_diagram_svg(
-    layout: &BlockDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model = crate::block::block_model_from_semantic(semantic)?;
-    render_block_diagram_svg_model(layout, &model, effective_config, options)
-}
-
 pub(crate) fn render_block_diagram_svg_model(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,

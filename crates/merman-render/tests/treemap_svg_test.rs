@@ -1,12 +1,13 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
     TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg, render_treemap_diagram_svg};
+use merman_render::family;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, TextStyle};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_render::treemap::layout_treemap_diagram_typed;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -114,29 +115,24 @@ fn render_treemap_svg_and_config_from_fixture(fixture: &str) -> (String, serde_j
 
 fn render_treemap_svg_and_config_from_source(text: &str) -> (String, serde_json::Value) {
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
         .expect("diagram detected");
+    let effective_config = parsed.meta.effective_config.as_value().clone();
 
     let layout_options = LayoutOptions::default();
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("begin render session");
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let LayoutDiagram::TreemapDiagram(layout) = &out.layout else {
-        panic!("expected TreemapDiagram layout");
-    };
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned();
 
-    let svg = render_treemap_diagram_svg(
-        layout,
-        &out.semantic,
-        &out.meta.effective_config,
-        &session,
-        &SvgRenderOptions::default(),
-    )
-    .expect("render svg");
-
-    (svg, out.meta.effective_config.clone())
+    (svg, effective_config)
 }
 
 fn render_treemap_svg_from_fixture(fixture: &str) -> String {
@@ -278,14 +274,15 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 "#;
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(
-        source,
-        ParseOptions {
-            suppress_errors: true,
-        },
-    ))
-    .expect("parse returns suppressed error")
-    .expect("diagram detected");
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(
+            source,
+            ParseOptions {
+                suppress_errors: true,
+            },
+        )
+        .expect("parse returns suppressed error")
+        .expect("diagram detected");
 
     assert_eq!(parsed.meta.diagram_type, "error");
 
@@ -293,9 +290,12 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("begin render session");
-    let out = layout_parsed(&parsed, &layout_options, &session).expect("layout ok");
-    let svg =
-        render_layouted_svg(&out, &session, &SvgRenderOptions::default()).expect("render svg");
+    let artifact = family::prepare(parsed, &layout_options, session).expect("layout ok");
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render svg")
+        .svg()
+        .to_owned();
 
     assert!(
         svg.contains(r#"aria-roledescription="error""#) && svg.contains("Syntax error in text"),
@@ -304,22 +304,26 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 }
 
 #[test]
-fn treemap_public_json_layout_handles_deep_chain() {
+fn treemap_typed_layout_handles_deep_chain() {
     const DEPTH: usize = 1200;
     let source = deep_treemap_chain(DEPTH);
 
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&source, ParseOptions::strict()))
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
 
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("begin render session");
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
-    let LayoutDiagram::TreemapDiagram(layout) = &out.layout else {
-        panic!("expected TreemapDiagram layout");
+    let RenderSemanticModel::Treemap(model) = &parsed.model else {
+        panic!("expected Treemap render model");
     };
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let layout =
+        layout_treemap_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+            .expect("layout ok");
 
     assert_eq!(layout.sections.len(), DEPTH + 1);
     assert_eq!(layout.leaves.len(), 1);
@@ -328,12 +332,7 @@ fn treemap_public_json_layout_handles_deep_chain() {
 
 #[test]
 fn treemap_svg_uses_the_session_measurement_route() {
-    let host = Arc::new(CountingTreemapHost::default());
-    let session = counting_treemap_environment(Arc::clone(&host))
-        .begin_session()
-        .expect("begin render session");
-    let parsed = futures::executor::block_on(Engine::new().parse_diagram(
-        r#"treemap
+    let source = r#"treemap
 "Section"
   "Measured leaf alpha": 42
   "Measured leaf bravo": 42
@@ -343,23 +342,29 @@ fn treemap_svg_uses_the_session_measurement_route() {
   "Measured leaf foxtrot": 42
   "Measured leaf golf": 42
   "Measured leaf hotel": 42
-"#,
-        ParseOptions::strict(),
-    ))
-    .expect("parse ok")
-    .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
+"#;
+    let host = Arc::new(CountingTreemapHost::default());
+    let session = counting_treemap_environment(Arc::clone(&host))
+        .begin_session()
+        .expect("begin render session");
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
     host.calls.store(0, Ordering::Relaxed);
 
-    let host_svg =
-        render_layouted_svg(&out, &session, &SvgRenderOptions::default()).expect("render SVG");
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render SVG");
+    let (host_svg, _, host_session) = rendered.into_parts();
 
     assert!(
         host.calls.load(Ordering::Relaxed) > 0,
         "Treemap must not bypass the session with a family-local vendored measurer"
     );
     assert!(
-        session
+        host_session
             .text_measurement_report()
             .entries()
             .iter()
@@ -371,12 +376,18 @@ fn treemap_svg_uses_the_session_measurement_route() {
         "Treemap truncation and visibility checks must use the named visibility phase"
     );
 
+    let parity_parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
     let parity_session = RenderEnvironment::parity().begin_session().unwrap();
-    let parity_out =
-        layout_parsed(&parsed, &LayoutOptions::default(), &parity_session).expect("parity layout");
-    let parity_svg =
-        render_layouted_svg(&parity_out, &parity_session, &SvgRenderOptions::default())
-            .expect("parity SVG");
+    let parity_artifact = family::prepare(parity_parsed, &LayoutOptions::default(), parity_session)
+        .expect("parity layout");
+    let parity_svg = parity_artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("parity SVG")
+        .svg()
+        .to_owned();
     assert_ne!(
         host_svg, parity_svg,
         "host metrics must change observable geometry"

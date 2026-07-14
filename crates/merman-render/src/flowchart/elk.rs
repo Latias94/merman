@@ -23,17 +23,6 @@ use super::{
     flowchart_whole_label_font_style_requests_italic,
 };
 
-pub fn layout_flowchart_elk(
-    semantic: &serde_json::Value,
-    effective_config: &MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    backend: FlowchartElkBackend,
-) -> Result<FlowchartV2Layout> {
-    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
-    layout_flowchart_elk_typed(&model, effective_config, measurer, math_renderer, backend)
-}
-
 pub fn layout_flowchart_elk_typed(
     model: &FlowchartV2Model,
     effective_config: &MermaidConfig,
@@ -1177,6 +1166,7 @@ mod tests {
             label: label.map(str::to_string),
             label_type: label_type.map(str::to_string),
             layout_shape: Some("squareRect".to_string()),
+            shape: None,
             icon: None,
             form: None,
             pos: None,
@@ -1200,6 +1190,8 @@ mod tests {
             label: label.map(str::to_string),
             label_type: Some("text".to_string()),
             edge_type: Some("arrow_point".to_string()),
+            arrow: "-->".to_string(),
+            is_user_defined_id: false,
             stroke: Some("normal".to_string()),
             interpolate: None,
             classes: Vec::new(),
@@ -1212,6 +1204,7 @@ mod tests {
 
     fn model(nodes: Vec<FlowNode>, edges: Vec<FlowEdge>) -> FlowchartV2Model {
         FlowchartV2Model {
+            keyword: "graph".to_string(),
             acc_descr: None,
             acc_title: None,
             class_defs: IndexMap::new(),

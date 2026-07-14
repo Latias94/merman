@@ -956,16 +956,6 @@ fn extract_clusters_recursively(
     }
 }
 
-pub fn layout_flowchart_v2(
-    semantic: &Value,
-    effective_config: &MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<FlowchartV2Layout> {
-    let model: FlowchartV2Model = crate::json::from_value_ref(semantic)?;
-    layout_flowchart_v2_with_model(&model, effective_config, measurer, math_renderer)
-}
-
 pub fn layout_flowchart_v2_typed(
     model: &FlowchartV2Model,
     effective_config: &MermaidConfig,
@@ -3051,6 +3041,8 @@ mod tests {
             label: Some(String::new()),
             label_type: None,
             edge_type: None,
+            arrow: "-->".to_string(),
+            is_user_defined_id: false,
             stroke: None,
             interpolate: None,
             classes: Vec::new(),

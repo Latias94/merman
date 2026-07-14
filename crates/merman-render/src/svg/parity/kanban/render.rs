@@ -149,7 +149,6 @@ fn kanban_dom_id(diagram_id: &str, raw_id: &str) -> String {
 
 pub(crate) fn render_kanban_diagram_svg(
     layout: &crate::model::KanbanDiagramLayout,
-    _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     text_measurer: &dyn crate::text::TextMeasurer,
     options: &SvgRenderOptions,
@@ -333,14 +332,14 @@ pub(crate) fn render_kanban_diagram_svg(
 
         fn write_label_group(
             out: &mut String,
-            x: f64,
-            y: f64,
+            position: (f64, f64),
             max_w: f64,
             text: Option<&str>,
             div_class: Option<&str>,
             wrap_title: bool,
             text_measurer: &dyn crate::text::TextMeasurer,
         ) {
+            let (x, y) = position;
             let (fo_w, fo_h, div_style_overrides) = match text {
                 Some(t) if !t.is_empty() => {
                     if wrap_title && max_w > 0.0 {
@@ -417,8 +416,7 @@ pub(crate) fn render_kanban_diagram_svg(
         // Title label (may wrap).
         write_label_group(
             &mut out,
-            left_x,
-            title_y,
+            (left_x, title_y),
             max_w,
             Some(n.label.as_str()),
             n.icon.as_deref().map(|_| "labelBkg"),
@@ -437,8 +435,7 @@ pub(crate) fn render_kanban_diagram_svg(
                 );
                 write_label_group(
                     &mut out,
-                    left_x,
-                    details_y,
+                    (left_x, details_y),
                     max_w,
                     Some(t),
                     None,
@@ -449,8 +446,7 @@ pub(crate) fn render_kanban_diagram_svg(
             } else {
                 write_label_group(
                     &mut out,
-                    left_x,
-                    details_y,
+                    (left_x, details_y),
                     max_w,
                     Some(t),
                     None,
@@ -461,8 +457,7 @@ pub(crate) fn render_kanban_diagram_svg(
         } else {
             write_label_group(
                 &mut out,
-                left_x,
-                details_y,
+                (left_x, details_y),
                 max_w,
                 None,
                 None,
@@ -474,8 +469,7 @@ pub(crate) fn render_kanban_diagram_svg(
         // Assigned label.
         write_label_group(
             &mut out,
-            right_x,
-            details_y,
+            (right_x, details_y),
             max_w,
             n.assigned.as_deref(),
             None,
@@ -558,13 +552,7 @@ mod tests {
         options: &SvgRenderOptions,
     ) -> Result<String> {
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        render_kanban_diagram_svg(
-            layout,
-            &serde_json::Value::Null,
-            effective_config,
-            &measurer,
-            options,
-        )
+        render_kanban_diagram_svg(layout, effective_config, &measurer, options)
     }
 
     #[test]
@@ -875,14 +863,8 @@ mod tests {
         let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
         let options = SvgRenderOptions::default();
 
-        let svg = render_kanban_diagram_svg(
-            &layout,
-            &serde_json::Value::Null,
-            &serde_json::json!({}),
-            &measurer,
-            &options,
-        )
-        .unwrap();
+        let svg = render_kanban_diagram_svg(&layout, &serde_json::json!({}), &measurer, &options)
+            .unwrap();
 
         assert!(
             svg.contains(r#"<foreignObject width="175" height="40">"#),

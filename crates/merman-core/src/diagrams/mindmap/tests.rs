@@ -485,6 +485,35 @@ fn mindmap_get_data_basic_nodes_edges_and_layout_defaults() {
 }
 
 #[test]
+fn mindmap_typed_render_model_projects_exact_compatibility_json() {
+    let source = concat!(
+        "mindmap root(Root Node)\n",
+        "  :::root-class\n",
+        "  child1[Child 1]\n",
+        "  ::icon(bomb)\n",
+        "  child2[\"`**Markdown** child`\"]\n",
+    );
+    let engine = Engine::new();
+    let parsed = block_on(engine.parse_diagram(source, ParseOptions::strict()))
+        .unwrap()
+        .unwrap();
+    let typed = parse_mindmap_model_for_render(source, &parsed.meta).unwrap();
+    let mut projected = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
+    let mut expected = parsed.model;
+
+    projected["diagramId"] = Value::String("<dynamic>".to_string());
+    expected["diagramId"] = Value::String("<dynamic>".to_string());
+    assert_eq!(
+        projected, expected,
+        "Mindmap typed compatibility projection must preserve the exact public JSON"
+    );
+    assert_eq!(projected["rootNode"]["class"], "root-class");
+    assert_eq!(projected["rootNode"]["children"][0]["padding"], 20);
+    assert_eq!(projected["rootNode"]["children"][0]["icon"], "bomb");
+    assert_eq!(projected["nodes"][2]["labelType"], "markdown");
+}
+
+#[test]
 fn mindmap_get_data_projects_look_and_theme_shape_like_mermaid_11_15() {
     let model = parse(
         r#"%%{init: {"theme": "redux", "look": "neo"}}%%

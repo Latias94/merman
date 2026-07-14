@@ -180,12 +180,6 @@ pub(super) fn scoped_svg_url(diagram_id: &str, local_id: &str) -> String {
     format!("url(#{})", scoped_svg_id(diagram_id, local_id))
 }
 
-pub(super) fn fmt_debug_3dp(v: f64) -> String {
-    let mut out = String::new();
-    fmt_debug_3dp_into(&mut out, v);
-    out
-}
-
 use std::fmt::Write as _;
 
 fn trim_trailing_zeros_and_dot(out: &mut String, start: usize) {
@@ -195,22 +189,6 @@ fn trim_trailing_zeros_and_dot(out: &mut String, start: usize) {
     if out.len() > start && out.as_bytes()[out.len() - 1] == b'.' {
         out.pop();
     }
-}
-
-pub(super) fn fmt_debug_3dp_into(out: &mut String, v: f64) {
-    if !v.is_finite() || v.abs() < 0.0005 {
-        out.push('0');
-        return;
-    }
-
-    let scaled = v * 1000.0;
-    let k = scaled.round() as i64;
-    if k == 0 {
-        out.push('0');
-        return;
-    }
-
-    append_fixed_3dp_trimmed(out, k);
 }
 
 pub(super) fn fmt_string(v: f64) -> String {
@@ -844,21 +822,6 @@ mod tests {
         assert_eq!(fmt_path_into_string(1.23456), "1.235");
         assert_eq!(fmt_path_into_string(1.0), "1");
         assert_eq!(fmt_path_into_string(-1.2345), "-1.235");
-    }
-
-    #[test]
-    fn fmt_debug_3dp_into_matches_expected() {
-        fn fmt_debug_3dp_into_string(v: f64) -> String {
-            let mut s = String::new();
-            fmt_debug_3dp_into(&mut s, v);
-            s
-        }
-
-        assert_eq!(fmt_debug_3dp_into_string(f64::NAN), "0");
-        assert_eq!(fmt_debug_3dp_into_string(0.0004), "0");
-        assert_eq!(fmt_debug_3dp_into_string(1.0), "1");
-        assert_eq!(fmt_debug_3dp_into_string(1.23), "1.23");
-        assert_eq!(fmt_debug_3dp_into_string(1.2346), "1.235");
     }
 
     #[test]

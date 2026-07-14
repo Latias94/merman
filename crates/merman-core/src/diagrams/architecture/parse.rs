@@ -1165,35 +1165,8 @@ impl ArchitectureTrace {
 
 impl ArchitectureSemanticSource {
     pub(super) fn compat_json(&self, meta: &ParseMetadata) -> Value {
-        let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
-        if meta.config.as_value().get("layout").is_none()
-            && let Some(obj) = config.as_object_mut()
-        {
-            obj.insert("layout".to_string(), Value::String("dagre".to_string()));
-        }
-
-        let mut out = serde_json::Map::with_capacity(10);
-        out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-        out.insert("title".to_string(), optional_string(&self.db.title));
-        out.insert("accTitle".to_string(), optional_string(&self.db.acc_title));
-        out.insert("accDescr".to_string(), optional_string(&self.db.acc_descr));
-        out.insert("groups".to_string(), Value::Array(self.db.groups_json()));
-        out.insert("nodes".to_string(), Value::Array(self.db.nodes_json()));
-        out.insert(
-            "services".to_string(),
-            Value::Array(self.db.services_json()),
-        );
-        out.insert(
-            "junctions".to_string(),
-            Value::Array(self.db.junctions_json()),
-        );
-        out.insert("edges".to_string(), Value::Array(self.db.edges_json()));
-        out.insert(
-            "layoutHints".to_string(),
-            Value::Array(self.db.layout_hints_json()),
-        );
-        out.insert("config".to_string(), config);
-        Value::Object(out)
+        super::render_model_to_compat_json(&self.db.render_model(), meta)
+            .expect("Architecture typed model must remain JSON-serializable")
     }
 
     pub(super) fn render_model(&self) -> ArchitectureDiagramRenderModel {
@@ -1202,13 +1175,5 @@ impl ArchitectureSemanticSource {
 
     pub(super) fn editor_facts(&self) -> EditorSemanticFacts {
         self.trace.editor_facts(None)
-    }
-}
-
-fn optional_string(value: &str) -> Value {
-    if value.is_empty() {
-        Value::Null
-    } else {
-        Value::String(value.to_string())
     }
 }

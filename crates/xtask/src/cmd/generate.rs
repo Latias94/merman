@@ -2488,6 +2488,42 @@ where
     Err(XtaskError::DebugSvgFailed(failures.join("\n")))
 }
 
+fn render_family_fixture_svg(
+    engine: &merman_core::Engine,
+    mmd_path: &Path,
+    text: &str,
+    parse_options: merman_core::ParseOptions,
+    expected_family: merman_render::family::RenderFamilyKind,
+    svg_options: &merman_render::svg::SvgRenderOptions,
+    debug_options: &merman_render::svg::SvgDebugOptions,
+) -> Result<String, String> {
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, parse_options)
+        .map_err(|err| format!("parse failed for {}: {err}", mmd_path.display()))?
+        .ok_or_else(|| format!("no diagram detected in {}", mmd_path.display()))?;
+
+    let session = merman::render::RenderEnvironment::parity()
+        .begin_session()
+        .map_err(|err| format!("render session failed: {err}"))?;
+    let artifact =
+        merman_render::family::prepare(parsed, &merman_render::LayoutOptions::default(), session)
+            .map_err(|err| format!("layout failed for {}: {err}", mmd_path.display()))?;
+
+    if artifact.family_kind() != expected_family {
+        return Err(format!(
+            "unexpected render family for {}: expected {expected_family}, got {} ({})",
+            mmd_path.display(),
+            artifact.family_kind(),
+            artifact.metadata().diagram_type
+        ));
+    }
+
+    artifact
+        .render_svg(svg_options, debug_options)
+        .map(|rendered| rendered.into_parts().0)
+        .map_err(|err| format!("render failed for {}: {err}", mmd_path.display()))
+}
+
 pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let mut out_root: Option<PathBuf> = None;
     let mut filter: Option<String> = None;
@@ -2517,65 +2553,26 @@ pub(crate) fn gen_er_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let engine = merman::Engine::new().with_site_config(merman::MermaidConfig::from_value(
         serde_json::json!({ "handDrawnSeed": 1 }),
     ));
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
-                text,
-                merman::ParseOptions {
-                    suppress_errors: true,
-                },
-            )) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let session = merman::render::RenderEnvironment::parity()
-                .begin_session()
-                .map_err(|err| format!("render session failed: {err}"))?;
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::ErDiagram(layout) = &layouted.layout else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_er_diagram_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                &session,
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions {
+                    suppress_errors: true,
+                },
+                merman_render::family::RenderFamilyKind::Er,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -2609,35 +2606,46 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_root = out_root.unwrap_or_else(|| crate::cmd::target_root().join("debug-svgs"));
 
     fn gen_one(out_root: &Path, diagram: &str, filter: Option<&str>) -> Result<(), XtaskError> {
-        let (fixtures_dir, out_dir) = match diagram {
+        let (fixtures_dir, out_dir, expected_family) = match diagram {
             "flowchart" | "flowchart-v2" | "flowchartV2" => (
                 crate::cmd::fixtures_root().join("flowchart"),
                 out_root.join("flowchart"),
+                merman_render::family::RenderFamilyKind::Flowchart,
             ),
             "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => (
                 crate::cmd::fixtures_root().join("state"),
                 out_root.join("state"),
+                merman_render::family::RenderFamilyKind::State,
             ),
             "class" | "classDiagram" => (
                 crate::cmd::fixtures_root().join("class"),
                 out_root.join("class"),
+                merman_render::family::RenderFamilyKind::Class,
             ),
-            "er" | "erDiagram" => (crate::cmd::fixtures_root().join("er"), out_root.join("er")),
+            "er" | "erDiagram" => (
+                crate::cmd::fixtures_root().join("er"),
+                out_root.join("er"),
+                merman_render::family::RenderFamilyKind::Er,
+            ),
             "sequence" => (
                 crate::cmd::fixtures_root().join("sequence"),
                 out_root.join("sequence"),
+                merman_render::family::RenderFamilyKind::Sequence,
             ),
             "info" => (
                 crate::cmd::fixtures_root().join("info"),
                 out_root.join("info"),
+                merman_render::family::RenderFamilyKind::Info,
             ),
             "pie" => (
                 crate::cmd::fixtures_root().join("pie"),
                 out_root.join("pie"),
+                merman_render::family::RenderFamilyKind::Pie,
             ),
             "packet" => (
                 crate::cmd::fixtures_root().join("packet"),
                 out_root.join("packet"),
+                merman_render::family::RenderFamilyKind::Packet,
             ),
             other => {
                 return Err(XtaskError::DebugSvgFailed(format!(
@@ -2647,166 +2655,17 @@ pub(crate) fn gen_debug_svgs(args: Vec<String>) -> Result<(), XtaskError> {
         };
 
         let engine = merman::Engine::new();
-        let layout_opts = merman_render::LayoutOptions::default();
 
         export_svg_fixtures(&fixtures_dir, &out_dir, filter, |mmd_path, _stem, text| {
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(text, merman::ParseOptions::default()),
-            ) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let session = merman::render::RenderEnvironment::parity()
-                .begin_session()
-                .map_err(|err| format!("render session failed: {err}"))?;
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let svg = match &layouted.layout {
-                merman_render::model::LayoutDiagram::FlowchartV2(layout) => {
-                    Ok(merman_render::svg::render_flowchart_v2_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::StateDiagramV2(layout) => {
-                    Ok(merman_render::svg::render_state_diagram_v2_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::ClassDiagramV2(layout) => {
-                    Ok(merman_render::svg::render_class_diagram_v2_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::ErDiagram(layout) => {
-                    Ok(merman_render::svg::render_er_diagram_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::SequenceDiagram(layout) => {
-                    Ok(merman_render::svg::render_sequence_diagram_debug_svg(
-                        layout,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    ))
-                }
-                merman_render::model::LayoutDiagram::InfoDiagram(layout) => {
-                    merman_render::svg::render_info_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "info svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::PieDiagram(layout) => {
-                    merman_render::svg::render_pie_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        &session,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "pie svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::PacketDiagram(layout) => {
-                    merman_render::svg::render_packet_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        layouted.meta.title.as_deref(),
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "packet svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::TimelineDiagram(layout) => {
-                    merman_render::svg::render_timeline_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        layouted.meta.title.as_deref(),
-                        &session,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "timeline svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::JourneyDiagram(layout) => {
-                    merman_render::svg::render_journey_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        layouted.meta.title.as_deref(),
-                        &session,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "journey svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                merman_render::model::LayoutDiagram::KanbanDiagram(layout) => {
-                    merman_render::svg::render_kanban_diagram_svg(
-                        layout,
-                        &layouted.semantic,
-                        &layouted.meta.effective_config,
-                        &session,
-                        &merman_render::svg::SvgRenderOptions::default(),
-                    )
-                    .map_err(|e| {
-                        XtaskError::DebugSvgFailed(format!(
-                            "kanban svg render failed for {}: {e}",
-                            mmd_path.display()
-                        ))
-                    })
-                }
-                _ => Err(XtaskError::DebugSvgFailed(format!(
-                    "unsupported layout for debug svg export: {} ({})",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ))),
-            };
-
-            let svg = match svg {
-                Ok(v) => v,
-                Err(err) => return Err(err.to_string()),
-            };
-
-            Ok(svg)
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions::default(),
+                expected_family,
+                &merman_render::svg::SvgRenderOptions::default(),
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         })
     }
 
@@ -3228,62 +3087,24 @@ pub(crate) fn gen_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_dir = out_root.join("flowchart");
 
     let engine = merman::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(text, merman::ParseOptions::default()),
-            ) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let session = merman::render::RenderEnvironment::parity()
-                .begin_session()
-                .map_err(|err| format!("render session failed: {err}"))?;
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::FlowchartV2(layout) = &layouted.layout else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_flowchart_v2_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                &session,
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions::default(),
+                merman_render::family::RenderFamilyKind::Flowchart,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -3315,63 +3136,24 @@ pub(crate) fn gen_state_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_dir = out_root.join("state");
 
     let engine = merman::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(text, merman::ParseOptions::default()),
-            ) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let session = merman::render::RenderEnvironment::parity()
-                .begin_session()
-                .map_err(|err| format!("render session failed: {err}"))?;
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::StateDiagramV2(layout) = &layouted.layout
-            else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_state_diagram_v2_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                &session,
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions::default(),
+                merman_render::family::RenderFamilyKind::State,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -3403,7 +3185,6 @@ pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     let out_dir = out_root.join("class");
 
     let engine = merman::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
@@ -3414,58 +3195,20 @@ pub(crate) fn gen_class_svgs(args: Vec<String>) -> Result<(), XtaskError> {
                 .map(|p| p.code.trim_start().starts_with("classDiagram-v2"))
                 .unwrap_or(false);
 
-            let parsed = match futures::executor::block_on(
-                engine.parse_diagram(text, merman::ParseOptions::default()),
-            ) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let session = merman::render::RenderEnvironment::parity()
-                .begin_session()
-                .map_err(|err| format!("render session failed: {err}"))?;
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = &layouted.layout
-            else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_class_diagram_v2_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                &session,
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman::ParseOptions::default(),
+                merman_render::family::RenderFamilyKind::Class,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -3499,65 +3242,26 @@ pub(crate) fn gen_c4_svgs(args: Vec<String>) -> Result<(), XtaskError> {
     // Keep this aligned with `crates/merman-render/tests/layout_snapshots_test.rs` so the
     // `update-layout-snapshots` output matches the test's computed layouts.
     let engine = merman_core::Engine::new();
-    let layout_opts = merman_render::LayoutOptions::default();
     export_svg_fixtures(
         &fixtures_dir,
         &out_dir,
         filter.as_deref(),
         |mmd_path, stem, text| {
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
-                text,
-                merman_core::ParseOptions {
-                    suppress_errors: true,
-                },
-            )) {
-                Ok(Some(v)) => v,
-                Ok(None) => {
-                    return Err(format!("no diagram detected in {}", mmd_path.display()));
-                }
-                Err(err) => {
-                    return Err(format!("parse failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let session = merman::render::RenderEnvironment::parity()
-                .begin_session()
-                .map_err(|err| format!("render session failed: {err}"))?;
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("layout failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            let merman_render::model::LayoutDiagram::C4Diagram(layout) = &layouted.layout else {
-                return Err(format!(
-                    "unexpected layout type for {}: {}",
-                    mmd_path.display(),
-                    layouted.meta.diagram_type
-                ));
-            };
-
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(stem.to_string()),
                 ..Default::default()
             };
-
-            let svg = match merman_render::svg::render_c4_diagram_svg(
-                layout,
-                &layouted.semantic,
-                &layouted.meta.effective_config,
-                layouted.meta.title.as_deref(),
-                &session,
+            render_family_fixture_svg(
+                &engine,
+                mmd_path,
+                text,
+                merman_core::ParseOptions {
+                    suppress_errors: true,
+                },
+                merman_render::family::RenderFamilyKind::C4,
                 &svg_opts,
-            ) {
-                Ok(v) => v,
-                Err(err) => {
-                    return Err(format!("render failed for {}: {err}", mmd_path.display()));
-                }
-            };
-
-            Ok(svg)
+                &merman_render::svg::SvgDebugOptions::default(),
+            )
         },
     )
 }
@@ -3574,8 +3278,8 @@ mod tests {
         ensure_upstream_svg_render_environment_probe_script, gen_default_config,
         map_bounded_in_order, parse_gen_upstream_svgs_options, parse_upstream_svg_jobs,
         partition_upstream_svg_fixtures, promote_upstream_svg_batch, read_bounded_child_pipe,
-        render_dompurify_defaults_rs, select_upstream_svg_diagrams, sort_json_value_keys,
-        spawn_timeout_managed_child, unique_upstream_svg_failure_report_path,
+        render_dompurify_defaults_rs, render_family_fixture_svg, select_upstream_svg_diagrams,
+        sort_json_value_keys, spawn_timeout_managed_child, unique_upstream_svg_failure_report_path,
         unique_upstream_svg_temp_path, upstream_svg_check_dom_mode, upstream_svg_filter_matches,
         upstream_svg_package_tree_sha256, use_or_acquire_upstream_svg_family_lock,
         validate_and_promote_upstream_svg_temp, validate_external_upstream_svg_family_lock,
@@ -3618,6 +3322,39 @@ mod tests {
         let staging_dir = root.join("staging");
         fs::create_dir_all(&staging_dir).expect("create test staging directory");
         unique_upstream_svg_temp_path(&staging_dir, out_path)
+    }
+
+    #[test]
+    fn family_fixture_renderer_uses_the_typed_artifact_pipeline() {
+        let svg = render_family_fixture_svg(
+            &merman_core::Engine::new(),
+            Path::new("info.mmd"),
+            "info\n",
+            merman_core::ParseOptions::default(),
+            merman_render::family::RenderFamilyKind::Info,
+            &merman_render::svg::SvgRenderOptions::default(),
+            &merman_render::svg::SvgDebugOptions::default(),
+        )
+        .expect("render canonical family SVG");
+
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn family_fixture_renderer_rejects_a_mismatched_family() {
+        let error = render_family_fixture_svg(
+            &merman_core::Engine::new(),
+            Path::new("info.mmd"),
+            "info\n",
+            merman_core::ParseOptions::default(),
+            merman_render::family::RenderFamilyKind::Flowchart,
+            &merman_render::svg::SvgRenderOptions::default(),
+            &merman_render::svg::SvgDebugOptions::default(),
+        )
+        .expect_err("reject mismatched render family");
+
+        assert!(error.contains("expected flowchart, got info"));
     }
 
     fn write_package_manifest(path: &Path, name: &str, version: &str) {

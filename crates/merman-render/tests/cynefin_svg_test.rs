@@ -3,17 +3,22 @@ mod common;
 use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::ParseOptions;
+use merman_core::{ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::cynefin::layout_cynefin_diagram_typed;
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
+use merman_render::family;
+use merman_render::model::CynefinDiagramLayout;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
 
-fn parse_layout_and_render(input: &str, layout_options: &LayoutOptions) -> (LayoutDiagram, String) {
+fn parse_layout_and_render(
+    input: &str,
+    layout_options: &LayoutOptions,
+) -> (CynefinDiagramLayout, String) {
     parse_layout_and_render_with_environment(input, layout_options, &RenderEnvironment::parity())
 }
 
@@ -21,26 +26,32 @@ fn parse_layout_and_render_with_environment(
     input: &str,
     layout_options: &LayoutOptions,
     environment: &RenderEnvironment,
-) -> (LayoutDiagram, String) {
+) -> (CynefinDiagramLayout, String) {
     let session = environment.begin_session().unwrap();
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse cynefin")
         .expect("detect cynefin");
-    let layout = layout_parsed_render_layout_only(&parsed, layout_options, &session)
-        .expect("layout cynefin");
-    let svg = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions {
-            diagram_id: Some("cynefin-test".to_string()),
-            ..Default::default()
-        },
-    )
-    .expect("render cynefin");
+    let layout = {
+        let RenderSemanticModel::Cynefin(model) = &parsed.model else {
+            panic!("expected cynefin render model");
+        };
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        layout_cynefin_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+            .expect("layout cynefin")
+    };
+    let artifact = family::prepare(parsed, layout_options, session).expect("prepare cynefin");
+    let svg = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("cynefin-test".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render cynefin")
+        .svg()
+        .to_owned();
 
     (layout, svg)
 }
@@ -123,9 +134,6 @@ complex
         &environment,
     );
 
-    let LayoutDiagram::CynefinDiagram(layout) = layout else {
-        panic!("expected cynefin layout");
-    };
     assert_eq!(layout.items[0].width, 120.0);
     assert!(
         svg.contains(r#"#cynefin-test{font-family:"Fira Code",monospace;"#),

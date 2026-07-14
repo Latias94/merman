@@ -252,7 +252,7 @@ import merman
 engine = merman.MermanEngine()
 assert engine.abi_version() == 3
 assert engine.package_version()
-source = "flowchart TD\nA[Hello] --> B[World]"
+source = "---\ntitle: Host measurement phases\n---\nflowchart TD\nA[Hello] --> B[World]"
 
 svg = engine.render_svg(source, None)
 assert "<svg" in svg
@@ -353,7 +353,8 @@ measurer = Measurer()
 reusable = engine.reusable_engine_with_text_measurer(None, measurer)
 assert "Hello" in reusable.render_svg(source)
 assert measurer.calls > 0
-assert len(measurer.phases) >= 2
+phase_names = {phase.name for phase in measurer.phases}
+assert {"WRAP", "SVG_B_BOX"}.issubset(phase_names), phase_names
 
 setter_measurer = Measurer()
 reusable = engine.reusable_engine(None)

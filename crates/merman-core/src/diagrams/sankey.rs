@@ -78,20 +78,6 @@ impl SankeyDb {
     }
 
     #[inline]
-    fn graph_value(&self) -> Value {
-        json!({
-            "nodes": self.nodes.iter().map(|n| json!({"id": n.id})).collect::<Vec<_>>(),
-            "links": self.links.iter().map(|l| {
-                json!({
-                    "source": l.source,
-                    "target": l.target,
-                    "value": l.value,
-                })
-            }).collect::<Vec<_>>(),
-        })
-    }
-
-    #[inline]
     fn into_render_model(self) -> SankeyDiagramRenderModel {
         SankeyDiagramRenderModel {
             graph: SankeyRenderGraph {
@@ -169,21 +155,28 @@ impl SankeySemanticSource {
         db
     }
 
-    fn into_compat_json(self, meta: &ParseMetadata) -> Value {
-        let db = self.into_db(meta);
-        let mut out = Map::with_capacity(3);
-        out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-        out.insert("graph".to_string(), db.graph_value());
-        out.insert(
-            "config".to_string(),
-            crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
-        );
-        Value::Object(out)
+    fn into_compat_json(self, meta: &ParseMetadata) -> Result<Value> {
+        let model = self.into_db(meta).into_render_model();
+        render_model_to_compat_json(&model, meta)
     }
 }
 
+pub(crate) fn render_model_to_compat_json(
+    model: &SankeyDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let mut out = Map::with_capacity(3);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("graph".to_string(), json!(&model.graph));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
+}
+
 pub fn parse_sankey(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse_sankey_semantic_source(code, meta)?.into_compat_json(meta))
+    parse_sankey_semantic_source(code, meta)?.into_compat_json(meta)
 }
 
 pub(crate) fn parse_sankey_json_and_editor_facts(
@@ -192,7 +185,7 @@ pub(crate) fn parse_sankey_json_and_editor_facts(
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = parse_sankey_semantic_source(code, meta)?;
     let editor_facts = source.editor_facts();
-    Ok((source.into_compat_json(meta), editor_facts))
+    Ok((source.into_compat_json(meta)?, editor_facts))
 }
 
 pub fn parse_sankey_model_for_render(
@@ -699,6 +692,27 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    #[test]
+    fn sankey_typed_projection_matches_complete_compatibility_json() {
+        let text = "sankey-beta\nA,B,1\nB,C,NaN\n";
+        let effective_config = crate::MermaidConfig::from_value(json!({
+            "theme": "forest",
+            "securityLevel": "strict"
+        }));
+        let meta = ParseMetadata {
+            diagram_type: "sankey".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config,
+            title: None,
+        };
+        let compat = parse_sankey(text, &meta).unwrap();
+        let typed = parse_sankey_model_for_render(text, &meta).unwrap();
+
+        assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
+        assert_eq!(compat["config"]["theme"], "forest");
+        assert!(compat["graph"]["links"][1]["value"].is_null());
     }
 
     #[test]

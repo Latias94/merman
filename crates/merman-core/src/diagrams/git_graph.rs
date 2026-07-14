@@ -1306,7 +1306,7 @@ fn parse_git_graph_command(
 
 pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let model = parse_git_graph_semantic_source(code, meta)?.model;
-    Ok(git_graph_model_into_json(model, meta))
+    render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_git_graph_json_and_editor_facts(
@@ -1317,29 +1317,35 @@ pub(crate) fn parse_git_graph_json_and_editor_facts(
         model,
         editor_facts,
     } = parse_git_graph_semantic_source(code, meta)?;
-    Ok((git_graph_model_into_json(model, meta), editor_facts))
+    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
 }
 
-fn git_graph_model_into_json(model: GitGraphRenderModel, meta: &ParseMetadata) -> Value {
+pub(crate) fn render_model_to_compat_json(
+    model: &GitGraphRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
     let warnings = legacy_warning_messages(&model.warning_facts);
     let mut out = Map::with_capacity(11);
-    out.insert("type".to_string(), Value::String(model.diagram_type));
-    out.insert("commits".to_string(), json!(model.commits));
-    out.insert("branches".to_string(), json!(model.branches));
-    out.insert("currentBranch".to_string(), json!(model.current_branch));
-    out.insert("direction".to_string(), json!(model.direction));
+    out.insert(
+        "type".to_string(),
+        Value::String(model.diagram_type.clone()),
+    );
+    out.insert("commits".to_string(), json!(&model.commits));
+    out.insert("branches".to_string(), json!(&model.branches));
+    out.insert("currentBranch".to_string(), json!(&model.current_branch));
+    out.insert("direction".to_string(), json!(&model.direction));
     if let Some(title) = &model.title {
         out.insert("title".to_string(), Value::String(title.clone()));
     }
-    out.insert("accTitle".to_string(), json!(model.acc_title));
-    out.insert("accDescr".to_string(), json!(model.acc_descr));
-    out.insert("warningFacts".to_string(), json!(model.warning_facts));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("warningFacts".to_string(), json!(&model.warning_facts));
     out.insert("warnings".to_string(), json!(warnings));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
-    Value::Object(out)
+    Ok(Value::Object(out))
 }
 
 pub fn parse_git_graph_model_for_render(
@@ -2303,7 +2309,22 @@ merge feature id:"M1"
 
     #[test]
     fn should_log_warning_when_two_commits_have_same_id() {
-        let model = parse("gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n");
+        let text = "gitGraph\ncommit id:\"working on MDR\"\ncommit id:\"working on MDR\"\n";
+        let engine = Engine::new();
+        let parsed = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect("gitGraph compatibility parse succeeds")
+            .expect("gitGraph compatibility parse returns a diagram");
+        let typed = parse_git_graph_model_for_render(text, &parsed.meta)
+            .expect("gitGraph typed parse succeeds");
+        let projection = render_model_to_compat_json(&typed, &parsed.meta)
+            .expect("gitGraph compatibility projection succeeds");
+        let model = parsed.model;
+
+        assert_eq!(projection, model);
+        assert_eq!(projection["type"], json!("gitGraph"));
+        assert!(projection["config"].is_object());
+        assert!(projection.get("title").is_none());
         let warnings = model["warningFacts"]
             .as_array()
             .unwrap()

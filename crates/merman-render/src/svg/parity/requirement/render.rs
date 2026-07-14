@@ -4,25 +4,6 @@ use merman_core::diagrams::requirement::RequirementDiagramRenderModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
 
-pub(crate) fn render_requirement_diagram_svg(
-    layout: &RequirementDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: RequirementDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_requirement_diagram_svg_model(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(crate) fn render_requirement_diagram_svg_model(
     layout: &RequirementDiagramLayout,
     model: &RequirementDiagramRenderModel,

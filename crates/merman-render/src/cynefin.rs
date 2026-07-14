@@ -141,15 +141,6 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
     }
 }
 
-pub fn layout_cynefin_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<CynefinDiagramLayout> {
-    let model: CynefinDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_cynefin_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_cynefin_diagram_typed(
     model: &CynefinDiagramRenderModel,
     effective_config: &serde_json::Value,

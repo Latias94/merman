@@ -57,7 +57,7 @@ pub struct KanbanDiagramRenderModel {
     pub nodes: Vec<KanbanRenderNode>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct KanbanRenderNode {
     pub id: String,
@@ -74,6 +74,32 @@ pub struct KanbanRenderNode {
     pub assigned: Option<String>,
     #[serde(default)]
     pub icon: Option<String>,
+    #[serde(skip)]
+    compatibility: KanbanRenderNodeCompatibility,
+}
+
+#[derive(Debug, Clone, Default)]
+struct KanbanRenderNodeCompatibility {
+    level: usize,
+    width: i64,
+    padding: i64,
+    ticket: Option<String>,
+    priority: Option<String>,
+    assigned: Option<String>,
+    icon: Option<String>,
+    css_classes: Option<String>,
+    shape: Option<String>,
+}
+
+impl KanbanRenderNode {
+    /// Creates a render node with no parent or optional card metadata.
+    pub fn new(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -273,85 +299,6 @@ impl KanbanDb {
         Ok(())
     }
 
-    fn sections_json(&self) -> Value {
-        let mut out = Vec::new();
-        for &idx in &self.section_indices {
-            let Some(n) = self.nodes.get(idx) else {
-                continue;
-            };
-            let mut obj = Map::new();
-            obj.insert("id".to_string(), json!(n.id));
-            obj.insert("label".to_string(), json!(n.label));
-            obj.insert("level".to_string(), json!(n.level));
-            obj.insert("width".to_string(), json!(n.width));
-            obj.insert("padding".to_string(), json!(n.padding));
-            obj.insert("isGroup".to_string(), json!(false));
-            if let Some(v) = &n.ticket {
-                obj.insert("ticket".to_string(), json!(v));
-            }
-            if let Some(v) = &n.priority {
-                obj.insert("priority".to_string(), json!(v));
-            }
-            if let Some(v) = &n.assigned {
-                obj.insert("assigned".to_string(), json!(v));
-            }
-            if let Some(v) = &n.icon {
-                obj.insert("icon".to_string(), json!(v));
-            }
-            if let Some(v) = &n.css_classes {
-                obj.insert("cssClasses".to_string(), json!(v));
-            }
-            if let Some(v) = &n.shape {
-                obj.insert("shape".to_string(), json!(v));
-            }
-            out.push(Value::Object(obj));
-        }
-        Value::Array(out)
-    }
-
-    fn data_nodes_json(&self, config: &MermaidConfig) -> Vec<Value> {
-        let look = config.get_str("look").unwrap_or("classic").to_string();
-
-        let mut out = Vec::new();
-        for &section_idx in &self.section_indices {
-            let Some(section) = self.nodes.get(section_idx) else {
-                continue;
-            };
-            out.push(json!({
-                "id": section.id,
-                "label": sanitize_text(&section.label, config),
-                "isGroup": true,
-                "ticket": section.ticket,
-                "shape": "kanbanSection",
-                "level": section.level,
-                "look": look,
-            }));
-
-            for item in self
-                .nodes
-                .iter()
-                .filter(|n| n.parent_id.as_deref() == Some(&section.id))
-            {
-                out.push(json!({
-                    "id": item.id,
-                    "parentId": section.id,
-                    "label": sanitize_text(&item.label, config),
-                    "isGroup": false,
-                    "ticket": item.ticket,
-                    "priority": item.priority,
-                    "assigned": item.assigned,
-                    "icon": item.icon,
-                    "shape": "kanbanItem",
-                    "level": item.level,
-                    "rx": 5,
-                    "ry": 5,
-                    "cssStyles": ["text-align: left"],
-                }));
-            }
-        }
-        out
-    }
-
     fn data_nodes_for_render(&self, config: &MermaidConfig) -> Vec<KanbanRenderNode> {
         let mut out = Vec::new();
         for &section_idx in &self.section_indices {
@@ -367,6 +314,17 @@ impl KanbanDb {
                 priority: None,
                 assigned: None,
                 icon: None,
+                compatibility: KanbanRenderNodeCompatibility {
+                    level: section.level,
+                    width: section.width,
+                    padding: section.padding,
+                    ticket: section.ticket.clone(),
+                    priority: section.priority.clone(),
+                    assigned: section.assigned.clone(),
+                    icon: section.icon.clone(),
+                    css_classes: section.css_classes.clone(),
+                    shape: section.shape.clone(),
+                },
             });
 
             for item in self
@@ -383,6 +341,17 @@ impl KanbanDb {
                     priority: item.priority.clone(),
                     assigned: item.assigned.clone(),
                     icon: item.icon.clone(),
+                    compatibility: KanbanRenderNodeCompatibility {
+                        level: item.level,
+                        width: item.width,
+                        padding: item.padding,
+                        ticket: item.ticket.clone(),
+                        priority: item.priority.clone(),
+                        assigned: item.assigned.clone(),
+                        icon: item.icon.clone(),
+                        css_classes: item.css_classes.clone(),
+                        shape: item.shape.clone(),
+                    },
                 });
             }
         }
@@ -1062,7 +1031,8 @@ fn kanban_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
 
 pub fn parse_kanban(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    Ok(kanban_db_into_json(source.db, meta))
+    let model = kanban_db_into_render_model(&source.db, meta);
+    render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_kanban_json_and_editor_facts(
@@ -1070,16 +1040,29 @@ pub(crate) fn parse_kanban_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    Ok((kanban_db_into_json(source.db, meta), source.editor_facts))
+    let model = kanban_db_into_render_model(&source.db, meta);
+    Ok((
+        render_model_to_compat_json(&model, meta)?,
+        source.editor_facts,
+    ))
 }
 
-fn kanban_db_into_json(db: KanbanDb, meta: &ParseMetadata) -> Value {
+fn kanban_db_into_render_model(db: &KanbanDb, meta: &ParseMetadata) -> KanbanDiagramRenderModel {
+    KanbanDiagramRenderModel {
+        nodes: db.data_nodes_for_render(&meta.effective_config),
+    }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &KanbanDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
     let mut out = Map::with_capacity(6);
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-    out.insert("sections".to_string(), db.sections_json());
+    out.insert("sections".to_string(), kanban_sections_to_json(model));
     out.insert(
         "nodes".to_string(),
-        Value::Array(db.data_nodes_json(&meta.effective_config)),
+        Value::Array(kanban_nodes_to_json(model, &meta.effective_config)),
     );
     out.insert("edges".to_string(), Value::Array(Vec::new()));
     out.insert("other".to_string(), Value::Object(Map::new()));
@@ -1087,7 +1070,76 @@ fn kanban_db_into_json(db: KanbanDb, meta: &ParseMetadata) -> Value {
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
-    Value::Object(out)
+    Ok(Value::Object(out))
+}
+
+fn kanban_sections_to_json(model: &KanbanDiagramRenderModel) -> Value {
+    let sections = model
+        .nodes
+        .iter()
+        .filter(|node| node.is_group)
+        .map(|node| {
+            let compat = &node.compatibility;
+            let mut out = Map::new();
+            out.insert("id".to_string(), json!(&node.id));
+            out.insert("label".to_string(), json!(&node.label));
+            out.insert("level".to_string(), json!(compat.level));
+            out.insert("width".to_string(), json!(compat.width));
+            out.insert("padding".to_string(), json!(compat.padding));
+            out.insert("isGroup".to_string(), json!(false));
+            for (key, value) in [
+                ("ticket", &compat.ticket),
+                ("priority", &compat.priority),
+                ("assigned", &compat.assigned),
+                ("icon", &compat.icon),
+                ("cssClasses", &compat.css_classes),
+                ("shape", &compat.shape),
+            ] {
+                if let Some(value) = value {
+                    out.insert(key.to_string(), json!(value));
+                }
+            }
+            Value::Object(out)
+        })
+        .collect();
+    Value::Array(sections)
+}
+
+fn kanban_nodes_to_json(model: &KanbanDiagramRenderModel, config: &MermaidConfig) -> Vec<Value> {
+    let look = config.get_str("look").unwrap_or("classic");
+    model
+        .nodes
+        .iter()
+        .map(|node| {
+            if node.is_group {
+                json!({
+                    "id": node.id,
+                    "label": node.label,
+                    "isGroup": true,
+                    "ticket": node.ticket,
+                    "shape": "kanbanSection",
+                    "level": node.compatibility.level,
+                    "look": look,
+                })
+            } else {
+                json!({
+                    "id": node.id,
+                    "parentId": node.parent_id,
+                    "label": node.label,
+                    "isGroup": false,
+                    "ticket": node.ticket,
+                    "priority": node.priority,
+                    "assigned": node.assigned,
+                    "icon": node.icon,
+                    "shape": "kanbanItem",
+                    "level": node.compatibility.level,
+                    "rx": 5,
+                    "ry": 5,
+                    "cssStyles": ["text-align: left"],
+                })
+            }
+        })
+        .collect()
 }
 
 pub fn parse_kanban_model_for_render(
@@ -1095,9 +1147,7 @@ pub fn parse_kanban_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<KanbanDiagramRenderModel> {
     let source = construct_kanban_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    Ok(KanbanDiagramRenderModel {
-        nodes: source.db.data_nodes_for_render(&meta.effective_config),
-    })
+    Ok(kanban_db_into_render_model(&source.db, meta))
 }
 
 fn parse_icon_spanned(line: &str, line_start: usize) -> Option<SpannedText> {
@@ -1182,28 +1232,29 @@ mod tests {
             "    ::icon(star)\r\n",
             "    :::highlight\r\n",
         );
-        let expected_json = parse_kanban(text, &meta()).unwrap();
-        let expected_facts = parse_kanban_editor_facts(text, &meta());
-        let expected_model = parse_kanban_model_for_render(text, &meta()).unwrap();
+        let mut meta = meta();
+        meta.effective_config = MermaidConfig::from_value(serde_json::json!({
+            "look": "handDrawn",
+            "theme": "forest"
+        }));
+        let expected_json = parse_kanban(text, &meta).unwrap();
+        let expected_facts = parse_kanban_editor_facts(text, &meta);
+        let expected_model = parse_kanban_model_for_render(text, &meta).unwrap();
 
         reset_kanban_syntax_construction_count();
-        let (json, facts) = parse_kanban_json_and_editor_facts(text, &meta()).unwrap();
+        let (json, facts) = parse_kanban_json_and_editor_facts(text, &meta).unwrap();
 
         assert_eq!(kanban_syntax_construction_count(), 1);
         assert_eq!(json, expected_json);
         assert_eq!(facts, expected_facts);
-        let json_ids = json["nodes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|node| node["id"].as_str().unwrap())
-            .collect::<Vec<_>>();
-        let typed_ids = expected_model
-            .nodes
-            .iter()
-            .map(|node| node.id.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(json_ids, typed_ids);
+        assert_eq!(
+            render_model_to_compat_json(&expected_model, &meta).unwrap(),
+            json
+        );
+        assert_eq!(json["type"], "kanban");
+        assert_eq!(json["config"], meta.effective_config.as_value().clone());
+        assert_eq!(json["nodes"][0]["look"], "handDrawn");
+        assert!(json["nodes"][0]["ticket"].is_null());
 
         for name in ["backlog", "task1", "star", "highlight"] {
             let start = text.find(name).unwrap();

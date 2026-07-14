@@ -2,9 +2,17 @@ use super::super::*;
 
 // Error diagram SVG renderer implementation (split from parity.rs).
 
-pub(crate) fn render_error_diagram_svg(
+pub(crate) fn render_error_diagram_svg_model(
     layout: &ErrorDiagramLayout,
-    _semantic: &serde_json::Value,
+    _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
+    effective_config: &serde_json::Value,
+    options: &SvgRenderOptions,
+) -> Result<String> {
+    render_error_diagram_svg_inner(layout, effective_config, options)
+}
+
+fn render_error_diagram_svg_inner(
+    layout: &ErrorDiagramLayout,
     effective_config: &serde_json::Value,
     options: &SvgRenderOptions,
 ) -> Result<String> {

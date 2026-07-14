@@ -8,7 +8,7 @@ use crate::model::ArchitectureCytoscapeServiceBounds;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
 use super::labels::{svg_line_plain_text, wrap_svg_words_to_lines};
-use super::model::{ArchitectureModel, ArchitectureModelAccess, ArchitectureServiceRef};
+use super::model::{ArchitectureModelAccess, ArchitectureServiceRef};
 use super::nodes::{
     ArchitectureNodeRenderContext, push_architecture_groups,
     push_architecture_services_and_junctions,
@@ -20,13 +20,6 @@ use super::settings::ArchitectureRenderSettings;
 use super::viewport::{ArchitectureRootViewportContext, finalize_architecture_root_viewport};
 
 // Architecture diagram SVG renderer implementation (split from parity.rs).
-
-fn timing_section<'a>(
-    enabled: bool,
-    dst: &'a mut web_time::Duration,
-) -> Option<super::super::timing::TimingGuard<'a>> {
-    enabled.then(|| super::super::timing::TimingGuard::new(dst))
-}
 
 fn architecture_bounds_match_icon_rect(bounds: &Bounds, x: f64, y: f64, icon_size_px: f64) -> bool {
     const EPSILON: f64 = 1e-6;
@@ -75,7 +68,7 @@ struct ArchitectureRenderRequest<'a, M: ArchitectureModelAccess> {
     layout: &'a ArchitectureDiagramLayout,
     model: &'a M,
     effective_config: &'a serde_json::Value,
-    sanitize_config_opt: Option<&'a merman_core::MermaidConfig>,
+    sanitize_config: &'a merman_core::MermaidConfig,
     options: &'a SvgExecution<'a>,
 }
 
@@ -100,65 +93,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             layout,
             model,
             effective_config: effective_config.as_value(),
-            sanitize_config_opt: Some(effective_config),
-            options,
-        },
-        ArchitectureTimingState {
-            enabled: timing_enabled,
-            timings: &mut timings,
-            total_start,
-        },
-    )
-}
-
-pub(crate) fn render_architecture_diagram_svg(
-    layout: &ArchitectureDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let timing_enabled = options.debug.include_timing_diagnostics;
-    let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-    let model: ArchitectureModel = {
-        let _g = timing_section(timing_enabled, &mut timings.deserialize_model);
-        crate::json::from_value_ref(semantic)?
-    };
-    render_architecture_diagram_svg_with_model(
-        ArchitectureRenderRequest {
-            layout,
-            model: &model,
-            effective_config,
-            sanitize_config_opt: None,
-            options,
-        },
-        ArchitectureTimingState {
-            enabled: timing_enabled,
-            timings: &mut timings,
-            total_start,
-        },
-    )
-}
-
-pub(crate) fn render_architecture_diagram_svg_with_config(
-    layout: &ArchitectureDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let timing_enabled = options.debug.include_timing_diagnostics;
-    let mut timings = super::super::timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-    let model: ArchitectureModel = {
-        let _g = timing_section(timing_enabled, &mut timings.deserialize_model);
-        crate::json::from_value_ref(semantic)?
-    };
-    render_architecture_diagram_svg_with_model(
-        ArchitectureRenderRequest {
-            layout,
-            model: &model,
-            effective_config: effective_config.as_value(),
-            sanitize_config_opt: Some(effective_config),
+            sanitize_config: effective_config,
             options,
         },
         ArchitectureTimingState {
@@ -177,7 +112,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         layout,
         model,
         effective_config,
-        sanitize_config_opt,
+        sanitize_config,
         options,
     } = req;
     let ArchitectureTimingState {
@@ -206,16 +141,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let use_max_width = settings.use_max_width;
     let text_style = &settings.text_style;
     let compound_text_style = &settings.compound_text_style;
-    let sanitize_config_owned: merman_core::MermaidConfig;
-    let sanitize_config = match sanitize_config_opt {
-        Some(cfg) => cfg,
-        None => {
-            sanitize_config_owned =
-                merman_core::MermaidConfig::from_value(effective_config.clone());
-            &sanitize_config_owned
-        }
-    };
-
     let mut node_xy: rustc_hash::FxHashMap<&str, (f64, f64)> = rustc_hash::FxHashMap::default();
     for n in &layout.nodes {
         node_xy.insert(n.id.as_str(), (n.x, n.y));

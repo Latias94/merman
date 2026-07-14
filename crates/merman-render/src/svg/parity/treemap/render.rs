@@ -22,7 +22,6 @@ fn treemap_leaf_label_fit_tolerance_px(
 
 pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
-    _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<String> {
@@ -1023,13 +1022,7 @@ mod tests {
         let request = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
         let execution = SvgExecution::new(&request, &debug, &session);
-        let svg = render_treemap_diagram_svg(
-            &layout,
-            &serde_json::json!({}),
-            &serde_json::json!({}),
-            &execution,
-        )
-        .unwrap();
+        let svg = render_treemap_diagram_svg(&layout, &serde_json::json!({}), &execution).unwrap();
 
         let section_label = opening_tag_by_class(&svg, "treemapSectionLabel");
         assert!(

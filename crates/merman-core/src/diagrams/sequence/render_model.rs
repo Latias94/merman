@@ -3,6 +3,7 @@ use serde_json::{Map, Number, Value};
 use std::collections::BTreeMap;
 
 use super::{PLACEMENT_LEFT_OF, PLACEMENT_OVER, PLACEMENT_RIGHT_OF};
+use crate::ParseMetadata;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequenceDiagramRenderModel {
@@ -71,6 +72,13 @@ impl SequenceDiagramRenderModel {
 
         Value::Object(root)
     }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &SequenceDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> crate::Result<Value> {
+    Ok(model.to_compat_json(&meta.diagram_type))
 }
 
 fn option_string_value(value: &Option<String>) -> Value {
@@ -153,28 +161,20 @@ fn message_payload_value(message: &SequenceMessagePayload) -> Value {
         SequenceMessagePayload::Autonumber(autonumber) => {
             let mut out = Map::new();
             if let Some(start) = autonumber.start {
-                out.insert("start".to_string(), sequence_number_value(start));
+                out.insert(
+                    "start".to_string(),
+                    crate::compatibility_json::number_value(start),
+                );
             }
             if let Some(step) = autonumber.step {
-                out.insert("step".to_string(), sequence_number_value(step));
+                out.insert(
+                    "step".to_string(),
+                    crate::compatibility_json::number_value(step),
+                );
             }
             out.insert("visible".to_string(), Value::Bool(autonumber.visible));
             Value::Object(out)
         }
-    }
-}
-
-fn sequence_number_value(value: f64) -> Value {
-    if value.is_finite()
-        && value.fract() == 0.0
-        && value >= i64::MIN as f64
-        && value <= i64::MAX as f64
-    {
-        Value::Number(Number::from(value as i64))
-    } else {
-        Number::from_f64(value)
-            .map(Value::Number)
-            .unwrap_or(Value::Null)
     }
 }
 

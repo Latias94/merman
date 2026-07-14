@@ -134,16 +134,6 @@ fn render_gantt_axis_group(
     out.push_str("</g>");
 }
 
-pub(crate) fn render_gantt_diagram_svg(
-    layout: &crate::model::GanttDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: GanttDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_gantt_diagram_svg_model(layout, &model, effective_config, options)
-}
-
 pub(crate) fn render_gantt_diagram_svg_model(
     layout: &crate::model::GanttDiagramLayout,
     model: &GanttDiagramRenderModel,

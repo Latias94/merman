@@ -5,7 +5,6 @@ const BOX_TEXT_PADDING: f64 = 10.0;
 
 pub(crate) fn render_eventmodeling_diagram_svg(
     layout: &EventModelingDiagramLayout,
-    _semantic: &serde_json::Value,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<String> {

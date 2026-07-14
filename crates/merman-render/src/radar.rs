@@ -89,15 +89,6 @@ fn closed_round_curve_path(points: &[LayoutPoint], tension: f64) -> String {
     out
 }
 
-pub fn layout_radar_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    _measurer: &dyn TextMeasurer,
-) -> Result<RadarDiagramLayout> {
-    let model: RadarDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_radar_diagram_typed(&model, effective_config, _measurer)
-}
-
 pub fn layout_radar_diagram_typed(
     model: &RadarDiagramRenderModel,
     effective_config: &serde_json::Value,
@@ -261,37 +252,56 @@ pub fn layout_radar_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use super::layout_radar_diagram;
+    use super::layout_radar_diagram_typed;
     use crate::text::DeterministicTextMeasurer;
+    use merman_core::diagrams::radar::{
+        RadarDiagramRenderModel, RadarRenderAxis, RadarRenderCurve, RadarRenderOptions,
+    };
     use serde_json::json;
 
     #[test]
     fn radar_legend_layout_uses_mermaid_step_y() {
-        let semantic = json!({
-            "title": "Radar",
-            "axes": [
-                {"name": "a", "label": "A"},
-                {"name": "b", "label": "B"},
-                {"name": "c", "label": "C"}
-            ],
-            "curves": [
-                {"name": "one", "label": "One", "entries": [1.0, 2.0, 3.0]},
-                {"name": "two", "label": "Two", "entries": [3.0, 2.0, 1.0]}
-            ],
-            "options": {
-                "showLegend": true,
-                "ticks": 3,
-                "min": 0.0,
-                "max": 3.0,
-                "graticule": "circle"
-            }
-        });
+        let mut model = RadarDiagramRenderModel::default();
+        model.title = Some("Radar".to_string());
+        model.axes = vec![
+            RadarRenderAxis {
+                name: "a".to_string(),
+                label: "A".to_string(),
+            },
+            RadarRenderAxis {
+                name: "b".to_string(),
+                label: "B".to_string(),
+            },
+            RadarRenderAxis {
+                name: "c".to_string(),
+                label: "C".to_string(),
+            },
+        ];
+        model.curves = vec![
+            RadarRenderCurve {
+                name: "one".to_string(),
+                label: "One".to_string(),
+                entries: vec![json!(1.0), json!(2.0), json!(3.0)],
+            },
+            RadarRenderCurve {
+                name: "two".to_string(),
+                label: "Two".to_string(),
+                entries: vec![json!(3.0), json!(2.0), json!(1.0)],
+            },
+        ];
+        model.options = RadarRenderOptions {
+            show_legend: true,
+            ticks: json!(3),
+            min: json!(0.0),
+            max: Some(json!(3.0)),
+            graticule: "circle".to_string(),
+        };
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
         };
 
-        let layout = layout_radar_diagram(&semantic, &json!({}), &measurer).unwrap();
+        let layout = layout_radar_diagram_typed(&model, &json!({}), &measurer).unwrap();
 
         assert_eq!(layout.legend_items.len(), 2);
         assert_eq!(layout.legend_items[1].y - layout.legend_items[0].y, 20.0);

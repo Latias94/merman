@@ -91,16 +91,14 @@ fn kanban_node(
     assigned: Option<&str>,
     icon: Option<&str>,
 ) -> KanbanRenderNode {
-    KanbanRenderNode {
-        id: id.to_string(),
-        label: label.to_string(),
-        is_group,
-        parent_id: parent_id.map(str::to_string),
-        ticket: ticket.map(str::to_string),
-        priority: priority.map(str::to_string),
-        assigned: assigned.map(str::to_string),
-        icon: icon.map(str::to_string),
-    }
+    let mut node = KanbanRenderNode::new(id, label);
+    node.is_group = is_group;
+    node.parent_id = parent_id.map(str::to_string);
+    node.ticket = ticket.map(str::to_string);
+    node.priority = priority.map(str::to_string);
+    node.assigned = assigned.map(str::to_string);
+    node.icon = icon.map(str::to_string);
+    node
 }
 
 #[test]
@@ -189,30 +187,29 @@ fn mindmap_render_model_marks_cycles_and_deduplicates_edges() {
 
 #[test]
 fn timeline_render_model_renders_sections_tasks_and_events() {
-    let model = TimelineDiagramRenderModel {
-        title: Some("Timeline".to_string()),
-        acc_title: Some("Timeline title".to_string()),
-        acc_descr: Some("Timeline description".to_string()),
-        sections: vec!["Planning".to_string()],
-        tasks: vec![
-            TimelineRenderTask {
-                id: 0,
-                section: "Planning".to_string(),
-                task_type: "Planning".to_string(),
-                task: "Design".to_string(),
-                score: 0,
-                events: vec!["Kickoff".to_string()],
-            },
-            TimelineRenderTask {
-                id: 1,
-                section: "Planning".to_string(),
-                task_type: "Planning".to_string(),
-                task: "Implement".to_string(),
-                score: 3,
-                events: vec!["Build spec".to_string(), "Review".to_string()],
-            },
-        ],
-    };
+    let mut model = TimelineDiagramRenderModel::default();
+    model.title = Some("Timeline".to_string());
+    model.acc_title = Some("Timeline title".to_string());
+    model.acc_descr = Some("Timeline description".to_string());
+    model.sections = vec!["Planning".to_string()];
+    model.tasks = vec![
+        TimelineRenderTask {
+            id: 0,
+            section: "Planning".to_string(),
+            task_type: "Planning".to_string(),
+            task: "Design".to_string(),
+            score: 0,
+            events: vec!["Kickoff".to_string()],
+        },
+        TimelineRenderTask {
+            id: 1,
+            section: "Planning".to_string(),
+            task_type: "Planning".to_string(),
+            task: "Implement".to_string(),
+            score: 3,
+            events: vec!["Build spec".to_string(), "Review".to_string()],
+        },
+    ];
 
     let rendered = render(RenderSemanticModel::Timeline(model));
 
@@ -234,12 +231,9 @@ fn timeline_render_model_renders_sections_tasks_and_events() {
 
 #[test]
 fn timeline_render_model_wraps_long_task_and_event_text() {
-    let model = TimelineDiagramRenderModel {
-        title: None,
-        acc_title: None,
-        acc_descr: None,
-        sections: vec!["Planning".to_string()],
-        tasks: vec![TimelineRenderTask {
+    let mut model = TimelineDiagramRenderModel::default();
+    model.sections = vec!["Planning".to_string()];
+    model.tasks = vec![TimelineRenderTask {
             id: 0,
             section: "Planning".to_string(),
             task_type: "Planning".to_string(),
@@ -248,8 +242,7 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
             events: vec![
                 "Capture every upstream payload variant without losing the important operational context".to_string(),
             ],
-        }],
-    };
+        }];
 
     let rendered = render(RenderSemanticModel::Timeline(model));
 
@@ -267,30 +260,29 @@ fn timeline_render_model_wraps_long_task_and_event_text() {
 
 #[test]
 fn gantt_render_model_renders_sections_tasks_and_flags() {
-    let model = GanttDiagramRenderModel {
-        title: Some("Gantt".to_string()),
-        acc_title: Some("Gantt title".to_string()),
-        acc_descr: Some("Gantt description".to_string()),
-        date_format: "YYYY-MM-DD".to_string(),
-        axis_format: "%d".to_string(),
-        tasks: vec![GanttRenderTask {
-            id: "task-1".to_string(),
-            task: "Implement".to_string(),
-            section: "Build".to_string(),
-            task_type: "Build".to_string(),
-            classes: Vec::new(),
-            active: true,
-            done: true,
-            crit: true,
-            milestone: true,
-            vert: true,
-            order: 0,
-            start_ms: 9_223_372_036_854_775_000,
-            end_ms: 9_223_372_036_854_775_001,
-            render_end_ms: Some(9_223_372_036_854_775_002),
-        }],
+    let mut model = GanttDiagramRenderModel::default();
+    model.title = Some("Gantt".to_string());
+    model.acc_title = Some("Gantt title".to_string());
+    model.acc_descr = Some("Gantt description".to_string());
+    model.date_format = "YYYY-MM-DD".to_string();
+    model.axis_format = "%d".to_string();
+    model.tasks = vec![GanttRenderTask {
+        id: "task-1".to_string(),
+        task: "Implement".to_string(),
+        section: "Build".to_string(),
+        task_type: "Build".to_string(),
+        classes: Vec::new(),
+        active: true,
+        done: true,
+        crit: true,
+        milestone: true,
+        vert: true,
+        order: 0,
+        start_ms: 9_223_372_036_854_775_000,
+        end_ms: 9_223_372_036_854_775_001,
+        render_end_ms: Some(9_223_372_036_854_775_002),
         ..Default::default()
-    };
+    }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
 
@@ -311,31 +303,29 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
 
 #[test]
 fn journey_render_model_renders_actors_sections_and_scores() {
-    let model = JourneyDiagramRenderModel {
-        title: Some("Journey".to_string()),
-        acc_title: Some("Journey title".to_string()),
-        acc_descr: Some("Journey description".to_string()),
-        sections: vec!["Discovery".to_string()],
-        tasks: vec![
-            JourneyRenderTask {
-                score: 5,
-                score_is_nan: false,
-                people: vec!["Alice".to_string(), "Bob".to_string()],
-                section: "Discovery".to_string(),
-                task_type: "Discovery".to_string(),
-                task: "Research".to_string(),
-            },
-            JourneyRenderTask {
-                score: 3,
-                score_is_nan: false,
-                people: vec!["Bob".to_string()],
-                section: "Discovery".to_string(),
-                task_type: "Discovery".to_string(),
-                task: "Ship".to_string(),
-            },
-        ],
-        actors: Vec::new(),
-    };
+    let mut model = JourneyDiagramRenderModel::default();
+    model.title = Some("Journey".to_string());
+    model.acc_title = Some("Journey title".to_string());
+    model.acc_descr = Some("Journey description".to_string());
+    model.sections = vec!["Discovery".to_string()];
+    model.tasks = vec![
+        JourneyRenderTask {
+            score: 5,
+            score_is_nan: false,
+            people: vec!["Alice".to_string(), "Bob".to_string()],
+            section: "Discovery".to_string(),
+            task_type: "Discovery".to_string(),
+            task: "Research".to_string(),
+        },
+        JourneyRenderTask {
+            score: 3,
+            score_is_nan: false,
+            people: vec!["Bob".to_string()],
+            section: "Discovery".to_string(),
+            task_type: "Discovery".to_string(),
+            task: "Ship".to_string(),
+        },
+    ];
 
     let rendered = render(RenderSemanticModel::Journey(model));
 
@@ -408,33 +398,32 @@ fn kanban_render_model_renders_groups_and_child_metadata() {
 
 #[test]
 fn packet_render_model_renders_rows_and_ranges() {
-    let model = PacketDiagramRenderModel {
-        title: Some("Packet".to_string()),
-        acc_title: Some("Packet title".to_string()),
-        acc_descr: Some("Packet description".to_string()),
-        packet: vec![
-            vec![
-                PacketRenderBlock {
-                    start: 0,
-                    end: 7,
-                    bits: 8,
-                    label: "header".to_string(),
-                },
-                PacketRenderBlock {
-                    start: 8,
-                    end: 15,
-                    bits: 8,
-                    label: "payload".to_string(),
-                },
-            ],
-            vec![PacketRenderBlock {
-                start: 16,
-                end: 31,
-                bits: 16,
-                label: "footer".to_string(),
-            }],
+    let mut model = PacketDiagramRenderModel::default();
+    model.title = Some("Packet".to_string());
+    model.acc_title = Some("Packet title".to_string());
+    model.acc_descr = Some("Packet description".to_string());
+    model.packet = vec![
+        vec![
+            PacketRenderBlock {
+                start: 0,
+                end: 7,
+                bits: 8,
+                label: "header".to_string(),
+            },
+            PacketRenderBlock {
+                start: 8,
+                end: 15,
+                bits: 8,
+                label: "payload".to_string(),
+            },
         ],
-    };
+        vec![PacketRenderBlock {
+            start: 16,
+            end: 31,
+            bits: 16,
+            label: "footer".to_string(),
+        }],
+    ];
 
     let rendered = render(RenderSemanticModel::Packet(model));
 

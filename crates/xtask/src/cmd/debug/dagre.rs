@@ -6,6 +6,7 @@ use super::dagre_reference::{
     write_dagre_reference_input, write_rust_dagre_output,
 };
 use crate::XtaskError;
+use merman_core::RenderSemanticModel;
 use std::fs;
 use std::path::PathBuf;
 
@@ -67,21 +68,26 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
     })?;
 
     let engine = merman::Engine::new();
-    let parsed = match futures::executor::block_on(
-        engine.parse_diagram(&text, merman::ParseOptions::default()),
-    ) {
-        Ok(Some(v)) => v,
-        Ok(None) => {
-            return Err(XtaskError::DebugSvgFailed(
-                "no diagram detected".to_string(),
-            ));
-        }
-        Err(err) => return Err(XtaskError::DebugSvgFailed(format!("parse failed: {err}"))),
+    let parsed =
+        match engine.parse_diagram_for_render_model_sync(&text, merman::ParseOptions::default()) {
+            Ok(Some(v)) => v,
+            Ok(None) => {
+                return Err(XtaskError::DebugSvgFailed(
+                    "no diagram detected".to_string(),
+                ));
+            }
+            Err(err) => return Err(XtaskError::DebugSvgFailed(format!("parse failed: {err}"))),
+        };
+    let RenderSemanticModel::State(model) = &parsed.model else {
+        return Err(XtaskError::DebugSvgFailed(format!(
+            "expected State render model, got {}",
+            parsed.model.kind()
+        )));
     };
 
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
     let mut g = merman_render::state::debug_build_state_diagram_v2_dagre_graph(
-        &parsed.model,
+        model,
         parsed.meta.effective_config.as_value(),
         &measurer,
     )

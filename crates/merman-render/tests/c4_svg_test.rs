@@ -1,6 +1,7 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::model::LayoutDiagram;
-use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::c4::layout_c4_diagram_typed;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
 
 fn deep_c4_boundary_chain(depth: usize) -> String {
     let mut input = String::from("C4Context\n");
@@ -16,9 +17,7 @@ fn deep_c4_boundary_chain(depth: usize) -> String {
 
 #[test]
 fn c4_public_layout_handles_deep_boundary_chain() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     const DEPTH: usize = 1500;
     let source = deep_c4_boundary_chain(DEPTH);
 
@@ -28,11 +27,19 @@ fn c4_public_layout_handles_deep_boundary_chain() {
         .expect("diagram detected");
     assert_eq!(parsed.meta.diagram_type, "c4");
 
-    let layout = layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &_session)
-        .expect("layout should not depend on recursive boundary traversal");
-    let LayoutDiagram::C4Diagram(c4) = &layout else {
-        panic!("expected C4Diagram layout");
+    let RenderSemanticModel::C4(model) = &parsed.model else {
+        panic!("expected C4 render model");
     };
+    let options = LayoutOptions::default();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let c4 = layout_c4_diagram_typed(
+        model,
+        parsed.meta.effective_config.as_value(),
+        &measurer,
+        options.viewport_width,
+        options.viewport_height,
+    )
+    .expect("layout should not depend on recursive boundary traversal");
 
     assert_eq!(c4.boundaries.len(), DEPTH + 1);
     assert_eq!(c4.shapes.len(), 1);

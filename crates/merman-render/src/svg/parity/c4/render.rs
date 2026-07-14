@@ -805,25 +805,6 @@ pub(crate) fn render_c4_diagram_svg_typed(
     Ok(out)
 }
 
-pub(crate) fn render_c4_diagram_svg(
-    layout: &crate::model::C4DiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: C4DiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_c4_diagram_svg_typed(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

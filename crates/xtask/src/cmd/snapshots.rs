@@ -223,7 +223,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 }
             };
 
-            let parsed = match futures::executor::block_on(engine.parse_diagram(
+            let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
                 &text,
                 merman::ParseOptions {
                     suppress_errors: true,
@@ -243,6 +243,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             if !snapshot_selector_accepts(&diagram, parsed.meta.diagram_type.as_str()) {
                 continue;
             }
+            let diagram_type = parsed.meta.diagram_type.clone();
 
             let session = match merman::render::RenderEnvironment::parity().begin_session() {
                 Ok(session) => session,
@@ -251,12 +252,11 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                     continue;
                 }
             };
-            let layouted = match merman_render::layout_parsed(&parsed, &layout_opts, &session) {
+            let artifact = match merman_render::family::prepare(parsed, &layout_opts, session) {
                 Ok(v) => v,
                 Err(merman_render::Error::UnsupportedDiagram { .. }) => {
-                    // Layout snapshots are only defined for diagram types currently supported by
-                    // `merman-render::layout_parsed`. Skip unsupported diagrams so `--diagram all`
-                    // can be used for "all supported layout diagrams".
+                    // Layout snapshots are only defined for renderable built-in families. Skip
+                    // unsupported diagrams so `--diagram all` remains useful for the full corpus.
                     continue;
                 }
                 Err(err) => {
@@ -265,8 +265,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                 }
             };
 
-            let mut layout_json = match serde_json::to_value(&layouted.layout) {
-                Ok(v) => v,
+            let mut artifact_json = match artifact.layout_json() {
+                Ok(value) => value,
                 Err(err) => {
                     failures.push(format!(
                         "failed to serialize layout JSON for {}: {err}",
@@ -275,13 +275,23 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
                     continue;
                 }
             };
+            let Some(mut layout_json) = artifact_json
+                .as_object_mut()
+                .and_then(|object| object.remove("layout"))
+            else {
+                failures.push(format!(
+                    "layout artifact for {} omitted its layout projection",
+                    mmd_path.display()
+                ));
+                continue;
+            };
             round_json_numbers(&mut layout_json, decimals);
 
             let mut out = serde_json::json!({
-                "diagramType": parsed.meta.diagram_type,
+                "diagramType": diagram_type,
                 "layout": layout_json,
             });
-            normalize_layout_snapshot(&parsed.meta.diagram_type, &mut out);
+            normalize_layout_snapshot(&diagram_type, &mut out);
 
             let pretty = match serde_json::to_string_pretty(&out) {
                 Ok(v) => v,

@@ -414,6 +414,7 @@ mod tests {
     #[test]
     fn flowchart_complexity_counts_layout_nodes_and_labels() {
         let model = FlowchartV2Model {
+            keyword: "graph".to_string(),
             acc_descr: None,
             acc_title: None,
             class_defs: Default::default(),
@@ -425,6 +426,7 @@ mod tests {
                 label: Some("Alpha".to_string()),
                 label_type: None,
                 layout_shape: None,
+                shape: None,
                 icon: None,
                 form: None,
                 pos: None,
@@ -445,6 +447,8 @@ mod tests {
                 label: Some("edge".to_string()),
                 label_type: None,
                 edge_type: None,
+                arrow: "-->".to_string(),
+                is_user_defined_id: false,
                 stroke: None,
                 interpolate: None,
                 classes: Vec::new(),

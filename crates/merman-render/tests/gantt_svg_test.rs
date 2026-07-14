@@ -1,17 +1,26 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::environment::{RenderEnvironment, RenderTimeSnapshot};
-use merman_render::model::{LayoutDiagram, LayoutedDiagram};
-use merman_render::svg::{SvgRenderOptions, render_layouted_svg};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, RenderTimeSnapshot, TextMeasurementPhase};
+use merman_render::family;
+use merman_render::gantt::layout_gantt_diagram_typed;
+use merman_render::model::GanttDiagramLayout;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
-fn layout_gantt_from_text(text: &str) -> LayoutedDiagram {
+fn layout_gantt_from_text(text: &str) -> GanttDiagramLayout {
     let session = RenderEnvironment::parity().begin_session().unwrap();
     let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
+    let parsed = futures::executor::block_on(
+        engine.parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected");
+    let RenderSemanticModel::Gantt(model) = &parsed.model else {
+        panic!("expected Gantt render model");
+    };
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
-    layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok")
+    layout_gantt_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+        .expect("layout ok")
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {
@@ -22,20 +31,23 @@ fn render_gantt_svg_from_text(text: &str) -> String {
         )
         .begin_session()
         .expect("begin render session");
-    let parsed =
-        futures::executor::block_on(Engine::new().parse_diagram(text, ParseOptions::default()))
-            .expect("parse ok")
-            .expect("diagram detected");
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
-    render_layouted_svg(
-        &out,
-        &session,
-        &SvgRenderOptions {
-            diagram_id: Some("gantt-config".to_string()),
-            ..SvgRenderOptions::default()
-        },
+    let parsed = futures::executor::block_on(
+        Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
     )
-    .expect("render svg")
+    .expect("parse ok")
+    .expect("diagram detected");
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-config".to_string()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .expect("render svg")
+        .svg()
+        .to_owned()
 }
 
 #[test]
@@ -96,7 +108,7 @@ gantt
 
 #[test]
 fn gantt_vertical_markers_do_not_affect_standard_row_layout() {
-    let out = layout_gantt_from_text(
+    let layout = layout_gantt_from_text(
         r#"
 gantt
 dateFormat YYYY-MM-DD
@@ -108,10 +120,6 @@ Task B: task-b,2024-01-06,1d
 Final marker: vert,marker-final,2024-01-10,0d
 "#,
     );
-    let LayoutDiagram::GanttDiagram(layout) = out.layout else {
-        panic!("expected GanttDiagram layout");
-    };
-
     assert_eq!(layout.height, 148.0);
     assert_eq!(
         layout.rows.iter().map(|row| row.index).collect::<Vec<_>>(),
@@ -141,7 +149,7 @@ Final marker: vert,marker-final,2024-01-10,0d
 
 #[test]
 fn gantt_vertical_markers_do_not_affect_compact_row_packing() {
-    let out = layout_gantt_from_text(
+    let layout = layout_gantt_from_text(
         r#"---
 displayMode: compact
 ---
@@ -153,10 +161,6 @@ Task A: task-a,2024-01-01,1d
 Task B: task-b,2024-01-03,1d
 "#,
     );
-    let LayoutDiagram::GanttDiagram(layout) = out.layout else {
-        panic!("expected GanttDiagram layout");
-    };
-
     assert_eq!(layout.height, 124.0);
     assert_eq!(
         layout.rows.iter().map(|row| row.index).collect::<Vec<_>>(),

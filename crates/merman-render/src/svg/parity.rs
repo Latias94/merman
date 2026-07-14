@@ -82,9 +82,9 @@ use util::{
     SvgTheme, apply_root_viewport_override, config_bool, config_diagram_look, config_f64,
     config_f64_css_px, config_string, css_rgba_fade, decode_mermaid_entities_for_render_text,
     escape_attr, escape_attr_display, escape_attr_into, escape_xml, escape_xml_display,
-    escape_xml_into, fmt, fmt_debug_3dp, fmt_display, fmt_into, fmt_max_width_px, fmt_path,
-    fmt_path_into, fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
-    normalize_css_font_family, push_points_attr, scoped_svg_id, scoped_svg_url, theme_color,
+    escape_xml_into, fmt, fmt_display, fmt_into, fmt_max_width_px, fmt_path, fmt_path_into,
+    fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
+    normalize_css_font_family, scoped_svg_id, scoped_svg_url, theme_color,
 };
 
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(
@@ -232,550 +232,8 @@ impl std::ops::Deref for SvgExecution<'_> {
     }
 }
 
-pub fn render_layouted_svg(
-    diagram: &crate::model::LayoutedDiagram,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_layouted_svg_with_debug(diagram, session, options, &SvgDebugOptions::default())
-}
-
-pub fn render_layouted_svg_with_debug(
-    diagram: &crate::model::LayoutedDiagram,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let flowchart_roledescription =
-        matches!(&diagram.layout, crate::model::LayoutDiagram::FlowchartV2(_))
-            .then_some(diagram.meta.diagram_type.as_str());
-    let mut scoped_options;
-    let options = if options.aria_roledescription.is_none()
-        && let Some(roledescription) = flowchart_roledescription
-    {
-        scoped_options = options.clone();
-        scoped_options.aria_roledescription = Some(roledescription.to_string());
-        &scoped_options
-    } else {
-        options
-    };
-    render_layout_svg_parts_with_debug(
-        &diagram.layout,
-        &diagram.semantic,
-        &diagram.meta.effective_config,
-        diagram.meta.title.as_deref(),
-        session,
-        options,
-        debug,
-    )
-}
-
-pub fn render_layout_svg_parts(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_layout_svg_parts_with_debug(
-        layout,
-        semantic,
-        effective_config,
-        title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_layout_svg_parts_with_debug(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let svg = render_layout_svg_parts_raw(layout, semantic, effective_config, title, &execution)?;
-    apply_theme_css(svg, effective_config, session)
-}
-
-fn render_layout_svg_parts_raw(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    title: Option<&str>,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let measurer = options.text_measurer();
-    let effective_config = options.effective_config_value(effective_config);
-    let effective_config = effective_config.as_ref();
-    use crate::model::LayoutDiagram;
-
-    match layout {
-        LayoutDiagram::ErrorDiagram(layout) => {
-            render_error_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::BlockDiagram(layout) => {
-            render_block_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::RequirementDiagram(layout) => requirement::render_requirement_diagram_svg(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        #[cfg(feature = "cytoscape-layout")]
-        LayoutDiagram::ArchitectureDiagram(layout) => {
-            architecture::render_architecture_diagram_svg(
-                layout,
-                semantic,
-                effective_config,
-                options,
-            )
-        }
-        #[cfg(not(feature = "cytoscape-layout"))]
-        LayoutDiagram::ArchitectureDiagram(_) => Err(Error::UnsupportedDiagram {
-            diagram_type: "architecture".to_string(),
-        }),
-        #[cfg(feature = "cytoscape-layout")]
-        LayoutDiagram::MindmapDiagram(layout) => {
-            mindmap::render_mindmap_diagram_svg(layout, semantic, effective_config, options)
-        }
-        #[cfg(not(feature = "cytoscape-layout"))]
-        LayoutDiagram::MindmapDiagram(_) => Err(Error::UnsupportedDiagram {
-            diagram_type: "mindmap".to_string(),
-        }),
-        LayoutDiagram::SankeyDiagram(layout) => {
-            sankey::render_sankey_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::RadarDiagram(layout) => {
-            render_radar_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::TreemapDiagram(layout) => {
-            treemap::render_treemap_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::VennDiagram(layout) => {
-            render_venn_diagram_svg(layout, semantic, effective_config, title, options)
-        }
-        LayoutDiagram::XyChartDiagram(layout) => {
-            render_xychart_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::QuadrantChartDiagram(layout) => {
-            render_quadrantchart_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::FlowchartV2(layout) => flowchart::render_flowchart_v2_svg(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::CynefinDiagram(layout) => {
-            cynefin::render_cynefin_diagram_svg(layout, semantic, effective_config, title, options)
-        }
-        LayoutDiagram::RailroadDiagram(layout) => railroad::render_railroad_diagram_svg(
-            layout,
-            semantic,
-            effective_config,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::StateDiagramV2(layout) => state::render_state_diagram_v2_svg(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::ClassDiagramV2(layout) => class::render_class_diagram_v2_svg(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::ErDiagram(layout) => {
-            er::render_er_diagram_svg(layout, semantic, effective_config, title, measurer, options)
-        }
-        LayoutDiagram::SequenceDiagram(layout) => sequence::render_sequence_diagram_svg(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::InfoDiagram(layout) => {
-            render_info_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::PacketDiagram(layout) => {
-            render_packet_diagram_svg(layout, semantic, effective_config, title, options)
-        }
-        LayoutDiagram::TimelineDiagram(layout) => timeline::render_timeline_diagram_svg(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::PieDiagram(layout) => {
-            pie::render_pie_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::JourneyDiagram(layout) => journey::render_journey_diagram_svg(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::KanbanDiagram(layout) => {
-            render_kanban_diagram_svg(layout, semantic, effective_config, options.session, options)
-        }
-        LayoutDiagram::GitGraphDiagram(layout) => gitgraph::render_gitgraph_diagram_svg(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::GanttDiagram(layout) => {
-            gantt::render_gantt_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::TreeViewDiagram(layout) => {
-            tree_view::render_tree_view_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::IshikawaDiagram(layout) => {
-            render_ishikawa_diagram_svg(layout, semantic, effective_config, options)
-        }
-        LayoutDiagram::EventModelingDiagram(layout) => {
-            eventmodeling::render_eventmodeling_diagram_svg(
-                layout,
-                semantic,
-                effective_config,
-                options,
-            )
-        }
-        LayoutDiagram::C4Diagram(layout) => {
-            c4::render_c4_diagram_svg(layout, semantic, effective_config, title, measurer, options)
-        }
-    }
-}
-
-pub fn render_layout_svg_parts_with_config(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_layout_svg_parts_with_config_and_debug(
-        layout,
-        semantic,
-        effective_config,
-        title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_layout_svg_parts_with_config_and_debug(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let svg = render_layout_svg_parts_with_config_raw(
-        layout,
-        semantic,
-        effective_config,
-        title,
-        &execution,
-    )?;
-    apply_theme_css(svg, effective_config.as_value(), session)
-}
-
-fn render_layout_svg_parts_with_config_raw(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    title: Option<&str>,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    use crate::model::LayoutDiagram;
-
-    let effective_config = options.effective_config(effective_config);
-    let effective_config = effective_config.as_ref();
-    let effective_config_value = effective_config.as_value();
-    let measurer = options.text_measurer();
-
-    match layout {
-        LayoutDiagram::ErrorDiagram(layout) => {
-            render_error_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::BlockDiagram(layout) => {
-            render_block_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::RequirementDiagram(layout) => requirement::render_requirement_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
-        #[cfg(feature = "cytoscape-layout")]
-        LayoutDiagram::ArchitectureDiagram(layout) => {
-            architecture::render_architecture_diagram_svg_with_config(
-                layout,
-                semantic,
-                effective_config,
-                options,
-            )
-        }
-        #[cfg(not(feature = "cytoscape-layout"))]
-        LayoutDiagram::ArchitectureDiagram(_) => Err(Error::UnsupportedDiagram {
-            diagram_type: "architecture".to_string(),
-        }),
-        #[cfg(feature = "cytoscape-layout")]
-        LayoutDiagram::MindmapDiagram(layout) => mindmap::render_mindmap_diagram_svg_with_config(
-            layout,
-            semantic,
-            effective_config,
-            options,
-        ),
-        #[cfg(not(feature = "cytoscape-layout"))]
-        LayoutDiagram::MindmapDiagram(_) => Err(Error::UnsupportedDiagram {
-            diagram_type: "mindmap".to_string(),
-        }),
-        LayoutDiagram::SankeyDiagram(layout) => {
-            sankey::render_sankey_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::RadarDiagram(layout) => {
-            render_radar_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::TreemapDiagram(layout) => {
-            treemap::render_treemap_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::VennDiagram(layout) => {
-            render_venn_diagram_svg(layout, semantic, effective_config_value, title, options)
-        }
-        LayoutDiagram::XyChartDiagram(layout) => {
-            render_xychart_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::QuadrantChartDiagram(layout) => {
-            render_quadrantchart_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::FlowchartV2(layout) => flowchart::render_flowchart_v2_svg_with_config(
-            layout,
-            semantic,
-            effective_config,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::CynefinDiagram(layout) => cynefin::render_cynefin_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            options,
-        ),
-        LayoutDiagram::RailroadDiagram(layout) => railroad::render_railroad_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::StateDiagramV2(layout) => state::render_state_diagram_v2_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::ClassDiagramV2(layout) => {
-            let model = crate::json::from_value_ref(semantic)?;
-            class::render_class_diagram_v2_svg_model_with_config(
-                layout,
-                &model,
-                effective_config,
-                title,
-                measurer,
-                options,
-            )
-        }
-        LayoutDiagram::ErDiagram(layout) => er::render_er_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::SequenceDiagram(layout) => {
-            sequence::render_sequence_diagram_svg_with_config(
-                layout,
-                semantic,
-                effective_config,
-                title,
-                measurer,
-                options,
-            )
-        }
-        LayoutDiagram::InfoDiagram(layout) => {
-            render_info_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::PacketDiagram(layout) => {
-            render_packet_diagram_svg(layout, semantic, effective_config_value, title, options)
-        }
-        LayoutDiagram::TimelineDiagram(layout) => timeline::render_timeline_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::PieDiagram(layout) => {
-            pie::render_pie_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::JourneyDiagram(layout) => journey::render_journey_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::KanbanDiagram(layout) => render_kanban_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            options.session,
-            options,
-        ),
-        LayoutDiagram::GitGraphDiagram(layout) => gitgraph::render_gitgraph_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
-        LayoutDiagram::GanttDiagram(layout) => {
-            gantt::render_gantt_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::TreeViewDiagram(layout) => tree_view::render_tree_view_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            options,
-        ),
-        LayoutDiagram::IshikawaDiagram(layout) => {
-            render_ishikawa_diagram_svg(layout, semantic, effective_config_value, options)
-        }
-        LayoutDiagram::EventModelingDiagram(layout) => {
-            eventmodeling::render_eventmodeling_diagram_svg(
-                layout,
-                semantic,
-                effective_config_value,
-                options,
-            )
-        }
-        LayoutDiagram::C4Diagram(layout) => c4::render_c4_diagram_svg(
-            layout,
-            semantic,
-            effective_config_value,
-            title,
-            measurer,
-            options,
-        ),
-    }
-}
-
-pub fn render_layout_svg_parts_for_render_model_with_config(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &merman_core::RenderSemanticModel,
-    effective_config: &merman_core::MermaidConfig,
-    title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_layout_svg_parts_for_render_model_with_config_and_debug(
-        layout,
-        semantic,
-        effective_config,
-        title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_layout_svg_parts_for_render_model_with_config_and_debug(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &merman_core::RenderSemanticModel,
-    effective_config: &merman_core::MermaidConfig,
-    title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let svg = render_layout_svg_parts_for_render_model_with_config_raw(
-        layout,
-        semantic,
-        effective_config,
-        title,
-        &execution,
-    )?;
-    apply_theme_css(svg, effective_config.as_value(), session)
-}
-
-pub fn render_layout_svg_parts_for_render_model_with_metadata(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &merman_core::RenderSemanticModel,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_type: &str,
-    title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_layout_svg_parts_for_render_model_with_metadata_and_debug(
-        layout,
-        semantic,
-        effective_config,
-        diagram_type,
-        title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_layout_svg_parts_for_render_model_with_metadata_and_debug(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &merman_core::RenderSemanticModel,
+pub(crate) fn render_builtin_family_artifact(
+    family: &crate::family::BuiltinFamilyArtifact,
     effective_config: &merman_core::MermaidConfig,
     diagram_type: &str,
     title: Option<&str>,
@@ -785,7 +243,7 @@ pub fn render_layout_svg_parts_for_render_model_with_metadata_and_debug(
 ) -> Result<String> {
     let mut scoped_options;
     let options = if options.aria_roledescription.is_none()
-        && matches!(layout, crate::model::LayoutDiagram::FlowchartV2(_))
+        && matches!(family, crate::family::BuiltinFamilyArtifact::Flowchart(_))
     {
         scoped_options = options.clone();
         scoped_options.aria_roledescription = Some(diagram_type.to_string());
@@ -795,302 +253,238 @@ pub fn render_layout_svg_parts_for_render_model_with_metadata_and_debug(
     };
 
     let execution = SvgExecution::new(options, debug, session);
-    let svg = render_layout_svg_parts_for_render_model_with_config_raw(
-        layout,
-        semantic,
-        effective_config,
-        title,
-        &execution,
-    )?;
+    let svg = render_builtin_family_artifact_raw(family, effective_config, title, &execution)?;
     apply_theme_css(svg, effective_config.as_value(), session)
 }
 
-fn render_layout_svg_parts_for_render_model_with_config_raw(
-    layout: &crate::model::LayoutDiagram,
-    semantic: &merman_core::RenderSemanticModel,
+fn render_builtin_family_artifact_raw(
+    family: &crate::family::BuiltinFamilyArtifact,
     effective_config: &merman_core::MermaidConfig,
     title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<String> {
-    use crate::model::LayoutDiagram;
-    use merman_core::RenderSemanticModel;
+    use crate::family::BuiltinFamilyArtifact;
 
     let measurer = options.text_measurer();
     let effective_config = options.effective_config(effective_config);
     let effective_config = effective_config.as_ref();
+    let effective_config_value = effective_config.as_value();
 
-    match (layout, semantic) {
+    match family {
+        BuiltinFamilyArtifact::Error(pair) => error::render_error_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            options,
+        ),
         #[cfg(feature = "cytoscape-layout")]
-        (LayoutDiagram::ArchitectureDiagram(layout), RenderSemanticModel::Architecture(model)) => {
+        BuiltinFamilyArtifact::Architecture(pair) => {
             architecture::render_architecture_diagram_svg_typed_with_config(
-                layout,
-                model,
+                pair.layout(),
+                pair.semantic(),
                 effective_config,
                 options,
             )
         }
         #[cfg(not(feature = "cytoscape-layout"))]
-        (LayoutDiagram::ArchitectureDiagram(_), RenderSemanticModel::Architecture(_)) => {
-            Err(Error::UnsupportedDiagram {
-                diagram_type: "architecture".to_string(),
-            })
-        }
-        (LayoutDiagram::FlowchartV2(layout), RenderSemanticModel::Flowchart(model)) => {
+        BuiltinFamilyArtifact::Architecture(_) => Err(Error::UnsupportedDiagram {
+            diagram_type: "architecture".to_string(),
+        }),
+        BuiltinFamilyArtifact::Flowchart(pair) => {
             flowchart::render_flowchart_v2_svg_model_with_config(
-                layout,
-                model,
+                pair.layout(),
+                pair.semantic(),
                 effective_config,
                 title,
                 measurer,
                 options,
             )
         }
-        (LayoutDiagram::CynefinDiagram(layout), RenderSemanticModel::Cynefin(model)) => {
-            cynefin::render_cynefin_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                options,
-            )
-        }
-        (LayoutDiagram::RailroadDiagram(layout), RenderSemanticModel::Railroad(model)) => {
-            railroad::render_railroad_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                measurer,
-                options,
-            )
-        }
-        #[cfg(feature = "cytoscape-layout")]
-        (LayoutDiagram::MindmapDiagram(layout), RenderSemanticModel::Mindmap(model)) => {
-            mindmap::render_mindmap_diagram_svg_model_with_config(
-                layout,
-                model,
-                effective_config,
-                options,
-            )
-        }
-        #[cfg(not(feature = "cytoscape-layout"))]
-        (LayoutDiagram::MindmapDiagram(_), RenderSemanticModel::Mindmap(_)) => {
-            Err(Error::UnsupportedDiagram {
-                diagram_type: "mindmap".to_string(),
-            })
-        }
-        (LayoutDiagram::StateDiagramV2(layout), RenderSemanticModel::State(model)) => {
-            state::render_state_diagram_v2_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                measurer,
-                options,
-            )
-        }
-        (LayoutDiagram::ClassDiagramV2(layout), RenderSemanticModel::Class(model)) => {
-            class::render_class_diagram_v2_svg_model_with_config(
-                layout,
-                model,
-                effective_config,
-                title,
-                measurer,
-                options,
-            )
-        }
-        (LayoutDiagram::SequenceDiagram(layout), RenderSemanticModel::Sequence(model)) => {
-            sequence::render_sequence_diagram_svg_model_with_config(
-                layout,
-                model,
-                effective_config,
-                title,
-                measurer,
-                options,
-            )
-        }
-        (LayoutDiagram::KanbanDiagram(layout), RenderSemanticModel::Kanban(_)) => {
-            render_kanban_diagram_svg(
-                layout,
-                &serde_json::Value::Null,
-                effective_config.as_value(),
-                options.session,
-                options,
-            )
-        }
-        (LayoutDiagram::GanttDiagram(layout), RenderSemanticModel::Gantt(model)) => {
-            gantt::render_gantt_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::PieDiagram(layout), RenderSemanticModel::Pie(model)) => {
-            pie::render_pie_diagram_svg_model(layout, model, effective_config.as_value(), options)
-        }
-        (LayoutDiagram::PacketDiagram(layout), RenderSemanticModel::Packet(model)) => {
-            packet::render_packet_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                options,
-            )
-        }
-        (LayoutDiagram::TimelineDiagram(layout), RenderSemanticModel::Timeline(model)) => {
-            timeline::render_timeline_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                measurer,
-                options,
-            )
-        }
-        (LayoutDiagram::JourneyDiagram(layout), RenderSemanticModel::Journey(model)) => {
-            journey::render_journey_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                measurer,
-                options,
-            )
-        }
-        (LayoutDiagram::RequirementDiagram(layout), RenderSemanticModel::Requirement(model)) => {
-            requirement::render_requirement_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                measurer,
-                options,
-            )
-        }
-        (LayoutDiagram::SankeyDiagram(layout), RenderSemanticModel::Sankey(_)) => {
-            sankey::render_sankey_diagram_svg(
-                layout,
-                &serde_json::Value::Null,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::RadarDiagram(layout), RenderSemanticModel::Radar(model)) => {
-            radar::render_radar_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::InfoDiagram(layout), RenderSemanticModel::Info(_)) => {
-            render_info_diagram_svg(
-                layout,
-                &serde_json::Value::Null,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::TreemapDiagram(layout), RenderSemanticModel::Treemap(_)) => {
-            treemap::render_treemap_diagram_svg(
-                layout,
-                &serde_json::Value::Null,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::VennDiagram(layout), RenderSemanticModel::Venn(model)) => {
-            venn::render_venn_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                options,
-            )
-        }
-        (LayoutDiagram::BlockDiagram(layout), RenderSemanticModel::Block(model)) => {
-            render_block_diagram_svg_model(layout, model, effective_config.as_value(), options)
-        }
-        (LayoutDiagram::ErDiagram(layout), RenderSemanticModel::Er(model)) => {
-            er::render_er_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                measurer,
-                options,
-            )
-        }
-        (LayoutDiagram::QuadrantChartDiagram(layout), RenderSemanticModel::QuadrantChart(_)) => {
-            render_quadrantchart_diagram_svg(
-                layout,
-                &serde_json::Value::Null,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::XyChartDiagram(layout), RenderSemanticModel::XyChart(_)) => {
-            render_xychart_diagram_svg(
-                layout,
-                &serde_json::Value::Null,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::GitGraphDiagram(layout), RenderSemanticModel::GitGraph(model)) => {
-            gitgraph::render_gitgraph_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                measurer,
-                options,
-            )
-        }
-        (LayoutDiagram::TreeViewDiagram(layout), RenderSemanticModel::TreeView(model)) => {
-            tree_view::render_tree_view_diagram_svg_model(
-                layout,
-                model,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::IshikawaDiagram(layout), RenderSemanticModel::Ishikawa(_)) => {
-            render_ishikawa_diagram_svg(
-                layout,
-                &serde_json::Value::Null,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::EventModelingDiagram(layout), RenderSemanticModel::EventModeling(_)) => {
-            eventmodeling::render_eventmodeling_diagram_svg(
-                layout,
-                &serde_json::Value::Null,
-                effective_config.as_value(),
-                options,
-            )
-        }
-        (LayoutDiagram::C4Diagram(layout), RenderSemanticModel::C4(model)) => {
-            c4::render_c4_diagram_svg_typed(
-                layout,
-                model,
-                effective_config.as_value(),
-                title,
-                measurer,
-                options,
-            )
-        }
-        (_, RenderSemanticModel::Json(semantic)) => render_layout_svg_parts_with_config_raw(
-            layout,
-            semantic,
-            effective_config,
+        BuiltinFamilyArtifact::Cynefin(pair) => cynefin::render_cynefin_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
             title,
             options,
         ),
-        _ => Err(Error::InvalidModel {
-            message: "semantic model does not match layout diagram type".to_string(),
+        BuiltinFamilyArtifact::Railroad(pair) => railroad::render_railroad_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            measurer,
+            options,
+        ),
+        #[cfg(feature = "cytoscape-layout")]
+        BuiltinFamilyArtifact::Mindmap(pair) => {
+            mindmap::render_mindmap_diagram_svg_model_with_config(
+                pair.layout(),
+                pair.semantic(),
+                effective_config,
+                options,
+            )
+        }
+        #[cfg(not(feature = "cytoscape-layout"))]
+        BuiltinFamilyArtifact::Mindmap(_) => Err(Error::UnsupportedDiagram {
+            diagram_type: "mindmap".to_string(),
         }),
+        BuiltinFamilyArtifact::State(pair) => state::render_state_diagram_v2_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        BuiltinFamilyArtifact::Class(pair) => class::render_class_diagram_v2_svg_model_with_config(
+            pair.layout(),
+            pair.semantic(),
+            effective_config,
+            title,
+            measurer,
+            options,
+        ),
+        BuiltinFamilyArtifact::Sequence(pair) => {
+            sequence::render_sequence_diagram_svg_model_with_config(
+                pair.layout(),
+                pair.semantic(),
+                effective_config,
+                title,
+                measurer,
+                options,
+            )
+        }
+        BuiltinFamilyArtifact::Kanban(pair) => {
+            let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
+            kanban::render_kanban_diagram_svg(
+                pair.layout(),
+                effective_config_value,
+                &text_measurer,
+                options,
+            )
+        }
+        BuiltinFamilyArtifact::Gantt(pair) => gantt::render_gantt_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            options,
+        ),
+        BuiltinFamilyArtifact::Pie(pair) => pie::render_pie_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            options,
+        ),
+        BuiltinFamilyArtifact::Packet(pair) => packet::render_packet_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            options,
+        ),
+        BuiltinFamilyArtifact::Timeline(pair) => timeline::render_timeline_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        BuiltinFamilyArtifact::Journey(pair) => journey::render_journey_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        BuiltinFamilyArtifact::Requirement(pair) => {
+            requirement::render_requirement_diagram_svg_model(
+                pair.layout(),
+                pair.semantic(),
+                effective_config_value,
+                title,
+                measurer,
+                options,
+            )
+        }
+        BuiltinFamilyArtifact::Sankey(pair) => {
+            sankey::render_sankey_diagram_svg(pair.layout(), effective_config_value, options)
+        }
+        BuiltinFamilyArtifact::Radar(pair) => radar::render_radar_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            options,
+        ),
+        BuiltinFamilyArtifact::Info(pair) => {
+            info::render_info_diagram_svg(pair.layout(), effective_config_value, options)
+        }
+        BuiltinFamilyArtifact::Treemap(pair) => {
+            treemap::render_treemap_diagram_svg(pair.layout(), effective_config_value, options)
+        }
+        BuiltinFamilyArtifact::Venn(pair) => venn::render_venn_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            options,
+        ),
+        BuiltinFamilyArtifact::Block(pair) => block::render_block_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            options,
+        ),
+        BuiltinFamilyArtifact::Er(pair) => er::render_er_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        BuiltinFamilyArtifact::QuadrantChart(pair) => {
+            quadrantchart::render_quadrantchart_diagram_svg(
+                pair.layout(),
+                effective_config_value,
+                options,
+            )
+        }
+        BuiltinFamilyArtifact::XyChart(pair) => {
+            xychart::render_xychart_diagram_svg(pair.layout(), effective_config_value, options)
+        }
+        BuiltinFamilyArtifact::GitGraph(pair) => gitgraph::render_gitgraph_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
+        BuiltinFamilyArtifact::TreeView(pair) => tree_view::render_tree_view_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            options,
+        ),
+        BuiltinFamilyArtifact::Ishikawa(pair) => {
+            ishikawa::render_ishikawa_diagram_svg(pair.layout(), effective_config_value, options)
+        }
+        BuiltinFamilyArtifact::EventModeling(pair) => {
+            eventmodeling::render_eventmodeling_diagram_svg(
+                pair.layout(),
+                effective_config_value,
+                options,
+            )
+        }
+        BuiltinFamilyArtifact::C4(pair) => c4::render_c4_diagram_svg_typed(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            measurer,
+            options,
+        ),
     }
 }
 
@@ -1116,652 +510,26 @@ fn apply_theme_css(
     pipeline.process_to_string_with_metadata(&svg, &metadata, session)
 }
 
-pub fn render_flowchart_v2_debug_svg(
-    layout: &FlowchartV2Layout,
-    options: &SvgRenderOptions,
-) -> String {
-    render_flowchart_v2_debug_svg_with_debug(layout, options, &SvgDebugOptions::default())
-}
-
-pub fn render_flowchart_v2_debug_svg_with_debug(
-    layout: &FlowchartV2Layout,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> String {
-    flowchart::render_flowchart_v2_debug_svg(layout, options, debug)
-}
-
-pub fn render_sequence_diagram_debug_svg(
-    layout: &SequenceDiagramLayout,
-    options: &SvgRenderOptions,
-) -> String {
-    render_sequence_diagram_debug_svg_with_debug(layout, options, &SvgDebugOptions::default())
-}
-
-pub fn render_sequence_diagram_debug_svg_with_debug(
-    layout: &SequenceDiagramLayout,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> String {
-    sequence::render_sequence_diagram_debug_svg(layout, options, debug)
-}
-
-pub fn render_sequence_diagram_svg(
-    layout: &SequenceDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_sequence_diagram_svg_with_debug(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_sequence_diagram_svg_with_debug(
-    layout: &SequenceDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let measurer = execution.text_measurer();
-    sequence::render_sequence_diagram_svg(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        &execution,
-    )
-}
-
-pub fn render_error_diagram_svg(
-    layout: &ErrorDiagramLayout,
-    _semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    error::render_error_diagram_svg(layout, _semantic, _effective_config, options)
-}
-
-pub fn render_info_diagram_svg(
-    layout: &InfoDiagramLayout,
-    _semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    info::render_info_diagram_svg(layout, _semantic, _effective_config, options)
-}
-
-pub fn render_pie_diagram_svg(
-    layout: &PieDiagramLayout,
-    semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(options, &debug, session);
-    pie::render_pie_diagram_svg(layout, semantic, _effective_config, &execution)
-}
-
-pub fn render_cynefin_diagram_svg(
-    layout: &CynefinDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    cynefin::render_cynefin_diagram_svg(layout, semantic, effective_config, None, options)
-}
-
-pub fn render_railroad_diagram_svg(
-    layout: &RailroadDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let measurer = session.text_measurer(TextMeasurementPhase::SvgBBox);
-    railroad::render_railroad_diagram_svg(layout, semantic, effective_config, &measurer, options)
-}
-
-pub fn render_requirement_diagram_svg(
-    layout: &RequirementDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let measurer = session.text_measurer(TextMeasurementPhase::SvgBBox);
-    requirement::render_requirement_diagram_svg(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        &measurer,
-        options,
-    )
-}
-
-pub fn render_block_diagram_svg(
-    layout: &BlockDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    block::render_block_diagram_svg(layout, semantic, effective_config, options)
-}
-
-pub fn render_block_diagram_svg_model(
-    layout: &BlockDiagramLayout,
-    model: &merman_core::diagrams::block::BlockDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    block::render_block_diagram_svg_model(layout, model, effective_config, options)
-}
-
-pub fn render_er_diagram_svg_model(
-    layout: &ErDiagramLayout,
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_er_diagram_svg_model_with_debug(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_er_diagram_svg_model_with_debug(
-    layout: &ErDiagramLayout,
-    model: &merman_core::diagrams::er::ErDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let measurer = execution.text_measurer();
-    er::render_er_diagram_svg_model(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        measurer,
-        &execution,
-    )
-}
-
-pub fn render_radar_diagram_svg(
-    layout: &RadarDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    radar::render_radar_diagram_svg(layout, semantic, effective_config, options)
-}
-
-pub fn render_quadrantchart_diagram_svg(
-    layout: &QuadrantChartDiagramLayout,
-    _semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    quadrantchart::render_quadrantchart_diagram_svg(layout, _semantic, _effective_config, options)
-}
-
-pub fn render_xychart_diagram_svg(
-    layout: &XyChartDiagramLayout,
-    _semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    xychart::render_xychart_diagram_svg(layout, _semantic, _effective_config, options)
-}
-
-pub fn render_treemap_diagram_svg(
-    layout: &crate::model::TreemapDiagramLayout,
-    _semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_treemap_diagram_svg_with_debug(
-        layout,
-        _semantic,
-        effective_config,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_treemap_diagram_svg_with_debug(
-    layout: &crate::model::TreemapDiagramLayout,
-    _semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    treemap::render_treemap_diagram_svg(layout, _semantic, effective_config, &execution)
-}
-
-pub fn render_venn_diagram_svg(
-    layout: &VennDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    venn::render_venn_diagram_svg(layout, semantic, effective_config, diagram_title, options)
-}
-
-pub fn render_venn_diagram_svg_model(
-    layout: &VennDiagramLayout,
-    model: &merman_core::diagrams::venn::VennDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    venn::render_venn_diagram_svg_model(layout, model, effective_config, diagram_title, options)
-}
-
-pub fn render_packet_diagram_svg(
-    layout: &PacketDiagramLayout,
-    semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    packet::render_packet_diagram_svg(layout, semantic, _effective_config, diagram_title, options)
-}
-
-pub fn render_timeline_diagram_svg(
-    layout: &TimelineDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    _diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(options, &debug, session);
-    let measurer = execution.text_measurer();
-    timeline::render_timeline_diagram_svg(
-        layout,
-        semantic,
-        effective_config,
-        _diagram_title,
-        measurer,
-        &execution,
-    )
-}
-
-pub fn render_journey_diagram_svg(
-    layout: &crate::model::JourneyDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    _diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let measurer = session.text_measurer(TextMeasurementPhase::SvgBBox);
-    journey::render_journey_diagram_svg(
-        layout,
-        semantic,
-        effective_config,
-        _diagram_title,
-        &measurer,
-        options,
-    )
-}
-
-pub fn render_kanban_diagram_svg(
-    layout: &crate::model::KanbanDiagramLayout,
-    _semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
-    kanban::render_kanban_diagram_svg(layout, _semantic, _effective_config, &measurer, options)
-}
-
-pub fn render_gitgraph_diagram_svg(
-    layout: &crate::model::GitGraphDiagramLayout,
-    semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let measurer = session.text_measurer(TextMeasurementPhase::SvgBBox);
-    gitgraph::render_gitgraph_diagram_svg(
-        layout,
-        semantic,
-        _effective_config,
-        diagram_title,
-        &measurer,
-        options,
-    )
-}
-
-pub fn render_tree_view_diagram_svg(
-    layout: &TreeViewDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_tree_view_diagram_svg_with_debug(
-        layout,
-        semantic,
-        effective_config,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_tree_view_diagram_svg_with_debug(
-    layout: &TreeViewDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    tree_view::render_tree_view_diagram_svg(layout, semantic, effective_config, &execution)
-}
-
-pub fn render_ishikawa_diagram_svg(
-    layout: &IshikawaDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    ishikawa::render_ishikawa_diagram_svg(layout, semantic, effective_config, options)
-}
-
-pub fn render_eventmodeling_diagram_svg(
-    layout: &EventModelingDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(options, &debug, session);
-    eventmodeling::render_eventmodeling_diagram_svg(layout, semantic, effective_config, &execution)
-}
-
-pub fn render_gantt_diagram_svg(
-    layout: &crate::model::GanttDiagramLayout,
-    semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_gantt_diagram_svg_with_debug(
-        layout,
-        semantic,
-        _effective_config,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_gantt_diagram_svg_with_debug(
-    layout: &crate::model::GanttDiagramLayout,
-    semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    gantt::render_gantt_diagram_svg(layout, semantic, _effective_config, &execution)
-}
-
-pub fn render_mindmap_diagram_svg(
-    layout: &MindmapDiagramLayout,
-    semantic: &serde_json::Value,
-    _effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    #[cfg(feature = "cytoscape-layout")]
-    {
-        let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(options, &debug, session);
-        mindmap::render_mindmap_diagram_svg(layout, semantic, _effective_config, &execution)
-    }
-    #[cfg(not(feature = "cytoscape-layout"))]
-    {
-        let _ = (layout, semantic, _effective_config, session, options);
-        Err(Error::UnsupportedDiagram {
-            diagram_type: "mindmap".to_string(),
-        })
-    }
-}
-
-pub fn render_mindmap_diagram_svg_with_config(
-    layout: &MindmapDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    #[cfg(feature = "cytoscape-layout")]
-    {
-        let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(options, &debug, session);
-        mindmap::render_mindmap_diagram_svg_with_config(
-            layout,
-            semantic,
-            effective_config,
-            &execution,
-        )
-    }
-    #[cfg(not(feature = "cytoscape-layout"))]
-    {
-        let _ = (layout, semantic, effective_config, session, options);
-        Err(Error::UnsupportedDiagram {
-            diagram_type: "mindmap".to_string(),
-        })
-    }
-}
-
-pub fn render_architecture_diagram_svg(
+/// Renders a typed Architecture model and layout without compatibility JSON.
+#[cfg(feature = "cytoscape-layout")]
+pub(crate) fn render_architecture_diagram_svg_model_with_config_and_debug(
     layout: &ArchitectureDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_architecture_diagram_svg_with_debug(
-        layout,
-        semantic,
-        effective_config,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_architecture_diagram_svg_with_debug(
-    layout: &ArchitectureDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    #[cfg(feature = "cytoscape-layout")]
-    {
-        let execution = SvgExecution::new(options, debug, session);
-        architecture::render_architecture_diagram_svg(
-            layout,
-            semantic,
-            effective_config,
-            &execution,
-        )
-    }
-    #[cfg(not(feature = "cytoscape-layout"))]
-    {
-        let _ = (layout, semantic, effective_config, session, options, debug);
-        Err(Error::UnsupportedDiagram {
-            diagram_type: "architecture".to_string(),
-        })
-    }
-}
-
-pub fn render_c4_diagram_svg(
-    layout: &crate::model::C4DiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(options, &debug, session);
-    let measurer = execution.text_measurer();
-    c4::render_c4_diagram_svg(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        &execution,
-    )
-}
-
-pub fn render_flowchart_v2_svg(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_flowchart_v2_svg_with_debug(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_flowchart_v2_svg_with_debug(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
+    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
+    effective_config: &merman_core::MermaidConfig,
     session: &RenderSession,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     let execution = SvgExecution::new(options, debug, session);
-    let measurer = execution.text_measurer();
-    flowchart::render_flowchart_v2_svg(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        &execution,
-    )
-}
-
-pub fn render_flowchart_v2_svg_with_config(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_flowchart_v2_svg_with_config_and_debug(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_flowchart_v2_svg_with_config_and_debug(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let measurer = execution.text_measurer();
-    flowchart::render_flowchart_v2_svg_with_config(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        &execution,
-    )
-}
-
-pub fn render_flowchart_v2_svg_model_with_config(
-    layout: &FlowchartV2Layout,
-    model: &merman_core::diagrams::flowchart::FlowchartV2Model,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_flowchart_v2_svg_model_with_config_and_debug(
+    architecture::render_architecture_diagram_svg_typed_with_config(
         layout,
         model,
         effective_config,
-        diagram_title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
+        &execution,
     )
 }
 
-pub fn render_flowchart_v2_svg_model_with_config_and_debug(
+pub(crate) fn render_flowchart_v2_svg_model_with_config_and_debug(
     layout: &FlowchartV2Layout,
     model: &merman_core::diagrams::flowchart::FlowchartV2Model,
     effective_config: &merman_core::MermaidConfig,
@@ -1782,28 +550,10 @@ pub fn render_flowchart_v2_svg_model_with_config_and_debug(
     )
 }
 
-pub fn render_state_diagram_v2_svg(
+/// Renders a typed State model and layout without compatibility JSON.
+pub(crate) fn render_state_diagram_v2_svg_model_with_debug(
     layout: &StateDiagramV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_state_diagram_v2_svg_with_debug(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_state_diagram_v2_svg_with_debug(
-    layout: &StateDiagramV2Layout,
-    semantic: &serde_json::Value,
+    model: &merman_core::diagrams::state::StateDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     session: &RenderSession,
@@ -1812,9 +562,9 @@ pub fn render_state_diagram_v2_svg_with_debug(
 ) -> Result<String> {
     let execution = SvgExecution::new(options, debug, session);
     let measurer = execution.text_measurer();
-    state::render_state_diagram_v2_svg(
+    state::render_state_diagram_v2_svg_model(
         layout,
-        semantic,
+        model,
         effective_config,
         diagram_title,
         measurer,
@@ -1822,134 +572,8 @@ pub fn render_state_diagram_v2_svg_with_debug(
     )
 }
 
-pub fn render_state_diagram_v2_debug_svg(
-    layout: &StateDiagramV2Layout,
-    options: &SvgRenderOptions,
-) -> String {
-    render_state_diagram_v2_debug_svg_with_debug(layout, options, &SvgDebugOptions::default())
-}
-
-pub fn render_state_diagram_v2_debug_svg_with_debug(
-    layout: &StateDiagramV2Layout,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> String {
-    state::render_state_diagram_v2_debug_svg(layout, options, debug)
-}
-
-pub fn render_class_diagram_v2_debug_svg(
-    layout: &ClassDiagramV2Layout,
-    options: &SvgRenderOptions,
-) -> String {
-    render_class_diagram_v2_debug_svg_with_debug(layout, options, &SvgDebugOptions::default())
-}
-
-pub fn render_class_diagram_v2_debug_svg_with_debug(
-    layout: &ClassDiagramV2Layout,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> String {
-    class::render_class_diagram_v2_debug_svg(layout, options, debug)
-}
-
-pub fn render_class_diagram_v2_svg(
-    layout: &ClassDiagramV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(options, &debug, session);
-    class::render_class_diagram_v2_svg(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        execution.text_measurer(),
-        &execution,
-    )
-}
-
-pub fn render_er_diagram_debug_svg(layout: &ErDiagramLayout, options: &SvgRenderOptions) -> String {
-    render_er_diagram_debug_svg_with_debug(layout, options, &SvgDebugOptions::default())
-}
-
-pub fn render_er_diagram_debug_svg_with_debug(
-    layout: &ErDiagramLayout,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> String {
-    er::render_er_diagram_debug_svg(layout, options, debug)
-}
-
-pub fn render_er_diagram_svg(
-    layout: &ErDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    render_er_diagram_svg_with_debug(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        session,
-        options,
-        &SvgDebugOptions::default(),
-    )
-}
-
-pub fn render_er_diagram_svg_with_debug(
-    layout: &ErDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let measurer = execution.text_measurer();
-    er::render_er_diagram_svg(
-        layout,
-        semantic,
-        effective_config,
-        diagram_title,
-        measurer,
-        &execution,
-    )
-}
-
-pub fn render_sankey_diagram_svg(
-    layout: &SankeyDiagramLayout,
-    _semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let debug = SvgDebugOptions::default();
-    let execution = SvgExecution::new(options, &debug, session);
-    sankey::render_sankey_diagram_svg(layout, _semantic, effective_config, &execution)
-}
-
-// Ported from D3 `curveBasis` (d3-shape v3.x), used by Mermaid ER renderer `@11.12.2`.
 fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {
     curve::curve_basis_path_d(points)
-}
-fn render_node(out: &mut String, n: &LayoutNode) {
-    layout_debug::render_node(out, n)
-}
-
-fn render_state_node(out: &mut String, n: &LayoutNode) {
-    layout_debug::render_state_node(out, n)
-}
-
-fn render_cluster(out: &mut String, c: &LayoutCluster, include_markers: bool) {
-    layout_debug::render_cluster(out, c, include_markers)
 }
 
 fn compute_layout_bounds(

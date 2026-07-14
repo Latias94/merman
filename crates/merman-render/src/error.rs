@@ -4,8 +4,8 @@ use crate::text::TextMeasurer;
 
 pub const UPSTREAM_MERMAID_VERSION: &str = merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION;
 
-pub fn layout_error_diagram(
-    _semantic: &serde_json::Value,
+pub fn layout_error_diagram_typed(
+    _semantic: &merman_core::diagrams::error_diagram::ErrorDiagramRenderModel,
     _effective_config: &serde_json::Value,
     _measurer: &dyn TextMeasurer,
 ) -> Result<ErrorDiagramLayout> {

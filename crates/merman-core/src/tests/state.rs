@@ -704,60 +704,8 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
     );
 }
 
-fn assert_state_json_semantically_equal(
-    typed: &serde_json::Value,
-    compat: &serde_json::Value,
-    path: &str,
-) {
-    match (typed, compat) {
-        (serde_json::Value::Number(typed), serde_json::Value::Number(compat)) => {
-            assert_eq!(
-                typed.as_f64(),
-                compat.as_f64(),
-                "State numeric projection drift at {path}"
-            );
-        }
-        (serde_json::Value::Array(typed), serde_json::Value::Array(compat)) => {
-            assert_eq!(
-                typed.len(),
-                compat.len(),
-                "State array length drift at {path}"
-            );
-            for (index, (typed, compat)) in typed.iter().zip(compat).enumerate() {
-                assert_state_json_semantically_equal(typed, compat, &format!("{path}[{index}]"));
-            }
-        }
-        (serde_json::Value::Object(typed), serde_json::Value::Object(compat)) => {
-            assert_eq!(
-                typed.len(),
-                compat.len(),
-                "State object field count drift at {path}"
-            );
-            for (field, typed) in typed {
-                let compat = compat
-                    .get(field)
-                    .unwrap_or_else(|| panic!("State projection omitted {path}.{field}"));
-                assert_state_json_semantically_equal(typed, compat, &format!("{path}.{field}"));
-            }
-        }
-        _ => assert_eq!(typed, compat, "State projection drift at {path}"),
-    }
-}
-
-fn state_effective_edge_label(edge: &serde_json::Value) -> Option<&str> {
-    edge.get("label")
-        .and_then(serde_json::Value::as_str)
-        .filter(|label| !label.is_empty())
-}
-
-fn state_effective_node_description(node: &serde_json::Value) -> Option<&Vec<serde_json::Value>> {
-    node.get("description")
-        .and_then(serde_json::Value::as_array)
-        .filter(|description| !description.is_empty())
-}
-
 #[test]
-fn state_typed_and_compat_json_layout_projections_match() {
+fn state_typed_render_model_projects_exact_compatibility_json() {
     let engine = Engine::new();
     let input = concat!(
         "stateDiagram-v2\n",
@@ -765,7 +713,11 @@ fn state_typed_and_compat_json_layout_projections_match() {
         "accTitle: Lifecycle\n",
         "accDescr: State transitions\n",
         "state \"Waiting\" as Idle\n",
-        "Running: Active work\n",
+        "state Running {\n",
+        "  direction LR\n",
+        "  [*] --> Working\n",
+        "  Working --> [*]\n",
+        "}\n",
         "Idle --> Running: starts\n",
         "note right of Running : Active work\n",
         "classDef active fill:#0f0,border:#333\n",
@@ -781,85 +733,14 @@ fn state_typed_and_compat_json_layout_projections_match() {
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("State typed parse succeeds")
         .expect("State typed parse returns a diagram");
-    let RenderSemanticModel::State(typed) = typed.model else {
+    let RenderSemanticModel::State(model) = typed.model else {
         panic!("State typed parse returned another family");
     };
-    let typed = serde_json::to_value(typed).expect("State typed model serializes");
 
-    for field in ["direction", "accTitle", "accDescr", "links", "styleClasses"] {
-        assert_state_json_semantically_equal(
-            &typed[field],
-            &compat[field],
-            &format!("state.{field}"),
-        );
-    }
-
-    let typed_nodes = typed["nodes"].as_array().expect("typed State nodes");
-    let compat_nodes = compat["nodes"].as_array().expect("compat State nodes");
-    assert_eq!(typed_nodes.len(), compat_nodes.len());
-    for (typed_node, compat_node) in typed_nodes.iter().zip(compat_nodes) {
-        for (field, typed_value) in typed_node
-            .as_object()
-            .expect("typed State node is an object")
-            .iter()
-            .filter(|(field, _)| field.as_str() != "description")
-        {
-            assert_state_json_semantically_equal(
-                typed_value,
-                compat_node.get(field).unwrap_or(&serde_json::Value::Null),
-                &format!("state.nodes[{:?}].{field}", typed_node["id"]),
-            );
-        }
-        assert_eq!(
-            state_effective_node_description(typed_node),
-            state_effective_node_description(compat_node),
-            "State node description drifted for {:?}",
-            typed_node["id"]
-        );
-    }
-
-    let typed_states = typed["states"].as_object().expect("typed State states");
-    let compat_states = compat["states"].as_object().expect("compat State states");
-    assert_eq!(typed_states.len(), compat_states.len());
-    for (id, typed_state) in typed_states {
-        let compat_state = compat_states
-            .get(id)
-            .unwrap_or_else(|| panic!("compat State projection omitted state {id}"));
-        for (field, typed_value) in typed_state
-            .as_object()
-            .expect("typed State record is an object")
-        {
-            assert_state_json_semantically_equal(
-                typed_value,
-                compat_state.get(field).unwrap_or(&serde_json::Value::Null),
-                &format!("state.states[{id:?}].{field}"),
-            );
-        }
-    }
-
-    let typed_edges = typed["edges"].as_array().expect("typed State edges");
-    let compat_edges = compat["edges"].as_array().expect("compat State edges");
-    assert_eq!(typed_edges.len(), compat_edges.len());
-    for (typed_edge, compat_edge) in typed_edges.iter().zip(compat_edges) {
-        for (field, typed_value) in typed_edge
-            .as_object()
-            .expect("typed State edge is an object")
-            .iter()
-            .filter(|(field, _)| field.as_str() != "label")
-        {
-            assert_state_json_semantically_equal(
-                typed_value,
-                compat_edge.get(field).unwrap_or(&serde_json::Value::Null),
-                &format!("state.edges[{:?}].{field}", typed_edge["id"]),
-            );
-        }
-        assert_eq!(
-            state_effective_edge_label(typed_edge),
-            state_effective_edge_label(compat_edge),
-            "State edge label drifted for {:?}",
-            typed_edge["id"]
-        );
-    }
+    assert_eq!(
+        crate::diagrams::state::render_model_to_compat_json(&model, &typed.meta).unwrap(),
+        compat
+    );
 }
 
 #[test]

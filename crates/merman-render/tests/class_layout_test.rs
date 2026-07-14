@@ -1,5 +1,7 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::class::layout_class_diagram_v2_typed_with_config;
+use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
+use merman_render::model::ClassDiagramV2Layout;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -8,47 +10,51 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
-fn load_class_layout_fixture(name: &str) -> merman_render::model::ClassDiagramV2Layout {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+fn parse_class(text: &str) -> ParsedDiagramRender {
+    Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected")
+}
+
+fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diagram::ClassDiagram {
+    let RenderSemanticModel::Class(model) = &parsed.model else {
+        panic!("expected Class render model");
+    };
+    model
+}
+
+fn layout_class_with_dagre(
+    parsed: &ParsedDiagramRender,
+    session: &RenderSession,
+) -> ClassDiagramV2Layout {
+    let model = class_model(parsed);
+    session
+        .resource_limits()
+        .check_class_complexity(model)
+        .expect("class complexity within test limits");
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    layout_class_diagram_v2_typed_with_config(model, &parsed.meta.effective_config, &measurer)
+        .expect("Dagre class layout")
+}
+
+fn load_class_layout_fixture(name: &str) -> ClassDiagramV2Layout {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join(format!("{name}.mmd"));
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-    *layout
+    let parsed = parse_class(&text);
+    layout_class_with_dagre(&parsed, &session)
 }
 
-fn layout_class_text(
-    text: &str,
-) -> (
-    merman_render::model::ClassDiagramV2Layout,
-    serde_json::Value,
-) {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
-    (*layout, out.semantic)
+fn layout_class_text(text: &str) -> (ClassDiagramV2Layout, ParsedDiagramRender) {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let parsed = parse_class(text);
+    let layout = layout_class_with_dagre(&parsed, &session);
+    (layout, parsed)
 }
 
 fn nested_class_namespace_text(depth: usize) -> String {
@@ -86,24 +92,15 @@ fn rect_contains(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64), eps: 
 
 #[test]
 fn class_layout_produces_positions_and_routes() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join("basic.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
+    let parsed = parse_class(&text);
+    let layout = layout_class_with_dagre(&parsed, &session);
 
     assert!(layout.nodes.len() >= 2);
     assert!(!layout.edges.is_empty());
@@ -128,24 +125,15 @@ fn class_layout_produces_positions_and_routes() {
 
 #[test]
 fn class_namespaces_contain_member_classes() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join("upstream_namespaces_and_generics.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
+    let parsed = parse_class(&text);
+    let layout = layout_class_with_dagre(&parsed, &session);
 
     let mut node_by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -158,13 +146,8 @@ fn class_namespaces_contain_member_classes() {
         cluster_by_id.insert(c.id.as_str(), c);
     }
 
-    let semantic = &out.semantic;
-    let Some(classes) = semantic.get("classes").and_then(|v| v.as_object()) else {
-        panic!("missing semantic.classes");
-    };
-
-    for (id, cls) in classes {
-        let parent = cls.get("parent").and_then(|v| v.as_str()).unwrap_or("");
+    for (id, class) in &class_model(&parsed).classes {
+        let parent = class.parent.as_deref().unwrap_or("");
         if parent.is_empty() {
             continue;
         }
@@ -195,7 +178,7 @@ fn class_layout_dense_namespaces_follow_declaration_order() {
 
 #[test]
 fn class_layout_dotted_namespace_builds_hierarchical_clusters() {
-    let (layout, _semantic) = layout_class_text(
+    let (layout, _parsed) = layout_class_text(
         r#"classDiagram
 namespace Company.Project.Module {
   class User
@@ -404,15 +387,8 @@ fn class_layout_svg_title_wrapping_uses_normal_weight_before_bolder_bbox() {
         .join("stress_class_svg_font_size_precedence_025.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
+    let parsed = parse_class(&text);
+    let layout = layout_class_with_dagre(&parsed, &session);
     let node = layout
         .nodes
         .iter()
@@ -436,7 +412,7 @@ fn class_layout_svg_title_wrapping_uses_normal_weight_before_bolder_bbox() {
 
 #[test]
 fn class_layout_namespace_note_stays_inside_namespace_cluster() {
-    let (layout, semantic) = layout_class_text(
+    let (layout, parsed) = layout_class_text(
         r#"classDiagram
 namespace Company.Project {
   class User
@@ -446,8 +422,8 @@ namespace Company.Project {
     );
 
     assert_eq!(
-        semantic["notes"][0]["parent"],
-        serde_json::json!("Company.Project")
+        class_model(&parsed).notes[0].parent.as_deref(),
+        Some("Company.Project")
     );
 
     let note = layout
@@ -469,7 +445,7 @@ namespace Company.Project {
 #[test]
 fn class_layout_deep_namespaces_fall_back_without_stack_growth() {
     let depth = 24;
-    let (layout, _semantic) = layout_class_text(&nested_class_namespace_text(depth));
+    let (layout, _parsed) = layout_class_text(&nested_class_namespace_text(depth));
 
     assert_eq!(layout.clusters.len(), depth);
     assert!(
@@ -486,7 +462,7 @@ fn class_layout_deep_namespaces_fall_back_without_stack_growth() {
 
 #[test]
 fn class_layout_hierarchical_namespaces_false_keeps_flat_dotted_cluster() {
-    let (layout, semantic) = layout_class_text(
+    let (layout, parsed) = layout_class_text(
         r#"---
 config:
   class:
@@ -512,31 +488,22 @@ namespace Company.Project.Module {
         "compact mode should use the full namespace id as the label"
     );
     assert_eq!(
-        semantic["classes"]["User"]["parent"],
-        serde_json::json!("Company.Project.Module")
+        class_model(&parsed).classes["User"].parent.as_deref(),
+        Some("Company.Project.Module")
     );
 }
 
 #[test]
 fn class_terminal_labels_exist_for_cardinalities_fixture() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join("upstream_relation_types_and_cardinalities_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
+    let parsed = parse_class(&text);
+    let layout = layout_class_with_dagre(&parsed, &session);
 
     let has_terminal = layout.edges.iter().any(|e| {
         e.start_label_left.is_some()
@@ -630,24 +597,15 @@ fn class_two_note_tb_layout_keeps_secondary_note_left_of_target() {
 
 #[test]
 fn class_terminal_labels_are_outside_endpoint_nodes_for_cardinalities_fixture() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("class")
         .join("upstream_relation_types_and_cardinalities_spec.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
+    let parsed = parse_class(&text);
+    let layout = layout_class_with_dagre(&parsed, &session);
 
     let mut node_rect_by_id = std::collections::HashMap::new();
     for n in &layout.nodes {
@@ -705,15 +663,8 @@ classDiagram
 A <|-- B
 "#;
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ClassDiagramV2(layout) = out.layout else {
-        panic!("expected ClassDiagramV2 layout");
-    };
+    let parsed = parse_class(text);
+    let layout = layout_class_with_dagre(&parsed, &session);
 
     let node_a = layout
         .nodes

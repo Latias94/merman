@@ -1,5 +1,7 @@
-use merman_core::{Engine, ParseOptions};
-use merman_render::{LayoutOptions, layout_parsed};
+use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::er::layout_er_diagram_typed;
+use merman_render::model::ErDiagramLayout;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -8,26 +10,29 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
+fn layout_er_with_dagre(text: &str) -> ErDiagramLayout {
+    let parsed: ParsedDiagramRender = Engine::new()
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let RenderSemanticModel::Er(model) = &parsed.model else {
+        panic!("expected ER render model");
+    };
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    layout_er_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+        .expect("Dagre ER layout")
+}
+
 #[test]
 fn er_layout_produces_positions_and_routes() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("er")
         .join("basic.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ErDiagram(layout) = out.layout else {
-        panic!("expected ErDiagram layout");
-    };
+    let layout = layout_er_with_dagre(&text);
 
     assert!(layout.nodes.len() >= 3);
     assert!(layout.edges.len() >= 2);
@@ -52,24 +57,13 @@ fn er_layout_produces_positions_and_routes() {
 
 #[test]
 fn er_layout_emits_markers_and_dashes_from_rel_spec() {
-    let _session = merman_render::environment::RenderEnvironment::parity()
-        .begin_session()
-        .unwrap();
     let path = workspace_root()
         .join("fixtures")
         .join("er")
         .join("upstream_relationship_aliases.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let engine = Engine::new();
-    let parsed = futures::executor::block_on(engine.parse_diagram(&text, ParseOptions::default()))
-        .expect("parse ok")
-        .expect("diagram detected");
-
-    let out = layout_parsed(&parsed, &LayoutOptions::default(), &_session).expect("layout ok");
-    let merman_render::model::LayoutDiagram::ErDiagram(layout) = out.layout else {
-        panic!("expected ErDiagram layout");
-    };
+    let layout = layout_er_with_dagre(&text);
 
     let mut has_marker = false;
     let mut has_dashed = false;

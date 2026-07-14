@@ -256,15 +256,6 @@ fn fmt_number(v: f64) -> String {
     if s == "-0" { "0".to_string() } else { s }
 }
 
-pub fn layout_pie_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<PieDiagramLayout> {
-    let model: PieDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_pie_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_pie_diagram_typed(
     model: &PieDiagramRenderModel,
     effective_config: &serde_json::Value,

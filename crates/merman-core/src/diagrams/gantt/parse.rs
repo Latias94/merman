@@ -739,7 +739,8 @@ pub fn parse_gantt(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
         return Ok(json!({}));
     };
-    Ok(gantt_db_to_json(db, meta))
+    let model = gantt_db_to_render_model(db)?;
+    super::render_model_to_compat_json(&model, meta)
 }
 
 pub fn parse_gantt_model_for_render(
@@ -747,7 +748,7 @@ pub fn parse_gantt_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<GanttDiagramRenderModel> {
     let Some(db) = parse_gantt_semantic_source(code, meta)?.db else {
-        return Ok(GanttDiagramRenderModel::default());
+        return Ok(GanttDiagramRenderModel::empty_compatibility_output());
     };
     gantt_db_to_render_model(db)
 }
@@ -757,9 +758,13 @@ pub(crate) fn parse_gantt_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let GanttSemanticSource { db, editor_facts } = parse_gantt_semantic_source(code, meta)?;
-    let json = db
-        .map(|db| gantt_db_to_json(db, meta))
-        .unwrap_or_else(|| json!({}));
+    let json = match db {
+        Some(db) => {
+            let model = gantt_db_to_render_model(db)?;
+            super::render_model_to_compat_json(&model, meta)?
+        }
+        None => json!({}),
+    };
     Ok((json, editor_facts))
 }
 
@@ -895,68 +900,34 @@ fn construct_gantt_semantic_source(
     })
 }
 
-fn gantt_db_to_json(mut db: GanttDb, meta: &ParseMetadata) -> Value {
-    let tasks = db.take_tasks();
-    let tasks_json: Vec<Value> = tasks
-        .into_iter()
-        .map(|t| {
-            let start_ms = t.start_time.map(|d| d.timestamp_millis());
-            let end_ms = t.end_time.map(|d| d.timestamp_millis());
-            let render_end_ms = t.render_end_time.map(|d| d.timestamp_millis());
-            let raw_start = match &t.raw.start_time {
-                StartTimeRaw::PrevTaskEnd => json!({ "type": "prevTaskEnd", "id": t.prev_task_id }),
-                StartTimeRaw::GetStartDate { start_data } => {
-                    json!({ "type": "getStartDate", "startData": start_data })
-                }
-            };
-            json!({
-                "section": t.section,
-                "type": t.type_,
-                "task": t.task,
-                "id": t.id,
-                "prevTaskId": t.prev_task_id,
-                "order": t.order,
-                "processed": t.processed,
-                "classes": t.classes,
-                "active": t.active,
-                "done": t.done,
-                "crit": t.crit,
-                "milestone": t.milestone,
-                "vert": t.vert,
-                "manualEndTime": t.manual_end_time,
-                "renderEndTime": render_end_ms,
-                "raw": {
-                    "data": t.raw.data,
-                    "startTime": raw_start,
-                    "endTime": { "data": t.raw.end_data },
-                },
-                "startTime": start_ms,
-                "endTime": end_ms,
-            })
-        })
-        .collect();
-
-    json!({
+pub(crate) fn render_model_to_compat_json(
+    model: &GanttDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    if model.compatibility_output == CompatibilityOutputState::Empty {
+        return Ok(json!({}));
+    }
+    Ok(json!({
         "type": meta.diagram_type,
-        "title": if db.diagram_title.is_empty() { None::<String> } else { Some(db.diagram_title) },
-        "accTitle": if db.acc_title.is_empty() { None::<String> } else { Some(db.acc_title) },
-        "accDescr": if db.acc_descr.is_empty() { None::<String> } else { Some(db.acc_descr) },
-        "dateFormat": db.date_format,
-        "axisFormat": db.axis_format,
-        "tickInterval": db.tick_interval,
-        "todayMarker": db.today_marker,
-        "includes": db.includes,
-        "excludes": db.excludes,
-        "inclusiveEndDates": db.inclusive_end_dates,
-        "topAxis": db.top_axis,
-        "weekday": db.weekday,
-        "weekend": db.weekend,
-        "displayMode": db.display_mode,
-        "sections": db.sections,
-        "tasks": tasks_json,
-        "links": db.links,
-        "clickEvents": db.click_events,
-    })
+        "title": &model.title,
+        "accTitle": &model.acc_title,
+        "accDescr": &model.acc_descr,
+        "dateFormat": &model.date_format,
+        "axisFormat": &model.axis_format,
+        "tickInterval": &model.tick_interval,
+        "todayMarker": &model.today_marker,
+        "includes": &model.includes,
+        "excludes": &model.excludes,
+        "inclusiveEndDates": model.inclusive_end_dates,
+        "topAxis": model.top_axis,
+        "weekday": &model.weekday,
+        "weekend": &model.weekend,
+        "displayMode": &model.display_mode,
+        "sections": &model.sections,
+        "tasks": &model.tasks,
+        "links": &model.links,
+        "clickEvents": &model.click_events,
+    }))
 }
 
 fn gantt_db_to_render_model(mut db: GanttDb) -> Result<GanttDiagramRenderModel> {
@@ -976,11 +947,16 @@ fn gantt_db_to_render_model(mut db: GanttDb) -> Result<GanttDiagramRenderModel> 
         today_marker: std::mem::take(&mut db.today_marker),
         includes: std::mem::take(&mut db.includes),
         excludes: std::mem::take(&mut db.excludes),
+        inclusive_end_dates: db.inclusive_end_dates,
         display_mode: std::mem::take(&mut db.display_mode),
         top_axis: db.top_axis,
         weekday: std::mem::take(&mut db.weekday),
         weekend: std::mem::take(&mut db.weekend),
+        sections: std::mem::take(&mut db.sections),
         tasks,
+        links: std::mem::take(&mut db.links),
+        click_events: std::mem::take(&mut db.click_events),
+        compatibility_output: CompatibilityOutputState::Model,
     })
 }
 
@@ -991,6 +967,14 @@ fn non_empty_opt(value: String) -> Option<String> {
 fn raw_task_to_render_task(t: RawTask) -> Result<GanttRenderTask> {
     let start_ms = task_time_ms(&t, "startTime", t.start_time)?;
     let end_ms = task_time_ms(&t, "endTime", t.end_time)?;
+    let raw_start = match t.raw.start_time {
+        StartTimeRaw::PrevTaskEnd => GanttRenderTaskStart::PrevTaskEnd {
+            id: t.prev_task_id.clone(),
+        },
+        StartTimeRaw::GetStartDate { start_data } => {
+            GanttRenderTaskStart::GetStartDate { start_data }
+        }
+    };
 
     Ok(GanttRenderTask {
         id: t.id,
@@ -1004,6 +988,16 @@ fn raw_task_to_render_task(t: RawTask) -> Result<GanttRenderTask> {
         milestone: t.milestone,
         vert: t.vert,
         order: t.order,
+        prev_task_id: t.prev_task_id,
+        processed: t.processed,
+        manual_end_time: t.manual_end_time,
+        raw: GanttRenderTaskRaw {
+            data: t.raw.data,
+            start_time: raw_start,
+            end_time: GanttRenderTaskEnd {
+                data: t.raw.end_data,
+            },
+        },
         start_ms,
         end_ms,
         render_end_ms: t.render_end_time.map(|d| d.timestamp_millis()),

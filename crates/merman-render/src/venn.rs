@@ -23,15 +23,6 @@ mod config;
 
 use config::VennConfigView;
 
-pub fn layout_venn_diagram(
-    semantic: &serde_json::Value,
-    diagram_title: Option<&str>,
-    effective_config: &serde_json::Value,
-) -> Result<VennDiagramLayout> {
-    let model: VennDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_venn_diagram_typed(&model, diagram_title, effective_config)
-}
-
 pub fn layout_venn_diagram_typed(
     model: &VennDiagramRenderModel,
     diagram_title: Option<&str>,

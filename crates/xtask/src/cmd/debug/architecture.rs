@@ -646,20 +646,14 @@ fn group_local_rect_key(group_id: &str) -> String {
     format!("group-{group_id}")
 }
 
-fn architecture_group_parent_map(semantic: &serde_json::Value) -> BTreeMap<String, Option<String>> {
-    let mut out = BTreeMap::new();
-    let Some(groups) = semantic.get("groups").and_then(|v| v.as_array()) else {
-        return out;
-    };
-
-    for group in groups {
-        let Some(id) = json_string(group, "id") else {
-            continue;
-        };
-        out.insert(id.to_string(), json_string(group, "in").map(str::to_string));
-    }
-
-    out
+fn architecture_group_parent_map(
+    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
+) -> BTreeMap<String, Option<String>> {
+    model
+        .groups
+        .iter()
+        .map(|group| (group.id.clone(), group.in_group.clone()))
+        .collect()
 }
 
 fn format_browser_label_metrics(node: Option<&ArchitectureProbeNode>) -> String {
@@ -3522,7 +3516,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
 
         let engine = merman::Engine::new();
         let parsed = futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
+            engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
         )
         .map_err(|e| {
             XtaskError::SvgCompareFailed(format!("parse failed for {}: {e}", mmd_path.display()))
@@ -3535,37 +3529,55 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         let session = crate::cmd::svg_compare_environment()
             .begin_session()
             .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
-        let layouted =
-            merman_render::layout_parsed(&parsed, &layout_opts, &session).map_err(|e| {
+        let model = match &parsed.model {
+            merman_core::RenderSemanticModel::Architecture(model) => model,
+            model => {
+                return Err(XtaskError::SvgCompareFailed(format!(
+                    "unexpected render model for {}: {}",
+                    mmd_path.display(),
+                    model.kind()
+                )));
+            }
+        };
+        let group_parents = architecture_group_parent_map(model);
+        let layout = {
+            let measurer =
+                session.text_measurer(merman_render::environment::TextMeasurementPhase::Layout);
+            merman_render::architecture::layout_architecture_diagram_typed(
+                model,
+                parsed.meta.effective_config.as_value(),
+                &measurer,
+                layout_opts.use_manatee_layout,
+                session.seed().seed().get(),
+            )
+            .map_err(|e| {
+                XtaskError::SvgCompareFailed(format!(
+                    "layout failed for {}: {e}",
+                    mmd_path.display()
+                ))
+            })?
+        };
+        let artifact =
+            merman_render::family::prepare(parsed, &layout_opts, session).map_err(|e| {
                 XtaskError::SvgCompareFailed(format!(
                     "layout failed for {}: {e}",
                     mmd_path.display()
                 ))
             })?;
 
-        let merman_render::model::LayoutDiagram::ArchitectureDiagram(layout) = &layouted.layout
-        else {
-            return Err(XtaskError::SvgCompareFailed(format!(
-                "unexpected layout type for {}: {}",
-                mmd_path.display(),
-                layouted.meta.diagram_type
-            )));
-        };
-
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id),
             ..Default::default()
         };
-        let local_svg = merman_render::svg::render_architecture_diagram_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
-            &session,
-            &svg_opts,
-        )
-        .map_err(|e| {
-            XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
-        })?;
+        let rendered = artifact
+            .render_svg(&svg_opts, &merman_render::svg::SvgDebugOptions::default())
+            .map_err(|e| {
+                XtaskError::SvgCompareFailed(format!(
+                    "render failed for {}: {e}",
+                    mmd_path.display()
+                ))
+            })?;
+        let local_svg = rendered.svg().to_owned();
 
         fs::create_dir_all(&out_dir).map_err(|source| XtaskError::WriteFile {
             path: out_dir.display().to_string(),
@@ -3978,12 +3990,11 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
         let _ = writeln!(&mut report);
 
         if let Some((probe_path, probe)) = &probe_json {
-            let group_parents = architecture_group_parent_map(&layouted.semantic);
             render_architecture_probe_join_markdown(
                 &mut report,
                 probe_path,
                 probe,
-                layout,
+                &layout,
                 &lo_services,
                 &up_groups,
                 &lo_groups,
@@ -3999,7 +4010,7 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 lo_mw,
                 &lo_services,
                 &lo_groups,
-                layout,
+                &layout,
                 &fcose_compound_rows,
                 &layout.fcose_debug_stages,
             );
@@ -4395,7 +4406,7 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         })?;
 
         let parsed = futures::executor::block_on(
-            engine.parse_diagram(&text, merman::ParseOptions::default()),
+            engine.parse_diagram_for_render_model(&text, merman::ParseOptions::default()),
         )
         .map_err(|e| {
             XtaskError::SvgCompareFailed(format!("parse failed for {}: {e}", mmd_path.display()))
@@ -4407,33 +4418,33 @@ pub(crate) fn summarize_architecture_deltas(args: Vec<String>) -> Result<(), Xta
         let session = crate::cmd::svg_compare_environment()
             .begin_session()
             .map_err(|e| XtaskError::SvgCompareFailed(e.to_string()))?;
-        let layouted =
-            merman_render::layout_parsed(&parsed, &layout_opts, &session).map_err(|e| {
+        if !matches!(
+            &parsed.model,
+            merman_core::RenderSemanticModel::Architecture(_)
+        ) {
+            continue;
+        }
+        let artifact =
+            merman_render::family::prepare(parsed, &layout_opts, session).map_err(|e| {
                 XtaskError::SvgCompareFailed(format!(
                     "layout failed for {}: {e}",
                     mmd_path.display()
                 ))
             })?;
 
-        let merman_render::model::LayoutDiagram::ArchitectureDiagram(layout) = &layouted.layout
-        else {
-            continue;
-        };
-
         let svg_opts = merman_render::svg::SvgRenderOptions {
             diagram_id: Some(sanitize_svg_id(&stem)),
             ..Default::default()
         };
-        let local_svg = merman_render::svg::render_architecture_diagram_svg(
-            layout,
-            &layouted.semantic,
-            &layouted.meta.effective_config,
-            &session,
-            &svg_opts,
-        )
-        .map_err(|e| {
-            XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
-        })?;
+        let rendered = artifact
+            .render_svg(&svg_opts, &merman_render::svg::SvgDebugOptions::default())
+            .map_err(|e| {
+                XtaskError::SvgCompareFailed(format!(
+                    "render failed for {}: {e}",
+                    mmd_path.display()
+                ))
+            })?;
+        let local_svg = rendered.svg().to_owned();
 
         let (up_vb, up_mw, up_services, up_junctions, up_groups) =
             extract_arch_summary(&upstream_svg)?;

@@ -74,24 +74,6 @@ impl RailroadRenderNode {
     }
 }
 
-pub fn layout_railroad_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<RailroadDiagramLayout> {
-    layout_railroad_diagram_for_type(semantic, "railroad", effective_config, measurer)
-}
-
-pub fn layout_railroad_diagram_for_type(
-    semantic: &serde_json::Value,
-    diagram_type: &str,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<RailroadDiagramLayout> {
-    let model: RailroadDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_railroad_diagram_typed_for_type(&model, diagram_type, effective_config, measurer)
-}
-
 pub fn layout_railroad_diagram_typed(
     model: &RailroadDiagramRenderModel,
     effective_config: &serde_json::Value,

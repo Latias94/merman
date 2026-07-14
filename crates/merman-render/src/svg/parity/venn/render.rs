@@ -99,17 +99,6 @@ fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {
     )
 }
 
-pub(crate) fn render_venn_diagram_svg(
-    layout: &VennDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
-) -> Result<String> {
-    let model: VennDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_venn_diagram_svg_model(layout, &model, effective_config, diagram_title, options)
-}
-
 pub(crate) fn render_venn_diagram_svg_model(
     layout: &VennDiagramLayout,
     model: &VennDiagramRenderModel,

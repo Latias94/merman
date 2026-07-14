@@ -67,13 +67,13 @@ impl RenderRequestPlan {
     }
 
     pub(super) fn layout_json(&self, source: &str) -> Result<Vec<u8>, BindingError> {
-        let layouted = self
+        let layout_json = self
             .renderer
-            .layout_diagram_sync(source)
+            .layout_json_sync(source)
             .map_err(classify_render_error)?
             .ok_or_else(no_diagram_error)?;
 
-        serde_json::to_vec(&layouted).map_err(internal_json_error)
+        serde_json::to_vec(&layout_json).map_err(internal_json_error)
     }
 }
 

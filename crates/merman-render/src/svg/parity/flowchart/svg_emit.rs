@@ -8,18 +8,6 @@ use super::viewbox::{
 };
 use super::*;
 
-pub(super) fn render_flowchart_v2_svg(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
-    render_flowchart_v2_svg_with_config(layout, semantic, &config, diagram_title, measurer, options)
-}
-
 #[inline]
 fn section(enabled: bool, dst: &mut web_time::Duration) -> Option<timing::TimingGuard<'_>> {
     enabled.then(|| timing::TimingGuard::new(dst))
@@ -40,38 +28,6 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
     render_flowchart_v2_svg_with_config_inner(
         layout,
         model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-        FlowchartSvgTiming {
-            enabled: timing_enabled,
-            timings: &mut timings,
-            total_start,
-        },
-    )
-}
-
-pub(super) fn render_flowchart_v2_svg_with_config(
-    layout: &FlowchartV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let timing_enabled = options.debug.include_timing_diagnostics;
-    let mut timings = timing::RenderTimings::default();
-    let total_start = web_time::Instant::now();
-
-    let model: crate::flowchart::FlowchartV2Model = {
-        let _g = section(timing_enabled, &mut timings.deserialize_model);
-        crate::json::from_value_ref(semantic)?
-    };
-
-    render_flowchart_v2_svg_with_config_inner(
-        layout,
-        &model,
         effective_config,
         diagram_title,
         measurer,

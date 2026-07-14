@@ -562,15 +562,6 @@ fn draw_arrow(
     })
 }
 
-pub fn layout_gitgraph_diagram(
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<GitGraphDiagramLayout> {
-    let model: GitGraphRenderModel = crate::json::from_value_ref(semantic)?;
-    layout_gitgraph_diagram_typed(&model, effective_config, measurer)
-}
-
 pub fn layout_gitgraph_diagram_typed(
     model: &GitGraphRenderModel,
     effective_config: &serde_json::Value,

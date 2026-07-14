@@ -17,7 +17,7 @@ use serde_json::Value;
 /// Rendering and editor facts share one source pass so the supported subset and LSP ranges cannot
 /// drift into separate grammars.
 pub fn parse_zenuml(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    Ok(parse_zenuml_semantic_source(code, meta)?.compat_json(meta))
+    parse_zenuml_semantic_source(code, meta)?.compat_json(meta)
 }
 
 pub fn parse_zenuml_model_for_render(
@@ -71,8 +71,8 @@ struct ZenumlSyntaxDiagnostic {
 }
 
 impl ZenumlSemanticSource {
-    fn compat_json(&self, meta: &ParseMetadata) -> Value {
-        self.model.to_compat_json(&meta.diagram_type)
+    fn compat_json(&self, meta: &ParseMetadata) -> Result<Value> {
+        crate::diagrams::sequence::render_model_to_compat_json(&self.model, meta)
     }
 }
 
@@ -81,7 +81,7 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = parse_zenuml_semantic_source(code, meta)?;
-    let compat = source.compat_json(meta);
+    let compat = source.compat_json(meta)?;
     Ok((compat, source.editor_facts))
 }
 
@@ -1297,7 +1297,10 @@ if(accepted) {
         let compat = parse_zenuml(input, &meta()).unwrap();
         let typed = parse_zenuml_model_for_render(input, &meta()).unwrap();
 
-        assert_eq!(compat, typed.to_compat_json("zenuml"));
+        assert_eq!(
+            compat,
+            crate::diagrams::sequence::render_model_to_compat_json(&typed, &meta()).unwrap()
+        );
         assert_eq!(typed.title.as_deref(), Some("Login Flow"));
         assert_eq!(typed.messages.len(), 2);
     }

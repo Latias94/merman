@@ -37,6 +37,10 @@ pub struct BlockDiagramRenderModel {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub warning_facts: Vec<DiagramWarningFact>,
+    #[serde(skip)]
+    compat_root_id: String,
+    #[serde(skip)]
+    compat_classes: HashMap<String, ClassDef>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -60,6 +64,8 @@ pub struct BlockNodeRenderModel {
     pub styles: Vec<String>,
     #[serde(default)]
     pub directions: Vec<String>,
+    #[serde(skip)]
+    compatibility: BlockNodeCompatibility,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -73,6 +79,35 @@ pub struct BlockEdgeRenderModel {
     pub arrow_type_start: Option<String>,
     #[serde(default)]
     pub label: String,
+    #[serde(skip)]
+    compat_directions: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+enum CompatibilityFieldPresence {
+    #[default]
+    Omitted,
+    Present,
+}
+
+impl CompatibilityFieldPresence {
+    fn from_option<T>(value: &Option<T>) -> Self {
+        if value.is_some() {
+            Self::Present
+        } else {
+            Self::Omitted
+        }
+    }
+
+    fn is_present(self) -> bool {
+        matches!(self, Self::Present)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct BlockNodeCompatibility {
+    styles: CompatibilityFieldPresence,
+    directions: CompatibilityFieldPresence,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -471,72 +506,49 @@ impl PopulateFrame {
     }
 }
 
-fn block_to_value_shallow(b: &Block, children: Vec<Value>) -> Value {
+fn block_render_node_to_value_shallow(block: &BlockNodeRenderModel, children: Vec<Value>) -> Value {
     let mut obj = Map::new();
-    obj.insert("id".to_string(), json!(b.id));
-    obj.insert("type".to_string(), json!(b.block_type));
-    if let Some(label) = &b.label {
-        obj.insert("label".to_string(), json!(label));
-    }
+    obj.insert("id".to_string(), json!(&block.id));
+    obj.insert("type".to_string(), json!(&block.block_type));
+    obj.insert("label".to_string(), json!(&block.label));
     obj.insert("children".to_string(), Value::Array(children));
 
-    if let Some(v) = &b.start {
-        obj.insert("start".to_string(), json!(v));
-    }
-    if let Some(v) = &b.end {
-        obj.insert("end".to_string(), json!(v));
-    }
-    if let Some(v) = &b.arrow_type_end {
-        obj.insert("arrowTypeEnd".to_string(), json!(v));
-    }
-    if let Some(v) = &b.arrow_type_start {
-        obj.insert("arrowTypeStart".to_string(), json!(v));
-    }
-    if let Some(v) = b.width {
+    if let Some(v) = block.width {
         obj.insert("width".to_string(), json!(v));
     }
-    if let Some(v) = b.columns {
+    if let Some(v) = block.columns {
         obj.insert("columns".to_string(), json!(v));
     }
-    if let Some(v) = b.width_in_columns {
+    if let Some(v) = block.width_in_columns {
         obj.insert("widthInColumns".to_string(), json!(v));
     }
-    if let Some(v) = &b.directions {
-        obj.insert("directions".to_string(), json!(v));
+    if block.compatibility.directions.is_present() {
+        obj.insert("directions".to_string(), json!(&block.directions));
     }
-    if !b.classes.is_empty() {
-        obj.insert("classes".to_string(), json!(b.classes));
+    if !block.classes.is_empty() {
+        obj.insert("classes".to_string(), json!(&block.classes));
     }
-    if let Some(v) = &b.styles {
-        obj.insert("styles".to_string(), json!(v));
-    }
-    if let Some(v) = &b.css {
-        obj.insert("css".to_string(), json!(v));
-    }
-    if let Some(v) = &b.style_class {
-        obj.insert("styleClass".to_string(), json!(v));
-    }
-    if let Some(v) = &b.styles_str {
-        obj.insert("stylesStr".to_string(), json!(v));
+    if block.compatibility.styles.is_present() {
+        obj.insert("styles".to_string(), json!(&block.styles));
     }
 
     Value::Object(obj)
 }
 
-fn block_to_value(b: &Block) -> Value {
-    let mut stack: Vec<(&Block, bool)> = vec![(b, false)];
-    let mut completed: HashMap<*const Block, Value> = HashMap::new();
+fn block_render_node_to_value(block: &BlockNodeRenderModel) -> Value {
+    let mut stack: Vec<(&BlockNodeRenderModel, bool)> = vec![(block, false)];
+    let mut completed: HashMap<*const BlockNodeRenderModel, Value> = HashMap::new();
 
     while let Some((block, visited)) = stack.pop() {
         if visited {
             let children = block
                 .children
                 .iter()
-                .filter_map(|child| completed.remove(&(child as *const Block)))
+                .filter_map(|child| completed.remove(&(child as *const BlockNodeRenderModel)))
                 .collect();
             completed.insert(
-                block as *const Block,
-                block_to_value_shallow(block, children),
+                block as *const BlockNodeRenderModel,
+                block_render_node_to_value_shallow(block, children),
             );
         } else {
             stack.push((block, true));
@@ -547,11 +559,31 @@ fn block_to_value(b: &Block) -> Value {
     }
 
     completed
-        .remove(&(b as *const Block))
-        .unwrap_or_else(|| block_to_value_shallow(b, Vec::new()))
+        .remove(&(block as *const BlockNodeRenderModel))
+        .unwrap_or_else(|| block_render_node_to_value_shallow(block, Vec::new()))
 }
 
-fn class_def_map_to_value(classes: &HashMap<String, ClassDef>) -> Value {
+fn block_render_edge_to_value(edge: &BlockEdgeRenderModel) -> Value {
+    let mut obj = Map::new();
+    obj.insert("id".to_string(), json!(&edge.id));
+    obj.insert("type".to_string(), json!("edge"));
+    obj.insert("label".to_string(), json!(&edge.label));
+    obj.insert("children".to_string(), json!([]));
+    obj.insert("start".to_string(), json!(&edge.start));
+    obj.insert("end".to_string(), json!(&edge.end));
+    if let Some(value) = &edge.arrow_type_end {
+        obj.insert("arrowTypeEnd".to_string(), json!(value));
+    }
+    if let Some(value) = &edge.arrow_type_start {
+        obj.insert("arrowTypeStart".to_string(), json!(value));
+    }
+    if let Some(directions) = &edge.compat_directions {
+        obj.insert("directions".to_string(), json!(directions));
+    }
+    Value::Object(obj)
+}
+
+fn block_compat_classes_to_value(classes: &HashMap<String, ClassDef>) -> Value {
     let mut obj = Map::new();
     for (k, v) in classes {
         obj.insert(
@@ -581,6 +613,10 @@ fn block_to_render_node_shallow(
         classes: b.classes.clone(),
         styles: b.styles.clone().unwrap_or_default(),
         directions: b.directions.clone().unwrap_or_default(),
+        compatibility: BlockNodeCompatibility {
+            styles: CompatibilityFieldPresence::from_option(&b.styles),
+            directions: CompatibilityFieldPresence::from_option(&b.directions),
+        },
     }
 }
 
@@ -620,6 +656,7 @@ fn block_to_render_edge(b: &Block) -> BlockEdgeRenderModel {
         arrow_type_end: b.arrow_type_end.clone(),
         arrow_type_start: b.arrow_type_start.clone(),
         label: b.label.clone().unwrap_or_default(),
+        compat_directions: b.directions.clone(),
     }
 }
 
@@ -632,6 +669,8 @@ fn block_db_to_render_model(db: &BlockDb) -> BlockDiagramRenderModel {
             .collect(),
         edges: db.edges.iter().map(block_to_render_edge).collect(),
         warning_facts: db.warning_facts.clone(),
+        compat_root_id: db.root_id.clone(),
+        compat_classes: db.classes.clone(),
     }
 }
 
@@ -961,7 +1000,8 @@ pub(crate) fn parse_block_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = construct_block_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    let json = block_db_to_value(&source.db, meta);
+    let model = block_db_to_render_model(&source.db);
+    let json = render_model_to_compat_json(&model, meta)?;
     Ok((json, source.editor_facts))
 }
 
@@ -2080,35 +2120,52 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn block_db_to_value(db: &BlockDb, meta: &ParseMetadata) -> Value {
-    let warnings = legacy_warning_messages(&db.warning_facts);
-
-    let blocks = db.blocks.iter().map(block_to_value).collect::<Vec<_>>();
-    let edges = db.edges.iter().map(block_to_value).collect::<Vec<_>>();
-    let blocks_flat = db
-        .blocks_flat()
-        .into_iter()
-        .map(block_to_value)
+pub(crate) fn render_model_to_compat_json(
+    model: &BlockDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    let warnings = legacy_warning_messages(&model.warning_facts);
+    let blocks = model
+        .blocks_flat
+        .iter()
+        .find(|block| block.id == model.compat_root_id)
+        .map(|root| {
+            root.children
+                .iter()
+                .map(block_render_node_to_value)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let edges = model
+        .edges
+        .iter()
+        .map(block_render_edge_to_value)
         .collect::<Vec<_>>();
-    let classes = class_def_map_to_value(&db.classes);
+    let blocks_flat = model
+        .blocks_flat
+        .iter()
+        .map(block_render_node_to_value)
+        .collect::<Vec<_>>();
+    let classes = block_compat_classes_to_value(&model.compat_classes);
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("blocks".to_string(), Value::Array(blocks));
     out.insert("edges".to_string(), Value::Array(edges));
     out.insert("blocksFlat".to_string(), Value::Array(blocks_flat));
     out.insert("classes".to_string(), classes);
-    out.insert("warningFacts".to_string(), json!(db.warning_facts));
+    out.insert("warningFacts".to_string(), json!(&model.warning_facts));
     out.insert("warnings".to_string(), json!(warnings));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
-    Value::Object(out)
+    Ok(Value::Object(out))
 }
 
 pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_block_semantic_source(code, meta).map_err(|failure| *failure.error)?;
-    Ok(block_db_to_value(&source.db, meta))
+    let model = block_db_to_render_model(&source.db);
+    render_model_to_compat_json(&model, meta)
 }
 #[cfg(test)]
 mod tests {
@@ -2269,6 +2326,15 @@ C<["Route"]>(left,down)
 
         assert_eq!(combined_json, parse_block(text, &meta).unwrap());
         assert_eq!(combined_facts, parse_block_editor_facts(text, &meta));
+        let typed = parse_block_model_for_render(text, &meta).unwrap();
+        assert_eq!(
+            render_model_to_compat_json(&typed, &meta).unwrap(),
+            combined_json
+        );
+        assert_eq!(combined_json["type"], json!("block"));
+        assert!(combined_json["config"].is_object());
+        assert!(combined_json["warningFacts"].is_array());
+        assert!(combined_json["warnings"].is_array());
     }
 
     #[test]
@@ -2637,7 +2703,11 @@ C<["Route"]>(left,down)
 
     #[test]
     fn warns_when_block_width_exceeds_column_width() {
-        let model = parse("block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n");
+        let text = "block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n";
+        let meta = meta();
+        let model = parse_block(text, &meta).unwrap();
+        let typed = parse_block_model_for_render(text, &meta).unwrap();
+        assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), model);
         let warnings: Vec<&str> = model["warningFacts"]
             .as_array()
             .unwrap()

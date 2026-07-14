@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::json::from_value_ref;
 use crate::model::{
     QuadrantChartAxisLabelData, QuadrantChartBorderLineData, QuadrantChartDiagramLayout,
     QuadrantChartPointData, QuadrantChartQuadrantData, QuadrantChartTextData,
@@ -25,15 +24,6 @@ fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {
     }
     let t = (v - d0) / (d1 - d0);
     r0 + t * (r1 - r0)
-}
-
-pub fn layout_quadrantchart_diagram(
-    model: &Value,
-    effective_config: &Value,
-    _text_measurer: &dyn TextMeasurer,
-) -> Result<QuadrantChartDiagramLayout> {
-    let model: QuadrantChartRenderModel = from_value_ref(model)?;
-    layout_quadrantchart_diagram_typed(&model, effective_config, _text_measurer)
 }
 
 pub fn layout_quadrantchart_diagram_typed(

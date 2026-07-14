@@ -1,24 +1,5 @@
 use super::*;
 
-pub(super) fn render_state_diagram_v2_svg_impl(
-    layout: &StateDiagramV2Layout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: StateSvgModel = crate::json::from_value_ref(semantic)?;
-    render_state_diagram_v2_svg_model_impl(
-        layout,
-        &model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
 pub(super) fn render_state_diagram_v2_svg_model_impl(
     layout: &StateDiagramV2Layout,
     model: &StateSvgModel,

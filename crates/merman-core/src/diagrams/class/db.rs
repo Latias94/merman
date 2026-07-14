@@ -1006,7 +1006,8 @@ impl<'a> ClassDb<'a> {
     }
 
     pub(super) fn into_model(self, meta: &ParseMetadata) -> Value {
-        serde_json::to_value(self.into_typed_model(meta))
+        let model = self.into_typed_model(meta);
+        super::render_model_to_compat_json(&model, meta)
             .expect("Class typed model must remain JSON-serializable")
     }
 

@@ -1,4 +1,3 @@
-use crate::json::from_value_ref;
 use crate::model::{Bounds, SankeyDiagramLayout, SankeyLinkLayout, SankeyNodeLayout};
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
@@ -41,15 +40,6 @@ struct Link {
 
 fn f64_cmp(a: f64, b: f64) -> Ordering {
     a.partial_cmp(&b).unwrap_or(Ordering::Equal)
-}
-
-pub fn layout_sankey_diagram(
-    semantic: &Value,
-    effective_config: &Value,
-    _text_measurer: &dyn TextMeasurer,
-) -> Result<SankeyDiagramLayout> {
-    let model: SankeyDiagramRenderModel = from_value_ref(semantic)?;
-    layout_sankey_diagram_typed(&model, effective_config, _text_measurer)
 }
 
 pub fn layout_sankey_diagram_typed(
@@ -605,9 +595,32 @@ mod tests {
     use super::config::{
         DEFAULT_NODE_PADDING_BASE_PX, DEFAULT_NODE_WIDTH_PX, sankey_node_padding_px_with_base,
     };
-    use super::layout_sankey_diagram;
+    use super::layout_sankey_diagram_typed;
     use crate::text::DeterministicTextMeasurer;
+    use merman_core::diagrams::sankey::{
+        SankeyDiagramRenderModel, SankeyRenderGraph, SankeyRenderLink, SankeyRenderNode,
+    };
     use serde_json::json;
+
+    fn model() -> SankeyDiagramRenderModel {
+        SankeyDiagramRenderModel {
+            graph: SankeyRenderGraph {
+                nodes: vec![
+                    SankeyRenderNode {
+                        id: "A".to_string(),
+                    },
+                    SankeyRenderNode {
+                        id: "B".to_string(),
+                    },
+                ],
+                links: vec![SankeyRenderLink {
+                    source: "A".to_string(),
+                    target: "B".to_string(),
+                    value: json!(1.0),
+                }],
+            },
+        }
+    }
 
     #[test]
     fn sankey_node_geometry_constants_match_mermaid() {
@@ -624,26 +637,21 @@ mod tests {
 
     #[test]
     fn sankey_layout_uses_mermaid_node_geometry() {
-        let semantic = json!({
-            "graph": {
-                "nodes": [{"id": "A"}, {"id": "B"}],
-                "links": [{"source": "A", "target": "B", "value": 1.0}]
-            }
-        });
+        let model = model();
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
         };
 
-        let default_layout = layout_sankey_diagram(&semantic, &json!({}), &measurer).unwrap();
+        let default_layout = layout_sankey_diagram_typed(&model, &json!({}), &measurer).unwrap();
         assert_eq!(default_layout.node_width, DEFAULT_NODE_WIDTH_PX);
         assert_eq!(
             default_layout.node_padding,
             sankey_node_padding_px_with_base(DEFAULT_NODE_PADDING_BASE_PX, true)
         );
 
-        let hidden_values_layout = layout_sankey_diagram(
-            &semantic,
+        let hidden_values_layout = layout_sankey_diagram_typed(
+            &model,
             &json!({"sankey": {"showValues": false}}),
             &measurer,
         )
@@ -656,19 +664,14 @@ mod tests {
 
     #[test]
     fn sankey_layout_uses_configured_node_width_and_padding() {
-        let semantic = json!({
-            "graph": {
-                "nodes": [{"id": "A"}, {"id": "B"}],
-                "links": [{"source": "A", "target": "B", "value": 1.0}]
-            }
-        });
+        let model = model();
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
         };
 
-        let layout = layout_sankey_diagram(
-            &semantic,
+        let layout = layout_sankey_diagram_typed(
+            &model,
             &json!({"sankey": {"nodeWidth": 24, "nodePadding": 18}}),
             &measurer,
         )
@@ -678,8 +681,8 @@ mod tests {
         assert_eq!(layout.node_padding, 33.0);
         assert_eq!(layout.nodes[0].x1 - layout.nodes[0].x0, 24.0);
 
-        let hidden_values_layout = layout_sankey_diagram(
-            &semantic,
+        let hidden_values_layout = layout_sankey_diagram_typed(
+            &model,
             &json!({"sankey": {"nodeWidth": 24, "nodePadding": 18, "showValues": false}}),
             &measurer,
         )

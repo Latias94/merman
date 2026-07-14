@@ -99,9 +99,25 @@ pub struct RadarDiagramRenderModel {
     pub curves: Vec<RadarRenderCurve>,
     #[serde(default)]
     pub options: RadarRenderOptions,
+    #[serde(skip)]
+    compatibility: RadarCompatibilityOutputState,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+enum RadarCompatibilityOutputState {
+    Empty,
+    #[default]
+    Model,
 }
 
 impl RadarDiagramRenderModel {
+    fn empty_compatibility_output() -> Self {
+        Self {
+            compatibility: RadarCompatibilityOutputState::Empty,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
@@ -197,48 +213,6 @@ impl RadarDb {
     }
 
     #[inline]
-    fn semantic_value(&self, meta: &ParseMetadata) -> Value {
-        let mut out = Map::with_capacity(8);
-        out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-        out.insert("title".to_string(), json!(self.title));
-        out.insert("accTitle".to_string(), json!(self.acc_title));
-        out.insert("accDescr".to_string(), json!(self.acc_descr));
-        out.insert(
-            "axes".to_string(),
-            Value::Array(
-                self.axes
-                    .iter()
-                    .map(|a| json!({"name": a.name, "label": a.label}))
-                    .collect(),
-            ),
-        );
-        out.insert(
-            "curves".to_string(),
-            Value::Array(
-                self.curves
-                    .iter()
-                    .map(|c| json!({"name": c.name, "label": c.label, "entries": c.entries}))
-                    .collect(),
-            ),
-        );
-        out.insert(
-            "options".to_string(),
-            json!({
-                "showLegend": self.options.show_legend,
-                "ticks": self.options.ticks,
-                "max": self.options.max,
-                "min": self.options.min,
-                "graticule": self.options.graticule,
-            }),
-        );
-        out.insert(
-            "config".to_string(),
-            crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
-        );
-        Value::Object(out)
-    }
-
-    #[inline]
     fn into_render_model(self) -> RadarDiagramRenderModel {
         RadarDiagramRenderModel {
             title: self.title,
@@ -247,6 +221,7 @@ impl RadarDb {
             axes: self.axes,
             curves: self.curves,
             options: self.options,
+            compatibility: RadarCompatibilityOutputState::Model,
         }
     }
 }
@@ -520,10 +495,11 @@ fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Resu
 }
 
 pub fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let Some(db) = parse_radar_semantic_source(code, meta)?.db else {
-        return Ok(json!({}));
-    };
-    Ok(db.semantic_value(meta))
+    let model = parse_radar_semantic_source(code, meta)?
+        .db
+        .map(RadarDb::into_render_model)
+        .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output);
+    render_model_to_compat_json(&model, meta)
 }
 
 pub(crate) fn parse_radar_json_and_editor_facts(
@@ -531,8 +507,10 @@ pub(crate) fn parse_radar_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let RadarSemanticSource { db, editor_facts } = parse_radar_semantic_source(code, meta)?;
-    let model = db.map_or_else(|| json!({}), |db| db.semantic_value(meta));
-    Ok((model, editor_facts))
+    let model = db
+        .map(RadarDb::into_render_model)
+        .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output);
+    Ok((render_model_to_compat_json(&model, meta)?, editor_facts))
 }
 
 pub fn parse_radar_model_for_render(
@@ -543,8 +521,31 @@ pub fn parse_radar_model_for_render(
         source
             .db
             .map(RadarDb::into_render_model)
-            .unwrap_or_default()
+            .unwrap_or_else(RadarDiagramRenderModel::empty_compatibility_output)
     })
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &RadarDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    if matches!(model.compatibility, RadarCompatibilityOutputState::Empty) {
+        return Ok(json!({}));
+    }
+
+    let mut out = Map::with_capacity(8);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("title".to_string(), json!(&model.title));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("axes".to_string(), json!(&model.axes));
+    out.insert("curves".to_string(), json!(&model.curves));
+    out.insert("options".to_string(), json!(&model.options));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
 }
 
 #[inline]
@@ -1570,5 +1571,45 @@ curve mycurve{1,2,3}
 "#,
         );
         assert_eq!(model["config"]["radar"]["marginTop"], json!(80));
+    }
+
+    #[test]
+    fn radar_typed_projection_matches_complete_and_empty_compat_json() {
+        let text = concat!(
+            "radar-beta\n",
+            "title Delivery risk\n",
+            "axis Cost,Time\n",
+            "curve Current{2,3}\n",
+        );
+        let engine = Engine::new();
+        let parsed = engine
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let typed = parse_radar_model_for_render(text, &parsed.meta).unwrap();
+        let projection = render_model_to_compat_json(&typed, &parsed.meta).unwrap();
+
+        assert_eq!(projection, parsed.model);
+        assert_eq!(projection["type"], json!("radar"));
+        assert!(projection["config"].is_object());
+        assert_eq!(projection["accTitle"], Value::Null);
+        assert_eq!(projection["accDescr"], Value::Null);
+
+        let empty_meta = ParseMetadata {
+            diagram_type: "radar".to_string(),
+            config: crate::MermaidConfig::empty_object(),
+            effective_config: crate::MermaidConfig::empty_object(),
+            title: None,
+        };
+        let empty = parse_radar_model_for_render("", &empty_meta).unwrap();
+        assert_eq!(
+            render_model_to_compat_json(&empty, &empty_meta).unwrap(),
+            json!({})
+        );
+        assert_eq!(
+            render_model_to_compat_json(&RadarDiagramRenderModel::default(), &empty_meta).unwrap()
+                ["type"],
+            json!("radar")
+        );
     }
 }

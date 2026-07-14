@@ -11,16 +11,6 @@ use std::collections::{BTreeMap, BTreeSet};
 const TREE_VIEW_ICON_PREFIX: &str = "mermaid-treeview";
 const TREE_VIEW_DIRECTORY_NODE_TYPE: &str = "directory";
 
-pub(crate) fn render_tree_view_diagram_svg(
-    layout: &TreeViewDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let model: TreeViewDiagramRenderModel = crate::json::from_value_ref(semantic)?;
-    render_tree_view_diagram_svg_model(layout, &model, effective_config, options)
-}
-
 pub(crate) fn render_tree_view_diagram_svg_model(
     layout: &TreeViewDiagramLayout,
     model: &TreeViewDiagramRenderModel,

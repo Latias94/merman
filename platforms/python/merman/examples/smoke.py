@@ -10,7 +10,7 @@ def main() -> None:
     if not engine.package_version():
         raise RuntimeError("empty package version")
 
-    source = "flowchart TD\nA[Hello] --> B[World]"
+    source = "---\ntitle: Host measurement phases\n---\nflowchart TD\nA[Hello] --> B[World]"
 
     svg = engine.render_svg(source, None)
     if "<svg" not in svg or "Hello" not in svg or "World" not in svg:
@@ -114,8 +114,9 @@ def main() -> None:
         raise RuntimeError("reusable engine smoke failed")
     if measurer.calls == 0:
         raise RuntimeError("text measurer callback smoke failed")
-    if len(measurer.phases) < 2:
-        raise RuntimeError(f"expected named measurement phases, got {measurer.phases}")
+    phase_names = {phase.name for phase in measurer.phases}
+    if not {"WRAP", "SVG_B_BOX"}.issubset(phase_names):
+        raise RuntimeError(f"expected named measurement phases, got {phase_names}")
 
     setter_measurer = Measurer()
     reusable = engine.reusable_engine(None)

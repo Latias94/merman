@@ -1,11 +1,12 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions};
-use merman_render::environment::RenderEnvironment;
-use merman_render::model::LayoutDiagram;
-use merman_render::svg::{SvgRenderOptions, render_layout_svg_parts_for_render_model_with_config};
-use merman_render::{LayoutOptions, layout_parsed_render_layout_only};
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::LayoutOptions;
+use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::family;
+use merman_render::ishikawa::layout_ishikawa_diagram_typed;
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 const DEEP_ISHIKAWA_RENDER_DEPTH: usize = 1_200;
 
@@ -47,10 +48,13 @@ ishikawa-beta
         .unwrap();
     assert_eq!(parsed.meta.diagram_type, "ishikawa");
 
-    let layout =
-        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
-    let LayoutDiagram::IshikawaDiagram(ishikawa_layout) = &layout else {
-        panic!("expected Ishikawa layout");
+    let ishikawa_layout = {
+        let RenderSemanticModel::Ishikawa(model) = &parsed.model else {
+            panic!("expected Ishikawa render model");
+        };
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        layout_ishikawa_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+            .unwrap()
     };
     assert!(ishikawa_layout.spine.is_some());
     assert_eq!(ishikawa_layout.pairs.len(), 1);
@@ -65,18 +69,18 @@ ishikawa-beta
         1
     );
 
-    let svg = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions {
-            diagram_id: Some("ishikawa-test".to_string()),
-            ..Default::default()
-        },
-    )
-    .unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let svg = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("ishikawa-test".to_string()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap()
+        .svg()
+        .to_owned();
 
     assert!(svg.contains(r#"aria-roledescription="ishikawa""#));
     assert!(svg.contains(r#"width="100%""#));
@@ -183,11 +187,13 @@ fn ishikawa_deep_hierarchy_layout_uses_heap_traversal() {
         .unwrap()
         .unwrap();
 
-    let layout =
-        layout_parsed_render_layout_only(&parsed, &LayoutOptions::default(), &session).unwrap();
-    let LayoutDiagram::IshikawaDiagram(layout) = layout else {
-        panic!("expected Ishikawa layout");
+    let RenderSemanticModel::Ishikawa(model) = &parsed.model else {
+        panic!("expected Ishikawa render model");
     };
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let layout =
+        layout_ishikawa_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+            .unwrap();
 
     assert!(layout.total_width.is_finite());
     assert!(layout.total_height.is_finite());

@@ -22,10 +22,7 @@ C1 <|-- C2 : inherits
     let meta = meta();
     let compat = parse::parse_class(code, &meta).expect("compat parse");
     let typed = parse::parse_class_typed(code, &meta).expect("typed parse");
-    assert_eq!(
-        compat,
-        serde_json::to_value(typed).expect("typed class model serializes")
-    );
+    assert_eq!(compat, render_model_to_compat_json(&typed, &meta).unwrap());
 }
 
 #[test]

@@ -1283,15 +1283,6 @@ fn compact_self_loop_edges(
     edges
 }
 
-pub fn layout_state_diagram_v2(
-    semantic: &Value,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<StateDiagramV2Layout> {
-    let model: StateDiagramModel = crate::json::from_value_ref(semantic)?;
-    layout_state_diagram_v2_inner(&model, effective_config, measurer)
-}
-
 pub fn layout_state_diagram_v2_typed(
     model: &StateDiagramModel,
     effective_config: &Value,
@@ -2273,12 +2264,11 @@ fn validate_state_parent_cycles(model: &StateDiagramModel) -> Result<()> {
 /// (`dagre-d3-es`) at the layout output layer (nodes/edges/points) rather than at the SVG layer.
 #[doc(hidden)]
 pub fn debug_build_state_diagram_v2_dagre_graph(
-    semantic: &Value,
+    model: &StateDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
-    let model: StateDiagramModel = crate::json::from_value_ref(semantic)?;
-    Ok(build_state_diagram_v2_dagre_input(&model, effective_config, measurer)?.graph)
+    Ok(build_state_diagram_v2_dagre_input(model, effective_config, measurer)?.graph)
 }
 
 #[cfg(test)]

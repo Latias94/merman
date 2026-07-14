@@ -20,14 +20,50 @@ pub struct PacketDiagramRenderModel {
     #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub packet: Vec<Vec<PacketRenderBlock>>,
+    #[serde(skip)]
+    compatibility_output: CompatibilityOutputState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum CompatibilityOutputState {
+    Empty,
+    #[default]
+    Model,
 }
 
 impl PacketDiagramRenderModel {
+    fn empty_compatibility_output() -> Self {
+        Self {
+            compatibility_output: CompatibilityOutputState::Empty,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_title(&mut self.title, config);
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);
     }
+}
+
+pub(crate) fn render_model_to_compat_json(
+    model: &PacketDiagramRenderModel,
+    meta: &ParseMetadata,
+) -> Result<Value> {
+    if model.compatibility_output == CompatibilityOutputState::Empty {
+        return Ok(json!({}));
+    }
+    let mut out = Map::with_capacity(6);
+    out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
+    out.insert("title".to_string(), json!(&model.title));
+    out.insert("accTitle".to_string(), json!(&model.acc_title));
+    out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("packet".to_string(), json!(&model.packet));
+    out.insert(
+        "config".to_string(),
+        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+    );
+    Ok(Value::Object(out))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -77,19 +113,7 @@ pub(crate) fn parse_packet_json_and_editor_facts(
 fn packet_output_into_json(output: PacketParseOutput, meta: &ParseMetadata) -> Result<Value> {
     match output {
         PacketParseOutput::Empty => Ok(json!({})),
-        PacketParseOutput::Model(model) => {
-            let mut out = Map::with_capacity(6);
-            out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
-            out.insert("title".to_string(), json!(model.title));
-            out.insert("accTitle".to_string(), json!(model.acc_title));
-            out.insert("accDescr".to_string(), json!(model.acc_descr));
-            out.insert("packet".to_string(), json!(model.packet));
-            out.insert(
-                "config".to_string(),
-                crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
-            );
-            Ok(Value::Object(out))
-        }
+        PacketParseOutput::Model(model) => render_model_to_compat_json(&model, meta),
     }
 }
 
@@ -98,7 +122,7 @@ pub fn parse_packet_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<PacketDiagramRenderModel> {
     match parse_packet_semantic_source(code, meta)?.output {
-        PacketParseOutput::Empty => Ok(PacketDiagramRenderModel::default()),
+        PacketParseOutput::Empty => Ok(PacketDiagramRenderModel::empty_compatibility_output()),
         PacketParseOutput::Model(model) => Ok(model),
     }
 }
@@ -218,6 +242,7 @@ fn parse_packet_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Pack
             acc_title: common.acc_title,
             acc_descr: common.acc_descr,
             packet,
+            compatibility_output: CompatibilityOutputState::Model,
         }),
         editor_facts,
     })
@@ -581,6 +606,47 @@ mod tests {
         match block_on(engine.parse_diagram(text, ParseOptions::default())).unwrap_err() {
             Error::DiagramParse { diagnostic, .. } => diagnostic.message().to_string(),
             other => other.to_string(),
+        }
+    }
+
+    #[test]
+    fn packet_typed_projection_matches_complete_compatibility_json() {
+        let text = "packet\ntitle Header\n0-7: \"byte\"\n";
+        let effective_config = MermaidConfig::from_value(json!({
+            "packet": { "bitsPerRow": 16 },
+            "theme": "forest"
+        }));
+        let meta = ParseMetadata {
+            diagram_type: "packet".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config,
+            title: None,
+        };
+        let compat = parse_packet(text, &meta).unwrap();
+        let typed = parse_packet_model_for_render(text, &meta).unwrap();
+
+        assert_eq!(render_model_to_compat_json(&typed, &meta).unwrap(), compat);
+        assert_eq!(compat["config"]["packet"]["bitsPerRow"], 16);
+        assert!(compat["accTitle"].is_null());
+    }
+
+    #[test]
+    fn packet_typed_projection_preserves_empty_and_header_only_output_states() {
+        let meta = ParseMetadata {
+            diagram_type: "packet".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        for source in ["", "packet"] {
+            let compat = parse_packet(source, &meta).unwrap();
+            let typed = parse_packet_model_for_render(source, &meta).unwrap();
+
+            assert_eq!(
+                render_model_to_compat_json(&typed, &meta).unwrap(),
+                compat,
+                "projection drift for {source:?}"
+            );
         }
     }
 

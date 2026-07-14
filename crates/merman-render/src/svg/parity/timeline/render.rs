@@ -129,18 +129,6 @@ fn timeline_css(
     out
 }
 
-pub(crate) fn render_timeline_diagram_svg(
-    layout: &TimelineDiagramLayout,
-    semantic: &serde_json::Value,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    let _ = semantic;
-    render_timeline_diagram_svg_inner(layout, effective_config, diagram_title, measurer, options)
-}
-
 pub(crate) fn render_timeline_diagram_svg_model(
     layout: &TimelineDiagramLayout,
     _model: &TimelineDiagramRenderModel,

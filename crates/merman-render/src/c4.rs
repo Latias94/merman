@@ -119,7 +119,7 @@ fn measure_c4_text(
 }
 
 mod layout;
-pub(crate) use layout::{layout_c4_diagram, layout_c4_diagram_typed};
+pub use layout::layout_c4_diagram_typed;
 
 #[cfg(test)]
 mod tests {
