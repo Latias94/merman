@@ -2,6 +2,105 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, SourceSpan,
 };
+#[cfg(test)]
+use std::{cell::RefCell, collections::BTreeMap};
+
+#[cfg(test)]
+thread_local! {
+    static FAMILY_SYNTAX_CONSTRUCTION_COUNTS: RefCell<BTreeMap<&'static str, usize>> =
+        const { RefCell::new(BTreeMap::new()) };
+}
+
+#[cfg(test)]
+pub(crate) fn record_family_syntax_construction(family: &'static str) {
+    FAMILY_SYNTAX_CONSTRUCTION_COUNTS.with_borrow_mut(|counts| {
+        *counts.entry(family).or_default() += 1;
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn reset_family_syntax_construction_count(family: &'static str) {
+    FAMILY_SYNTAX_CONSTRUCTION_COUNTS.with_borrow_mut(|counts| {
+        counts.remove(family);
+    });
+}
+
+#[cfg(test)]
+pub(crate) fn family_syntax_construction_count(family: &'static str) -> usize {
+    FAMILY_SYNTAX_CONSTRUCTION_COUNTS
+        .with_borrow(|counts| counts.get(family).copied().unwrap_or_default())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LangiumString {
+    pub(crate) value: String,
+    pub(crate) raw_span: SourceSpan,
+    pub(crate) value_span: SourceSpan,
+    pub(crate) consumed: usize,
+}
+
+/// Parses the shared Langium `STRING` terminal and applies `DefaultValueConverter` unescaping.
+pub(crate) fn parse_langium_string(input: &str, input_start: usize) -> Option<LangiumString> {
+    let mut chars = input.char_indices();
+    let (_, quote) = chars.next()?;
+    if !matches!(quote, '"' | '\'') {
+        return None;
+    }
+
+    let mut value = String::new();
+    let mut escaped = false;
+    for (index, ch) in chars {
+        if escaped {
+            value.push(ch);
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == quote {
+            let consumed = index + ch.len_utf8();
+            return Some(LangiumString {
+                value,
+                raw_span: SourceSpan::new(input_start, input_start + consumed),
+                value_span: SourceSpan::new(input_start + quote.len_utf8(), input_start + index),
+                consumed,
+            });
+        }
+        value.push(ch);
+    }
+    None
+}
+
+/// Returns the visible prefix before a Langium `SINGLE_LINE_COMMENT` outside a STRING token.
+pub(crate) fn strip_langium_inline_comment(line: &str) -> &str {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut chars = line.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if quote.is_some() && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if matches!(ch, '"' | '\'') {
+            match quote {
+                Some(open) if open == ch => quote = None,
+                None => quote = Some(ch),
+                _ => {}
+            }
+            continue;
+        }
+        if quote.is_none() && ch == '%' && chars.peek().is_some_and(|(_, next)| *next == '%') {
+            return &line[..index];
+        }
+    }
+    line
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LangiumCommonField {
@@ -357,6 +456,33 @@ mod tests {
     use super::*;
     use crate::{EditorSemanticCompleteness, Error, MermaidConfig, ParseMetadata, Result};
     use serde_json::Value;
+
+    #[test]
+    fn langium_string_removes_escape_backslashes_without_decoding_control_characters() {
+        for (source, expected) in [
+            ("\"\\n\"", "n"),
+            ("\"\\t\"", "t"),
+            ("\"\\0\"", "0"),
+            ("\"\\\"\"", "\""),
+            ("\"\\\\\"", "\\"),
+            ("'\\''", "'"),
+        ] {
+            let parsed = parse_langium_string(source, 10)
+                .unwrap_or_else(|| panic!("STRING terminal did not parse: {source:?}"));
+            assert_eq!(parsed.value, expected, "source: {source:?}");
+            assert_eq!(parsed.consumed, source.len(), "source: {source:?}");
+            assert_eq!(
+                parsed.raw_span,
+                SourceSpan::new(10, 10 + source.len()),
+                "source: {source:?}"
+            );
+            assert_eq!(
+                parsed.value_span,
+                SourceSpan::new(11, 9 + source.len()),
+                "source: {source:?}"
+            );
+        }
+    }
 
     #[test]
     fn common_terminal_conformance_matrix() {

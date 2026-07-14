@@ -229,7 +229,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "info\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictAcceptsEditorAvailable,
     },
     FamilyCharacterization {
@@ -238,7 +238,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "pie\n\"A\": 1\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictAcceptsEditorAvailable,
     },
     FamilyCharacterization {
@@ -265,7 +265,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "gitGraph\ncommit\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -310,7 +310,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "sankey\nA,B,1\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -319,7 +319,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "packet-beta\n0-7: \"A\"\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -364,7 +364,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "radar-beta\naxis A,B,C\ncurve sample{1,2,3}\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -445,7 +445,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "cynefin-beta\n  complex\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
 ];
@@ -1242,14 +1242,175 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
             "flowchart",
             "flowchart-elk",
             "flowchart-v2",
+            "gitGraph",
+            "info",
             "mindmap",
+            "packet",
+            "pie",
+            "radar",
             "railroad",
             "railroadAbnf",
             "railroadEbnf",
             "railroadPeg",
+            "sankey",
             "swimlane",
+            "cynefin",
         ])
     );
+}
+
+#[test]
+fn langium_family_combined_parse_constructs_syntax_once() {
+    for (family, source) in [
+        ("info", "info\n"),
+        ("pie", "pie\n\"A\": 1\n"),
+        ("packet", "packet-beta\n0-7: \"A\"\n"),
+        ("cynefin", "cynefin-beta\n  complex\n"),
+        ("radar", "radar-beta\naxis A,B,C\ncurve sample{1,2,3}\n"),
+    ] {
+        crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
+
+        let parsed = crate::Engine::new()
+            .parse_diagram_with_editor_facts_sync(source, crate::ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("{family} combined parse failed: {error}"))
+            .unwrap_or_else(|| panic!("{family} combined parse returned no diagram"));
+
+        assert!(matches!(
+            parsed.editor_facts,
+            crate::ParsedEditorFacts::Available(_)
+        ));
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count(family),
+            1,
+            "one combined request must construct {family} syntax once"
+        );
+    }
+}
+
+#[test]
+fn git_graph_combined_parse_constructs_syntax_once() {
+    let family = "gitGraph";
+    crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
+
+    let parsed = crate::Engine::new()
+        .parse_diagram_with_editor_facts_sync("gitGraph\ncommit\n", crate::ParseOptions::strict())
+        .expect("gitGraph combined parse succeeds")
+        .expect("gitGraph combined parse returns a diagram");
+
+    assert!(matches!(
+        parsed.editor_facts,
+        crate::ParsedEditorFacts::Available(_)
+    ));
+    assert_eq!(
+        crate::diagrams::langium_common::family_syntax_construction_count(family),
+        1,
+        "one combined request must construct gitGraph syntax once"
+    );
+}
+
+fn assert_combined_projections_match_standalone(
+    engine: &crate::Engine,
+    family: &str,
+    source: &str,
+    volatile_top_level_json_field: Option<&str>,
+) -> serde_json::Value {
+    let standalone = engine
+        .parse_diagram_sync(source, crate::ParseOptions::strict())
+        .unwrap_or_else(|error| panic!("{family} standalone JSON failed: {error}"))
+        .unwrap_or_else(|| panic!("{family} standalone JSON returned no diagram"));
+    let standalone_editor = engine
+        .parse_editor_semantic_facts_with_type_sync(family, source, crate::ParseOptions::strict())
+        .unwrap_or_else(|error| panic!("{family} standalone editor failed: {error}"))
+        .unwrap_or_else(|| panic!("{family} standalone editor returned no facts"));
+    let combined = engine
+        .parse_diagram_with_editor_facts_sync(source, crate::ParseOptions::strict())
+        .unwrap_or_else(|error| panic!("{family} combined parse failed: {error}"))
+        .unwrap_or_else(|| panic!("{family} combined parse returned no diagram"));
+
+    assert_eq!(standalone.meta.diagram_type, family);
+    assert_eq!(combined.diagram.meta.diagram_type, family);
+
+    let mut standalone_model = standalone.model;
+    let mut combined_model = combined.diagram.model;
+    if let Some(field) = volatile_top_level_json_field {
+        let standalone_value = standalone_model
+            .as_object_mut()
+            .and_then(|model| model.remove(field))
+            .unwrap_or_else(|| panic!("{family} standalone JSON omitted volatile field {field}"));
+        let combined_value = combined_model
+            .as_object_mut()
+            .and_then(|model| model.remove(field))
+            .unwrap_or_else(|| panic!("{family} combined JSON omitted volatile field {field}"));
+        assert!(
+            standalone_value.is_string() && combined_value.is_string(),
+            "{family} volatile JSON field {field} must remain a string"
+        );
+    }
+    assert_eq!(
+        standalone_model, combined_model,
+        "{family} JSON projection drift"
+    );
+
+    let crate::ParsedEditorFacts::Available(combined_editor) = combined.editor_facts else {
+        panic!("{family} combined parse returned unavailable editor facts");
+    };
+    assert_eq!(
+        standalone_editor, combined_editor,
+        "{family} editor projection drift"
+    );
+
+    standalone_model
+}
+
+#[test]
+fn langium_combined_projections_match_standalone_public_entrypoints() {
+    let engine = crate::Engine::new();
+    for (family, source) in [
+        ("info", "info showInfo\n"),
+        ("pie", "pie showData\ntitle Breakdown\n\"A\": 1\n\"B\": 2\n"),
+        (
+            "packet",
+            "packet-beta\ntitle Header\n0-7: \"A\"\n8-15: \"B\"\n",
+        ),
+        (
+            "cynefin",
+            "cynefin-beta\ntitle Frame\ncomplex \"Probe\"\ncomplex --> clear : \"Move\"\n",
+        ),
+        (
+            "radar",
+            "radar-beta\ntitle Scores\naxis A,B\ncurve sample{1,2}\nticks 4\n",
+        ),
+        (
+            "gitGraph",
+            concat!(
+                "gitGraph TB:\n",
+                "title History\n",
+                "accTitle: Accessible history\n",
+                "commit id:\"duplicate\"\n",
+                "commit id:\"duplicate\"\n",
+                "branch later order: 2\n",
+                "branch first order: 1\n",
+            ),
+        ),
+    ] {
+        let standalone_model =
+            assert_combined_projections_match_standalone(&engine, family, source, None);
+
+        if family == "gitGraph" {
+            let warnings = standalone_model["warningFacts"].as_array().unwrap();
+            assert_eq!(warnings.len(), 1, "gitGraph warning projection fixture");
+            let branches = standalone_model["branches"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|branch| branch["name"].as_str().unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(branches, ["main", "first", "later"]);
+            assert_eq!(standalone_model["direction"], "TB");
+            assert_eq!(standalone_model["title"], "History");
+            assert_eq!(standalone_model["accTitle"], "Accessible history");
+        }
+    }
 }
 
 #[cfg(feature = "full")]
@@ -1274,6 +1435,27 @@ fn mindmap_combined_parse_constructs_family_syntax_once() {
         1,
         "one combined request must construct Mindmap syntax once"
     );
+}
+
+#[cfg(feature = "full")]
+#[test]
+fn mindmap_combined_projections_match_standalone_public_entrypoints() {
+    let source = concat!(
+        "mindmap root(Root Node)\n",
+        "  child1(Child 1)\n",
+        "  :::hot\n",
+        "  ::icon(bomb)\n",
+        "  child2\n",
+    );
+    let model = assert_combined_projections_match_standalone(
+        &crate::Engine::new(),
+        "mindmap",
+        source,
+        Some("diagramId"),
+    );
+
+    assert_eq!(model["rootNode"]["descr"], "Root Node");
+    assert_eq!(model["rootNode"]["children"].as_array().unwrap().len(), 2);
 }
 
 #[test]
@@ -1301,6 +1483,66 @@ fn railroad_combined_parse_constructs_family_syntax_once_for_every_dialect() {
             "one combined request must construct Railroad syntax once for {source:?}"
         );
     }
+}
+
+#[test]
+fn railroad_combined_projections_match_standalone_public_entrypoints() {
+    let engine = crate::Engine::new();
+    for (family, source) in [
+        (
+            "railroad",
+            "railroad-beta\ntitle \"Grammar\"\nrule = sequence(terminal(\"a\"), nonterminal(\"next\")) ;\n",
+        ),
+        (
+            "railroadEbnf",
+            "railroad-ebnf-beta\nrule ::= \"a\" | [ next ] ;\n",
+        ),
+        (
+            "railroadAbnf",
+            "railroad-abnf-beta\nrule = 1*2\"a\" / [ next ] ;\n",
+        ),
+        (
+            "railroadPeg",
+            "railroad-peg-beta\nrule <- &\"a\" !\"b\" . next? ;\n",
+        ),
+    ] {
+        let model = assert_combined_projections_match_standalone(&engine, family, source, None);
+        assert_eq!(model["rules"][0]["name"], "rule");
+    }
+}
+
+#[test]
+fn sankey_combined_parse_constructs_family_syntax_once() {
+    crate::diagrams::sankey::reset_sankey_syntax_construction_count();
+
+    let parsed = crate::Engine::new()
+        .parse_diagram_with_editor_facts_sync("sankey-beta\nA,B,1\n", crate::ParseOptions::strict())
+        .expect("sankey combined parse succeeds")
+        .expect("sankey combined parse returns a diagram");
+
+    assert!(matches!(
+        parsed.editor_facts,
+        crate::ParsedEditorFacts::Available(_)
+    ));
+    assert_eq!(
+        crate::diagrams::sankey::sankey_syntax_construction_count(),
+        1,
+        "one combined request must construct Sankey syntax once"
+    );
+}
+
+#[test]
+fn sankey_combined_projections_match_standalone_public_entrypoints() {
+    let source = concat!(
+        "sankey-beta\n",
+        "\"Source, Inc.\",\"Target \"\"quoted\"\"\",1.5\n",
+        "Target,Done,2\n",
+    );
+    let model =
+        assert_combined_projections_match_standalone(&crate::Engine::new(), "sankey", source, None);
+
+    assert_eq!(model["graph"]["links"][0]["source"], "Source, Inc.");
+    assert_eq!(model["graph"]["links"][0]["target"], "Target \"quoted\"");
 }
 
 #[test]

@@ -168,7 +168,7 @@ complex "A""#;
 }
 
 #[test]
-fn parse_cynefin_decodes_common_string_escapes_like_langium() {
+fn parse_cynefin_unescapes_common_strings_like_langium() {
     let engine = Engine::new();
     let parsed = engine
         .parse_diagram_sync(
@@ -184,11 +184,11 @@ fn parse_cynefin_decodes_common_string_escapes_like_langium() {
 
     assert_eq!(
         parsed.model["domains"][0]["items"][0]["label"],
-        json!("Probe\nsense\trespond\u{0008}now")
+        json!("Probensensetrespondbnow")
     );
     assert_eq!(
         parsed.model["transitions"][0]["label"],
-        json!("Move\rnow\u{000b}soon\0")
+        json!("Movernowvsoon0")
     );
 }
 

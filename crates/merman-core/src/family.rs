@@ -419,8 +419,7 @@ pub(crate) fn diagram_family_capabilities(
             })
             .collect();
         capabilities.sort_by_key(|(order, _)| *order);
-        let capabilities = capabilities.into_iter().map(|(_, fact)| fact).collect();
-        capabilities
+        capabilities.into_iter().map(|(_, fact)| fact).collect()
     }
 
     static TINY_CAPABILITIES: OnceLock<Vec<DiagramFamilyCapability>> = OnceLock::new();
@@ -1443,7 +1442,7 @@ const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     fast: &[],
     semantic: Some(ordered(4, crate::diagrams::info::parse_info)),
     editor: Some(ordered(21, editor_info)),
-    combined: None,
+    combined: Some(ordered(10, crate::diagrams::info::parse_info_json_and_editor_facts)),
     typed: Some(ordered(26, render_info)),
     render_kind: Some("info"),
     metadata: Some(metadata("info", Some(9))),
@@ -1461,7 +1460,7 @@ const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     fast: &[],
     semantic: Some(ordered(5, crate::diagrams::pie::parse_pie)),
     editor: Some(ordered(23, editor_pie)),
-    combined: None,
+    combined: Some(ordered(11, crate::diagrams::pie::parse_pie_json_and_editor_facts)),
     typed: Some(ordered(19, render_pie)),
     render_kind: Some("pie"),
     metadata: Some(metadata("pie", Some(14))),
@@ -1515,7 +1514,7 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     fast: FAST_GIT_GRAPH,
     semantic: Some(ordered(29, crate::diagrams::git_graph::parse_git_graph)),
     editor: Some(ordered(17, editor_git_graph)),
-    combined: None,
+    combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),
     typed: Some(ordered(33, render_git_graph)),
     render_kind: Some("gitGraph"),
     metadata: Some(metadata("gitgraph", Some(8))),
@@ -1606,7 +1605,7 @@ const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     fast: &[],
     semantic: Some(ordered(38, crate::diagrams::sankey::parse_sankey)),
     editor: Some(ordered(25, editor_sankey)),
-    combined: None,
+    combined: Some(ordered(16, crate::diagrams::sankey::parse_sankey_json_and_editor_facts)),
     typed: Some(ordered(24, render_sankey)),
     render_kind: Some("sankey"),
     metadata: Some(metadata("sankey", Some(22))),
@@ -1624,7 +1623,7 @@ const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     fast: FAST_PACKET,
     semantic: Some(ordered(31, crate::diagrams::packet::parse_packet)),
     editor: Some(ordered(24, editor_packet)),
-    combined: None,
+    combined: Some(ordered(12, crate::diagrams::packet::parse_packet_json_and_editor_facts)),
     typed: Some(ordered(20, render_packet)),
     render_kind: Some("packet"),
     metadata: Some(metadata("packet", Some(13))),
@@ -1714,7 +1713,7 @@ const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     fast: &[],
     semantic: Some(ordered(32, crate::diagrams::radar::parse_radar)),
     editor: Some(ordered(33, editor_radar)),
-    combined: None,
+    combined: Some(ordered(14, crate::diagrams::radar::parse_radar_json_and_editor_facts)),
     typed: Some(ordered(25, render_radar)),
     render_kind: Some("radar"),
     metadata: Some(metadata("radar", Some(16))),
@@ -1875,7 +1874,7 @@ const CYNEFIN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     fast: &[],
     semantic: Some(ordered(10, crate::diagrams::cynefin::parse_cynefin)),
     editor: Some(ordered(16, editor_cynefin)),
-    combined: None,
+    combined: Some(ordered(13, crate::diagrams::cynefin::parse_cynefin_json_and_editor_facts)),
     typed: Some(ordered(11, render_cynefin)),
     render_kind: Some("cynefin"),
     metadata: Some(metadata("cynefin", Some(4))),

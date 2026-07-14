@@ -1,7 +1,7 @@
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
-    push_langium_common_recovery,
+    LangiumCommonFacts, parse_langium_common, parse_langium_string,
+    push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
 };
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -11,20 +11,20 @@ use serde_json::{Map, Value, json};
 
 #[derive(Debug, Clone)]
 struct AxisAst {
-    name: String,
-    label: Option<String>,
+    name: SpannedText,
+    label: Option<SpannedText>,
 }
 
 #[derive(Debug, Clone)]
 struct EntryAst {
-    axis: Option<String>,
-    value: Value,
+    axis: Option<SpannedText>,
+    value: SpannedRadarValue,
 }
 
 #[derive(Debug, Clone)]
 struct CurveAst {
-    name: String,
-    label: Option<String>,
+    name: SpannedText,
+    label: Option<SpannedText>,
     entries: Vec<EntryAst>,
 }
 
@@ -39,6 +39,13 @@ enum OptionValueAst {
 struct OptionAst {
     name: String,
     value: OptionValueAst,
+    value_span: SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+struct SpannedRadarValue {
+    value: Value,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -110,6 +117,11 @@ struct RadarDb {
     options: RadarRenderOptions,
 }
 
+struct RadarSemanticSource {
+    db: Option<RadarDb>,
+    editor_facts: EditorSemanticFacts,
+}
+
 impl RadarDb {
     fn new() -> Self {
         Self {
@@ -125,9 +137,12 @@ impl RadarDb {
     fn set_axes(&mut self, axes: Vec<AxisAst>) {
         self.axes = axes
             .into_iter()
-            .map(|a| RadarRenderAxis {
-                label: a.label.unwrap_or_else(|| a.name.clone()),
-                name: a.name,
+            .map(|axis| RadarRenderAxis {
+                label: axis
+                    .label
+                    .map(|label| label.text)
+                    .unwrap_or_else(|| axis.name.text.clone()),
+                name: axis.name.text,
             })
             .collect();
     }
@@ -136,11 +151,15 @@ impl RadarDb {
         let axes = self.axes.clone();
         self.curves = curves
             .into_iter()
-            .map(|c| {
-                let label = c.label.clone().unwrap_or_else(|| c.name.clone());
-                let entries = compute_curve_entries(&axes, &c.entries)?;
+            .map(|curve| {
+                let label = curve
+                    .label
+                    .as_ref()
+                    .map(|label| label.text.clone())
+                    .unwrap_or_else(|| curve.name.text.clone());
+                let entries = compute_curve_entries(&axes, &curve.entries)?;
                 Ok(RadarRenderCurve {
-                    name: c.name,
+                    name: curve.name.text,
                     label,
                     entries,
                 })
@@ -234,14 +253,6 @@ struct SpannedText {
     span: SourceSpan,
 }
 
-fn find_span(text: &str, needle: &str, base_offset: usize) -> Option<SpannedText> {
-    let rel = text.find(needle)?;
-    Some(SpannedText {
-        text: needle.to_string(),
-        span: SourceSpan::new(base_offset + rel, base_offset + rel + needle.len()),
-    })
-}
-
 fn push_radar_entity(
     facts: &mut EditorSemanticFacts,
     text: SpannedText,
@@ -293,107 +304,133 @@ fn value_text(v: &Value) -> String {
     }
 }
 
-fn parse_radar_stmt_facts(
+enum RadarStatementEvent {
+    Axes(Vec<AxisAst>),
+    Curves(Vec<CurveAst>),
+    Options(Vec<OptionAst>),
+}
+
+fn parse_radar_statement(
     stmt: &str,
     stmt_start: usize,
-    facts: &mut EditorSemanticFacts,
-) -> std::result::Result<(), ()> {
-    let trimmed = stmt.trim_start();
+) -> std::result::Result<RadarStatementEvent, String> {
+    let (trimmed, trimmed_start) = trim_start_with_source_offset(stmt, stmt_start);
     if let Some(rest) = trimmed.strip_prefix("axis") {
-        let rest = rest.trim_start();
+        let (rest, rest_start) = trim_start_with_source_offset(rest, trimmed_start + "axis".len());
         if rest.is_empty() {
-            return Err(());
+            return Err("axis statement must include at least one axis".to_string());
         }
-        let axes = parse_axes_list(rest).map_err(|_| ())?;
-        for axis in axes {
-            if let Some(span) = find_span(stmt, &axis.name, stmt_start) {
-                push_radar_entity(facts, span, "radar axis", EditorSemanticKind::Variable);
-            }
-            if let Some(label) = axis.label.as_deref()
-                && let Some(span) = find_span(stmt, label, stmt_start)
-            {
-                push_radar_payload(facts, span, "radar axis label", EditorSemanticKind::String);
-            }
-        }
-        return Ok(());
+        return parse_axes_list(rest, rest_start).map(RadarStatementEvent::Axes);
     }
 
     if trimmed.starts_with("curve") {
-        let rest = trimmed.strip_prefix("curve").ok_or(())?.trim_start();
-        if rest.is_empty() {
-            return Err(());
-        }
-        let chunks = split_top_level(rest, ',');
-        for chunk in chunks {
-            let chunk = chunk.trim();
-            if chunk.is_empty() {
-                continue;
-            }
-            let curve = parse_curve(chunk).map_err(|_| ())?;
-            if let Some(span) = find_span(stmt, &curve.name, stmt_start) {
-                push_radar_entity(facts, span, "radar curve", EditorSemanticKind::Variable);
-            }
-            if let Some(label) = curve.label.as_deref()
-                && let Some(span) = find_span(stmt, label, stmt_start)
-            {
-                push_radar_payload(facts, span, "radar curve label", EditorSemanticKind::String);
-            }
+        return parse_curves_stmt(trimmed, trimmed_start).map(RadarStatementEvent::Curves);
+    }
 
-            for entry in curve.entries {
-                let token = value_text(&entry.value);
-                if let Some(axis) = entry.axis.as_deref()
-                    && let Some(span) = find_span(stmt, axis, stmt_start)
-                {
-                    push_radar_entity(
-                        facts,
-                        span,
-                        "radar curve axis reference",
-                        EditorSemanticKind::Variable,
-                    );
-                }
-                if let Some(span) = find_span(stmt, &token, stmt_start) {
+    if let Some(options) = parse_option_list_stmt(trimmed, trimmed_start)? {
+        return Ok(RadarStatementEvent::Options(options));
+    }
+
+    if let Some(option) = parse_option_stmt(trimmed, trimmed_start)? {
+        return Ok(RadarStatementEvent::Options(vec![option]));
+    }
+
+    Err(format!("unexpected radar statement: {}", stmt.trim()))
+}
+
+fn push_radar_statement_facts(facts: &mut EditorSemanticFacts, event: &RadarStatementEvent) {
+    match event {
+        RadarStatementEvent::Axes(axes) => {
+            for axis in axes {
+                push_radar_entity(
+                    facts,
+                    axis.name.clone(),
+                    "radar axis",
+                    EditorSemanticKind::Variable,
+                );
+                if let Some(label) = &axis.label {
                     push_radar_payload(
                         facts,
-                        span,
+                        label.clone(),
+                        "radar axis label",
+                        EditorSemanticKind::String,
+                    );
+                }
+            }
+        }
+        RadarStatementEvent::Curves(curves) => {
+            for curve in curves {
+                push_radar_entity(
+                    facts,
+                    curve.name.clone(),
+                    "radar curve",
+                    EditorSemanticKind::Variable,
+                );
+                if let Some(label) = &curve.label {
+                    push_radar_payload(
+                        facts,
+                        label.clone(),
+                        "radar curve label",
+                        EditorSemanticKind::String,
+                    );
+                }
+
+                for entry in &curve.entries {
+                    if let Some(axis) = &entry.axis {
+                        push_radar_entity(
+                            facts,
+                            axis.clone(),
+                            "radar curve axis reference",
+                            EditorSemanticKind::Variable,
+                        );
+                    }
+                    push_radar_payload(
+                        facts,
+                        SpannedText {
+                            text: value_text(&entry.value.value),
+                            span: entry.value.span,
+                        },
                         "radar curve entry",
                         EditorSemanticKind::String,
                     );
                 }
             }
         }
-        return Ok(());
-    }
-
-    if let Some(opt) = parse_option_stmt(trimmed).map_err(|_| ())? {
-        let token = match &opt.value {
-            OptionValueAst::Bool(v) => v.to_string(),
-            OptionValueAst::Number(v) => value_text(v),
-            OptionValueAst::Graticule(v) => v.clone(),
-        };
-        if let Some(span) = find_span(stmt, &token, stmt_start) {
-            push_radar_payload(facts, span, "radar option", EditorSemanticKind::String);
-        }
-        return Ok(());
-    }
-
-    if let Some(opts) = parse_option_list_stmt(trimmed).map_err(|_| ())? {
-        for opt in opts {
-            let token = match &opt.value {
-                OptionValueAst::Bool(v) => v.to_string(),
-                OptionValueAst::Number(v) => value_text(v),
-                OptionValueAst::Graticule(v) => v.clone(),
-            };
-            if let Some(span) = find_span(stmt, &token, stmt_start) {
-                push_radar_payload(facts, span, "radar option", EditorSemanticKind::String);
+        RadarStatementEvent::Options(options) => {
+            for option in options {
+                let token = match &option.value {
+                    OptionValueAst::Bool(value) => value.to_string(),
+                    OptionValueAst::Number(value) => value_text(value),
+                    OptionValueAst::Graticule(value) => value.clone(),
+                };
+                push_radar_payload(
+                    facts,
+                    SpannedText {
+                        text: token,
+                        span: option.value_span,
+                    },
+                    "radar option",
+                    EditorSemanticKind::String,
+                );
             }
         }
-        return Ok(());
     }
-
-    Err(())
 }
 
-pub fn parse_radar_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+fn apply_radar_statement(
+    event: RadarStatementEvent,
+    axes: &mut Vec<AxisAst>,
+    curves: &mut Vec<CurveAst>,
+    options: &mut Vec<OptionAst>,
+) {
+    match event {
+        RadarStatementEvent::Axes(parsed) => axes.extend(parsed),
+        RadarStatementEvent::Curves(parsed) => curves.extend(parsed),
+        RadarStatementEvent::Options(parsed) => options.extend(parsed),
+    }
+}
+
+fn scan_radar_editor_facts(code: &str) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let Ok(Some(mut offset)) = radar_body_start(code) else {
         return facts;
@@ -414,12 +451,26 @@ pub fn parse_radar_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSema
         if stmt.is_empty() {
             continue;
         }
-        if parse_radar_stmt_facts(&stmt, stmt_start, &mut facts).is_err() {
-            facts.mark_recovered();
+        match parse_radar_statement(&stmt, stmt_start) {
+            Ok(event) => push_radar_statement_facts(&mut facts, &event),
+            Err(message) => {
+                let invalid = stmt.trim_end();
+                facts.mark_recovered_from_parse_error(
+                    message,
+                    Some(SourceSpan::new(stmt_start, stmt_start + invalid.len())),
+                );
+            }
         }
     }
 
     facts
+}
+
+pub fn parse_radar_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    match parse_radar_semantic_source(code, meta) {
+        Ok(source) => source.editor_facts,
+        Err(_) => scan_radar_editor_facts(code),
+    }
 }
 
 fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Result<Vec<Value>> {
@@ -428,7 +479,10 @@ fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Resu
     }
 
     if entries[0].axis.is_none() {
-        return Ok(entries.iter().map(|e| e.value.clone()).collect());
+        return Ok(entries
+            .iter()
+            .map(|entry| entry.value.value.clone())
+            .collect());
     }
 
     if axes.is_empty() {
@@ -440,41 +494,65 @@ fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Resu
 
     axes.iter()
         .map(|axis| {
-            let found = entries
-                .iter()
-                .find(|e| e.axis.as_deref() == Some(&axis.name));
+            let found = entries.iter().find(|entry| {
+                entry
+                    .axis
+                    .as_ref()
+                    .is_some_and(|entry_axis| entry_axis.text == axis.name)
+            });
             let Some(found) = found else {
                 return Err(Error::diagram_parse_fallback(
                     "radar".to_string(),
                     format!("Missing entry for axis {}", axis.label),
                 ));
             };
-            Ok(found.value.clone())
+            Ok(found.value.value.clone())
         })
         .collect()
 }
 
 pub fn parse_radar(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let Some(db) = parse_radar_db(code, meta)? else {
+    let Some(db) = parse_radar_semantic_source(code, meta)?.db else {
         return Ok(json!({}));
     };
     Ok(db.semantic_value(meta))
+}
+
+pub(crate) fn parse_radar_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let RadarSemanticSource { db, editor_facts } = parse_radar_semantic_source(code, meta)?;
+    let model = db.map_or_else(|| json!({}), |db| db.semantic_value(meta));
+    Ok((model, editor_facts))
 }
 
 pub fn parse_radar_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<RadarDiagramRenderModel> {
-    parse_radar_db(code, meta).map(|db| db.map(RadarDb::into_render_model).unwrap_or_default())
+    parse_radar_semantic_source(code, meta).map(|source| {
+        source
+            .db
+            .map(RadarDb::into_render_model)
+            .unwrap_or_default()
+    })
 }
 
 #[inline]
-fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
+fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<RadarSemanticSource> {
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("radar");
+
     let Some(mut offset) = radar_body_start(code)? else {
-        return Ok(None);
+        return Ok(RadarSemanticSource {
+            db: None,
+            editor_facts: EditorSemanticFacts::new(),
+        });
     };
 
     let mut common = LangiumCommonFacts::default();
+    let mut editor_facts = EditorSemanticFacts::new();
     let mut axes: Vec<AxisAst> = Vec::new();
     let mut curves: Vec<CurveAst> = Vec::new();
     let mut options: Vec<OptionAst> = Vec::new();
@@ -488,60 +566,22 @@ fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
                     diagnostic.span.start,
                 ));
             }
+            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "radar");
             common.push(parsed.fact);
             offset += parsed.consumed;
             continue;
         }
 
-        let (t, _stmt_start, next_offset) = radar_statement_at(code, offset);
+        let (statement, statement_start, next_offset) = radar_statement_at(code, offset);
         offset = next_offset;
-        if t.is_empty() {
+        if statement.is_empty() {
             continue;
         }
 
-        if let Some(rest) = t.strip_prefix("axis") {
-            let rest = rest.trim_start();
-            if rest.is_empty() {
-                return Err(Error::diagram_parse_fallback(
-                    "radar".to_string(),
-                    "axis statement must include at least one axis".to_string(),
-                ));
-            }
-            axes.extend(
-                parse_axes_list(rest).map_err(|message| {
-                    Error::diagram_parse_fallback("radar".to_string(), message)
-                })?,
-            );
-            continue;
-        }
-
-        if t.trim_start().starts_with("curve") {
-            curves.extend(
-                parse_curves_stmt(&t).map_err(|message| {
-                    Error::diagram_parse_fallback("radar".to_string(), message)
-                })?,
-            );
-            continue;
-        }
-
-        if let Some(opt) = parse_option_stmt(&t)
-            .map_err(|message| Error::diagram_parse_fallback("radar".to_string(), message))?
-        {
-            options.push(opt);
-            continue;
-        }
-
-        if let Some(many) = parse_option_list_stmt(&t)
-            .map_err(|message| Error::diagram_parse_fallback("radar".to_string(), message))?
-        {
-            options.extend(many);
-            continue;
-        }
-
-        return Err(Error::diagram_parse_fallback(
-            "radar".to_string(),
-            format!("unexpected radar statement: {}", t.trim()),
-        ));
+        let event = parse_radar_statement(&statement, statement_start)
+            .map_err(|message| Error::diagram_parse_fallback("radar".to_string(), message))?;
+        push_radar_statement_facts(&mut editor_facts, &event);
+        apply_radar_statement(event, &mut axes, &mut curves, &mut options);
     }
 
     let common = LangiumCommonDbFields::from_facts(&common);
@@ -553,14 +593,14 @@ fn parse_radar_db(code: &str, meta: &ParseMetadata) -> Result<Option<RadarDb>> {
     db.set_curves(curves)?;
     db.set_options(options);
 
-    Ok(Some(db))
+    Ok(RadarSemanticSource {
+        db: Some(db),
+        editor_facts,
+    })
 }
 
 fn strip_inline_comment(line: &str) -> &str {
-    match line.find("%%") {
-        Some(idx) => &line[..idx],
-        None => line,
-    }
+    strip_langium_inline_comment(line)
 }
 
 fn radar_body_start(code: &str) -> Result<Option<usize>> {
@@ -610,14 +650,19 @@ fn radar_statement_at(code: &str, offset: usize) -> (String, usize, usize) {
     let visible = strip_inline_comment(line);
     let trimmed = visible.trim();
     let stmt_start = offset + visible.find(trimmed).unwrap_or(0);
-    let mut stmt = trimmed.to_string();
+    if trimmed.is_empty() {
+        return (String::new(), stmt_start, next_offset);
+    }
+    let mut stmt = mask_radar_inline_comments(&code[stmt_start..next_offset]);
 
-    if stmt.starts_with("curve") && stmt.contains('{') && !braces_balanced_outside_quotes(&stmt) {
+    if stmt.trim_start().starts_with("curve")
+        && stmt.contains('{')
+        && !braces_balanced_outside_quotes(&stmt)
+    {
         while next_offset < code.len() {
-            let (next_line, after_next) = physical_line(code, next_offset);
-            stmt.push('\n');
-            stmt.push_str(strip_inline_comment(next_line));
+            let (_, after_next) = physical_line(code, next_offset);
             next_offset = after_next;
+            stmt = mask_radar_inline_comments(&code[stmt_start..next_offset]);
             if braces_balanced_outside_quotes(&stmt) {
                 break;
             }
@@ -625,6 +670,33 @@ fn radar_statement_at(code: &str, offset: usize) -> (String, usize, usize) {
     }
 
     (stmt, stmt_start, next_offset)
+}
+
+fn mask_radar_inline_comments(source: &str) -> String {
+    let mut masked = source.as_bytes().to_vec();
+    let mut line_start = 0usize;
+    while line_start < source.len() {
+        let line_end = source[line_start..]
+            .find('\n')
+            .map_or(source.len(), |newline| line_start + newline);
+        let content_end = if line_end > line_start && source.as_bytes()[line_end - 1] == b'\r' {
+            line_end - 1
+        } else {
+            line_end
+        };
+        let line = &source[line_start..content_end];
+        let visible = strip_langium_inline_comment(line);
+        if visible.len() < line.len() {
+            masked[line_start + visible.len()..content_end].fill(b' ');
+        }
+        line_start = (line_end + usize::from(line_end < source.len())).min(source.len());
+    }
+    String::from_utf8(masked).expect("comment masking preserves UTF-8 before the comment marker")
+}
+
+fn trim_start_with_source_offset(input: &str, input_start: usize) -> (&str, usize) {
+    let trimmed = input.trim_start();
+    (trimmed, input_start + input.len() - trimmed.len())
 }
 
 fn physical_line(source: &str, offset: usize) -> (&str, usize) {
@@ -671,8 +743,8 @@ fn braces_balanced_outside_quotes(s: &str) -> bool {
     depth == 0
 }
 
-fn parse_axes_list(input: &str) -> std::result::Result<Vec<AxisAst>, String> {
-    let mut p = TokenParser::new(input);
+fn parse_axes_list(input: &str, input_start: usize) -> std::result::Result<Vec<AxisAst>, String> {
+    let mut p = TokenParser::new(input, input_start);
     let mut out = Vec::new();
     loop {
         p.skip_ws();
@@ -712,30 +784,34 @@ fn parse_axes_list(input: &str) -> std::result::Result<Vec<AxisAst>, String> {
     Ok(out)
 }
 
-fn parse_curves_stmt(input: &str) -> std::result::Result<Vec<CurveAst>, String> {
+fn parse_curves_stmt(
+    input: &str,
+    input_start: usize,
+) -> std::result::Result<Vec<CurveAst>, String> {
+    let (input, input_start) = trim_start_with_source_offset(input, input_start);
     let rest = input
-        .trim_start()
         .strip_prefix("curve")
-        .ok_or_else(|| "expected curve".to_string())?
-        .trim_start();
+        .ok_or_else(|| "expected curve".to_string())?;
+    let (rest, rest_start) = trim_start_with_source_offset(rest, input_start + "curve".len());
     if rest.trim().is_empty() {
         return Err("expected curve id".to_string());
     }
 
     let chunks = split_top_level(rest, ',');
     let mut curves = Vec::new();
-    for chunk in chunks {
-        let chunk = chunk.trim();
+    for (chunk_offset, chunk) in chunks {
+        let (chunk, chunk_start) = trim_start_with_source_offset(chunk, rest_start + chunk_offset);
+        let chunk = chunk.trim_end();
         if chunk.is_empty() {
-            continue;
+            return Err("expected curve after ','".to_string());
         }
-        curves.push(parse_curve(chunk)?);
+        curves.push(parse_curve(chunk, chunk_start)?);
     }
     Ok(curves)
 }
 
-fn parse_curve(input: &str) -> std::result::Result<CurveAst, String> {
-    let mut p = TokenParser::new(input);
+fn parse_curve(input: &str, input_start: usize) -> std::result::Result<CurveAst, String> {
+    let mut p = TokenParser::new(input, input_start);
     p.skip_ws();
     let name = p
         .parse_id()
@@ -760,8 +836,8 @@ fn parse_curve(input: &str) -> std::result::Result<CurveAst, String> {
         return Err("expected '{'".to_string());
     }
 
-    let entries_str = p.take_until_matching_brace()?;
-    let entries = parse_entries(&entries_str)?;
+    let (entries_str, entries_start) = p.take_until_matching_brace()?;
+    let entries = parse_entries(entries_str, entries_start)?;
 
     p.skip_ws();
     if !p.eof() {
@@ -781,17 +857,18 @@ fn parse_curve(input: &str) -> std::result::Result<CurveAst, String> {
     })
 }
 
-fn parse_entries(input: &str) -> std::result::Result<Vec<EntryAst>, String> {
+fn parse_entries(input: &str, input_start: usize) -> std::result::Result<Vec<EntryAst>, String> {
     let items = split_top_level(input, ',');
     let mut out = Vec::new();
-    for item in items {
-        let item = item.trim();
+    for (item_offset, item) in items {
+        let (item, item_start) = trim_start_with_source_offset(item, input_start + item_offset);
+        let item = item.trim_end();
         if item.is_empty() {
-            continue;
+            return Err("expected curve entry".to_string());
         }
 
         // Try detailed first: <ID> ':'? <NUMBER>
-        let mut p = TokenParser::new(item);
+        let mut p = TokenParser::new(item, item_start);
         p.skip_ws();
         let start_pos = p.pos;
         if let Some(axis) = p.parse_id() {
@@ -828,22 +905,29 @@ fn parse_entries(input: &str) -> std::result::Result<Vec<EntryAst>, String> {
     Ok(out)
 }
 
-fn parse_option_stmt(input: &str) -> std::result::Result<Option<OptionAst>, String> {
-    let mut p = TokenParser::new(input);
+fn parse_option_stmt(
+    input: &str,
+    input_start: usize,
+) -> std::result::Result<Option<OptionAst>, String> {
+    let mut p = TokenParser::new(input, input_start);
     p.skip_ws();
-    let name = match p.parse_id().as_deref() {
-        Some("showLegend") => "showLegend",
-        Some("ticks") => "ticks",
-        Some("max") => "max",
-        Some("min") => "min",
-        Some("graticule") => "graticule",
+    let parsed_name = match p.parse_id() {
+        Some(name) => name,
+        None => return Ok(None),
+    };
+    let name = match parsed_name.text.as_str() {
+        "showLegend" => "showLegend",
+        "ticks" => "ticks",
+        "max" => "max",
+        "min" => "min",
+        "graticule" => "graticule",
         _ => return Ok(None),
     }
     .to_string();
     p.skip_ws();
 
     if name == "showLegend" {
-        let v = p
+        let (value, value_span) = p
             .parse_bool()
             .ok_or_else(|| "expected boolean".to_string())?;
         p.skip_ws();
@@ -852,15 +936,16 @@ fn parse_option_stmt(input: &str) -> std::result::Result<Option<OptionAst>, Stri
         }
         return Ok(Some(OptionAst {
             name,
-            value: OptionValueAst::Bool(v),
+            value: OptionValueAst::Bool(value),
+            value_span,
         }));
     }
 
     if name == "graticule" {
-        let v = p
+        let value = p
             .parse_id()
             .ok_or_else(|| "expected graticule".to_string())?;
-        if v != "circle" && v != "polygon" {
+        if value.text != "circle" && value.text != "polygon" {
             return Err("expected graticule".to_string());
         }
         p.skip_ws();
@@ -869,11 +954,12 @@ fn parse_option_stmt(input: &str) -> std::result::Result<Option<OptionAst>, Stri
         }
         return Ok(Some(OptionAst {
             name,
-            value: OptionValueAst::Graticule(v),
+            value: OptionValueAst::Graticule(value.text),
+            value_span: value.span,
         }));
     }
 
-    let v = p
+    let value = p
         .parse_number_value()
         .ok_or_else(|| "expected number".to_string())?;
     p.skip_ws();
@@ -882,22 +968,27 @@ fn parse_option_stmt(input: &str) -> std::result::Result<Option<OptionAst>, Stri
     }
     Ok(Some(OptionAst {
         name,
-        value: OptionValueAst::Number(v),
+        value: OptionValueAst::Number(value.value),
+        value_span: value.span,
     }))
 }
 
-fn parse_option_list_stmt(input: &str) -> std::result::Result<Option<Vec<OptionAst>>, String> {
+fn parse_option_list_stmt(
+    input: &str,
+    input_start: usize,
+) -> std::result::Result<Option<Vec<OptionAst>>, String> {
     if !input.contains(',') {
         return Ok(None);
     }
     let chunks = split_top_level(input, ',');
     let mut out = Vec::new();
-    for chunk in chunks {
-        let chunk = chunk.trim();
+    for (chunk_offset, chunk) in chunks {
+        let (chunk, chunk_start) = trim_start_with_source_offset(chunk, input_start + chunk_offset);
+        let chunk = chunk.trim_end();
         if chunk.is_empty() {
-            continue;
+            return Err("expected option after ','".to_string());
         }
-        let Some(opt) = parse_option_stmt(chunk)? else {
+        let Some(opt) = parse_option_stmt(chunk, chunk_start)? else {
             return Ok(None);
         };
         out.push(opt);
@@ -908,34 +999,30 @@ fn parse_option_list_stmt(input: &str) -> std::result::Result<Option<Vec<OptionA
     Ok(Some(out))
 }
 
-fn split_top_level(input: &str, delim: char) -> Vec<String> {
+fn split_top_level(input: &str, delim: char) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
-    let mut cur = String::new();
+    let mut chunk_start = 0usize;
     let mut in_quote: Option<char> = None;
     let mut escaped = false;
     let mut brace_depth = 0i64;
     let mut bracket_depth = 0i64;
-    for ch in input.chars() {
+    for (offset, ch) in input.char_indices() {
         if escaped {
-            cur.push(ch);
             escaped = false;
             continue;
         }
         if let Some(q) = in_quote {
             if ch == '\\' {
-                cur.push(ch);
                 escaped = true;
                 continue;
             }
             if ch == q {
                 in_quote = None;
             }
-            cur.push(ch);
             continue;
         }
         if ch == '"' || ch == '\'' {
             in_quote = Some(ch);
-            cur.push(ch);
             continue;
         }
         match ch {
@@ -946,23 +1033,28 @@ fn split_top_level(input: &str, delim: char) -> Vec<String> {
             _ => {}
         }
         if ch == delim && brace_depth == 0 && bracket_depth == 0 {
-            out.push(std::mem::take(&mut cur));
+            out.push((chunk_start, &input[chunk_start..offset]));
+            chunk_start = offset + ch.len_utf8();
             continue;
         }
-        cur.push(ch);
     }
-    out.push(cur);
+    out.push((chunk_start, &input[chunk_start..]));
     out
 }
 
 struct TokenParser<'a> {
     input: &'a str,
     pos: usize,
+    base_offset: usize,
 }
 
 impl<'a> TokenParser<'a> {
-    fn new(input: &'a str) -> Self {
-        Self { input, pos: 0 }
+    fn new(input: &'a str, base_offset: usize) -> Self {
+        Self {
+            input,
+            pos: 0,
+            base_offset,
+        }
     }
 
     fn eof(&self) -> bool {
@@ -992,11 +1084,12 @@ impl<'a> TokenParser<'a> {
         }
     }
 
-    fn parse_id(&mut self) -> Option<String> {
+    fn parse_id(&mut self) -> Option<SpannedText> {
+        let start = self.pos;
         let s = &self.input[self.pos..];
         let mut chars = s.chars();
         let first = chars.next()?;
-        if !(first.is_ascii_alphabetic() || first == '_') {
+        if !(first.is_ascii_alphanumeric() || first == '_') {
             return None;
         }
         let mut idx = first.len_utf8();
@@ -1014,23 +1107,37 @@ impl<'a> TokenParser<'a> {
         }
         let raw = &s[..idx];
         self.pos += idx;
-        Some(raw.to_string())
+        Some(SpannedText {
+            text: raw.to_string(),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+        })
     }
 
-    fn parse_bool(&mut self) -> Option<bool> {
+    fn parse_bool(&mut self) -> Option<(bool, SourceSpan)> {
+        let start = self.pos;
         if self.input[self.pos..].starts_with("true") {
             self.pos += 4;
-            return Some(true);
+            return Some((
+                true,
+                SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+            ));
         }
         if self.input[self.pos..].starts_with("false") {
             self.pos += 5;
-            return Some(false);
+            return Some((
+                false,
+                SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+            ));
         }
         None
     }
 
-    fn parse_number_value(&mut self) -> Option<Value> {
+    fn parse_number_value(&mut self) -> Option<SpannedRadarValue> {
+        let start = self.pos;
         let s = &self.input[self.pos..];
+        if !s.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+            return None;
+        }
         let mut idx = 0usize;
         let mut saw_dot = false;
         for ch in s.chars() {
@@ -1057,7 +1164,10 @@ impl<'a> TokenParser<'a> {
             let v: f64 = token.parse().ok()?;
             self.pos += idx;
             let n = serde_json::Number::from_f64(v)?;
-            return Some(Value::Number(n));
+            return Some(SpannedRadarValue {
+                value: Value::Number(n),
+                span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+            });
         }
 
         if token.len() > 1 && token.starts_with('0') {
@@ -1065,79 +1175,60 @@ impl<'a> TokenParser<'a> {
         }
         let v: i64 = token.parse().ok()?;
         self.pos += idx;
-        Some(Value::Number(serde_json::Number::from(v)))
+        Some(SpannedRadarValue {
+            value: Value::Number(serde_json::Number::from(v)),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+        })
     }
 
-    fn parse_quoted_string(&mut self) -> Option<String> {
-        let quote = self.peek_char()?;
-        if quote != '"' && quote != '\'' {
-            return None;
-        }
-        self.pos += 1;
-        let mut out = String::new();
-        let mut escaped = false;
-        while let Some(ch) = self.peek_char() {
-            self.pos += ch.len_utf8();
-            if escaped {
-                out.push(ch);
-                escaped = false;
-                continue;
-            }
-            if ch == '\\' {
-                escaped = true;
-                continue;
-            }
-            if ch == quote {
-                return Some(out);
-            }
-            out.push(ch);
-        }
-        None
+    fn parse_quoted_string(&mut self) -> Option<SpannedText> {
+        let parsed = parse_langium_string(&self.input[self.pos..], self.base_offset + self.pos)?;
+        self.pos += parsed.consumed;
+        Some(SpannedText {
+            text: parsed.value,
+            span: parsed.value_span,
+        })
     }
 
-    fn take_until_matching_brace(&mut self) -> std::result::Result<String, String> {
+    fn take_until_matching_brace(&mut self) -> std::result::Result<(&'a str, usize), String> {
         let mut depth = 1i64;
         let mut in_quote: Option<char> = None;
         let mut escaped = false;
-        let mut out = String::new();
+        let content_start = self.pos;
         while let Some(ch) = self.peek_char() {
+            let char_start = self.pos;
             self.pos += ch.len_utf8();
             if escaped {
-                out.push(ch);
                 escaped = false;
                 continue;
             }
             if let Some(q) = in_quote {
                 if ch == '\\' {
-                    out.push(ch);
                     escaped = true;
                     continue;
                 }
                 if ch == q {
                     in_quote = None;
                 }
-                out.push(ch);
                 continue;
             }
             if ch == '"' || ch == '\'' {
                 in_quote = Some(ch);
-                out.push(ch);
                 continue;
             }
             if ch == '{' {
                 depth += 1;
-                out.push(ch);
                 continue;
             }
             if ch == '}' {
                 depth -= 1;
                 if depth == 0 {
-                    return Ok(out);
+                    return Ok((
+                        &self.input[content_start..char_start],
+                        self.base_offset + content_start,
+                    ));
                 }
-                out.push(ch);
-                continue;
             }
-            out.push(ch);
         }
         Err("unterminated '{' in curve".to_string())
     }
@@ -1221,6 +1312,19 @@ curve mycurve["My Curve"]{1,2,3}
     }
 
     #[test]
+    fn radar_uses_langium_string_escapes_and_quote_aware_inline_comments() {
+        let model = parse(
+            r#"radar-beta
+axis A["A\n100%% complete"], B['B\tlabel'] %% outside comment
+curve sample{1,2}
+"#,
+        );
+
+        assert_eq!(model["axes"][0]["label"], "An100%% complete");
+        assert_eq!(model["axes"][1]["label"], "Btlabel");
+    }
+
+    #[test]
     fn radar_parses_options() {
         let model = parse(
             r#"radar-beta
@@ -1238,6 +1342,63 @@ max 10
     }
 
     #[test]
+    fn radar_parses_comma_separated_option_list_like_langium_grammar() {
+        let model = parse(
+            r#"radar-beta
+ticks 5, max 10, min 1, graticule polygon, showLegend false
+"#,
+        );
+        assert_eq!(
+            model["options"],
+            json!({"showLegend": false, "ticks": 5, "max": 10, "min": 1, "graticule": "polygon"})
+        );
+    }
+
+    #[test]
+    fn radar_editor_facts_preserve_every_repeated_occurrence_span() {
+        let text = concat!(
+            "radar-beta\r\n",
+            "axis A[\"dup\"], A[\"dup\"]\r\n",
+            "curve C[\"dup\"]{ A: 1,\r\n",
+            "  A: 1 }, C[\"dup\"]{1,1}\r\n",
+            "ticks 5\r\n",
+            "ticks 5\r\n",
+        );
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("radar", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+
+        let occurrences = |needle: &str| {
+            text.match_indices(needle)
+                .map(|(start, value)| SourceSpan::new(start, start + value.len()))
+                .collect::<Vec<_>>()
+        };
+        let spans_for = |detail: &str| {
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.detail.as_deref() == Some(detail))
+                .map(|symbol| symbol.span)
+                .collect::<Vec<_>>()
+        };
+
+        let axis_occurrences = occurrences("A");
+        assert_eq!(spans_for("radar axis"), axis_occurrences[..2]);
+        assert_eq!(
+            spans_for("radar curve axis reference"),
+            axis_occurrences[2..]
+        );
+
+        let label_occurrences = occurrences("dup");
+        assert_eq!(spans_for("radar axis label"), label_occurrences[..2]);
+        assert_eq!(spans_for("radar curve label"), label_occurrences[2..]);
+        assert_eq!(spans_for("radar curve"), occurrences("C"));
+        assert_eq!(spans_for("radar curve entry"), occurrences("1"));
+        assert_eq!(spans_for("radar option"), occurrences("5"));
+    }
+
+    #[test]
     fn radar_errors_on_empty_curve_stmt() {
         let err = parse_err(
             r#"radar-beta
@@ -1246,6 +1407,55 @@ curve
 "#,
         );
         assert_eq!(err, "expected curve id");
+    }
+
+    #[test]
+    fn radar_rejects_empty_curve_and_entry_list_elements_like_langium_grammar() {
+        for (body, expected) in [
+            ("curve C{}", "expected curve entry"),
+            ("curve C{1,}", "expected curve entry"),
+            ("curve C{,1}", "expected curve entry"),
+            ("curve C{1},", "expected curve after ','"),
+        ] {
+            let err = parse_err(&format!("radar-beta\n{body}\n"));
+            assert_eq!(err, expected, "unexpected result for {body:?}");
+        }
+    }
+
+    #[test]
+    fn radar_number_and_id_terminals_match_common_langium() {
+        for body in ["ticks .5", "curve C{.5}"] {
+            let _ = parse_err(&format!("radar-beta\n{body}\n"));
+        }
+
+        let model = parse("radar-beta\naxis 1A, 2B\ncurve 3C{1A: 1, 2B: 2}\n");
+        assert_eq!(model["axes"][0]["name"], "1A");
+        assert_eq!(model["axes"][1]["name"], "2B");
+        assert_eq!(model["curves"][0]["name"], "3C");
+        assert_eq!(model["curves"][0]["entries"], json!([1, 2]));
+    }
+
+    #[test]
+    fn radar_recovery_reports_parser_diagnostic_with_exact_crlf_span() {
+        let text = concat!(
+            "radar-beta\r\n",
+            "axis A\r\n",
+            "  curve C{.5} %% hidden\r\n",
+            "axis B\r\n",
+        );
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("radar", text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let invalid = "curve C{.5}";
+        let start = text.find(invalid).unwrap();
+
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "B"));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(SourceSpan::new(start, start + invalid.len()))
+                && diagnostic.message.contains("expected entry number")
+        }));
     }
 
     #[test]

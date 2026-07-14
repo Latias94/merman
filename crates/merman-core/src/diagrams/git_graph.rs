@@ -3,8 +3,8 @@ use crate::diagram::{
     DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, legacy_warning_messages,
 };
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
-    push_langium_common_recovery,
+    LangiumCommonFacts, parse_langium_common, parse_langium_string,
+    push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
 };
 use crate::sanitize::sanitize_text;
 use crate::{
@@ -143,11 +143,44 @@ struct SpannedValue {
     span: SourceSpan,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum GitGraphEditorFactRole {
+    Entity,
+    Payload,
+}
+
 #[derive(Debug, Clone)]
-struct SpannedKvPair {
-    key: String,
-    value: String,
-    value_span: SourceSpan,
+struct GitGraphEditorFact {
+    value: SpannedValue,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+    role: GitGraphEditorFactRole,
+}
+
+#[derive(Debug, Clone)]
+enum GitGraphOperation {
+    Commit(CommitDb),
+    Branch(BranchDb),
+    Checkout(String),
+    Merge(MergeDb),
+    CherryPick(CherryPickDb),
+}
+
+#[derive(Debug, Clone)]
+struct GitGraphCommand {
+    operation: GitGraphOperation,
+    editor_facts: Vec<GitGraphEditorFact>,
+}
+
+struct GitGraphCommandParseError {
+    error: Box<Error>,
+    editor_facts: Vec<GitGraphEditorFact>,
+    recovery_span: SourceSpan,
+}
+
+struct GitGraphSemanticSource {
+    model: GitGraphRenderModel,
+    editor_facts: EditorSemanticFacts,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -537,12 +570,11 @@ impl GitGraphDb {
             }
 
             let tags = match cp.tags {
-                Some(mut t) => {
-                    t.retain(|s| !s.is_empty());
-                    t.into_iter()
-                        .map(|v| sanitize_text(&v, config))
-                        .collect::<Vec<_>>()
-                }
+                Some(t) => t
+                    .into_iter()
+                    .map(|v| sanitize_text(&v, config))
+                    .filter(|tag| !tag.is_empty())
+                    .collect::<Vec<_>>(),
                 None => {
                     let mut tag = format!("cherry-pick:{}", source_commit.id);
                     if source_commit.commit_type == COMMIT_TYPE_MERGE {
@@ -691,19 +723,8 @@ impl<'a> LineParser<'a> {
         }
     }
 
-    fn parse_word_until_ws_or_colon(&mut self) -> Option<String> {
-        self.skip_ws();
-        let start = self.pos;
-        while let Some(c) = self.peek_char() {
-            if c.is_whitespace() || c == ':' {
-                break;
-            }
-            self.bump();
-        }
-        if self.pos == start {
-            return None;
-        }
-        Some(self.input[start..self.pos].to_string())
+    fn remaining(&self) -> &'a str {
+        &self.input[self.pos..]
     }
 
     fn parse_word_until_ws_or_colon_spanned(&mut self) -> Option<SpannedValue> {
@@ -724,94 +745,34 @@ impl<'a> LineParser<'a> {
         })
     }
 
-    fn consume_char(&mut self, ch: char) -> bool {
+    fn consume_literal(&mut self, literal: &str) -> bool {
         self.skip_ws();
-        if self.peek_char() == Some(ch) {
-            self.bump();
-            return true;
+        if !self.remaining().starts_with(literal) {
+            return false;
         }
-        false
-    }
-
-    fn parse_quoted(&mut self) -> Result<String> {
-        self.skip_ws();
-        if self.peek_char() != Some('"') {
-            return Err(Error::diagram_parse_fallback(
-                "gitGraph".to_string(),
-                "expected quoted string".to_string(),
-            ));
-        }
-        self.bump();
-        let start = self.pos;
-        while let Some(c) = self.peek_char() {
-            if c == '"' {
-                break;
-            }
-            self.bump();
-        }
-        if self.peek_char() != Some('"') {
-            return Err(Error::diagram_parse_fallback(
-                "gitGraph".to_string(),
-                "unterminated quoted string".to_string(),
-            ));
-        }
-        let s = self.input[start..self.pos].to_string();
-        self.bump();
-        Ok(s)
+        self.pos += literal.len();
+        true
     }
 
     fn parse_quoted_spanned(&mut self) -> Result<SpannedValue> {
         self.skip_ws();
-        if self.peek_char() != Some('"') {
-            return Err(Error::diagram_parse_fallback(
-                "gitGraph".to_string(),
-                "expected quoted string".to_string(),
-            ));
-        }
-        self.bump();
-        let start = self.pos;
-        while let Some(c) = self.peek_char() {
-            if c == '"' {
-                break;
-            }
-            self.bump();
-        }
-        if self.peek_char() != Some('"') {
-            return Err(Error::diagram_parse_fallback(
-                "gitGraph".to_string(),
-                "unterminated quoted string".to_string(),
-            ));
-        }
-        let s = self.input[start..self.pos].to_string();
-        let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
-        self.bump();
-        Ok(SpannedValue { text: s, span })
-    }
-
-    fn parse_name_token(&mut self) -> Result<String> {
-        self.skip_ws();
-        if self.peek_char() == Some('"') {
-            return self.parse_quoted();
-        }
-        let start = self.pos;
-        while let Some(c) = self.peek_char() {
-            if c.is_whitespace() {
-                break;
-            }
-            self.bump();
-        }
-        if self.pos == start {
-            return Err(Error::diagram_parse_fallback(
-                "gitGraph".to_string(),
-                "expected name".to_string(),
-            ));
-        }
-        Ok(self.input[start..self.pos].to_string())
+        let parsed = parse_langium_string(self.remaining(), self.base_offset + self.pos)
+            .ok_or_else(|| {
+                Error::diagram_parse_fallback(
+                    "gitGraph".to_string(),
+                    "expected quoted string".to_string(),
+                )
+            })?;
+        self.pos += parsed.consumed;
+        Ok(SpannedValue {
+            text: parsed.value,
+            span: parsed.value_span,
+        })
     }
 
     fn parse_name_token_spanned(&mut self) -> Result<SpannedValue> {
         self.skip_ws();
-        if self.peek_char() == Some('"') {
+        if matches!(self.peek_char(), Some('"' | '\'')) {
             return self.parse_quoted_spanned();
         }
         let start = self.pos;
@@ -827,82 +788,535 @@ impl<'a> LineParser<'a> {
                 "expected name".to_string(),
             ));
         }
+        let text = &self.input[start..self.pos];
+        if !is_gitgraph_reference(text) {
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!("invalid gitGraph reference: {text}"),
+            ));
+        }
+        Ok(SpannedValue {
+            text: text.to_string(),
+            span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+        })
+    }
+
+    fn parse_bare_token_spanned(&mut self, expected: &str) -> Result<SpannedValue> {
+        self.skip_ws();
+        let start = self.pos;
+        while self.peek_char().is_some_and(|ch| !ch.is_whitespace()) {
+            self.bump();
+        }
+        if self.pos == start {
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!("expected {expected}"),
+            ));
+        }
         Ok(SpannedValue {
             text: self.input[start..self.pos].to_string(),
             span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
         })
     }
 
-    fn parse_kv_pairs(&mut self) -> Result<Vec<(String, String)>> {
-        let mut out = Vec::new();
-        while !self.is_eof() {
-            self.skip_ws();
-            if self.is_eof() {
-                break;
-            }
-            let Some(key) = self.parse_word_until_ws_or_colon() else {
-                break;
-            };
-            self.skip_ws();
-            if !self.consume_char(':') {
-                return Err(Error::diagram_parse_fallback(
-                    "gitGraph".to_string(),
-                    format!("expected ':' after {key}"),
-                ));
-            }
-            self.skip_ws();
-            let value = if self.peek_char() == Some('"') {
-                self.parse_quoted()?
-            } else {
-                self.parse_word_until_ws_or_colon().unwrap_or_default()
-            };
-            out.push((key, value));
+    fn expect_eof(&mut self, command: &str) -> Result<()> {
+        self.skip_ws();
+        if self.is_eof() {
+            return Ok(());
         }
-        Ok(out)
-    }
-
-    fn parse_kv_pairs_spanned(&mut self) -> Result<Vec<SpannedKvPair>> {
-        let mut out = Vec::new();
-        while !self.is_eof() {
-            self.skip_ws();
-            if self.is_eof() {
-                break;
-            }
-            let Some(key) = self.parse_word_until_ws_or_colon_spanned() else {
-                break;
-            };
-            self.skip_ws();
-            if !self.consume_char(':') {
-                return Err(Error::diagram_parse_fallback(
-                    "gitGraph".to_string(),
-                    format!("expected ':' after {}", key.text),
-                ));
-            }
-            self.skip_ws();
-            let value = if self.peek_char() == Some('"') {
-                self.parse_quoted_spanned()?
-            } else {
-                self.parse_word_until_ws_or_colon_spanned()
-                    .unwrap_or(SpannedValue {
-                        text: String::new(),
-                        span: SourceSpan::new(
-                            self.base_offset + self.pos,
-                            self.base_offset + self.pos,
-                        ),
-                    })
-            };
-            out.push(SpannedKvPair {
-                key: key.text,
-                value: value.text,
-                value_span: value.span,
-            });
-        }
-        Ok(out)
+        Err(Error::diagram_parse_fallback(
+            "gitGraph".to_string(),
+            format!("unexpected {command} argument: {}", self.remaining()),
+        ))
     }
 }
 
+fn is_gitgraph_reference(value: &str) -> bool {
+    fn is_word(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || byte == b'_'
+    }
+
+    let bytes = value.as_bytes();
+    bytes.first().is_some_and(|byte| is_word(*byte))
+        && bytes.last().is_some_and(|byte| is_word(*byte))
+        && bytes
+            .iter()
+            .all(|byte| is_word(*byte) || matches!(*byte, b'-' | b'.' | b'/'))
+}
+
+fn parse_gitgraph_int(value: &SpannedValue) -> Result<i64> {
+    let bytes = value.text.as_bytes();
+    let valid = bytes == b"0"
+        || (bytes
+            .first()
+            .is_some_and(|byte| matches!(*byte, b'1'..=b'9'))
+            && bytes[1..].iter().all(u8::is_ascii_digit));
+    if !valid {
+        return Err(Error::diagram_parse_fallback(
+            "gitGraph".to_string(),
+            format!("invalid branch order: {}", value.text),
+        ));
+    }
+    value
+        .text
+        .parse::<i64>()
+        .map_err(|error| Error::diagram_parse_fallback("gitGraph".to_string(), error.to_string()))
+}
+
+impl GitGraphCommand {
+    fn apply(&self, db: &mut GitGraphDb, effective_config: &MermaidConfig) -> Result<()> {
+        match &self.operation {
+            GitGraphOperation::Commit(commit) => {
+                db.commit(commit.clone(), effective_config);
+                Ok(())
+            }
+            GitGraphOperation::Branch(branch) => db.branch(branch.clone(), effective_config),
+            GitGraphOperation::Checkout(name) => db.checkout(name, effective_config),
+            GitGraphOperation::Merge(merge) => db.merge(merge.clone(), effective_config),
+            GitGraphOperation::CherryPick(cherry_pick) => {
+                db.cherry_pick(cherry_pick.clone(), effective_config)
+            }
+        }
+    }
+
+    fn push_editor_facts(&self, facts: &mut EditorSemanticFacts) {
+        for fact in &self.editor_facts {
+            fact.push_to(facts);
+        }
+    }
+}
+
+impl GitGraphEditorFact {
+    fn push_to(&self, facts: &mut EditorSemanticFacts) {
+        match self.role {
+            GitGraphEditorFactRole::Entity => {
+                push_gitgraph_entity_fact(facts, self.value.clone(), self.detail, self.kind)
+            }
+            GitGraphEditorFactRole::Payload => {
+                push_gitgraph_payload_fact(facts, self.value.clone(), self.detail, self.kind)
+            }
+        }
+    }
+}
+
+fn gitgraph_editor_fact(
+    value: SpannedValue,
+    detail: &'static str,
+    kind: EditorSemanticKind,
+    role: GitGraphEditorFactRole,
+) -> GitGraphEditorFact {
+    GitGraphEditorFact {
+        value,
+        detail,
+        kind,
+        role,
+    }
+}
+
+fn command_parse_result<T>(
+    result: Result<T>,
+    editor_facts: &[GitGraphEditorFact],
+    recovery_span: SourceSpan,
+) -> std::result::Result<T, GitGraphCommandParseError> {
+    result.map_err(|error| GitGraphCommandParseError {
+        error: Box::new(error),
+        editor_facts: editor_facts.to_vec(),
+        recovery_span,
+    })
+}
+
+fn unexpected_gitgraph_argument(
+    command: &str,
+    parser: &LineParser<'_>,
+    editor_facts: Vec<GitGraphEditorFact>,
+    statement_span: SourceSpan,
+) -> GitGraphCommandParseError {
+    GitGraphCommandParseError {
+        error: Box::new(Error::diagram_parse_exact(
+            "gitGraph".to_string(),
+            format!("unexpected {command} argument: {}", parser.remaining()),
+            statement_span,
+        )),
+        editor_facts,
+        recovery_span: statement_span,
+    }
+}
+
+fn parse_git_graph_command(
+    raw: &str,
+    line_start: usize,
+) -> std::result::Result<Option<GitGraphCommand>, GitGraphCommandParseError> {
+    let line = raw.trim_end_matches('\r');
+    let visible = strip_langium_inline_comment(line);
+    let trimmed = visible.trim();
+    if trimmed.is_empty() || trimmed.starts_with("%%") {
+        return Ok(None);
+    }
+
+    let trimmed_start = visible.len().saturating_sub(visible.trim_start().len());
+    let statement_span = SourceSpan::new(
+        line_start + trimmed_start,
+        line_start + trimmed_start + trimmed.len(),
+    );
+    let mut parser = LineParser::new(trimmed).with_base(line_start + trimmed_start);
+    let Some(command) = parser.parse_word_until_ws_or_colon_spanned() else {
+        return Ok(None);
+    };
+    let mut editor_facts = Vec::new();
+
+    let operation = match command.text.as_str() {
+        "commit" => {
+            parser.skip_ws();
+            let mut commit = CommitDb {
+                id: String::new(),
+                msg: String::new(),
+                commit_type: COMMIT_TYPE_NORMAL,
+                tags: Vec::new(),
+            };
+            loop {
+                parser.skip_ws();
+                if parser.is_eof() {
+                    break;
+                }
+                if matches!(parser.peek_char(), Some('"' | '\'')) {
+                    let message = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    commit.msg = message.text.clone();
+                    editor_facts.push(gitgraph_editor_fact(
+                        message,
+                        "gitGraph commit message",
+                        EditorSemanticKind::String,
+                        GitGraphEditorFactRole::Payload,
+                    ));
+                    continue;
+                }
+                if parser.consume_literal("id:") {
+                    let value = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    commit.id = value.text.clone();
+                    editor_facts.push(gitgraph_editor_fact(
+                        value,
+                        "gitGraph commit id",
+                        EditorSemanticKind::Object,
+                        GitGraphEditorFactRole::Entity,
+                    ));
+                    continue;
+                }
+                if parser.consume_literal("msg:") {
+                    let value = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    commit.msg = value.text.clone();
+                    editor_facts.push(gitgraph_editor_fact(
+                        value,
+                        "gitGraph commit message",
+                        EditorSemanticKind::String,
+                        GitGraphEditorFactRole::Payload,
+                    ));
+                    continue;
+                }
+                if parser.consume_literal("tag:") {
+                    let value = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    commit.tags.push(value.text.clone());
+                    editor_facts.push(gitgraph_editor_fact(
+                        value,
+                        "gitGraph commit tag",
+                        EditorSemanticKind::String,
+                        GitGraphEditorFactRole::Payload,
+                    ));
+                    continue;
+                }
+                if parser.consume_literal("type:") {
+                    let value = command_parse_result(
+                        parser.parse_bare_token_spanned("commit type"),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    editor_facts.push(gitgraph_editor_fact(
+                        value.clone(),
+                        "gitGraph commit type",
+                        EditorSemanticKind::String,
+                        GitGraphEditorFactRole::Payload,
+                    ));
+                    commit.commit_type = command_parse_result(
+                        parse_commit_type(&value.text),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    continue;
+                }
+                return Err(unexpected_gitgraph_argument(
+                    "commit",
+                    &parser,
+                    editor_facts,
+                    statement_span,
+                ));
+            }
+            GitGraphOperation::Commit(commit)
+        }
+        "branch" => {
+            let name = command_parse_result(
+                parser.parse_name_token_spanned(),
+                &editor_facts,
+                statement_span,
+            )?;
+            editor_facts.push(gitgraph_editor_fact(
+                name.clone(),
+                "gitGraph branch",
+                EditorSemanticKind::Variable,
+                GitGraphEditorFactRole::Entity,
+            ));
+            let mut order = 0i64;
+            parser.skip_ws();
+            if !parser.is_eof() {
+                if !parser.consume_literal("order:") {
+                    return Err(unexpected_gitgraph_argument(
+                        "branch",
+                        &parser,
+                        editor_facts,
+                        statement_span,
+                    ));
+                }
+                let value = command_parse_result(
+                    parser.parse_bare_token_spanned("branch order"),
+                    &editor_facts,
+                    statement_span,
+                )?;
+                editor_facts.push(gitgraph_editor_fact(
+                    value.clone(),
+                    "gitGraph branch order",
+                    EditorSemanticKind::String,
+                    GitGraphEditorFactRole::Payload,
+                ));
+                order = command_parse_result(
+                    parse_gitgraph_int(&value),
+                    &editor_facts,
+                    statement_span,
+                )?;
+            }
+            command_parse_result(parser.expect_eof("branch"), &editor_facts, statement_span)?;
+            GitGraphOperation::Branch(BranchDb {
+                name: name.text,
+                order,
+            })
+        }
+        "checkout" | "switch" => {
+            let name = command_parse_result(
+                parser.parse_name_token_spanned(),
+                &editor_facts,
+                statement_span,
+            )?;
+            editor_facts.push(gitgraph_editor_fact(
+                name.clone(),
+                "gitGraph branch",
+                EditorSemanticKind::Variable,
+                GitGraphEditorFactRole::Entity,
+            ));
+            command_parse_result(
+                parser.expect_eof(command.text.as_str()),
+                &editor_facts,
+                statement_span,
+            )?;
+            GitGraphOperation::Checkout(name.text)
+        }
+        "merge" => {
+            let branch = command_parse_result(
+                parser.parse_name_token_spanned(),
+                &editor_facts,
+                statement_span,
+            )?;
+            editor_facts.push(gitgraph_editor_fact(
+                branch.clone(),
+                "gitGraph merge branch",
+                EditorSemanticKind::Variable,
+                GitGraphEditorFactRole::Entity,
+            ));
+            let mut merge = MergeDb {
+                branch: branch.text,
+                id: None,
+                commit_type: None,
+                tags: Vec::new(),
+            };
+            loop {
+                parser.skip_ws();
+                if parser.is_eof() {
+                    break;
+                }
+                if parser.consume_literal("id:") {
+                    let value = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    merge.id = Some(value.text.clone());
+                    editor_facts.push(gitgraph_editor_fact(
+                        value,
+                        "gitGraph merge id",
+                        EditorSemanticKind::Object,
+                        GitGraphEditorFactRole::Entity,
+                    ));
+                    continue;
+                }
+                if parser.consume_literal("tag:") {
+                    let value = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    merge.tags.push(value.text.clone());
+                    editor_facts.push(gitgraph_editor_fact(
+                        value,
+                        "gitGraph merge tag",
+                        EditorSemanticKind::String,
+                        GitGraphEditorFactRole::Payload,
+                    ));
+                    continue;
+                }
+                if parser.consume_literal("type:") {
+                    let value = command_parse_result(
+                        parser.parse_bare_token_spanned("merge type"),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    editor_facts.push(gitgraph_editor_fact(
+                        value.clone(),
+                        "gitGraph merge type",
+                        EditorSemanticKind::String,
+                        GitGraphEditorFactRole::Payload,
+                    ));
+                    merge.commit_type = Some(command_parse_result(
+                        parse_commit_type(&value.text),
+                        &editor_facts,
+                        statement_span,
+                    )?);
+                    continue;
+                }
+                return Err(unexpected_gitgraph_argument(
+                    "merge",
+                    &parser,
+                    editor_facts,
+                    statement_span,
+                ));
+            }
+            GitGraphOperation::Merge(merge)
+        }
+        "cherry-pick" => {
+            let mut cherry_pick = CherryPickDb {
+                id: String::new(),
+                target_id: String::new(),
+                parent: String::new(),
+                tags: None,
+            };
+            loop {
+                parser.skip_ws();
+                if parser.is_eof() {
+                    break;
+                }
+                if parser.consume_literal("id:") {
+                    let value = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    cherry_pick.id = value.text.clone();
+                    editor_facts.push(gitgraph_editor_fact(
+                        value,
+                        "gitGraph cherry-pick id",
+                        EditorSemanticKind::Object,
+                        GitGraphEditorFactRole::Entity,
+                    ));
+                    continue;
+                }
+                if parser.consume_literal("parent:") {
+                    let value = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    cherry_pick.parent = value.text.clone();
+                    editor_facts.push(gitgraph_editor_fact(
+                        value,
+                        "gitGraph cherry-pick parent",
+                        EditorSemanticKind::Object,
+                        GitGraphEditorFactRole::Entity,
+                    ));
+                    continue;
+                }
+                if parser.consume_literal("tag:") {
+                    let value = command_parse_result(
+                        parser.parse_quoted_spanned(),
+                        &editor_facts,
+                        statement_span,
+                    )?;
+                    cherry_pick
+                        .tags
+                        .get_or_insert_with(Vec::new)
+                        .push(value.text.clone());
+                    editor_facts.push(gitgraph_editor_fact(
+                        value,
+                        "gitGraph cherry-pick tag",
+                        EditorSemanticKind::String,
+                        GitGraphEditorFactRole::Payload,
+                    ));
+                    continue;
+                }
+                return Err(unexpected_gitgraph_argument(
+                    "cherry-pick",
+                    &parser,
+                    editor_facts,
+                    statement_span,
+                ));
+            }
+            GitGraphOperation::CherryPick(cherry_pick)
+        }
+        _ => {
+            return Err(GitGraphCommandParseError {
+                error: Box::new(Error::diagram_parse_exact(
+                    "gitGraph".to_string(),
+                    format!("Unknown statement: {}", command.text),
+                    command.span,
+                )),
+                editor_facts,
+                recovery_span: statement_span,
+            });
+        }
+    };
+
+    Ok(Some(GitGraphCommand {
+        operation,
+        editor_facts,
+    }))
+}
+
 pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let model = parse_git_graph_model(code, meta)?;
+    let model = parse_git_graph_semantic_source(code, meta)?.model;
+    Ok(git_graph_model_into_json(model, meta))
+}
+
+pub(crate) fn parse_git_graph_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let GitGraphSemanticSource {
+        model,
+        editor_facts,
+    } = parse_git_graph_semantic_source(code, meta)?;
+    Ok((git_graph_model_into_json(model, meta), editor_facts))
+}
+
+fn git_graph_model_into_json(model: GitGraphRenderModel, meta: &ParseMetadata) -> Value {
     let warnings = legacy_warning_messages(&model.warning_facts);
     let mut out = Map::with_capacity(11);
     out.insert("type".to_string(), Value::String(model.diagram_type));
@@ -921,14 +1335,14 @@ pub fn parse_git_graph(code: &str, meta: &ParseMetadata) -> Result<Value> {
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
-    Ok(Value::Object(out))
+    Value::Object(out)
 }
 
 pub fn parse_git_graph_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<GitGraphRenderModel> {
-    parse_git_graph_model(code, meta)
+    Ok(parse_git_graph_semantic_source(code, meta)?.model)
 }
 
 fn push_gitgraph_entity_fact(
@@ -967,7 +1381,14 @@ fn push_gitgraph_payload_fact(
     ));
 }
 
-pub fn parse_git_graph_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+pub fn parse_git_graph_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    match parse_git_graph_semantic_source(code, meta) {
+        Ok(source) => source.editor_facts,
+        Err(_) => scan_git_graph_editor_facts(code),
+    }
+}
+
+fn scan_git_graph_editor_facts(code: &str) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let Ok((_direction, mut offset)) = parse_gitgraph_header(code) else {
         return facts;
@@ -986,202 +1407,37 @@ pub fn parse_git_graph_editor_facts(code: &str, _meta: &ParseMetadata) -> Editor
         let line_start = offset;
         let (line, next_offset) = physical_line(code, offset);
         offset = next_offset;
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let mut lp = LineParser::new(line).with_base(line_start);
-        let Some(cmd) = lp.parse_word_until_ws_or_colon_spanned() else {
-            continue;
-        };
-
-        match cmd.text.as_str() {
-            "commit" => {
-                if let Some(msg) = lp.parse_quoted_spanned().ok() {
-                    push_gitgraph_payload_fact(
-                        &mut facts,
-                        msg,
-                        "gitGraph commit message",
-                        EditorSemanticKind::String,
-                    );
-                    continue;
-                }
-
-                let kv = match lp.parse_kv_pairs_spanned() {
-                    Ok(kv) => kv,
-                    Err(_) => {
-                        facts.mark_recovered();
-                        continue;
-                    }
+        match parse_git_graph_command(line, line_start) {
+            Ok(Some(command)) => command.push_editor_facts(&mut facts),
+            Ok(None) => {}
+            Err(error) => {
+                let (message, span) = match error.error.as_ref() {
+                    Error::DiagramParse { diagnostic, .. } => (
+                        diagnostic.message().to_string(),
+                        diagnostic.span().or(Some(error.recovery_span)),
+                    ),
+                    other => (other.to_string(), Some(error.recovery_span)),
                 };
-                for pair in kv {
-                    match pair.key.as_str() {
-                        "id" => push_gitgraph_entity_fact(
-                            &mut facts,
-                            SpannedValue {
-                                text: pair.value,
-                                span: pair.value_span,
-                            },
-                            "gitGraph commit id",
-                            EditorSemanticKind::Object,
-                        ),
-                        "msg" => push_gitgraph_payload_fact(
-                            &mut facts,
-                            SpannedValue {
-                                text: pair.value,
-                                span: pair.value_span,
-                            },
-                            "gitGraph commit message",
-                            EditorSemanticKind::String,
-                        ),
-                        "tag" => push_gitgraph_payload_fact(
-                            &mut facts,
-                            SpannedValue {
-                                text: pair.value,
-                                span: pair.value_span,
-                            },
-                            "gitGraph commit tag",
-                            EditorSemanticKind::String,
-                        ),
-                        "type" => push_gitgraph_payload_fact(
-                            &mut facts,
-                            SpannedValue {
-                                text: pair.value,
-                                span: pair.value_span,
-                            },
-                            "gitGraph commit type",
-                            EditorSemanticKind::String,
-                        ),
-                        _ => {}
-                    }
+                for fact in error.editor_facts {
+                    fact.push_to(&mut facts);
                 }
+                facts.mark_recovered_from_parse_error(message, span);
             }
-            "branch" => {
-                if let Ok(name) = lp.parse_name_token_spanned() {
-                    push_gitgraph_entity_fact(
-                        &mut facts,
-                        name,
-                        "gitGraph branch",
-                        EditorSemanticKind::Variable,
-                    );
-                }
-                if let Ok(kv) = lp.parse_kv_pairs_spanned() {
-                    for pair in kv {
-                        if pair.key == "order" {
-                            push_gitgraph_payload_fact(
-                                &mut facts,
-                                SpannedValue {
-                                    text: pair.value,
-                                    span: pair.value_span,
-                                },
-                                "gitGraph branch order",
-                                EditorSemanticKind::String,
-                            );
-                        }
-                    }
-                }
-            }
-            "checkout" | "switch" => {
-                if let Ok(name) = lp.parse_name_token_spanned() {
-                    push_gitgraph_entity_fact(
-                        &mut facts,
-                        name,
-                        "gitGraph branch",
-                        EditorSemanticKind::Variable,
-                    );
-                }
-            }
-            "merge" => {
-                if let Ok(branch) = lp.parse_name_token_spanned() {
-                    push_gitgraph_entity_fact(
-                        &mut facts,
-                        branch,
-                        "gitGraph merge branch",
-                        EditorSemanticKind::Variable,
-                    );
-                }
-                if let Ok(kv) = lp.parse_kv_pairs_spanned() {
-                    for pair in kv {
-                        match pair.key.as_str() {
-                            "id" => push_gitgraph_entity_fact(
-                                &mut facts,
-                                SpannedValue {
-                                    text: pair.value,
-                                    span: pair.value_span,
-                                },
-                                "gitGraph merge id",
-                                EditorSemanticKind::Object,
-                            ),
-                            "tag" => push_gitgraph_payload_fact(
-                                &mut facts,
-                                SpannedValue {
-                                    text: pair.value,
-                                    span: pair.value_span,
-                                },
-                                "gitGraph merge tag",
-                                EditorSemanticKind::String,
-                            ),
-                            "type" => push_gitgraph_payload_fact(
-                                &mut facts,
-                                SpannedValue {
-                                    text: pair.value,
-                                    span: pair.value_span,
-                                },
-                                "gitGraph merge type",
-                                EditorSemanticKind::String,
-                            ),
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            "cherry-pick" | "cherryPick" => {
-                if let Ok(kv) = lp.parse_kv_pairs_spanned() {
-                    for pair in kv {
-                        match pair.key.as_str() {
-                            "id" => push_gitgraph_entity_fact(
-                                &mut facts,
-                                SpannedValue {
-                                    text: pair.value,
-                                    span: pair.value_span,
-                                },
-                                "gitGraph cherry-pick id",
-                                EditorSemanticKind::Object,
-                            ),
-                            "parent" => push_gitgraph_entity_fact(
-                                &mut facts,
-                                SpannedValue {
-                                    text: pair.value,
-                                    span: pair.value_span,
-                                },
-                                "gitGraph cherry-pick parent",
-                                EditorSemanticKind::Object,
-                            ),
-                            "tag" => push_gitgraph_payload_fact(
-                                &mut facts,
-                                SpannedValue {
-                                    text: pair.value,
-                                    span: pair.value_span,
-                                },
-                                "gitGraph cherry-pick tag",
-                                EditorSemanticKind::String,
-                            ),
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            _ => {}
         }
     }
 
     facts
 }
 
-fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRenderModel> {
+fn parse_git_graph_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<GitGraphSemanticSource> {
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("gitGraph");
+
     let (direction, body_start) = parse_gitgraph_header(code)?;
-    let (body_lines, common) = collect_gitgraph_body(code, body_start, meta)?;
+    let (commands, common, editor_facts) = collect_gitgraph_commands(code, body_start, meta)?;
     let common = LangiumCommonDbFields::from_facts(&common);
 
     let effective_config = &meta.effective_config;
@@ -1196,7 +1452,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
         if let Some(d) = direction.as_deref() {
             warmup.set_direction(d);
         }
-        parse_git_graph_body(body_lines.iter().copied(), &mut warmup, effective_config)?;
+        apply_git_graph_commands(&commands, &mut warmup, effective_config)?;
         warmup.prng
     } else {
         None
@@ -1208,7 +1464,7 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
     if let Some(d) = direction {
         db.set_direction(&d);
     }
-    parse_git_graph_body(body_lines.iter().copied(), &mut db, effective_config)?;
+    apply_git_graph_commands(&commands, &mut db, effective_config)?;
 
     let commits = db
         .commits_in_seq_order()
@@ -1216,28 +1472,31 @@ fn parse_git_graph_model(code: &str, meta: &ParseMetadata) -> Result<GitGraphRen
         .map(commit_to_render_model)
         .collect::<Vec<_>>();
 
-    Ok(GitGraphRenderModel {
-        diagram_type: meta.diagram_type.clone(),
-        commits,
-        branches: db.branches_in_order(),
-        current_branch: db.curr_branch,
-        direction: db.direction,
-        title: if db.title.is_empty() {
-            None
-        } else {
-            Some(db.title)
+    Ok(GitGraphSemanticSource {
+        model: GitGraphRenderModel {
+            diagram_type: meta.diagram_type.clone(),
+            commits,
+            branches: db.branches_in_order(),
+            current_branch: db.curr_branch,
+            direction: db.direction,
+            title: if db.title.is_empty() {
+                None
+            } else {
+                Some(db.title)
+            },
+            acc_title: if db.acc_title.is_empty() {
+                None
+            } else {
+                Some(db.acc_title)
+            },
+            acc_descr: if db.acc_descr.is_empty() {
+                None
+            } else {
+                Some(db.acc_descr)
+            },
+            warning_facts: db.warning_facts.clone(),
         },
-        acc_title: if db.acc_title.is_empty() {
-            None
-        } else {
-            Some(db.acc_title)
-        },
-        acc_descr: if db.acc_descr.is_empty() {
-            None
-        } else {
-            Some(db.acc_descr)
-        },
-        warning_facts: db.warning_facts.clone(),
+        editor_facts,
     })
 }
 
@@ -1311,13 +1570,18 @@ fn parse_gitgraph_header(code: &str) -> Result<(Option<String>, usize)> {
     ))
 }
 
-fn collect_gitgraph_body<'a>(
-    code: &'a str,
+fn collect_gitgraph_commands(
+    code: &str,
     mut offset: usize,
     meta: &ParseMetadata,
-) -> Result<(Vec<(&'a str, usize)>, LangiumCommonFacts)> {
-    let mut lines = Vec::new();
+) -> Result<(
+    Vec<GitGraphCommand>,
+    LangiumCommonFacts,
+    EditorSemanticFacts,
+)> {
+    let mut commands = Vec::new();
     let mut common = LangiumCommonFacts::default();
+    let mut editor_facts = EditorSemanticFacts::new();
     while offset < code.len() {
         if let Some(parsed) = parse_langium_common(code, offset) {
             if let Some(diagnostic) = parsed.diagnostic {
@@ -1327,16 +1591,24 @@ fn collect_gitgraph_body<'a>(
                     diagnostic.span.start,
                 ));
             }
+            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "gitGraph");
             common.push(parsed.fact);
             offset += parsed.consumed;
             continue;
         }
         let line_start = offset;
         let (line, next_offset) = physical_line(code, offset);
-        lines.push((line, line_start));
         offset = next_offset;
+        match parse_git_graph_command(line, line_start) {
+            Ok(Some(command)) => {
+                command.push_editor_facts(&mut editor_facts);
+                commands.push(command);
+            }
+            Ok(None) => {}
+            Err(error) => return Err(*error.error),
+        }
     }
-    Ok((lines, common))
+    Ok((commands, common, editor_facts))
 }
 
 fn apply_gitgraph_common_fields(db: &mut GitGraphDb, common: &LangiumCommonDbFields) {
@@ -1376,127 +1648,13 @@ fn new_gitgraph_db() -> GitGraphDb {
     }
 }
 
-fn parse_git_graph_body<'a, I>(
-    lines: I,
+fn apply_git_graph_commands(
+    commands: &[GitGraphCommand],
     db: &mut GitGraphDb,
     effective_config: &MermaidConfig,
-) -> Result<()>
-where
-    I: IntoIterator<Item = (&'a str, usize)>,
-{
-    for (raw, line_start) in lines {
-        let line = raw.trim_end_matches('\r');
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if trimmed.starts_with("%%") {
-            continue;
-        }
-
-        let trimmed_start = line.len().saturating_sub(line.trim_start().len());
-        let mut lp = LineParser::new(trimmed).with_base(line_start + trimmed_start);
-        let Some(cmd) = lp.parse_word_until_ws_or_colon_spanned() else {
-            continue;
-        };
-
-        match cmd.text.as_str() {
-            "commit" => {
-                lp.skip_ws();
-                let mut commit_db = CommitDb {
-                    id: String::new(),
-                    msg: String::new(),
-                    commit_type: COMMIT_TYPE_NORMAL,
-                    tags: Vec::new(),
-                };
-                if lp.peek_char() == Some('"') {
-                    commit_db.msg = lp.parse_quoted()?;
-                } else {
-                    let kv = lp.parse_kv_pairs()?;
-                    for (k, v) in kv {
-                        match k.as_str() {
-                            "id" => commit_db.id = v,
-                            "msg" => commit_db.msg = v,
-                            "tag" => commit_db.tags.push(v),
-                            "type" => commit_db.commit_type = parse_commit_type(&v)?,
-                            other => {
-                                return Err(Error::diagram_parse_fallback(
-                                    "gitGraph".to_string(),
-                                    format!("unexpected commit field: {other}"),
-                                ));
-                            }
-                        }
-                    }
-                }
-                db.commit(commit_db, effective_config);
-            }
-            "branch" => {
-                let name = lp.parse_name_token()?;
-                let kv = lp.parse_kv_pairs()?;
-                let mut order = 0i64;
-                for (k, v) in kv {
-                    if k == "order" {
-                        order = v.trim().parse::<i64>().map_err(|e| {
-                            Error::diagram_parse_fallback("gitGraph".to_string(), e.to_string())
-                        })?;
-                    }
-                }
-                db.branch(BranchDb { name, order }, effective_config)?;
-            }
-            "checkout" | "switch" => {
-                let name = lp.parse_name_token()?;
-                db.checkout(&name, effective_config)?;
-            }
-            "merge" => {
-                let branch = lp.parse_name_token()?;
-                let kv = lp.parse_kv_pairs()?;
-                let mut merge_db = MergeDb {
-                    branch,
-                    id: None,
-                    commit_type: None,
-                    tags: Vec::new(),
-                };
-                for (k, v) in kv {
-                    match k.as_str() {
-                        "id" => merge_db.id = Some(v),
-                        "tag" => merge_db.tags.push(v),
-                        "type" => merge_db.commit_type = Some(parse_commit_type(&v)?),
-                        _ => {}
-                    }
-                }
-                db.merge(merge_db, effective_config)?;
-            }
-            "cherry-pick" | "cherryPick" => {
-                let kv = lp.parse_kv_pairs()?;
-                let mut id = String::new();
-                let mut parent = String::new();
-                let mut tags: Option<Vec<String>> = None;
-                for (k, v) in kv {
-                    match k.as_str() {
-                        "id" => id = v,
-                        "parent" => parent = v,
-                        "tag" => tags.get_or_insert_with(Vec::new).push(v),
-                        _ => {}
-                    }
-                }
-                db.cherry_pick(
-                    CherryPickDb {
-                        id,
-                        target_id: String::new(),
-                        parent,
-                        tags,
-                    },
-                    effective_config,
-                )?;
-            }
-            _ => {
-                return Err(Error::diagram_parse_exact(
-                    "gitGraph".to_string(),
-                    format!("Unknown statement: {}", cmd.text),
-                    cmd.span,
-                ));
-            }
-        }
+) -> Result<()> {
+    for command in commands {
+        command.apply(db, effective_config)?;
     }
 
     Ok(())
@@ -1778,10 +1936,104 @@ merge feature id:"M1"
     }
 
     #[test]
+    fn gitgraph_commit_body_preserves_mixed_order_fields() {
+        let model =
+            parse("gitGraph:\ncommit \"mixed message\" id:\"C1\" tag:\"v1\" type:REVERSE\n");
+        let commit = &model["commits"][0];
+
+        assert_eq!(commit["id"], "C1");
+        assert_eq!(commit["message"], "mixed message");
+        assert_eq!(commit["tags"], json!(["v1"]));
+        assert_eq!(commit["type"], COMMIT_TYPE_REVERSE);
+    }
+
+    #[test]
+    fn gitgraph_uses_langium_string_escapes_and_quote_aware_inline_comments() {
+        let model = parse(concat!(
+            "gitGraph\n",
+            "commit id:'C1' msg:\"line\\n100%% complete\" tag:'v\\t1' %% outside comment\n",
+        ));
+        let commit = &model["commits"][0];
+
+        assert_eq!(commit["id"], "C1");
+        assert_eq!(commit["message"], "linen100%% complete");
+        assert_eq!(commit["tags"], json!(["vt1"]));
+    }
+
+    #[test]
+    fn gitgraph_rejects_tokens_outside_the_langium_command_grammar() {
+        let invalid_inputs = [
+            "gitGraph\ncommit id:C1\n",
+            "gitGraph\ncommit type:\"NORMAL\"\n",
+            "gitGraph\ncommit \"message\" trailing\n",
+            "gitGraph\nbranch feature order:\"2\"\n",
+            "gitGraph\nbranch feature unknown:\"value\"\n",
+            "gitGraph\nbranch feature\ncheckout feature trailing\n",
+            concat!(
+                "gitGraph\n",
+                "commit id:\"C0\"\n",
+                "branch feature\n",
+                "commit id:\"F1\"\n",
+                "checkout main\n",
+                "merge feature unknown:\"value\"\n",
+            ),
+            "gitGraph\ncherryPick id:\"C1\"\n",
+        ];
+
+        for input in invalid_inputs {
+            let _ = parse_err(input);
+        }
+    }
+
+    #[test]
+    fn gitgraph_recovery_reports_parser_diagnostic_with_exact_crlf_span() {
+        let text = concat!(
+            "gitGraph\r\n",
+            "commit id:\"C1\"\r\n",
+            "  checkout main trailing %% hidden\r\n",
+            "commit id:\"C2\"\r\n",
+        );
+        let facts = parse_git_graph_editor_facts(
+            text,
+            &ParseMetadata {
+                diagram_type: "gitGraph".to_string(),
+                config: MermaidConfig::default(),
+                effective_config: MermaidConfig::default(),
+                title: None,
+            },
+        );
+        let invalid = "checkout main trailing";
+        let start = text.find(invalid).unwrap();
+
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "C1"));
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "C2"));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(SourceSpan::new(start, start + invalid.len()))
+                && diagnostic.message.contains("unexpected checkout argument")
+        }));
+    }
+
+    #[test]
+    fn cherry_pick_filters_tags_that_sanitize_to_empty() {
+        let model = parse(concat!(
+            "gitGraph\n",
+            "commit id:\"ZERO\"\n",
+            "branch feature\n",
+            "commit id:\"A\"\n",
+            "checkout main\n",
+            "cherry-pick id:\"A\" tag:\"<script>alert(1)</script>\" tag:\"kept\"\n",
+        ));
+        let commits = model["commits"].as_array().unwrap();
+
+        assert_eq!(commits.last().unwrap()["tags"], json!(["kept"]));
+    }
+
+    #[test]
     fn commit_errors_on_unknown_fields() {
         let err =
             parse_err("gitGraph\ncommit id:\"2\" msg:\"Malformed commit\" oops:\"ignored\"\n");
-        assert_eq!(err, "unexpected commit field: oops");
+        assert_eq!(err, "unexpected commit argument: oops:\"ignored\"");
     }
 
     #[test]

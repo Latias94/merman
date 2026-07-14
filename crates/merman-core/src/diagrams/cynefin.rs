@@ -6,8 +6,9 @@ use crate::{
 use crate::{
     common_db::LangiumCommonDbFields,
     diagrams::langium_common::{
-        LangiumCommonFacts, parse_langium_common, push_langium_common_editor_fact,
-        push_langium_common_recovery,
+        LangiumCommonFacts, parse_langium_common, parse_langium_string,
+        push_langium_common_editor_fact, push_langium_common_recovery,
+        strip_langium_inline_comment,
     },
 };
 use serde_json::{Value, json};
@@ -80,30 +81,58 @@ enum CynefinLinePart {
     Transition(TransitionParts),
 }
 
+struct CynefinSemanticSource {
+    model: CynefinDiagramModel,
+    editor_facts: EditorSemanticFacts,
+}
+
 pub fn parse_cynefin(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let mut model = parse_cynefin_model(code, meta)?;
+    let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(&meta.effective_config);
 
-    Ok(json!({
+    Ok(cynefin_model_into_json(model, meta))
+}
+
+pub(crate) fn parse_cynefin_json_and_editor_facts(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(Value, EditorSemanticFacts)> {
+    let CynefinSemanticSource {
+        mut model,
+        editor_facts,
+    } = parse_cynefin_semantic_source(code, meta)?;
+    model.sanitize_common_db_fields(&meta.effective_config);
+    Ok((cynefin_model_into_json(model, meta), editor_facts))
+}
+
+fn cynefin_model_into_json(model: CynefinDiagramModel, meta: &ParseMetadata) -> Value {
+    json!({
         "type": meta.diagram_type,
         "title": model.title,
         "accTitle": model.acc_title,
         "accDescr": model.acc_descr,
         "domains": model.domains,
         "transitions": model.transitions,
-    }))
+    })
 }
 
 pub fn parse_cynefin_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<CynefinDiagramRenderModel> {
-    let mut model = parse_cynefin_model(code, meta)?;
+    let mut model = parse_cynefin_semantic_source(code, meta)?.model;
     model.sanitize_common_db_fields(&meta.effective_config);
     Ok(model)
 }
 
-pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+pub fn parse_cynefin_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
+    match parse_cynefin_semantic_source(code, meta) {
+        Ok(source) => source.editor_facts,
+        Err(_) => scan_cynefin_editor_facts(code),
+    }
+}
+
+fn scan_cynefin_editor_facts(code: &str) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let mut offset = 0usize;
     let mut saw_header = false;
@@ -122,9 +151,9 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
 
         let (body, body_start) = if !saw_header {
             let Some((body, body_offset)) = split_header(stripped) else {
-                facts.mark_recovered_with_diagnostic(
+                facts.mark_recovered_from_parse_error(
                     "expected cynefin-beta header",
-                    Some(SourceSpan::new(line_start, line_start + trimmed.len())),
+                    Some(trimmed_source_span(stripped, line_start)),
                 );
                 return facts;
             };
@@ -152,9 +181,9 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
         let parts = match parse_cynefin_line_parts(body, body_start) {
             Ok(parts) => parts,
             Err(err) => {
-                facts.mark_recovered_with_diagnostic(
+                facts.mark_recovered_from_parse_error(
                     format!("cynefin parser recovered after parse error: {err}"),
-                    Some(SourceSpan::new(line_start, line_start + trimmed.len())),
+                    Some(trimmed_source_span(body, body_start)),
                 );
                 return facts;
             }
@@ -174,9 +203,9 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
                             EditorSemanticKind::String,
                         );
                     } else {
-                        facts.mark_recovered_with_diagnostic(
+                        facts.mark_recovered_from_parse_error(
                             "cynefin item must follow a domain",
-                            Some(SourceSpan::new(line_start, line_start + trimmed.len())),
+                            Some(item.span),
                         );
                         return facts;
                     }
@@ -216,7 +245,7 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
     }
 
     if !saw_header {
-        facts.mark_recovered_with_diagnostic(
+        facts.mark_recovered_from_parse_error(
             "expected cynefin-beta header",
             Some(SourceSpan::new(0, 0)),
         );
@@ -225,8 +254,21 @@ pub fn parse_cynefin_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSe
     facts
 }
 
-fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagramModel> {
+fn trimmed_source_span(source: &str, source_start: usize) -> SourceSpan {
+    let trimmed = source.trim();
+    let start = source_start + source.find(trimmed).unwrap_or_default();
+    SourceSpan::new(start, start + trimmed.len())
+}
+
+fn parse_cynefin_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<CynefinSemanticSource> {
+    #[cfg(test)]
+    crate::diagrams::langium_common::record_family_syntax_construction("cynefin");
+
     let mut model = CynefinDiagramModel::default();
+    let mut editor_facts = EditorSemanticFacts::new();
     let mut saw_header = false;
     let mut current_domain: Option<usize> = None;
     let mut offset = 0usize;
@@ -268,6 +310,7 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
             }
             offset = body_start + parsed.consumed;
             current_domain = None;
+            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "cynefin");
             common.push(parsed.fact);
             continue;
         }
@@ -275,19 +318,52 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
         for part in parse_cynefin_line_parts(body, body_start)? {
             match part {
                 CynefinLinePart::Domain(domain) => {
-                    current_domain = Some(start_domain(&mut model.domains, domain.text));
+                    current_domain = Some(start_domain(&mut model.domains, domain.text.clone()));
+                    push_domain_fact(&mut editor_facts, domain, "cynefin domain");
                 }
                 CynefinLinePart::Item(item) => {
                     let Some(domain_idx) = current_domain else {
                         return Err(parse_error(meta, "cynefin item must follow a domain"));
                     };
-                    model.domains[domain_idx]
-                        .items
-                        .push(CynefinItemModel { label: item.text });
+                    model.domains[domain_idx].items.push(CynefinItemModel {
+                        label: item.text.clone(),
+                    });
+                    push_payload_fact(
+                        &mut editor_facts,
+                        item,
+                        "cynefin domain item",
+                        EditorSemanticKind::String,
+                    );
                 }
                 CynefinLinePart::Transition(transition) => {
                     current_domain = None;
-                    if transition.from.text != transition.to.text {
+                    push_domain_fact(
+                        &mut editor_facts,
+                        transition.from.clone(),
+                        "cynefin transition source",
+                    );
+                    push_domain_fact(
+                        &mut editor_facts,
+                        transition.to.clone(),
+                        "cynefin transition target",
+                    );
+                    if let Some(label) = transition.label.clone() {
+                        push_payload_fact(
+                            &mut editor_facts,
+                            label,
+                            "cynefin transition label",
+                            EditorSemanticKind::String,
+                        );
+                    }
+                    if transition.from.text == transition.to.text {
+                        editor_facts.push_diagnostic(
+                            format!(
+                                "cynefin self-loop transition on domain \"{}\" is skipped",
+                                transition.from.text
+                            ),
+                            Some(transition.from.span),
+                        );
+                    } else {
                         model.transitions.push(CynefinTransitionModel {
                             from: transition.from.text,
                             to: transition.to.text,
@@ -311,7 +387,10 @@ fn parse_cynefin_model(code: &str, meta: &ParseMetadata) -> Result<CynefinDiagra
     model.acc_title = common.acc_title;
     model.acc_descr = common.acc_descr;
 
-    Ok(model)
+    Ok(CynefinSemanticSource {
+        model,
+        editor_facts,
+    })
 }
 
 fn split_header(line: &str) -> Option<(&str, usize)> {
@@ -529,72 +608,18 @@ impl<'a> CynefinCursor<'a> {
 
     fn take_quoted_string(&mut self) -> Option<SpannedText> {
         let start = self.line_start + self.pos;
-        let rest = self.remaining();
-        let mut chars = rest.char_indices();
-        let (_, quote) = chars.next()?;
-        if !matches!(quote, '"' | '\'') {
-            return None;
-        }
-        let mut text = String::new();
-        let mut escaped = false;
-        for (idx, ch) in chars {
-            if escaped {
-                text.push(match ch {
-                    'b' => '\u{0008}',
-                    'f' => '\u{000c}',
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    'v' => '\u{000b}',
-                    '0' => '\0',
-                    _ => ch,
-                });
-                escaped = false;
-                continue;
-            }
-            if ch == '\\' {
-                escaped = true;
-                continue;
-            }
-            if ch == quote {
-                let consumed = idx + quote.len_utf8();
-                self.pos += consumed;
-                return Some(SpannedText {
-                    text,
-                    span: SourceSpan::new(start, start + consumed),
-                    selection: SourceSpan::new(start + quote.len_utf8(), start + idx),
-                });
-            }
-            text.push(ch);
-        }
-        None
+        let parsed = parse_langium_string(self.remaining(), start)?;
+        self.pos += parsed.consumed;
+        Some(SpannedText {
+            text: parsed.value,
+            span: parsed.raw_span,
+            selection: parsed.value_span,
+        })
     }
 }
 
 fn strip_inline_comment_aware(line: &str) -> &str {
-    let mut in_single = false;
-    let mut in_double = false;
-    let mut escaped = false;
-    let mut iter = line.char_indices().peekable();
-    while let Some((idx, ch)) = iter.next() {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        match ch {
-            '\\' if in_single || in_double => escaped = true,
-            '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single => in_double = !in_double,
-            '%' if !in_single
-                && !in_double
-                && iter.peek().is_some_and(|(_, next)| *next == '%') =>
-            {
-                return &line[..idx];
-            }
-            _ => {}
-        }
-    }
-    line
+    strip_langium_inline_comment(line)
 }
 
 fn parse_error(meta: &ParseMetadata, message: impl Into<String>) -> Error {
@@ -626,5 +651,31 @@ mod tests {
         assert!(cursor.is_eof());
         assert_eq!(value.text, "Probe \"quoted\" value");
         assert_eq!(value.selection, SourceSpan::new(13, 35));
+    }
+
+    #[test]
+    fn cynefin_recovery_uses_exact_trimmed_crlf_spans() {
+        for (source, invalid) in [
+            ("  invalid header %% hidden\r\n", "invalid header"),
+            (
+                "cynefin-beta\r\n  invalid body %% hidden\r\n",
+                "invalid body",
+            ),
+            ("cynefin-beta\r\n  \"orphan\" %% hidden\r\n", "\"orphan\""),
+        ] {
+            let facts = crate::Engine::new()
+                .parse_editor_semantic_facts_with_type_sync(
+                    "cynefin",
+                    source,
+                    crate::ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let start = source.find(invalid).unwrap();
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                    && diagnostic.span == Some(SourceSpan::new(start, start + invalid.len()))
+            }));
+        }
     }
 }
