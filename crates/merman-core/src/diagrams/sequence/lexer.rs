@@ -1,3 +1,4 @@
+use crate::SourceSpan;
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
@@ -65,11 +66,12 @@ pub(crate) enum Tok {
 #[error("{message}")]
 pub(crate) struct LexError {
     pub message: String,
+    pub span: SourceSpan,
 }
 
 impl crate::error::ParseErrorSourceSpan for LexError {
     fn source_span(&self) -> Option<crate::SourceSpan> {
-        None
+        Some(self.span)
     }
 }
 
@@ -605,12 +607,14 @@ impl<'input> Lexer<'input> {
             return Some(Err(LexError {
                 message: "Config objects must be attached to the actor id without whitespace"
                     .to_string(),
+                span: SourceSpan::new(start, (start + 2).min(self.input.len())),
             }));
         }
         self.pos += 2;
         let Some(rel_end) = self.input[self.pos..].find('}') else {
             return Some(Err(LexError {
                 message: "Unterminated config object; missing '}'".to_string(),
+                span: SourceSpan::new(start, self.input.len()),
             }));
         };
         let end = self.pos + rel_end;
@@ -888,6 +892,7 @@ impl<'input> Iterator for Lexer<'input> {
             let _ = self.bump();
             return Some(Err(LexError {
                 message: format!("Unexpected character at {start}"),
+                span: SourceSpan::new(start, self.pos),
             }));
         }
     }

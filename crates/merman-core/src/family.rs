@@ -1296,7 +1296,7 @@ const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     fast: FAST_SEQUENCE,
     semantic: Some(ordered(8, crate::diagrams::sequence::parse_sequence)),
     editor: Some(ordered(4, editor_sequence)),
-    combined: None,
+    combined: Some(ordered(19, crate::diagrams::sequence::parse_sequence_json_and_editor_facts)),
     typed: Some(ordered(4, render_sequence)),
     render_kind: Some("sequence"),
     metadata: Some(metadata("sequence", Some(23))),

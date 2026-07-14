@@ -48,7 +48,12 @@ mod render_model;
 pub(crate) use ast::Action;
 pub(crate) use lexer::{LexError, Tok};
 
+pub(crate) use parse::parse_sequence_json_and_editor_facts;
 pub use parse::{parse_sequence, parse_sequence_editor_facts, parse_sequence_model_for_render};
+#[cfg(test)]
+pub(crate) use parse::{
+    reset_sequence_syntax_construction_count, sequence_syntax_construction_count,
+};
 pub use render_model::{
     SequenceActor, SequenceAutonumber, SequenceBox, SequenceDiagramRenderModel, SequenceMessage,
     SequenceMessagePayload, SequenceNote,

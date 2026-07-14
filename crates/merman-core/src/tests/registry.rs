@@ -157,7 +157,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "sequenceDiagram\nAlice->>Bob: Hello\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: STANDARD_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -1256,6 +1256,7 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
             "railroadEbnf",
             "railroadPeg",
             "sankey",
+            "sequence",
             "swimlane",
             "cynefin",
             "er",
@@ -1333,6 +1334,29 @@ fn er_combined_parse_constructs_family_syntax_once() {
         crate::diagrams::er::er_syntax_construction_count(),
         1,
         "one combined request must construct ER syntax once"
+    );
+}
+
+#[test]
+fn sequence_combined_parse_constructs_family_syntax_once() {
+    crate::diagrams::sequence::reset_sequence_syntax_construction_count();
+
+    let parsed = crate::Engine::new()
+        .parse_diagram_with_editor_facts_sync(
+            "sequenceDiagram\nAlice->>Bob: Hello\n",
+            crate::ParseOptions::strict(),
+        )
+        .expect("Sequence combined parse succeeds")
+        .expect("Sequence combined parse returns a diagram");
+
+    assert!(matches!(
+        parsed.editor_facts,
+        crate::ParsedEditorFacts::Available(_)
+    ));
+    assert_eq!(
+        crate::diagrams::sequence::sequence_syntax_construction_count(),
+        1,
+        "one combined request must construct Sequence syntax once"
     );
 }
 
@@ -1497,6 +1521,84 @@ fn er_combined_projections_match_standalone_and_typed_public_entrypoints() {
     compat.as_object_mut().unwrap().remove("type");
     compat.as_object_mut().unwrap().remove("constants");
     assert_eq!(compat, typed, "ER JSON and typed projections drifted");
+}
+
+#[test]
+fn sequence_combined_projections_match_standalone_and_typed_public_entrypoints() {
+    let engine = crate::Engine::new();
+    let source = concat!(
+        "---\r\n",
+        "config:\r\n",
+        "  sequence:\r\n",
+        "    wrap: true\r\n",
+        "---\r\n",
+        "%%{init: {\"theme\": \"default\"}}%%\r\n",
+        "sequenceDiagram\r\n",
+        "title: <script>bad()</script><b>Unicode exchange</b>\r\n",
+        "accTitle: <script>bad()</script><b>Accessible sequence</b>\r\n",
+        "accDescr: <script>bad()</script><b>Ordered interactions</b>\r\n",
+        "box rgb(34, 56, 0) Team; participant 顧客 as Customer; actor サーバー as API; end\r\n",
+        "autonumber 3 2; 顧客->>+サーバー: 開始; Note over 顧客,サーバー: 確認; サーバー-->>-顧客: 完了\r\n",
+        "links 顧客: { \"Portal\": \"https://example.com/\" }\r\n",
+        "properties サーバー: { \"class\": \"internal\" }\r\n",
+        "loop [again]; 顧客->>サーバー: 繰り返す; end\r\n",
+    );
+    let mut compat =
+        assert_combined_projections_match_standalone(&engine, "sequence", source, None);
+
+    let typed = engine
+        .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+        .expect("Sequence typed parse succeeds")
+        .expect("Sequence typed parse returns a diagram");
+    let crate::RenderSemanticModel::Sequence(typed) = typed.model else {
+        panic!("Sequence typed parse returned a different family");
+    };
+    let typed = serde_json::to_value(typed).expect("Sequence typed model serializes");
+    compat.as_object_mut().unwrap().remove("type");
+    compat.as_object_mut().unwrap().remove("constants");
+    assert_eq!(compat, typed, "Sequence JSON and typed projections drifted");
+
+    for field in ["title", "accTitle", "accDescr"] {
+        let value = typed[field].as_str().expect("sanitized common field");
+        assert!(!value.contains("<script>"), "unsanitized Sequence {field}");
+    }
+    assert_eq!(typed["actorOrder"], serde_json::json!(["顧客", "サーバー"]));
+    assert_eq!(
+        typed["boxes"][0]["actorKeys"],
+        serde_json::json!(["顧客", "サーバー"])
+    );
+    assert_eq!(typed["messages"][0]["type"], 26);
+    assert_eq!(typed["messages"][1]["message"], "開始");
+    assert_eq!(typed["messages"][2]["message"], "");
+    assert_eq!(typed["messages"][3]["message"], "確認");
+    assert_eq!(typed["messages"][4]["message"], "完了");
+
+    let editor = engine
+        .parse_editor_semantic_facts_with_type_sync(
+            "sequence",
+            source,
+            crate::ParseOptions::strict(),
+        )
+        .expect("Sequence editor parse succeeds")
+        .expect("Sequence editor parse returns facts");
+    for (name, detail) in [
+        ("Customer", "sequence participant label"),
+        ("API", "sequence participant label"),
+        ("Team", "sequence box"),
+        ("開始", "sequence message"),
+        ("確認", "sequence note"),
+        ("[again]", "sequence fragment label"),
+        ("繰り返す", "sequence message"),
+    ] {
+        assert!(
+            editor.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.detail.as_deref() == Some(detail)
+                    && symbol.role == crate::EditorSemanticRole::Payload
+            }),
+            "missing Sequence payload {name:?} ({detail})"
+        );
+    }
 }
 
 #[cfg(feature = "full")]

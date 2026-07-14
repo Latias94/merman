@@ -547,7 +547,7 @@ impl SequenceDb {
             };
         }
 
-        let (color_candidate, title_candidate) = split_color_and_title(trimmed);
+        let (color_candidate, title_candidate) = split_box_color_and_title(trimmed);
         let mut color = if color_candidate.trim().is_empty() {
             "transparent".to_string()
         } else {
@@ -703,232 +703,6 @@ impl SequenceDb {
     }
 }
 
-pub(super) fn fast_parse_sequence_signals_only_db(
-    code: &str,
-    wrap_enabled: Option<bool>,
-) -> Option<SequenceDb> {
-    // Fast-path for very small sequence diagrams that only contain signal statements.
-    //
-    // This avoids the LALRPOP parser + token stream overhead for tiny inputs, while preserving
-    // correctness by falling back to the full parser on anything unrecognized.
-    //
-    // Current target fixture: benches `sequence_tiny`:
-    //
-    //   sequenceDiagram
-    //     Alice->>Bob: Hi
-    //
-    // Keep the fast-path conservative to avoid surprising behavior differences.
-    if code.len() > 256 {
-        return None;
-    }
-
-    fn eq_ascii_ci(a: &str, b: &str) -> bool {
-        a.eq_ignore_ascii_case(b)
-    }
-
-    #[derive(Clone, Copy)]
-    enum Activation {
-        None,
-        Plus,
-        Minus,
-    }
-
-    struct Signal<'a> {
-        from: &'a str,
-        to: &'a str,
-        ty: i32,
-        text: &'a str,
-        activation: Activation,
-    }
-
-    fn parse_signal_line(line: &str) -> Option<Signal<'_>> {
-        let s = line.trim();
-        if s.is_empty() {
-            return None;
-        }
-        // Keep the fast-path strict: semicolons are handled by the full lexer/comment rules.
-        if s.contains(';') {
-            return None;
-        }
-        if s.contains("()") {
-            return None;
-        }
-
-        let bytes = s.as_bytes();
-        let mut sig_start: Option<usize> = None;
-        let mut i = 0usize;
-        while i < bytes.len() {
-            let b = bytes[i];
-            if b == b'<' {
-                sig_start = Some(i);
-                break;
-            }
-            if b == b'-' {
-                let next = bytes.get(i + 1).copied();
-                if matches!(next, Some(b'-' | b'>' | b'x' | b')')) {
-                    sig_start = Some(i);
-                    break;
-                }
-            }
-            i += 1;
-        }
-        let sig_start = sig_start?;
-        let from = s[..sig_start].trim();
-        if from.is_empty() {
-            return None;
-        }
-
-        let rest = &s[sig_start..];
-        let (sig_len, ty) = if rest.starts_with("<<-->>") {
-            (6, 34)
-        } else if rest.starts_with("<<->>") {
-            (5, 33)
-        } else if rest.starts_with("-->>") {
-            (4, 1)
-        } else if rest.starts_with("->>") {
-            (3, 0)
-        } else if rest.starts_with("-->") {
-            (3, 6)
-        } else if rest.starts_with("->") {
-            (2, 5)
-        } else if rest.starts_with("--x") {
-            (3, 4)
-        } else if rest.starts_with("-x") {
-            (2, 3)
-        } else if rest.starts_with("--)") {
-            (3, 25)
-        } else if rest.starts_with("-)") {
-            (2, 24)
-        } else {
-            return None;
-        };
-
-        let mut p = sig_start + sig_len;
-        while p < bytes.len() && bytes[p].is_ascii_whitespace() {
-            p += 1;
-        }
-
-        let activation = match bytes.get(p).copied() {
-            Some(b'+') => {
-                p += 1;
-                Activation::Plus
-            }
-            Some(b'-') => {
-                p += 1;
-                Activation::Minus
-            }
-            _ => Activation::None,
-        };
-
-        while p < bytes.len() && bytes[p].is_ascii_whitespace() {
-            p += 1;
-        }
-
-        let to_start = p;
-        while p < bytes.len() {
-            let b = bytes[p];
-            if b.is_ascii_whitespace() || b == b':' {
-                break;
-            }
-            p += 1;
-        }
-        let to = s[to_start..p].trim();
-        if to.is_empty() {
-            return None;
-        }
-
-        while p < bytes.len() && bytes[p].is_ascii_whitespace() {
-            p += 1;
-        }
-        if bytes.get(p).copied()? != b':' {
-            return None;
-        }
-        p += 1;
-        let text = s[p..].trim();
-
-        Some(Signal {
-            from,
-            to,
-            ty,
-            text,
-            activation,
-        })
-    }
-
-    let mut header_seen = false;
-    let mut non_empty_lines = 0usize;
-    let mut signals: Vec<Signal<'_>> = Vec::with_capacity(2);
-    for raw in code.lines() {
-        let t = raw.trim();
-        if t.is_empty() {
-            continue;
-        }
-        if t.starts_with("%%") {
-            continue;
-        }
-        non_empty_lines += 1;
-        if non_empty_lines > 8 {
-            return None;
-        }
-        if !header_seen {
-            if !eq_ascii_ci(t, "sequenceDiagram") {
-                return None;
-            }
-            header_seen = true;
-            continue;
-        }
-        let sig = parse_signal_line(t)?;
-        signals.push(sig);
-        if signals.len() > 4 {
-            return None;
-        }
-    }
-
-    if signals.is_empty() {
-        return None;
-    }
-
-    let mut db = SequenceDb::new(wrap_enabled);
-    for sig in signals {
-        db.ensure_actor(sig.from);
-        db.ensure_actor(sig.to);
-
-        let activate = matches!(sig.activation, Activation::Plus);
-        let msg = db.parse_message(sig.text);
-        db.add_signal(SignalInput {
-            from: Some(sig.from.to_string()),
-            to: Some(sig.to.to_string()),
-            message: Some(msg),
-            message_type: sig.ty,
-            activate,
-            ..Default::default()
-        });
-
-        match sig.activation {
-            Activation::Plus => {
-                db.add_signal(SignalInput {
-                    from: Some(sig.to.to_string()),
-                    message_type: LINETYPE_ACTIVE_START,
-                    ..Default::default()
-                });
-            }
-            Activation::Minus => {
-                if db.activation_count(sig.from) < 1 {
-                    return None;
-                }
-                db.add_signal(SignalInput {
-                    from: Some(sig.from.to_string()),
-                    message_type: LINETYPE_ACTIVE_END,
-                    ..Default::default()
-                });
-            }
-            Activation::None => {}
-        }
-    }
-
-    Some(db)
-}
-
 #[derive(Debug, Clone)]
 struct BoxData {
     text: Option<String>,
@@ -940,7 +714,7 @@ fn unescape_entities(input: &str) -> String {
     input.replace("&equals;", "=").replace("&amp;", "&")
 }
 
-fn split_color_and_title(input: &str) -> (&str, &str) {
+pub(super) fn split_box_color_and_title(input: &str) -> (&str, &str) {
     let lower = input.to_ascii_lowercase();
     for prefix in ["rgba", "rgb", "hsla", "hsl"] {
         if lower.starts_with(prefix)
@@ -967,7 +741,7 @@ fn parse_participant_meta(input: &str) -> std::result::Result<Value, String> {
     crate::inline_config::parse_mermaid_inline_object(input)
 }
 
-fn is_css_color_value(input: &str) -> bool {
+pub(super) fn is_css_color_value(input: &str) -> bool {
     let t = input.trim();
     if t.is_empty() {
         return false;
