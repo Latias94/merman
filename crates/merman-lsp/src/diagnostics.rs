@@ -1,4 +1,5 @@
-use crate::protocol::range_to_lsp;
+use crate::client_profile::{ClientProtocolProfile, DiagnosticProtocolProfile};
+use crate::protocol::{VersionedDiagnosticCodeActionData, range_to_lsp};
 #[cfg(test)]
 use merman_analysis::AnalysisDiagnostic;
 use merman_analysis::{AnalysisPayload, DiagnosticSeverity};
@@ -18,26 +19,61 @@ pub(crate) fn analysis_payload_to_diagnostics(
     payload: &AnalysisPayload,
     uri: &Url,
 ) -> Vec<Diagnostic> {
+    analysis_payload_to_diagnostics_with_profile(payload, uri, &ClientProtocolProfile::permissive())
+}
+
+#[cfg(test)]
+pub(crate) fn analysis_payload_to_diagnostics_with_profile(
+    payload: &AnalysisPayload,
+    uri: &Url,
+    profile: &ClientProtocolProfile,
+) -> Vec<Diagnostic> {
     analysis_payload_to_editor_diagnostics(payload)
         .into_iter()
-        .map(|diagnostic| editor_diagnostic_to_lsp(diagnostic, uri))
+        .map(|diagnostic| editor_diagnostic_to_lsp(diagnostic, uri, profile.diagnostics))
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn analysis_payload_to_versioned_diagnostics(
     payload: &AnalysisPayload,
     uri: &Url,
     document_version: i32,
 ) -> Vec<Diagnostic> {
+    analysis_payload_to_versioned_diagnostics_with_profile(
+        payload,
+        uri,
+        document_version,
+        &ClientProtocolProfile::permissive(),
+    )
+}
+
+pub(crate) fn analysis_payload_to_versioned_diagnostics_with_profile(
+    payload: &AnalysisPayload,
+    uri: &Url,
+    document_version: i32,
+    profile: &ClientProtocolProfile,
+) -> Vec<Diagnostic> {
     analysis_payload_to_editor_diagnostics(payload)
         .into_iter()
-        .map(|diagnostic| editor_diagnostic_to_versioned_lsp(diagnostic, uri, document_version))
+        .map(|diagnostic| {
+            editor_diagnostic_to_versioned_lsp(
+                diagnostic,
+                uri,
+                document_version,
+                profile.diagnostics,
+            )
+        })
         .collect()
 }
 
 #[cfg(test)]
 fn analysis_diagnostic_to_lsp(diagnostic: &AnalysisDiagnostic, uri: &Url) -> Diagnostic {
-    editor_diagnostic_to_lsp(analysis_diagnostic_to_editor(diagnostic), uri)
+    editor_diagnostic_to_lsp(
+        analysis_diagnostic_to_editor(diagnostic),
+        uri,
+        ClientProtocolProfile::permissive().diagnostics,
+    )
 }
 
 #[cfg(test)]
@@ -50,58 +86,78 @@ pub(crate) fn analysis_diagnostic_to_versioned_lsp(
         analysis_diagnostic_to_editor(diagnostic),
         uri,
         document_version,
+        ClientProtocolProfile::permissive().diagnostics,
     )
 }
 
 #[cfg(test)]
-fn editor_diagnostic_to_lsp(diagnostic: EditorDiagnostic, uri: &Url) -> Diagnostic {
-    let data = diagnostic
-        .data
-        .as_ref()
-        .and_then(|data| serde_json::to_value(data).ok());
-    editor_diagnostic_to_lsp_with_data(diagnostic, uri, data)
+fn editor_diagnostic_to_lsp(
+    diagnostic: EditorDiagnostic,
+    uri: &Url,
+    profile: DiagnosticProtocolProfile,
+) -> Diagnostic {
+    let data = if profile.data {
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| serde_json::to_value(data).ok())
+    } else {
+        None
+    };
+    editor_diagnostic_to_lsp_with_data(diagnostic, uri, data, profile)
 }
 
 fn editor_diagnostic_to_versioned_lsp(
     diagnostic: EditorDiagnostic,
     uri: &Url,
     document_version: i32,
+    profile: DiagnosticProtocolProfile,
 ) -> Diagnostic {
-    let mut data = diagnostic
-        .data
-        .as_ref()
-        .and_then(|data| serde_json::to_value(data).ok());
-    attach_document_version(&mut data, document_version);
-    editor_diagnostic_to_lsp_with_data(diagnostic, uri, data)
+    let data = if profile.data {
+        diagnostic.data.as_ref().and_then(|data| {
+            serde_json::to_value(VersionedDiagnosticCodeActionData {
+                inner: data.clone(),
+                document_version,
+            })
+            .ok()
+        })
+    } else {
+        None
+    };
+    editor_diagnostic_to_lsp_with_data(diagnostic, uri, data, profile)
 }
 
 fn editor_diagnostic_to_lsp_with_data(
     diagnostic: EditorDiagnostic,
     uri: &Url,
     data: Option<serde_json::Value>,
+    profile: DiagnosticProtocolProfile,
 ) -> Diagnostic {
     let code = NumberOrString::String(diagnostic.code.clone());
-    let code_description = code_description(&diagnostic.code);
-    let tags = diagnostic_tags(diagnostic.data.as_ref());
+    let code_description = if profile.code_description {
+        code_description(&diagnostic.code)
+    } else {
+        None
+    };
+    let tags = if profile.deprecated_tag {
+        diagnostic_tags(diagnostic.data.as_ref())
+    } else {
+        None
+    };
     Diagnostic {
         range: range_to_lsp(diagnostic.range),
         severity: Some(severity_to_lsp(diagnostic.severity)),
         code: Some(code),
         source: Some(diagnostic.source),
         message: diagnostic.message,
-        related_information: related_information(diagnostic.related, uri),
+        related_information: if profile.related_information {
+            related_information(diagnostic.related, uri)
+        } else {
+            None
+        },
         tags,
         code_description,
         data,
-    }
-}
-
-fn attach_document_version(data: &mut Option<serde_json::Value>, document_version: i32) {
-    if let Some(serde_json::Value::Object(object)) = data {
-        object.insert(
-            "documentVersion".to_string(),
-            serde_json::Value::from(document_version),
-        );
     }
 }
 

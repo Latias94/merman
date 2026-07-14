@@ -661,6 +661,7 @@ impl<'a> ParsePipeline<'a> {
         let EditorSemanticFacts {
             completeness,
             span_coordinate_space: _,
+            completion_dialect,
             symbols,
             directive_prefixes: family_directive_prefixes,
             diagnostics,
@@ -670,6 +671,7 @@ impl<'a> ParsePipeline<'a> {
         let mut facts = EditorSemanticFacts {
             completeness,
             span_coordinate_space: EditorSpanCoordinateSpace::OriginalSource,
+            completion_dialect,
             symbols,
             directive_prefixes: Vec::new(),
             diagnostics,

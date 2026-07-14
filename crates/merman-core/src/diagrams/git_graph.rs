@@ -4,11 +4,31 @@ use crate::diagram::{
 use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
-    ParseMetadata, Result, SourceSpan,
+    EditorRenameDomain, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    MermaidConfig, ParseMetadata, Result, SourceSpan,
 };
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
+
+pub(crate) fn is_valid_editor_reference(candidate: &str) -> bool {
+    let Some((&first, rest)) = candidate.as_bytes().split_first() else {
+        return false;
+    };
+    if !first.is_ascii_alphanumeric() && first != b'_' {
+        return false;
+    }
+    if !rest
+        .iter()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(*ch, b'_' | b'-' | b'.' | b'/'))
+    {
+        return false;
+    }
+
+    candidate
+        .as_bytes()
+        .last()
+        .is_some_and(|last| last.is_ascii_alphanumeric() || *last == b'_')
+}
 
 const COMMIT_TYPE_NORMAL: i64 = 0;
 const COMMIT_TYPE_REVERSE: i64 = 1;
@@ -987,13 +1007,16 @@ fn push_gitgraph_entity_fact(
     if value.text.is_empty() {
         return;
     }
-    facts.push_symbol(EditorSemanticSymbol::new(
-        value.text,
-        Some(detail.to_string()),
-        kind,
-        value.span,
-        value.span,
-    ));
+    facts.push_symbol(
+        EditorSemanticSymbol::new(
+            value.text,
+            Some(detail.to_string()),
+            kind,
+            value.span,
+            value.span,
+        )
+        .with_rename_domain(EditorRenameDomain::GitGraphReference),
+    );
 }
 
 fn push_gitgraph_payload_fact(

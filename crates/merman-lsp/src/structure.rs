@@ -1,6 +1,7 @@
+use crate::client_profile::{ClientProtocolProfile, MarkupPreference};
 use crate::protocol::{
-    WorkspaceEditEncoding, core_position_from_lsp, document_uri_to_lsp, location_to_lsp,
-    range_to_lsp,
+    WorkspaceEditEncoding, core_position_from_lsp, document_uri_to_lsp,
+    generated_markdown_to_plain_text, location_to_lsp, range_to_lsp,
 };
 use crate::snapshot::DocumentSnapshot;
 use merman_analysis::EditorSymbolKind;
@@ -21,7 +22,7 @@ use tower_lsp::jsonrpc::{Error, Result};
 use tower_lsp::lsp_types::{DocumentChanges, OneOf};
 use tower_lsp::lsp_types::{
     DocumentSymbol, DocumentSymbolResponse, FoldingRange, FoldingRangeKind, GotoDefinitionResponse,
-    Hover, HoverContents, Location, MarkupContent, MarkupKind,
+    Hover, HoverContents, Location, MarkedString, MarkupContent, MarkupKind,
     OptionalVersionedTextDocumentIdentifier, Position, PrepareRenameResponse, Range, RenameParams,
     SelectionRange, SymbolInformation, SymbolKind, TextDocumentEdit, TextEdit, Url, WorkspaceEdit,
 };
@@ -79,8 +80,18 @@ pub fn workspace_symbols_for_snapshots(
     .collect()
 }
 
+#[cfg(test)]
 pub fn hover(snapshot: &DocumentSnapshot, position: Position) -> Option<Hover> {
-    core_hover(snapshot.as_editor(), core_position_from_lsp(position)).map(hover_to_lsp)
+    hover_with_profile(snapshot, position, &ClientProtocolProfile::permissive())
+}
+
+pub(crate) fn hover_with_profile(
+    snapshot: &DocumentSnapshot,
+    position: Position,
+    profile: &ClientProtocolProfile,
+) -> Option<Hover> {
+    core_hover(snapshot.as_editor(), core_position_from_lsp(position))
+        .map(|hover| hover_to_lsp(hover, profile.hover))
 }
 
 pub fn selection_ranges(
@@ -176,12 +187,22 @@ pub fn rename_with_workspace_edit_encoding(
     .map_err(rename_error_to_lsp)
 }
 
-fn hover_to_lsp(hover: EditorHover) -> Hover {
-    Hover {
-        contents: HoverContents::Markup(MarkupContent {
+fn hover_to_lsp(hover: EditorHover, markup: MarkupPreference) -> Hover {
+    let contents = match markup {
+        MarkupPreference::Markdown => HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
             value: hover.contents.value,
         }),
+        MarkupPreference::PlainText => HoverContents::Markup(MarkupContent {
+            kind: MarkupKind::PlainText,
+            value: generated_markdown_to_plain_text(&hover.contents.value),
+        }),
+        MarkupPreference::String => HoverContents::Scalar(MarkedString::String(
+            generated_markdown_to_plain_text(&hover.contents.value),
+        )),
+    };
+    Hover {
+        contents,
         range: hover.range.map(range_to_lsp),
     }
 }

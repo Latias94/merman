@@ -15,11 +15,16 @@ both without forking the codebase.
 - Default is “full” to match `mermaid` package behavior.
 - Current implementation:
   - `merman-core` default features include `full` and `host`.
-  - `full` owns Mermaid parity conveniences through `full-config` and `full-sanitization`.
+  - `full` remains the compatibility profile and enables `full-registry`, `full-config`, and
+    `full-sanitization`.
+  - `full-registry` selects the complete detector/parser registry. Without it, Architecture,
+    Mindmap, and `flowchart-elk` are not registered.
   - `full-config` enables full YAML frontmatter parsing and JSON5 directive parsing.
   - `full-sanitization` enables DOMPurify-like HTML sanitization and URL canonicalization.
   - `host` enables `host-clock`, `host-random`, and `host-timing`.
-  - Build pure/tiny parser profiles via `--no-default-features` (disables `full` and `host`).
+  - Build pure/tiny parser profiles via `--no-default-features` (disables `full` and `host`). The
+    current registry split is runtime gating and does not yet remove every family module or parser
+    grammar from compilation.
 - “tiny” primarily affects:
   - which diagrams are registered/detectable,
   - optional dependencies (e.g. KaTeX),
@@ -40,3 +45,7 @@ Related: `dugong` also exposes an optional parity-oriented pipeline (`layout_dag
 ## Consequences
 
 - Detector order and diagram registry become feature-dependent and must be documented and tested.
+- Analysis, editor-core, and LSP crates expose granular forwarding features while retaining
+  `core-full` and `core-host` as compatibility aliases.
+- The LSP stdio executable is gated by its orthogonal `stdio` feature; the library can be built
+  without a transport binary.

@@ -1,8 +1,15 @@
-use crate::snapshot::DocumentSnapshot;
-use merman_analysis::{AnalysisOptions, Analyzer, SourceMap, Utf16Position};
-use merman_editor_core::{DocumentKind, DocumentWorkspace};
+use crate::analysis_executor::AnalysisExecutor;
+use crate::analysis_request::{
+    AnalysisBuildKey, AnalysisBuildRequest, SnapshotBatchCommit, WorkspaceSnapshotBuildPlan,
+};
+use crate::snapshot::{
+    DiagnosticGeneration, DocumentAnalysisContext, DocumentEpoch, DocumentSnapshot,
+    SnapshotContext, SnapshotGeneration,
+};
+use merman_analysis::{AnalysisOptions, AnalysisPayload, Analyzer};
+use merman_editor_core::DocumentKind;
+use ropey::{Rope, RopeSlice};
 use std::collections::HashMap;
-use std::ops::Range as ByteRange;
 use std::sync::Arc;
 use tower_lsp::lsp_types::{
     Diagnostic, Position, Range, SemanticToken, TextDocumentContentChangeEvent, Url,
@@ -27,11 +34,13 @@ pub(crate) fn analysis_options_with_lsp_resource_defaults(
 #[derive(Debug)]
 pub struct DocumentStore {
     analyzer: Analyzer,
+    analysis_executor: AnalysisExecutor,
     snapshot_generation: SnapshotGeneration,
     diagnostic_generation: DiagnosticGeneration,
     next_document_epoch: u64,
     documents: HashMap<Url, DocumentRecord>,
     snapshots: HashMap<Url, Arc<DocumentSnapshot>>,
+    analysis_payloads: HashMap<Url, Arc<AnalysisPayload>>,
     diagnostic_state: HashMap<Url, StoredDiagnosticState>,
     semantic_tokens_state: HashMap<Url, StoredSemanticTokensState>,
 }
@@ -70,11 +79,25 @@ pub enum DocumentSyncError {
     InvalidIncrementalRange,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum UnavailableSourceState {
+    ResourceLimited(DocumentResourceLimit),
+    Discarded(DocumentDiscardedSource),
+    SyncError(DocumentSyncError),
+}
+
 impl StoredDocument {
     pub fn has_unavailable_source(&self) -> bool {
         self.resource_limit.is_some()
             || self.discarded_source.is_some()
             || self.sync_error.is_some()
+    }
+
+    fn unavailable_source_state(&self) -> Option<UnavailableSourceState> {
+        self.resource_limit
+            .map(UnavailableSourceState::ResourceLimited)
+            .or_else(|| self.discarded_source.map(UnavailableSourceState::Discarded))
+            .or_else(|| self.sync_error.map(UnavailableSourceState::SyncError))
     }
 }
 
@@ -124,11 +147,13 @@ impl DocumentStore {
         let analyzer = Analyzer::with_options(default_lsp_analysis_options());
         Self {
             analyzer,
+            analysis_executor: AnalysisExecutor::new(),
             snapshot_generation: SnapshotGeneration::default(),
             diagnostic_generation: DiagnosticGeneration::default(),
             next_document_epoch: 0,
             documents: HashMap::new(),
             snapshots: HashMap::new(),
+            analysis_payloads: HashMap::new(),
             diagnostic_state: HashMap::new(),
             semantic_tokens_state: HashMap::new(),
         }
@@ -155,6 +180,8 @@ impl DocumentStore {
     fn set_diagnostic_analyzer(&mut self, analyzer: Analyzer) {
         self.analyzer = analyzer;
         self.advance_diagnostic_generation();
+        self.analysis_payloads.clear();
+        self.analysis_executor.invalidate_all();
     }
 
     fn replace_analyzer(&mut self, analyzer: Analyzer) {
@@ -163,7 +190,9 @@ impl DocumentStore {
         self.advance_snapshot_generation();
         self.advance_diagnostic_generation();
         self.snapshots.clear();
+        self.analysis_payloads.clear();
         self.semantic_tokens_state.clear();
+        self.analysis_executor.invalidate_all();
     }
 
     fn advance_snapshot_generation(&mut self) {
@@ -185,7 +214,6 @@ impl DocumentStore {
         self.documents.get(uri).map(|record| {
             DiagnosticContext::new(
                 record.document.clone(),
-                self.analyzer.clone(),
                 self.diagnostic_generation,
                 record.epoch,
             )
@@ -278,7 +306,9 @@ impl DocumentStore {
     }
 
     fn upsert_document(&mut self, uri: Url, document: StoredDocument) -> StoredDocument {
+        self.analysis_executor.invalidate(&uri);
         self.snapshots.remove(&uri);
+        self.analysis_payloads.remove(&uri);
         self.diagnostic_state.remove(&uri);
         let epoch = self.next_document_epoch();
         self.documents.insert(
@@ -348,9 +378,7 @@ impl DocumentStore {
         };
         let current_version = current.version;
         let kind = current.kind;
-        let resource_limit = current.resource_limit;
-        let discarded_source = current.discarded_source;
-        let sync_error = current.sync_error;
+        let unavailable_source = current.unavailable_source_state();
         let current_text = current.text.clone();
         let changes = changes.into_iter().collect::<Vec<_>>();
 
@@ -365,20 +393,18 @@ impl DocumentStore {
             return TextDocumentUpdate::EmptyChangeSet;
         }
 
-        if resource_limit.is_some() || discarded_source.is_some() || sync_error.is_some() {
+        if let Some(unavailable_source) = unavailable_source {
             return self.apply_unavailable_source_text_changes(
                 uri,
                 version,
                 kind,
-                resource_limit,
-                discarded_source,
-                sync_error,
+                unavailable_source,
                 changes,
             );
         }
 
         let changes = changes_from_last_full_replacement(changes);
-        let mut text = current_text.to_string();
+        let mut text = Rope::from_str(&current_text);
         for change in changes {
             if !apply_text_content_change(&mut text, change) {
                 self.upsert_sync_error(
@@ -391,7 +417,7 @@ impl DocumentStore {
             }
         }
 
-        self.upsert_text(uri, version, text, kind);
+        self.upsert_text(uri, version, text.to_string(), kind);
         TextDocumentUpdate::Applied
     }
 
@@ -400,29 +426,24 @@ impl DocumentStore {
         uri: Url,
         version: i32,
         kind: DocumentKind,
-        resource_limit: Option<DocumentResourceLimit>,
-        discarded_source: Option<DocumentDiscardedSource>,
-        sync_error: Option<DocumentSyncError>,
+        unavailable_source: UnavailableSourceState,
         changes: Vec<TextDocumentContentChangeEvent>,
     ) -> TextDocumentUpdate {
         let Some(recovery_start) = changes.iter().rposition(|change| change.range.is_none()) else {
-            match (resource_limit, discarded_source, sync_error) {
-                (Some(resource_limit), _, _) => {
+            match unavailable_source {
+                UnavailableSourceState::ResourceLimited(resource_limit) => {
                     self.upsert_resource_limited(uri, version, kind, resource_limit);
                 }
-                (None, Some(discarded_source), _) => {
+                UnavailableSourceState::Discarded(discarded_source) => {
                     self.upsert_discarded_source(uri, version, kind, discarded_source);
                 }
-                (None, None, Some(sync_error)) => {
+                UnavailableSourceState::SyncError(sync_error) => {
                     self.upsert_sync_error(uri, version, kind, sync_error);
-                }
-                (None, None, None) => {
-                    unreachable!("checked unavailable source before applying edits")
                 }
             }
             return TextDocumentUpdate::Applied;
         };
-        let mut known_text = None::<String>;
+        let mut known_text = None::<Rope>;
 
         for change in changes.into_iter().skip(recovery_start) {
             match known_text.as_mut() {
@@ -437,14 +458,14 @@ impl DocumentStore {
                         return TextDocumentUpdate::InvalidRange;
                     }
                 }
-                None => known_text = Some(change.text),
+                None => known_text = Some(Rope::from_str(&change.text)),
             }
         }
 
         let Some(text) = known_text else {
             return TextDocumentUpdate::EmptyChangeSet;
         };
-        self.upsert_text(uri, version, text, kind);
+        self.upsert_text(uri, version, text.to_string(), kind);
         TextDocumentUpdate::Applied
     }
 
@@ -472,62 +493,76 @@ impl DocumentStore {
 
     pub fn snapshot_context(&mut self, uri: &Url) -> Option<SnapshotContext> {
         if let Some(snapshot) = self.snapshots.get(uri) {
-            return Some(SnapshotContext::new(
-                Arc::clone(snapshot),
-                self.snapshot_generation,
+            return Some(self.cached_snapshot_context(
+                uri,
+                snapshot,
                 self.documents.get(uri)?.epoch,
             ));
         }
 
         let request = self.snapshot_build_request(uri)?;
-        let snapshot = request.build();
-        self.insert_built_snapshot(&request, snapshot)
+        let analysis = request.build();
+        self.insert_built_analysis(&request, analysis)
     }
 
-    pub fn snapshot_build_request(&self, uri: &Url) -> Option<SnapshotBuildRequest> {
+    pub(crate) fn snapshot_build_request(&self, uri: &Url) -> Option<AnalysisBuildRequest> {
         let record = self.documents.get(uri)?;
         if record.document.has_unavailable_source() {
             return None;
         }
-        Some(SnapshotBuildRequest {
-            document: record.document.clone(),
-            analyzer: self.analyzer.clone(),
-            generation: self.snapshot_generation,
-            document_epoch: record.epoch,
-        })
+        let key = AnalysisBuildKey::new(
+            record.document.uri.clone(),
+            record.document.version,
+            self.analysis_executor.generation_for(uri),
+            self.snapshot_generation,
+            self.diagnostic_generation,
+            record.epoch,
+        );
+        Some(AnalysisBuildRequest::new(
+            key,
+            Arc::clone(&record.document.text),
+            record.document.kind,
+            self.analyzer.clone(),
+        ))
     }
 
-    pub fn insert_built_snapshot(
+    pub fn insert_built_analysis(
         &mut self,
-        request: &SnapshotBuildRequest,
-        snapshot: Arc<DocumentSnapshot>,
+        request: &AnalysisBuildRequest,
+        analysis: Arc<DocumentAnalysisContext>,
     ) -> Option<SnapshotContext> {
-        if self.snapshot_generation != request.generation
-            || !self.is_document_epoch_current(&request.document.uri, request.document_epoch)
+        self.analysis_executor.release(request);
+        if self.snapshot_generation != request.snapshot_generation()
+            || self.diagnostic_generation != request.diagnostic_generation()
+            || !self.is_document_epoch_current(request.uri(), request.document_epoch())
         {
             return None;
         }
 
-        if let Some(cached) = self.snapshots.get(&request.document.uri) {
-            return Some(SnapshotContext::new(
-                Arc::clone(cached),
-                request.generation,
-                request.document_epoch,
-            ));
-        }
-
-        self.snapshots
-            .insert(request.document.uri.clone(), Arc::clone(&snapshot));
-        Some(SnapshotContext::new(
+        let snapshot = self
+            .snapshots
+            .entry(request.uri().clone())
+            .or_insert_with(|| Arc::clone(&analysis.snapshot))
+            .clone();
+        self.analysis_payloads
+            .insert(request.uri().clone(), Arc::clone(&analysis.payload));
+        Some(SnapshotContext::with_analysis(
             snapshot,
-            request.generation,
-            request.document_epoch,
+            Arc::clone(&analysis.payload),
+            request.snapshot_generation(),
+            request.diagnostic_generation(),
+            request.document_epoch(),
         ))
     }
 
     pub fn is_snapshot_context_current(&self, context: &SnapshotContext) -> bool {
         self.snapshot_generation == context.generation
             && self.is_document_epoch_current(&context.snapshot.uri, context.document_epoch)
+    }
+
+    pub fn is_analysis_context_current(&self, context: &SnapshotContext) -> bool {
+        self.is_snapshot_context_current(context)
+            && context.analysis_generation() == Some(self.diagnostic_generation)
     }
 
     pub fn is_snapshot_contexts_current(&self, contexts: &[SnapshotContext]) -> bool {
@@ -546,9 +581,19 @@ impl DocumentStore {
         self.snapshots.contains_key(uri)
     }
 
+    pub fn has_analysis_payload(&self, uri: &Url) -> bool {
+        self.analysis_payloads.contains_key(uri)
+    }
+
+    pub(crate) fn analysis_executor(&self) -> AnalysisExecutor {
+        self.analysis_executor.clone()
+    }
+
     pub fn remove(&mut self, uri: &Url) {
+        self.analysis_executor.forget(uri);
         self.documents.remove(uri);
         self.snapshots.remove(uri);
+        self.analysis_payloads.remove(uri);
         self.diagnostic_state.remove(uri);
         self.semantic_tokens_state.remove(uri);
     }
@@ -559,7 +604,6 @@ impl DocumentStore {
             .map(|record| {
                 DiagnosticContext::new(
                     record.document.clone(),
-                    self.analyzer.clone(),
                     self.diagnostic_generation,
                     record.epoch,
                 )
@@ -568,17 +612,13 @@ impl DocumentStore {
     }
 
     #[cfg(test)]
-    pub fn snapshot_build_requests(&self) -> (Vec<SnapshotContext>, Vec<SnapshotBuildRequest>) {
+    pub fn snapshot_build_requests(&self) -> (Vec<SnapshotContext>, Vec<AnalysisBuildRequest>) {
         let mut contexts = Vec::new();
         let mut requests = Vec::new();
 
         for (uri, record) in &self.documents {
             if let Some(snapshot) = self.snapshots.get(uri) {
-                contexts.push(SnapshotContext::new(
-                    Arc::clone(snapshot),
-                    self.snapshot_generation,
-                    record.epoch,
-                ));
+                contexts.push(self.cached_snapshot_context(uri, snapshot, record.epoch));
             } else if let Some(request) = self.snapshot_build_request(uri) {
                 requests.push(request);
             }
@@ -598,21 +638,22 @@ impl DocumentStore {
 
         for (uri, record) in documents {
             if let Some(snapshot) = self.snapshots.get(uri) {
-                contexts.push(SnapshotContext::new(
-                    Arc::clone(snapshot),
-                    self.snapshot_generation,
-                    record.epoch,
-                ));
+                contexts.push(self.cached_snapshot_context(uri, snapshot, record.epoch));
             } else if let Some(request) = self.snapshot_build_request(uri) {
                 requests.push(request);
             }
         }
 
         let batch_size = batch_size.max(1);
-        let batches = requests
-            .chunks(batch_size)
-            .map(|chunk| chunk.to_vec())
-            .collect();
+        let mut requests = requests.into_iter();
+        let mut batches = Vec::new();
+        loop {
+            let batch = requests.by_ref().take(batch_size).collect::<Vec<_>>();
+            if batch.is_empty() {
+                break;
+            }
+            batches.push(batch);
+        }
 
         WorkspaceSnapshotBuildPlan { contexts, batches }
     }
@@ -629,16 +670,38 @@ impl DocumentStore {
             .count()
     }
 
+    fn cached_snapshot_context(
+        &self,
+        uri: &Url,
+        snapshot: &Arc<DocumentSnapshot>,
+        document_epoch: DocumentEpoch,
+    ) -> SnapshotContext {
+        match self.analysis_payloads.get(uri) {
+            Some(payload) => SnapshotContext::with_analysis(
+                Arc::clone(snapshot),
+                Arc::clone(payload),
+                self.snapshot_generation,
+                self.diagnostic_generation,
+                document_epoch,
+            ),
+            None => SnapshotContext::new(
+                Arc::clone(snapshot),
+                self.snapshot_generation,
+                document_epoch,
+            ),
+        }
+    }
+
     pub fn snapshot_contexts_for_requests(
         &mut self,
-        requests: Vec<(SnapshotBuildRequest, Arc<DocumentSnapshot>)>,
+        requests: Vec<(AnalysisBuildRequest, Arc<DocumentAnalysisContext>)>,
     ) -> SnapshotBatchCommit {
         #[cfg(test)]
         let mut contexts = Vec::new();
         let mut stale_open_documents = false;
 
-        for (request, snapshot) in requests {
-            match self.insert_built_snapshot(&request, snapshot) {
+        for (request, analysis) in requests {
+            match self.insert_built_analysis(&request, analysis) {
                 Some(_context) => {
                     #[cfg(test)]
                     contexts.push(_context);
@@ -747,88 +810,9 @@ pub struct DocumentDiagnosticState {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DocumentEpoch(u64);
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct SnapshotGeneration(u64);
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DiagnosticGeneration(u64);
-
-#[derive(Debug, Clone)]
-pub struct SnapshotContext {
-    pub snapshot: Arc<DocumentSnapshot>,
-    generation: SnapshotGeneration,
-    document_epoch: DocumentEpoch,
-}
-
-impl SnapshotContext {
-    fn new(
-        snapshot: Arc<DocumentSnapshot>,
-        generation: SnapshotGeneration,
-        document_epoch: DocumentEpoch,
-    ) -> Self {
-        Self {
-            snapshot,
-            generation,
-            document_epoch,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SnapshotBatchCommit {
-    #[cfg(test)]
-    pub contexts: Vec<SnapshotContext>,
-    pub stale_open_documents: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct WorkspaceSnapshotBuildPlan {
-    pub contexts: Vec<SnapshotContext>,
-    pub batches: Vec<Vec<SnapshotBuildRequest>>,
-}
-
-impl WorkspaceSnapshotBuildPlan {
-    #[cfg(test)]
-    pub fn new_snapshot_request_count(&self) -> usize {
-        self.batches.iter().map(Vec::len).sum()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SnapshotBuildRequest {
-    document: StoredDocument,
-    analyzer: Analyzer,
-    generation: SnapshotGeneration,
-    document_epoch: DocumentEpoch,
-}
-
-impl SnapshotBuildRequest {
-    pub fn uri(&self) -> &Url {
-        &self.document.uri
-    }
-
-    pub fn build(&self) -> Arc<DocumentSnapshot> {
-        let snapshot = DocumentWorkspace::build_snapshot_with_shared_text(
-            &self.analyzer,
-            self.document.uri.as_str(),
-            self.document.version,
-            self.document.text.clone(),
-            self.document.kind,
-        );
-        Arc::new(DocumentSnapshot::from_editor(
-            snapshot,
-            self.document.uri.clone(),
-        ))
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct DiagnosticContext {
     pub document: StoredDocument,
-    pub analyzer: Analyzer,
     generation: DiagnosticGeneration,
     document_epoch: DocumentEpoch,
 }
@@ -836,13 +820,11 @@ pub struct DiagnosticContext {
 impl DiagnosticContext {
     fn new(
         document: StoredDocument,
-        analyzer: Analyzer,
         generation: DiagnosticGeneration,
         document_epoch: DocumentEpoch,
     ) -> Self {
         Self {
             document,
-            analyzer,
             generation,
             document_epoch,
         }
@@ -879,15 +861,15 @@ pub(crate) fn analyzer_configuration_change(
     }
 }
 
-fn apply_text_content_change(text: &mut String, change: TextDocumentContentChangeEvent) -> bool {
+fn apply_text_content_change(text: &mut Rope, change: TextDocumentContentChangeEvent) -> bool {
     if let Some(range) = change.range {
-        let Some(byte_range) = lsp_range_to_byte_range(text, range) else {
+        let Some(char_range) = lsp_range_to_char_range(text, range) else {
             return false;
         };
-        text.replace_range(byte_range, &change.text);
+        text.remove(char_range.clone());
+        text.insert(char_range.start, &change.text);
     } else {
-        text.clear();
-        text.push_str(&change.text);
+        *text = Rope::from_str(&change.text);
     }
     true
 }
@@ -901,38 +883,49 @@ fn changes_from_last_full_replacement(
     changes.into_iter().skip(recovery_start).collect()
 }
 
-fn lsp_range_to_byte_range(text: &str, range: Range) -> Option<ByteRange<usize>> {
+fn lsp_range_to_char_range(text: &Rope, range: Range) -> Option<std::ops::Range<usize>> {
     if !position_le(range.start, range.end) {
         return None;
     }
 
-    let source_map = SourceMap::new(text);
-    let start = strict_byte_offset_for_lsp_position(&source_map, range.start)?;
-    let end = strict_byte_offset_for_lsp_position(&source_map, range.end)?;
+    let start = char_offset_for_lsp_position(text, range.start)?;
+    let end = char_offset_for_lsp_position(text, range.end)?;
     (start <= end).then_some(start..end)
 }
 
-fn strict_byte_offset_for_lsp_position(
-    source_map: &SourceMap,
-    position: Position,
-) -> Option<usize> {
-    let position = position_to_utf16(position);
-    let (line_start, line_end) = source_map.line_bounds(position.line)?;
-    let line_utf16_len = source_map.source()[line_start..line_end]
-        .chars()
-        .map(char::len_utf16)
-        .sum::<usize>();
-    if position.character > line_utf16_len {
-        return None;
+fn char_offset_for_lsp_position(text: &Rope, position: Position) -> Option<usize> {
+    let line_index = position.line as usize;
+    let line = text.get_line(line_index)?;
+    let line_start = text.try_line_to_char(line_index).ok()?;
+    let content_len = line_content_char_len(line);
+    let target_utf16 = position.character as usize;
+    let mut utf16 = 0usize;
+
+    for (relative_char, ch) in line.chars().take(content_len).enumerate() {
+        if utf16 == target_utf16 {
+            return Some(line_start + relative_char);
+        }
+        let next_utf16 = utf16 + ch.len_utf16();
+        if target_utf16 < next_utf16 {
+            return None;
+        }
+        utf16 = next_utf16;
     }
-    source_map.byte_offset_for_utf16_position(position)
+
+    Some(line_start + content_len)
 }
 
-fn position_to_utf16(position: Position) -> Utf16Position {
-    Utf16Position {
-        line: position.line as usize,
-        character: position.character as usize,
+fn line_content_char_len(line: RopeSlice<'_>) -> usize {
+    let mut len = line.len_chars();
+    if len > 0 && line.char(len - 1) == '\n' {
+        len -= 1;
+        if len > 0 && line.char(len - 1) == '\r' {
+            len -= 1;
+        }
+    } else if len > 0 && line.char(len - 1) == '\r' {
+        len -= 1;
     }
+    len
 }
 
 fn position_le(left: Position, right: Position) -> bool {

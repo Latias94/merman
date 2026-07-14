@@ -42,8 +42,8 @@ export interface PreviewSettings {
   background: PreviewBackground;
 }
 
-export function getMermanConfiguration(): vscode.WorkspaceConfiguration {
-  return vscode.workspace.getConfiguration("merman");
+export function getMermanConfiguration(resource?: vscode.Uri): vscode.WorkspaceConfiguration {
+  return vscode.workspace.getConfiguration("merman", resource);
 }
 
 export function getTraceSetting(): TraceSetting {
@@ -76,8 +76,8 @@ export function getDiagnosticsSettings(): DiagnosticsSettings {
   };
 }
 
-export function getSourceActionSettings(): SourceActionSettings {
-  const config = getMermanConfiguration();
+export function getSourceActionSettings(resource: vscode.Uri): SourceActionSettings {
+  const config = getMermanConfiguration(resource);
   return {
     enabled: config.get<boolean>("sourceActions.enabled", true),
   };

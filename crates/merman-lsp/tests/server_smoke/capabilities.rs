@@ -1,5 +1,14 @@
 use super::prelude::*;
 
+#[test]
+fn published_server_constructors_are_visible_with_legacy_signatures() {
+    let _: fn(tower_lsp::Client) -> MermanLanguageServer = MermanLanguageServer::new;
+    let _: fn() -> (
+        tower_lsp::LspService<MermanLanguageServer>,
+        tower_lsp::ClientSocket,
+    ) = MermanLanguageServer::service;
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn lsp_service_smoke_handles_initialize() {
     let (service, _socket) = MermanLanguageServer::service();
@@ -48,8 +57,9 @@ async fn lsp_service_smoke_handles_initialize() {
             ":".to_string(),
         ])
     );
-    assert!(response.capabilities.code_action_provider.is_some());
-    assert!(response.capabilities.semantic_tokens_provider.is_some());
+    assert!(response.capabilities.code_action_provider.is_none());
+    assert!(response.capabilities.semantic_tokens_provider.is_none());
+    assert!(response.capabilities.workspace_symbol_provider.is_none());
     assert_eq!(
         response.capabilities.experimental.as_ref().unwrap()["merman"]["requests"]["ruleCatalog"],
         RULE_CATALOG_METHOD
@@ -61,10 +71,78 @@ async fn lsp_service_smoke_handles_initialize() {
     assert!(response.capabilities.diagnostic_provider.is_some());
     assert!(matches!(
         MermanLanguageServer::capabilities().text_document_sync,
-        Some(tower_lsp::lsp_types::TextDocumentSyncCapability::Kind(
-            tower_lsp::lsp_types::TextDocumentSyncKind::INCREMENTAL
-        ))
+        Some(tower_lsp::lsp_types::TextDocumentSyncCapability::Options(ref options))
+            if options.change == Some(tower_lsp::lsp_types::TextDocumentSyncKind::INCREMENTAL)
+                && options.open_close == Some(true)
+                && options.save.is_some()
     ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_advertises_only_negotiated_protocol_extensions() {
+    let (service, _socket) = MermanLanguageServer::service();
+
+    let response = tower_lsp::LanguageServer::initialize(
+        service.inner(),
+        serde_json::from_value(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "codeAction": {
+                        "codeActionLiteralSupport": {
+                            "codeActionKind": { "valueSet": ["quickfix"] }
+                        }
+                    },
+                    "publishDiagnostics": { "dataSupport": true },
+                    "semanticTokens": {
+                        "requests": { "range": true, "full": { "delta": true } },
+                        "tokenTypes": ["namespace", "class", "struct", "variable", "property", "event", "function", "string"],
+                        "tokenModifiers": ["mermanEntity"],
+                        "formats": ["relative"]
+                    }
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+    assert!(response.capabilities.code_action_provider.is_some());
+    let semantic_tokens = response
+        .capabilities
+        .semantic_tokens_provider
+        .expect("negotiated semantic tokens provider");
+    let serialized = serde_json::to_value(semantic_tokens).unwrap();
+    assert_eq!(
+        serialized["legend"]["tokenModifiers"],
+        serde_json::json!(["mermanEntity"])
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn lsp_service_does_not_advertise_semantic_tokens_without_relative_format() {
+    let (service, _socket) = MermanLanguageServer::service();
+
+    let response = tower_lsp::LanguageServer::initialize(
+        service.inner(),
+        serde_json::from_value(serde_json::json!({
+            "capabilities": {
+                "textDocument": {
+                    "semanticTokens": {
+                        "requests": { "full": true },
+                        "tokenTypes": ["variable"],
+                        "tokenModifiers": [],
+                        "formats": []
+                    }
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+    assert!(response.capabilities.semantic_tokens_provider.is_none());
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -219,6 +297,9 @@ async fn lsp_service_workspace_diagnostic_capability_does_not_disable_push_diagn
     let initialize = Request::build("initialize")
         .params(serde_json::json!({
             "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": { "versionSupport": true }
+                },
                 "workspace": {
                     "diagnostic": {}
                 }

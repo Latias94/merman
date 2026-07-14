@@ -1,9 +1,10 @@
 use crate::diagram::legacy_warning_messages;
 use crate::sanitize::sanitize_text;
 use crate::{
-    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
-    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    DiagramWarningFact, EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind,
+    EditorRenameDomain, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig,
+    ParseMetadata, Result, SourceSpan,
     editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
 };
 use indexmap::IndexMap;
@@ -61,6 +62,14 @@ use shape_data::{
     value_to_string,
 };
 use subgraph::SubgraphBuilder;
+
+pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
+    let mut lexer = Lexer::new(candidate);
+    matches!(
+        (lexer.next(), lexer.next()),
+        (Some(Ok((0, Tok::Id(_), end))), None) if end == candidate.len()
+    )
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct FlowSubGraph {
@@ -423,13 +432,15 @@ fn mask_range_preserving_newlines(bytes: &mut [u8], start: usize, end: usize) {
 }
 
 fn editor_facts_from_flowchart_ast(ast: &FlowchartAst) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
+    let mut facts =
+        EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart);
     collect_editor_facts_from_statements(&ast.statements, &mut facts);
     facts
 }
 
 fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
+    let mut facts =
+        EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart);
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
     let mut lexer = Lexer::recovering(code);
@@ -691,13 +702,16 @@ fn collect_editor_facts_from_statements_with_seen_edges(
 
 fn push_flowchart_node_symbol(facts: &mut EditorSemanticFacts, node: &Node) {
     if let Some(span) = node.id_span {
-        facts.push_symbol(EditorSemanticSymbol::new(
-            node.id.clone(),
-            Some("flowchart node".to_string()),
-            EditorSemanticKind::Module,
-            span,
-            span,
-        ));
+        facts.push_symbol(
+            EditorSemanticSymbol::new(
+                node.id.clone(),
+                Some("flowchart node".to_string()),
+                EditorSemanticKind::Module,
+                span,
+                span,
+            )
+            .with_rename_domain(EditorRenameDomain::FlowchartNodeId),
+        );
     }
 
     if let Some(label) = node.label.as_deref() {
@@ -808,14 +822,19 @@ fn push_flowchart_span_symbol(
     if name.is_empty() {
         return;
     }
-    facts.push_symbol(EditorSemanticSymbol::with_role(
+    let symbol = EditorSemanticSymbol::with_role(
         name.to_string(),
         Some(detail.to_string()),
         kind,
         role,
         span,
         span,
-    ));
+    );
+    facts.push_symbol(if role == EditorSemanticRole::Entity {
+        symbol.with_rename_domain(EditorRenameDomain::FlowchartNodeId)
+    } else {
+        symbol
+    });
 }
 
 fn push_flowchart_labeled_payload_symbol(
@@ -1105,13 +1124,16 @@ fn push_flowchart_header_symbol(facts: &mut EditorSemanticFacts, header: &Subgra
             return;
         }
         let selection = header.raw_id_span.unwrap_or(span);
-        facts.push_symbol(EditorSemanticSymbol::new(
-            name.to_string(),
-            Some("subgraph".to_string()),
-            EditorSemanticKind::Namespace,
-            span,
-            selection,
-        ));
+        facts.push_symbol(
+            EditorSemanticSymbol::new(
+                name.to_string(),
+                Some("subgraph".to_string()),
+                EditorSemanticKind::Namespace,
+                span,
+                selection,
+            )
+            .with_rename_domain(EditorRenameDomain::FlowchartNodeId),
+        );
     }
 }
 
@@ -1125,13 +1147,16 @@ fn push_flowchart_token_symbol(
         return;
     }
     let span = crate::SourceSpan::new(start, end);
-    facts.push_symbol(EditorSemanticSymbol::new(
-        id,
-        Some("flowchart node".to_string()),
-        EditorSemanticKind::Module,
-        span,
-        span,
-    ));
+    facts.push_symbol(
+        EditorSemanticSymbol::new(
+            id,
+            Some("flowchart node".to_string()),
+            EditorSemanticKind::Module,
+            span,
+            span,
+        )
+        .with_rename_domain(EditorRenameDomain::FlowchartNodeId),
+    );
 }
 
 impl FlowchartSemanticSource {

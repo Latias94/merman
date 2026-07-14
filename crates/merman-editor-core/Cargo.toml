@@ -16,6 +16,12 @@ categories = ["development-tools", "text-editors"]
 [features]
 default = ["core-full", "core-host"]
 core-full = ["merman-analysis/core-full", "merman-core/full"]
+core-full-registry = ["merman-analysis/core-full-registry", "merman-core/full-registry"]
+core-full-config = ["merman-analysis/core-full-config", "merman-core/full-config"]
+core-full-sanitization = [
+    "merman-analysis/core-full-sanitization",
+    "merman-core/full-sanitization",
+]
 core-host = ["merman-analysis/core-host", "merman-core/host"]
 
 [dependencies]

@@ -167,15 +167,15 @@ pub fn selection_range(
     let outline = outline_for_fence(fence);
     let mut spans = Vec::new();
 
-    if let Some(relative_offset) = fence_relative_offset(snapshot, fence, position) {
-        if let Some(item) = fence.text_index.semantic_item_at_offset(relative_offset) {
-            push_selection_span(
-                &mut spans,
-                absolute_offset,
-                absolute_span(fence, item.selection),
-            );
-            push_selection_span(&mut spans, absolute_offset, absolute_span(fence, item.span));
-        }
+    if let Some(relative_offset) = fence_relative_offset(snapshot, fence, position)
+        && let Some(item) = fence.text_index.semantic_item_at_offset(relative_offset)
+    {
+        push_selection_span(
+            &mut spans,
+            absolute_offset,
+            absolute_span(fence, item.selection),
+        );
+        push_selection_span(&mut spans, absolute_offset, absolute_span(fence, item.span));
     }
 
     if let Some(item) = outline.find_deepest(absolute_offset) {
@@ -348,9 +348,6 @@ pub fn rename(
     position: Position,
     new_name: &str,
 ) -> Result<Option<EditorWorkspaceEdit>, RenameError> {
-    if !is_valid_rename_name(new_name) {
-        return Err(RenameError::InvalidName);
-    }
     let fence = snapshot
         .fence_at_position(position)
         .ok_or(RenameError::OutsideFence)?;
@@ -360,6 +357,9 @@ pub fn rename(
         .text_index
         .entity_item_at_offset(offset)
         .ok_or(RenameError::NoRenameableSymbol)?;
+    if !item.rename_domain.accepts(new_name) {
+        return Err(RenameError::InvalidName);
+    }
     Ok(rename_edits(snapshot, fence, item, new_name))
 }
 
@@ -512,7 +512,7 @@ fn absolute_span(fence: &FenceSnapshot, span: ByteSpan) -> ByteSpan {
 }
 
 fn push_selection_span(spans: &mut Vec<ByteSpan>, offset: usize, span: ByteSpan) {
-    if span.start >= span.end || !span.contains(offset) || spans.iter().any(|item| *item == span) {
+    if span.start >= span.end || !span.contains(offset) || spans.contains(&span) {
         return;
     }
 
@@ -632,13 +632,6 @@ fn compare_range(left: &Range, right: &Range) -> std::cmp::Ordering {
         ))
 }
 
-fn is_valid_rename_name(new_name: &str) -> bool {
-    !new_name.is_empty()
-        && new_name
-            .chars()
-            .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EditorDocumentSymbol {
     pub name: String,
@@ -727,7 +720,7 @@ pub enum RenameError {
 impl fmt::Display for RenameError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = match self {
-            Self::InvalidName => "new name must use letters, numbers, underscore, or dash",
+            Self::InvalidName => "new name is not valid for the selected symbol",
             Self::OutsideFence => "position is outside a Mermaid fence",
             Self::NoRenameableSymbol => "no renameable symbol at the requested position",
         };

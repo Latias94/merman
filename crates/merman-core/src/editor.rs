@@ -61,6 +61,59 @@ pub enum EditorSemanticRole {
     Payload,
 }
 
+/// Parser-defined identifier grammar used to validate rename targets.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorRenameDomain {
+    /// The common Mermaid identifier subset used by existing semantic parsers.
+    #[default]
+    MermaidIdentifier,
+    /// A Flowchart node id as accepted by the Flowchart lexer.
+    FlowchartNodeId,
+    /// A GitGraph unquoted `REFERENCE` token.
+    GitGraphReference,
+    /// An Architecture entity id, excluding reserved layout keywords.
+    ArchitectureIdentifier,
+    /// A Railroad IR, EBNF, or PEG rule identifier.
+    RailroadRule,
+    /// An ABNF rule identifier.
+    RailroadAbnfRule,
+}
+
+impl EditorRenameDomain {
+    pub fn accepts(self, candidate: &str) -> bool {
+        match self {
+            Self::MermaidIdentifier => {
+                !candidate.is_empty()
+                    && candidate
+                        .chars()
+                        .all(|ch| ch.is_alphanumeric() || matches!(ch, '_' | '-'))
+            }
+            Self::FlowchartNodeId => crate::diagrams::flowchart::is_valid_editor_node_id(candidate),
+            Self::GitGraphReference => {
+                crate::diagrams::git_graph::is_valid_editor_reference(candidate)
+            }
+            Self::ArchitectureIdentifier => {
+                crate::diagrams::architecture::is_valid_editor_identifier(candidate)
+            }
+            Self::RailroadRule => {
+                crate::diagrams::railroad::is_valid_editor_rule_identifier(candidate, false)
+            }
+            Self::RailroadAbnfRule => {
+                crate::diagrams::railroad::is_valid_editor_rule_identifier(candidate, true)
+            }
+        }
+    }
+}
+
+/// Family syntax that may use bounded line-prefix completion inference.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum EditorCompletionDialect {
+    #[default]
+    None,
+    Flowchart,
+}
+
 impl EditorSemanticRole {
     pub fn contributes_completion(self) -> bool {
         matches!(self, Self::Entity)
@@ -77,11 +130,13 @@ impl EditorSemanticRole {
 
 /// A parser-produced symbol occurrence.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct EditorSemanticSymbol {
     pub name: String,
     pub detail: Option<String>,
     pub kind: EditorSemanticKind,
     pub role: EditorSemanticRole,
+    pub rename_domain: EditorRenameDomain,
     pub span: SourceSpan,
     pub selection: SourceSpan,
 }
@@ -151,9 +206,15 @@ impl EditorSemanticSymbol {
             detail,
             kind,
             role,
+            rename_domain: EditorRenameDomain::default(),
             span,
             selection,
         }
+    }
+
+    pub fn with_rename_domain(mut self, rename_domain: EditorRenameDomain) -> Self {
+        self.rename_domain = rename_domain;
+        self
     }
 }
 
@@ -223,9 +284,11 @@ pub enum EditorSemanticCompleteness {
 
 /// Parser-produced facts used by lint, completion, and LSP without exposing a public AST.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
     pub span_coordinate_space: EditorSpanCoordinateSpace,
+    pub completion_dialect: EditorCompletionDialect,
     pub symbols: Vec<EditorSemanticSymbol>,
     pub directive_prefixes: Vec<String>,
     pub diagnostics: Vec<EditorSemanticDiagnostic>,
@@ -239,6 +302,11 @@ impl EditorSemanticFacts {
 
     pub fn push_symbol(&mut self, symbol: EditorSemanticSymbol) {
         self.symbols.push(symbol);
+    }
+
+    pub fn with_completion_dialect(mut self, completion_dialect: EditorCompletionDialect) -> Self {
+        self.completion_dialect = completion_dialect;
+        self
     }
 
     pub fn mark_recovered(&mut self) {
@@ -369,8 +437,34 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::lalrpop_parse_diagnostic;
+    use super::{EditorRenameDomain, lalrpop_parse_diagnostic};
     use crate::ParseDiagnosticSpanKind;
+
+    #[test]
+    fn rename_domains_follow_family_identifier_grammars() {
+        assert!(EditorRenameDomain::FlowchartNodeId.accepts("foo.bar"));
+        assert!(EditorRenameDomain::FlowchartNodeId.accepts("foo-bar"));
+        assert!(!EditorRenameDomain::FlowchartNodeId.accepts("foo--bar"));
+        assert!(!EditorRenameDomain::FlowchartNodeId.accepts("foo.->bar"));
+        assert!(!EditorRenameDomain::FlowchartNodeId.accepts("end.foo"));
+        assert!(!EditorRenameDomain::FlowchartNodeId.accepts("graph.foo"));
+        assert!(!EditorRenameDomain::FlowchartNodeId.accepts("subgraph.foo"));
+
+        assert!(EditorRenameDomain::GitGraphReference.accepts("release/v1.2"));
+        assert!(EditorRenameDomain::GitGraphReference.accepts("_private"));
+        assert!(!EditorRenameDomain::GitGraphReference.accepts("release/"));
+        assert!(!EditorRenameDomain::GitGraphReference.accepts("release branch"));
+
+        assert!(EditorRenameDomain::ArchitectureIdentifier.accepts("rowspan"));
+        assert!(EditorRenameDomain::ArchitectureIdentifier.accepts("service-2"));
+        assert!(!EditorRenameDomain::ArchitectureIdentifier.accepts("service-"));
+        assert!(!EditorRenameDomain::ArchitectureIdentifier.accepts("align"));
+
+        assert!(EditorRenameDomain::RailroadRule.accepts("rule_name"));
+        assert!(!EditorRenameDomain::RailroadRule.accepts("1rule"));
+        assert!(EditorRenameDomain::RailroadAbnfRule.accepts("rule-name"));
+        assert!(!EditorRenameDomain::RailroadAbnfRule.accepts("rule_name"));
+    }
 
     #[test]
     fn lalrpop_parse_diagnostic_preserves_unrecognized_token_span() {

@@ -53,7 +53,10 @@ class MermaidSourceCodeLensProvider implements vscode.CodeLensProvider, vscode.D
 
   provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
     const inputs = listPreviewInputsFromDocument(document);
-    const specs = buildMermaidSourceCodeLensSpecs(inputs, getSourceActionSettings());
+    const specs = buildMermaidSourceCodeLensSpecs(
+      inputs,
+      getSourceActionSettings(document.uri),
+    );
     return specs.map((spec) => {
       const line = Math.max(0, Math.min(spec.line, document.lineCount - 1));
       return new vscode.CodeLens(new vscode.Range(line, 0, line, 0), {

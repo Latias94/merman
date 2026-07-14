@@ -453,6 +453,48 @@ fn apply_text_changes_applies_lsp_utf16_ranges_in_order() {
 }
 
 #[test]
+fn apply_text_changes_updates_line_index_between_batched_edits() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\r\nA[🤓]\rB\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(1, 2), Position::new(1, 4))),
+                range_length: None,
+                text: "C\nD".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(Position::new(2, 0), Position::new(2, 1))),
+                range_length: None,
+                text: "E".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: Some(Range::new(
+                    Position::new(3, 10_000),
+                    Position::new(3, 10_000),
+                )),
+                range_length: None,
+                text: "-->C".to_string(),
+            },
+        ],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected updated document");
+    assert_eq!(stored.text.as_ref(), "flowchart TD\r\nA[C\nE]\rB-->C\n");
+}
+
+#[test]
 fn apply_text_changes_allows_nonconsecutive_versions_for_incremental_ranges() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
@@ -569,7 +611,38 @@ fn apply_text_changes_marks_document_unsynced_after_invalid_range() {
 }
 
 #[test]
-fn apply_text_changes_rejects_utf16_positions_past_line_end() {
+fn apply_text_changes_marks_document_unsynced_after_reversed_range() {
+    let mut store = DocumentStore::new();
+    let uri = Url::parse("file:///tmp/example.mmd").unwrap();
+
+    store.open_text(
+        uri.clone(),
+        1,
+        "flowchart TD\nA-->B\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let update = store.apply_text_changes(
+        uri.clone(),
+        2,
+        [TextDocumentContentChangeEvent {
+            range: Some(Range::new(Position::new(1, 4), Position::new(1, 2))),
+            range_length: None,
+            text: "bad".to_string(),
+        }],
+    );
+
+    assert_eq!(update, TextDocumentUpdate::InvalidRange);
+    let stored = store.get(&uri).expect("expected unsynced document");
+    assert_eq!(stored.text.as_ref(), "");
+    assert_eq!(
+        stored.sync_error,
+        Some(DocumentSyncError::InvalidIncrementalRange)
+    );
+}
+
+#[test]
+fn apply_text_changes_clamps_utf16_positions_past_line_end() {
     let mut store = DocumentStore::new();
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
 
@@ -593,13 +666,11 @@ fn apply_text_changes_rejects_utf16_positions_past_line_end() {
         }],
     );
 
-    assert_eq!(update, TextDocumentUpdate::InvalidRange);
-    let stored = store.get(&uri).expect("expected unsynced document");
+    assert_eq!(update, TextDocumentUpdate::Applied);
+    let stored = store.get(&uri).expect("expected updated document");
     assert_eq!(stored.version, 2);
-    assert_eq!(
-        stored.sync_error,
-        Some(DocumentSyncError::InvalidIncrementalRange)
-    );
+    assert_eq!(stored.text.as_ref(), "flowchart TD\nA[🤓]-->Bbad\n");
+    assert_eq!(stored.sync_error, None);
 }
 
 #[test]
@@ -1469,6 +1540,15 @@ fn architecture_documents_use_parser_facts() {
     );
     let index = &snapshot.fences[0].text_index;
 
+    if matches!(
+        merman_core::selected_baseline_registry_profile(),
+        merman_core::baseline::BaselineRegistryProfile::Tiny
+    ) {
+        assert_eq!(snapshot.fences[0].diagram_type, None);
+        assert_eq!(index.source(), FenceTextIndexSource::TextScan);
+        return;
+    }
+
     assert_eq!(
         snapshot.fences[0].diagram_type.as_deref(),
         Some("architecture")
@@ -2306,6 +2386,15 @@ fn mindmap_documents_use_parser_facts() {
     );
     let index = &snapshot.fences[0].text_index;
 
+    if matches!(
+        merman_core::selected_baseline_registry_profile(),
+        merman_core::baseline::BaselineRegistryProfile::Tiny
+    ) {
+        assert_eq!(snapshot.fences[0].diagram_type, None);
+        assert_eq!(index.source(), FenceTextIndexSource::TextScan);
+        return;
+    }
+
     assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
     assert!(index.node_ids().any(|id| id == "root"));
     assert!(index.node_ids().any(|id| id == "child1"));
@@ -2322,6 +2411,15 @@ fn incomplete_mindmap_documents_use_recovered_parser_facts() {
     let uri = Url::parse("file:///tmp/example.mmd").unwrap();
     let snapshot = store.upsert(uri, 1, "mindmap\nroot\n child[unterminated".to_string());
     let index = &snapshot.fences[0].text_index;
+
+    if matches!(
+        merman_core::selected_baseline_registry_profile(),
+        merman_core::baseline::BaselineRegistryProfile::Tiny
+    ) {
+        assert_eq!(snapshot.fences[0].diagram_type, None);
+        assert_eq!(index.source(), FenceTextIndexSource::TextScan);
+        return;
+    }
 
     assert_eq!(index.source(), FenceTextIndexSource::ParserRecovered);
     assert!(index.node_ids().any(|id| id == "root"));

@@ -4,9 +4,13 @@ use super::{
     FenceSemanticRole, FenceTextIndex, FenceTextIndexSource, shape_object_value_prefix,
 };
 use merman_core::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, EditorSpanCoordinateSpace, SourceSpan,
+    EditorCompletionDialect, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticSymbol, EditorSpanCoordinateSpace, SourceSpan,
 };
+
+fn flowchart_facts() -> EditorSemanticFacts {
+    EditorSemanticFacts::new().with_completion_dialect(EditorCompletionDialect::Flowchart)
+}
 
 #[test]
 fn byte_span_contains_half_open_ranges_and_empty_insertions() {
@@ -390,7 +394,7 @@ fn text_scan_cursor_context_only_offers_source_start_headers() {
 
 #[test]
 fn parser_backed_cursor_context_allows_prefix_limited_helpers() {
-    let index = FenceTextIndex::from_core_facts(EditorSemanticFacts::new());
+    let index = FenceTextIndex::from_core_facts(flowchart_facts());
 
     let operator = index.cursor_context("flowchart TD\nA-->B", "flowchart TD\nA--".len());
     assert_eq!(operator.source(), FenceTextIndexSource::ParserComplete);
@@ -406,7 +410,7 @@ fn parser_backed_cursor_context_allows_prefix_limited_helpers() {
 
 #[test]
 fn cursor_context_uses_fence_local_offsets_and_parser_backed_shape_context() {
-    let index = FenceTextIndex::from_core_facts(EditorSemanticFacts::new());
+    let index = FenceTextIndex::from_core_facts(flowchart_facts());
     let context = index.cursor_context("  A@{ shape: ", "  A@{ shape: ".len());
 
     assert_eq!(context.prefix(), "A@{ shape: ");
@@ -418,7 +422,7 @@ fn cursor_context_uses_fence_local_offsets_and_parser_backed_shape_context() {
 
 #[test]
 fn cursor_context_accepts_mermaid_shape_object_whitespace_variants() {
-    let index = FenceTextIndex::from_core_facts(EditorSemanticFacts::new());
+    let index = FenceTextIndex::from_core_facts(flowchart_facts());
 
     for source in ["A@{shape: rou", "A@{       shape: rou", "A@{ shape : rou"] {
         let context = index.cursor_context(source, source.len());

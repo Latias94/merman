@@ -206,6 +206,88 @@ fn run_feature_matrix(
             "cargo check -p merman-core --no-default-features",
             &["check", "-p", "merman-core", "--no-default-features"],
         ),
+        (
+            "cargo nextest run -p merman-lsp --no-default-features --lib",
+            &[
+                "nextest",
+                "run",
+                "-p",
+                "merman-lsp",
+                "--no-default-features",
+                "--lib",
+            ],
+        ),
+        (
+            "cargo check -p merman-lsp --no-default-features --lib",
+            &[
+                "check",
+                "-p",
+                "merman-lsp",
+                "--no-default-features",
+                "--lib",
+            ],
+        ),
+        (
+            "cargo check -p merman-lsp --no-default-features --features core-full-registry --lib",
+            &[
+                "check",
+                "-p",
+                "merman-lsp",
+                "--no-default-features",
+                "--features",
+                "core-full-registry",
+                "--lib",
+            ],
+        ),
+        (
+            "cargo check -p merman-lsp --no-default-features --features core-full-config --lib",
+            &[
+                "check",
+                "-p",
+                "merman-lsp",
+                "--no-default-features",
+                "--features",
+                "core-full-config",
+                "--lib",
+            ],
+        ),
+        (
+            "cargo check -p merman-lsp --no-default-features --features core-full-sanitization --lib",
+            &[
+                "check",
+                "-p",
+                "merman-lsp",
+                "--no-default-features",
+                "--features",
+                "core-full-sanitization",
+                "--lib",
+            ],
+        ),
+        (
+            "cargo check -p merman-lsp --no-default-features --features core-host --lib",
+            &[
+                "check",
+                "-p",
+                "merman-lsp",
+                "--no-default-features",
+                "--features",
+                "core-host",
+                "--lib",
+            ],
+        ),
+        (
+            "cargo check -p merman-lsp --no-default-features --features stdio --bin merman-lsp",
+            &[
+                "check",
+                "-p",
+                "merman-lsp",
+                "--no-default-features",
+                "--features",
+                "stdio",
+                "--bin",
+                "merman-lsp",
+            ],
+        ),
     ];
 
     for (what, args) in checks {

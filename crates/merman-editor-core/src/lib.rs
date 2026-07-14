@@ -43,4 +43,4 @@ pub use structure::{
     workspace_symbols, workspace_symbols_for_snapshots,
 };
 pub use types::{DocumentKind, DocumentUri, Position, Range};
-pub use workspace::DocumentWorkspace;
+pub use workspace::{DocumentAnalysisContext, DocumentWorkspace};

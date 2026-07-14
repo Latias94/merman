@@ -58,6 +58,7 @@ regex = "1.11.1"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "default-tls"] }
 rayon = "1.12.0"
 roxmltree = "0.21.1"
+ropey = { version = "1.6.1", default-features = false, features = ["cr_lines", "simd"] }
 rustc-hash = "2.1.1"
 ryu-js = "1.0.2"
 roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.1", default-features = false }

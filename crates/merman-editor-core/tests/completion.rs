@@ -251,6 +251,41 @@ fn completion_uses_parser_identifier_context_after_operator() {
 }
 
 #[test]
+fn non_flowchart_parser_facts_do_not_offer_flowchart_body_completions() {
+    for (line, forbidden_kind) in [
+        ("A--", CompletionDataKind::Operator),
+        ("direction", CompletionDataKind::Direction),
+        ("A@{ shape: rou", CompletionDataKind::Shape),
+    ] {
+        let mut workspace = DocumentWorkspace::new();
+        let snapshot = workspace.upsert(
+            "file:///tmp/history.mmd",
+            1,
+            format!("gitGraph\n{line}"),
+            DocumentKind::Diagram,
+        );
+        let list = completion_for_snapshot(&snapshot, Position::new(1, line.len()));
+
+        assert!(
+            list.fact_source
+                .is_some_and(FenceTextIndexSource::is_parser_backed),
+            "test requires parser-backed gitGraph facts for {line:?}"
+        );
+        assert!(
+            list.items.iter().all(|item| item
+                .data
+                .as_ref()
+                .is_none_or(|data| data.kind != forbidden_kind)),
+            "gitGraph must not receive {forbidden_kind:?} completions for {line:?}: {:?}",
+            list.items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
 fn completion_after_pipe_edge_label_inserts_after_the_label() {
     let mut workspace = DocumentWorkspace::new();
     let snapshot = workspace.upsert(

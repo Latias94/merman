@@ -2,8 +2,8 @@ use merman_analysis::{FenceTextIndex, FenceTextIndexSource, SharedTextSlice, Sou
 use merman_core::{EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
 use merman_editor_core::{
     DocumentKind, DocumentSnapshot, DocumentUri, DocumentWorkspace, FenceSnapshot, Position, Range,
-    document_symbols, folding_ranges, goto_definition, hover, prepare_rename, references, rename,
-    selection_range, workspace_symbols,
+    RenameError, document_symbols, folding_ranges, goto_definition, hover, prepare_rename,
+    references, rename, selection_range, workspace_symbols,
 };
 use std::sync::Arc;
 
@@ -162,6 +162,116 @@ fn navigation_ignores_payload_spans_and_tracks_entities() {
     let edit = rename(&snapshot, position, "X").unwrap().unwrap();
     assert_eq!(edit.fact_source, FenceTextIndexSource::ParserComplete);
     assert_eq!(edit.changes.get(&snapshot.uri).unwrap().len(), 2);
+}
+
+#[test]
+fn flowchart_rename_accepts_parser_legal_dotted_id() {
+    let mut workspace = DocumentWorkspace::new();
+    let flowchart = workspace.upsert(
+        "file:///tmp/flowchart.mmd",
+        1,
+        "flowchart TD\nfoo.bar-->target\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let edit = rename(&flowchart, Position::new(1, 0), "renamed.node")
+        .expect("flowchart ids may contain dots")
+        .expect("flowchart rename edit");
+    let replacement = &edit.changes[&flowchart.uri][0].new_text;
+    assert_eq!(replacement, "renamed.node");
+
+    let renamed_text = flowchart.text.replacen("foo.bar", replacement, 1);
+    let reparsed = workspace.upsert(
+        flowchart.uri.clone(),
+        2,
+        renamed_text,
+        DocumentKind::Diagram,
+    );
+    assert_eq!(
+        reparsed.fences[0].text_index.source(),
+        FenceTextIndexSource::ParserComplete
+    );
+}
+
+#[test]
+fn flowchart_rename_rejects_keyword_prefixed_dotted_ids() {
+    let mut workspace = DocumentWorkspace::new();
+    let flowchart = workspace.upsert(
+        "file:///tmp/flowchart-keyword.mmd",
+        1,
+        "flowchart TD\nsource-->target\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    for candidate in ["end.foo", "graph.foo", "subgraph.foo"] {
+        assert_eq!(
+            rename(&flowchart, Position::new(1, 0), candidate),
+            Err(RenameError::InvalidName),
+            "{candidate} must follow the parser's keyword precedence"
+        );
+    }
+}
+
+#[test]
+fn abnf_rename_rejects_parser_illegal_underscore() {
+    let mut workspace = DocumentWorkspace::new();
+    let abnf = workspace.upsert(
+        "file:///tmp/grammar.mmd",
+        1,
+        "railroad-abnf-beta\nrule = \"a\"\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(
+        rename(&abnf, Position::new(1, 0), "rule_name"),
+        Err(RenameError::InvalidName),
+        "ABNF rule names must not accept underscores"
+    );
+}
+
+#[test]
+fn git_graph_rename_accepts_reference_punctuation() {
+    let mut workspace = DocumentWorkspace::new();
+    let git_graph = workspace.upsert(
+        "file:///tmp/git-graph.mmd",
+        1,
+        concat!(
+            "gitGraph\n",
+            "commit\n",
+            "branch feature/base\n",
+            "checkout feature/base\n",
+        )
+        .to_string(),
+        DocumentKind::Diagram,
+    );
+
+    let edit = rename(&git_graph, Position::new(2, 8), "release/v1.2")
+        .expect("gitGraph references may contain slashes and dots")
+        .expect("gitGraph rename edit");
+    let changes = &edit.changes[&git_graph.uri];
+    assert_eq!(changes.len(), 2);
+    assert!(
+        changes
+            .iter()
+            .all(|change| change.new_text == "release/v1.2")
+    );
+}
+
+#[test]
+fn architecture_rename_rejects_reserved_identifier() {
+    let mut workspace = DocumentWorkspace::new();
+    let architecture = workspace.upsert(
+        "file:///tmp/architecture.mmd",
+        1,
+        "architecture-beta\n  service server\n".to_string(),
+        DocumentKind::Diagram,
+    );
+
+    assert_eq!(
+        rename(&architecture, Position::new(1, 10), "align"),
+        Err(RenameError::InvalidName),
+        "architecture reserved words must not be accepted as replacement ids"
+    );
 }
 
 #[test]

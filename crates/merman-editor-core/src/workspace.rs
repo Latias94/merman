@@ -1,7 +1,9 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentKind, DocumentUri};
 use merman_analysis::{
-    AnalyzedDiagram, Analyzer, SourceDescriptor, SourceKind, analyze_document_result_shared,
+    AnalysisCancellationToken, AnalysisCancelled, AnalysisPayload, AnalyzedDiagram, Analyzer,
+    SourceDescriptor, SourceKind, analyze_document_result_shared,
+    analyze_document_result_shared_cancellable,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,6 +12,27 @@ use std::sync::Arc;
 pub struct DocumentWorkspace {
     documents: HashMap<DocumentUri, DocumentSnapshot>,
     analyzer: Analyzer,
+}
+
+/// One rich analysis generation shared by diagnostics and editor projections.
+#[derive(Debug, Clone)]
+pub struct DocumentAnalysisContext {
+    snapshot: DocumentSnapshot,
+    payload: AnalysisPayload,
+}
+
+impl DocumentAnalysisContext {
+    pub fn snapshot(&self) -> &DocumentSnapshot {
+        &self.snapshot
+    }
+
+    pub fn payload(&self) -> &AnalysisPayload {
+        &self.payload
+    }
+
+    pub fn into_parts(self) -> (DocumentSnapshot, AnalysisPayload) {
+        (self.snapshot, self.payload)
+    }
 }
 
 impl Default for DocumentWorkspace {
@@ -75,23 +98,71 @@ impl DocumentWorkspace {
         text: Arc<str>,
         kind: DocumentKind,
     ) -> DocumentSnapshot {
+        Self::build_analysis_context_with_shared_text(analyzer, uri, version, text, kind)
+            .into_parts()
+            .0
+    }
+
+    pub fn build_analysis_context_with_shared_text(
+        analyzer: &Analyzer,
+        uri: impl Into<DocumentUri>,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+    ) -> DocumentAnalysisContext {
         let uri = uri.into();
         let source = source_descriptor_for_document(&uri, kind);
         let analysis = analyze_document_result_shared(Arc::clone(&text), analyzer, source.clone());
+        Self::analysis_context(uri, version, text, kind, source, analysis)
+    }
+
+    pub fn build_analysis_context_with_shared_text_cancellable(
+        analyzer: &Analyzer,
+        uri: impl Into<DocumentUri>,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+        cancellation: &AnalysisCancellationToken,
+    ) -> Result<DocumentAnalysisContext, AnalysisCancelled> {
+        let uri = uri.into();
+        let source = source_descriptor_for_document(&uri, kind);
+        let analysis = analyze_document_result_shared_cancellable(
+            Arc::clone(&text),
+            analyzer,
+            source.clone(),
+            cancellation,
+        )?;
+        Ok(Self::analysis_context(
+            uri, version, text, kind, source, analysis,
+        ))
+    }
+
+    fn analysis_context(
+        uri: DocumentUri,
+        version: i32,
+        text: Arc<str>,
+        kind: DocumentKind,
+        source: SourceDescriptor,
+        analysis: merman_analysis::AnalysisResult,
+    ) -> DocumentAnalysisContext {
         let fences = analysis
             .diagrams()
             .iter()
             .map(Self::fence_snapshot)
             .collect::<Vec<_>>();
         let source_map = analysis.source_map().clone();
-        DocumentSnapshot {
-            uri,
-            version,
-            kind,
-            source,
-            text,
-            source_map,
-            fences,
+        let payload = analysis.into_payload();
+        DocumentAnalysisContext {
+            snapshot: DocumentSnapshot {
+                uri,
+                version,
+                kind,
+                source,
+                text,
+                source_map,
+                fences,
+            },
+            payload,
         }
     }
 
