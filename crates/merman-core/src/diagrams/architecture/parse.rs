@@ -1,6 +1,7 @@
 use super::*;
 use crate::diagrams::langium_common::{
     LangiumCommonFact, LangiumCommonField, LangiumCommonParse, parse_langium_common,
+    parse_langium_string,
 };
 
 #[derive(Debug, Clone)]
@@ -459,38 +460,20 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn parse_string(&mut self) -> Result<ArchitectureSpannedValue> {
         self.skip_ws();
         let start = self.pos;
-        let Some(quote @ ('"' | '\'')) = self.bump() else {
+        if !matches!(self.peek_char(), Some('"' | '\'')) {
             return Err(self.insertion_error("expected quoted service icon text"));
-        };
-        let selection_start = self.pos;
-        let mut escaped = false;
-        while let Some(ch) = self.peek_char() {
-            if escaped {
-                escaped = false;
-                self.bump();
-                continue;
-            }
-            if ch == '\\' {
-                escaped = true;
-                self.bump();
-                continue;
-            }
-            if ch == quote {
-                break;
-            }
-            self.bump();
         }
-        let selection_end = self.pos;
-        if self.peek_char() != Some(quote) {
+        let Some(parsed) = parse_langium_string(&self.input[start..], start) else {
+            self.pos = self.input.len();
             return Err(self.insertion_error("unterminated quoted service icon text"));
-        }
-        self.bump();
+        };
+        self.pos = start + parsed.consumed;
         Ok(self.spanned(
-            unescape_string(&self.input[selection_start..selection_end]),
-            start,
-            self.pos,
-            selection_start,
-            selection_end,
+            parsed.value,
+            parsed.raw_span.start,
+            parsed.raw_span.end,
+            parsed.value_span.start,
+            parsed.value_span.end,
         ))
     }
 
@@ -754,32 +737,6 @@ fn convert_architecture_title(raw: &str) -> String {
         .replace("\\'", "'")
         .trim()
         .to_string()
-}
-
-fn unescape_string(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    let mut chars = raw.chars();
-    while let Some(ch) = chars.next() {
-        if ch == '\\' {
-            if let Some(escaped) = chars.next() {
-                out.push(match escaped {
-                    'b' => '\u{0008}',
-                    'f' => '\u{000c}',
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    'v' => '\u{000b}',
-                    '0' => '\0',
-                    escaped => escaped,
-                });
-            } else {
-                out.push(ch);
-            }
-        } else {
-            out.push(ch);
-        }
-    }
-    out
 }
 
 pub(super) fn parse_semantic_source(

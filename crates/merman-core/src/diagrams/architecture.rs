@@ -1219,11 +1219,11 @@ service api(server)["Double \"quote\" and \'single\'"]
     }
 
     #[test]
-    fn architecture_string_uses_langium_control_escape_semantics_in_every_projection() {
+    fn architecture_string_uses_langium_default_unescape_semantics_in_every_projection() {
         let text = r#"architecture-beta
-service api "\b\f\n\r\t\v\0"
+service api "\b\f\n\r\t\v\0\"quote\"\\tail"
 "#;
-        let expected = "\u{0008}\u{000c}\n\r\t\u{000b}\0";
+        let expected = "bfnrtv0\"quote\"\\tail";
         let meta = test_meta();
         let source = parse::parse_semantic_source(text, &meta).unwrap();
 
