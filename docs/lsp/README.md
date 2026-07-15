@@ -49,6 +49,10 @@ semantic-token delta state, custom requests, and `tower_lsp::lsp_types` projecti
 ## Product Direction
 
 - LSP behavior is driven by parser-backed semantic facts.
+- LSP consumes typed editor snapshots backed by `FenceTextIndex`; it does not round-trip serialized
+  facts JSON. The separately exposed binding wire uses the current `AnalysisFactsPayload` v1. The
+  TextScan-capable alpha implementation shipped in `0.8.0-alpha.3` is deleted without a decoder or
+  parallel execution path; the diagnostics-only payload is an independent v1 contract.
 - `Unavailable` provenance means no parser-backed body facts exist, so unknown or unsupported body
   text does not produce completion, hover, symbols, navigation, rename, or semantic tokens.
 - Source-start header and template completion is catalog-backed and remains available independently

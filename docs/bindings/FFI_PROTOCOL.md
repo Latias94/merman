@@ -414,8 +414,10 @@ MermanResult merman_layout_json(
 );
 ```
 
-On success, `data` contains UTF-8 layout JSON using the same `LayoutedDiagram` shape as
-`merman-cli layout`. If the native library is built without the `render` feature, this function
+On success, `data` contains UTF-8 compatibility layout JSON projected from the canonical typed
+`FamilyRenderArtifact`, using the same payload as `merman-cli layout`. The semantic model and layout
+are constructed and paired by one family operation; the removed `LayoutedDiagram` API is not an
+alternate FFI path. If the native library is built without the `render` feature, this function
 returns `MERMAN_UNSUPPORTED_FORMAT`.
 
 ## Diagnostics-First Analysis JSON
@@ -476,6 +478,13 @@ These functions return `MERMAN_OK` when the analysis payload was produced. Diagr
 represented inside `data` as diagnostics. Transport errors such as invalid pointers, invalid UTF-8,
 invalid options JSON, panics, and internal serialization failures remain non-zero
 `MermanResult.code` values.
+
+The diagnostics-only `*_analyze*_json` payload remains schema version 1. The richer
+`*_facts_json` payload is the current parser-only facts version 1 contract. The TextScan-capable
+alpha shape from `0.8.0-alpha.3` is not supported by the current library; native consumers must
+update their schema handling even though that obsolete shape also used version 1, and must handle
+`fact_source: "unavailable"` plus the required semantic-item `rename_policy`. This facts schema
+version does not change the C ABI version, LSP document revisions, or Mermaid `*-v2` ids.
 
 The default analyzer is expected to be render-free. Optional layout or render checks may be added
 later behind feature/profile controls, but must use the same payload shape and report disabled

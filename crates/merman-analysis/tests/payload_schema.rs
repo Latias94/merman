@@ -173,6 +173,20 @@ fn analysis_facts_v1_rejects_legacy_text_scan_provenance() {
 }
 
 #[test]
+fn analysis_facts_v1_rejects_other_wire_versions() {
+    for version in [0, 2] {
+        let mut value = parser_backed_facts_json();
+        value["version"] = json!(version);
+
+        let error = serde_json::from_value::<AnalysisFactsPayload>(value).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("unsupported analysis facts payload version {version}; expected 1")
+        );
+    }
+}
+
+#[test]
 fn analysis_facts_v1_rejects_semantic_items_without_rename_policy() {
     let mut value = parser_backed_facts_json();
     let semantic_item = value["diagrams"][0]["syntax"]["semantic_items"]
@@ -186,6 +200,19 @@ fn analysis_facts_v1_rejects_semantic_items_without_rename_policy() {
 
     let error = serde_json::from_value::<AnalysisFactsPayload>(value).unwrap_err();
     assert!(error.to_string().contains("rename_policy"));
+}
+
+#[test]
+fn analysis_payload_v1_rejects_other_wire_versions() {
+    let mut value = serde_json::to_value(AnalysisPayload::valid(SourceDescriptor::diagram()))
+        .expect("serialize analysis payload");
+    value["version"] = json!(2);
+
+    let error = serde_json::from_value::<AnalysisPayload>(value).unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "unsupported analysis payload version 2; expected 1"
+    );
 }
 
 fn parser_backed_facts_json() -> Value {

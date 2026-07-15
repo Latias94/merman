@@ -177,10 +177,15 @@ diagnostics shape remains compatible with `analyze()` / `analyzeDocument()`; the
 `diagrams[].syntax` data is for editor, lint, and preview integrations that want Merman's parser
 facts without speaking LSP.
 
-The diagnostics and facts endpoints expose separate payload contracts; both current alpha
-contracts start at version 1 and evolve independently. Facts v1 uses explicit
+The diagnostics and facts endpoints expose separate payload contracts. The diagnostics-only
+payload remains version 1. The current parser-only facts payload is also version 1: it uses explicit
 `fact_source: "unavailable"` provenance when body semantics are unavailable, and every
 `semantic_items[]` entry has a required `rename_policy` field.
+
+The TextScan-capable alpha shape shipped in `0.8.0-alpha.3` with the same numeric discriminator. The
+web package does not retain a legacy decoder or dual facts path; consumers must update their schema
+handling and generated types for the current facts v1 contract. This version is independent from
+LSP document revisions, Mermaid `*-v2` diagram ids, and the wasm-bindgen/package ABI surface.
 
 This web surface is an integration bridge, not a request that external linters copy Merman policy.
 Adapters should preserve `merman.*` rule ids for Merman diagnostics and layer their own style rules

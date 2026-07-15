@@ -24,3 +24,14 @@ analysis reports `source_mapped_spans=false`. `Unavailable` means no body semant
 source-start headers and templates are read independently from the static family catalog. New
 editor behavior should deepen parser-backed semantic facts in `merman-core` / `merman-analysis`
 rather than adding protocol-layer scans.
+
+Editor-core builds typed snapshots directly from `AnalysisResult` and `FenceTextIndex`; it does not
+serialize or deserialize an analysis payload internally. The separately exposed binding wire is
+the current `AnalysisFactsPayload` version 1. The superseded TextScan-capable alpha implementation
+is removed rather than supported in parallel. This does not change LSP document revision numbers or
+Mermaid's own `*-v2` diagram ids.
+
+For parser-backed families, completion, navigation, and refactoring continue through the same
+protocol-neutral queries. The breaking behavior is deliberate on unavailable input: editor-core no
+longer invents body symbols, references, or rename targets when a family parser cannot provide
+complete or recovered facts.

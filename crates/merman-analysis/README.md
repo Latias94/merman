@@ -15,8 +15,8 @@ Diagnostic ownership is intentionally narrow:
   fallback locations.
 - `merman-analysis` maps those parser facts into stable rule ids, metadata, Markdown ranges, and
   duplicate/recovery policy.
-- Editor-core, LSP, and VS Code project analysis payloads without adding semantic deduplication or
-  rewriting recovered-parser messages.
+- Editor-core consumes the typed `AnalysisResult`; LSP and VS Code project typed diagnostics and
+  editor results without adding semantic deduplication or rewriting recovered-parser messages.
 
 Editor-facing ownership is layered:
 
@@ -27,21 +27,27 @@ Editor-facing ownership is layered:
 - `FenceTextIndex` preserves parser-complete, parser-recovered, or explicit-unavailable provenance
   for semantic facts and expected syntax.
 - `merman-editor-core` owns protocol-neutral completion, hover, symbols, navigation, rename,
-  selection ranges, folding ranges, and semantic-token queries over snapshots projected from
-  analysis facts.
+  selection ranges, folding ranges, and semantic-token queries over snapshots built directly from
+  `AnalysisResult` and `FenceTextIndex`.
 - LSP, WASM, and VS Code convert those protocol-neutral results into host surfaces.
 
 ## Rust API Migration Notes
 
 ### Analysis payload versioning
 
-The diagnostics-only `AnalysisPayload` and the richer `AnalysisFactsPayload` are separate
-serialized contracts. Both current alpha contracts start at version 1, but each reads its own
-version constant so future breaking changes do not force the other payload to advance.
+The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are separate serialized
+contracts with separate version constants. `AnalysisPayload` remains version 1. The parser-only
+`AnalysisFactsPayload` is the sole version 1 facts contract.
 
 Facts v1 uses `fact_source: "unavailable"` when parser-backed body semantics do not exist and does
 not manufacture body semantic items. Every `semantic_items[]` entry includes the required
 `rename_policy` field so consumers can enforce the owning diagram family's identifier grammar.
+
+Merman `0.8.0-alpha.3` exposed a superseded TextScan-capable alpha shape with the same numeric
+discriminator. That implementation is deleted: there is no legacy decoder, executor, deprecated
+alias, or dual projection path. Consumers of the alpha shape must update to the current v1 schema
+and cannot infer compatibility from the version number alone. This schema version is independent
+from LSP document revisions, Mermaid ids such as `flowchart-v2`, and native/WASM ABI versions.
 
 `DocumentDiagram::text`, `AnalyzedDiagram::text`, and editor `FenceSnapshot::text` use
 `SharedTextSlice` instead of owned `String` buffers. The slice shares the immutable document text

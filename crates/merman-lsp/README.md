@@ -32,5 +32,12 @@ language behavior.
 - Diagnostics remain analysis-driven; the LSP layer does not reimplement parse or render rules.
 - Language features remain editor-core-driven; the LSP layer converts URI/range/type shapes and
   handles request lifecycle.
+- The document store consumes typed editor snapshots backed by `FenceTextIndex`; LSP language
+  requests do not serialize or deserialize `AnalysisFactsPayload`.
+- The separately exposed analysis-facts binding wire is the current version 1 contract. Its
+  superseded TextScan-capable alpha path is deleted; unsupported body text yields no guessed
+  language items, while legal source-start header completion remains catalog-backed.
+- Facts schema versions are unrelated to LSP `textDocument.version` revisions and Mermaid's own
+  `flowchart-v2`, `stateDiagram-v2`, and `classDiagram-v2` ids.
 - First-class family coverage is tracked in `docs/lsp/CAPABILITIES.md`; parse/render support
   outside that matrix is not yet a mature LSP commitment.

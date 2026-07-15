@@ -2,8 +2,46 @@ use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 pub const ANALYSIS_PAYLOAD_VERSION: u32 = 1;
-// Diagnostics and facts are separate serialized contracts even while both begin at version 1.
+// Diagnostics and facts are independent contracts that both begin at version 1.
 pub const ANALYSIS_FACTS_PAYLOAD_VERSION: u32 = 1;
+
+fn deserialize_payload_version<'de, D>(
+    deserializer: D,
+    expected: u32,
+    contract: &str,
+) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let version = u32::deserialize(deserializer)?;
+    if version == expected {
+        Ok(version)
+    } else {
+        Err(serde::de::Error::custom(format_args!(
+            "unsupported {contract} payload version {version}; expected {expected}"
+        )))
+    }
+}
+
+fn deserialize_analysis_payload_version<'de, D>(deserializer: D) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_payload_version(deserializer, ANALYSIS_PAYLOAD_VERSION, "analysis")
+}
+
+pub(crate) fn deserialize_analysis_facts_payload_version<'de, D>(
+    deserializer: D,
+) -> Result<u32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_payload_version(
+        deserializer,
+        ANALYSIS_FACTS_PAYLOAD_VERSION,
+        "analysis facts",
+    )
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -318,6 +356,7 @@ impl Summary {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisPayload {
+    #[serde(deserialize_with = "deserialize_analysis_payload_version")]
     pub version: u32,
     pub valid: bool,
     pub summary: Summary,

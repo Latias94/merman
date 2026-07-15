@@ -73,6 +73,11 @@ The Rust feature boundary for diagnostics and validation is `analysis`. It contr
 `analysisFacts`, `validate`, and lint rule catalog helpers. The `editor-language` feature implies
 `analysis`, while ASCII-only browser builds can omit both.
 
+`analyze*` returns diagnostics schema v1. `analysisFacts` returns the current parser-only facts
+schema v1; the TextScan-capable alpha implementation from `0.8.0-alpha.3` is not retained. The two
+JSON contracts are independently versioned, and their versions are independent from
+wasm-bindgen/package ABI versions and Mermaid's own `*-v2` ids.
+
 The Rust feature boundary for the browser editor APIs is `editor-language`. Slim browser presets
 leave that feature off so they do not compile `merman-editor-core` into render-only or ASCII-only
 artifacts. The current published npm default remains `browser-full`, so editor-language stays

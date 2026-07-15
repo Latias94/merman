@@ -38,6 +38,32 @@ Merman language intelligence does not require a host to replace VS Code built-in
 third-party preview extensions, markdownlint/remark/textlint rules, or `mermaid-lint`-style CI
 policy.
 
+## Typed Snapshot and Analysis Facts Wire Contracts
+
+LSP language behavior is projected from typed `DocumentSnapshot` / `FenceTextIndex` data built
+directly from `AnalysisResult`; the server does not round-trip serialized facts JSON. The separately
+exposed `AnalysisFactsPayload` version 1 is the equivalent parser-only wire contract for binding
+consumers:
+
+- `fact_source: "text_scan"` is removed;
+- `fact_source: "unavailable"` means that no body semantic facts were produced;
+- every semantic item has a required family-owned `rename_policy`; and
+- parser-backed, recovered, and source-mapped-span flags remain explicit.
+
+The TextScan-capable alpha shape shipped with Merman `0.8.0-alpha.3` is deleted rather than retained
+behind a decoder, executor, alias, or dual projection path. Consumers of that serialized shape must
+migrate to the current facts v1 schema even though the obsolete payload also used version 1. The
+diagnostics-only `AnalysisPayload` is a separate contract and independently remains version 1.
+
+These schema versions do not rename Mermaid grammar ids such as `flowchart-v2`,
+`stateDiagram-v2`, or `classDiagram-v2`. They are also unrelated to LSP
+`textDocument.version` document revisions and to FFI, WASM, UniFFI, or platform ABI versions.
+
+For supported rows below, completion and refactoring still use complete or tested recovered parser
+facts. The intentional behavior change is on unavailable input: unknown, unsupported, or
+unrecoverable body text no longer receives guessed node ids, symbols, references, rename edits, or
+semantic tokens. Legal source-start header and template completion remains catalog-backed.
+
 ## Family Coverage
 
 | Family | Parser-backed facts | Recoverable input | Completion | Hover / Symbols | Semantic Tokens | Definition / References / Rename | Notes |

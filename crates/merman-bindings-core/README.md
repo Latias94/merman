@@ -51,6 +51,10 @@ assuming capabilities from a package name.
 The `analysis` capability bit is independent from `render` and `ascii`; slim artifacts can expose
 ASCII or render output without compiling diagnostics and lint catalog support.
 
+Diagnostics payloads and rich parser-only document facts are independent schema v1 contracts. The
+TextScan-capable alpha facts implementation is removed without a decoder or parallel binding path.
+Transport and platform ABI versions are independent from these JSON schema versions.
+
 For product scope, diagram coverage, and compatibility policy, see the
 [project README](https://github.com/Latias94/merman#readme) and
 [alignment status](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md).

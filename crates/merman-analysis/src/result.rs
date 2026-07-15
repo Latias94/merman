@@ -131,6 +131,7 @@ impl AnalysisSyntaxFacts {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisFactsPayload {
+    #[serde(deserialize_with = "crate::payload::deserialize_analysis_facts_payload_version")]
     pub version: u32,
     pub valid: bool,
     pub summary: Summary,
