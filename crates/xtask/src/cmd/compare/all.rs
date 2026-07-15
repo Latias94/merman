@@ -6,9 +6,8 @@ use std::path::{Path, PathBuf};
 
 use super::diagrams::compare_diagram_request;
 use super::{
-    AcceptedResidualPolicy, CompareRequest, ExactDomResidualPolicy,
-    QuadrantStructureResidualPolicy, RootDeltaReportLimit, RootParityResidualPolicy,
-    diagram_supports_root_delta_report, parse_root_delta_report_limit,
+    AcceptedResidualPolicy, CompareRequest, QuadrantStructureResidualPolicy, RootDeltaReportLimit,
+    RootParityResidualPolicy, diagram_supports_root_delta_report, parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -167,15 +166,6 @@ impl CompareAllOptions {
                 .is_some_and(|mode| matches!(mode.trim(), "parity-root" | "parity_root"))
     }
 
-    fn exact_dom_policy_enabled(&self) -> bool {
-        self.check_dom
-            && self.filter.is_none()
-            && self
-                .dom_mode
-                .as_deref()
-                .is_some_and(|mode| matches!(mode.trim(), "structure" | "parity"))
-    }
-
     fn quadrant_structure_policy_enabled(&self) -> bool {
         self.check_dom
             && self.filter.is_none()
@@ -196,7 +186,6 @@ impl CompareAllOptions {
             include_elk_probes: self.include_elk_probes,
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
-            exact_dom_policy_enabled: self.exact_dom_policy_enabled(),
             quadrant_structure_policy_enabled: self.quadrant_structure_policy_enabled(),
             root_parity_policy_enabled: self.root_parity_policy_enabled(),
         }
@@ -241,7 +230,6 @@ impl CompareAllDiagramSelection {
 #[derive(Debug)]
 struct CompareAllFailures {
     skip_unmatched_filter_messages: bool,
-    exact_dom_policy: Option<ExactDomResidualPolicy>,
     quadrant_structure_policy: Option<QuadrantStructureResidualPolicy>,
     root_parity_policy: Option<RootParityResidualPolicy>,
     failures: Vec<String>,
@@ -252,9 +240,6 @@ impl CompareAllFailures {
         Self {
             skip_unmatched_filter_messages: options.filter.is_some()
                 && options.only_diagrams.is_empty(),
-            exact_dom_policy: options
-                .exact_dom_policy_enabled()
-                .then(|| ExactDomResidualPolicy::new(diagrams)),
             quadrant_structure_policy: options.quadrant_structure_policy_enabled().then(|| {
                 QuadrantStructureResidualPolicy::new(diagrams, options.dom_decimals.unwrap_or(3))
             }),
@@ -284,17 +269,6 @@ impl CompareAllFailures {
     }
 
     fn finish(mut self) -> Result<(), XtaskError> {
-        if let Some(policy) = self.exact_dom_policy {
-            let accepted = policy.accepted_summaries();
-            if !accepted.is_empty() {
-                println!("\n== accepted exact DOM residuals ==");
-                for line in accepted {
-                    println!("{line}");
-                }
-            }
-            self.failures.extend(policy.missing_failures());
-        }
-
         if let Some(policy) = self.quadrant_structure_policy {
             let accepted = policy.accepted_summaries();
             if !accepted.is_empty() {
@@ -325,13 +299,7 @@ impl CompareAllFailures {
     }
 
     fn record_svg_compare_failure(&mut self, diagram: &str, msg: &str, report_path: Option<&Path>) {
-        if diagram == "sequence"
-            && let Some(policy) = self.exact_dom_policy.as_mut()
-        {
-            if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
-                self.failures.push(failure);
-            }
-        } else if diagram == "quadrantchart"
+        if diagram == "quadrantchart"
             && let Some(policy) = self.quadrant_structure_policy.as_mut()
         {
             if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
@@ -342,8 +310,11 @@ impl CompareAllFailures {
                 self.failures.push(failure);
             }
         } else {
+            let report = report_path
+                .map(|path| format!("\nreport={}", path.display()))
+                .unwrap_or_default();
             self.failures.push(format!(
-                "{diagram}: {}",
+                "{diagram}: {}{report}",
                 XtaskError::SvgCompareFailed(msg.to_string())
             ));
         }
@@ -365,7 +336,6 @@ struct CompareAllInvocationOptions<'a> {
     include_elk_probes: bool,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
-    exact_dom_policy_enabled: bool,
     quadrant_structure_policy_enabled: bool,
     root_parity_policy_enabled: bool,
 }
@@ -393,9 +363,9 @@ impl CompareAllInvocationOptions<'_> {
                 .map(str::to_string),
             flowchart_elk_backend: is_flowchart.then_some(self.flowchart_elk_backend).flatten(),
             include_elk_probes: is_flowchart && self.include_elk_probes,
-            accepted_residual_policy: if diagram == "sequence" && self.exact_dom_policy_enabled {
-                AcceptedResidualPolicy::SequenceExactDom
-            } else if diagram == "quadrantchart" && self.quadrant_structure_policy_enabled {
+            accepted_residual_policy: if diagram == "quadrantchart"
+                && self.quadrant_structure_policy_enabled
+            {
                 AcceptedResidualPolicy::QuadrantStructureRenderability
             } else if self.root_parity_policy_enabled {
                 AcceptedResidualPolicy::RootParityExact
@@ -572,44 +542,6 @@ mod tests {
     }
 
     #[test]
-    fn compare_all_options_detects_exact_dom_policy_scope() {
-        let global = CompareAllOptions {
-            check_dom: true,
-            dom_mode: Some("parity".to_string()),
-            ..Default::default()
-        };
-        assert!(global.exact_dom_policy_enabled());
-        assert_eq!(
-            global
-                .invocation_options()
-                .for_diagram("sequence", Path::new("target/compare"))
-                .request
-                .accepted_residual_policy,
-            AcceptedResidualPolicy::SequenceExactDom
-        );
-        assert_eq!(
-            global
-                .invocation_options()
-                .for_diagram("info", Path::new("target/compare"))
-                .request
-                .accepted_residual_policy,
-            AcceptedResidualPolicy::None
-        );
-
-        let targeted = CompareAllOptions {
-            only_diagrams: vec!["sequence".to_string()],
-            ..global.clone()
-        };
-        assert!(targeted.exact_dom_policy_enabled());
-
-        let filtered = CompareAllOptions {
-            filter: Some("smoke".to_string()),
-            ..global
-        };
-        assert!(!filtered.exact_dom_policy_enabled());
-    }
-
-    #[test]
     fn structure_policy_metadata_is_family_specific() {
         let options = CompareAllOptions {
             check_dom: true,
@@ -624,7 +556,7 @@ mod tests {
                 .for_diagram("sequence", compare_dir)
                 .request
                 .accepted_residual_policy,
-            AcceptedResidualPolicy::SequenceExactDom
+            AcceptedResidualPolicy::None
         );
         assert_eq!(
             invocation
@@ -676,6 +608,18 @@ mod tests {
             failures.failures,
             ["info: svg compare failed:\ndom mismatch"]
         );
+
+        let mut failures = CompareAllFailures::new(&options, &["info"]);
+        failures.record(
+            "info",
+            Err(XtaskError::SvgCompareFailed("dom mismatch".to_string())),
+            Some(Path::new("target/compare/info_structure.md")),
+        );
+
+        assert_eq!(
+            failures.failures,
+            ["info: svg compare failed:\ndom mismatch\nreport=target/compare/info_structure.md"]
+        );
     }
 
     #[test]
@@ -700,25 +644,41 @@ mod tests {
     }
 
     #[test]
-    fn compare_all_failures_accepts_exact_documented_sequence_dom_residuals() {
-        let msg = "dom mismatch for upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026: upstream=a local=b (svg/g[16]: child count mismatch upstream=9 local=8)\n\
-dom mismatch for upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019: upstream=a local=b (svg/g[20]: child count mismatch upstream=9 local=8)\n\
-dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b (svg/g[61]/text[9]: attr `class` mismatch upstream=`sectionTitle` local=`loopText`; additional DOM differences (2): svg/g[61]/text[9]: child count mismatch upstream=0 local=1 | svg/g[61]: child count mismatch upstream=10 local=11)";
+    fn compare_all_failures_rejects_sequence_dom_mismatches() {
+        let former_residuals = [
+            (
+                "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026",
+                "dom mismatch for upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026: upstream=a local=b (svg/g[16]: child count mismatch upstream=9 local=8)",
+            ),
+            (
+                "upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019",
+                "dom mismatch for upstream_cypress_sequencediagram_v2_spec_should_render_wrapped_long_notes_left_of_control_019: upstream=a local=b (svg/g[20]: child count mismatch upstream=9 local=8)",
+            ),
+            (
+                "upstream_docs_diagrams_mermaid_api_sequence",
+                "dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b (svg/g[61]/text[9]: attr `class` mismatch upstream=`sectionTitle` local=`loopText`; additional DOM differences (2): svg/g[61]/text[9]: child count mismatch upstream=0 local=1 | svg/g[61]: child count mismatch upstream=10 local=11)",
+            ),
+        ];
 
         for mode in ["structure", "parity"] {
-            let options = CompareAllOptions {
-                check_dom: true,
-                dom_mode: Some(mode.to_string()),
-                ..Default::default()
-            };
-            let mut failures = CompareAllFailures::new(&options, &["sequence"]);
-            failures.record(
-                "sequence",
-                Err(XtaskError::SvgCompareFailed(msg.to_string())),
-                Some(Path::new("target/compare/sequence_report.md")),
-            );
+            for (stem, msg) in former_residuals {
+                let options = CompareAllOptions {
+                    check_dom: true,
+                    dom_mode: Some(mode.to_string()),
+                    ..Default::default()
+                };
+                let mut failures = CompareAllFailures::new(&options, &["sequence"]);
+                failures.record(
+                    "sequence",
+                    Err(XtaskError::SvgCompareFailed(msg.to_string())),
+                    Some(Path::new("target/compare/sequence_report.md")),
+                );
 
-            assert!(failures.finish().is_ok(), "mode={mode}");
+                let error = failures
+                    .finish()
+                    .expect_err("former Sequence DOM residuals must remain actionable");
+                assert!(error.to_string().contains(stem), "mode={mode}, stem={stem}");
+            }
         }
     }
 

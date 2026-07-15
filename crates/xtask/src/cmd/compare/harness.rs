@@ -23,7 +23,6 @@ impl VerificationRenderPath {
 pub(crate) enum AcceptedResidualPolicy {
     #[default]
     None,
-    SequenceExactDom,
     QuadrantStructureRenderability,
     RootParityExact,
 }
@@ -32,9 +31,6 @@ impl AcceptedResidualPolicy {
     fn label(self) -> &'static str {
         match self {
             Self::None => "none",
-            Self::SequenceExactDom => {
-                "compare-all exact fail-closed Sequence DOM residual registry"
-            }
             Self::QuadrantStructureRenderability => {
                 "compare-all source-backed QuadrantChart renderability correction registry"
             }
@@ -1244,11 +1240,7 @@ mod tests {
     #[test]
     fn verification_metadata_distinguishes_family_specific_dom_residual_policies() {
         let cases = [
-            (
-                "sequence",
-                AcceptedResidualPolicy::SequenceExactDom,
-                "exact fail-closed Sequence DOM residual registry",
-            ),
+            ("sequence", AcceptedResidualPolicy::None, "policy: `none`"),
             (
                 "quadrantchart",
                 AcceptedResidualPolicy::QuadrantStructureRenderability,
