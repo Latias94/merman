@@ -39,7 +39,7 @@ pub use options::{AsciiCharset, AsciiDirection, AsciiRenderOptions};
 
 use merman_core::diagram::RenderSemanticModel;
 use merman_core::diagrams::er::ErDiagramRenderModel;
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::diagrams::gantt::GanttDiagramRenderModel;
 use merman_core::diagrams::git_graph::GitGraphRenderModel;
 use merman_core::diagrams::journey::JourneyDiagramRenderModel;
@@ -106,7 +106,7 @@ pub fn render_er(model: &ErDiagramRenderModel, options: &AsciiRenderOptions) -> 
     er::render_er_diagram(model, options)
 }
 
-pub fn render_flowchart(model: &FlowchartV2Model, options: &AsciiRenderOptions) -> Result<String> {
+pub fn render_flowchart(model: &FlowchartModel, options: &AsciiRenderOptions) -> Result<String> {
     options.validate()?;
     let graph = graph::from_flowchart_model(model, options)?;
     graph::render_graph(&graph, options)
@@ -205,12 +205,12 @@ pub fn render_tree_view(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartV2Model};
+    use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartModel};
     use merman_core::diagrams::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 
-    fn empty_flowchart() -> FlowchartV2Model {
-        FlowchartV2Model {
+    fn empty_flowchart() -> FlowchartModel {
+        FlowchartModel {
             keyword: "graph".to_string(),
             acc_descr: None,
             acc_title: None,

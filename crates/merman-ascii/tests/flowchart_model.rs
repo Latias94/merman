@@ -2,7 +2,7 @@ use merman_ascii::{
     AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRenderOptions, AsciiRgb, render_model,
 };
 use merman_core::diagram::RenderSemanticModel;
-use merman_core::diagrams::flowchart::{FlowNode, FlowchartV2Model};
+use merman_core::diagrams::flowchart::{FlowNode, FlowchartModel};
 use merman_core::{Engine, ParseOptions};
 use std::path::Path;
 use unicode_width::UnicodeWidthStr;
@@ -147,8 +147,8 @@ fn assert_rectangular_terminal_grid(rendered: &str) {
     }
 }
 
-fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartV2Model {
-    FlowchartV2Model {
+fn single_node_flowchart_model(layout_shape: &str, label: &str) -> FlowchartModel {
+    FlowchartModel {
         keyword: "graph".to_string(),
         acc_descr: None,
         acc_title: None,
@@ -743,7 +743,7 @@ fn flowchart_parser_long_subgraph_title_wraps_to_multiple_rows() {
 #[test]
 fn render_model_subgraph_direction_override_renders_local_left_right_layout_without_cross_boundary_edges()
  {
-    let model = merman_core::diagrams::flowchart::FlowchartV2Model {
+    let model = merman_core::diagrams::flowchart::FlowchartModel {
         keyword: "graph".to_string(),
         acc_descr: None,
         acc_title: None,

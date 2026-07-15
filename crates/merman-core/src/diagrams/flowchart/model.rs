@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowchartV2Model {
+pub struct FlowchartModel {
     #[serde(default)]
     pub keyword: String,
     #[serde(default, rename = "accDescr")]
@@ -33,7 +33,7 @@ pub struct FlowchartV2Model {
     pub warning_facts: Vec<DiagramWarningFact>,
 }
 
-impl FlowchartV2Model {
+impl FlowchartModel {
     pub(crate) fn sanitize_common_db_fields(&mut self, config: &crate::MermaidConfig) {
         crate::common_db::sanitize_optional_acc_title(&mut self.acc_title, config);
         crate::common_db::sanitize_optional_acc_descr(&mut self.acc_descr, config);

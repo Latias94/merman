@@ -274,7 +274,7 @@ pub enum RenderSemanticModel {
     Mindmap(crate::diagrams::mindmap::MindmapDiagramRenderModel),
     State(crate::diagrams::state::StateDiagramRenderModel),
     Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
-    Flowchart(crate::diagrams::flowchart::FlowchartV2Model),
+    Flowchart(crate::diagrams::flowchart::FlowchartModel),
     Architecture(crate::diagrams::architecture::ArchitectureDiagramRenderModel),
     Class(crate::models::class_diagram::ClassDiagram),
     C4(crate::diagrams::c4::C4DiagramRenderModel),
@@ -343,7 +343,7 @@ impl_builtin_render_semantic!(
     crate::diagrams::sequence::render_model_to_compat_json
 );
 impl_builtin_render_semantic!(
-    crate::diagrams::flowchart::FlowchartV2Model,
+    crate::diagrams::flowchart::FlowchartModel,
     crate::diagrams::flowchart::render_model_to_compat_json
 );
 impl_builtin_render_semantic!(

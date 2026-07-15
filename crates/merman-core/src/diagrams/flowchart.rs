@@ -39,7 +39,7 @@ use text::{
     parse_edge_label_text, parse_label_text, strip_wrapping_backticks, title_kind_str, unquote,
 };
 
-pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartV2Model};
+pub use model::{FlowEdge, FlowEdgeDefaults, FlowNode, FlowSubgraph, FlowchartModel};
 
 pub(crate) use model::{
     Edge, EdgeDefaults, LabeledText, LinkToken, Node, SubgraphHeader, TitleKind,
@@ -114,12 +114,12 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
 pub fn parse_flowchart_model_for_render(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<FlowchartV2Model> {
+) -> Result<FlowchartModel> {
     parse_flowchart_semantic_source(code, meta)?.into_render_model(meta)
 }
 
 pub(crate) fn render_model_to_compat_json(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
     let mut value =
@@ -1162,7 +1162,7 @@ fn push_flowchart_token_symbol(
 }
 
 impl FlowchartSemanticSource {
-    fn into_render_model(self, meta: &ParseMetadata) -> Result<FlowchartV2Model> {
+    fn into_render_model(self, meta: &ParseMetadata) -> Result<FlowchartModel> {
         let FlowchartSemanticSource {
             acc_descr,
             acc_title,
@@ -1182,7 +1182,7 @@ impl FlowchartSemanticSource {
             append_missing_subgraph_nodes(&mut nodes, &subgraphs);
         }
 
-        Ok(FlowchartV2Model {
+        Ok(FlowchartModel {
             keyword,
             acc_descr,
             acc_title,
