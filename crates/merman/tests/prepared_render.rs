@@ -1,7 +1,8 @@
 use merman::ParseOptions;
 use merman::render::{
     HeadlessRenderer, LayoutOptions, PreparedRender, RenderEnvironment, RenderResourceLimits,
-    SvgRenderOptions, prepare_render_sync, prepare_semantic_sync, render_svg_sync,
+    RenderTimeSnapshot, SvgRenderOptions, prepare_render_sync, prepare_semantic_sync,
+    render_svg_sync,
 };
 
 fn assert_info_artifact(prepared: &PreparedRender) {
@@ -170,6 +171,71 @@ Second: second,after first,2ms
     assert_eq!(diagnostics.unix_millis_at_rendered_x(10.0), Some(-1));
     assert_eq!(diagnostics.unix_millis_at_rendered_x(77.0), Some(1));
     assert_eq!(diagnostics.unix_millis_at_rendered_x(44.0), None);
+}
+
+#[test]
+fn prepared_gantt_request_time_override_preserves_operation_time() {
+    let source = r#"gantt
+dateFormat x
+section Delivery
+First: first,-1,1ms
+Second: second,after first,2ms
+"#;
+    let session_time = RenderTimeSnapshot::from_unix_millis(0, 0).expect("Unix epoch");
+    let request_time = RenderTimeSnapshot::from_unix_millis(1, 0).expect("one millisecond");
+    let renderer = HeadlessRenderer::new()
+        .with_fixed_time(session_time)
+        .with_diagram_id("prepared-gantt-time");
+    let prepared = renderer
+        .prepare_render_sync(source)
+        .unwrap()
+        .expect("Gantt should produce a prepared render artifact");
+    let request_render = prepared
+        .render_svg_report(&SvgRenderOptions {
+            diagram_id: Some("prepared-gantt-time".to_string()),
+            current_time_unix_ms: Some(request_time.unix_ms()),
+            ..Default::default()
+        })
+        .expect("request-time Gantt render");
+    let high_level_request_render = renderer
+        .clone()
+        .with_svg_current_time_unix_ms(request_time.unix_ms())
+        .render_svg_report_sync(source)
+        .unwrap()
+        .expect("high-level request-time Gantt render");
+    let session_render = HeadlessRenderer::new()
+        .with_fixed_time(request_time)
+        .with_diagram_id("prepared-gantt-time")
+        .render_svg_report_sync(source)
+        .unwrap()
+        .expect("session-time Gantt render");
+
+    fn today_line(svg: &str) -> &str {
+        let start = svg.find(r#"<g class="today"><line"#).expect("today marker");
+        let end = svg[start..].find("/>").expect("today marker end") + start + 2;
+        &svg[start..end]
+    }
+
+    assert_eq!(
+        today_line(request_render.svg()),
+        today_line(session_render.svg())
+    );
+    assert_eq!(
+        today_line(high_level_request_render.svg()),
+        today_line(session_render.svg())
+    );
+    assert_eq!(
+        request_render.report().time().unix_ms(),
+        session_time.unix_ms()
+    );
+    assert_eq!(
+        high_level_request_render.report().time().unix_ms(),
+        session_time.unix_ms()
+    );
+    assert_eq!(
+        session_render.report().time().unix_ms(),
+        request_time.unix_ms()
+    );
 }
 
 #[test]

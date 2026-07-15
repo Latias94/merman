@@ -125,6 +125,9 @@ impl PreparedRender {
     }
 
     /// Renders SVG once from the prepared semantic model and layout.
+    ///
+    /// Request-scoped values in `svg_options` affect SVG presentation only; they do not replace
+    /// the operation-owned session snapshot reported by [`RenderedSvg`].
     pub fn render_svg(self, svg_options: &SvgRenderOptions) -> Result<String> {
         self.render_svg_with_debug(svg_options, &SvgDebugOptions::default())
     }

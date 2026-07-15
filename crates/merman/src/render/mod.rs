@@ -497,21 +497,38 @@ mod svg_pipeline_tests {
 
     #[test]
     fn layout_json_helpers_share_the_complete_typed_operation_projection() {
-        let source = "flowchart TD\nA[Hello] --> B[World]";
         let renderer = HeadlessRenderer::new().with_lenient_parsing();
-        let free_layout =
-            layout_json_sync(&renderer.engine, source, renderer.parse, &renderer.layout)
-                .unwrap()
-                .unwrap();
-        let renderer_layout = renderer.layout_json_sync(source).unwrap().unwrap();
+        for (source, diagram_type, layout_key) in [
+            (
+                "flowchart TD\nA[Hello] --> B[World]",
+                "flowchart-v2",
+                "FlowchartV2",
+            ),
+            (
+                "stateDiagram-v2\n[*] --> Active",
+                "stateDiagram",
+                "StateDiagramV2",
+            ),
+            (
+                "classDiagram\nclass Animal",
+                "classDiagram",
+                "ClassDiagramV2",
+            ),
+        ] {
+            let free_layout =
+                layout_json_sync(&renderer.engine, source, renderer.parse, &renderer.layout)
+                    .unwrap()
+                    .unwrap();
+            let renderer_layout = renderer.layout_json_sync(source).unwrap().unwrap();
 
-        assert_eq!(free_layout, renderer_layout);
-        assert_eq!(
-            renderer_layout["meta"]["diagram_type"],
-            serde_json::json!("flowchart-v2")
-        );
-        assert!(renderer_layout["semantic"].is_object());
-        assert!(renderer_layout["layout"]["FlowchartV2"].is_object());
+            assert_eq!(free_layout, renderer_layout);
+            assert_eq!(
+                renderer_layout["meta"]["diagram_type"],
+                serde_json::json!(diagram_type)
+            );
+            assert!(renderer_layout["semantic"].is_object());
+            assert!(renderer_layout["layout"][layout_key].is_object());
+        }
         assert!(
             renderer
                 .layout_json_sync("not a mermaid diagram")
@@ -1149,6 +1166,13 @@ impl HeadlessRenderer {
 
     pub fn with_diagram_id(mut self, diagram_id: &str) -> Self {
         self.svg.diagram_id = Some(sanitize_svg_id(diagram_id));
+        self
+    }
+
+    /// Overrides the current time for SVG-only presentation without changing parse/layout time or
+    /// the operation-owned environment snapshot.
+    pub fn with_svg_current_time_unix_ms(mut self, unix_ms: i64) -> Self {
+        self.svg.current_time_unix_ms = Some(unix_ms);
         self
     }
 
