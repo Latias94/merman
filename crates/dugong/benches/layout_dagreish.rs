@@ -18,7 +18,6 @@ impl LayeredDagSpec {
             directed: true,
             multigraph: true,
             compound: true,
-            ..Default::default()
         });
         g.set_graph(GraphLabel::default());
         g.set_default_node_label(NodeLabel::default);

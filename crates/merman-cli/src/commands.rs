@@ -271,7 +271,7 @@ fn lint_display_path(input: Option<&str>, stdin_file_name: Option<&str>) -> Opti
     }
 }
 
-fn lint_input_path<'a>(args: &'a LintArgs) -> Option<&'a str> {
+fn lint_input_path(args: &LintArgs) -> Option<&str> {
     match args.input.as_deref() {
         Some(path) => Some(path),
         None if args.stdin_file_name.is_some() => Some("-"),

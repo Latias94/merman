@@ -581,7 +581,7 @@ fn cli_lint_rejects_unknown_rule_ids() {
             "unknown or non-configurable lint rule id `merman.internal.panic`",
         ),
     ] {
-        let output = Command::new(&exe)
+        let output = Command::new(exe)
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

@@ -81,23 +81,28 @@ fn mindmap_edge(id: &str, start: &str, end: &str) -> MindmapDiagramRenderEdge {
     }
 }
 
+#[derive(Default)]
+struct KanbanNodeMetadata<'a> {
+    parent_id: Option<&'a str>,
+    ticket: Option<&'a str>,
+    priority: Option<&'a str>,
+    assigned: Option<&'a str>,
+    icon: Option<&'a str>,
+}
+
 fn kanban_node(
     id: &str,
     label: &str,
     is_group: bool,
-    parent_id: Option<&str>,
-    ticket: Option<&str>,
-    priority: Option<&str>,
-    assigned: Option<&str>,
-    icon: Option<&str>,
+    metadata: KanbanNodeMetadata<'_>,
 ) -> KanbanRenderNode {
     let mut node = KanbanRenderNode::new(id, label);
     node.is_group = is_group;
-    node.parent_id = parent_id.map(str::to_string);
-    node.ticket = ticket.map(str::to_string);
-    node.priority = priority.map(str::to_string);
-    node.assigned = assigned.map(str::to_string);
-    node.icon = icon.map(str::to_string);
+    node.parent_id = metadata.parent_id.map(str::to_string);
+    node.ticket = metadata.ticket.map(str::to_string);
+    node.priority = metadata.priority.map(str::to_string);
+    node.assigned = metadata.assigned.map(str::to_string);
+    node.icon = metadata.icon.map(str::to_string);
     node
 }
 
@@ -347,37 +352,39 @@ fn journey_render_model_renders_actors_sections_and_scores() {
 fn kanban_render_model_renders_groups_and_child_metadata() {
     let model = KanbanDiagramRenderModel {
         nodes: vec![
-            kanban_node("backlog", "Backlog", true, None, None, None, None, None),
+            kanban_node("backlog", "Backlog", true, KanbanNodeMetadata::default()),
             kanban_node(
                 "card-a",
                 "Ticket A",
                 false,
-                Some("backlog"),
-                Some("K-1"),
-                Some("high"),
-                Some("alice"),
-                Some("bug"),
+                KanbanNodeMetadata {
+                    parent_id: Some("backlog"),
+                    ticket: Some("K-1"),
+                    priority: Some("high"),
+                    assigned: Some("alice"),
+                    icon: Some("bug"),
+                },
             ),
             kanban_node(
                 "card-b",
                 "Ticket B",
                 false,
-                Some("backlog"),
-                Some("K-2"),
-                None,
-                None,
-                None,
+                KanbanNodeMetadata {
+                    parent_id: Some("backlog"),
+                    ticket: Some("K-2"),
+                    ..Default::default()
+                },
             ),
-            kanban_node("doing", "Doing", true, None, None, None, None, None),
+            kanban_node("doing", "Doing", true, KanbanNodeMetadata::default()),
             kanban_node(
                 "card-c",
                 "Ticket C",
                 false,
-                Some("doing"),
-                Some("K-3"),
-                None,
-                None,
-                None,
+                KanbanNodeMetadata {
+                    parent_id: Some("doing"),
+                    ticket: Some("K-3"),
+                    ..Default::default()
+                },
             ),
         ],
     };
