@@ -15,9 +15,9 @@
 `flowchart TD; A-->B;` into diagrams for Markdown, docs, and web apps.
 
 Merman is a parity-focused, headless Rust implementation of Mermaid.js for parsing, layout, and
-browserless rendering. It targets `mermaid@11.16.0`, produces semantic JSON, layout JSON, SVG,
-raster formats, and ASCII/Unicode output, and does not launch a browser or JavaScript runtime to
-render diagrams.
+browserless rendering. It targets `mermaid@11.16.0`, produces compatibility semantic JSON, layout
+JSON, SVG, raster formats, and ASCII/Unicode output, and does not launch a browser or JavaScript
+runtime to render diagrams.
 
 Try it in the browser: [Merman Playground](https://frankorz.com/merman/).
 
@@ -52,7 +52,7 @@ Mermaid license and provenance notes.
 
 ## What Merman Outputs
 
-- Semantic JSON for Mermaid diagrams.
+- Compatibility semantic JSON projected from family-owned Mermaid semantics.
 - Layout JSON with computed geometry and routes.
 - Diagnostics-first analysis JSON for validation, linting, Markdown scanning, editor integrations,
   and LSP adapters.
@@ -287,40 +287,34 @@ want layout + SVG, `ascii` when you want text output, and `raster` when you also
 from Rust (no CLI required).
 
 ```rust
-use merman_core::{Engine, ParseOptions};
-use merman::render::{
-    headless_layout_options, render_svg_sync, sanitize_svg_id, SvgRenderOptions,
-};
+use merman::render::{HeadlessRenderer, RenderEnvironment};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let engine = Engine::new();
+    let source = "flowchart TD; A-->B;";
+    let renderer = HeadlessRenderer::new()
+        // The parity environment freezes vendored measurement, time, seed, resource, and root
+        // policy once for each operation.
+        .with_environment(RenderEnvironment::parity())
+        .with_strict_parsing()
+        .with_diagram_id("example-diagram");
 
-    let layout = headless_layout_options();
+    // The prepared artifact keeps one matching typed semantic/layout pair. Layout JSON is a
+    // compatibility projection; SVG consumes the same artifact.
+    let prepared = renderer
+        .prepare_render_sync(source)?
+        .expect("diagram detected");
+    let layout_json = prepared.layout_json()?;
+    let svg = prepared.render_svg(renderer.svg_options())?;
 
-    // For UIs that inline multiple diagrams, set a per-diagram SVG id to avoid internal `<defs>`
-    // and accessibility id collisions.
-    let svg_opts = SvgRenderOptions {
-        diagram_id: Some(sanitize_svg_id("example-diagram")),
-        ..SvgRenderOptions::default()
-    };
-
-    // Executor-free synchronous entrypoint (the work is CPU-bound and does not perform I/O).
-    let svg = render_svg_sync(
-        &engine,
-        "flowchart TD; A-->B;",
-        ParseOptions::default(),
-        &layout,
-        &svg_opts,
-    )?
-    .unwrap();
-
+    eprintln!("layout family: {}", layout_json["meta"]["diagram_type"]);
     println!("{svg}");
     Ok(())
 }
 ```
 
-If you prefer a bundled "pipeline" instead of passing multiple option structs per call, use
-`merman::render::HeadlessRenderer`.
+`HeadlessRenderer` is the canonical public render facade. The free `layout_json_sync` and
+`render_svg_sync` helpers delegate to the same typed operation. Use `prepare_render_sync` when one
+caller needs both layout JSON and SVG from exactly the same typed artifact.
 
 If you already know the diagram type (e.g. from a Markdown fence info string), prefer
 `Engine::parse_diagram_with_type_sync(...)` to skip type detection.
@@ -330,6 +324,19 @@ Rust API migration note for the 0.8 alpha line: `merman_core::Error::DiagramPars
 display the error can keep using `Display` / `to_string()`. Callers that match the enum variant
 should read `diagnostic.message()` and can additionally inspect `diagnostic.span()`,
 `diagnostic.span_kind()`, and `diagnostic.code()` for parser-backed metadata.
+
+The public Rust flowchart model is now
+`merman_core::diagrams::flowchart::FlowchartModel`; the former `FlowchartV2Model` name has no
+deprecated alias. This only removes an implementation-generation suffix from the Rust type.
+Mermaid's `flowchart-v2` diagram id and the compatibility layout JSON `FlowchartV2` key remain
+unchanged.
+
+Analysis facts migration note: the current parser-only `AnalysisFactsPayload` is the sole version 1
+contract. It deliberately replaces the TextScan-capable alpha shape from `0.8.0-alpha.3`, which is
+not supported by the new implementation. Consumers of that alpha shape must update even though its
+numeric discriminator was also 1. The diagnostics-only `AnalysisPayload` independently remains
+version 1. These payload versions do not change LSP document revisions, Mermaid `*-v2` diagram ids,
+or binding ABI versions.
 
 If your downstream renderer does not support SVG `<foreignObject>` (common for rasterizers),
 prefer `HeadlessRenderer::render_svg_resvg_safe_sync()`. Use
@@ -409,9 +416,9 @@ catalog JSON, binding metadata, host text-measurement callbacks for reusable eng
 Rust-owned buffer release.
 
 Validation JSON is a compatibility projection. ADR 0070 defines diagnostics-first analysis JSON as
-the canonical alpha payload for lint, CI, editor integrations, and LSP adapters; new alpha
-integrations should track that contract instead of building long-term behavior around the coarse
-validation result.
+the canonical alpha wire payload for lint, CI, and binding integrations; new serialized integrations
+should track that contract instead of building long-term behavior around the coarse validation
+result. The built-in LSP consumes typed diagnostics and editor snapshots without a JSON round trip.
 
 Start with the surface that matches your host:
 
@@ -886,24 +893,34 @@ sanitization.
 
 ## Architecture notes
 
-- `merman-core` owns detection, parsing, stable semantic JSON, and typed render models for the
-  render-optimized path.
-- `merman-render` owns layout and SVG emission. The default SVG helper uses
-  `parse_diagram_for_render_model_sync` -> `layout_parsed_render_layout_only` ->
-  `render_layout_svg_parts_for_render_model_with_config`, so typed diagrams avoid rebuilding the
-  owned semantic JSON payload.
-- `layout_diagram_sync` and `render_layouted_svg` remain compatibility paths for callers that need
-  owned semantic/layout JSON between steps.
-- Parity renderers live under `svg/parity/*`; large renderers are split by diagram responsibility
-  and generated overrides are treated as compatibility data, not as default model fixes.
+- `merman-core` owns the Diagram Family catalog and family semantic construction. Detection,
+  aliases, profile gates, compatibility JSON, editor facts, typed render models, metadata, and
+  authoring headers are projections of those family definitions rather than independent registries.
+- `merman-render` owns typed layout and SVG emission. `FamilyRenderArtifact` keeps the matching
+  semantic model, layout, metadata, and render session opaque; layout JSON is a projection and
+  built-in SVG never reparses compatibility JSON.
+- `HeadlessRenderer`, `prepare_render_sync`, `layout_json_sync`, and `render_svg_sync` all execute
+  the canonical typed headless operation. The old public `layout_parsed*`, `render_layouted_svg`,
+  raw model/layout SVG helpers, and pass-through family wrappers have been removed.
+- `RenderEnvironment` selects text-measurement phases, math and icon services, time, randomness,
+  resource limits, and generated root-override policy once per operation. `SvgRenderOptions`
+  contains request values; `SvgDebugOptions` contains diagnostics.
+- Every built-in SVG root is planned and emitted by the Root Viewport module. Families own content
+  bounds and source-specific algorithms, while shared policy owns sizing, override resolution,
+  accessibility chrome, escaping, and root attribute order.
+- Parity commands render through the same typed operation and keep compatibility JSON checks as
+  explicit projection tests, not as a second SVG path.
 - `merman-editor-core` owns protocol-neutral language intelligence for editor surfaces: document
   snapshots, UTF-16 ranges, completion, diagnostics, symbols, navigation, rename, code-action
   metadata, and semantic-token selection. `merman-lsp` and the browser WASM package project those
-  shared results into LSP and Monaco-facing shapes instead of carrying separate semantic
-  implementations.
+  shared parser-backed results into LSP and Monaco-facing shapes. Unknown or unsupported body text
+  produces no guessed semantic items; legal source-start headers come from the family catalog.
 - The VS Code extension keeps source actions local and source-scoped: Mermaid files and
   Markdown/MDX Mermaid fences expose preview, export, and copy CodeLens actions that target stable
   source ids rather than the current cursor position.
+
+The complete ownership and migration contract is recorded in
+[`docs/adr/0073-family-owned-diagram-architecture.md`](https://github.com/Latias94/merman/blob/main/docs/adr/0073-family-owned-diagram-architecture.md).
 
 ## Workspace crates
 
@@ -912,8 +929,8 @@ sanitization.
 | [`merman`](https://crates.io/crates/merman) | Public Rust facade. Enable `render`, `ascii`, and/or `raster` depending on output needs. |
 | [`merman-cli`](https://crates.io/crates/merman-cli) | Command-line interface for detect/parse/layout/render workflows. |
 | [`merman-rustdoc`](https://crates.io/crates/merman-rustdoc) | Proc-macro integration for rendering Mermaid fences in rustdoc as inline headless SVG. |
-| [`merman-core`](https://crates.io/crates/merman-core) | Detection, parsing, metadata, semantic JSON, and typed render models. |
-| [`merman-analysis`](https://crates.io/crates/merman-analysis) | Diagnostics-first payload and source-map contracts for validation, linting, editor integrations, and LSP adapters. |
+| [`merman-core`](https://crates.io/crates/merman-core) | Detection, family-owned parsing, metadata, compatibility semantic JSON, editor facts, and typed render projections. |
+| [`merman-analysis`](https://crates.io/crates/merman-analysis) | Typed analysis and semantic indexes plus independent diagnostics v1 and parser-only facts v1 wire projections for validation, linting, bindings, editor integrations, and LSP adapters. |
 | [`merman-editor-core`](https://crates.io/crates/merman-editor-core) | Protocol-neutral editor language intelligence shared by LSP and browser integrations. |
 | [`merman-render`](https://crates.io/crates/merman-render) | Headless layout, SVG rendering, SVG pipelines, and raster-friendly postprocessing. |
 | [`merman-ascii`](https://crates.io/crates/merman-ascii) | ASCII/Unicode terminal rendering for typed models. |

@@ -8,7 +8,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-`merman-render` is the low-level layout and SVG crate behind [merman](https://crates.io/crates/merman). It consumes `merman-core` parse results and produces layout JSON or Mermaid-like SVG.
+`merman-render` is the low-level layout and SVG crate behind
+[merman](https://crates.io/crates/merman). It consumes typed `merman-core` family semantics and
+produces compatibility layout JSON or Mermaid-like SVG through one family artifact.
 
 The default build stays host-agnostic while keeping Mermaid-compatible full configuration and
 sanitizer behavior through `core-full`. `core-full` also enables `cytoscape-layout`, the shared
@@ -24,23 +26,31 @@ Flowchart ELK to the source-backed Rust port of Mermaid's ELK adapter and Eclips
 layout. The previous lightweight compatibility backend remains selectable through
 `LayoutOptions::flowchart_elk_backend` for alpha diagnostics.
 
-Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use `merman-render` directly when you need lower-level control over layout, text measurement, SVG options, or SVG postprocessing.
+Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use
+`merman-render` directly when you need lower-level control over layout, text measurement, SVG
+options, or SVG postprocessing.
 
 ## What It Provides
 
 - Headless layout for parsed Mermaid diagrams.
 - Mermaid-parity SVG emission.
+- `FamilyRenderArtifact`, which keeps one matching built-in semantic/layout pair opaque and
+  projects layout JSON or consuming SVG output.
 - `LayoutOptions::headless_svg_defaults()` for editor/export use cases.
 - Text measurement hooks through `TextMeasurer`.
 - Math rendering hooks through `MathRenderer`.
+- Shared Root Viewport policy for sizing, generated override resolution, accessibility chrome, and
+  root SVG emission.
 - `SvgPipeline` presets and postprocessors for readable or rasterizer-friendly SVG.
 
 ## Render Environment
 
 `RenderEnvironment` owns adapters and policy for one operation: named text-measurement routes,
 math rendering, icons, time, randomness, resource limits, and generated root-viewport overrides.
-Call `begin_session()` once and pass that `RenderSession` through parse/layout, SVG, and any raster
-postprocessing so every phase observes the same snapshot and provenance.
+Call `begin_session()` once before layout and retain that `RenderSession` through SVG and any raster
+postprocessing so those phases observe the same snapshot and provenance. The higher-level
+`HeadlessRenderer` also applies the frozen session date and timezone to date-sensitive parsing;
+direct low-level callers are responsible for configuring the core `Engine` consistently.
 
 This is a breaking replacement for independently configured layout and SVG services. Text and math
 adapters no longer live in `LayoutOptions`, and render code does not read process-global policy.
@@ -52,10 +62,10 @@ Production request values stay in `SvgRenderOptions`; diagnostics, including tim
 ```rust
 use merman_core::{Engine, ParseOptions};
 use merman_render::{
-    environment::RenderEnvironment, layout_parsed_render_layout_only, LayoutOptions,
+    environment::RenderEnvironment, family, LayoutOptions,
 };
 use merman_render::svg::{
-    render_layout_svg_parts_for_render_model_with_config, SvgPipeline, SvgRenderOptions,
+    SvgDebugOptions, SvgPipeline, SvgRenderOptions,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,22 +79,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let layout_options = LayoutOptions::headless_svg_defaults();
     let session = RenderEnvironment::parity().begin_session()?;
-    let layout = layout_parsed_render_layout_only(&parsed, &layout_options, &session)?;
+    let artifact = family::prepare(parsed, &layout_options, session)?;
+
+    // Compatibility layout JSON projects from this exact typed family artifact.
+    let layout_json = artifact.layout_json()?;
+    eprintln!("layout family: {}", layout_json["meta"]["diagram_type"]);
 
     let svg_options = SvgRenderOptions {
         diagram_id: Some("example-diagram".to_string()),
         ..SvgRenderOptions::default()
     };
 
-    let svg = render_layout_svg_parts_for_render_model_with_config(
-        &layout,
-        &parsed.model,
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        &session,
-        &svg_options,
-    )?;
-
+    // SVG consumes the artifact, so its semantic model and layout cannot be recombined.
+    let rendered = artifact.render_svg(&svg_options, &SvgDebugOptions::default())?;
+    let (svg, _metadata, session) = rendered.into_parts();
     let svg = SvgPipeline::resvg_safe().process_to_string(&svg, &session)?;
     println!("{svg}");
 
@@ -94,15 +102,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## SVG Output Pipelines
 
-The default SVG renderer aims for Mermaid DOM parity. Host applications can opt into an output pipeline after rendering:
+The default SVG renderer aims for Mermaid DOM parity. Host applications can opt into an output
+pipeline after rendering:
 
 - `SvgPipeline::parity()` leaves the SVG unchanged.
 - `SvgPipeline::readable()` keeps fallback text for `<foreignObject>` labels.
 - `SvgPipeline::resvg_safe()` prepares SVG for common `usvg` / `resvg` rasterization paths.
-- `ScopedCssPostprocessor`, `CssOverridePostprocessor`, and custom `SvgPostprocessor` implementations let applications inject host-specific styling without forking the renderer.
+- `ScopedCssPostprocessor`, `CssOverridePostprocessor`, and custom `SvgPostprocessor`
+  implementations let applications inject host-specific styling without forking the renderer.
 
 See [`docs/rendering/SVG_OUTPUT_PIPELINE.md`](https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md) for the higher-level integration guide.
 
 ## Relationship To merman
 
-`merman` re-exports the common render APIs behind its `render` feature and adds `HeadlessRenderer`, SVG id sanitization helpers, and optional raster helpers. Direct `merman-render` users get the same layout/SVG engine with less convenience wrapping and more explicit control over each phase.
+`merman` re-exports the common render APIs behind its `render` feature and adds
+`HeadlessRenderer`, consuming `prepare_render_sync` stages, SVG id sanitization helpers, and
+optional raster helpers. Direct `merman-render` users call `family::prepare` and retain its
+`RenderSession`; the old public `layout_parsed*`, `render_layouted_svg`, raw model/layout SVG
+helpers, and per-family pass-through wrappers are not retained as compatibility paths.

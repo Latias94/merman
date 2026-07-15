@@ -236,9 +236,6 @@ Library code should not panic on user-controlled input.
   - Architecture foreignObject XHTML namespace rewriting no longer panics if its explicit frame
     stack invariant is unexpectedly violated. The defensive fallback returns an empty rewritten
     fragment instead of exposing a library panic on the SVG/HTML normalization boundary.
-  - `layout_parsed(...)` now clones retained semantic JSON with an explicit heap-backed traversal,
-    avoiding stack overflow when a supported parser intentionally returns a deeply nested
-    `serde_json::Value`.
   - RaTeX math-only label splitting no longer compiles a feature-gated `<br>` regex on the render
     path. It now reuses the shared Mermaid `lineBreakRegex = /<br\s*\/?>/gi` scanner used by
     ordinary HTML-label wrapping.

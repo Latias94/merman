@@ -8,7 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-`merman-core` is the parser and semantic-model crate behind [merman](https://crates.io/crates/merman). Use it when you need Mermaid detection, metadata, semantic JSON, or typed render models without pulling in layout, SVG, or raster dependencies.
+`merman-core` is the parser and semantic-model crate behind [merman](https://crates.io/crates/merman). Use it when you need Mermaid detection, metadata, compatibility semantic JSON, parser-backed editor facts, or typed render models without pulling in layout, SVG, or raster dependencies.
 
 Most application code that wants rendered output should use the `merman` crate with the `render` feature instead.
 
@@ -32,12 +32,15 @@ round to match Mermaid's JavaScript number semantics.
 - Strict and lenient parsing through `ParseOptions`.
 - Structured parse diagnostics through `Error::DiagramParse`, including parser-known exact spans,
   insertion points, and explicit fallback locations for capability gaps.
-- Semantic JSON via `Engine::parse_diagram_sync`.
-- Typed render models via `Engine::parse_diagram_for_render_model_sync`.
+- Compatibility semantic JSON via `Engine::parse_diagram_sync`.
+- Typed render models via `Engine::parse_diagram_for_render_model_sync`; built-in JSON and typed
+  models are projections of the same family semantic construction.
+- Parser-backed editor facts and family capability metadata derived from the built-in Diagram
+  Family catalog.
 - Metadata-only parsing for integrations that only need the diagram type, title, and effective config.
 - Runtime-agnostic async APIs plus synchronous helpers for editor and CLI integrations.
 
-## Parse To Semantic JSON
+## Parse To Compatibility Semantic JSON
 
 ```rust
 use merman_core::{Engine, ParseOptions};
@@ -81,7 +84,11 @@ Common internal ids include `flowchart-v2`, `sequence`, `classDiagram`, `stateDi
 
 ## Rendering Handoff
 
-If the next step is layout or SVG rendering, prefer `Engine::parse_diagram_for_render_model_sync`. It returns a render-optimized typed model and avoids building a large public semantic JSON tree for diagrams with typed render support.
+If the next step is layout or SVG rendering, prefer `Engine::parse_diagram_for_render_model_sync`.
+It returns the typed render projection of the same family-owned semantics and avoids building a
+large compatibility JSON tree. Applications that want complete SVG or layout JSON should normally
+use `merman::render::HeadlessRenderer`, which carries this typed projection through the canonical
+render operation.
 
 ```rust
 use merman_core::{Engine, ParseOptions};
@@ -99,7 +106,20 @@ fn main() -> Result<(), merman_core::Error> {
 
 ## Compatibility
 
-`merman-core` tracks the pinned Mermaid baseline documented in the project README and treats upstream Mermaid as the compatibility target. The semantic JSON API is the stable parser-facing shape; typed render models are optimized for the renderer and may expose a different internal structure.
+`merman-core` tracks Mermaid `@11.16.0` and treats pinned upstream behavior as the compatibility
+target. Compatibility semantic JSON is the public serialized parser projection. It is not a second
+successful grammar or the master built-in render input. Typed render models and editor facts project
+the same family semantic construction into purpose-specific shapes.
+
+The built-in Diagram Family catalog is the authoritative source for ids, aliases, detector order,
+tiny/full profiles, parser/editor/render capabilities, metadata, configuration namespaces, and
+authoring headers. Custom parser overlays remain explicit and do not inherit a built-in renderer or
+editor capability.
+
+The public Rust flowchart render type is `diagrams::flowchart::FlowchartModel`. The former
+`FlowchartV2Model` type name was removed during the alpha architecture reset without a deprecated
+alias. This rename does not change Mermaid's `flowchart-v2` diagram id or the compatibility layout
+JSON `FlowchartV2` variant key.
 
 Core does not decide user-visible diagnostic merge policy. It reports parser facts and capability
 gaps; `merman-analysis` owns rule ids, Markdown remapping, recovered-parser deduplication, and

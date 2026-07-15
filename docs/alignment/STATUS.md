@@ -56,7 +56,8 @@ goldens/baselines. It is intentionally short and should stay true even as fixtur
 Legend:
 
 - Parse: `Engine::parse_diagram` supports the diagram and is covered by semantic snapshots.
-- Layout: `layout_parsed` supports the diagram and is covered by layout snapshots.
+- Layout: the canonical typed family operation supports the diagram and is covered by layout
+  snapshots.
 - Render: a Rust SVG renderer exists (may be “debug” stage vs. “parity” stage).
 - Upstream SVG: upstream baselines are stored under `fixtures/upstream-svgs/<diagram>/`.
 - Compare: an automated compare report exists against upstream baselines.

@@ -230,11 +230,13 @@ renderer fails, so no SVG baseline is committed:
 
 - `repo-ref/mermaid/demos/classchart.html` block that contains the line `class People List~List~Person~~`
 
-## Headless layout coverage (Stage A)
+## Headless layout coverage
 
-Layout entrypoint:
+Canonical low-level path:
 
-- `merman_render::layout_parsed` (diagram type `classDiagram` / `class` → `LayoutDiagram::ClassDiagramV2`)
+- `Engine::parse_diagram_for_render_model_sync` followed by
+  `merman_render::family::prepare` (diagram type `classDiagram` / `class` → typed Class family
+  artifact)
 
 Covered by Rust tests:
 
@@ -242,9 +244,9 @@ Covered by Rust tests:
 - namespace clusters contain their member classes: `fixtures/class/upstream_namespaces_and_generics.mmd` via `crates/merman-render/tests/class_layout_test.rs`
 - terminal label placement (cardinalities): `fixtures/class/upstream_relation_types_and_cardinalities_spec.mmd` via `crates/merman-render/tests/class_layout_test.rs`
 
-Debug SVG exporter:
+Development SVG exporter:
 
-- `crates/merman-render/src/svg.rs` (`render_class_diagram_v2_debug_svg`)
+- `crates/merman-render/examples/class_debug_svg.rs` (canonical typed family render path)
 - usage: `docs/rendering/CLASS_DEBUG_SVG.md`
 - bulk export helper (writes to `target/debug-svgs/class/*.svg`):
   `cargo run -p xtask -- gen-debug-svgs --diagram class`

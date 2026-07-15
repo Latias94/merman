@@ -1,70 +1,96 @@
-# Headless Layout (Stage A)
+# Headless Layout
 
-This document describes the first rendering milestone for `merman`:
-produce a deterministic **headless layout model** (node positions + edge routes) without
-generating SVG.
+Merman lays out Mermaid `@11.16.0` diagrams in Rust without a browser or JavaScript runtime. Layout
+is part of the canonical typed headless operation, not a JSON-first stage that can be paired with an
+unrelated semantic model.
 
-Baseline: Mermaid `@11.12.3`.
+## Public API
 
-## Goals
+Most callers should use `merman::render::HeadlessRenderer`:
 
-- Pure Rust, no DOM.
-- Output is a stable, serializable layout model that other UI frameworks can consume.
-- Keep the path open for later SVG generation (Stage B) without redesigning the core layout API.
+```rust
+use merman::render::{HeadlessRenderer, RenderEnvironment};
 
-## Current Scope
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let renderer = HeadlessRenderer::new()
+        .with_environment(RenderEnvironment::parity())
+        .with_strict_parsing();
 
-- Implement `flowchart-v2` layout via `dugong` (Dagre-compatible).
-- Implement `stateDiagram` (`stateDiagram-v2` renderer path) layout via `dugong` (Dagre-wrapper compatible).
-- Implement `classDiagram` (`dagre-wrapper` renderer path) layout via `dugong` (Dagre-wrapper compatible).
-- Implement `erDiagram` layout via `dugong` (Dagre-compatible).
-- Support compound graphs for subgraphs by mapping Mermaid `subgraphs[]` to compound nodes.
-- Use a pluggable `TextMeasurer` trait with a deterministic default measurer for CI.
-- Emit explicit cluster layout information (box bounds + title placeholder) to make subgraph rendering
-  backend-independent.
-- The default flowchart behavior applies `flowchart.wrappingWidth` when measuring node/edge labels,
-  matching Mermaid's `createText` width parameter usage. When `flowchart.htmlLabels=true`, use an
-  HTML-like wrapping mode (no long-word splitting, width clamped to max-width, line-height 1.5).
-- Subgraph title placeholders use Mermaid's `createText` default width (200) for wrapping.
-- For isolated, leaf-only clusters (no external edges), apply a Mermaid-like "cluster dir" behavior:
-  the cluster's `dir` (or toggled direction when `inheritDir=false`) influences the internal layout
-  of its member nodes.
-  - Root, isolated clusters are packed after the recursive step to avoid overlaps, approximating
-    Mermaid's `clusterNode` behavior (recursive render updates cluster bounds before the parent
-    graph is laid out).
-- For `flowchart-v2` edge labels, mimic Mermaid's modern Dagre pipeline by inserting a label node
-  and splitting the labeled edge into two edges internally; the public layout output still reports
-  the original edge id, route and label position.
-  - Label nodes are assigned to the lowest common compound parent of their endpoints (when any),
-    and cluster bounds include those label nodes.
-- For `classDiagram` relations, include Mermaid-style edge terminal label positions (e.g. cardinalities)
-  using `start_label_*` / `end_label_*` slots, positioned via Mermaid's `calcTerminalLabelPosition` logic.
+    let layout = renderer
+        .layout_json_sync("flowchart TD\nA --> B")?
+        .expect("diagram detected");
+    println!("{layout}");
+    Ok(())
+}
+```
 
-## API
+When one caller needs layout JSON and SVG from the same operation, use the consuming prepared stage:
 
-Primary entrypoint:
+```rust
+use merman::render::HeadlessRenderer;
 
-- `merman_render::layout_parsed(&ParsedDiagram, &LayoutOptions) -> LayoutedDiagram`
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let renderer = HeadlessRenderer::new().with_diagram_id("layout-example");
+    let prepared = renderer
+        .prepare_render_sync("flowchart TD\nA --> B")?
+        .expect("diagram detected");
 
-The result includes:
+    let layout = prepared.layout_json()?;
+    let svg = prepared.render_svg(renderer.svg_options())?;
+    assert_eq!(layout["meta"]["diagram_type"], "flowchart-v2");
+    println!("{svg}");
+    Ok(())
+}
+```
 
-- `meta`: diagram type + config/effective config
-- `semantic`: the original semantic JSON model (from `merman-core`)
-- `layout`: a diagram-specific layout structure (`FlowchartV2Layout` for now)
+The free `layout_json_sync` helper delegates to the same operation. The removed
+`layout_parsed*`/`LayoutedDiagram` APIs are not compatibility entry points.
 
-## Notes
+## Typed Ownership
 
-- The deterministic `TextMeasurer` is a placeholder for parity-driven measurement.
-  Full SVG parity will require faithful measurement and per-shape sizing rules.
-- Cluster title placement uses Mermaid-compatible `flowchart.subGraphTitleMargin.{top,bottom}`.
-- Clusters expose `requested_dir` (from the semantic model) and `effective_dir` (the rankdir actually
-  used for isolated cluster layout).
-- Clusters expose Mermaid parity fields used by the SVG renderers:
-  - `diff`: the Mermaid cluster "diff" value (see `packages/mermaid/src/rendering-util/rendering-elements/clusters.js`)
-  - `offset_y`: the Mermaid cluster "offsetY" value (`labelBBox.height - padding/2`)
+1. `merman-core` detects the diagram and constructs family semantics once.
+2. The family projects its typed render model.
+3. `merman-render::family::prepare` computes the matching typed layout and returns an opaque
+   `FamilyRenderArtifact`.
+4. `FamilyRenderArtifact::layout_json` projects compatibility layout JSON.
+5. `FamilyRenderArtifact::render_svg` consumes the same semantic/layout pair.
 
-See also: `docs/rendering/FLOWCHART_DEBUG_SVG.md`.
-See also: `docs/rendering/STATE_DEBUG_SVG.md`.
-See also: `docs/rendering/CLASS_DEBUG_SVG.md`.
-See also: `docs/rendering/ER_DEBUG_SVG.md`.
-See also: `docs/rendering/ER_SVG.md`.
+The opaque artifact makes cross-family combinations unrepresentable. Compatibility semantic or
+layout JSON remains an output format; it is not the master built-in render input.
+
+Custom semantic parsers may return a named JSON model, but that model is explicitly non-renderable
+unless a renderer capability is designed and registered separately.
+
+## Render Environment
+
+`RenderEnvironment` selects text measurement, math and icon services, time, randomness, resource
+limits, and root override policy before the operation begins. `begin_session()` freezes those
+choices once. Layout uses named measurement phases rather than constructing a family-local
+production measurer.
+
+Use `RenderEnvironment::parity()` for deterministic vendored measurement and pinned operation
+policy. Host builds can supply host services explicitly. `LayoutOptions` contains layout request
+values; it does not own environment services.
+
+## Low-Level Use
+
+Direct `merman-render` callers can use this sequence:
+
+1. `Engine::parse_diagram_for_render_model_sync`
+2. `RenderEnvironment::begin_session`
+3. `merman_render::family::prepare`
+4. `FamilyRenderArtifact::layout_json` and optionally consuming `render_svg`
+
+The session must travel with the artifact so layout, SVG, postprocessing, and operation reporting
+observe the same policy snapshot.
+
+## Compatibility and Verification
+
+- Diagram-family layout algorithms remain family-owned and source-backed.
+- Layout JSON snapshots verify the serialized projection.
+- SVG parity commands exercise the canonical typed operation rather than rebuilding a legacy
+  parse-layout-render chain.
+- Browser-dependent text and root residuals are governed by ADR-0057 and ADR-0062; they must not be
+  hidden by semantic model distortion or broad comparator normalization.
+
+See ADR-0010 and ADR-0073 for the semantic and render ownership contract.

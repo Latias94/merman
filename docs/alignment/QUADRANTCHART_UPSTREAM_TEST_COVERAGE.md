@@ -23,7 +23,8 @@ Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/quadrant-chart/quadrantD
 
 ## SVG Parity
 
-- Local renderer (Stage B): `crates/merman-render/src/svg.rs` (`render_quadrantchart_diagram_svg`)
+- Local renderer: the Quadrant Chart adapter behind `FamilyRenderArtifact` in
+  `crates/merman-render/src/svg/parity/quadrantchart/render.rs`
 - DOM parity compare: `cargo run -p xtask -- compare-quadrantchart-svgs --check-dom --dom-mode parity --dom-decimals 3`
 
 Docs-derived fixtures (rendered via official Mermaid CLI, version-pinned):

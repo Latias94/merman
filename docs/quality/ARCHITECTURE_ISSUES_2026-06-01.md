@@ -48,6 +48,33 @@ Large-file size signals observed during the audit:
 - P1: High-leverage refactor that reduces repeated behavior across many diagrams or adapters.
 - P2: Important cleanup or seam-deepening that should follow a broader boundary decision.
 
+## Architecture Contract Refresh - 2026-07-15
+
+The issue bodies below remain the evidence captured by the 2026-06-01 audit. Their locators are
+historical and must not be read as current implementation instructions. ADR-0073 now defines the
+current family-owned architecture for the Mermaid 11.16 baseline. The following dispositions
+supersede older status notes for the migration it governs:
+
+| Issue | Disposition | Current contract and evidence |
+| --- | --- | --- |
+| ARCH-002 | Closed as an authority split | `merman-core::baseline` owns the pinned Mermaid 11.16 identity. Diagram Family Facts and the typed root-override router consume that identity. Historical generated filename suffixes are storage history, not production authority. |
+| ARCH-003 | Closed | `crates/merman-core/src/family.rs` is the single built-in catalog and projects detector order, aliases, tiny/full profiles, semantic/editor/render adapters, metadata, config namespaces, and authoring headers. |
+| ARCH-004 | Closed within the source-backed boundary | Families importing Mermaid's Langium `common.langium` use one span-rich common syntax implementation. Other Mermaid grammars remain family-local; a universal title/accessibility parser is explicitly rejected. |
+| ARCH-005 | Closed for built-ins | Each admitted built-in family owns one successful semantic construction and projects compatibility JSON, editor facts, and typed render semantics. Parse-pipeline orchestration no longer owns family model interpretation. |
+| ARCH-007 | Closed as a coverage imbalance | Compatibility snapshots remain intentionally, but registry-driven construction/projection tests and typed family artifact tests now assert family invariants directly. Compatibility JSON is supplementary evidence rather than the render oracle. |
+| ARCH-008 | Closed | Built-in JSON-first layout/SVG dispatch is deleted. `FamilyRenderArtifact` owns an opaque matching semantic/layout pair and projects layout JSON from the typed artifact. |
+| ARCH-009 | Closed | `RenderEnvironment` owns production services and deterministic policy; `SvgRenderOptions` contains request values and `SvgDebugOptions` contains diagnostics. The operation freezes one `RenderSession`. |
+| ARCH-010 | Closed | Every built-in root is planned and emitted through the Root Viewport module. Family renderers provide content bounds and root mode but do not own sizing, generated lookup, or root attribute emission. |
+| ARCH-017 | Root portion closed; text paydown remains governed | Generated/computed root policy, typed lookup, no-growth reporting, and stale-key audit are centralized. Family-specific text residual tables still exist and remain bounded debt under ADR-0057/0062 rather than being misclassified as root policy. |
+| ARCH-020 | Closed | Per-family compare commands delegate canonical rendering to the shared compare harness and typed `HeadlessRenderer` operation. Family hooks are limited to proven diagnostics such as Flowchart, ER, and Gantt. |
+| ARCH-023 | Closed | Facade, CLI, bindings, parity tooling, and raster paths delegate to the operation-owned typed render pipeline instead of rebuilding parse-layout-render stages. |
+| ARCH-034 | Still open as documentation hygiene | ADR-0073 and the root README provide current ownership, but chronological alignment notes remain historical evidence. Current gate claims must continue to come from the latest dated status section and verification output. |
+| ARCH-035 | Closed | The canonical facade is `HeadlessRenderer` plus consuming prepared-render stages. Old public `layout_parsed*`, `render_layouted_svg`, raw model/layout SVG helpers, and pass-through family wrappers are removed rather than retained as transition APIs. |
+
+The remaining issues are not implicitly closed by ADR-0073. In particular, large algorithm modules,
+binding contract generation, ASCII ownership, benchmark inventory, and historical documentation
+maintenance retain their own scope.
+
 ## Issues
 
 ### ARCH-001 - Repository lacks a root context entry point

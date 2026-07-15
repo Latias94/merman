@@ -9,21 +9,30 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 ### Breaking changes
 
 - Updated the compatibility target from Mermaid `11.15.0` to `11.16.0`; integrations that retain semantic, layout, or SVG parity snapshots should regenerate them.
+- Replaced the TextScan-capable `AnalysisFactsPayload` shape shipped in `0.8.0-alpha.3` with the sole parser-only facts v1 contract. `fact_source: "text_scan"` is removed, unavailable bodies use `"unavailable"`, and semantic items require `rename_policy`. This deliberately resets the alpha wire contract before stable release; no legacy decoder or dual facts path is retained. The diagnostics-only `AnalysisPayload` independently remains v1, while LSP document revisions, Mermaid `*-v2` ids, and binding ABI versions are unchanged.
+- Renamed the public Rust type `merman_core::diagrams::flowchart::FlowchartV2Model` to `FlowchartModel` without retaining a deprecated alias. Mermaid's `flowchart-v2` diagram id and the compatibility layout JSON `FlowchartV2` variant key are unchanged.
+- Removed the public low-level `merman-render` `layout_parsed*`, `render_layouted_svg`, raw semantic/layout SVG helpers, debug wrappers, and per-family pass-through render functions. Use `merman::render::HeadlessRenderer`, `prepare_render_sync`, `layout_json_sync`, or `render_svg_sync`; direct low-level callers can use `merman_render::family::prepare` with one `RenderSession`.
+- Moved production text measurement, math and icon services, clock, randomness, resource limits, and generated root-override policy into `RenderEnvironment`. Layout and SVG options no longer select independent services; `SvgRenderOptions` carries request values and `SvgDebugOptions` carries diagnostics.
 
 ### New and changed
 
 - Added parser and editor facts, typed layout, and SVG rendering for `cynefin-beta` and all four Railroad dialects: `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, and `railroad-peg-beta`. #21 #24
 - Added parse-only support for `swimlane-beta` through shared Flowchart semantics and Mermaid 11.16 configuration defaults; dedicated Swimlane layout and SVG admission remain deferred.
 - Aligned Mermaid 11.16 behavior across existing diagrams, including Flowchart and State self-loops, Sequence blocks and wrapping, Ishikawa recursive DOM structure, TreeView ordering, XYChart point labels, Architecture hints, Pie highlighting, Gantt timing, and config/frontmatter handling.
+- Consolidated built-in ids, aliases, profile gates, semantic/editor/render adapters, metadata, configuration namespaces, and authoring headers in one Diagram Family catalog. Built-in compatibility JSON, parser-backed editor facts, and typed render models now project family-owned semantic construction instead of maintaining successful parallel parsers.
+- Made the canonical headless operation typed from family semantics through layout and SVG. `FamilyRenderArtifact` owns an opaque matching semantic/layout pair, compatibility layout JSON projects from that artifact, and custom JSON parser models report an explicit non-renderable capability.
+- Routed parity commands through the same typed `HeadlessRenderer` operation used by public callers and report the resolved render path and environment policy; compatibility JSON checks remain explicit projection tests rather than the SVG oracle.
+- Centralized every built-in root SVG under Root Viewport policy, including fixed/responsive sizing, generated versus computed override selection, accessibility chrome, escaping, attribute order, and deferred finalization for late-bound bounds.
 - Upstream SVG tooling now verifies pinned source, renderer runtime, browser timezone and fonts, input, and SVG provenance and promotes complete family batches transactionally under cross-process locks.
 - Parity gates now compare the complete mismatch set against narrow policies for documented browser-only Sequence and Railroad residuals, so changed or additional mismatches still fail.
 
 ### Fixes and polish
 
 - TreeView now embeds configured Iconify pack bodies at Mermaid's 14px size and shows the standard unknown icon for missing packs or entries. #23
-- Removed 37 obsolete fixture-scoped root viewport pins and tightened the no-growth guard to the 183-entry Mermaid 11.16 inventory. #22
+- Removed 37 obsolete fixture-scoped root viewport pins, refreshed stale values against the pinned baselines, and tightened governance around 192 stored match arms / 198 expanded Mermaid 11.16 fixture keys. #22
 - Kept centered Railroad choice branches straight when equivalent lane coordinates differ only because of floating-point addition order. #22
 - Fixed Mermaid 11.16 edge cases in TreeView annotation boundaries, 14px built-in icons, and highlight bounds; Cynefin inline syntax, frontmatter titles, and global fonts; Architecture reserved IDs; and generated XYChart axis defaults. #21
+- Fixed multiline Packet `accDescr { ... }` parsing and aligned shared Langium title/accessibility spans across the families that import Mermaid's `common.langium` grammar.
 - Hardened upstream SVG maintenance so full-family generation removes obsolete fixture baselines transactionally, compare/audit readers cannot race shared Mermaid CLI installs, and root-override audits consume root attributes captured from the locked compare generation. #21
 - Unified fixture importer reject/defer rollback handling so all import sources restore the same transaction state after a failed baseline or deferred-fixture operation. #21
 

@@ -1,90 +1,119 @@
-# ADR-0062: Fixture-Derived Overrides (Parity Stabilization Without Weakening the Contract)
+# ADR-0062: Fixture-Derived Overrides
 
 ## Status
 
 Accepted
 
+## Updated
+
+2026-07-15 for Mermaid `@11.16.0`
+
 ## Context
 
-`merman` is a 1:1, headless re-implementation of Mermaid pinned to a specific upstream tag (see ADR-0014).
-Upstream Mermaid renders diagrams in a browser pipeline, which means the authoritative SVG baselines encode:
+Merman is a headless reimplementation of a pinned Mermaid release. Official upstream SVG baselines
+are produced in a browser pipeline and therefore contain observable values that a deterministic
+Rust implementation cannot always reproduce algorithmically:
 
-- browser-derived float lattices (`getBBox()`, `getComputedTextLength()`, serialization)
-- platform font fallback behavior (especially for non-Latin glyphs)
-- renderer quirks that are not representable in a “pure” semantic model (e.g. `NaN` coordinates)
+- browser `getBBox()` and `getComputedTextLength()` float lattices;
+- platform font fallback, shaping, and hinting;
+- browser serialization details; and
+- rare upstream oddities such as non-finite coordinates.
 
-For regression safety we gate on DOM parity against official Mermaid CLI SVG baselines.
-However, byte-identical SVG is not always attainable early, and even DOM parity can become unstable if
-tiny browser-specific viewport numbers change across otherwise-correct renders.
-
-We need a mechanism that:
-
-- keeps release gates stable (ADR-0050)
-- remains auditable and version-pinned
-- does **not** weaken the semantic/structural parity contract
+DOM parity must still catch semantic and structural regressions. A residual mechanism is therefore
+needed without turning fixtures into an unrestricted tuning surface.
 
 ## Decision
 
-We adopt **fixture-derived overrides** as a first-class, explicitly-scoped mechanism to stabilize parity.
+Fixture-derived overrides are accepted only as small, deterministic, version-pinned projections of
+the authoritative upstream SVG corpus. They model bounded browser behavior that is currently
+impractical to reproduce headlessly. They are not visual tuning knobs and do not override parser,
+semantic, layout, or DOM-structure correctness.
 
-### What “override” means in this repository
+### Allowed categories
 
-An override is a small, deterministic adjustment that is:
+1. **Root viewport overrides**
+   - Surface: root `<svg>` `viewBox` and responsive `max-width` only.
+   - Key: typed render family plus exact fixture `diagram_id`.
+   - Source: root attributes extracted from the pinned upstream SVG baseline.
+   - Owner: the Root Viewport module; family renderers never query generated tables directly.
 
-- **derived from upstream SVG baselines** for the pinned Mermaid version
-- **scoped** (root viewport surface, text bbox, or a documented upstream oddity)
-- **keyed** (by `diagram_id` fixture stem, or by exact label string + font key)
-- applied only where required to keep parity checks stable
+2. **Text and bbox overrides**
+   - Surface: a documented text measurement result for an exact profile/font key and label.
+   - Source: pinned upstream measurement or SVG evidence when vendored metrics are insufficient.
+   - Owner: cross-family measurement adapters and decorators belong to the named profile selected by
+     `RenderEnvironment`. A family-specific calibration may remain with its source-backed layout or
+     SVG algorithm, but it must stay visible in the override inventory and must not instantiate or
+     select another production measurer.
 
-Overrides are not “make it look right” knobs. They are *traceable* parity shims to model upstream behavior
-that is currently impractical to reproduce algorithmically in a pure Rust pipeline.
+3. **Upstream-oddity compatibility markers**
+   - Surface: rare behavior that cannot be represented directly in normal JSON, such as an upstream
+     non-finite SVG value.
+   - Policy: preserve semantic intent in the typed model and materialize the oddity only at the
+     explicitly documented compatibility surface.
 
-### Override categories (allowed)
+### Root override resolution
 
-1. **Root viewport overrides (`parity-root` only)**
-   - Scope: root `<svg>` `viewBox` and `style="max-width: …px"`.
-   - Key: `diagram_id` (fixture stem).
-   - Source: exact values extracted from `fixtures/upstream-svgs/**`.
-   - Rationale: upstream uses browser `getBBox()`; a headless pipeline can match structure while still
-     drifting in viewport numbers due to float lattice differences.
+Root override resolution is an explicit render-environment policy:
 
-2. **Text / bbox overrides (string-keyed)**
-   - Scope: text measurement results for specific label strings and font keys.
-   - Key: `(font_key, text)` (exact string match).
-   - Source: generated from upstream SVG baselines when vendored font tables are insufficient.
-   - Rationale: browser font fallback (CJK/emoji) can change wrap decisions and thus the SVG DOM.
+- `RootViewportOverridePolicy::ApplyGenerated` permits the Root Viewport module to query generated
+  evidence.
+- `RootViewportOverridePolicy::ComputedOnly` uses computed source-backed bounds and is the audit
+  path for identifying stale or unnecessary entries.
+- Generated entries are used only under `ApplyGenerated`; computed bounds are the complete
+  alternative under `ComputedOnly`. There is no mutable request-local explicit root override path.
+- `merman-render` does not read `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES` or any other process-global
+  switch. Developer tooling may translate CLI or environment input into the explicit policy before
+  constructing the operation.
 
-3. **Upstream-oddity compatibility markers (documented, minimal)**
-   - Scope: rare cases where upstream emits behavior that is not representable directly in JSON snapshots
-     (e.g. `NaN` values).
-   - Policy: encode the semantic intent with an explicit marker, and re-materialize the upstream oddity
-     only in the SVG parity surface.
+Generated root lookup is centralized and accepts `RenderFamilyKind`, the pinned Mermaid baseline,
+and `diagram_id`. A key from another family or baseline cannot apply accidentally. Historical
+generated filenames may retain suffixes such as `*_11_12_2.rs`; those filenames are storage history,
+not runtime authority. The typed router and generated provenance bind the values to Mermaid 11.16.
 
-### Governance rules
+### Governance
 
-- Overrides must be **version-pinned** to the upstream baseline (`11.16.0` today).
-- Overrides must be **traceable** to an upstream fixture and reproducible from baselines.
-- Prefer **general fixes** first (layout/text algorithms); add overrides only when the remaining delta is
-  primarily browser/font lattice behavior.
-- Every override footprint must stay **auditable**:
-  - summary: `cargo run -p xtask -- report-overrides`
-  - files: `crates/merman-render/src/generated/*_overrides_11_12_2.rs`
+- Every entry must be traceable to an upstream fixture and reproducible from its baseline.
+- Prefer a source-backed parser, layout, measurement, or root algorithm fix before adding an entry.
+- Overrides must not compensate for incorrect semantics, model ordering, layout topology, or SVG
+  structure.
+- Comparator normalization remains narrow and non-semantic. An override is not permission to add a
+  broad mask.
+- The inventory must not grow without reviewed upstream evidence:
 
-### Paydown strategy (avoid “overfitting debt”)
+  ```sh
+  cargo run -p xtask -- report-overrides --check-no-growth
+  ```
 
-Overrides are acceptable, but they should not grow without control. We treat them like debt with a plan:
+- Root entries must remain live and exact for the pinned baseline:
 
-- Expand fixtures in diverse batches so overrides are forced to generalize.
-- Track removal candidates in `docs/alignment/GAP_BACKLOG.md`.
-- Prefer replacing fixture-scoped tweaks with:
-  - better deterministic text measurement (ADR-0049 / ADR-0051)
-  - renderer/layout algorithm alignment
-  - more accurate bbox modeling
+  ```sh
+  cargo run -p xtask -- audit-root-overrides --fail-on-stale
+  ```
+
+- Root parity is verified through the canonical typed headless operation. Compare adapters must not
+  rebuild a JSON parse-layout-render path to apply or inspect overrides.
+
+## Paydown Strategy
+
+- Run computed-only audits to identify entries whose source-backed algorithm now matches upstream.
+- Remove stale keys when fixtures move or disappear.
+- Prefer replacing fixture entries with deterministic measurement, layout, or root algorithms that
+  generalize across the corpus.
+- Keep accepted browser-dependent residuals explicit when no robust algorithmic fix exists.
 
 ## Consequences
 
-- Release gates remain stable while the fixture corpus grows (ADR-0050).
-- Overrides become explicit, reviewable artifacts rather than hidden “magic constants”.
-- Some parity improvements will land as “generated override deltas” before they can be fully generalized.
-- The project gains a measurable convergence metric: override footprint should trend down over time as
-  algorithms converge.
+- Browser-only float behavior can remain reproducible without weakening semantic or structural
+  parity.
+- Override selection has one policy owner and one typed lookup boundary.
+- Family renderers remain free of fixture tables and mutable root-string patches.
+- The override footprint is measurable debt whose growth and staleness are release-gated.
+- Historical generated filenames no longer imply that production code targets an old Mermaid
+  baseline.
+
+## Related Decisions
+
+- ADR-0014: Upstream Parity Policy
+- ADR-0050: Release Quality Gates
+- ADR-0057: Headless SVG Text `getBBox()` Approximation
+- ADR-0073: Family-Owned Diagram Architecture

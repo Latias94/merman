@@ -15,7 +15,8 @@ the public surface.
 Primary capability areas:
 
 - `merman-core`: detection, preprocessing, configuration merge, parsing,
-  sanitization, semantic JSON, and typed render model construction.
+  sanitization, compatibility semantic JSON, parser-backed editor facts, and typed render model
+  projection.
 - `merman-render`: layout models, SVG parity renderers, root viewport handling,
   theme/config projection, text measurement, and render pipeline internals.
 - `merman-ascii`: terminal rendering adapters and ASCII-specific layout/routing.
@@ -43,54 +44,52 @@ legacy provenance unless a current-facing document explicitly says otherwise. Ne
 
 ## Architecture Boundaries
 
-Current direction:
+Current contract:
 
-- The canonical headless render flow should be named the **Headless Render Operation**: parse,
-  typed render model construction, layout, SVG emission, postprocess metadata, and pipeline
-  ordering behind one behavior-bearing module. Public adapters choose input/output shape; they do
-  not rebuild that flow independently.
-- The core parser flow should be named the **Parse Pipeline**: preprocessing, detection or
-  known-type metadata projection, runtime date hooks, parser dispatch, lenient error behavior,
-  timing diagnostics, and common DB sanitization behind one internal module. `Engine` remains the
-  public facade for metadata, semantic JSON, and typed render-model entrypoints.
-- SVG and raster outputs from Mermaid source should route through the Headless Render Operation.
-  Raw SVG input may stay adapter-local because it does not have a Mermaid parse/render model.
-- **Diagram Family Facts** are the pinned-baseline facts for one Mermaid family: ids, aliases,
-  feature profile, detector order, parser adapters, typed render adapters, known-type side effects,
-  public metadata, and admission status. Call sites should consume projections from those facts
-  instead of duplicating hand-maintained lists.
+- The **Headless Render Operation** is the canonical Mermaid-source render flow: family semantic
+  construction, typed layout, SVG emission, postprocess metadata, and pipeline ordering behind one
+  behavior-bearing module. Public adapters choose input/output shape; they do not rebuild that flow.
+- The **Parse Pipeline** owns preprocessing, detection or known-type metadata projection, runtime
+  date hooks, family dispatch, lenient error behavior, timing diagnostics, source remapping, and
+  common sanitization. `Engine` remains the public facade; family modules own grammar meaning.
+- **Diagram Family Facts** are the single pinned-baseline catalog for ids, aliases, feature profile,
+  detector order, semantic/editor/render adapters, config namespaces, authoring headers, public
+  metadata, and admission capability. Registries and public capability metadata are projections.
+- Each built-in family owns one successful semantic construction. Compatibility JSON,
+  parser-backed editor facts, and typed render models project that construction rather than running
+  parallel successful grammars.
+- Built-in rendering is typed end to end. `FamilyRenderArtifact` owns the matching semantic/layout
+  pair, compatibility layout JSON projects from it, and SVG consumes it.
+- `RenderEnvironment` selects text-measurement phases, math/icons, time, randomness, resource
+  limits, and generated root policy once per operation. Family renderers do not construct hidden
+  production services or read process-global render policy.
+- Every built-in SVG root uses the shared Root Viewport protocol for generated/computed policy,
+  sizing, accessibility chrome, escaping, attribute order, and deferred finalization. Families own
+  their content bounds, not root emission or generated lookup.
+- Editor body semantics are parser-complete, parser-recovered, or unavailable. Generic TextScan
+  semantics are deleted; legal source-start headers remain catalog-backed.
+- Analysis diagnostics and parser-only facts are independent schema v1 contracts. The
+  TextScan-capable alpha facts shape is removed rather than supported in parallel.
 - **Admission Inventory** records which fixture/family surfaces are parser-only, layout-covered,
   SVG-covered, root-parity-covered, skipped, or deferred for the pinned baseline and why. Parser
   and typed-render capability evidence should be checked against Diagram Family Facts projections.
-- Diagram detection and parser registration should derive from pinned-baseline
-  registry facts instead of scattering diagram ids across call sites.
-- Each diagram family should own semantic construction, compatibility JSON
-  projection, typed render model construction, layout, SVG rendering, and
-  diagram-specific parity exceptions.
-- Public adapters should choose input/output shape; they should not rebuild the
-  parse/layout/SVG/postprocess pipeline independently.
 - Effective config and presentation theme should be projected into narrow views
-  before diagram renderers consume them. Sequence, Class, Flowchart, State, ER,
-  Block, Sankey, Event Modeling, TreeView, Packet, Venn, Ishikawa, Treemap,
-  QuadrantChart, Radar, Pie, Requirement, Kanban, and Timeline are the first
-  renderer-side family pilots for this: layout and SVG parity settings now flow
-  through family-owned config views instead of scattered raw diagram namespace
-  lookups.
-- Root viewport and emitted SVG bounds logic belongs under the SVG parity layer,
-  not under one diagram family.
+  before diagram renderers consume them.
 - Override data is a last resort for pinned-baseline parity and must have
-  removal evidence plus no-growth gate coverage.
+  removal evidence plus no-growth and stale-key gate coverage.
 
 Current non-goal:
 
-- Do not treat `layout: elk` / `flowchart.defaultRenderer=elk` recognition as a
-  complete local ELK implementation. Detection/config side effects are preserved,
-  but full ELK layout parity needs a separate spike and design decision.
+- Do not infer that one admitted ELK-backed family implies complete support for every Mermaid ELK
+  consumer. Flowchart and Class have explicit source-backed paths; other families require their own
+  admission evidence.
 
 ## Where To Look First
 
 - Architecture issue ledger:
   `docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md`
+- Family-owned architecture contract:
+  `docs/adr/0073-family-owned-diagram-architecture.md`
 - Current config/frontmatter support:
   `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md`
 - Upstream baseline policy:
