@@ -122,7 +122,7 @@ pub(crate) struct DiagramVerificationFact {
     pub(crate) command: &'static str,
     pub(crate) report_title: &'static str,
     pub(crate) default_dom_mode: &'static str,
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) representative_source: &'static str,
     pub(crate) parse_policy: ParsePolicy,
     pub(crate) render_profile: RenderProfile,
@@ -275,41 +275,45 @@ impl RenderOperationContract {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct ObservedRenderOperations {
-    operation: Option<RenderOperationContract>,
+    expected: RenderOperationContract,
+    observed: bool,
 }
 
 impl ObservedRenderOperations {
+    pub(crate) fn from_environment(
+        environment: &merman::render::RenderEnvironment,
+    ) -> Result<Self, XtaskError> {
+        Ok(Self {
+            expected: RenderOperationContract::from_environment(environment)?,
+            observed: false,
+        })
+    }
+
     pub(crate) fn observe(
         &mut self,
         fixture: &str,
-        expected: &RenderOperationContract,
         report: &merman::render::RenderOperationReport,
     ) -> Result<(), String> {
         validate_measurement_provenance(fixture, report)?;
         let observed = RenderOperationContract::from_report(report);
-        if &observed != expected {
+        if observed != self.expected {
             return Err(format!(
-                "render operation contract diverged for {fixture}: expected {expected:?}, observed {observed:?}"
+                "render operation contract diverged for {fixture}: expected {:?}, observed {observed:?}",
+                self.expected
             ));
         }
-        if let Some(first) = &self.operation
-            && first != &observed
-        {
-            return Err(format!(
-                "render operation contract changed within one compare run at {fixture}: first {first:?}, observed {observed:?}"
-            ));
-        }
-        self.operation = Some(observed);
+        self.observed = true;
         Ok(())
     }
 
     pub(crate) fn write_report(&self, report: &mut String) {
-        let Some(operation) = &self.operation else {
+        if !self.observed {
             let _ = writeln!(report, "- Render operation: `not-observed`");
             return;
-        };
+        }
+        let operation = &self.expected;
 
         let _ = writeln!(
             report,
@@ -383,7 +387,6 @@ fn validate_measurement_provenance(
     Ok(())
 }
 
-#[derive(Default)]
 struct CanonicalCompareState {
     root_deltas: Vec<super::RootDelta>,
     observed_operations: ObservedRenderOperations,
@@ -510,7 +513,7 @@ pub(crate) fn run_canonical_svg_compare(
     if let Some(renderer) = sequence_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
-    let operation_contract = RenderOperationContract::from_environment(&environment)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment)?;
     let renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options())
@@ -524,7 +527,10 @@ pub(crate) fn run_canonical_svg_compare(
     let root_report_limit = request
         .root_report_limit
         .unwrap_or(super::DEFAULT_ROOT_DELTA_REPORT_LIMIT);
-    let mut state = CanonicalCompareState::default();
+    let mut state = CanonicalCompareState {
+        root_deltas: Vec::new(),
+        observed_operations,
+    };
 
     run_svg_compare(
         CompareHarnessOptions::new(CompareRunOptions {
@@ -641,11 +647,9 @@ pub(crate) fn run_canonical_svg_compare(
                     input.fixture_path.display()
                 )
             })?;
-            state.observed_operations.observe(
-                input.stem,
-                &operation_contract,
-                rendered.report(),
-            )?;
+            state
+                .observed_operations
+                .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
 
             let mut issues = Vec::new();
@@ -1163,7 +1167,7 @@ mod tests {
                     ..CompareRequest::default()
                 };
                 let environment = compare_render_environment(&request);
-                let contract = RenderOperationContract::from_environment(&environment)
+                let mut observed = ObservedRenderOperations::from_environment(&environment)
                     .expect("representative operation contract");
                 let diagram_id = format!("root-policy-{}", fact.diagram);
                 let rendered = merman::render::HeadlessRenderer::new()
@@ -1182,9 +1186,8 @@ mod tests {
                     .unwrap_or_else(|| {
                         panic!("{} representative source was not detected", fact.diagram)
                     });
-                let mut observed = ObservedRenderOperations::default();
                 observed
-                    .observe(fact.diagram, &contract, rendered.report())
+                    .observe(fact.diagram, rendered.report())
                     .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram));
 
                 assert_eq!(

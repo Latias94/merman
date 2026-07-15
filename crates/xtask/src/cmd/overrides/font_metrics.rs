@@ -279,7 +279,6 @@ fn load_sequence_fixture_samples(
 
     let engine = merman::Engine::new();
     let parse_options = merman::ParseOptions::strict();
-    let mut parsed_fixture_count = 0usize;
     let mut samples = Vec::new();
     for path in fixture_paths {
         let source = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
@@ -307,8 +306,6 @@ fn load_sequence_fixture_samples(
                 parsed.meta.diagram_type
             )));
         }
-        parsed_fixture_count += 1;
-
         let model = &parsed.model;
         let mut labels = Vec::new();
         if let Some(actors) = model.get("actors").and_then(serde_json::Value::as_object) {
@@ -344,12 +341,6 @@ fn load_sequence_fixture_samples(
         }
     }
 
-    if parsed_fixture_count == 0 {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "sequence fixture corpus {} produced no parsed fixtures",
-            fixture_root.display()
-        )));
-    }
     Ok(samples)
 }
 

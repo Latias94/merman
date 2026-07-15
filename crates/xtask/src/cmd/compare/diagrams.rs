@@ -30,6 +30,7 @@ macro_rules! verification_fact {
             command: $command,
             report_title: $title,
             default_dom_mode: $mode,
+            #[cfg(test)]
             representative_source: $source,
             parse_policy: ParsePolicy::$parse,
             render_profile: RenderProfile::$profile,
@@ -638,7 +639,10 @@ mod tests {
         ] {
             let source = std::fs::read_to_string(compare_dir.join(relative_path))
                 .expect("compare runner source");
-            let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+            let production = source
+                .split("\n#[cfg(test)]\nmod tests")
+                .next()
+                .unwrap_or(&source);
             assert!(
                 production.contains(".render_svg_report("),
                 "{relative_path} must retain the operation report"
@@ -698,7 +702,10 @@ mod tests {
         for relative_path in ["diagrams/gantt.rs", "xml.rs"] {
             let path = compare_dir.join(relative_path);
             let source = std::fs::read_to_string(&path).expect("Gantt compare source");
-            let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+            let production = source
+                .split("\n#[cfg(test)]\nmod tests")
+                .next()
+                .unwrap_or(&source);
             assert_eq!(
                 production.matches(".prepare_semantic_sync(").count(),
                 1,

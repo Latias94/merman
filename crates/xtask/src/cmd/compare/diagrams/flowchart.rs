@@ -4,8 +4,8 @@ use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
     DEFAULT_LABEL_DELTA_REPORT_LIMIT, DEFAULT_ROOT_DELTA_REPORT_LIMIT, DiagramVerificationFact,
-    LabelDeltaReportLimit, LabelMetricDelta, ObservedRenderOperations, RenderOperationContract,
-    RootDelta, RootDeltaReportLimit, collect_label_metric_deltas, compare_render_environment,
+    LabelDeltaReportLimit, LabelMetricDelta, ObservedRenderOperations, RootDelta,
+    RootDeltaReportLimit, collect_label_metric_deltas, compare_render_environment,
     parse_label_delta_report_limit, parse_root_attrs, parse_root_delta_report_limit,
     run_svg_compare, sanitize_svg_id, svg_compare_engine_with_site_config,
     write_compare_result_section, write_label_deltas_report, write_notes_section,
@@ -289,11 +289,11 @@ fn run_flowchart_compare(
     if let Some(renderer) = flowchart_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
-    let operation_contract = RenderOperationContract::from_environment(&environment)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment)?;
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
         label_deltas: Vec::new(),
-        observed_operations: ObservedRenderOperations::default(),
+        observed_operations,
         root_pin_ids: if report_label || report_label_root_pins_only || report_root_pins_only {
             collect_flowchart_root_pin_ids()
         } else {
@@ -459,11 +459,9 @@ fn run_flowchart_compare(
                     ));
                 }
             };
-            state.observed_operations.observe(
-                input.stem,
-                &operation_contract,
-                rendered.report(),
-            )?;
+            state
+                .observed_operations
+                .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
 
             let root_pinned = state.root_pin_ids.contains(input.stem);

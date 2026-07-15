@@ -3,9 +3,8 @@
 use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
-    DiagramVerificationFact, ObservedRenderOperations, RenderOperationContract,
-    compare_render_environment, run_svg_compare, write_compare_result_section,
-    write_verification_policy_metadata,
+    DiagramVerificationFact, ObservedRenderOperations, compare_render_environment, run_svg_compare,
+    write_compare_result_section, write_verification_policy_metadata,
 };
 use regex::Regex;
 use std::fmt::Write as _;
@@ -97,7 +96,7 @@ fn run_er_compare(
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
     let environment = compare_render_environment(&request.common);
-    let operation_contract = RenderOperationContract::from_environment(&environment)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment)?;
     let renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine)
         .with_parse_options(fact.parse_policy.options())
@@ -107,7 +106,7 @@ fn run_er_compare(
     let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
     let mut state = ErCompareState {
         rows: Vec::new(),
-        observed_operations: ObservedRenderOperations::default(),
+        observed_operations,
     };
 
     run_svg_compare(
@@ -220,11 +219,9 @@ fn run_er_compare(
                     ));
                 }
             };
-            state.observed_operations.observe(
-                input.stem,
-                &operation_contract,
-                rendered.report(),
-            )?;
+            state
+                .observed_operations
+                .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
 
             let upstream_sig = sig_for_svg(input.upstream_svg, &re_marker_id, &re_marker_ref);

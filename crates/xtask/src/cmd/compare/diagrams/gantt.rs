@@ -3,9 +3,9 @@
 use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
-    DiagramVerificationFact, ObservedRenderOperations, RenderOperationContract,
-    compare_render_environment, run_svg_compare, sanitize_svg_id, write_compare_result_section,
-    write_notes_section, write_verification_policy_metadata,
+    DiagramVerificationFact, ObservedRenderOperations, compare_render_environment, run_svg_compare,
+    sanitize_svg_id, write_compare_result_section, write_notes_section,
+    write_verification_policy_metadata,
 };
 use std::fmt::Write as _;
 
@@ -44,14 +44,12 @@ pub(super) fn compare_gantt_request(
         gantt_compare_environment(&request, baseline_local_offset_minutes).map_err(|err| {
             XtaskError::SvgCompareFailed(format!("invalid Gantt baseline time: {err}"))
         })?;
-    let operation_contract = RenderOperationContract::from_environment(&environment)?;
+    let mut observed_operations = ObservedRenderOperations::from_environment(&environment)?;
     let probe_renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options())
         .with_layout_options(layout_opts.clone())
         .with_environment(environment);
-    let mut observed_operations = ObservedRenderOperations::default();
-
     merman::time::with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes), || {
         run_svg_compare(
             CompareHarnessOptions::new(CompareRunOptions {
@@ -123,7 +121,7 @@ pub(super) fn compare_gantt_request(
                 let rendered = prepared.render_svg_report(&svg_options).map_err(|err| {
                     format!("render failed for {}: {err}", input.fixture_path.display())
                 })?;
-                state.observe(input.stem, &operation_contract, rendered.report())?;
+                state.observe(input.stem, rendered.report())?;
                 let local_svg = rendered.into_svg();
 
                 Ok(CompareFixtureResult::Rendered {
