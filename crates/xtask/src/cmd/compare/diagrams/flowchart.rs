@@ -4,11 +4,12 @@ use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
     DEFAULT_LABEL_DELTA_REPORT_LIMIT, DEFAULT_ROOT_DELTA_REPORT_LIMIT, DiagramVerificationFact,
-    LabelDeltaReportLimit, LabelMetricDelta, RootDelta, RootDeltaReportLimit,
-    collect_label_metric_deltas, compare_render_environment, parse_label_delta_report_limit,
-    parse_root_attrs, parse_root_delta_report_limit, run_svg_compare, sanitize_svg_id,
-    svg_compare_engine_with_site_config, write_compare_result_section, write_label_deltas_report,
-    write_notes_section, write_root_deltas_report, write_verification_policy_metadata,
+    LabelDeltaReportLimit, LabelMetricDelta, ObservedRenderOperations, RenderOperationContract,
+    RootDelta, RootDeltaReportLimit, collect_label_metric_deltas, compare_render_environment,
+    parse_label_delta_report_limit, parse_root_attrs, parse_root_delta_report_limit,
+    run_svg_compare, sanitize_svg_id, svg_compare_engine_with_site_config,
+    write_compare_result_section, write_label_deltas_report, write_notes_section,
+    write_root_deltas_report, write_verification_policy_metadata,
 };
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -57,13 +58,6 @@ fn write_flowchart_upstream_metadata(
     let provenance = classify_flowchart_upstream_dir(upstream_dir).provenance_label(filter);
     let _ = writeln!(report, "- Upstream: `{}`", upstream_glob.display());
     let _ = writeln!(report, "- Upstream provenance: `{provenance}`");
-}
-
-pub(crate) fn compare_flowchart_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let fact = super::diagram_verification_fact("flowchart")
-        .copied()
-        .expect("Flowchart must have a verification fact");
-    compare_flowchart_args(fact, args)
 }
 
 pub(super) fn compare_flowchart_args(
@@ -258,7 +252,6 @@ fn run_flowchart_compare(
         .flowchart_text_measurer
         .clone()
         .unwrap_or_else(|| "vendored".to_string());
-    let apply_root_overrides = common.apply_root_overrides;
     let include_elk_probes = common.include_elk_probes;
     let flowchart_elk_backend = common
         .flowchart_elk_backend
@@ -296,9 +289,11 @@ fn run_flowchart_compare(
     if let Some(renderer) = flowchart_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
+    let operation_contract = RenderOperationContract::from_environment(&environment)?;
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
         label_deltas: Vec::new(),
+        observed_operations: ObservedRenderOperations::default(),
         root_pin_ids: if report_label || report_label_root_pins_only || report_root_pins_only {
             collect_flowchart_root_pin_ids()
         } else {
@@ -325,8 +320,7 @@ fn run_flowchart_compare(
             write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "- Render path: `{}`\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Root overrides: `{}`\n- Flowchart ELK backend: `{}`\n- Forced ELK fixtures: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
-                fact.render_path().label(),
+                "- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Flowchart ELK backend: `{}`\n- Forced ELK fixtures: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
                 fact.command,
                 options.dom_mode,
                 options.dom_decimals,
@@ -335,11 +329,6 @@ fn run_flowchart_compare(
                     "node-katex"
                 } else {
                     "none"
-                },
-                if apply_root_overrides {
-                    "enabled"
-                } else {
-                    "disabled"
                 },
                 crate::cmd::flowchart_elk_backend_name(flowchart_elk_backend),
                 if force_elk_fixture {
@@ -461,7 +450,7 @@ fn run_flowchart_compare(
                 ..Default::default()
             };
 
-            let local_svg = match prepared.render_svg(&svg_opts) {
+            let rendered = match prepared.render_svg_report(&svg_opts) {
                 Ok(v) => v,
                 Err(err) => {
                     return Err(format!(
@@ -470,6 +459,12 @@ fn run_flowchart_compare(
                     ));
                 }
             };
+            state.observed_operations.observe(
+                input.stem,
+                &operation_contract,
+                rendered.report(),
+            )?;
+            let local_svg = rendered.into_svg();
 
             let root_pinned = state.root_pin_ids.contains(input.stem);
             let mut issues = Vec::new();
@@ -530,6 +525,7 @@ fn run_flowchart_compare(
         },
         |_, _, _| {},
         |state, report, paths, options, failures, notes| {
+            state.observed_operations.write_report(report);
             write_compare_result_section(report, options.check_dom, failures, &paths.out_svg_dir);
             write_notes_section(report, notes);
             if should_report_root {
@@ -545,6 +541,7 @@ fn run_flowchart_compare(
 struct FlowchartCompareState {
     root_deltas: Vec<RootDelta>,
     label_deltas: Vec<LabelMetricDelta>,
+    observed_operations: ObservedRenderOperations,
     root_pin_ids: BTreeSet<String>,
 }
 
@@ -555,26 +552,32 @@ pub(crate) fn check_flowchart_elk_source_backed_probes(
         return Err(XtaskError::Usage);
     }
 
+    let fact = super::diagram_verification_fact("flowchart")
+        .copied()
+        .expect("Flowchart must have a verification fact");
     let mut failures = Vec::new();
     for stem in crate::cmd::flowchart_elk_svg_source_backed_probe_stems() {
         let out_path = crate::cmd::target_root()
             .join("compare")
             .join("flowchart_elk_source_backed")
             .join(format!("{stem}.md"));
-        let result = compare_flowchart_svgs(vec![
-            "--filter".to_string(),
-            (*stem).to_string(),
-            "--include-elk-probes".to_string(),
-            "--flowchart-elk-backend".to_string(),
-            "source-ported".to_string(),
-            "--check-dom".to_string(),
-            "--dom-mode".to_string(),
-            "parity".to_string(),
-            "--dom-decimals".to_string(),
-            "3".to_string(),
-            "--out".to_string(),
-            out_path.display().to_string(),
-        ]);
+        let result = compare_flowchart_args(
+            fact,
+            vec![
+                "--filter".to_string(),
+                (*stem).to_string(),
+                "--include-elk-probes".to_string(),
+                "--flowchart-elk-backend".to_string(),
+                "source-ported".to_string(),
+                "--check-dom".to_string(),
+                "--dom-mode".to_string(),
+                "parity".to_string(),
+                "--dom-decimals".to_string(),
+                "3".to_string(),
+                "--out".to_string(),
+                out_path.display().to_string(),
+            ],
+        );
         if let Err(err) = result {
             failures.push(format!("{stem}: {err}"));
         }
@@ -1242,8 +1245,15 @@ mod tests {
     use super::{
         FlowchartUpstreamTrust, canonical_flowchart_elk_layout_body_key,
         classify_flowchart_upstream_dir, collect_flowchart_elk_spec_snapshot_cases,
-        compare_flowchart_svgs, write_flowchart_upstream_metadata,
+        compare_flowchart_args, write_flowchart_upstream_metadata,
     };
+
+    fn compare_flowchart(args: Vec<String>) -> Result<(), crate::XtaskError> {
+        let fact = super::super::diagram_verification_fact("flowchart")
+            .copied()
+            .expect("Flowchart must have a verification fact");
+        compare_flowchart_args(fact, args)
+    }
 
     #[test]
     fn flowchart_report_marks_canonical_upstream_as_provenance_validated() {
@@ -1302,7 +1312,7 @@ mod tests {
             .join("xtask-tests")
             .join("flowchart_elk_demo_probe_sourceported.md");
 
-        compare_flowchart_svgs(vec![
+        compare_flowchart(vec![
             "--filter".to_string(),
             "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
             "--flowchart-elk-backend".to_string(),
@@ -1328,7 +1338,7 @@ mod tests {
             .join("xtask-tests")
             .join("flowchart_elk_default_forced.md");
 
-        compare_flowchart_svgs(vec![
+        compare_flowchart(vec![
             "--filter".to_string(),
             "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
             "--force-elk-fixture".to_string(),
@@ -1343,7 +1353,7 @@ mod tests {
 
     #[test]
     fn forced_elk_fixtures_reject_explicit_compat_backend() {
-        let err = compare_flowchart_svgs(vec![
+        let err = compare_flowchart(vec![
             "--force-elk-fixture".to_string(),
             "--flowchart-elk-backend".to_string(),
             "compat".to_string(),

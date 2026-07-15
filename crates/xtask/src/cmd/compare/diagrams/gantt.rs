@@ -3,17 +3,11 @@
 use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
-    DiagramVerificationFact, compare_render_environment, run_svg_compare, sanitize_svg_id,
-    write_compare_result_section, write_notes_section, write_verification_policy_metadata,
+    DiagramVerificationFact, ObservedRenderOperations, RenderOperationContract,
+    compare_render_environment, run_svg_compare, sanitize_svg_id, write_compare_result_section,
+    write_notes_section, write_verification_policy_metadata,
 };
 use std::fmt::Write as _;
-
-pub(crate) fn compare_gantt_svgs(args: Vec<String>) -> Result<(), XtaskError> {
-    let fact = super::diagram_verification_fact("gantt")
-        .copied()
-        .expect("Gantt must have a verification fact");
-    compare_gantt_args(fact, args)
-}
 
 pub(super) fn compare_gantt_args(
     fact: DiagramVerificationFact,
@@ -50,11 +44,13 @@ pub(super) fn compare_gantt_request(
         gantt_compare_environment(&request, baseline_local_offset_minutes).map_err(|err| {
             XtaskError::SvgCompareFailed(format!("invalid Gantt baseline time: {err}"))
         })?;
+    let operation_contract = RenderOperationContract::from_environment(&environment)?;
     let probe_renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options())
         .with_layout_options(layout_opts.clone())
         .with_environment(environment);
+    let mut observed_operations = ObservedRenderOperations::default();
 
     merman::time::with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes), || {
         run_svg_compare(
@@ -66,21 +62,12 @@ pub(super) fn compare_gantt_request(
                 dom_mode,
                 dom_decimals,
             }),
-            &mut (),
+            &mut observed_operations,
             |_, report, _paths, options| {
                 let _ = writeln!(
                     report,
-                    "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Render path: `{}`\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Root overrides: `{}`\n",
-                    fact.report_title,
-                    fact.render_path().label(),
-                    fact.command,
-                    options.dom_mode,
-                    options.dom_decimals,
-                    if request.apply_root_overrides {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
+                    "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n",
+                    fact.report_title, fact.command, options.dom_mode, options.dom_decimals,
                 );
                 write_verification_policy_metadata(report, &request, fact, options.dom_mode, false);
                 report.push('\n');
@@ -89,7 +76,7 @@ pub(super) fn compare_gantt_request(
                 crate::cmd::upstream_svg_baseline_skip_reason(fact.diagram, stem)
                     .map(str::to_string)
             },
-            |_, input| {
+            |state, input| {
                 let semantic = match probe_renderer.prepare_semantic_sync(input.text) {
                     Ok(Some(v)) => v,
                     Ok(None) => {
@@ -133,9 +120,11 @@ pub(super) fn compare_gantt_request(
                     current_time_unix_ms: now_ms,
                     ..Default::default()
                 };
-                let local_svg = prepared.render_svg(&svg_options).map_err(|err| {
+                let rendered = prepared.render_svg_report(&svg_options).map_err(|err| {
                     format!("render failed for {}: {err}", input.fixture_path.display())
                 })?;
+                state.observe(input.stem, &operation_contract, rendered.report())?;
+                let local_svg = rendered.into_svg();
 
                 Ok(CompareFixtureResult::Rendered {
                     local_svg,
@@ -145,7 +134,8 @@ pub(super) fn compare_gantt_request(
                 })
             },
             |_, _, _| {},
-            |_, report, paths, options, failures, notes| {
+            |state, report, paths, options, failures, notes| {
+                state.write_report(report);
                 write_compare_result_section(
                     report,
                     options.check_dom,

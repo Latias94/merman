@@ -306,6 +306,28 @@ impl<'ast> Visit<'ast> for RootOwnershipGuard<'_> {
 }
 
 #[test]
+fn root_ownership_guard_rejects_direct_svg_emission() {
+    let syntax = syn::parse_file(
+        r#"
+        fn render_family_root() {
+            let _root = "<svg id=\"bypass\">";
+        }
+        "#,
+    )
+    .expect("parse direct root emitter");
+    let mut violations = Vec::new();
+
+    RootOwnershipGuard {
+        relative_path: "mutation.rs",
+        violations: &mut violations,
+    }
+    .visit_file(&syntax);
+
+    assert_eq!(violations.len(), 1);
+    assert!(violations[0].contains("direct root SVG emitter"));
+}
+
+#[test]
 fn every_family_delegates_root_viewport_policy_and_emission() {
     let parity_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/svg/parity");
     let root_module = parity_root.join("root_svg.rs");
@@ -375,6 +397,28 @@ impl<'ast> Visit<'ast> for RootPolicySelectionGuard<'_> {
         }
         visit::visit_expr_call(self, call);
     }
+}
+
+#[test]
+fn root_policy_guard_rejects_family_selected_computed_policy() {
+    let syntax = syn::parse_file(
+        r#"
+        fn render_family_root() {
+            let _root = RootViewportContext::computed("diagram");
+        }
+        "#,
+    )
+    .expect("parse computed root policy bypass");
+    let mut violations = Vec::new();
+
+    RootPolicySelectionGuard {
+        relative_path: "mutation.rs",
+        violations: &mut violations,
+    }
+    .visit_file(&syntax);
+
+    assert_eq!(violations.len(), 1);
+    assert!(violations[0].contains("selects ComputedOnly"));
 }
 
 #[test]

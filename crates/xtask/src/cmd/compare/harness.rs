@@ -122,6 +122,8 @@ pub(crate) struct DiagramVerificationFact {
     pub(crate) command: &'static str,
     pub(crate) report_title: &'static str,
     pub(crate) default_dom_mode: &'static str,
+    #[allow(dead_code)]
+    pub(crate) representative_source: &'static str,
     pub(crate) parse_policy: ParsePolicy,
     pub(crate) render_profile: RenderProfile,
     pub(crate) diagram_id_policy: DiagramIdPolicy,
@@ -245,9 +247,146 @@ pub(crate) fn compare_render_environment(
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RenderOperationContract {
+    render_path: VerificationRenderPath,
+    root_policy: merman::render::RootViewportOverridePolicy,
+    measurement_routes: [merman::render::TextMeasurementRoute; 5],
+}
+
+impl RenderOperationContract {
+    pub(crate) fn from_environment(
+        environment: &merman::render::RenderEnvironment,
+    ) -> Result<Self, XtaskError> {
+        let session = environment.begin_session().map_err(|error| {
+            XtaskError::SvgCompareFailed(format!(
+                "failed to freeze compare render operation contract: {error}"
+            ))
+        })?;
+        Ok(Self::from_report(&session.report()))
+    }
+
+    fn from_report(report: &merman::render::RenderOperationReport) -> Self {
+        Self {
+            render_path: VerificationRenderPath::HeadlessOperationTyped,
+            root_policy: report.root_viewport_override_policy(),
+            measurement_routes: report.measurement_routes().clone(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct ObservedRenderOperations {
+    operation: Option<RenderOperationContract>,
+}
+
+impl ObservedRenderOperations {
+    pub(crate) fn observe(
+        &mut self,
+        fixture: &str,
+        expected: &RenderOperationContract,
+        report: &merman::render::RenderOperationReport,
+    ) -> Result<(), String> {
+        validate_measurement_provenance(fixture, report)?;
+        let observed = RenderOperationContract::from_report(report);
+        if &observed != expected {
+            return Err(format!(
+                "render operation contract diverged for {fixture}: expected {expected:?}, observed {observed:?}"
+            ));
+        }
+        if let Some(first) = &self.operation
+            && first != &observed
+        {
+            return Err(format!(
+                "render operation contract changed within one compare run at {fixture}: first {first:?}, observed {observed:?}"
+            ));
+        }
+        self.operation = Some(observed);
+        Ok(())
+    }
+
+    pub(crate) fn write_report(&self, report: &mut String) {
+        let Some(operation) = &self.operation else {
+            let _ = writeln!(report, "- Render operation: `not-observed`");
+            return;
+        };
+
+        let _ = writeln!(
+            report,
+            "- Render operation: `{}` (observed)",
+            operation.render_path.label()
+        );
+        let _ = writeln!(
+            report,
+            "- Root override policy: `{:?}` (observed)",
+            operation.root_policy
+        );
+        let _ = writeln!(
+            report,
+            "- Text measurement routes: `{}` (observed)",
+            operation.measurement_routes.len()
+        );
+        for route in &operation.measurement_routes {
+            let fallback = route
+                .fallback
+                .as_ref()
+                .map(format_measurement_identity)
+                .unwrap_or_else(|| "none".to_string());
+            let _ = writeln!(
+                report,
+                "  - `{:?}`: `{:?}` primary=`{}` fallback=`{fallback}`",
+                route.phase,
+                route.primary_source,
+                format_measurement_identity(&route.primary),
+            );
+        }
+    }
+}
+
+fn format_measurement_identity(
+    identity: &merman::render::TextMeasurementProfileIdentity,
+) -> String {
+    format!("{}@{}", identity.profile(), identity.version())
+}
+
+fn validate_measurement_provenance(
+    fixture: &str,
+    report: &merman::render::RenderOperationReport,
+) -> Result<(), String> {
+    for summary in report.measurement().entries() {
+        let provenance = summary.provenance();
+        let Some(route) = report
+            .measurement_routes()
+            .iter()
+            .find(|route| route.phase == provenance.phase)
+        else {
+            return Err(format!(
+                "render operation report for {fixture} recorded {:?} without a configured measurement route",
+                provenance.phase
+            ));
+        };
+        let route_matches = match provenance.fallback_reason {
+            None => {
+                provenance.source == route.primary_source && provenance.identity == route.primary
+            }
+            Some(_) => {
+                provenance.source == merman::render::TextMeasurementSource::Profile
+                    && route.fallback.as_ref() == Some(&provenance.identity)
+            }
+        };
+        if !route_matches {
+            return Err(format!(
+                "render operation report for {fixture} has measurement provenance outside its configured route: {provenance:?} vs {route:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Default)]
 struct CanonicalCompareState {
     root_deltas: Vec<super::RootDelta>,
+    observed_operations: ObservedRenderOperations,
 }
 
 #[derive(Debug, Clone)]
@@ -371,6 +510,7 @@ pub(crate) fn run_canonical_svg_compare(
     if let Some(renderer) = sequence_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
+    let operation_contract = RenderOperationContract::from_environment(&environment)?;
     let renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options())
@@ -403,7 +543,6 @@ pub(crate) fn run_canonical_svg_compare(
                 "- Upstream: `{}` (pinned Mermaid baseline)",
                 paths.upstream_dir.join("*.svg").display()
             );
-            let _ = writeln!(report, "- Render path: `{}`", fact.render_path().label());
             let _ = writeln!(report, "- Command: `{}`", fact.command);
             let _ = writeln!(report, "- Mode: `{}`", options.dom_mode);
             let _ = writeln!(report, "- Decimals: `{}`", options.dom_decimals);
@@ -425,15 +564,6 @@ pub(crate) fn run_canonical_svg_compare(
                     }
                 );
             }
-            let _ = writeln!(
-                report,
-                "- Root overrides: `{}`",
-                if request.apply_root_overrides {
-                    "enabled"
-                } else {
-                    "disabled"
-                }
-            );
             report.push('\n');
         },
         |_, stem, _| match fact.skip_policy {
@@ -505,12 +635,18 @@ pub(crate) fn run_canonical_svg_compare(
                 }
             }
 
-            let local_svg = prepared.render_svg(&svg_options).map_err(|error| {
+            let rendered = prepared.render_svg_report(&svg_options).map_err(|error| {
                 format!(
                     "render failed for {}: {error}",
                     input.fixture_path.display()
                 )
             })?;
+            state.observed_operations.observe(
+                input.stem,
+                &operation_contract,
+                rendered.report(),
+            )?;
+            let local_svg = rendered.into_svg();
 
             let mut issues = Vec::new();
             if should_report_root {
@@ -567,6 +703,7 @@ pub(crate) fn run_canonical_svg_compare(
             }
         },
         |state, report, paths, options, failures, notes| {
+            state.observed_operations.write_report(report);
             if should_report_root {
                 super::write_root_deltas_report(report, &mut state.root_deltas, root_report_limit);
             }
@@ -1009,22 +1146,76 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn every_canonical_family_accepts_explicit_computed_root_policy() {
-        let fact = super::super::diagram_verification_fact("state")
-            .copied()
-            .expect("State verification fact");
+    fn every_admitted_render_family_observes_both_root_policies() {
+        for fact in super::super::DIAGRAM_VERIFICATION_FACTS {
+            for (apply_root_overrides, expected_policy) in [
+                (
+                    true,
+                    merman::render::RootViewportOverridePolicy::ApplyGenerated,
+                ),
+                (
+                    false,
+                    merman::render::RootViewportOverridePolicy::ComputedOnly,
+                ),
+            ] {
+                let request = CompareRequest {
+                    apply_root_overrides,
+                    ..CompareRequest::default()
+                };
+                let environment = compare_render_environment(&request);
+                let contract = RenderOperationContract::from_environment(&environment)
+                    .expect("representative operation contract");
+                let diagram_id = format!("root-policy-{}", fact.diagram);
+                let rendered = merman::render::HeadlessRenderer::new()
+                    .with_engine(super::super::svg_compare_engine())
+                    .with_parse_options(fact.parse_policy.options())
+                    .with_layout_options(super::super::svg_compare_layout_opts())
+                    .with_environment(environment)
+                    .with_diagram_id(&diagram_id)
+                    .render_svg_report_sync(fact.representative_source)
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "{} representative render failed under {expected_policy:?}: {error}",
+                            fact.diagram
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        panic!("{} representative source was not detected", fact.diagram)
+                    });
+                let mut observed = ObservedRenderOperations::default();
+                observed
+                    .observe(fact.diagram, &contract, rendered.report())
+                    .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram));
 
-        let request = CompareRequest::parse_for_fact(vec!["--no-root-overrides".to_string()], fact)
-            .expect("root policy must be a shared compare option");
-
-        assert!(!request.apply_root_overrides);
-        let session = compare_render_environment(&request)
-            .begin_session()
-            .expect("compare environment should begin a render session");
-        assert_eq!(
-            session.root_viewport_override_policy(),
-            merman::render::RootViewportOverridePolicy::ComputedOnly
-        );
+                assert_eq!(
+                    rendered.report().root_viewport_override_policy(),
+                    expected_policy,
+                    "{} ignored the operation root policy",
+                    fact.diagram
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                    panic!("{} emitted invalid root SVG: {error}", fact.diagram)
+                });
+                let root = document.root_element();
+                assert!(root.has_tag_name("svg"), "{} root is not svg", fact.diagram);
+                assert_eq!(
+                    root.attribute("id"),
+                    Some(diagram_id.as_str()),
+                    "{} bypassed the shared root diagram id",
+                    fact.diagram
+                );
+                let has_viewport = root.attribute("viewBox").is_some()
+                    || root.attribute("width").is_some()
+                    || root
+                        .attribute("style")
+                        .is_some_and(|style| style.contains("max-width:"));
+                assert!(
+                    has_viewport,
+                    "{} emitted a root without a viewport",
+                    fact.diagram
+                );
+            }
+        }
     }
 
     #[test]

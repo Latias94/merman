@@ -16,15 +16,12 @@ use er::{compare_er_args, compare_er_request};
 use flowchart::{compare_flowchart_args, compare_flowchart_request};
 use gantt::{compare_gantt_args, compare_gantt_request};
 
-pub(crate) use er::compare_er_svgs;
 pub(crate) use flowchart::{
     audit_flowchart_elk_source_backed_coverage, check_flowchart_elk_source_backed_probes,
-    compare_flowchart_svgs,
 };
-pub(crate) use gantt::compare_gantt_svgs;
 macro_rules! verification_fact {
     (
-        $diagram:literal, $command:literal, $title:literal, $mode:literal,
+        $diagram:literal, $command:literal, $title:literal, $mode:literal, $source:literal,
         $parse:ident, $profile:ident, $id:ident, $skip:ident, $compare:ident,
         $report:ident, $diagnostics:ident, $specialist:ident
     ) => {
@@ -33,6 +30,7 @@ macro_rules! verification_fact {
             command: $command,
             report_title: $title,
             default_dom_mode: $mode,
+            representative_source: $source,
             parse_policy: ParsePolicy::$parse,
             render_profile: RenderProfile::$profile,
             diagram_id_policy: DiagramIdPolicy::$id,
@@ -51,6 +49,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-er-svgs",
         "ER",
         "parity",
+        "erDiagram\nCUSTOMER\n",
         SuppressErrors,
         Specialist,
         Specialist,
@@ -65,6 +64,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-flowchart-svgs",
         "Flowchart",
         "parity",
+        "flowchart TD\nA-->B\n",
         Default,
         Specialist,
         Specialist,
@@ -79,6 +79,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-state-svgs",
         "StateDiagram",
         "structure",
+        "stateDiagram-v2\n[*] --> Idle\n",
         Default,
         Standard,
         SanitizedStem,
@@ -93,6 +94,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-class-svgs",
         "ClassDiagram",
         "parity",
+        "classDiagram\nclass Animal\n",
         Default,
         HandDrawnSeed,
         SanitizedStem,
@@ -107,6 +109,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-sequence-svgs",
         "Sequence",
         "structure",
+        "sequenceDiagram\nAlice->>Bob: Hello\n",
         SuppressErrors,
         SequenceMath,
         SanitizedStem,
@@ -121,6 +124,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-info-svgs",
         "Info",
         "parity",
+        "info\n",
         Default,
         Standard,
         SanitizedStem,
@@ -135,6 +139,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-pie-svgs",
         "Pie",
         "structure",
+        "pie\n\"A\": 1\n",
         Default,
         Standard,
         RawStem,
@@ -149,6 +154,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-sankey-svgs",
         "Sankey",
         "parity-root",
+        "sankey\nA,B,1\n",
         Default,
         Standard,
         SanitizedStem,
@@ -163,6 +169,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-packet-svgs",
         "Packet",
         "structure",
+        "packet-beta\n0-7: \"A\"\n",
         Lenient,
         Standard,
         RawStem,
@@ -177,6 +184,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-timeline-svgs",
         "Timeline",
         "structure",
+        "timeline\n2024 : Event\n",
         Default,
         Standard,
         RawStem,
@@ -191,6 +199,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-journey-svgs",
         "Journey",
         "parity",
+        "journey\nsection Work\nTask: 5\n",
         Default,
         Standard,
         SanitizedStem,
@@ -205,6 +214,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-kanban-svgs",
         "Kanban",
         "structure",
+        "kanban\n  Todo\n    item1\n",
         Default,
         Standard,
         RawStem,
@@ -219,6 +229,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-gitgraph-svgs",
         "GitGraph",
         "parity",
+        "gitGraph\ncommit\n",
         Default,
         GitGraphSeed,
         SanitizedStem,
@@ -233,6 +244,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-gantt-svgs",
         "Gantt",
         "structure",
+        "gantt\ndateFormat YYYY-MM-DD\nsection Work\nTask :a, 2024-01-01, 1d\n",
         Default,
         Specialist,
         Specialist,
@@ -247,6 +259,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-c4-svgs",
         "C4",
         "parity",
+        "C4Context\nPerson(user, \"User\")\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -261,6 +274,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-block-svgs",
         "Block",
         "structure",
+        "block\n  a b c\n",
         Default,
         Standard,
         SanitizedStem,
@@ -275,6 +289,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-radar-svgs",
         "Radar",
         "parity",
+        "radar-beta\naxis A,B,C\ncurve sample{1,2,3}\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -289,6 +304,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-requirement-svgs",
         "Requirement",
         "parity",
+        "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Test\n  risk: low\n  verifymethod: analysis\n}\n",
         Default,
         Standard,
         RawStem,
@@ -303,6 +319,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-mindmap-svgs",
         "Mindmap",
         "parity",
+        "mindmap\n  root\n    child\n",
         Default,
         Standard,
         SanitizedStem,
@@ -317,6 +334,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-architecture-svgs",
         "Architecture",
         "parity",
+        "architecture-beta\n  service api(server)[API]\n",
         Default,
         Standard,
         SanitizedStem,
@@ -331,6 +349,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-quadrantchart-svgs",
         "QuadrantChart",
         "parity",
+        "quadrantChart\nx-axis Low --> High\ny-axis Low --> High\nA: [0.5, 0.5]\n",
         Default,
         Standard,
         RawStem,
@@ -345,6 +364,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-treemap-svgs",
         "Treemap",
         "parity",
+        "treemap-beta\n\"Root\"\n  \"Child\": 1\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -359,6 +379,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-xychart-svgs",
         "XYChart",
         "parity",
+        "xychart-beta\nline [10, 30, 20]\n",
         Default,
         Standard,
         SanitizedStem,
@@ -373,6 +394,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-tree-view-svgs",
         "TreeView",
         "parity",
+        "treeView-beta\n  root\n    child\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -387,6 +409,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-ishikawa-svgs",
         "Ishikawa",
         "parity",
+        "ishikawa-beta\n  Effect\n    Cause\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -401,6 +424,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-eventmodeling-svgs",
         "EventModeling",
         "parity",
+        "eventmodeling\ntf 01 ui Shop.Cart\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -415,6 +439,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-venn-svgs",
         "Venn",
         "parity",
+        "venn-beta\nset Frontend\nset Backend\nunion Frontend,Backend[\"API\"]\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -429,6 +454,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-cynefin-svgs",
         "Cynefin",
         "parity",
+        "cynefin-beta\n  complex\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -443,6 +469,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-railroad-svgs",
         "Railroad",
         "parity",
+        "railroad-beta\nrule = terminal(\"a\") ;\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -457,6 +484,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-railroad-ebnf-svgs",
         "Railroad EBNF",
         "parity",
+        "railroad-ebnf-beta\nrule = \"a\" ;\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -471,6 +499,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-railroad-abnf-svgs",
         "Railroad ABNF",
         "parity",
+        "railroad-abnf-beta\nrule = \"a\" ;\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -485,6 +514,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "compare-railroad-peg-svgs",
         "Railroad PEG",
         "parity",
+        "railroad-peg-beta\nrule <- \"a\" ;\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -496,20 +526,17 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
     ),
 ];
 
-pub(crate) fn compare_diagram_svgs(diagram: &str, args: Vec<String>) -> Result<(), XtaskError> {
-    let Some(fact) = diagram_verification_fact(diagram) else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "unexpected diagram: {diagram}"
-        )));
-    };
-
+pub(crate) fn compare_diagram_command(
+    fact: DiagramVerificationFact,
+    args: Vec<String>,
+) -> Result<(), XtaskError> {
     match fact.specialist {
-        SpecialistHook::FlowchartAdapter => compare_flowchart_args(*fact, args),
-        SpecialistHook::ErAdapter => compare_er_args(*fact, args),
-        SpecialistHook::GanttAdapter => compare_gantt_args(*fact, args),
+        SpecialistHook::FlowchartAdapter => compare_flowchart_args(fact, args),
+        SpecialistHook::ErAdapter => compare_er_args(fact, args),
+        SpecialistHook::GanttAdapter => compare_gantt_args(fact, args),
         SpecialistHook::None | SpecialistHook::ClassV2Role | SpecialistHook::SequenceMath => {
-            let request = CompareRequest::parse_for_fact(args, *fact)?;
-            run_canonical_svg_compare(*fact, request)
+            let request = CompareRequest::parse_for_fact(args, fact)?;
+            run_canonical_svg_compare(fact, request)
         }
     }
 }
@@ -540,51 +567,17 @@ pub(crate) fn diagram_verification_fact(diagram: &str) -> Option<&'static Diagra
         .find(|fact| fact.diagram == diagram)
 }
 
+pub(crate) fn diagram_verification_fact_for_command(
+    command: &str,
+) -> Option<&'static DiagramVerificationFact> {
+    DIAGRAM_VERIFICATION_FACTS
+        .iter()
+        .find(|fact| fact.command == command)
+}
+
 pub(crate) fn diagram_supports_root_delta_report(diagram: &str) -> bool {
     diagram_verification_fact(diagram).is_some_and(|fact| fact.supports_root_report())
 }
-
-macro_rules! generic_compare_entrypoints {
-    ($(($name:ident, $diagram:literal)),+ $(,)?) => {
-        $(
-            pub(crate) fn $name(args: Vec<String>) -> Result<(), XtaskError> {
-                compare_diagram_svgs($diagram, args)
-            }
-        )+
-    };
-}
-
-generic_compare_entrypoints!(
-    (compare_state_svgs, "state"),
-    (compare_class_svgs, "class"),
-    (compare_sequence_svgs, "sequence"),
-    (compare_info_svgs, "info"),
-    (compare_pie_svgs, "pie"),
-    (compare_sankey_svgs, "sankey"),
-    (compare_packet_svgs, "packet"),
-    (compare_timeline_svgs, "timeline"),
-    (compare_journey_svgs, "journey"),
-    (compare_kanban_svgs, "kanban"),
-    (compare_gitgraph_svgs, "gitgraph"),
-    (compare_c4_svgs, "c4"),
-    (compare_block_svgs, "block"),
-    (compare_radar_svgs, "radar"),
-    (compare_requirement_svgs, "requirement"),
-    (compare_mindmap_svgs, "mindmap"),
-    (compare_architecture_svgs, "architecture"),
-    (compare_quadrantchart_svgs, "quadrantchart"),
-    (compare_treemap_svgs, "treemap"),
-    (compare_xychart_svgs, "xychart"),
-    (compare_tree_view_svgs, "treeView"),
-    (compare_ishikawa_svgs, "ishikawa"),
-    (compare_eventmodeling_svgs, "eventmodeling"),
-    (compare_venn_svgs, "venn"),
-    (compare_cynefin_svgs, "cynefin"),
-    (compare_railroad_svgs, "railroad"),
-    (compare_railroad_ebnf_svgs, "railroadEbnf"),
-    (compare_railroad_abnf_svgs, "railroadAbnf"),
-    (compare_railroad_peg_svgs, "railroadPeg"),
-);
 
 #[cfg(test)]
 mod tests {
@@ -601,7 +594,7 @@ mod tests {
             "merman_render::svg::render_",
         ];
         let mut violations = Vec::new();
-        let mut adapter_paths = vec![compare_dir.join("xml.rs")];
+        let mut adapter_paths = vec![compare_dir.join("harness.rs"), compare_dir.join("xml.rs")];
 
         for entry in std::fs::read_dir(&adapters_dir).expect("compare adapter directory") {
             let entry = entry.expect("compare adapter entry");
@@ -631,6 +624,71 @@ mod tests {
             "per-family compare adapters must use the canonical prepared operation:\n{}",
             violations.join("\n")
         );
+    }
+
+    #[test]
+    fn compare_runners_capture_the_canonical_operation_report() {
+        let compare_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare");
+
+        for relative_path in [
+            "harness.rs",
+            "diagrams/er.rs",
+            "diagrams/flowchart.rs",
+            "diagrams/gantt.rs",
+        ] {
+            let source = std::fs::read_to_string(compare_dir.join(relative_path))
+                .expect("compare runner source");
+            let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+            assert!(
+                production.contains(".render_svg_report("),
+                "{relative_path} must retain the operation report"
+            );
+            assert!(
+                !production.contains(".render_svg("),
+                "{relative_path} must not discard operation provenance"
+            );
+        }
+    }
+
+    #[test]
+    fn generic_and_specialist_commands_report_observed_operation_provenance() {
+        let output_root = crate::cmd::target_root()
+            .join("compare")
+            .join("observed-operation-tests")
+            .join(std::process::id().to_string());
+
+        for (diagram, stem) in [
+            ("info", "upstream_info_spec"),
+            ("er", "basic"),
+            ("flowchart", "basic"),
+            ("gantt", "basic"),
+        ] {
+            let report_path = output_root.join(format!("{diagram}.md"));
+            let request = CompareRequest {
+                out_path: Some(report_path.clone()),
+                filter: Some(stem.to_string()),
+                apply_root_overrides: false,
+                ..CompareRequest::default()
+            };
+
+            compare_diagram_request(diagram, request)
+                .unwrap_or_else(|error| panic!("{diagram}/{stem} compare failed: {error}"));
+            let report = std::fs::read_to_string(&report_path)
+                .unwrap_or_else(|error| panic!("read {}: {error}", report_path.display()));
+
+            assert!(
+                report.contains("- Render operation: `headless-operation-typed` (observed)"),
+                "{diagram} report did not consume RenderOperationReport:\n{report}"
+            );
+            assert!(
+                report.contains("- Root override policy: `ComputedOnly` (observed)"),
+                "{diagram} report did not expose observed root policy:\n{report}"
+            );
+            assert!(
+                report.contains("- Text measurement routes: `5` (observed)"),
+                "{diagram} report did not expose observed measurement routes:\n{report}"
+            );
+        }
     }
 
     #[test]
@@ -712,7 +770,36 @@ mod tests {
                 "{} must verify the canonical typed operation",
                 fact.diagram
             );
+            assert_eq!(
+                diagram_verification_fact_for_command(fact.command).map(|found| found.diagram),
+                Some(fact.diagram),
+                "{} must route through its verification fact",
+                fact.command
+            );
         }
+        assert!(diagram_verification_fact_for_command("compare-unknown-svgs").is_none());
+    }
+
+    #[test]
+    fn verification_facts_are_the_only_per_family_cli_registration() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let main_source =
+            std::fs::read_to_string(manifest.join("src/main.rs")).expect("xtask main source");
+        let diagrams_source = std::fs::read_to_string(manifest.join("src/cmd/compare/diagrams.rs"))
+            .expect("diagram compare source");
+
+        for fact in DIAGRAM_VERIFICATION_FACTS {
+            assert!(
+                !main_source.contains(&format!("\"{}\" =>", fact.command)),
+                "{} must be routed from DIAGRAM_VERIFICATION_FACTS",
+                fact.command
+            );
+        }
+        let generic_wrapper_invocation = ["generic_compare_", "entrypoints!("].concat();
+        assert!(
+            !diagrams_source.contains(&generic_wrapper_invocation),
+            "generic compare wrappers duplicate DIAGRAM_VERIFICATION_FACTS"
+        );
     }
 
     #[test]

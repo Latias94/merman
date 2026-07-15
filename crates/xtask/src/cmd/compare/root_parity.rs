@@ -752,6 +752,14 @@ dom mismatch for b: upstream=a local=b (scope=parity-normalized-descendants-matc
                 .iter()
                 .all(|residual| residual.stem != "upstream_docs_tidy_tree_example_usage_002")
         );
+        for diagram in ["treeView", "ishikawa", "eventmodeling"] {
+            assert!(
+                ACCEPTED_ROOT_PARITY_RESIDUALS
+                    .iter()
+                    .all(|residual| residual.diagram != diagram),
+                "{diagram} has no accepted residual after a complete release parity-root sweep"
+            );
+        }
 
         for (diagram, line) in residual_lines {
             assert!(

@@ -1,7 +1,6 @@
 //! Compare all diagram SVGs under fixtures.
 
 use crate::XtaskError;
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -54,7 +53,6 @@ fn compare_selected_diagram_svgs(
         path: compare_dir.display().to_string(),
         source,
     })?;
-    diagram_selection.print_root_deferred_skip();
     let diagrams = diagram_selection.diagrams;
 
     let invocation_options = options.invocation_options();
@@ -187,10 +185,6 @@ impl CompareAllOptions {
                 .is_some_and(|mode| mode.trim() == "structure")
     }
 
-    fn global_root_parity_sweep(&self) -> bool {
-        self.root_parity_policy_enabled() && self.only_diagrams.is_empty()
-    }
-
     fn invocation_options(&self) -> CompareAllInvocationOptions<'_> {
         CompareAllInvocationOptions {
             check_dom: self.check_dom,
@@ -212,7 +206,6 @@ impl CompareAllOptions {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CompareAllDiagramSelection {
     diagrams: Vec<&'static str>,
-    skipped_root_deferred: Vec<&'static str>,
 }
 
 impl CompareAllDiagramSelection {
@@ -237,37 +230,11 @@ impl CompareAllDiagramSelection {
             diagrams.retain(|d| !skip.iter().any(|s| s == &diagram_filter_key(d)));
         }
 
-        let skipped_root_deferred = if options.global_root_parity_sweep() {
-            let root_deferred: BTreeSet<&str> =
-                crate::cmd::root_viewport_deferred_diagrams().collect();
-            let skipped = diagrams
-                .iter()
-                .copied()
-                .filter(|d| root_deferred.contains(d))
-                .collect::<Vec<_>>();
-            diagrams.retain(|d| !root_deferred.contains(d));
-            skipped
-        } else {
-            Vec::new()
-        };
-
         if diagrams.is_empty() {
             return Err(XtaskError::Usage);
         }
 
-        Ok(Self {
-            diagrams,
-            skipped_root_deferred,
-        })
-    }
-
-    fn print_root_deferred_skip(&self) {
-        if !self.skipped_root_deferred.is_empty() {
-            println!(
-                "skipping root-viewport-deferred diagrams in global parity-root sweep: {}",
-                self.skipped_root_deferred.join(", ")
-            );
-        }
+        Ok(Self { diagrams })
     }
 }
 
@@ -582,7 +549,6 @@ mod tests {
             ..Default::default()
         };
         assert!(global.root_parity_policy_enabled());
-        assert!(global.global_root_parity_sweep());
         assert_eq!(
             global
                 .invocation_options()
@@ -597,7 +563,6 @@ mod tests {
             ..global.clone()
         };
         assert!(targeted.root_parity_policy_enabled());
-        assert!(!targeted.global_root_parity_sweep());
 
         let filtered = CompareAllOptions {
             filter: Some("smoke".to_string()),
@@ -768,11 +733,10 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
         let selection = CompareAllDiagramSelection::from_options(&options).expect("selection");
 
         assert_eq!(selection.diagrams, ["treeView"]);
-        assert!(selection.skipped_root_deferred.is_empty());
     }
 
     #[test]
-    fn compare_all_diagram_selection_skips_root_deferred_only_for_global_root_sweep() {
+    fn compare_all_global_root_sweep_includes_every_primary_family() {
         let options = CompareAllOptions {
             check_dom: true,
             dom_mode: Some("parity-root".to_string()),
@@ -780,20 +744,14 @@ dom mismatch for upstream_docs_diagrams_mermaid_api_sequence: upstream=a local=b
         };
         let selection = CompareAllDiagramSelection::from_options(&options).expect("selection");
 
-        let root_deferred: Vec<&str> = crate::cmd::root_viewport_deferred_diagrams().collect();
-        assert!(!root_deferred.is_empty());
-        for diagram in root_deferred {
-            assert!(!selection.diagrams.contains(&diagram));
-            assert!(selection.skipped_root_deferred.contains(&diagram));
+        let primary: Vec<&str> = crate::cmd::primary_svg_matrix_diagrams().collect();
+        assert_eq!(selection.diagrams, primary);
+        for diagram in ["treeView", "ishikawa", "eventmodeling"] {
+            assert!(
+                selection.diagrams.contains(&diagram),
+                "global parity-root sweep must include {diagram}"
+            );
         }
-
-        let targeted = CompareAllOptions {
-            only_diagrams: vec!["flowchart".to_string()],
-            ..options
-        };
-        let selection = CompareAllDiagramSelection::from_options(&targeted).expect("selection");
-        assert_eq!(selection.diagrams, ["flowchart"]);
-        assert!(selection.skipped_root_deferred.is_empty());
     }
 
     #[test]

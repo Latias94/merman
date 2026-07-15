@@ -108,14 +108,6 @@ pub(crate) fn primary_svg_matrix_diagrams() -> impl Iterator<Item = &'static str
         .map(|record| record.diagram)
 }
 
-pub(crate) fn root_viewport_deferred_diagrams() -> impl Iterator<Item = &'static str> {
-    ADMISSION_INVENTORY
-        .iter()
-        .copied()
-        .filter(|record| record.is_root_viewport_deferred())
-        .map(|record| record.diagram)
-}
-
 pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Vec<String> {
     let workspace_root = crate::cmd::workspace_root();
     let core_capabilities = merman_core::diagram_family_capabilities_for_profile(
@@ -296,16 +288,6 @@ macro_rules! primary {
     };
 }
 
-macro_rules! primary_root_deferred {
-    ($diagram:literal, $fixtures:expr, $owner:literal, $reason:literal) => {
-        DiagramAdmissionRecord {
-            root_viewport: CoverageStatus::Deferred,
-            defer_reason: Some($reason),
-            ..primary!($diagram, $fixtures, $owner)
-        }
-    };
-}
-
 macro_rules! not_admitted {
     ($diagram:literal, $reason:literal) => {
         DiagramAdmissionRecord {
@@ -458,23 +440,20 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         FixtureCorpusStatus::NormalizedWithDeferred,
         "docs/alignment/XYCHART_MINIMUM.md"
     ),
-    primary_root_deferred!(
+    primary!(
         "treeView",
         FixtureCorpusStatus::Normalized,
-        "docs/alignment/TREEVIEW_MINIMUM.md",
-        "global parity-root sweep skips current browser text-metric root viewport residuals"
+        "docs/alignment/TREEVIEW_MINIMUM.md"
     ),
-    primary_root_deferred!(
+    primary!(
         "ishikawa",
         FixtureCorpusStatus::NormalizedWithDeferred,
-        "docs/alignment/ISHIKAWA_MINIMUM.md",
-        "global parity-root sweep skips current label/fish-head root viewport residuals"
+        "docs/alignment/ISHIKAWA_MINIMUM.md"
     ),
-    primary_root_deferred!(
+    primary!(
         "eventmodeling",
         FixtureCorpusStatus::Normalized,
-        "docs/alignment/EVENTMODELING_MINIMUM.md",
-        "global parity-root sweep skips current foreignObject/browser text-metric residuals"
+        "docs/alignment/EVENTMODELING_MINIMUM.md"
     ),
     DiagramAdmissionRecord {
         diagram: "zenuml",
@@ -686,15 +665,14 @@ mod tests {
     }
 
     #[test]
-    fn root_deferred_projection_is_derived_from_inventory_records() {
-        let diagrams: Vec<_> = root_viewport_deferred_diagrams().collect();
-
-        assert_eq!(diagrams, ["treeView", "ishikawa", "eventmodeling"]);
-        for diagram in diagrams {
+    fn completed_root_viewport_families_are_not_deferred() {
+        for diagram in ["treeView", "ishikawa", "eventmodeling"] {
             let record = record(diagram);
             assert!(record.is_primary_svg_matrix());
-            assert!(record.is_root_viewport_deferred());
-            assert!(record.requires_defer_reason());
+            assert!(!record.is_root_viewport_deferred());
+            assert!(!record.requires_defer_reason());
+            assert_eq!(record.root_viewport, CoverageStatus::Covered);
+            assert!(record.defer_reason.is_none());
         }
     }
 
