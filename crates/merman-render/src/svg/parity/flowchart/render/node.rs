@@ -218,7 +218,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         dy: 0.0,
     };
 
-    if shapes::try_render_flowchart_v2_no_label(out, ctx, &common, details) {
+    if shapes::try_render_flowchart_no_label(out, ctx, &common, details) {
         out.push_str("</g>");
         if common.wrapped_in_a {
             out.push_str("</a>");
@@ -226,7 +226,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         return;
     }
 
-    if shapes::render_flowchart_v2_shape(out, ctx, &common, &mut label, details) {
+    if shapes::render_flowchart_shape(out, ctx, &common, &mut label, details) {
         return;
     }
 

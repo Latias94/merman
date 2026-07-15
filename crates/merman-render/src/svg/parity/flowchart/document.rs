@@ -1,11 +1,11 @@
-use super::super::util::{escape_attr, escape_attr_into, escape_xml_into};
-use super::super::{apply_root_viewport_override, fmt, fmt_max_width_px, fmt_string, root_svg};
+use super::super::root_svg;
+use super::super::util::{escape_attr_into, escape_xml_into};
 use crate::environment::RootViewportOverridePolicy;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
     pub diagram_id: &'a str,
     pub diagram_type: &'a str,
-    pub model: &'a crate::flowchart::FlowchartV2Model,
+    pub model: &'a crate::flowchart::FlowchartModel,
     pub use_max_width: bool,
     pub root_viewport_override_policy: RootViewportOverridePolicy,
     pub diagram_padding: f64,
@@ -19,16 +19,12 @@ pub(super) struct FlowchartSvgDocument<'a> {
     diagram_id: &'a str,
     diagram_type: &'a str,
     use_max_width: bool,
-    viewbox_attr: String,
-    max_w_attr: String,
-    w_attr: String,
-    h_attr: String,
+    root_viewport: root_svg::RootViewportContext<'a>,
+    root_spec: root_svg::RootViewportSpec,
     acc_title: Option<&'a str>,
     acc_descr: Option<&'a str>,
-    aria_labelledby_raw: Option<String>,
-    aria_describedby_raw: Option<String>,
-    aria_labelledby_attr: Option<String>,
-    aria_describedby_attr: Option<String>,
+    aria_labelledby: Option<String>,
+    aria_describedby: Option<String>,
 }
 
 pub(super) fn prepare_flowchart_svg_document(
@@ -62,26 +58,14 @@ pub(super) fn prepare_flowchart_svg_document(
     let vb_w = ((bbox_w_f32 as f64) + request.diagram_padding * 2.0).max(1.0);
     let vb_h = ((bbox_h_f32 as f64) + request.diagram_padding * 2.0).max(1.0);
 
-    let mut viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
+    let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, request.use_max_width)
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w));
+    let root_viewport = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Flowchart,
+        request.diagram_id,
+        request.root_viewport_override_policy,
     );
-    let mut max_w_attr = fmt_max_width_px(vb_w);
-    let mut w_attr = fmt_string(vb_w);
-    let mut h_attr = fmt_string(vb_h);
-    if request.root_viewport_override_policy.applies_generated() {
-        apply_root_viewport_override(
-            request.diagram_id,
-            &mut viewbox_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override,
-        );
-    }
 
     let acc_title = request
         .model
@@ -95,76 +79,50 @@ pub(super) fn prepare_flowchart_svg_document(
         .as_deref()
         .map(|s| s.trim_end_matches('\n'))
         .filter(|s| !s.trim().is_empty());
-    let aria_labelledby_raw = acc_title.map(|_| format!("chart-title-{}", request.diagram_id));
-    let aria_describedby_raw = acc_descr.map(|_| format!("chart-desc-{}", request.diagram_id));
-    let aria_labelledby_attr = aria_labelledby_raw.as_deref().map(escape_attr);
-    let aria_describedby_attr = aria_describedby_raw.as_deref().map(escape_attr);
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{}", request.diagram_id));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{}", request.diagram_id));
 
     FlowchartSvgDocument {
         diagram_id: request.diagram_id,
         diagram_type: request.diagram_type,
         use_max_width: request.use_max_width,
-        viewbox_attr,
-        max_w_attr,
-        w_attr,
-        h_attr,
+        root_viewport,
+        root_spec,
         acc_title,
         acc_descr,
-        aria_labelledby_raw,
-        aria_describedby_raw,
-        aria_labelledby_attr,
-        aria_describedby_attr,
+        aria_labelledby,
+        aria_describedby,
     }
 }
 
 impl FlowchartSvgDocument<'_> {
-    pub(super) fn push_root_open(&self, out: &mut String) {
-        if self.use_max_width {
-            let style_attr = format!("max-width: {}px; background-color: white;", self.max_w_attr);
-            root_svg::push_svg_root_open(
-                out,
-                root_svg::SvgRootAttrs {
-                    class: Some("flowchart"),
-                    width: root_svg::SvgRootWidth::Percent100,
-                    style_attr: Some(style_attr.as_str()),
-                    viewbox_attr: Some(self.viewbox_attr.as_str()),
-                    aria_labelledby: self.aria_labelledby_attr.as_deref(),
-                    aria_describedby: self.aria_describedby_attr.as_deref(),
-                    trailing_newline: false,
-                    ..root_svg::SvgRootAttrs::new(self.diagram_id, self.diagram_type)
-                },
-            );
-        } else {
-            let after_roledescription_attrs: [(&str, &str); 1] =
-                [("style", "background-color: white;")];
-            root_svg::push_svg_root_open(
-                out,
-                root_svg::SvgRootAttrs {
-                    class: Some("flowchart"),
-                    width: root_svg::SvgRootWidth::Fixed(self.w_attr.as_str()),
-                    height_attr: Some(self.h_attr.as_str()),
-                    viewbox_attr: Some(self.viewbox_attr.as_str()),
-                    style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                    aria_labelledby: self.aria_labelledby_attr.as_deref(),
-                    aria_describedby: self.aria_describedby_attr.as_deref(),
-                    after_roledescription_attrs: &after_roledescription_attrs,
-                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterClass,
-                    trailing_newline: false,
-                    ..root_svg::SvgRootAttrs::new(self.diagram_id, self.diagram_type)
-                },
-            );
+    pub(super) fn push_root_open(&self, out: &mut String) -> crate::Result<()> {
+        let mut root_chrome = root_svg::RootChrome::new(self.diagram_id, self.diagram_type);
+        root_chrome.class = Some("flowchart");
+        root_chrome.aria_labelledby = self.aria_labelledby.as_deref();
+        root_chrome.aria_describedby = self.aria_describedby.as_deref();
+        root_chrome.dom.trailing_newline = false;
+        if !self.use_max_width {
+            root_chrome.dom.style_viewbox_order =
+                root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+            root_chrome.dom.fixed_height_placement =
+                root_svg::SvgRootFixedHeightPlacement::AfterClass;
+            root_chrome.dom.fixed_style_placement =
+                root_svg::RootStylePlacement::AfterRoleDescription;
         }
+        self.root_viewport
+            .write_open(out, self.root_spec, root_chrome)
     }
 
     pub(super) fn push_accessibility_metadata(&self, out: &mut String) {
-        if let (Some(id), Some(title)) = (self.aria_labelledby_raw.as_deref(), self.acc_title) {
+        if let (Some(id), Some(title)) = (self.aria_labelledby.as_deref(), self.acc_title) {
             out.push_str(r#"<title id=""#);
             escape_attr_into(out, id);
             out.push_str(r#"">"#);
             escape_xml_into(out, title);
             out.push_str("</title>");
         }
-        if let (Some(id), Some(descr)) = (self.aria_describedby_raw.as_deref(), self.acc_descr) {
+        if let (Some(id), Some(descr)) = (self.aria_describedby.as_deref(), self.acc_descr) {
             out.push_str(r#"<desc id=""#);
             escape_attr_into(out, id);
             out.push_str(r#"">"#);

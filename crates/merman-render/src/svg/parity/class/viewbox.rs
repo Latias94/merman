@@ -1,7 +1,5 @@
 use crate::model::Bounds;
-use std::fmt::Write as _;
 
-use super::super::fmt;
 use super::ClassSvgModel;
 
 pub(super) struct ClassViewBoxContext<'a> {
@@ -13,9 +11,11 @@ pub(super) struct ClassViewBoxContext<'a> {
     pub has_acc_descr: bool,
 }
 
-pub(super) struct ClassViewBoxAttrs<'a> {
-    pub view_box_attr: String,
-    pub max_w_attr: String,
+pub(super) struct ClassViewBox<'a> {
+    pub min_x: f64,
+    pub min_y: f64,
+    pub width: f64,
+    pub height: f64,
     pub title: Option<ClassViewBoxTitle<'a>>,
 }
 
@@ -25,7 +25,7 @@ pub(super) struct ClassViewBoxTitle<'a> {
     pub y: f64,
 }
 
-pub(super) fn class_viewbox_attrs<'a>(ctx: ClassViewBoxContext<'a>) -> ClassViewBoxAttrs<'a> {
+pub(super) fn class_viewbox<'a>(ctx: ClassViewBoxContext<'a>) -> ClassViewBox<'a> {
     let bounds = ctx.content_bounds.unwrap_or(Bounds {
         min_x: 0.0,
         min_y: 0.0,
@@ -984,18 +984,6 @@ pub(super) fn class_viewbox_attrs<'a>(ctx: ClassViewBoxContext<'a>) -> ClassView
         }
     }
 
-    let mut max_w_attr = String::new();
-    super::super::util::fmt_max_width_px_into(&mut max_w_attr, vb_w.max(1.0));
-    let mut view_box_attr = String::with_capacity(64);
-    let _ = write!(
-        &mut view_box_attr,
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-
     let title = if has_diagram_title {
         let text = ctx.diagram_title.unwrap_or_default().trim();
         Some(ClassViewBoxTitle {
@@ -1007,9 +995,11 @@ pub(super) fn class_viewbox_attrs<'a>(ctx: ClassViewBoxContext<'a>) -> ClassView
         None
     };
 
-    ClassViewBoxAttrs {
-        view_box_attr,
-        max_w_attr,
+    ClassViewBox {
+        min_x: vb_min_x,
+        min_y: vb_min_y,
+        width: vb_w,
+        height: vb_h,
         title,
     }
 }

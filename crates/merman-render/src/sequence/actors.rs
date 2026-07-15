@@ -3,9 +3,10 @@ use super::constants::{
     sequence_text_dimensions_height_px,
 };
 use super::metrics::{SequenceMathHeightMode, measure_sequence_label_for_layout};
+use super::wrap_sequence_label_like_mermaid_lines;
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
+use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceActor;
@@ -147,7 +148,7 @@ fn measure_actor_boxes(ctx: &SequenceActorLayoutPlanContext<'_>) -> Result<(Vec<
             // Upstream wraps actor descriptions to `conf.width - 2*wrapPadding` and clamps the
             // actor box width to `conf.width`.
             let wrap_w = (ctx.actor_width_min - 2.0 * ctx.wrap_padding).max(1.0);
-            let wrapped_lines = wrap_label_like_mermaid_lines(
+            let wrapped_lines = wrap_sequence_label_like_mermaid_lines(
                 &a.description,
                 ctx.measurer,
                 ctx.actor_text_style,
@@ -234,7 +235,8 @@ fn actor_message_widths(
                 // Upstream uses `wrapLabel(message, conf.width - 2*wrapPadding, ...)` when
                 // computing max per-actor message widths for spacing.
                 let wrap_w = (ctx.actor_width_min - 2.0 * ctx.wrap_padding).max(1.0);
-                let lines = wrap_label_like_mermaid_lines(text, ctx.measurer, style, wrap_w);
+                let lines =
+                    wrap_sequence_label_like_mermaid_lines(text, ctx.measurer, style, wrap_w);
                 lines.join("<br>")
             } else {
                 text.to_string()

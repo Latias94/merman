@@ -6,7 +6,7 @@
 // They are used to keep `parity-root` stable at higher decimal precision when browser float
 // behavior (DOM `getBBox()` + serialization) differs from our deterministic headless pipeline.
 
-pub fn lookup_flowchart_root_viewport_override(
+pub(super) fn lookup_flowchart_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {
@@ -24,7 +24,7 @@ pub fn lookup_flowchart_root_viewport_override(
         "stress_flowchart_subgraph_title_margin_extremes_015" => {
             Some(("0 25 806.421875 796", "806.422"))
         }
-        "stress_flowchart_text_style_overrides_076" => Some(("0 0 521.75 88", "521.75")),
+        "stress_flowchart_text_style_overrides_076" => Some(("0 0 521.15625 88", "521.156")),
         "stress_flowchart_icons_basic_051" => Some(("0 0 450.78125 278", "450.781")),
         "upstream_docs_flowchart_basic_support_for_fontawesome_234" => {
             Some(("0 0 450.78125 174", "450.781"))
@@ -36,7 +36,7 @@ pub fn lookup_flowchart_root_viewport_override(
             Some(("0 0 272.65625 70", "272.656"))
         }
         "upstream_flowchart_v2_stadium_shape_spec" => {
-            Some(("-96.54400634765625 -50 610.109375 608", "610.109"))
+            Some(("-96.54400634765625 -48 610.109375 606", "610.109"))
         }
         "upstream_docs_mermaid_run_003" => Some(("0 0 529.953125 174", "529.953")),
         "upstream_cypress_flowchart_handdrawn_spec_fdh21_render_cylindrical_shape_021" => Some((
@@ -91,12 +91,12 @@ pub fn lookup_flowchart_root_viewport_override(
         }
         "upstream_cypress_newshapes_spec_newshapessets_newshapesset5_lr_md_html_false_086" => {
             Some((
-                "0 -0.009033203125 373.23016357421875 924.65283203125",
-                "373.23",
+                "0 -0.0045166015625 374.11065673828125 873.7664184570312",
+                "374.111",
             ))
         }
         "upstream_cypress_oldshapes_spec_shapessets_shapesset5_tb_md_html_false_038" => {
-            Some(("0 0 1377.199462890625 199.20001220703125", "1377.2"))
+            Some(("0 0 1378.562744140625 199.20001220703125", "1378.56"))
         }
         "upstream_html_demos_flowchart_flowchart_008"
         | "upstream_html_demos_flowchart_flowchart_048" => {

@@ -5,8 +5,8 @@ use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
     DEFAULT_LABEL_DELTA_REPORT_LIMIT, DEFAULT_ROOT_DELTA_REPORT_LIMIT, DiagramVerificationFact,
     LabelDeltaReportLimit, LabelMetricDelta, RootDelta, RootDeltaReportLimit,
-    collect_label_metric_deltas, parse_label_delta_report_limit, parse_root_attrs,
-    parse_root_delta_report_limit, run_svg_compare, sanitize_svg_id,
+    collect_label_metric_deltas, compare_render_environment, parse_label_delta_report_limit,
+    parse_root_attrs, parse_root_delta_report_limit, run_svg_compare, sanitize_svg_id,
     svg_compare_engine_with_site_config, write_compare_result_section, write_label_deltas_report,
     write_notes_section, write_root_deltas_report, write_verification_policy_metadata,
 };
@@ -291,13 +291,8 @@ fn run_flowchart_compare(
             )));
         }
     };
-    let mut environment = merman::render::RenderEnvironment::parity()
-        .with_text_measurement_policy(text_measurement)
-        .with_root_viewport_override_policy(if apply_root_overrides {
-            merman::render::RootViewportOverridePolicy::ApplyGenerated
-        } else {
-            merman::render::RootViewportOverridePolicy::ComputedOnly
-        });
+    let mut environment =
+        compare_render_environment(&common).with_text_measurement_policy(text_measurement);
     if let Some(renderer) = flowchart_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }

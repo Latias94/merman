@@ -296,12 +296,12 @@ fn handle_sequence_message(
         from_x.max(to_x) + SEQUENCE_FRAME_SIDE_PAD_PX,
         inserted_bottom_y,
     );
-    state.include_inserted_bottom(inserted_bottom_y, ctx.box_margin);
-
     state.cursor_y += cursor_step;
-    state.cursor_y += state
+    let lifecycle_adjustment = state
         .actor_lifecycle
         .apply_message_y_adjustment(msg_idx, &edge.from, &edge.to, line_y);
+    state.cursor_y += lifecycle_adjustment;
+    state.include_inserted_bottom(inserted_bottom_y + lifecycle_adjustment, ctx.box_margin);
     edges.push(edge);
     true
 }

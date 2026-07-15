@@ -86,7 +86,7 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
     };
 
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-    let mut g = merman_render::state::debug_build_state_diagram_v2_dagre_graph(
+    let mut g = merman_render::state::debug_build_state_diagram_dagre_graph(
         model,
         parsed.meta.effective_config.as_value(),
         &measurer,
@@ -120,7 +120,7 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
     if let Some(cluster_id) = cluster.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         let parent_label = g.graph().clone();
         let mut parent = g;
-        let mut sub = merman_render::state::debug_extract_state_diagram_v2_cluster_graph(
+        let mut sub = merman_render::state::debug_extract_state_diagram_cluster_graph(
             &mut parent,
             cluster_id,
         )

@@ -13,9 +13,9 @@ fn section(enabled: bool, dst: &mut web_time::Duration) -> Option<timing::Timing
     enabled.then(|| timing::TimingGuard::new(dst))
 }
 
-pub(super) fn render_flowchart_v2_svg_model_with_config(
-    layout: &FlowchartV2Layout,
-    model: &crate::flowchart::FlowchartV2Model,
+pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
+    layout: &FlowchartLayout,
+    model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -25,7 +25,7 @@ pub(super) fn render_flowchart_v2_svg_model_with_config(
     let mut timings = timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
 
-    render_flowchart_v2_svg_with_config_inner(
+    render_flowchart_svg_with_config_inner(
         layout,
         model,
         effective_config,
@@ -46,9 +46,9 @@ struct FlowchartSvgTiming<'a> {
     total_start: web_time::Instant,
 }
 
-fn render_flowchart_v2_svg_with_config_inner(
-    layout: &FlowchartV2Layout,
-    model: &crate::flowchart::FlowchartV2Model,
+fn render_flowchart_svg_with_config_inner(
+    layout: &FlowchartLayout,
+    model: &crate::flowchart::FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -190,7 +190,6 @@ fn render_flowchart_v2_svg_with_config_inner(
         icon_registry: options.icon_registry(),
         node_html_labels,
         edge_html_labels,
-        source_backed_edge_label_bboxes: layout.source_backed_edge_label_bboxes,
         source_ported_elk_rendering: layout.source_ported_elk_rendering,
         class_defs: &model.class_defs,
         node_border_color,
@@ -328,7 +327,7 @@ fn render_flowchart_v2_svg_with_config_inner(
         + layout.clusters.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
 
-    document.push_root_open(&mut out);
+    document.push_root_open(&mut out)?;
     document.push_accessibility_metadata(&mut out);
     out.push_str("<style>");
     out.push_str(&css);

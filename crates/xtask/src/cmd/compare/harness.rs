@@ -130,7 +130,6 @@ pub(crate) struct DiagramVerificationFact {
     pub(crate) report_policy: FixtureReportPolicy,
     pub(crate) diagnostics: DiagnosticsPolicy,
     pub(crate) specialist: SpecialistHook,
-    pub(crate) supports_root_overrides: bool,
 }
 
 impl DiagramVerificationFact {
@@ -224,9 +223,7 @@ impl CompareRequest {
                         args.get(i).map(String::as_str),
                     )?);
                 }
-                "--no-root-overrides" if fact.supports_root_overrides => {
-                    request.apply_root_overrides = false;
-                }
+                "--no-root-overrides" => request.apply_root_overrides = false,
                 "--help" | "-h" => return Err(XtaskError::Usage),
                 _ => return Err(XtaskError::Usage),
             }
@@ -234,6 +231,18 @@ impl CompareRequest {
         }
         Ok(request)
     }
+}
+
+pub(crate) fn compare_render_environment(
+    request: &CompareRequest,
+) -> merman::render::RenderEnvironment {
+    merman::render::RenderEnvironment::parity().with_root_viewport_override_policy(
+        if request.apply_root_overrides {
+            merman::render::RootViewportOverridePolicy::ApplyGenerated
+        } else {
+            merman::render::RootViewportOverridePolicy::ComputedOnly
+        },
+    )
 }
 
 #[derive(Default)]
@@ -358,12 +367,7 @@ pub(crate) fn run_canonical_svg_compare(
         .and_then(|guard| guard.node_katex_math_renderer());
 
     let layout_options = super::svg_compare_layout_opts();
-    let mut environment = merman::render::RenderEnvironment::parity()
-        .with_root_viewport_override_policy(if request.apply_root_overrides {
-            merman::render::RootViewportOverridePolicy::ApplyGenerated
-        } else {
-            merman::render::RootViewportOverridePolicy::ComputedOnly
-        });
+    let mut environment = compare_render_environment(&request);
     if let Some(renderer) = sequence_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
@@ -421,17 +425,15 @@ pub(crate) fn run_canonical_svg_compare(
                     }
                 );
             }
-            if fact.supports_root_overrides {
-                let _ = writeln!(
-                    report,
-                    "- Root overrides: `{}`",
-                    if request.apply_root_overrides {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
-                );
-            }
+            let _ = writeln!(
+                report,
+                "- Root overrides: `{}`",
+                if request.apply_root_overrides {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
             report.push('\n');
         },
         |_, stem, _| match fact.skip_policy {
@@ -1005,6 +1007,25 @@ pub(crate) fn write_notes_section(report: &mut String, notes: &[String]) {
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn every_canonical_family_accepts_explicit_computed_root_policy() {
+        let fact = super::super::diagram_verification_fact("state")
+            .copied()
+            .expect("State verification fact");
+
+        let request = CompareRequest::parse_for_fact(vec!["--no-root-overrides".to_string()], fact)
+            .expect("root policy must be a shared compare option");
+
+        assert!(!request.apply_root_overrides);
+        let session = compare_render_environment(&request)
+            .begin_session()
+            .expect("compare environment should begin a render session");
+        assert_eq!(
+            session.root_viewport_override_policy(),
+            merman::render::RootViewportOverridePolicy::ComputedOnly
+        );
+    }
 
     #[test]
     fn verification_metadata_reports_the_effective_comparison_policies() {

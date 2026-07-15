@@ -49,41 +49,30 @@ fn root_open(
     layout: &VennDiagramLayout,
     aria_labelledby: Option<&str>,
     aria_describedby: Option<&str>,
-) {
-    let width_attr = fmt_string(layout.width.max(1.0));
-    let height_attr = fmt_string(layout.height.max(1.0));
-    let viewbox_attr = format!("0 0 {width_attr} {height_attr}");
-    if layout.use_max_width {
-        let style_attr = format!("max-width: {width_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                aria_labelledby,
-                aria_describedby,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "venn")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&width_attr),
-                height_attr: Some(&height_attr),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                tail_attrs: &tail_attrs,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                aria_labelledby,
-                aria_describedby,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "venn")
-            },
-        );
-    }
+    options: &SvgExecution<'_>,
+) -> Result<()> {
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "venn");
+    root_chrome.aria_labelledby = aria_labelledby;
+    root_chrome.aria_describedby = aria_describedby;
+    root_chrome.dom = root_svg::RootDomProfile {
+        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Venn,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
+        out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height),
+            layout.use_max_width,
+        ),
+        root_chrome,
+    )
 }
 
 fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {
@@ -104,7 +93,7 @@ pub(crate) fn render_venn_diagram_svg_model(
     model: &VennDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("venn");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -126,8 +115,8 @@ pub(crate) fn render_venn_diagram_svg_model(
         .acc_descr
         .as_deref()
         .is_some_and(|descr| !descr.trim().is_empty());
-    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
 
     let mut out = String::new();
     root_open(
@@ -136,7 +125,8 @@ pub(crate) fn render_venn_diagram_svg_model(
         layout,
         aria_labelledby.as_deref(),
         aria_describedby.as_deref(),
-    );
+        options,
+    )?;
 
     if has_acc_title {
         let _ = write!(

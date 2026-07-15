@@ -11,7 +11,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
 }
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
-    model: &'a crate::flowchart::FlowchartV2Model,
+    model: &'a crate::flowchart::FlowchartModel,
     source_ported_elk_rendering: bool,
 ) -> FlowchartRenderInputs<'a> {
     if source_ported_elk_rendering {

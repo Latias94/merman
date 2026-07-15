@@ -10,7 +10,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     fn requirement_marker_id(diagram_id: &str, suffix: &str) -> String {
         format!("{diagram_id}_requirement-{suffix}")
@@ -374,32 +374,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let vb_y = content_bounds.min_y - viewport_padding;
     let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
     let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
-    fn js_to_precision_fixed(v: f64, precision: i32) -> String {
-        // Match JavaScript `Number(v).toPrecision(precision)` for the range of SVG widths we use
-        // in Mermaid fixtures (fixed notation, no exponent branch needed).
-        if !v.is_finite() {
-            return "0".to_string();
-        }
-        if v == 0.0 {
-            let decimals = (precision - 1).max(0) as usize;
-            return format!("{:.*}", decimals, 0.0);
-        }
-
-        let abs = v.abs();
-        let exponent = abs.log10().floor() as i32;
-        let decimals = (precision - (exponent + 1)).max(0) as usize;
-        format!("{:.*}", decimals, v)
-    }
-    let max_width_style = js_to_precision_fixed(vb_w, 6);
-
     let mut out = String::new();
-
-    let vb_x_attr = fmt_string(vb_x);
-    let vb_y_attr = fmt_string(vb_y);
-    let vb_w_attr = fmt_string(vb_w);
-    let vb_h_attr = fmt_string(vb_h);
-    let max_width_style_attr = max_width_style.clone();
-    let viewbox_attr = format!("{vb_x_attr} {vb_y_attr} {vb_w_attr} {vb_h_attr}");
     let mut aria_labelledby: Option<String> = None;
     let mut aria_describedby: Option<String> = None;
     let mut a11y_nodes = String::new();
@@ -410,7 +385,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         .filter(|t| !t.is_empty())
     {
         let title_id = format!("chart-title-{diagram_id}");
-        aria_labelledby = Some(escape_xml(&title_id));
+        aria_labelledby = Some(title_id.clone());
         let _ = write!(
             &mut a11y_nodes,
             r#"<title id="{}">{}</title>"#,
@@ -425,7 +400,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         .filter(|d| !d.is_empty())
     {
         let desc_id = format!("chart-desc-{diagram_id}");
-        aria_describedby = Some(escape_xml(&desc_id));
+        aria_describedby = Some(desc_id.clone());
         let _ = write!(
             &mut a11y_nodes,
             r#"<desc id="{}">{}</desc>"#,
@@ -434,37 +409,32 @@ pub(crate) fn render_requirement_diagram_svg_model(
         );
     }
 
-    if render_settings.use_max_width {
-        let style_attr = format!("max-width: {max_width_style_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                class: Some("requirementDiagram"),
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(&viewbox_attr),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                ..root_svg::SvgRootAttrs::new(diagram_id, "requirement")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                class: Some("requirementDiagram"),
-                width: root_svg::SvgRootWidth::Fixed(&vb_w_attr),
-                height_attr: Some(&vb_h_attr),
-                viewbox_attr: Some(&viewbox_attr),
-                tail_attrs: &tail_attrs,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                ..root_svg::SvgRootAttrs::new(diagram_id, "requirement")
-            },
-        );
-    }
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "requirement");
+    root_chrome.class = Some("requirementDiagram");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom = root_svg::RootDomProfile {
+        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+        ..root_svg::RootDomProfile::default()
+    };
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Requirement,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+            render_settings.use_max_width,
+        )
+        .with_max_width(root_svg::RootMaxWidth::Precision {
+            value: vb_w,
+            significant_digits: 6,
+        }),
+        root_chrome,
+    )?;
 
     out.push_str(&a11y_nodes);
 
@@ -1122,7 +1092,8 @@ fn push_requirement_shadow_defs(
 mod tests {
     use super::super::*;
     use crate::model::{Bounds, LayoutNode, RequirementDiagramLayout};
-    use crate::svg::SvgRenderOptions;
+    use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    use crate::text::TextMeasurer;
     use merman_core::diagrams::requirement::{
         RequirementDiagramRenderModel, RequirementRenderNode,
     };
@@ -1153,6 +1124,26 @@ mod tests {
             .collect()
     }
 
+    fn render_requirement_for_test(
+        layout: &RequirementDiagramLayout,
+        model: &RequirementDiagramRenderModel,
+        effective_config: &serde_json::Value,
+        diagram_title: Option<&str>,
+        measurer: &dyn TextMeasurer,
+        request: &SvgRenderOptions,
+    ) -> crate::Result<String> {
+        with_test_svg_execution(request, |options| {
+            render_requirement_diagram_svg_model(
+                layout,
+                model,
+                effective_config,
+                diagram_title,
+                measurer,
+                options,
+            )
+        })
+    }
+
     #[test]
     fn requirement_root_honors_disabled_max_width() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
@@ -1171,7 +1162,7 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = render_requirement_diagram_svg_model(
+        let svg = render_requirement_for_test(
             &layout,
             &empty_requirement_model(),
             &serde_json::json!({"requirement": {"useMaxWidth": false}}),
@@ -1215,7 +1206,7 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = render_requirement_diagram_svg_model(
+        let svg = render_requirement_for_test(
             &layout,
             &empty_requirement_model(),
             &serde_json::json!({}),
@@ -1251,7 +1242,7 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = render_requirement_diagram_svg_model(
+        let svg = render_requirement_for_test(
             &layout,
             &empty_requirement_model(),
             &serde_json::json!({"state": {"titleTopMargin": 33}}),
@@ -1309,7 +1300,7 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = render_requirement_diagram_svg_model(
+        let svg = render_requirement_for_test(
             &layout,
             &model,
             &serde_json::json!({

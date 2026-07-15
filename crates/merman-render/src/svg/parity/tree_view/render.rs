@@ -29,36 +29,27 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         .as_deref()
         .map(str::trim)
         .filter(|d| !d.is_empty());
-    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id_esc}"));
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         -layout.line_thickness / 2.0,
         0.0,
         layout.total_width,
         layout.total_height,
     );
-    let root_overrides = if options.root_viewport_override_policy().applies_generated() {
-        root_svg::resolve_root_overrides(None, None)
-    } else {
-        None
-    };
-    let viewport_plan = root_svg::build_root_viewport_plan(
-        root_bounds,
-        root_overrides.as_ref(),
-        layout.use_max_width,
-    );
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
 
     let mut out = String::new();
-    root_svg::push_svg_root_open_with_viewport_plan(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "treeView")
-        },
-        &viewport_plan,
-    );
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "treeView");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::TreeView,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = tree_view_css(effective_config);
     if let Some(title) = acc_title {

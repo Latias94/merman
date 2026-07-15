@@ -1,14 +1,9 @@
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
-#[cfg(feature = "cytoscape-layout")]
-use merman_render::architecture::{
-    layout_architecture_diagram_typed, render_architecture_diagram_typed_with_debug,
-};
 use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
+use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{
-    c4::layout_c4_diagram_typed,
-    state::{layout_state_diagram_v2_typed, render_state_diagram_v2_typed_with_debug},
-    xychart::layout_xychart_diagram_typed,
+    LayoutOptions, c4::layout_c4_diagram_typed, xychart::layout_xychart_diagram_typed,
 };
 
 fn parse_for_render(source: &str) -> ParsedDiagramRender {
@@ -63,65 +58,41 @@ fn xychart_exposes_its_typed_layout_entry() {
 
 #[cfg(feature = "cytoscape-layout")]
 #[test]
-fn architecture_exposes_a_typed_model_svg_entry() {
+fn architecture_prepared_artifact_renders_the_typed_family() {
     let parsed = parse_for_render("architecture-beta\n  service api(server)[API]\n");
-    let RenderSemanticModel::Architecture(model) = &parsed.model else {
-        panic!("expected Architecture render model");
-    };
     let session = render_session();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let layout = layout_architecture_diagram_typed(
-        model,
-        parsed.meta.effective_config.as_value(),
-        &measurer,
-        false,
-        session.seed().seed().get(),
-    )
-    .expect("typed Architecture layout");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare Architecture artifact");
     let options = SvgRenderOptions {
         diagram_id: Some("typed-architecture".to_string()),
         ..Default::default()
     };
 
-    let svg = render_architecture_diagram_typed_with_debug(
-        &layout,
-        model,
-        &parsed.meta.effective_config,
-        &session,
-        &options,
-        &SvgDebugOptions::default(),
-    )
-    .expect("typed Architecture SVG");
+    let svg = artifact
+        .render_svg(&options, &SvgDebugOptions::default())
+        .expect("render Architecture artifact");
 
-    assert!(svg.contains(r#"id="typed-architecture-service-api""#));
+    assert!(svg.svg().contains(r#"id="typed-architecture-service-api""#));
 }
 
 #[test]
-fn state_exposes_a_typed_model_svg_entry() {
+fn state_prepared_artifact_renders_the_typed_family() {
     let parsed = parse_for_render("stateDiagram-v2\n[*] --> Active\n");
-    let RenderSemanticModel::State(model) = &parsed.model else {
-        panic!("expected State render model");
-    };
     let session = render_session();
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let layout =
-        layout_state_diagram_v2_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-            .expect("typed State layout");
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare State artifact");
     let options = SvgRenderOptions {
         diagram_id: Some("typed-state".to_string()),
         ..Default::default()
     };
 
-    let svg = render_state_diagram_v2_typed_with_debug(
-        &layout,
-        model,
-        parsed.meta.effective_config.as_value(),
-        parsed.meta.title.as_deref(),
-        &session,
-        &options,
-        &SvgDebugOptions::default(),
-    )
-    .expect("typed State SVG");
+    let svg = artifact
+        .render_svg(&options, &SvgDebugOptions::default())
+        .expect("render State artifact");
 
-    assert!(svg.contains(r#"id="typed-state-state-Active-0""#), "{svg}");
+    assert!(
+        svg.svg().contains(r#"id="typed-state-state-Active-0""#),
+        "{}",
+        svg.svg()
+    );
 }

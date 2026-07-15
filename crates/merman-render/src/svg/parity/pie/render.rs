@@ -1,8 +1,8 @@
 use super::super::*;
 use crate::pie::{PIE_LEGEND_RECT_SIZE_PX, PIE_LEGEND_SPACING_PX};
 use merman_core::diagrams::pie::PieDiagramRenderModel;
-const EMPTY_PIE_VIEWBOX: &str = "0 0 225 450";
-const EMPTY_PIE_MAX_WIDTH: &str = "225";
+const EMPTY_PIE_WIDTH: f64 = 225.0;
+const EMPTY_PIE_HEIGHT: f64 = 450.0;
 
 fn pie_legend_rect_style(fill: &str) -> String {
     // Mermaid emits legend colors via inline `style` in rgb() form for default themes.
@@ -131,29 +131,30 @@ fn pie_slice_class(effective_config: &serde_json::Value, label: &str) -> String 
     class_name
 }
 
-fn apply_empty_pie_root_viewport(
+fn empty_pie_root_viewport_fallback(
     model: &PieDiagramRenderModel,
-    viewbox_attr: &mut String,
-    max_width_attr: &mut String,
-) -> bool {
+    min_x: f64,
+    min_y: f64,
+    width: f64,
+    height: f64,
+) -> Option<(root_svg::DiagramBounds, root_svg::RootMaxWidth)> {
     if !model.sections.is_empty() {
-        return false;
+        return None;
     }
 
-    let computed_root_is_finite = !viewbox_attr.contains("Infinity")
-        && !viewbox_attr.contains("NaN")
-        && !max_width_attr.contains("Infinity")
-        && !max_width_attr.contains("NaN");
+    let computed_root_is_finite =
+        min_x.is_finite() && min_y.is_finite() && width.is_finite() && height.is_finite();
     if computed_root_is_finite {
-        return false;
+        return None;
     }
 
     // Empty pie roots used to inherit upstream's invalid `-Infinity` viewport when no sections
     // were drawn. Keep a finite fallback for that legacy path, but do not clobber valid title-
     // widened roots that now come from layout bounds directly.
-    *viewbox_attr = EMPTY_PIE_VIEWBOX.to_string();
-    *max_width_attr = EMPTY_PIE_MAX_WIDTH.to_string();
-    true
+    Some((
+        root_svg::DiagramBounds::from_view_box(0.0, 0.0, EMPTY_PIE_WIDTH, EMPTY_PIE_HEIGHT),
+        root_svg::RootMaxWidth::SvgNumber(EMPTY_PIE_WIDTH),
+    ))
 }
 
 pub(crate) fn render_pie_diagram_svg_model(
@@ -176,71 +177,49 @@ pub(crate) fn render_pie_diagram_svg_model(
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
     let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
-    let mut max_w_attr = fmt_max_width_px(vb_w);
-    let mut viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    apply_empty_pie_root_viewport(model, &mut viewbox_attr, &mut max_w_attr);
-    let mut w_attr = fmt_string(vb_w);
-    let mut h_attr = fmt_string(vb_h);
-    if options.root_viewport_override_policy().applies_generated() {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override,
-        );
-    }
     let render_settings = crate::pie::PieConfigView::new(effective_config).render_settings();
+    let (root_bounds, root_max_width) = empty_pie_root_viewport_fallback(
+        model, vb_min_x, vb_min_y, vb_w, vb_h,
+    )
+    .unwrap_or_else(|| {
+        (
+            root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
+            root_svg::RootMaxWidth::CssSixSignificant(vb_w),
+        )
+    });
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, render_settings.use_max_width)
+        .with_max_width(root_max_width);
 
     let mut out = String::new();
     let aria_labelledby = model
         .acc_title
         .as_deref()
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = model
         .acc_descr
         .as_deref()
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    if render_settings.use_max_width {
-        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "pie")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(&h_attr),
-                viewbox_attr: Some(viewbox_attr.as_str()),
+        .map(|_| format!("chart-desc-{diagram_id}"));
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Pie,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
+        &mut out,
+        root_spec,
+        root_svg::RootChrome {
+            aria_labelledby: aria_labelledby.as_deref(),
+            aria_describedby: aria_describedby.as_deref(),
+            dom: root_svg::RootDomProfile {
                 style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
                 fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                tail_attrs: &tail_attrs,
+                fixed_style_placement: root_svg::RootStylePlacement::Tail,
                 trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "pie")
+                ..Default::default()
             },
-        );
-    }
+            ..root_svg::RootChrome::new(diagram_id, "pie")
+        },
+    )?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -455,31 +434,27 @@ mod tests {
     #[test]
     fn empty_pie_root_viewport_fallback_only_repairs_non_finite_roots() {
         let model = PieDiagramRenderModel::default();
-        let mut viewbox = "0 0 -Infinity 450".to_string();
-        let mut max_width = "NaN".to_string();
+        let (bounds, max_width) =
+            empty_pie_root_viewport_fallback(&model, 0.0, 0.0, f64::INFINITY, 450.0)
+                .expect("non-finite empty pie should use fallback");
 
-        assert!(apply_empty_pie_root_viewport(
-            &model,
-            &mut viewbox,
-            &mut max_width,
-        ));
-        assert_eq!(viewbox, EMPTY_PIE_VIEWBOX);
-        assert_eq!(max_width, EMPTY_PIE_MAX_WIDTH);
+        assert_eq!(
+            bounds,
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, EMPTY_PIE_WIDTH, EMPTY_PIE_HEIGHT,)
+        );
+        assert_eq!(
+            max_width,
+            root_svg::RootMaxWidth::SvgNumber(EMPTY_PIE_WIDTH)
+        );
     }
 
     #[test]
     fn empty_pie_root_viewport_fallback_preserves_finite_title_bounds() {
         let model = PieDiagramRenderModel::default();
-        let mut viewbox = "0 0 292.400390625 450".to_string();
-        let mut max_width = "292.4".to_string();
-
-        assert!(!apply_empty_pie_root_viewport(
-            &model,
-            &mut viewbox,
-            &mut max_width,
-        ));
-        assert_eq!(viewbox, "0 0 292.400390625 450");
-        assert_eq!(max_width, "292.4");
+        assert_eq!(
+            empty_pie_root_viewport_fallback(&model, 0.0, 0.0, 292.400390625, 450.0),
+            None
+        );
     }
 
     #[test]

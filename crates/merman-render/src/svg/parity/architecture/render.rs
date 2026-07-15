@@ -13,9 +13,7 @@ use super::nodes::{
     ArchitectureNodeRenderContext, push_architecture_groups,
     push_architecture_services_and_junctions,
 };
-use super::root::{
-    ArchitectureRootOpenContext, architecture_a11y_nodes, push_architecture_root_open,
-};
+use super::root::{architecture_a11y_nodes, begin_architecture_document};
 use super::settings::ArchitectureRenderSettings;
 use super::viewport::{ArchitectureRootViewportContext, finalize_architecture_root_viewport};
 
@@ -369,16 +367,19 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         settings.css.len(),
         a11y.nodes.len(),
     ));
-    let root_open = push_architecture_root_open(ArchitectureRootOpenContext {
-        out: &mut out,
+    let root_viewport = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Architecture,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    );
+    let root_document = begin_architecture_document(
+        &mut out,
+        &root_viewport,
         diagram_id,
         css,
-        a11y: &a11y,
-        is_empty,
+        &a11y,
         use_max_width,
-        half_icon,
-        icon_size_px,
-    });
+    )?;
     // Edge bounds and DOM emission live in `architecture/edges.rs`.
     {
         let mut edge_render_ctx = ArchitectureEdgeRenderContext {
@@ -415,18 +416,19 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     out.push_str("</svg>\n");
 
-    if !is_empty {
-        out = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
-            out,
-            model,
-            root_open: root_open.expect("architecture root placeholders missing"),
-            content_bounds,
-            padding_px,
-            icon_size_px,
-            use_max_width,
-            trust_content_bounds: options.icon_registry().is_none(),
-        });
-    }
+    out = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
+        out,
+        model,
+        root_viewport: &root_viewport,
+        root_document,
+        content_bounds,
+        padding_px,
+        half_icon,
+        icon_size_px,
+        use_max_width,
+        is_empty,
+        trust_content_bounds: options.icon_registry().is_none(),
+    })?;
 
     drop(_g_render_svg);
 

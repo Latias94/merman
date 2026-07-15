@@ -6,7 +6,9 @@
 // They are used to keep `parity-root` stable at higher decimal precision when browser float
 // behavior (DOM `getBBox()` + serialization) differs from our deterministic headless pipeline.
 
-pub fn lookup_er_root_viewport_override(diagram_id: &str) -> Option<(&'static str, &'static str)> {
+pub(super) fn lookup_er_root_viewport_override(
+    diagram_id: &str,
+) -> Option<(&'static str, &'static str)> {
     match diagram_id {
         "upstream_html_demos_er_example_001" => Some(("0 -48 1636.14453125 1059.5", "1636.14")),
         "upstream_html_demos_er_multiline_example_001" => {

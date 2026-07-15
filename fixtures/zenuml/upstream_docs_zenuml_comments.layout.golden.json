@@ -30,7 +30,7 @@
         {
           "id": "actor-bottom-BookService",
           "x": 75.0,
-          "y": 288.7,
+          "y": 287.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -46,18 +46,18 @@
           "points": [
             {
               "x": 76.0,
-              "y": 206.2
+              "y": 205.0
             },
             {
               "x": 76.0,
-              "y": 206.2
+              "y": 205.0
             }
           ],
           "label": {
             "x": 76.0,
             "y": 176.0,
             "width": 63.0,
-            "height": 17.6
+            "height": 17.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -80,7 +80,7 @@
             },
             {
               "x": 75.0,
-              "y": 256.2
+              "y": 255.0
             }
           ],
           "label": null,
@@ -98,7 +98,7 @@
         "min_x": -76.0,
         "min_y": -10.0,
         "max_x": 226.0,
-        "max_y": 332.2
+        "max_y": 331.0
       }
     }
   }

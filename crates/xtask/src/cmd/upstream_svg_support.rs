@@ -411,6 +411,9 @@ fn collect_package_tree_entries(
             source,
         })?;
         if file_type.is_dir() {
+            if child.file_name() == "node_modules" {
+                continue;
+            }
             collect_package_tree_entries(root, &full_path, entries)?;
             continue;
         }
@@ -788,6 +791,45 @@ mod tests {
         fs::remove_file(root.join("a.txt")).expect("remove text package entry");
         fs::remove_file(nested.join("b.bin")).expect("remove binary package entry");
         fs::remove_dir(&nested).expect("remove nested package directory");
+        fs::remove_dir(&root).expect("remove package tree root");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn package_tree_hash_ignores_nested_dependencies_but_rejects_other_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let root = unique_test_root("upstream-svg-package-tree-links");
+        fs::create_dir_all(&root).expect("create package root");
+        fs::write(root.join("index.js"), b"root package").expect("write package entry");
+        let expected = upstream_svg_package_tree_sha256(&root).expect("hash package tree");
+
+        let bin = root.join("node_modules/.bin");
+        let package = root.join("node_modules/tool");
+        fs::create_dir_all(&bin).expect("create package bin directory");
+        fs::create_dir_all(&package).expect("create package directory");
+        fs::write(package.join("cli.js"), b"cli").expect("write package executable");
+        symlink("../tool/cli.js", bin.join("tool")).expect("create npm bin link");
+        let with_nested_dependency =
+            upstream_svg_package_tree_sha256(&root).expect("ignore nested dependency tree");
+        assert_eq!(with_nested_dependency, expected);
+
+        symlink("node_modules/tool/cli.js", root.join("unexpected-link"))
+            .expect("create unsupported package link");
+        let error = upstream_svg_package_tree_sha256(&root)
+            .expect_err("non-bin package links must remain fail-closed");
+        assert!(
+            error.to_string().contains("unsupported filesystem entry"),
+            "{error}"
+        );
+
+        fs::remove_file(root.join("unexpected-link")).expect("remove unsupported link");
+        fs::remove_file(bin.join("tool")).expect("remove npm bin link");
+        fs::remove_file(package.join("cli.js")).expect("remove package executable");
+        fs::remove_dir(&package).expect("remove package directory");
+        fs::remove_dir(&bin).expect("remove package bin directory");
+        fs::remove_dir(root.join("node_modules")).expect("remove node_modules directory");
+        fs::remove_file(root.join("index.js")).expect("remove package entry");
         fs::remove_dir(&root).expect("remove package tree root");
     }
 

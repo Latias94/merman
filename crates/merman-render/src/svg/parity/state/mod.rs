@@ -68,21 +68,4 @@ struct StateRenderCtx<'a> {
 }
 
 mod render;
-
-pub(super) fn render_state_diagram_v2_svg_model(
-    layout: &StateDiagramV2Layout,
-    model: &StateSvgModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    render::render_state_diagram_v2_svg_model_impl(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
+pub(super) use render::render_state_diagram_svg_model;

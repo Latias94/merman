@@ -255,6 +255,8 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
     let mut browser_exe: Option<PathBuf> = None;
     let mut svg_sample_mode: String = "flowchart".to_string();
     let mut preserve_layout_from: Option<PathBuf> = None;
+    let mut only_font_family: Option<String> = None;
+    let mut omit_overrides = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -307,6 +309,11 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                 i += 1;
                 browser_exe = args.get(i).map(PathBuf::from);
             }
+            "--only-font" => {
+                i += 1;
+                only_font_family = args.get(i).map(|value| value.trim().to_string());
+            }
+            "--omit-overrides" => omit_overrides = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -675,6 +682,79 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
                 });
             }
         }
+    }
+
+    if svg_sample_mode == "sequence" {
+        let engine = merman::Engine::new();
+        let parse_opts = merman::ParseOptions {
+            suppress_errors: true,
+        };
+        let fixture_root = crate::cmd::fixtures_root().join("sequence");
+        let font_keys = font_family_by_key.keys().cloned().collect::<Vec<_>>();
+        if let Ok(entries) = fs::read_dir(fixture_root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !is_file_with_extension(&path, "mmd") {
+                    continue;
+                }
+                let Ok(source) = fs::read_to_string(path) else {
+                    continue;
+                };
+                let parsed =
+                    match futures::executor::block_on(engine.parse_diagram(&source, parse_opts)) {
+                        Ok(Some(parsed)) => parsed,
+                        _ => continue,
+                    };
+                let model = &parsed.model;
+                let mut labels = Vec::new();
+                if let Some(actors) = model.get("actors").and_then(serde_json::Value::as_object) {
+                    labels.extend(actors.values().filter_map(|actor| {
+                        actor.get("description").and_then(serde_json::Value::as_str)
+                    }));
+                }
+                if let Some(messages) = model.get("messages").and_then(serde_json::Value::as_array)
+                {
+                    labels.extend(messages.iter().filter_map(|message| {
+                        message.get("message").and_then(serde_json::Value::as_str)
+                    }));
+                }
+                if let Some(boxes) = model.get("boxes").and_then(serde_json::Value::as_array) {
+                    labels.extend(boxes.iter().filter_map(|sequence_box| {
+                        sequence_box.get("name").and_then(serde_json::Value::as_str)
+                    }));
+                }
+
+                for label in labels.into_iter().filter(|label| !label.is_empty()) {
+                    for font_key in &font_keys {
+                        let sample = Sample {
+                            font_key: font_key.clone(),
+                            text: label.to_string(),
+                            width_px: 0.0,
+                            font_size_px: base_font_size_px.max(1.0),
+                            plain_html_label: false,
+                        };
+                        html_seed_samples.push(sample.clone());
+                        svg_samples.push(sample);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(font_family) = only_font_family.as_deref() {
+        let font_key = normalize_font_key(font_family);
+        if font_key.is_empty() {
+            return Err(XtaskError::Usage);
+        }
+        for sample in html_samples
+            .iter_mut()
+            .chain(html_seed_samples.iter_mut())
+            .chain(svg_samples.iter_mut())
+        {
+            sample.font_key.clone_from(&font_key);
+        }
+        font_family_by_key.clear();
+        font_family_by_key.insert(font_key, font_family.to_string());
     }
 
     // Add a small set of extra seed strings that are known to appear across non-flowchart
@@ -2075,6 +2155,10 @@ const strings = input.strings;
         if let Some(ov) = svg_overrides_by_font.get(&font_key).cloned() {
             t.svg_overrides = ov;
         }
+        if omit_overrides {
+            t.html_overrides.clear();
+            t.svg_overrides.clear();
+        }
         let scale = svg_scales_by_font.get(&font_key).copied().unwrap_or(1.0);
         let overhangs = svg_bbox_overhangs_by_font
             .get(&font_key)
@@ -2086,50 +2170,16 @@ const strings = input.strings;
     // Render as a deterministic Rust module.
     let mut out = String::new();
     let _ = writeln!(&mut out, "// This file is generated by `xtask`.\n");
-    let _ = writeln!(&mut out, "#[derive(Debug, Clone, Copy)]");
-    let _ = writeln!(&mut out, "pub struct FontMetricsTables {{");
-    let _ = writeln!(&mut out, "    pub font_key: &'static str,");
-    let _ = writeln!(&mut out, "    pub base_font_size_px: f64,");
-    let _ = writeln!(&mut out, "    pub default_em: f64,");
-    let _ = writeln!(&mut out, "    pub entries: &'static [(char, f64)],");
-    let _ = writeln!(&mut out, "    pub kern_pairs: &'static [(u32, u32, f64)],");
-    let _ = writeln!(
-        &mut out,
-        "    pub space_trigrams: &'static [(u32, u32, f64)],"
-    );
-    let _ = writeln!(
-        &mut out,
-        "    pub trigrams: &'static [(u32, u32, u32, f64)],"
-    );
-    let _ = writeln!(
-        &mut out,
-        "    pub html_overrides: &'static [(&'static str, f64)],"
-    );
-    let _ = writeln!(
-        &mut out,
-        "    pub svg_overrides: &'static [(&'static str, f64, f64)],"
-    );
-    let _ = writeln!(&mut out, "    pub svg_scale: f64,");
-    let _ = writeln!(&mut out, "    pub svg_bbox_overhang_left_default_em: f64,");
-    let _ = writeln!(&mut out, "    pub svg_bbox_overhang_right_default_em: f64,");
-    let _ = writeln!(
-        &mut out,
-        "    pub svg_bbox_overhang_left: &'static [(char, f64)],"
-    );
-    let _ = writeln!(
-        &mut out,
-        "    pub svg_bbox_overhang_right: &'static [(char, f64)],"
-    );
-    let _ = writeln!(&mut out, "}}\n");
+    let _ = writeln!(&mut out, "use crate::text::FontMetricsTable;\n");
 
     let _ = writeln!(
         &mut out,
-        "pub const FONT_METRICS_TABLES: &[FontMetricsTables] = &["
+        "pub const FONT_METRICS_TABLES: &[FontMetricsTable] = &["
     );
     for (t, svg_scale, (left_default, right_default, left_oh, right_oh)) in &tables {
         let _ = writeln!(
             &mut out,
-            "    FontMetricsTables {{ font_key: {:?}, base_font_size_px: {}, default_em: {}, entries: &[",
+            "    FontMetricsTable {{ font_key: {:?}, base_font_size_px: {}, default_em: {}, entries: &[",
             t.font_key,
             rust_f64(base_font_size_px),
             rust_f64(t.default_em)
@@ -2184,7 +2234,7 @@ const strings = input.strings;
 
     let _ = writeln!(
         &mut out,
-        "pub fn lookup_font_metrics(font_key: &str) -> Option<&'static FontMetricsTables> {{"
+        "pub fn lookup_font_metrics(font_key: &str) -> Option<&'static FontMetricsTable> {{"
     );
     let _ = writeln!(&mut out, "    FONT_METRICS_TABLES");
     let _ = writeln!(&mut out, "        .iter()");

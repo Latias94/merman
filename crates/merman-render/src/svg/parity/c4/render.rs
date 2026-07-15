@@ -152,73 +152,39 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let viewbox_y = -(diagram_margin_y + extra_vert_for_title);
 
     let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("c4");
-    let aria_roledescription_attr = escape_attr(aria_roledescription);
-
-    let mut root_viewbox = format!(
-        "{} {} {} {}",
-        fmt(viewbox_x),
-        fmt(viewbox_y),
-        fmt(width),
-        fmt(height + extra_vert_for_title)
-    );
-    let mut root_max_w = fmt_string(width);
-    let mut root_w_attr = fmt_string(width);
-    let mut root_h_attr = fmt_string(height + extra_vert_for_title);
-
-    if options.root_viewport_override_policy().applies_generated() {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut root_viewbox,
-            &mut root_w_attr,
-            &mut root_h_attr,
-            &mut root_max_w,
-            crate::generated::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override,
-        );
-    }
 
     let aria_describedby = model
         .acc_descr
         .as_ref()
         .map(|s| s.trim_end_matches('\n'))
         .filter(|s| !s.trim().is_empty())
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
+        .map(|_| format!("chart-desc-{diagram_id}"));
     let aria_labelledby = model
         .acc_title
         .as_ref()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
 
     let mut out = String::new();
-    if use_max_width {
-        let style_attr = format!("max-width: {root_max_w}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(root_viewbox.as_str()),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, &aria_roledescription_attr)
-            },
-        );
-    } else {
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&root_w_attr),
-                height_attr: Some(&root_h_attr),
-                style_attr: Some("background-color: white;"),
-                viewbox_attr: Some(root_viewbox.as_str()),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, &aria_roledescription_attr)
-            },
-        );
-    }
+    let root_bounds = root_svg::DiagramBounds::from_view_box(
+        viewbox_x,
+        viewbox_y,
+        width,
+        height + extra_vert_for_title,
+    );
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width)
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(width));
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, aria_roledescription);
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::C4,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = model
         .acc_title

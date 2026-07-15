@@ -1,14 +1,14 @@
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::Error;
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderSession, TextMeasurementPhase};
-use merman_render::flowchart::layout_flowchart_v2_typed;
-use merman_render::model::FlowchartV2Layout;
+use merman_render::flowchart::layout_flowchart_typed;
+use merman_render::model::FlowchartLayout;
 use merman_render::text::{TextMeasurer, WrapMode};
 use std::path::PathBuf;
 
-fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartV2Model {
+fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
     let RenderSemanticModel::Flowchart(model) = &parsed.model else {
         panic!("expected Flowchart render model");
     };
@@ -19,7 +19,7 @@ fn layout_flowchart_render_model(
     parsed: &ParsedDiagramRender,
     _options: &LayoutOptions,
     session: &RenderSession,
-) -> merman_render::Result<FlowchartV2Layout> {
+) -> merman_render::Result<FlowchartLayout> {
     let model = flowchart_model(parsed);
     session
         .resource_limits()
@@ -47,7 +47,7 @@ fn layout_flowchart_render_model(
         }
     }
 
-    layout_flowchart_v2_typed(
+    layout_flowchart_typed(
         model,
         &parsed.meta.effective_config,
         &measurer,
@@ -69,7 +69,7 @@ fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-6
 }
 
-fn layout_flowchart(text: &str) -> FlowchartV2Layout {
+fn layout_flowchart(text: &str) -> FlowchartLayout {
     let _session = merman_render::environment::RenderEnvironment::parity()
         .begin_session()
         .unwrap();
@@ -82,7 +82,7 @@ fn layout_flowchart(text: &str) -> FlowchartV2Layout {
     layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session).expect("layout ok")
 }
 
-fn flowchart_node_center(layout: &FlowchartV2Layout, id: &str) -> (f64, f64) {
+fn flowchart_node_center(layout: &FlowchartLayout, id: &str) -> (f64, f64) {
     let node = layout
         .nodes
         .iter()

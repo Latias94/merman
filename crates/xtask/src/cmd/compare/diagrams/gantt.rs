@@ -3,8 +3,8 @@
 use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
-    DiagramVerificationFact, run_svg_compare, sanitize_svg_id, write_compare_result_section,
-    write_notes_section, write_verification_policy_metadata,
+    DiagramVerificationFact, compare_render_environment, run_svg_compare, sanitize_svg_id,
+    write_compare_result_section, write_notes_section, write_verification_policy_metadata,
 };
 use std::fmt::Write as _;
 
@@ -46,10 +46,15 @@ pub(super) fn compare_gantt_request(
     let engine = crate::cmd::svg_compare_engine()
         .with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes));
     let layout_opts = crate::cmd::svg_compare_layout_opts();
+    let environment =
+        gantt_compare_environment(&request, baseline_local_offset_minutes).map_err(|err| {
+            XtaskError::SvgCompareFailed(format!("invalid Gantt baseline time: {err}"))
+        })?;
     let probe_renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options())
-        .with_layout_options(layout_opts.clone());
+        .with_layout_options(layout_opts.clone())
+        .with_environment(environment);
 
     merman::time::with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes), || {
         run_svg_compare(
@@ -65,12 +70,17 @@ pub(super) fn compare_gantt_request(
             |_, report, _paths, options| {
                 let _ = writeln!(
                     report,
-                    "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Render path: `{}`\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n",
+                    "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Render path: `{}`\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Root overrides: `{}`\n",
                     fact.report_title,
                     fact.render_path().label(),
                     fact.command,
                     options.dom_mode,
-                    options.dom_decimals
+                    options.dom_decimals,
+                    if request.apply_root_overrides {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
                 );
                 write_verification_policy_metadata(report, &request, fact, options.dom_mode, false);
                 report.push('\n');
@@ -118,38 +128,14 @@ pub(super) fn compare_gantt_request(
                         .gantt_time_axis_diagnostics()
                         .and_then(|diagnostics| diagnostics.unix_millis_at_rendered_x(today_x))
                 });
-                let final_renderer = if let Some(now_ms) = now_ms {
-                    let snapshot = merman::render::RenderTimeSnapshot::from_unix_millis(
-                        now_ms,
-                        baseline_local_offset_minutes,
-                    )
-                    .map_err(|err| format!("invalid Gantt baseline time: {err}"))?;
-                    probe_renderer
-                        .clone()
-                        .with_fixed_time(snapshot)
-                        .with_diagram_id(&sanitize_svg_id(input.stem))
-                } else {
-                    probe_renderer
-                        .clone()
-                        .with_diagram_id(&sanitize_svg_id(input.stem))
+                let svg_options = merman::render::SvgRenderOptions {
+                    diagram_id: Some(sanitize_svg_id(input.stem)),
+                    current_time_unix_ms: now_ms,
+                    ..Default::default()
                 };
-                let final_prepared = final_renderer
-                    .prepare_render_sync(input.text)
-                    .map_err(|err| {
-                        format!(
-                            "final Gantt operation failed for {}: {err}",
-                            input.fixture_path.display()
-                        )
-                    })?
-                    .ok_or_else(|| {
-                        format!("no diagram detected in {}", input.fixture_path.display())
-                    })?;
-
-                let local_svg = final_prepared
-                    .render_svg(final_renderer.svg_options())
-                    .map_err(|err| {
-                        format!("render failed for {}: {err}", input.fixture_path.display())
-                    })?;
+                let local_svg = prepared.render_svg(&svg_options).map_err(|err| {
+                    format!("render failed for {}: {err}", input.fixture_path.display())
+                })?;
 
                 Ok(CompareFixtureResult::Rendered {
                     local_svg,
@@ -172,6 +158,20 @@ pub(super) fn compare_gantt_request(
     })
 }
 
+fn gantt_compare_environment(
+    request: &CompareRequest,
+    baseline_local_offset_minutes: i32,
+) -> Result<merman::render::RenderEnvironment, merman::render::RenderTimeError> {
+    const BASELINE_LOCAL_MIDNIGHT_UTC_MS: i64 = 1_771_113_600_000;
+    let unix_ms =
+        BASELINE_LOCAL_MIDNIGHT_UTC_MS - i64::from(baseline_local_offset_minutes) * 60_000;
+    let snapshot = merman::render::RenderTimeSnapshot::from_unix_millis(
+        unix_ms,
+        baseline_local_offset_minutes,
+    )?;
+    Ok(compare_render_environment(request).with_time_snapshot(snapshot))
+}
+
 fn gantt_upstream_today_x(upstream_svg: &str) -> Option<f64> {
     let doc = roxmltree::Document::parse(upstream_svg).ok()?;
     let x1 = doc
@@ -190,7 +190,31 @@ fn gantt_upstream_today_x(upstream_svg: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::gantt_upstream_today_x;
+    use super::*;
+
+    #[test]
+    fn compare_environment_preserves_gantt_baseline_offset_and_root_policy() {
+        let fact = super::super::diagram_verification_fact("gantt")
+            .copied()
+            .expect("Gantt verification fact");
+        let request = CompareRequest::parse_for_fact(vec!["--no-root-overrides".to_string()], fact)
+            .expect("computed root policy");
+
+        let session = gantt_compare_environment(&request, 480)
+            .expect("valid Gantt baseline environment")
+            .begin_session()
+            .expect("begin Gantt baseline session");
+
+        assert_eq!(session.time().local_offset_minutes(), 480);
+        assert_eq!(
+            session.time().local_date(),
+            chrono::NaiveDate::from_ymd_opt(2026, 2, 15).unwrap()
+        );
+        assert_eq!(
+            session.root_viewport_override_policy(),
+            merman::render::RootViewportOverridePolicy::ComputedOnly
+        );
+    }
 
     #[test]
     fn upstream_today_x_requires_an_exact_class_token_and_finite_coordinate() {

@@ -61,5 +61,5 @@ pub(crate) fn lookup_flowchart_svg_bbox_x_px(
 }
 
 pub(crate) fn lookup_sequence_svg_override_em(font_key: &str, text: &str) -> Option<(f64, f64)> {
-    crate::generated::svg_overrides_sequence_11_12_2::lookup_svg_override_em(font_key, text)
+    crate::generated::svg_overrides_sequence_11_16_0::lookup_svg_override_em(font_key, text)
 }

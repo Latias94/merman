@@ -1,7 +1,7 @@
 use super::*;
 
-pub(super) fn render_state_diagram_v2_svg_model_impl(
-    layout: &StateDiagramV2Layout,
+pub(in crate::svg::parity) fn render_state_diagram_svg_model(
+    layout: &StateDiagramLayout,
     model: &StateSvgModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
@@ -274,8 +274,6 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     // Mermaid derives the final root viewport via `svg.getBBox()` (after rendering). We don't
     // have a browser DOM, so approximate that by parsing the SVG we just emitted and unioning
     // bboxes for the SVG elements we generate (`rect`/`path`/`circle`/`foreignObject`, etc).
-    const VIEWBOX_PLACEHOLDER: &str = "__MERMAID_VIEWBOX__";
-    const MAX_WIDTH_PLACEHOLDER: &str = "__MERMAID_MAX_WIDTH__";
     const TITLE_PLACEHOLDER_COMMENT: &str = "<!--__MERMAID_TITLE__-->";
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
@@ -287,24 +285,27 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
         + layout.edges.len().saturating_mul(384)
         + layout.clusters.len().saturating_mul(256);
     let mut out = String::with_capacity(estimated_svg_bytes);
-    let diagram_id_esc = escape_xml_display(diagram_id);
-    let aria_labelledby_attr = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby_attr = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
-    let style_attr = format!("max-width: {MAX_WIDTH_PLACEHOLDER}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            class: Some("statediagram"),
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(VIEWBOX_PLACEHOLDER),
-            aria_labelledby: aria_labelledby_attr.as_deref(),
-            aria_describedby: aria_describedby_attr.as_deref(),
-            trailing_newline: false,
-            aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "stateDiagram")
-        },
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
+    let root_context = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::State,
+        diagram_id,
+        options.root_viewport_override_policy(),
     );
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
+    root_chrome.class = Some("statediagram");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom = root_svg::RootDomProfile {
+        aria_attr_order: root_svg::SvgRootAriaAttrOrder::LabelledbyThenDescribedby,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    let root_document = root_context.begin_document(
+        &mut out,
+        root_svg::DeferredRootSpec::responsive(),
+        root_chrome,
+    )?;
 
     if has_acc_title {
         let _ = write!(
@@ -412,41 +413,19 @@ pub(super) fn render_state_diagram_v2_svg_model_impl(
     let vb_w = (vb_w as f32) as f64;
     let vb_h = (vb_h as f32) as f64;
 
-    let mut max_w_attr = String::new();
-    super::util::fmt_max_width_px_into(&mut max_w_attr, vb_w.max(1.0));
-    let mut view_box_attr = String::with_capacity(64);
-    let _ = write!(
-        &mut view_box_attr,
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    let mut width_attr = fmt_string(vb_w);
-    let mut height_attr = fmt_string(vb_h);
-    if options.root_viewport_override_policy().applies_generated() {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut view_box_attr,
-            &mut width_attr,
-            &mut height_attr,
-            &mut max_w_attr,
-            crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override,
-        );
-    }
+    root_context.finish_document(
+        &mut out,
+        root_document,
+        root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
+            vb_min_x, vb_min_y, vb_w, vb_h,
+        ))
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+    )?;
 
     drop(_g_viewbox);
     let _g_finalize = section(timing_enabled, &mut timings.finalize_svg);
 
-    out = super::util::replace_placeholders_once(
-        &out,
-        &[
-            (MAX_WIDTH_PLACEHOLDER, max_w_attr.as_str()),
-            (VIEWBOX_PLACEHOLDER, view_box_attr.as_str()),
-            (TITLE_PLACEHOLDER_COMMENT, title_svg.as_str()),
-        ],
-    );
+    out = out.replacen(TITLE_PLACEHOLDER_COMMENT, title_svg.as_str(), 1);
 
     drop(_g_finalize);
     timings.total = total_start.elapsed();

@@ -1,7 +1,7 @@
 use crate::dagre::self_loop::compact_self_loop_geometry;
 use crate::math::MathRenderer;
 use crate::model::{
-    FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+    FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
-use super::{FlowEdge, FlowSubgraph, FlowchartV2Model};
+use super::{FlowEdge, FlowSubgraph, FlowchartModel};
 use super::{
     FlowchartLabelMetricsRequest, flowchart_effective_font_style_for_classes,
     flowchart_effective_font_style_for_node_classes, flowchart_effective_text_style_for_classes,
@@ -956,21 +956,21 @@ fn extract_clusters_recursively(
     }
 }
 
-pub fn layout_flowchart_v2_typed(
-    model: &FlowchartV2Model,
+pub fn layout_flowchart_typed(
+    model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<FlowchartV2Layout> {
-    layout_flowchart_v2_with_model(model, effective_config, measurer, math_renderer)
+) -> Result<FlowchartLayout> {
+    layout_flowchart_with_model(model, effective_config, measurer, math_renderer)
 }
 
-fn layout_flowchart_v2_with_model(
-    model: &FlowchartV2Model,
+fn layout_flowchart_with_model(
+    model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-) -> Result<FlowchartV2Layout> {
+) -> Result<FlowchartLayout> {
     let effective_config_value = effective_config.as_value();
 
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
@@ -2996,13 +2996,12 @@ fn layout_flowchart_v2_with_model(
 
     let bounds = compute_bounds(&out_nodes, &out_edges);
 
-    Ok(FlowchartV2Layout {
+    Ok(FlowchartLayout {
         nodes: out_nodes,
         edges: out_edges,
         clusters,
         bounds,
         dom_node_order_by_root,
-        source_backed_edge_label_bboxes: false,
         source_ported_elk_rendering: false,
     })
 }

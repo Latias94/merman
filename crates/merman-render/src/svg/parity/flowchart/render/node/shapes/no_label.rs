@@ -10,7 +10,7 @@ use super::super::roughjs::{
     RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect, roughjs_paths_for_svg_path,
 };
 
-pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_v2_no_label(
+pub(in crate::svg::parity::flowchart::render::node) fn try_render_flowchart_no_label(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,

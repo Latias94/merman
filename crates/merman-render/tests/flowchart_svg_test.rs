@@ -2,7 +2,7 @@ use futures::executor::block_on;
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -11,8 +11,8 @@ use merman_render::environment::{
     TextMeasurementProfileIdentity,
 };
 use merman_render::family;
-use merman_render::flowchart::{layout_flowchart_v2_typed, render_flowchart_v2_typed_with_debug};
-use merman_render::model::FlowchartV2Layout;
+use merman_render::flowchart::layout_flowchart_typed;
+use merman_render::model::FlowchartLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
     TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
@@ -35,7 +35,7 @@ where
     ))
 }
 
-fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartV2Model {
+fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
     let RenderSemanticModel::Flowchart(model) = &parsed.model else {
         panic!("expected Flowchart render model");
     };
@@ -46,7 +46,7 @@ fn layout_flowchart_render_model(
     parsed: &ParsedDiagramRender,
     _options: &LayoutOptions,
     session: &RenderSession,
-) -> merman_render::Result<FlowchartV2Layout> {
+) -> merman_render::Result<FlowchartLayout> {
     let model = flowchart_model(parsed);
     session
         .resource_limits()
@@ -74,28 +74,11 @@ fn layout_flowchart_render_model(
         }
     }
 
-    layout_flowchart_v2_typed(
+    layout_flowchart_typed(
         model,
         &parsed.meta.effective_config,
         &measurer,
         session.math_renderer(),
-    )
-}
-
-fn render_laid_out_flowchart(
-    parsed: &ParsedDiagramRender,
-    layout: &FlowchartV2Layout,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-) -> merman_render::Result<String> {
-    render_flowchart_v2_typed_with_debug(
-        layout,
-        flowchart_model(parsed),
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        session,
-        options,
-        &SvgDebugOptions::default(),
     )
 }
 
@@ -128,6 +111,43 @@ fn render_flowchart_svg_from_text_with_engine(engine: Engine, text: &str) -> Str
         &SvgRenderOptions::default(),
     )
     .expect("render svg")
+}
+
+#[test]
+fn flowchart_root_escapes_accessibility_attributes_once() {
+    let source =
+        "flowchart TD\naccTitle: Accessible title\naccDescr: Accessible description\nA-->B\n";
+    let diagram_id = r#"flow&"root"#;
+    let session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .unwrap();
+    let parsed =
+        block_on(Engine::new().parse_diagram_for_render_model(source, ParseOptions::default()))
+            .expect("parse ok")
+            .expect("diagram detected");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &LayoutOptions::default(),
+        session,
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..SvgRenderOptions::default()
+        },
+    )
+    .expect("render svg");
+
+    assert!(svg.starts_with(r#"<svg id="flow&amp;&quot;root""#));
+    assert!(svg.contains(
+        r#"aria-describedby="chart-desc-flow&amp;&quot;root" aria-labelledby="chart-title-flow&amp;&quot;root""#
+    ));
+    assert!(
+        svg.contains(r#"<title id="chart-title-flow&amp;&quot;root">Accessible title</title>"#)
+    );
+    assert!(
+        svg.contains(r#"<desc id="chart-desc-flow&amp;&quot;root">Accessible description</desc>"#)
+    );
+    assert!(!svg.contains("&amp;amp;"));
+    assert!(!svg.contains("&amp;quot;"));
 }
 
 #[test]
@@ -213,8 +233,13 @@ fn flowchart_svg_intersects_compact_self_loop_with_rendered_shape() {
         "the compact layout point should still be the provisional bbox endpoint"
     );
 
-    let svg = render_laid_out_flowchart(&parsed, &layout, &_session, &SvgRenderOptions::default())
-        .expect("render svg");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
     let points = flowchart_svg_edge_data_points(&svg, &edge.id);
     assert_eq!(points.len(), 4);
     assert!((points[0].x - expected_x).abs() <= 1e-3, "{points:?}");
@@ -663,7 +688,7 @@ fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
         "expected Condition? label foreignObject to remain non-clipping for browser font fallback: {svg}"
     );
     assert!(
-        svg.contains(r#"<foreignObject width="26.65625" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Yes</p></span>"#),
+        svg.contains(r#"<foreignObject width="22.65625" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Yes</p></span>"#),
         "expected edge labels to use the same non-clipping foreignObject contract: {svg}"
     );
 }
@@ -1172,8 +1197,13 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
     assert_eq!(node.width, 176.984375);
     assert_eq!(node.height, 96.0);
 
-    let svg = render_laid_out_flowchart(&parsed, &layout, &_session, &SvgRenderOptions::default())
-        .expect("render svg");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
 
     assert!(
         svg.contains(
@@ -1405,7 +1435,7 @@ fn flowchart_html_edge_labels_use_non_markdown_paragraph_wrapper() {
 }
 
 #[test]
-fn flowchart_html_edge_labels_include_browser_font_fallback_slack() {
+fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
     let _session = merman_render::environment::RenderEnvironment::parity()
         .begin_session()
         .unwrap();
@@ -1434,8 +1464,13 @@ fn flowchart_html_edge_labels_include_browser_font_fallback_slack() {
         .and_then(|edge| edge.label.as_ref())
         .expect("No edge label");
 
-    let svg = render_laid_out_flowchart(&parsed, &layout, &_session, &SvgRenderOptions::default())
-        .expect("render svg");
+    let svg = render_flowchart_artifact(
+        parsed,
+        &layout_options,
+        _session,
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
 
     assert!(
         svg.contains(r#"<span class="edgeLabel"><p>Yes</p></span>"#)
@@ -1444,11 +1479,11 @@ fn flowchart_html_edge_labels_include_browser_font_fallback_slack() {
     );
     assert_eq!(
         foreign_object_width_for_data_id(&svg, "L_B_C_0"),
-        yes_label.width + 4.0
+        yes_label.width
     );
     assert_eq!(
         foreign_object_width_for_data_id(&svg, "L_B_D_0"),
-        no_label.width + 4.0
+        no_label.width
     );
 }
 

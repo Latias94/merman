@@ -5,9 +5,12 @@ use super::messages::{
 };
 use super::metrics::measure_svg_like_with_html_br;
 use super::notes::{SequenceNoteHorizontalContext, sequence_note_horizontal_model};
-use super::{bracketize_sequence_block_label, sequence_block_label_wrap_width};
+use super::{
+    bracketize_sequence_block_label, sequence_block_label_wrap_width,
+    wrap_sequence_label_like_mermaid_lines,
+};
 use crate::math::MathRenderer;
-use crate::text::{TextMeasurer, TextStyle, wrap_label_like_mermaid_lines};
+use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::{SequenceDiagramRenderModel, SequenceMessage};
 use std::collections::HashMap;
@@ -102,7 +105,7 @@ fn block_label_step(
 
     let label = bracketize_sequence_block_label(raw_label);
     let measured_label = match frame_width {
-        Some(width) => wrap_label_like_mermaid_lines(
+        Some(width) => wrap_sequence_label_like_mermaid_lines(
             &label,
             frame_ctx.measurer,
             frame_ctx.msg_text_style,

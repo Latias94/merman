@@ -6,17 +6,17 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     model: &CynefinDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("cynefin");
     let diagram_id_esc = escape_xml(diagram_id);
     let acc_title = model.acc_title.as_deref().filter(|value| !value.is_empty());
     let acc_descr = model.acc_descr.as_deref().filter(|value| !value.is_empty());
-    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id_esc}"));
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds =
         root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.total_width, layout.total_height);
-    let viewport_plan = root_svg::build_root_viewport_plan(root_bounds, None, layout.use_max_width);
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
     let theme = crate::cynefin::cynefin_theme(effective_config);
     let title = model
         .title
@@ -27,16 +27,16 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     let marker_id = format!("cynefin-arrow-{diagram_id}");
 
     let mut out = String::new();
-    root_svg::push_svg_root_open_with_viewport_plan(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "cynefin")
-        },
-        &viewport_plan,
-    );
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "cynefin");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Cynefin,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(

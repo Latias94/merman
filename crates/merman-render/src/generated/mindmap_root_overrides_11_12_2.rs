@@ -5,7 +5,7 @@
 // Entries whose upstream root changed in Mermaid 11.16 are intentionally omitted so computed
 // layout bounds cannot be forced back to the 11.12 geometry.
 
-pub fn lookup_mindmap_root_viewport_override(
+pub(super) fn lookup_mindmap_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {

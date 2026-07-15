@@ -69,6 +69,11 @@ fn layout_snapshot_site_config() -> merman::MermaidConfig {
     }))
 }
 
+fn layout_snapshot_environment() -> merman::render::RenderEnvironment {
+    merman::render::RenderEnvironment::parity()
+        .with_text_measurement_policy(merman::render::TextMeasurementPolicy::deterministic())
+}
+
 pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -204,6 +209,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
         )));
     }
 
+    let environment = layout_snapshot_environment();
     merman::time::with_fixed_local_offset_minutes(Some(0), || {
         let engine = merman::Engine::new()
             .with_site_config(layout_snapshot_site_config())
@@ -245,7 +251,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             }
             let diagram_type = parsed.meta.diagram_type.clone();
 
-            let session = match merman::render::RenderEnvironment::parity().begin_session() {
+            let session = match environment.begin_session() {
                 Ok(session) => session,
                 Err(err) => {
                     failures.push(format!("render session failed: {err}"));
@@ -889,8 +895,9 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 mod tests {
     use super::{
         GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures,
-        fixture_site_config_overrides, snapshot_selector_accepts, validate_verify_generated_args,
-        verify_default_config_checks, verify_dompurify_defaults_checks, verify_generated_checks,
+        fixture_site_config_overrides, layout_snapshot_environment, snapshot_selector_accepts,
+        validate_verify_generated_args, verify_default_config_checks,
+        verify_dompurify_defaults_checks, verify_generated_checks,
     };
     use crate::cmd::is_parser_only_fixture;
     use crate::cmd::workspace_root;
@@ -1043,5 +1050,19 @@ mod tests {
     #[test]
     fn snapshot_selector_keeps_error_diagrams_for_scoped_runs() {
         assert!(snapshot_selector_accepts("class", "error"));
+    }
+
+    #[test]
+    fn layout_snapshot_generation_uses_the_verifier_measurement_profile() {
+        let session = layout_snapshot_environment()
+            .begin_session()
+            .expect("begin layout snapshot render session");
+        let route = session.text_measurement_route(merman::render::TextMeasurementPhase::Layout);
+
+        assert_eq!(
+            route.primary.profile().as_str(),
+            "merman.deterministic-text"
+        );
+        assert_eq!(route.fallback, None);
     }
 }

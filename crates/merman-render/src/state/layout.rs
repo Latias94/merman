@@ -3,7 +3,7 @@
 use crate::dagre::self_loop::compact_self_loop_geometry;
 use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 use crate::model::{
-    Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramV2Layout,
+    Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -851,7 +851,7 @@ fn extract_cluster_graph(
 
 /// Debug-only helper: extracts a cluster subgraph the same way `prepare_graph(...)` does.
 #[doc(hidden)]
-pub fn debug_extract_state_diagram_v2_cluster_graph(
+pub fn debug_extract_state_diagram_cluster_graph(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_id: &str,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
@@ -1283,12 +1283,12 @@ fn compact_self_loop_edges(
     edges
 }
 
-pub fn layout_state_diagram_v2_typed(
+pub fn layout_state_diagram_typed(
     model: &StateDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
-) -> Result<StateDiagramV2Layout> {
-    layout_state_diagram_v2_inner(model, effective_config, measurer)
+) -> Result<StateDiagramLayout> {
+    layout_state_diagram_inner(model, effective_config, measurer)
 }
 
 fn state_hidden_prefixes(model: &StateDiagramModel) -> Vec<String> {
@@ -1325,7 +1325,7 @@ fn dagre_id_for_node(n: &StateNode) -> String {
     }
 }
 
-fn build_state_diagram_v2_dagre_input(
+fn build_state_diagram_dagre_input(
     model: &StateDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
@@ -1631,11 +1631,11 @@ fn build_state_diagram_v2_dagre_input(
     })
 }
 
-fn layout_state_diagram_v2_inner(
+fn layout_state_diagram_inner(
     model: &StateDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
-) -> Result<StateDiagramV2Layout> {
+) -> Result<StateDiagramLayout> {
     validate_state_parent_cycles(model)?;
     let StateDagreInput {
         graph,
@@ -1647,7 +1647,7 @@ fn layout_state_diagram_v2_inner(
         text_style,
         wrap_mode,
         html_labels,
-    } = build_state_diagram_v2_dagre_input(model, effective_config, measurer)?;
+    } = build_state_diagram_dagre_input(model, effective_config, measurer)?;
 
     let cluster_dir =
         |id: &str| -> Option<String> { dir_by_dagre_id.get(id).and_then(|v| v.clone()) };
@@ -2224,7 +2224,7 @@ fn layout_state_diagram_v2_inner(
         Bounds::from_points(points)
     };
 
-    Ok(StateDiagramV2Layout {
+    Ok(StateDiagramLayout {
         nodes: out_nodes,
         edges: out_edges,
         clusters,
@@ -2259,16 +2259,16 @@ fn validate_state_parent_cycles(model: &StateDiagramModel) -> Result<()> {
 
 /// Debug-only helper: builds the Dagre input graph for stateDiagram-v2 *before* layout runs.
 ///
-/// This shares the same graph construction path as `layout_state_diagram_v2_inner`.
+/// This shares the same graph construction path as `layout_state_diagram_inner`.
 /// It is used by `xtask` to compare `dugong` against Mermaid's JS Dagre implementation
 /// (`dagre-d3-es`) at the layout output layer (nodes/edges/points) rather than at the SVG layer.
 #[doc(hidden)]
-pub fn debug_build_state_diagram_v2_dagre_graph(
+pub fn debug_build_state_diagram_dagre_graph(
     model: &StateDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<Graph<NodeLabel, EdgeLabel, GraphLabel>> {
-    Ok(build_state_diagram_v2_dagre_input(model, effective_config, measurer)?.graph)
+    Ok(build_state_diagram_dagre_input(model, effective_config, measurer)?.graph)
 }
 
 #[cfg(test)]

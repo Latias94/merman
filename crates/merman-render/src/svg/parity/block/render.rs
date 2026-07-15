@@ -10,7 +10,7 @@ pub(crate) fn render_block_diagram_svg_model(
     layout: &BlockDiagramLayout,
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     fn decode_block_label_html(raw: &str) -> String {
         // Mermaid's block diagram labels are rendered via an HTML foreignObject label helper,
@@ -743,31 +743,24 @@ pub(crate) fn render_block_diagram_svg_model(
         .unwrap_or(5.0)
         .max(0.0);
 
-    let vb_min_x = bounds.min_x - diagram_padding;
-    let vb_min_y = bounds.min_y - diagram_padding;
-    let vb_w = (bounds.max_x - bounds.min_x + diagram_padding * 2.0).max(1.0);
-    let vb_h = (bounds.max_y - bounds.min_y + diagram_padding * 2.0).max(1.0);
-
     let mut out = String::new();
-    let viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w.max(1.0)),
-        fmt(vb_h.max(1.0))
+    let root_bounds = root_svg::DiagramBounds::from_extents(
+        bounds.min_x,
+        bounds.min_y,
+        bounds.max_x,
+        bounds.max_y,
+        diagram_padding,
     );
-    let max_w_style = fmt_max_width_px(vb_w.max(1.0));
-    let style_attr = format!("max-width: {max_w_style}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(&viewbox_attr),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "block")
-        },
-    );
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "block");
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Block,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
     out.push_str(&block_css(diagram_id, effective_config));
     out.push_str("</style><g/>");

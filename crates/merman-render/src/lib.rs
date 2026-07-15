@@ -62,7 +62,7 @@ pub mod xychart;
 pub(crate) use host_time::{Duration, Instant};
 
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
 pub use resources::{
@@ -204,17 +204,13 @@ pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
-) -> Result<model::ClassDiagramV2Layout> {
+) -> Result<model::ClassDiagramLayout> {
     if class_uses_elk_layout(effective_config) {
         return layout_class_elk_typed_by_feature(diagram_type, model, effective_config, options);
     }
 
     options.resource_limits().check_class_complexity(model)?;
-    class::layout_class_diagram_v2_typed_with_config(
-        model,
-        effective_config,
-        options.text_measurer(),
-    )
+    class::layout_class_diagram_typed_with_config(model, effective_config, options.text_measurer())
 }
 
 #[cfg(feature = "elk-layout")]
@@ -223,9 +219,9 @@ fn layout_class_elk_typed_by_feature(
     model: &ClassDiagram,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
-) -> Result<model::ClassDiagramV2Layout> {
+) -> Result<model::ClassDiagramLayout> {
     options.resource_limits().check_class_complexity(model)?;
-    class::layout_class_diagram_v2_elk_typed_with_config(
+    class::layout_class_diagram_elk_typed_with_config(
         model,
         effective_config,
         options.text_measurer(),
@@ -238,7 +234,7 @@ fn layout_class_elk_typed_by_feature(
     _model: &ClassDiagram,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
-) -> Result<model::ClassDiagramV2Layout> {
+) -> Result<model::ClassDiagramLayout> {
     Err(Error::UnsupportedDiagram {
         diagram_type: diagram_type.to_string(),
     })
@@ -246,10 +242,10 @@ fn layout_class_elk_typed_by_feature(
 
 pub(crate) fn layout_flowchart_typed_by_engine(
     diagram_type: &str,
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
-) -> Result<model::FlowchartV2Layout> {
+) -> Result<model::FlowchartLayout> {
     if flowchart_uses_elk_layout(diagram_type, effective_config) {
         return layout_flowchart_elk_typed_by_feature(
             diagram_type,
@@ -262,7 +258,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     options
         .resource_limits()
         .check_flowchart_complexity(model)?;
-    flowchart::layout_flowchart_v2_typed(
+    flowchart::layout_flowchart_typed(
         model,
         effective_config,
         options.text_measurer(),
@@ -273,10 +269,10 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 #[cfg(feature = "elk-layout")]
 fn layout_flowchart_elk_typed_by_feature(
     _diagram_type: &str,
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
-) -> Result<model::FlowchartV2Layout> {
+) -> Result<model::FlowchartLayout> {
     options
         .resource_limits()
         .check_flowchart_complexity(model)?;
@@ -292,10 +288,10 @@ fn layout_flowchart_elk_typed_by_feature(
 #[cfg(not(feature = "elk-layout"))]
 fn layout_flowchart_elk_typed_by_feature(
     diagram_type: &str,
-    _model: &FlowchartV2Model,
+    _model: &FlowchartModel,
     _effective_config: &merman_core::MermaidConfig,
     _options: &LayoutExecution<'_>,
-) -> Result<model::FlowchartV2Layout> {
+) -> Result<model::FlowchartLayout> {
     Err(Error::UnsupportedDiagram {
         diagram_type: diagram_type.to_string(),
     })
@@ -313,7 +309,7 @@ mod tests {
         parsed: &ParsedDiagramRender,
         options: &LayoutOptions,
         session: &RenderSession,
-    ) -> model::FlowchartV2Layout {
+    ) -> model::FlowchartLayout {
         let RenderSemanticModel::Flowchart(model) = &parsed.model else {
             panic!("expected flowchart render model");
         };
@@ -331,7 +327,7 @@ mod tests {
         parsed: &ParsedDiagramRender,
         options: &LayoutOptions,
         session: &RenderSession,
-    ) -> model::ClassDiagramV2Layout {
+    ) -> model::ClassDiagramLayout {
         let RenderSemanticModel::Class(model) = &parsed.model else {
             panic!("expected class render model");
         };

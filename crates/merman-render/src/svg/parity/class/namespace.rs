@@ -1,5 +1,5 @@
 use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
-use crate::model::{Bounds, ClassDiagramV2Layout, LayoutCluster, LayoutNode};
+use crate::model::{Bounds, ClassDiagramLayout, LayoutCluster, LayoutNode};
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
@@ -301,7 +301,7 @@ fn namespace_subgraph_render_profile(model: &ClassSvgModel) -> bool {
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_class_node_render_order<'a>(
-    layout: &'a ClassDiagramV2Layout,
+    layout: &'a ClassDiagramLayout,
     model: &'a ClassSvgModel,
     class_nodes_by_id: &FxHashMap<&'a str, &'a ClassSvgNode>,
     note_by_id: &FxHashMap<&'a str, &'a ClassSvgNote>,

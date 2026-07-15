@@ -105,6 +105,15 @@ pub trait TextMeasurer {
         self.measure_svg_simple_text_bbox_width_px(text, style)
     }
 
+    /// Measures the SVG bbox width returned by Mermaid's `calculateTextWidth(...)` utility.
+    ///
+    /// This normally matches the wrap probe above. A profile may specialize it when Mermaid's
+    /// CSSOM application changes the effective font, as Sequence does with the default trailing
+    /// semicolon in `fontFamily` under Chrome headless shell.
+    fn measure_mermaid_calculate_text_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_simple_text_bbox_width_for_wrap_px(text, style)
+    }
+
     /// Measures the bbox height for Mermaid `drawSimpleText(...).getBBox().height`-style probes.
     ///
     /// Upstream Mermaid uses `<text>.getBBox()` for some diagrams (notably `gitGraph` commit/tag

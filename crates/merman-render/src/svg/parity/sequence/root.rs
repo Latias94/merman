@@ -10,7 +10,8 @@ pub(super) fn write_sequence_svg_root_open(
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     diagram_id: &str,
-) -> SequenceRootMetrics {
+    root_viewport_override_policy: RootViewportOverridePolicy,
+) -> Result<SequenceRootMetrics> {
     let diagram_id_esc = escape_xml(diagram_id);
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -32,35 +33,26 @@ pub(super) fn write_sequence_svg_root_open(
     let vb_w = ((max_x_f32 - min_x_f32).max(1.0)) as f64;
     let vb_h = ((max_y_f32 - min_y_f32).max(1.0)) as f64;
 
-    let aria_labelledby_attr = model
+    let aria_labelledby = model
         .acc_title
         .as_deref()
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby_attr = model
+        .map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = model
         .acc_descr
         .as_deref()
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    let max_w_attr = fmt_string(vb_w);
-    let viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            aria_labelledby: aria_labelledby_attr.as_deref(),
-            aria_describedby: aria_describedby_attr.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "sequence")
-        },
-    );
+        .map(|_| format!("chart-desc-{diagram_id}"));
+    let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "sequence");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Sequence,
+        diagram_id,
+        root_viewport_override_policy,
+    )
+    .write_open(out, root_spec, root_chrome)?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(
@@ -79,7 +71,7 @@ pub(super) fn write_sequence_svg_root_open(
         );
     }
 
-    SequenceRootMetrics {
+    Ok(SequenceRootMetrics {
         viewbox_width: vb_w,
-    }
+    })
 }

@@ -43,7 +43,7 @@ pub(super) use curved_trapezoid::render_curved_trapezoid;
 pub(super) use cylinders::{render_cylinder, render_horizontal_cylinder};
 pub(super) use datastore::render_datastore;
 pub(super) use delay::render_delay;
-pub(super) use dispatch::render_flowchart_v2_shape;
+pub(super) use dispatch::render_flowchart_shape;
 pub(super) use divided_rect::render_divided_rect;
 pub(super) use hexagon::render_hexagon;
 pub(super) use icon::try_render_icon;
@@ -56,7 +56,7 @@ pub(super) use lean_trapezoids::{
 pub(super) use lined_cylinder::render_lined_cylinder;
 pub(super) use lined_wave_document::render_lined_wave_document;
 pub(super) use manuals::{render_manual_file, render_manual_input};
-pub(super) use no_label::try_render_flowchart_v2_no_label;
+pub(super) use no_label::try_render_flowchart_no_label;
 pub(super) use notched_pentagon::render_notched_pentagon;
 pub(super) use note::render_note;
 pub(super) use odd::render_odd;

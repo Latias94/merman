@@ -294,7 +294,7 @@ fn sequence_layout_nested_activation_bounds_include_full_stack_like_mermaid_11_1
 }
 
 #[test]
-fn sequence_no_longer_depends_on_historical_root_overrides() {
+fn sequence_non_residual_root_uses_the_computed_viewport() {
     let stem = "stress_wrap_directive_and_prefixes_028";
     let fixture = format!("{stem}.mmd");
     let enabled = render_sequence_svg_from_fixture_with_options(
@@ -318,8 +318,211 @@ fn sequence_no_longer_depends_on_historical_root_overrides() {
     let disabled_root = disabled.split_once('>').expect("disabled SVG root").0;
     assert_eq!(
         enabled_root, disabled_root,
-        "Sequence roots should be computed from layout bounds regardless of the legacy override flag"
+        "Sequence fixtures without a browser residual should use computed layout bounds"
     );
+}
+
+#[test]
+fn sequence_browser_residual_uses_the_shared_generated_root_policy() {
+    let stem = "stress_create_destroy_inside_alt_030";
+    let fixture = format!("{stem}.mmd");
+    let enabled = render_sequence_svg_from_fixture_with_options(
+        &fixture,
+        &SvgRenderOptions {
+            diagram_id: Some(stem.to_string()),
+            ..SvgRenderOptions::default()
+        },
+        RootViewportOverridePolicy::ApplyGenerated,
+    );
+    let computed = render_sequence_svg_from_fixture_with_options(
+        &fixture,
+        &SvgRenderOptions {
+            diagram_id: Some(stem.to_string()),
+            ..SvgRenderOptions::default()
+        },
+        RootViewportOverridePolicy::ComputedOnly,
+    );
+
+    let enabled_root = enabled.split_once('>').expect("enabled SVG root").0;
+    let computed_root = computed.split_once('>').expect("computed SVG root").0;
+    assert!(
+        enabled_root.contains(r#"style="max-width: 734px; background-color: white;""#)
+            && enabled_root.contains(r#"viewBox="-50 -10 734 679""#),
+        "expected the fresh Chrome 131 residual: {enabled_root}"
+    );
+    assert!(
+        computed_root.contains(r#"style="max-width: 725px; background-color: white;""#)
+            && computed_root.contains(r#"viewBox="-50 -10 725 679""#),
+        "expected the deterministic computed root: {computed_root}"
+    );
+}
+
+#[test]
+fn sequence_default_message_height_matches_chrome_131_root_geometry() {
+    let svg = render_sequence_svg_from_fixture("basic.mmd");
+    let root = svg.split_once('>').expect("SVG root").0;
+    let message_lines = extract_self_closing_tags(&svg, "line")
+        .into_iter()
+        .filter(|tag| tag.contains(r#"data-et="message""#))
+        .collect::<Vec<_>>();
+
+    assert_eq!(message_lines.len(), 2, "expected two message lines: {svg}");
+    assert_eq!(attr_f64(message_lines[0], "y1"), Some(109.0));
+    assert_eq!(attr_f64(message_lines[1], "y1"), Some(153.0));
+    assert!(
+        root.contains(r#"style="max-width: 450px; background-color: white;""#)
+            && root.contains(r#"viewBox="-50 -10 450 259""#),
+        "expected the Chrome 131 Sequence root geometry: {root}"
+    );
+}
+
+#[test]
+fn sequence_representative_roots_match_fresh_mermaid_11_16_chrome_131() {
+    let cases = [
+        ("activation_explicit.mmd", 513.0, 259.0),
+        (
+            "stress_sequence_batch5_many_participants_spacing_050.mmd",
+            1650.0,
+            718.0,
+        ),
+        ("zed_pr_57644_sequence.mmd", 795.0, 1096.0),
+    ];
+
+    for (fixture, width, height) in cases {
+        let svg = render_sequence_svg_from_fixture_with_options(
+            fixture,
+            &SvgRenderOptions::default(),
+            RootViewportOverridePolicy::ComputedOnly,
+        );
+        let root = svg.split_once('>').expect("SVG root").0;
+        assert!(
+            root.contains(&format!(r#"max-width: {width}px;"#))
+                && root.contains(&format!(r#"viewBox="-50 -10 {width} {height}""#)),
+            "expected fresh Mermaid 11.16 root geometry for {fixture}: {root}"
+        );
+    }
+}
+
+#[test]
+fn sequence_actor_lifecycle_adjustment_survives_block_close() {
+    let fixture = "upstream_cypress_sequencediagram_spec_should_render_a_sequence_diagram_with_actor_creation_and_destruc_010.mmd";
+    let svg = render_sequence_svg_from_fixture_with_options(
+        fixture,
+        &SvgRenderOptions::default(),
+        RootViewportOverridePolicy::ComputedOnly,
+    );
+    let root = svg.split_once('>').expect("SVG root").0;
+
+    assert!(
+        root.contains(r#"style="max-width: 1166.5px; background-color: white;""#)
+            && root.contains(r#"viewBox="-50 -10 1166.5 1485""#),
+        "created and destroyed actor height must survive nested block closure: {root}"
+    );
+}
+
+#[test]
+fn sequence_font_size_precedence_matches_fresh_mermaid_11_16_root() {
+    let svg = render_sequence_svg_from_fixture_with_options(
+        "stress_sequence_font_size_precedence_090.mmd",
+        &SvgRenderOptions::default(),
+        RootViewportOverridePolicy::ComputedOnly,
+    );
+    let root = svg.split_once('>').expect("SVG root").0;
+    let note = extract_self_closing_tags(&svg, "rect")
+        .into_iter()
+        .find(|tag| tag.contains(r#"class="note""#))
+        .expect("expected note rectangle");
+
+    assert_eq!(attr_f64(note, "height"), Some(31.0));
+    assert!(
+        root.contains(r#"style="max-width: 550px; background-color: white;""#)
+            && root.contains(r#"viewBox="-50 -10 550 244""#),
+        "expected fresh Mermaid 11.16 font-size root geometry: {root}"
+    );
+}
+
+#[test]
+fn sequence_parity_wraps_message_candidates_with_calculate_text_width_bbox() {
+    let svg = render_sequence_svg_from_fixture_with_options(
+        "stress_br_in_messages_notes_011.mmd",
+        &SvgRenderOptions::default(),
+        RootViewportOverridePolicy::ComputedOnly,
+    );
+    let wrapped_message =
+        "This is a longer message that should be wrapped by Mermaid&#39;s default behavior";
+    let message_lines = extract_paired_tags(&svg, "text")
+        .into_iter()
+        .filter(|tag| tag.contains(r#"class="messageText""#))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        message_lines.len(),
+        5,
+        "Mermaid 11.16 keeps the wrapped message on one line: {message_lines:#?}"
+    );
+    assert!(
+        message_lines
+            .iter()
+            .any(|line| line.contains(wrapped_message)),
+        "expected the complete wrapped message in one SVG text node: {message_lines:#?}"
+    );
+}
+
+#[test]
+fn sequence_parity_wraps_note_candidates_with_calculate_text_width_bbox() {
+    let svg = render_sequence_svg_from_fixture_with_options(
+        "upstream_cypress_sequencediagram_spec_should_render_long_notes_wrapped_inline_left_of_actor_026.mmd",
+        &SvgRenderOptions::default(),
+        RootViewportOverridePolicy::ComputedOnly,
+    );
+    let note_lines = extract_paired_tags(&svg, "text")
+        .into_iter()
+        .filter(|tag| tag.contains(r#"class="noteText""#))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        note_lines.len(),
+        6,
+        "Mermaid 11.16 wraps the left-of note into six text nodes: {note_lines:#?}"
+    );
+    for expected in [
+        "Extremely utterly long",
+        "line of longness which",
+        "had previously",
+        "overflown the actor box",
+        "as it is much longer",
+        "than what it should be",
+    ] {
+        assert!(
+            note_lines.iter().any(|line| line.contains(expected)),
+            "missing expected note line {expected:?}: {note_lines:#?}"
+        );
+    }
+}
+
+#[test]
+fn sequence_parity_wraps_block_candidates_with_calculate_text_width_bbox() {
+    let svg = render_sequence_svg_from_fixture_with_options(
+        "upstream_critical_without_options_spec.mmd",
+        &SvgRenderOptions::default(),
+        RootViewportOverridePolicy::ComputedOnly,
+    );
+    let loop_lines = extract_paired_tags(&svg, "text")
+        .into_iter()
+        .filter(|tag| tag.contains(r#"class="loopText""#))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        loop_lines.len(),
+        2,
+        "Mermaid 11.16 wraps the critical title into two text nodes: {loop_lines:#?}"
+    );
+    for expected in ["[Establish a connection", "to the DB]"] {
+        assert!(
+            loop_lines.iter().any(|line| line.contains(expected)),
+            "missing expected critical title line {expected:?}: {loop_lines:#?}"
+        );
+    }
 }
 
 #[test]
@@ -344,14 +547,13 @@ fn sequence_nested_opt_wraps_from_source_block_width_like_mermaid_11_16() {
 
     assert_eq!(
         loop_lines.len(),
-        4,
-        "nested opt title should use four lines"
+        3,
+        "nested opt title should use three Mermaid 11.16 lines"
     );
     for (line, expected) in loop_lines.iter().zip([
-        "[this is a nested",
-        "opt with a long",
-        "title that will",
-        "overflow]",
+        "[this is a nested opt",
+        "with a long title that",
+        "will overflow]",
     ]) {
         assert!(
             line.contains(&format!(">{expected}</tspan>")),

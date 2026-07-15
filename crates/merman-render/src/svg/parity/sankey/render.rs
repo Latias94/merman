@@ -60,50 +60,31 @@ pub(crate) fn render_sankey_diagram_svg(
     let vb_w = (max_x - min_x).max(1.0);
     let vb_h = (max_y - min_y).max(1.0);
 
-    let mut max_w_attr = fmt_string(vb_w);
-    let mut viewbox_attr = format!("{} {} {} {}", fmt(min_x), fmt(min_y), fmt(vb_w), fmt(vb_h));
-    let mut w_attr = fmt_string(vb_w);
-    let mut h_attr = fmt_string(vb_h);
-    if options.root_viewport_override_policy().applies_generated() {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::sankey_root_overrides_11_12_2::lookup_sankey_root_viewport_override,
-        );
-    }
+    let root_spec = root_svg::RootViewportSpec::mermaid(
+        root_svg::DiagramBounds::from_view_box(min_x, min_y, vb_w, vb_h),
+        use_max_width,
+    )
+    .with_max_width(root_svg::RootMaxWidth::SvgNumber(vb_w));
 
     let mut out = String::new();
-    if use_max_width {
-        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "sankey")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(&h_attr),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                tail_attrs: &tail_attrs,
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Sankey,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
+        &mut out,
+        root_spec,
+        root_svg::RootChrome {
+            dom: root_svg::RootDomProfile {
                 fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                fixed_style_placement: root_svg::RootStylePlacement::Tail,
                 trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "sankey")
+                ..Default::default()
             },
-        );
-    }
+            ..root_svg::RootChrome::new(diagram_id, "sankey")
+        },
+    )?;
     let _ = write!(
         &mut out,
         "<style>{}</style>",

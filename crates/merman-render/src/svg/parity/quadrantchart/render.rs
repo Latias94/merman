@@ -5,7 +5,7 @@ use super::super::*;
 pub(crate) fn render_quadrantchart_diagram_svg(
     layout: &QuadrantChartDiagramLayout,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     fn dominant_baseline(horizontal_pos: &str) -> &'static str {
         if horizontal_pos == "top" {
@@ -40,37 +40,27 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     let mut out = String::new();
     let w = layout.width.max(1.0);
     let h = layout.height.max(1.0);
-    let w_attr = fmt(w).to_string();
-    let h_attr = fmt(h).to_string();
-    let viewbox_attr = format!("0 0 {w_attr} {h_attr}");
-    if use_max_width {
-        let style_attr = format!("max-width: {w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "quadrantChart")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(&h_attr),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                tail_attrs: &tail_attrs,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "quadrantChart")
-            },
-        );
-    }
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "quadrantChart");
+    root_chrome.dom = root_svg::RootDomProfile {
+        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::QuadrantChart,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, w, h),
+            use_max_width,
+        ),
+        root_chrome,
+    )?;
 
     let _ = write!(
         &mut out,

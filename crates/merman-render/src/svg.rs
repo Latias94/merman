@@ -13,12 +13,8 @@ mod parity;
 mod pipeline;
 mod theme_profile;
 
-#[cfg(feature = "cytoscape-layout")]
-pub(crate) use parity::render_architecture_diagram_svg_model_with_config_and_debug;
+pub(crate) use parity::render_builtin_family_artifact;
 pub(crate) use parity::theme as render_theme;
-pub(crate) use parity::{
-    render_builtin_family_artifact, render_state_diagram_v2_svg_model_with_debug,
-};
 
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{IconRegistry, IconRegistryError, IconSvg};

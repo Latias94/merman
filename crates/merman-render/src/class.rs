@@ -2,7 +2,7 @@
 use crate::config::{config_bool, config_string};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
-    Bounds, ClassDiagramV2Layout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
+    Bounds, ClassDiagramLayout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
     LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
@@ -1822,12 +1822,12 @@ fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: 
     extras.insert(key.to_string(), obj);
 }
 
-pub fn layout_class_diagram_v2_typed_with_config(
+pub fn layout_class_diagram_typed_with_config(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramV2Layout> {
-    layout_class_diagram_v2_typed_inner(
+) -> Result<ClassDiagramLayout> {
+    layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
@@ -1837,12 +1837,12 @@ pub fn layout_class_diagram_v2_typed_with_config(
 }
 
 #[cfg(feature = "elk-layout")]
-pub fn layout_class_diagram_v2_elk_typed_with_config(
+pub fn layout_class_diagram_elk_typed_with_config(
     model: &ClassDiagramModel,
     effective_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramV2Layout> {
-    layout_class_diagram_v2_typed_inner(
+) -> Result<ClassDiagramLayout> {
+    layout_class_diagram_typed_inner(
         model,
         effective_config.as_value(),
         effective_config,
@@ -1851,13 +1851,13 @@ pub fn layout_class_diagram_v2_elk_typed_with_config(
     )
 }
 
-fn layout_class_diagram_v2_typed_inner(
+fn layout_class_diagram_typed_inner(
     model: &ClassDiagramModel,
     effective_config: &Value,
     note_html_config: &merman_core::MermaidConfig,
     measurer: &dyn TextMeasurer,
     engine: ClassLayoutEngine,
-) -> Result<ClassDiagramV2Layout> {
+) -> Result<ClassDiagramLayout> {
     validate_class_namespace_parent_cycles(model)?;
     let diagram_dir = rank_dir_from(&model.direction);
     let ClassLayoutSettings {
@@ -2218,7 +2218,7 @@ fn layout_class_diagram_v2_typed_inner(
 
     #[cfg(feature = "elk-layout")]
     if engine == ClassLayoutEngine::Elk {
-        return layout_class_diagram_v2_elk_from_graph(
+        return layout_class_diagram_elk_from_graph(
             model,
             effective_config,
             g,
@@ -2401,7 +2401,7 @@ fn layout_class_diagram_v2_typed_inner(
         bounds = compute_bounds(&nodes, &edges, &clusters);
     }
 
-    Ok(ClassDiagramV2Layout {
+    Ok(ClassDiagramLayout {
         nodes,
         edges,
         clusters,
@@ -2546,7 +2546,7 @@ struct ClassElkLayoutSettings<'a> {
 }
 
 #[cfg(feature = "elk-layout")]
-fn layout_class_diagram_v2_elk_from_graph(
+fn layout_class_diagram_elk_from_graph(
     model: &ClassDiagramModel,
     effective_config: &Value,
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -2554,7 +2554,7 @@ fn layout_class_diagram_v2_elk_from_graph(
     class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>>,
     settings: ClassElkLayoutSettings<'_>,
     measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramV2Layout> {
+) -> Result<ClassDiagramLayout> {
     let elk_graph = class_graph_to_elk_graph(
         model,
         effective_config,
@@ -2676,7 +2676,7 @@ fn class_layout_from_elk(
     class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>>,
     settings: ClassElkLayoutSettings<'_>,
     measurer: &dyn TextMeasurer,
-) -> Result<ClassDiagramV2Layout> {
+) -> Result<ClassDiagramLayout> {
     let namespace_set: HashSet<&str> = namespace_ids.iter().copied().collect();
     let source_node_by_id: HashMap<&str, &elk::Node> = elk_graph
         .nodes
@@ -2873,7 +2873,7 @@ fn class_layout_from_elk(
     });
 
     let bounds = compute_bounds(&nodes, &edges, &clusters);
-    Ok(ClassDiagramV2Layout {
+    Ok(ClassDiagramLayout {
         nodes,
         edges,
         clusters,

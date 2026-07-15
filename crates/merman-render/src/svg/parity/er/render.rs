@@ -396,30 +396,12 @@ pub(crate) fn render_er_diagram_svg_model(
 
     let pad = options.viewbox_padding.max(0.0);
     let mut out = String::new();
-    let (
-        translate_x,
-        translate_y,
-        mut viewbox_attr,
-        mut w_attr,
-        mut h_attr,
-        mut max_w_style,
-        root_width_for_title,
-    ) = if is_empty_diagram {
+    let (translate_x, translate_y, root_bounds, root_width_for_title) = if is_empty_diagram {
         let empty_span = (pad * 2.0).max(1.0);
-        let empty_span_attr = fmt_string(empty_span);
         (
             0.0,
             0.0,
-            format!(
-                "{} {} {} {}",
-                fmt_string(-pad),
-                fmt_string(-pad),
-                empty_span_attr,
-                empty_span_attr
-            ),
-            empty_span_attr.clone(),
-            empty_span_attr.clone(),
-            fmt_max_width_px(empty_span),
+            root_svg::DiagramBounds::from_view_box(-pad, -pad, empty_span, empty_span),
             empty_span,
         )
     } else {
@@ -435,63 +417,32 @@ pub(crate) fn render_er_diagram_svg_model(
         // `parity-root` comparisons stable at high decimal precision.
         let vb_w_attr = ((vb_w.max(1.0)) as f32) as f64;
         let vb_h_attr = ((vb_h.max(1.0)) as f32) as f64;
-        let w_attr = fmt_string(vb_w_attr);
-        let h_attr = fmt_string(vb_h_attr);
         (
             translate_x,
             translate_y,
-            format!("0 0 {} {}", w_attr, h_attr),
-            w_attr,
-            h_attr,
-            fmt_max_width_px(vb_w_attr),
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, vb_w_attr, vb_h_attr),
             vb_w_attr,
         )
     };
-    if options.root_viewport_override_policy().applies_generated() {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_style,
-            crate::generated::er_root_overrides_11_12_2::lookup_er_root_viewport_override,
-        );
-    }
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width).with_max_width(
+        root_svg::RootMaxWidth::CssSixSignificant(root_width_for_title),
+    );
+    let root_viewport = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Er,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    );
+    let root_plan = root_viewport.plan(root_spec)?;
 
     let has_acc_title = model.acc_title.as_ref().is_some_and(|s| !s.is_empty());
     let has_acc_descr = model.acc_descr.as_ref().is_some_and(|s| !s.is_empty());
-    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{}", escape_xml(diagram_id)));
-    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{}", escape_xml(diagram_id)));
-    if use_max_width {
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                class: Some("erDiagram"),
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(&format!(
-                    "max-width: {max_w_style}px; background-color: white;"
-                )),
-                viewbox_attr: Some(&viewbox_attr),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                ..root_svg::SvgRootAttrs::new(diagram_id, diagram_type)
-            },
-        );
-    } else {
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                class: Some("erDiagram"),
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(&h_attr),
-                style_attr: Some("background-color: white;"),
-                viewbox_attr: Some(&viewbox_attr),
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                ..root_svg::SvgRootAttrs::new(diagram_id, diagram_type)
-            },
-        );
-    }
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, diagram_type);
+    root_chrome.class = Some("erDiagram");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_viewport.write_plan(&mut out, &root_plan, root_chrome)?;
 
     if has_acc_title {
         let _ = write!(
@@ -1566,11 +1517,9 @@ pub(crate) fn render_er_diagram_svg_model(
         // - `text-anchor="middle"`
         // - `x = bounds.x + bounds.width / 2`
         // - `y = -titleTopMargin` (default: 25)
-        let (vb_min_x, vb_w) = viewbox_attr
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .get(0..3)
-            .and_then(|p| Some((p[0].parse::<f64>().ok()?, p[2].parse::<f64>().ok()?)))
+        let (vb_min_x, vb_w) = root_plan
+            .view_box()
+            .map(|view_box| (view_box.min_x, view_box.width))
             .unwrap_or((0.0, root_width_for_title));
 
         let _ = write!(

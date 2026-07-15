@@ -120,11 +120,11 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 pub(crate) enum BuiltinFamilyArtifact {
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
-    State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramV2Layout>>),
+    State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
     Sequence(
         Box<FamilyPair<diagrams::sequence::SequenceDiagramRenderModel, SequenceDiagramLayout>>,
     ),
-    Flowchart(Box<FamilyPair<diagrams::flowchart::FlowchartV2Model, FlowchartV2Layout>>),
+    Flowchart(Box<FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>>),
     Architecture(
         Box<
             FamilyPair<
@@ -133,7 +133,7 @@ pub(crate) enum BuiltinFamilyArtifact {
             >,
         >,
     ),
-    Class(Box<FamilyPair<ClassDiagram, ClassDiagramV2Layout>>),
+    Class(Box<FamilyPair<ClassDiagram, ClassDiagramLayout>>),
     C4(Box<FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>>),
     Cynefin(Box<FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>>),
     Railroad(
@@ -200,9 +200,12 @@ enum LayoutProjection<'a> {
     VennDiagram(&'a VennDiagramLayout),
     XyChartDiagram(&'a XyChartDiagramLayout),
     QuadrantChartDiagram(&'a QuadrantChartDiagramLayout),
-    FlowchartV2(&'a FlowchartV2Layout),
-    StateDiagramV2(&'a StateDiagramV2Layout),
-    ClassDiagramV2(&'a ClassDiagramV2Layout),
+    #[serde(rename = "FlowchartV2")]
+    Flowchart(&'a FlowchartLayout),
+    #[serde(rename = "StateDiagramV2")]
+    StateDiagram(&'a StateDiagramLayout),
+    #[serde(rename = "ClassDiagramV2")]
+    ClassDiagram(&'a ClassDiagramLayout),
     ErDiagram(&'a ErDiagramLayout),
     SequenceDiagram(&'a SequenceDiagramLayout),
     InfoDiagram(&'a InfoDiagramLayout),
@@ -315,11 +318,11 @@ impl BuiltinFamilyArtifact {
         match self {
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
-            Self::State(pair) => LayoutProjection::StateDiagramV2(pair.layout()),
+            Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
-            Self::Flowchart(pair) => LayoutProjection::FlowchartV2(pair.layout()),
+            Self::Flowchart(pair) => LayoutProjection::Flowchart(pair.layout()),
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
-            Self::Class(pair) => LayoutProjection::ClassDiagramV2(pair.layout()),
+            Self::Class(pair) => LayoutProjection::ClassDiagram(pair.layout()),
             Self::C4(pair) => LayoutProjection::C4Diagram(pair.layout()),
             Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
             Self::Railroad(pair) => LayoutProjection::RailroadDiagram(pair.layout()),
@@ -611,7 +614,7 @@ pub fn prepare(
             });
         }
         RenderSemanticModel::State(model) => {
-            let layout = crate::state::layout_state_diagram_v2_typed(
+            let layout = crate::state::layout_state_diagram_typed(
                 &model,
                 effective_config,
                 execution.text_measurer(),

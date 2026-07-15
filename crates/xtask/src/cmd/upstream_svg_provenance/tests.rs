@@ -122,6 +122,10 @@ fn pinned_source_metadata_is_mermaid_11_16() {
 fn renderer_profiles_capture_seed_and_width_variants() {
     assert_eq!(renderer_profile("architecture"), "seeded-puppeteer-seed-1");
     assert_eq!(renderer_profile("gitgraph"), "seeded-puppeteer-seed-1");
+    assert_eq!(
+        renderer_profile("sequence"),
+        "seeded-puppeteer-seed-1-sequence-math-settled-v1"
+    );
     assert_eq!(renderer_profile("gantt"), "mmdc-default-width-1200");
     assert_eq!(renderer_profile("flowchart"), "mmdc-default");
 }

@@ -21,7 +21,7 @@ use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_not
 use super::settings::ClassRenderSettings;
 use super::*;
 use super::{ClassSvgInterface, ClassSvgModel, ClassSvgNode, ClassSvgNote};
-use crate::model::{Bounds, ClassDiagramV2Layout, LayoutEdge};
+use crate::model::{Bounds, ClassDiagramLayout, LayoutEdge};
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
 
@@ -43,7 +43,7 @@ pub(super) struct ClassNodesRenderState<'a> {
 }
 
 pub(super) struct ClassNodesRenderContext<'a> {
-    pub(super) layout: &'a ClassDiagramV2Layout,
+    pub(super) layout: &'a ClassDiagramLayout,
     pub(super) model: &'a ClassSvgModel,
     pub(super) class_nodes_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNode>,
     pub(super) note_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNote>,

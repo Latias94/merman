@@ -11,7 +11,7 @@ const TITLE_FONT_SIZE_PX: f64 = 18.0;
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderedBoundsRequest<'view, 'data> {
     pub ctx: &'view FlowchartRenderCtx<'data>,
-    pub layout: &'view FlowchartV2Layout,
+    pub layout: &'view FlowchartLayout,
     pub subgraph_title_y_shift: f64,
 }
 
@@ -133,12 +133,7 @@ where
         .into_iter()
         .flatten()
         {
-            let label_width = if ctx.edge_html_labels {
-                flowchart_html_edge_label_width_for_layout(ctx, lbl.width)
-            } else {
-                lbl.width
-            };
-            let hw = label_width / 2.0;
+            let hw = lbl.width / 2.0;
             let hh = lbl.height / 2.0;
             let svg_label_y_offset = if ctx.edge_html_labels { 0.0 } else { 1.0 };
             include_rect(

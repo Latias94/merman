@@ -13,6 +13,24 @@ pub struct VendoredFontMetricsTextMeasurer {
     fallback: DeterministicTextMeasurer,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FontMetricsTable {
+    pub(crate) font_key: &'static str,
+    pub(crate) base_font_size_px: f64,
+    pub(crate) default_em: f64,
+    pub(crate) entries: &'static [(char, f64)],
+    pub(crate) kern_pairs: &'static [(u32, u32, f64)],
+    pub(crate) space_trigrams: &'static [(u32, u32, f64)],
+    pub(crate) trigrams: &'static [(u32, u32, u32, f64)],
+    pub(crate) html_overrides: &'static [(&'static str, f64)],
+    pub(crate) svg_overrides: &'static [(&'static str, f64, f64)],
+    pub(crate) svg_scale: f64,
+    pub(crate) svg_bbox_overhang_left_default_em: f64,
+    pub(crate) svg_bbox_overhang_right_default_em: f64,
+    pub(crate) svg_bbox_overhang_left: &'static [(char, f64)],
+    pub(crate) svg_bbox_overhang_right: &'static [(char, f64)],
+}
+
 #[derive(Clone, Copy)]
 struct FontMetricProfile<'a> {
     entries: &'a [(char, f64)],
@@ -28,9 +46,7 @@ struct FontMetricProfile<'a> {
 }
 
 impl VendoredFontMetricsTextMeasurer {
-    fn metric_profile(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
-    ) -> FontMetricProfile<'_> {
+    fn metric_profile(table: &FontMetricsTable) -> FontMetricProfile<'_> {
         FontMetricProfile {
             entries: table.entries,
             default_em: table.default_em.max(0.1),
@@ -115,10 +131,7 @@ impl VendoredFontMetricsTextMeasurer {
             .collect()
     }
 
-    fn lookup_table(
-        &self,
-        style: &TextStyle,
-    ) -> Option<&'static crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables> {
+    fn lookup_table(&self, style: &TextStyle) -> Option<&'static FontMetricsTable> {
         let key = style
             .font_family
             .as_deref()
@@ -402,7 +415,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn line_svg_bbox_extents_px(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        table: &FontMetricsTable,
         text: &str,
         font_size: f64,
     ) -> (f64, f64) {
@@ -485,7 +498,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn line_svg_bbox_extents_px_single_run(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        table: &FontMetricsTable,
         text: &str,
         font_size: f64,
     ) -> (f64, f64) {
@@ -536,7 +549,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn line_svg_bbox_extents_px_single_run_with_ascii_overhang(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        table: &FontMetricsTable,
         text: &str,
         font_size: f64,
     ) -> (f64, f64) {
@@ -545,8 +558,21 @@ impl VendoredFontMetricsTextMeasurer {
         )
     }
 
+    pub(super) fn measure_svg_single_run_bbox_width_with_table(
+        table: &FontMetricsTable,
+        text: &str,
+        font_size: f64,
+    ) -> f64 {
+        let (left, right) = Self::line_svg_bbox_extents_px_single_run_with_ascii_overhang(
+            table,
+            text,
+            font_size.max(1.0),
+        );
+        (left + right).max(0.0)
+    }
+
     fn line_svg_bbox_extents_px_single_run_with_ascii_overhang_and_weight(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        table: &FontMetricsTable,
         text: &str,
         font_size: f64,
         bold: bool,
@@ -590,17 +616,13 @@ impl VendoredFontMetricsTextMeasurer {
         (left, right)
     }
 
-    fn line_svg_bbox_width_px(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
-        text: &str,
-        font_size: f64,
-    ) -> f64 {
+    fn line_svg_bbox_width_px(table: &FontMetricsTable, text: &str, font_size: f64) -> f64 {
         let (l, r) = Self::line_svg_bbox_extents_px(table, text, font_size);
         (l + r).max(0.0)
     }
 
     fn line_svg_bbox_width_single_run_px(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        table: &FontMetricsTable,
         text: &str,
         font_size: f64,
     ) -> f64 {
@@ -619,7 +641,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn line_svg_title_bbox_extents_px(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        table: &FontMetricsTable,
         text: &str,
         font_size: f64,
     ) -> (f64, f64) {
@@ -643,7 +665,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn split_token_to_svg_bbox_width_px(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        table: &FontMetricsTable,
         tok: &str,
         max_width_px: f64,
         font_size: f64,
@@ -702,7 +724,7 @@ impl VendoredFontMetricsTextMeasurer {
     }
 
     fn wrap_text_lines_svg_bbox_px(
-        table: &crate::generated::font_metrics_flowchart_11_12_2::FontMetricsTables,
+        table: &FontMetricsTable,
         text: &str,
         max_width_px: Option<f64>,
         font_size: f64,
@@ -1502,6 +1524,11 @@ impl TextMeasurer for VendoredFontMetricsTextMeasurer {
             width = width.max((l + r).max(0.0));
         }
         width
+    }
+
+    fn measure_mermaid_calculate_text_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        super::sequence_serif::measure_sequence_calculate_text_width_px(text, style)
+            .unwrap_or_else(|| self.measure_svg_simple_text_bbox_width_for_wrap_px(text, style))
     }
 
     fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {

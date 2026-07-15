@@ -584,7 +584,7 @@ pub struct QuadrantChartDiagramLayout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowchartV2Layout {
+pub struct FlowchartLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
@@ -592,16 +592,13 @@ pub struct FlowchartV2Layout {
     /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).
     #[serde(skip)]
     pub dom_node_order_by_root: std::collections::HashMap<String, Vec<String>>,
-    /// Source-backed ELK carries Mermaid DOM `getBoundingClientRect()` edge-label bounds.
-    #[serde(skip)]
-    pub source_backed_edge_label_bboxes: bool,
     /// Source-ported ELK should follow Mermaid ELK renderer DOM quirks.
     #[serde(skip)]
     pub source_ported_elk_rendering: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StateDiagramV2Layout {
+pub struct StateDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,
@@ -609,7 +606,7 @@ pub struct StateDiagramV2Layout {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClassDiagramV2Layout {
+pub struct ClassDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
     pub clusters: Vec<LayoutCluster>,

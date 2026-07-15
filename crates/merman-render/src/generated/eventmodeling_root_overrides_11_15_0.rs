@@ -7,7 +7,7 @@
 // viewports are browser `getBBox()` products. These pins keep the root-only parity gate stable
 // after layout geometry has been brought into close alignment.
 
-pub fn lookup_eventmodeling_root_viewport_override(
+pub(super) fn lookup_eventmodeling_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {

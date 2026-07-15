@@ -9,7 +9,7 @@ const FLOWCHART_NODE_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_NODE_HAND_DRAWN_FILL_WEIGHT: f32 = 4.0;
 const FLOWCHART_NODE_HAND_DRAWN_HACHURE_GAP: f32 = 5.2;
 
-pub(in super::super) fn render_flowchart_v2_shape(
+pub(in super::super) fn render_flowchart_shape(
     out: &mut String,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,

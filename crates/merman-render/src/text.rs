@@ -8,6 +8,7 @@ mod markdown_label;
 mod measure;
 mod metrics;
 mod overrides;
+mod sequence_serif;
 mod svg_metrics;
 mod types;
 mod wrap;
@@ -18,6 +19,7 @@ pub use flowchart_parity::{
     flowchart_apply_mermaid_styled_node_height_parity, flowchart_html_has_inline_style_tags,
     flowchart_html_line_height_px,
 };
+pub(crate) use font_metrics::FontMetricsTable;
 pub use font_metrics::VendoredFontMetricsTextMeasurer;
 pub(crate) use heuristic::{estimate_char_width_em, estimate_line_width_px};
 pub use icons::replace_fontawesome_icons;

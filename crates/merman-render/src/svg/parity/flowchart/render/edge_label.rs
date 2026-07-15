@@ -448,7 +448,6 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             }
 
             let layout_w = lbl.width.max(0.0);
-            let render_w = flowchart_html_edge_label_width_for_layout(ctx, layout_w);
             let h = lbl.height.max(0.0);
             let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
@@ -469,9 +468,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(x),
                 fmt_display(y),
                 escape_xml_display(&edge.id),
-                fmt_display(-render_w / 2.0),
+                fmt_display(-layout_w / 2.0),
                 fmt_display(-h / 2.0),
-                fmt_display(render_w),
+                fmt_display(layout_w),
                 fmt_display(h),
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
                 escape_xml_display(&div_style),
@@ -515,7 +514,6 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 )
             };
             let layout_w = metrics.width.max(1.0);
-            let render_w = flowchart_html_edge_label_width_for_layout(ctx, layout_w);
             let h = metrics.height.max(1.0);
             let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
@@ -536,9 +534,9 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
                 fmt_display(x),
                 fmt_display(y),
                 escape_xml_display(&edge.id),
-                fmt_display(-render_w / 2.0),
+                fmt_display(-layout_w / 2.0),
                 fmt_display(-h / 2.0),
-                fmt_display(render_w),
+                fmt_display(layout_w),
                 fmt_display(h.max(0.0)),
                 HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
                 escape_xml_display(&div_style),

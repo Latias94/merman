@@ -3,12 +3,12 @@ use crate::environment::{
     RenderSession, RootViewportOverridePolicy, RoutedTextMeasurer, TextMeasurementPhase,
 };
 use crate::model::{
-    ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramV2Layout,
+    ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramLayout,
     CynefinDiagramLayout, ErDiagramLayout, ErrorDiagramLayout, EventModelingDiagramLayout,
-    FlowchartV2Layout, InfoDiagramLayout, IshikawaDiagramLayout, LayoutCluster, LayoutNode,
+    FlowchartLayout, InfoDiagramLayout, IshikawaDiagramLayout, LayoutCluster, LayoutNode,
     MindmapDiagramLayout, PacketDiagramLayout, PieDiagramLayout, QuadrantChartDiagramLayout,
     RadarDiagramLayout, RailroadDiagramLayout, RequirementDiagramLayout, SankeyDiagramLayout,
-    SequenceDiagramLayout, StateDiagramV2Layout, TimelineDiagramLayout, TreeViewDiagramLayout,
+    SequenceDiagramLayout, StateDiagramLayout, TimelineDiagramLayout, TreeViewDiagramLayout,
     VennDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
@@ -79,12 +79,12 @@ use state::{roughjs_ops_to_svg_path_d, roughjs_parse_hex_color_to_srgba, roughjs
 use style::{is_rect_style_key, is_text_style_key, parse_style_decl};
 use theme::PresentationTheme;
 use util::{
-    SvgTheme, apply_root_viewport_override, config_bool, config_diagram_look, config_f64,
-    config_f64_css_px, config_string, css_rgba_fade, decode_mermaid_entities_for_render_text,
-    escape_attr, escape_attr_display, escape_attr_into, escape_xml, escape_xml_display,
-    escape_xml_into, fmt, fmt_display, fmt_into, fmt_max_width_px, fmt_path, fmt_path_into,
-    fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
-    normalize_css_font_family, scoped_svg_id, scoped_svg_url, theme_color,
+    SvgTheme, config_bool, config_diagram_look, config_f64, config_f64_css_px, config_string,
+    css_rgba_fade, decode_mermaid_entities_for_render_text, escape_attr, escape_attr_display,
+    escape_attr_into, escape_xml, escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into,
+    fmt_path, fmt_path_into, fmt_points, fmt_string, json_stringify_points,
+    json_stringify_points_into, normalize_css_font_family, scoped_svg_id, scoped_svg_url,
+    theme_color,
 };
 
 const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(
@@ -103,6 +103,9 @@ pub struct SvgRenderOptions {
     /// This is primarily used to reproduce Mermaid's per-header accessibility metadata quirks
     /// (e.g. `classDiagram-v2` differs from `classDiagram` at Mermaid 11.12.2).
     pub aria_roledescription: Option<String>,
+    /// Optional request-scoped current time used by SVG-only presentation such as Gantt's today
+    /// marker. This does not change the operation's parse/layout time or environment report.
+    pub current_time_unix_ms: Option<i64>,
 }
 
 impl Default for SvgRenderOptions {
@@ -111,6 +114,7 @@ impl Default for SvgRenderOptions {
             viewbox_padding: 8.0,
             diagram_id: None,
             aria_roledescription: None,
+            current_time_unix_ms: None,
         }
     }
 }
@@ -180,8 +184,10 @@ impl<'a> SvgExecution<'a> {
         self.session.icon_registry()
     }
 
-    pub(crate) const fn unix_ms(&self) -> i64 {
-        self.session.time().unix_ms()
+    pub(crate) fn unix_ms(&self) -> i64 {
+        self.request
+            .current_time_unix_ms
+            .unwrap_or_else(|| self.session.time().unix_ms())
     }
 
     pub(crate) const fn seed(&self) -> u64 {
@@ -230,6 +236,19 @@ impl std::ops::Deref for SvgExecution<'_> {
     fn deref(&self) -> &Self::Target {
         self.request
     }
+}
+
+#[cfg(test)]
+pub(crate) fn with_test_svg_execution<T>(
+    request: &SvgRenderOptions,
+    run: impl FnOnce(&SvgExecution<'_>) -> T,
+) -> T {
+    let session = crate::environment::RenderEnvironment::parity()
+        .begin_session()
+        .expect("create test render session");
+    let debug = SvgDebugOptions::default();
+    let execution = SvgExecution::new(request, &debug, &session);
+    run(&execution)
 }
 
 pub(crate) fn render_builtin_family_artifact(
@@ -291,7 +310,7 @@ fn render_builtin_family_artifact_raw(
             diagram_type: "architecture".to_string(),
         }),
         BuiltinFamilyArtifact::Flowchart(pair) => {
-            flowchart::render_flowchart_v2_svg_model_with_config(
+            flowchart::render_flowchart_svg_model_with_config(
                 pair.layout(),
                 pair.semantic(),
                 effective_config,
@@ -327,7 +346,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Mindmap(_) => Err(Error::UnsupportedDiagram {
             diagram_type: "mindmap".to_string(),
         }),
-        BuiltinFamilyArtifact::State(pair) => state::render_state_diagram_v2_svg_model(
+        BuiltinFamilyArtifact::State(pair) => state::render_state_diagram_svg_model(
             pair.layout(),
             pair.semantic(),
             effective_config_value,
@@ -335,7 +354,7 @@ fn render_builtin_family_artifact_raw(
             measurer,
             options,
         ),
-        BuiltinFamilyArtifact::Class(pair) => class::render_class_diagram_v2_svg_model_with_config(
+        BuiltinFamilyArtifact::Class(pair) => class::render_class_diagram_svg_model_with_config(
             pair.layout(),
             pair.semantic(),
             effective_config,
@@ -508,68 +527,6 @@ fn apply_theme_css(
     let pipeline = SvgPipeline::parity()
         .with_postprocessor(ScopedCssPostprocessor::new(theme_css).with_existing_style_merge());
     pipeline.process_to_string_with_metadata(&svg, &metadata, session)
-}
-
-/// Renders a typed Architecture model and layout without compatibility JSON.
-#[cfg(feature = "cytoscape-layout")]
-pub(crate) fn render_architecture_diagram_svg_model_with_config_and_debug(
-    layout: &ArchitectureDiagramLayout,
-    model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
-    effective_config: &merman_core::MermaidConfig,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    architecture::render_architecture_diagram_svg_typed_with_config(
-        layout,
-        model,
-        effective_config,
-        &execution,
-    )
-}
-
-pub(crate) fn render_flowchart_v2_svg_model_with_config_and_debug(
-    layout: &FlowchartV2Layout,
-    model: &merman_core::diagrams::flowchart::FlowchartV2Model,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let measurer = execution.text_measurer();
-    flowchart::render_flowchart_v2_svg_model_with_config(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        measurer,
-        &execution,
-    )
-}
-
-/// Renders a typed State model and layout without compatibility JSON.
-pub(crate) fn render_state_diagram_v2_svg_model_with_debug(
-    layout: &StateDiagramV2Layout,
-    model: &merman_core::diagrams::state::StateDiagramRenderModel,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    session: &RenderSession,
-    options: &SvgRenderOptions,
-    debug: &SvgDebugOptions,
-) -> Result<String> {
-    let execution = SvgExecution::new(options, debug, session);
-    let measurer = execution.text_measurer();
-    state::render_state_diagram_v2_svg_model(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        measurer,
-        &execution,
-    )
 }
 
 fn curve_basis_path_d(points: &[crate::model::LayoutPoint]) -> String {

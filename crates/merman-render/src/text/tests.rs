@@ -1065,7 +1065,7 @@ fn sequence_svg_overrides_keep_literal_br_with_backslash_t_single_line() {
     let text = "multiline<br \\t/>text";
     let m = measurer.measure_wrapped(text, &style, None, WrapMode::SvgLikeSingleRun);
     assert_eq!(m.line_count, 1);
-    assert_eq!(m.width, 132.0);
+    assert_eq!(m.width, 131.0);
 }
 
 #[test]
@@ -1080,7 +1080,7 @@ fn sequence_svg_overrides_measure_final_simple_bbox_widths() {
     let prefix = "This is a longer message that should be wrapped by Mermaid's default behavior";
     assert_eq!(
         measurer.measure_svg_simple_text_bbox_width_px(prefix, &style),
-        511.0
+        510.0
     );
 
     let no_wrap = "This message should not wrap even if it is long long long long long";
@@ -1091,7 +1091,7 @@ fn sequence_svg_overrides_measure_final_simple_bbox_widths() {
 
     assert_eq!(
         measurer.measure_svg_simple_text_bbox_width_px("very-long-participant-label", &style),
-        174.0
+        172.0
     );
     assert_eq!(
         measurer.measure_svg_simple_text_bbox_width_px("another-long-participant-label", &style),
@@ -1111,7 +1111,7 @@ fn sequence_wrap_does_not_use_final_bbox_overrides_as_incremental_probes() {
 
     let exact = measurer.measure_svg_simple_text_bbox_width_px(text, &style);
     let probe = measurer.measure_svg_simple_text_bbox_width_for_wrap_px(text, &style);
-    assert_eq!(exact, 511.0);
+    assert_eq!(exact, 510.0);
     assert!(exact + 4.0 < probe);
 
     let wrapped_at_final_bbox = wrap_label_like_mermaid_lines(text, &measurer, &style, exact + 4.0);

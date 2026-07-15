@@ -163,25 +163,24 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let mut out = String::new();
     let aria_labelledby = acc_title
         .as_ref()
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr
         .as_ref()
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    let viewbox_attr = format!("0 0 {} {}", fmt(w_attr), fmt(h_attr));
-    let style_attr = format!("max-width: {}px; background-color: white;", fmt(w_attr));
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "gantt")
-        },
-    );
+        .map(|_| format!("chart-desc-{diagram_id}"));
+    let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, w_attr, h_attr);
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(w_attr));
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "gantt");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Gantt,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(

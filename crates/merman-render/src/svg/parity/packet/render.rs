@@ -73,7 +73,7 @@ pub(crate) fn render_packet_diagram_svg_model(
     model: &PacketDiagramRenderModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -93,32 +93,24 @@ pub(crate) fn render_packet_diagram_svg_model(
     let aria_labelledby = model
         .acc_title
         .as_deref()
-        .map(|_| format!("chart-title-{diagram_id_esc}"));
+        .map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = model
         .acc_descr
         .as_deref()
-        .map(|_| format!("chart-desc-{diagram_id_esc}"));
-    let viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    let style_attr = format!("max-width: {}px; background-color: white;", fmt(vb_w));
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "packet")
-        },
-    );
+        .map(|_| format!("chart-desc-{diagram_id}"));
+    let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "packet");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Packet,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(

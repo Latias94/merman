@@ -46,21 +46,4 @@ type ClassSvgNote = merman_core::models::class_diagram::ClassNote;
 type ClassSvgInterface = merman_core::models::class_diagram::ClassInterface;
 
 mod render;
-
-pub(super) fn render_class_diagram_v2_svg_model_with_config(
-    layout: &ClassDiagramV2Layout,
-    model: &ClassSvgModel,
-    effective_config: &merman_core::MermaidConfig,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<String> {
-    render::render_class_diagram_v2_svg_model_impl_with_config(
-        layout,
-        model,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
+pub(super) use render::render_class_diagram_svg_model_with_config;

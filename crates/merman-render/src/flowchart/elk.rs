@@ -1,7 +1,7 @@
 use crate::config::{config_bool, config_string};
 use crate::math::MathRenderer;
 use crate::model::{
-    FlowchartV2Layout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+    FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, FlowchartElkBackend, Result};
@@ -9,7 +9,7 @@ use merman_core::MermaidConfig;
 use merman_layout_elk as elk;
 use std::collections::{HashMap, HashSet};
 
-use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartV2Model};
+use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph, FlowchartModel};
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
@@ -24,12 +24,12 @@ use super::{
 };
 
 pub fn layout_flowchart_elk_typed(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     backend: FlowchartElkBackend,
-) -> Result<FlowchartV2Layout> {
+) -> Result<FlowchartLayout> {
     let graph = build_flowchart_elk_graph_for_backend(
         model,
         effective_config,
@@ -56,12 +56,12 @@ fn layout_elk_graph(
 }
 
 fn flowchart_layout_from_elk(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     effective_config: &MermaidConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
     backend: FlowchartElkBackend,
-) -> Result<FlowchartV2Layout> {
+) -> Result<FlowchartLayout> {
     let effective_config_value = effective_config.as_value();
     let FlowchartLayoutSettings {
         cluster_padding,
@@ -199,13 +199,12 @@ fn flowchart_layout_from_elk(
     let bounds = compute_bounds(&out_nodes, &out_edges);
     let dom_node_order_by_root = flowchart_elk_dom_node_order_by_root(graph, backend);
 
-    Ok(FlowchartV2Layout {
+    Ok(FlowchartLayout {
         nodes: out_nodes,
         edges: out_edges,
         clusters,
         bounds,
         dom_node_order_by_root,
-        source_backed_edge_label_bboxes: backend == FlowchartElkBackend::SourcePorted,
         source_ported_elk_rendering: backend == FlowchartElkBackend::SourcePorted,
     })
 }
@@ -315,7 +314,7 @@ fn polyline_midpoint(points: &[LayoutPoint]) -> Option<LayoutPoint> {
 }
 
 pub fn build_flowchart_elk_graph(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -330,7 +329,7 @@ pub fn build_flowchart_elk_graph(
 }
 
 pub fn build_flowchart_elk_graph_for_backend(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -350,7 +349,7 @@ enum FlowchartElkGraphBuildMode {
 }
 
 fn build_flowchart_elk_graph_with_mode(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -525,7 +524,7 @@ fn build_flowchart_elk_graph_with_mode(
 
 #[derive(Clone, Copy)]
 struct ElkMeasureContext<'a> {
-    model: &'a FlowchartV2Model,
+    model: &'a FlowchartModel,
     effective_config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -536,7 +535,7 @@ struct ElkMeasureContext<'a> {
 
 #[derive(Clone, Copy)]
 struct NodeMeasureContext<'a> {
-    model: &'a FlowchartV2Model,
+    model: &'a FlowchartModel,
     effective_config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -551,7 +550,7 @@ struct NodeMeasureContext<'a> {
 
 #[derive(Clone, Copy)]
 struct EmptySubgraphMeasureContext<'a> {
-    model: &'a FlowchartV2Model,
+    model: &'a FlowchartModel,
     effective_config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -566,7 +565,7 @@ struct EmptySubgraphMeasureContext<'a> {
 
 #[derive(Clone, Copy)]
 struct EdgeMeasureContext<'a> {
-    model: &'a FlowchartV2Model,
+    model: &'a FlowchartModel,
     effective_config: &'a MermaidConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -669,7 +668,7 @@ fn elk_layout_options(effective_config: &serde_json::Value) -> elk::LayoutOption
 }
 
 fn apply_cyclic_entry_constraints(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     effective_config: &serde_json::Value,
     parent_by_id: &HashMap<String, String>,
     nodes: &mut [elk::Node],
@@ -691,7 +690,7 @@ fn apply_cyclic_entry_constraints(
 }
 
 fn find_cyclic_entry_nodes(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     parent_by_id: &HashMap<String, String>,
 ) -> HashSet<String> {
     let node_ids = model
@@ -783,7 +782,7 @@ fn find_cyclic_entry_nodes(
     entries
 }
 
-fn parent_by_id(model: &FlowchartV2Model) -> Result<HashMap<String, String>> {
+fn parent_by_id(model: &FlowchartModel) -> Result<HashMap<String, String>> {
     let mut parent_by_id = HashMap::new();
     for sg in model.subgraphs.iter().rev() {
         for child in &sg.nodes {
@@ -804,7 +803,7 @@ fn parent_by_id(model: &FlowchartV2Model) -> Result<HashMap<String, String>> {
 }
 
 fn include_children_groups(
-    model: &FlowchartV2Model,
+    model: &FlowchartModel,
     parent_by_id: &HashMap<String, String>,
 ) -> HashSet<String> {
     let mut include_children = HashSet::new();
@@ -1202,8 +1201,8 @@ mod tests {
         }
     }
 
-    fn model(nodes: Vec<FlowNode>, edges: Vec<FlowEdge>) -> FlowchartV2Model {
-        FlowchartV2Model {
+    fn model(nodes: Vec<FlowNode>, edges: Vec<FlowEdge>) -> FlowchartModel {
+        FlowchartModel {
             keyword: "graph".to_string(),
             acc_descr: None,
             acc_title: None,

@@ -260,55 +260,31 @@ fn render_timeline_diagram_svg_inner(
         out.push_str("</text></g></g>");
     }
 
-    let mut max_w_attr = fmt_max_width_px(vb_w);
-    let mut viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    let mut w_attr = fmt(vb_w).to_string();
-    let mut h_attr = fmt(vb_h).to_string();
-    if options.root_viewport_override_policy().applies_generated() {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut viewbox_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::timeline_root_overrides_11_12_2::lookup_timeline_root_viewport_override,
-        );
-    }
+    let root_spec = root_svg::RootViewportSpec::mermaid(
+        root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
+        layout.use_max_width,
+    )
+    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w));
 
     let mut out = String::new();
-    if layout.use_max_width {
-        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(&viewbox_attr),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "timeline")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(&h_attr),
-                viewbox_attr: Some(&viewbox_attr),
-                tail_attrs: &tail_attrs,
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Timeline,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
+        &mut out,
+        root_spec,
+        root_svg::RootChrome {
+            dom: root_svg::RootDomProfile {
                 fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                fixed_style_placement: root_svg::RootStylePlacement::Tail,
                 trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "timeline")
+                ..Default::default()
             },
-        );
-    }
+            ..root_svg::RootChrome::new(diagram_id, "timeline")
+        },
+    )?;
     let css = timeline_css(diagram_id, effective_config, &theme);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);

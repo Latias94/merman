@@ -71,12 +71,34 @@ impl Drop for EphemeralRootAttrsSnapshot {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StoredRootViewport {
+    view_box: String,
+    max_width: String,
+}
+
+#[derive(Debug, Default)]
+struct ParsedRootOverrideEntries {
+    arm_count: usize,
+    entries: BTreeMap<String, StoredRootViewport>,
+    issues: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+struct StoredBaselineAudit {
+    exact_keys: BTreeSet<String>,
+    value_mismatches: BTreeMap<String, String>,
+    issues: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 struct RootOverrideTable {
     family: String,
     file_name: String,
     inventory_entries: usize,
     fixture_keys: BTreeSet<String>,
+    stored_entries: BTreeMap<String, StoredRootViewport>,
+    inventory_issues: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +111,8 @@ struct FamilyAudit {
     stale_keys: BTreeSet<String>,
     retained_keys: BTreeSet<String>,
     missing_keys: BTreeSet<String>,
+    exact_value_keys: BTreeSet<String>,
+    stale_value_mismatches: BTreeMap<String, String>,
     runner_issues: Vec<String>,
 }
 
@@ -171,8 +195,14 @@ pub(crate) fn audit_root_overrides(args: Vec<String>) -> Result<(), XtaskError> 
 
     let mut audits = Vec::new();
     for table in tables {
+        let baseline_audit = audit_stored_root_table(
+            &table,
+            &cmd::fixtures_root()
+                .join("upstream-svgs")
+                .join(&table.family),
+        );
         if inventory_only {
-            audits.push(FamilyAudit::from_inventory(table));
+            audits.push(FamilyAudit::from_inventory(table, baseline_audit));
             continue;
         }
 
@@ -183,7 +213,12 @@ pub(crate) fn audit_root_overrides(args: Vec<String>) -> Result<(), XtaskError> 
             &table.fixture_keys,
             dom_decimals,
         )?;
-        audits.push(FamilyAudit::from_run(table, family_report_path, run));
+        audits.push(FamilyAudit::from_run(
+            table,
+            family_report_path,
+            baseline_audit,
+            run,
+        ));
     }
 
     let report = render_global_root_override_audit(&audits, inventory_only, dom_decimals);
@@ -201,18 +236,7 @@ pub(crate) fn audit_root_overrides(args: Vec<String>) -> Result<(), XtaskError> 
     println!("wrote report: {}", out_path.display());
 
     if fail_on_stale {
-        let failures = audits
-            .iter()
-            .filter(|audit| !audit.stale_keys.is_empty() || !audit.runner_issues.is_empty())
-            .map(|audit| {
-                format!(
-                    "{}: stale={} runner_issues={}",
-                    audit.table.family,
-                    audit.stale_keys.len(),
-                    audit.runner_issues.len()
-                )
-            })
-            .collect::<Vec<_>>();
+        let failures = fail_on_stale_failures(&audits);
         if !failures.is_empty() {
             return Err(XtaskError::VerifyFailed(format!(
                 "root override audit found stale root overrides or inconclusive runs:\n{}",
@@ -224,6 +248,26 @@ pub(crate) fn audit_root_overrides(args: Vec<String>) -> Result<(), XtaskError> 
     Ok(())
 }
 
+fn fail_on_stale_failures(audits: &[FamilyAudit]) -> Vec<String> {
+    audits
+        .iter()
+        .filter(|audit| {
+            !audit.stale_keys.is_empty()
+                || !audit.stale_value_mismatches.is_empty()
+                || !audit.runner_issues.is_empty()
+        })
+        .map(|audit| {
+            format!(
+                "{}: stale={} stale_values={} runner_issues={}",
+                audit.table.family,
+                audit.stale_keys.len(),
+                audit.stale_value_mismatches.len(),
+                audit.runner_issues.len()
+            )
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 struct CompareRun {
     exit_code: Option<i32>,
@@ -233,7 +277,7 @@ struct CompareRun {
 }
 
 impl FamilyAudit {
-    fn from_inventory(table: RootOverrideTable) -> Self {
+    fn from_inventory(table: RootOverrideTable, baseline: StoredBaselineAudit) -> Self {
         Self {
             table,
             report_path: None,
@@ -243,11 +287,18 @@ impl FamilyAudit {
             stale_keys: BTreeSet::new(),
             retained_keys: BTreeSet::new(),
             missing_keys: BTreeSet::new(),
-            runner_issues: Vec::new(),
+            exact_value_keys: baseline.exact_keys,
+            stale_value_mismatches: baseline.value_mismatches,
+            runner_issues: baseline.issues,
         }
     }
 
-    fn from_run(table: RootOverrideTable, report_path: PathBuf, run: CompareRun) -> Self {
+    fn from_run(
+        table: RootOverrideTable,
+        report_path: PathBuf,
+        baseline: StoredBaselineAudit,
+        run: CompareRun,
+    ) -> Self {
         let stale_keys = table
             .fixture_keys
             .difference(&run.root_delta_keys)
@@ -264,6 +315,9 @@ impl FamilyAudit {
             .cloned()
             .collect();
 
+        let mut runner_issues = baseline.issues;
+        runner_issues.extend(run.runner_issues);
+
         Self {
             table,
             report_path: Some(report_path),
@@ -273,7 +327,9 @@ impl FamilyAudit {
             stale_keys,
             retained_keys,
             missing_keys,
-            runner_issues: run.runner_issues,
+            exact_value_keys: baseline.exact_keys,
+            stale_value_mismatches: baseline.value_mismatches,
+            runner_issues,
         }
     }
 }
@@ -310,16 +366,87 @@ fn collect_root_override_tables(
         })?;
         let inventory_entries = count_root_viewport_entries(&text);
         let fixture_keys = collect_root_override_fixture_keys(&text);
+        let parsed = collect_root_override_entries(&text);
+        let mut inventory_issues = parsed.issues;
+        if inventory_entries != parsed.arm_count {
+            inventory_issues.push(format!(
+                "{} contains {inventory_entries} root override arms but only {} exact value arms were parsed",
+                file_name, parsed.arm_count
+            ));
+        }
+        let parsed_keys = parsed.entries.keys().cloned().collect::<BTreeSet<_>>();
+        for fixture in fixture_keys.difference(&parsed_keys) {
+            inventory_issues.push(format!(
+                "{} has no parsed stored root value for fixture {fixture}",
+                file_name
+            ));
+        }
+        for fixture in parsed_keys.difference(&fixture_keys) {
+            inventory_issues.push(format!(
+                "{} parsed an unexpected stored root value for fixture {fixture}",
+                file_name
+            ));
+        }
         tables.push(RootOverrideTable {
             family,
             file_name,
             inventory_entries,
             fixture_keys,
+            stored_entries: parsed.entries,
+            inventory_issues,
         });
     }
 
     tables.sort_by(|a, b| a.family.cmp(&b.family));
     Ok(tables)
+}
+
+fn audit_stored_root_table(table: &RootOverrideTable, upstream_dir: &Path) -> StoredBaselineAudit {
+    let mut audit = StoredBaselineAudit {
+        issues: table.inventory_issues.clone(),
+        ..StoredBaselineAudit::default()
+    };
+
+    for fixture in &table.fixture_keys {
+        let Some(stored) = table.stored_entries.get(fixture) else {
+            continue;
+        };
+        let upstream_path = upstream_dir.join(format!("{fixture}.svg"));
+        let upstream_svg = match fs::read_to_string(&upstream_path) {
+            Ok(svg) => svg,
+            Err(error) => {
+                audit.issues.push(format!(
+                    "failed to read upstream root baseline {}: {error}",
+                    upstream_path.display()
+                ));
+                continue;
+            }
+        };
+        let upstream = match parse_exact_root_viewport(&upstream_svg) {
+            Ok(viewport) => viewport,
+            Err(error) => {
+                audit.issues.push(format!(
+                    "failed to parse upstream root baseline {}: {error}",
+                    upstream_path.display()
+                ));
+                continue;
+            }
+        };
+
+        if stored == &upstream {
+            audit.exact_keys.insert(fixture.clone());
+        } else {
+            audit.value_mismatches.insert(
+                fixture.clone(),
+                format!(
+                    "stored viewBox=`{}` max-width=`{}`; upstream viewBox=`{}` max-width=`{}`",
+                    stored.view_box, stored.max_width, upstream.view_box, upstream.max_width
+                ),
+            );
+        }
+    }
+
+    audit
 }
 
 fn root_override_family_from_file_name(file_name: &str) -> Option<String> {
@@ -349,6 +476,10 @@ fn run_disabled_root_compare(
     dom_decimals: u32,
 ) -> Result<CompareRun, XtaskError> {
     let root_attrs_snapshot = EphemeralRootAttrsSnapshot::reserve(report_path)?;
+    fs::write(report_path, "").map_err(|source| XtaskError::WriteFile {
+        path: report_path.display().to_string(),
+        source,
+    })?;
     let exe = std::env::current_exe().map_err(|source| XtaskError::ReadFile {
         path: "current executable".to_string(),
         source,
@@ -384,7 +515,7 @@ fn run_disabled_root_compare(
     runner_issues.extend(root_delta_issues);
     if !output.status.success() && dom_mismatch_keys.is_empty() {
         runner_issues.push(format!(
-            "compare-{family}-svgs exited {:?} without parseable DOM mismatch rows",
+            "compare-{family}-svgs exited {:?}; audit result is inconclusive",
             output.status.code()
         ));
     }
@@ -518,16 +649,24 @@ fn render_global_root_override_audit(
     let total_retained: usize = audits.iter().map(|audit| audit.retained_keys.len()).sum();
     let total_stale: usize = audits.iter().map(|audit| audit.stale_keys.len()).sum();
     let total_missing: usize = audits.iter().map(|audit| audit.missing_keys.len()).sum();
+    let total_exact_values: usize = audits
+        .iter()
+        .map(|audit| audit.exact_value_keys.len())
+        .sum();
+    let total_stale_values: usize = audits
+        .iter()
+        .map(|audit| audit.stale_value_mismatches.len())
+        .sum();
     let total_runner_issues: usize = audits.iter().map(|audit| audit.runner_issues.len()).sum();
 
     let _ = writeln!(&mut out, "## Summary\n");
     let _ = writeln!(
         &mut out,
-        "| family | module | inventory entries | fixture keys | root delta keys | DOM mismatches | retained | stale | outside-table DOM | exit | report |"
+        "| family | module | inventory entries | fixture keys | baseline exact | stale values | root delta keys | DOM mismatches | retained | stale | outside-table DOM | exit | report |"
     );
     let _ = writeln!(
         &mut out,
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"
     );
     for audit in audits {
         let report = audit
@@ -541,11 +680,13 @@ fn render_global_root_override_audit(
             .unwrap_or_else(|| "-".to_string());
         let _ = writeln!(
             &mut out,
-            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
+            "| `{}` | `{}` | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
             audit.table.family,
             audit.table.file_name,
             audit.table.inventory_entries,
             audit.table.fixture_keys.len(),
+            audit.exact_value_keys.len(),
+            audit.stale_value_mismatches.len(),
             audit.root_delta_keys.len(),
             audit.dom_mismatch_keys.len(),
             audit.retained_keys.len(),
@@ -557,9 +698,11 @@ fn render_global_root_override_audit(
     }
     let _ = writeln!(
         &mut out,
-        "| **total** |  | **{}** | **{}** | **{}** | **{}** | **{}** | **{}** | **{}** |  |  |\n",
+        "| **total** |  | **{}** | **{}** | **{}** | **{}** | **{}** | **{}** | **{}** | **{}** | **{}** |  |  |\n",
         total_inventory_entries,
         total_fixture_keys,
+        total_exact_values,
+        total_stale_values,
         audits
             .iter()
             .map(|audit| audit.root_delta_keys.len())
@@ -579,7 +722,11 @@ fn render_global_root_override_audit(
             &mut out,
             "- Inventory-only run; disabled-root compare was not executed.\n"
         );
-    } else if total_stale == 0 && total_missing == 0 && total_runner_issues == 0 {
+    } else if total_stale == 0
+        && total_stale_values == 0
+        && total_missing == 0
+        && total_runner_issues == 0
+    {
         let _ = writeln!(
             &mut out,
             "- No stale retained root override keys found across the generated tables."
@@ -590,6 +737,10 @@ fn render_global_root_override_audit(
         );
         let _ = writeln!(
             &mut out,
+            "- All `{total_exact_values}` stored root viewport values exactly match the current upstream SVG baselines."
+        );
+        let _ = writeln!(
+            &mut out,
             "- Current result: all retained root pins still guard visible `parity-root` drift; there are no table-only deletion candidates in this pass.\n"
         );
     } else {
@@ -597,6 +748,12 @@ fn render_global_root_override_audit(
             let _ = writeln!(
                 &mut out,
                 "- Stale candidates found: `{total_stale}`. These are the first deletion targets, but remove them only with focused normal and disabled-root `parity-root` checks."
+            );
+        }
+        if total_stale_values > 0 {
+            let _ = writeln!(
+                &mut out,
+                "- Stale stored values found: `{total_stale_values}`. Refresh or delete these entries before relying on their keys."
             );
         }
         if total_missing > 0 {
@@ -616,6 +773,7 @@ fn render_global_root_override_audit(
 
     for audit in audits {
         if audit.stale_keys.is_empty()
+            && audit.stale_value_mismatches.is_empty()
             && audit.missing_keys.is_empty()
             && audit.runner_issues.is_empty()
         {
@@ -624,6 +782,22 @@ fn render_global_root_override_audit(
         let _ = writeln!(&mut out, "## `{}` Details\n", audit.table.family);
         if !audit.stale_keys.is_empty() {
             push_key_list(&mut out, "Stale deletion candidates", &audit.stale_keys);
+        }
+        if !audit.stale_value_mismatches.is_empty() {
+            let _ = writeln!(
+                &mut out,
+                "### Stale Stored Root Values ({})\n",
+                audit.stale_value_mismatches.len()
+            );
+            for (fixture, mismatch) in &audit.stale_value_mismatches {
+                let _ = writeln!(
+                    &mut out,
+                    "- `{}`: {}",
+                    markdown_cell(fixture),
+                    markdown_cell(mismatch)
+                );
+            }
+            out.push('\n');
         }
         if !audit.missing_keys.is_empty() {
             push_key_list(
@@ -667,6 +841,87 @@ fn push_key_list(out: &mut String, title: &str, keys: &BTreeSet<String>) {
         let _ = writeln!(out, "- `{}`", markdown_cell(key));
     }
     out.push('\n');
+}
+
+fn collect_root_override_entries(text: &str) -> ParsedRootOverrideEntries {
+    let mut parsed = ParsedRootOverrideEntries::default();
+    for arm in root_override_value_arm_re().captures_iter(text) {
+        parsed.arm_count += 1;
+        let Some(patterns) = arm.get(1).map(|capture| capture.as_str()) else {
+            parsed
+                .issues
+                .push("root override arm is missing fixture patterns".to_string());
+            continue;
+        };
+        let Some(view_box) = arm.get(2).map(|capture| capture.as_str().to_string()) else {
+            parsed
+                .issues
+                .push("root override arm is missing a viewBox value".to_string());
+            continue;
+        };
+        let Some(max_width) = arm.get(3).map(|capture| capture.as_str().to_string()) else {
+            parsed
+                .issues
+                .push("root override arm is missing a max-width value".to_string());
+            continue;
+        };
+        let stored = StoredRootViewport {
+            view_box,
+            max_width,
+        };
+
+        for fixture in quoted_string_re().captures_iter(patterns) {
+            let Some(fixture) = fixture.get(1).map(|capture| capture.as_str().to_string()) else {
+                continue;
+            };
+            if parsed
+                .entries
+                .insert(fixture.clone(), stored.clone())
+                .is_some()
+            {
+                parsed
+                    .issues
+                    .push(format!("duplicate stored root override fixture {fixture}"));
+            }
+        }
+    }
+    parsed
+}
+
+fn parse_exact_root_viewport(svg: &str) -> Result<StoredRootViewport, String> {
+    let svg = crate::svgdom::normalize_xml_entities(svg);
+    let document = roxmltree::Document::parse(svg.as_ref()).map_err(|error| error.to_string())?;
+    let root = document
+        .descendants()
+        .find(|node| node.has_tag_name("svg"))
+        .ok_or_else(|| "missing <svg> root".to_string())?;
+    let view_box = root
+        .attribute("viewBox")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "missing viewBox root attribute".to_string())?
+        .to_string();
+    let style = root
+        .attribute("style")
+        .ok_or_else(|| "missing style root attribute".to_string())?;
+    let max_width = style
+        .split(';')
+        .filter_map(|declaration| declaration.split_once(':'))
+        .find_map(|(name, value)| {
+            name.trim()
+                .eq_ignore_ascii_case("max-width")
+                .then_some(value.trim())
+        })
+        .and_then(|value| value.strip_suffix("px"))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "missing max-width px style".to_string())?
+        .to_string();
+
+    Ok(StoredRootViewport {
+        view_box,
+        max_width,
+    })
 }
 
 fn collect_root_override_fixture_keys(text: &str) -> BTreeSet<String> {
@@ -723,6 +978,7 @@ fn collect_runner_issues(text: &str) -> Vec<String> {
         "unexpected layout type",
         "no diagram detected",
         "no .mmd fixtures matched",
+        "usage: xtask",
     ];
 
     text.lines()
@@ -772,6 +1028,16 @@ fn root_override_arm_re() -> &'static Regex {
     })
 }
 
+fn root_override_value_arm_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(
+            r#"(?ms)((?:"[^"]+"\s*(?:\|\s*)?|\|\s*"[^"]+"\s*)+)=>\s*(?:\{\s*)?Some\s*\(\s*\(\s*"([^"]*)"\s*,\s*"([^"]*)"\s*,?\s*\)\s*\)"#,
+        )
+        .expect("valid regex")
+    })
+}
+
 fn dom_mismatch_for_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r#"dom mismatch for ([A-Za-z0-9_.-]+)"#).expect("valid regex"))
@@ -790,13 +1056,14 @@ fn fail_status_re() -> &'static Regex {
 #[cfg(test)]
 mod tests {
     use super::{
-        FamilyAudit, RootOverrideTable, collect_dom_mismatch_keys,
+        FamilyAudit, RootOverrideTable, StoredBaselineAudit, StoredRootViewport,
+        audit_stored_root_table, collect_dom_mismatch_keys, collect_root_override_entries,
         collect_root_override_fixture_keys, collect_runner_issues, collect_table_root_delta_keys,
-        count_root_viewport_entries, render_global_root_override_audit, root_attrs_differ,
-        root_override_family_from_file_name,
+        count_root_viewport_entries, parse_exact_root_viewport, render_global_root_override_audit,
+        root_attrs_differ, root_override_family_from_file_name,
     };
     use crate::cmd::compare::{RootAttrsSnapshot, parse_root_attrs};
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -819,7 +1086,7 @@ match diagram_id {
     "alpha_stress_case" => Some(("0 0 10 10", "10")),
     "upstream_one"
     | "upstream_two" => {
-        Some(("0 0 20 20", "20"))
+        Some(("0 0 20 20", "20",))
     }
     _ => None,
 }
@@ -832,6 +1099,87 @@ match diagram_id {
         assert!(keys.contains("upstream_two"));
         assert_eq!(keys.len(), 3);
         assert_eq!(count_root_viewport_entries(text), 2);
+    }
+
+    #[test]
+    fn collects_exact_stored_values_from_or_pattern_root_arms() {
+        let text = r#"
+match diagram_id {
+    "alpha_stress_case" => Some(("0 0 10.0 10", "10.0")),
+    "upstream_one"
+    | "upstream_two" => {
+        Some(("0 0 20 20", "20",))
+    }
+    _ => None,
+}
+"#;
+
+        let parsed = collect_root_override_entries(text);
+
+        assert!(
+            parsed.issues.is_empty(),
+            "unexpected issues: {:?}",
+            parsed.issues
+        );
+        assert_eq!(parsed.arm_count, 2);
+        assert_eq!(parsed.entries["alpha_stress_case"].view_box, "0 0 10.0 10");
+        assert_eq!(parsed.entries["alpha_stress_case"].max_width, "10.0");
+        assert_eq!(
+            parsed.entries["upstream_one"],
+            parsed.entries["upstream_two"]
+        );
+    }
+
+    #[test]
+    fn exact_root_values_preserve_upstream_number_spelling() {
+        let upstream = r#"<svg viewBox="0 0 10.0 20" style="max-width: 10.0px;"><g/></svg>"#;
+        let attrs = parse_exact_root_viewport(upstream).expect("parse exact root viewport");
+
+        assert_eq!(attrs.view_box, "0 0 10.0 20");
+        assert_eq!(attrs.max_width, "10.0");
+        assert_ne!(attrs.view_box, "0 0 10 20");
+        assert_ne!(attrs.max_width, "10");
+    }
+
+    #[test]
+    fn stored_root_table_audit_detects_stale_values_with_existing_keys() {
+        let root = unique_test_root("stale-stored-value");
+        fs::create_dir_all(&root).expect("create test directory");
+        fs::write(
+            root.join("fixture.svg"),
+            r#"<svg viewBox="0 0 10.0 20" style="max-width: 10.0px;"><g/></svg>"#,
+        )
+        .expect("write upstream root baseline");
+        let table = RootOverrideTable {
+            family: "probe".to_string(),
+            file_name: "probe_root_overrides_11_12_2.rs".to_string(),
+            inventory_entries: 1,
+            fixture_keys: BTreeSet::from(["fixture".to_string()]),
+            stored_entries: [(
+                "fixture".to_string(),
+                StoredRootViewport {
+                    view_box: "0 0 10 20".to_string(),
+                    max_width: "10".to_string(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+            inventory_issues: Vec::new(),
+        };
+
+        let audit = audit_stored_root_table(&table, &root);
+
+        assert!(
+            audit.issues.is_empty(),
+            "unexpected issues: {:?}",
+            audit.issues
+        );
+        assert!(audit.exact_keys.is_empty());
+        assert!(audit.value_mismatches["fixture"].contains("stored viewBox=`0 0 10 20`"));
+        assert!(audit.value_mismatches["fixture"].contains("upstream viewBox=`0 0 10.0 20`"));
+
+        fs::remove_file(root.join("fixture.svg")).expect("remove upstream fixture");
+        fs::remove_dir(root).expect("remove test directory");
     }
 
     #[test]
@@ -871,6 +1219,13 @@ match diagram_id {
     }
 
     #[test]
+    fn usage_output_is_an_inconclusive_runner_issue() {
+        let issues = collect_runner_issues("Error: usage: xtask <command> ...");
+
+        assert_eq!(issues, ["Error: usage: xtask <command> ..."]);
+    }
+
+    #[test]
     fn root_override_inventory_accepts_current_and_legacy_suffixes() {
         assert_eq!(
             root_override_family_from_file_name("eventmodeling_root_overrides_11_15_0.rs"),
@@ -885,12 +1240,17 @@ match diagram_id {
 
     #[test]
     fn coverage_notes_use_shared_root_delta_support_for_timeline() {
-        let audit = FamilyAudit::from_inventory(RootOverrideTable {
-            family: "timeline".to_string(),
-            file_name: "timeline_root_overrides_11_12_2.rs".to_string(),
-            inventory_entries: 1,
-            fixture_keys: BTreeSet::from(["timeline_fixture".to_string()]),
-        });
+        let audit = FamilyAudit::from_inventory(
+            RootOverrideTable {
+                family: "timeline".to_string(),
+                file_name: "timeline_root_overrides_11_12_2.rs".to_string(),
+                inventory_entries: 1,
+                fixture_keys: BTreeSet::from(["timeline_fixture".to_string()]),
+                stored_entries: BTreeMap::new(),
+                inventory_issues: Vec::new(),
+            },
+            StoredBaselineAudit::default(),
+        );
 
         let report = render_global_root_override_audit(&[audit], true, 3);
 

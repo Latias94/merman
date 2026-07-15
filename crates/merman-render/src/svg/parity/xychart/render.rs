@@ -5,7 +5,7 @@ use super::super::*;
 pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     _effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     use rustc_hash::FxHashMap;
     use std::collections::hash_map::Entry;
@@ -130,21 +130,17 @@ pub(crate) fn render_xychart_diagram_svg(
     };
 
     let mut out = String::new();
-    let w_attr = fmt(layout.width.max(1.0)).to_string();
-    let h_attr = fmt(layout.height.max(1.0)).to_string();
-    let viewbox_attr = format!("0 0 {w_attr} {h_attr}");
-    let style_attr = format!("max-width: {w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(viewbox_attr.as_str()),
-            style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "xychart")
-        },
-    );
+    let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
+    let root_spec = root_svg::RootViewportSpec::responsive(root_bounds);
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "xychart");
+    root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::XyChart,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     out.push_str("<style>");
     push_xychart_css(&mut out, diagram_id);

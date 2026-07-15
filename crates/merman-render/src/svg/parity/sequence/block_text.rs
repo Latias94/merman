@@ -40,7 +40,9 @@ pub(super) fn wrap_svg_text_lines(
                 .map(str::to_string)
                 .collect()
         },
-        |width| crate::text::wrap_label_like_mermaid_lines(text, measurer, style, width),
+        |width| {
+            crate::sequence::wrap_sequence_label_like_mermaid_lines(text, measurer, style, width)
+        },
     );
     if lines.is_empty() {
         vec!["".to_string()]

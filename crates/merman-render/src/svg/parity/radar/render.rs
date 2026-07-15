@@ -110,7 +110,7 @@ pub(crate) fn render_radar_diagram_svg_model(
     layout: &RadarDiagramLayout,
     model: &RadarDiagramRenderModel,
     effective_config: &serde_json::Value,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("radar");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -124,50 +124,37 @@ pub(crate) fn render_radar_diagram_svg_model(
         .as_deref()
         .is_some_and(|s| !s.trim().is_empty());
 
-    let viewbox_attr = format!("0 0 {} {}", fmt(layout.svg_width), fmt(layout.svg_height));
-    let max_w_attr = fmt_max_width_px(layout.svg_width);
     let render_settings = crate::radar::RadarConfigView::new(effective_config).render_settings();
 
-    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id_esc}"));
-    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id_esc}"));
+    let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
+    let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let root_extra_attrs: [(&str, &str); 1] = [("overflow", "visible")];
 
     let mut out = String::new();
-    if render_settings.use_max_width {
-        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                extra_attrs: &root_extra_attrs,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "radar")
-            },
-        );
-    } else {
-        let width_attr = fmt_string(layout.svg_width.max(1.0));
-        let height_attr = fmt_string(layout.svg_height.max(1.0));
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&width_attr),
-                height_attr: Some(&height_attr),
-                viewbox_attr: Some(viewbox_attr.as_str()),
-                extra_attrs: &root_extra_attrs,
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                tail_attrs: &tail_attrs,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "radar")
-            },
-        );
-    }
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "radar");
+    root_chrome.extra_attrs = &root_extra_attrs;
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom = root_svg::RootDomProfile {
+        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Radar,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.svg_width, layout.svg_height),
+            render_settings.use_max_width,
+        )
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
+        root_chrome,
+    )?;
 
     if has_acc_title {
         let _ = write!(
@@ -441,12 +428,14 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = render_radar_diagram_svg_model(
-            &layout,
-            &RadarDiagramRenderModel::default(),
-            &serde_json::json!({}),
-            &options,
-        )
+        let svg = with_test_svg_execution(&options, |options| {
+            render_radar_diagram_svg_model(
+                &layout,
+                &RadarDiagramRenderModel::default(),
+                &serde_json::json!({}),
+                options,
+            )
+        })
         .unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 
@@ -484,12 +473,14 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = render_radar_diagram_svg_model(
-            &layout,
-            &RadarDiagramRenderModel::default(),
-            &serde_json::json!({"radar": {"useMaxWidth": false}}),
-            &options,
-        )
+        let svg = with_test_svg_execution(&options, |options| {
+            render_radar_diagram_svg_model(
+                &layout,
+                &RadarDiagramRenderModel::default(),
+                &serde_json::json!({"radar": {"useMaxWidth": false}}),
+                options,
+            )
+        })
         .unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 
@@ -539,12 +530,14 @@ mod tests {
             legend_items: Vec::new(),
         };
 
-        let svg = render_radar_diagram_svg_model(
-            &layout,
-            &RadarDiagramRenderModel::default(),
-            &serde_json::json!({}),
-            &SvgRenderOptions::default(),
-        )
+        let svg = with_test_svg_execution(&SvgRenderOptions::default(), |options| {
+            render_radar_diagram_svg_model(
+                &layout,
+                &RadarDiagramRenderModel::default(),
+                &serde_json::json!({}),
+                options,
+            )
+        })
         .unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;
 

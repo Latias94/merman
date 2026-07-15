@@ -22,7 +22,7 @@
         {
           "id": "actor-bottom-Alice",
           "x": 80.0,
-          "y": 189.7,
+          "y": 188.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -30,7 +30,7 @@
         {
           "id": "actor-bottom-Bob",
           "x": 310.0,
-          "y": 189.7,
+          "y": 188.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -46,18 +46,18 @@
           "points": [
             {
               "x": 81.0,
-              "y": 137.2
+              "y": 136.0
             },
             {
               "x": 309.0,
-              "y": 137.2
+              "y": 136.0
             }
           ],
           "label": {
             "x": 195.0,
             "y": 107.0,
             "width": 160.0,
-            "height": 17.6
+            "height": 17.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -80,7 +80,7 @@
             },
             {
               "x": 80.0,
-              "y": 157.2
+              "y": 156.0
             }
           ],
           "label": null,
@@ -105,7 +105,7 @@
             },
             {
               "x": 310.0,
-              "y": 157.2
+              "y": 156.0
             }
           ],
           "label": null,
@@ -123,7 +123,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 440.0,
-        "max_y": 243.2
+        "max_y": 242.0
       }
     }
   }

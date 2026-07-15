@@ -6,7 +6,7 @@
 // They are used to keep `parity-root` stable at higher decimal precision when browser float
 // behavior (DOM `getBBox()` + serialization) differs from our deterministic headless pipeline.
 
-pub fn lookup_sankey_root_viewport_override(
+pub(super) fn lookup_sankey_root_viewport_override(
     diagram_id: &str,
 ) -> Option<(&'static str, &'static str)> {
     match diagram_id {

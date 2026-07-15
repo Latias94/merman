@@ -5,48 +5,118 @@ use crate::text::{
 };
 use merman_core::MermaidConfig;
 
+struct SequenceWrapTextMeasurer<'a>(&'a dyn TextMeasurer);
+
+impl TextMeasurer for SequenceWrapTextMeasurer<'_> {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        self.0.measure(text, style)
+    }
+
+    fn measure_svg_simple_text_bbox_width_for_wrap_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.0.measure_mermaid_calculate_text_width_px(text, style)
+    }
+}
+
+pub(crate) fn wrap_sequence_label_like_mermaid_lines(
+    label: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    max_width_px: f64,
+) -> Vec<String> {
+    let sequence_measurer = SequenceWrapTextMeasurer(measurer);
+    crate::text::wrap_label_like_mermaid_lines(label, &sequence_measurer, style, max_width_px)
+}
+
+#[derive(Clone, Copy)]
+enum SequenceSvgTextHeightMode {
+    CalculatedDimensions,
+    DrawnBBox,
+}
+
 pub(super) fn measure_svg_like_with_html_br(
     measurer: &dyn TextMeasurer,
     text: &str,
     style: &TextStyle,
 ) -> (f64, f64) {
+    measure_svg_like_with_html_br_mode(
+        measurer,
+        text,
+        style,
+        SequenceSvgTextHeightMode::CalculatedDimensions,
+    )
+}
+
+pub(super) fn measure_drawn_svg_like_with_html_br(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+) -> (f64, f64) {
+    measure_svg_like_with_html_br_mode(measurer, text, style, SequenceSvgTextHeightMode::DrawnBBox)
+}
+
+fn measure_svg_like_with_html_br_mode(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &TextStyle,
+    height_mode: SequenceSvgTextHeightMode,
+) -> (f64, f64) {
     let lines = split_html_br_lines(text);
-    let default_line_height = (style.font_size.max(1.0) * 1.1).max(1.0);
     let calculated_line_height = sequence_text_dimensions_height_px(style.font_size);
-    let normalize_line_height = |height: f64| {
-        let h = height.max(0.0);
-        if style.font_size < 16.0 {
-            h.min(calculated_line_height)
-        } else {
-            h
+    let drawn_line_height = sequence_text_line_step_px(style.font_size).floor().max(1.0);
+    let fallback_line_height = match height_mode {
+        SequenceSvgTextHeightMode::CalculatedDimensions => calculated_line_height,
+        SequenceSvgTextHeightMode::DrawnBBox => drawn_line_height,
+    };
+    let normalize_line_height = |height: f64| match height_mode {
+        // Mermaid's temporary `calculateTextDimensions` text can be shorter than the final drawn
+        // `<text>` bbox. Keep smaller host measurements, but cap generic vendored bbox height at
+        // the source-backed Chrome curve used by Sequence spacing.
+        SequenceSvgTextHeightMode::CalculatedDimensions => {
+            height.max(0.0).min(calculated_line_height)
         }
+        // `drawNote` sums the final text nodes' `getBBox().height`. Cap generic vendored metrics at
+        // the Chrome 131 drawn-text curve while preserving its taller 16px bbox (19px rather than
+        // the 17px temporary-dimensions height).
+        SequenceSvgTextHeightMode::DrawnBBox => height.max(0.0).min(drawn_line_height),
     };
     if lines.len() <= 1 {
         // Mermaid's `calculateTextDimensions` draws one `<text>/<tspan>` run per line, rounds
         // that bbox width, and keeps height from the same single-run bbox path.
         let metrics = measurer.measure_wrapped(text, style, None, WrapMode::SvgLikeSingleRun);
+        let width = match height_mode {
+            SequenceSvgTextHeightMode::CalculatedDimensions => {
+                measurer.measure_mermaid_calculate_text_width_px(text, style)
+            }
+            SequenceSvgTextHeightMode::DrawnBBox => metrics.width,
+        };
         let h = if metrics.height > 0.0 {
             metrics.height
         } else {
-            default_line_height
+            fallback_line_height
         };
-        return (metrics.width.round().max(0.0), normalize_line_height(h));
+        return (width.round().max(0.0), normalize_line_height(h));
     }
     let mut max_w: f64 = 0.0;
     let mut line_h: f64 = 0.0;
     for line in &lines {
         let metrics = measurer.measure_wrapped(line, style, None, WrapMode::SvgLikeSingleRun);
-        max_w = max_w.max(metrics.width.round().max(0.0));
+        let width = match height_mode {
+            SequenceSvgTextHeightMode::CalculatedDimensions => {
+                measurer.measure_mermaid_calculate_text_width_px(line, style)
+            }
+            SequenceSvgTextHeightMode::DrawnBBox => metrics.width,
+        };
+        max_w = max_w.max(width.round().max(0.0));
         let h = if metrics.height > 0.0 {
             metrics.height
         } else {
-            default_line_height
+            fallback_line_height
         };
         line_h = line_h.max(normalize_line_height(h));
     }
     (
         max_w,
-        (line_h * lines.len() as f64).max(default_line_height),
+        (line_h * lines.len() as f64).max(fallback_line_height),
     )
 }
 
@@ -280,7 +350,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_default_message_widths_use_current_sequence_svg_bbox_facts() {
+    fn sequence_default_message_metrics_use_current_sequence_svg_bbox_facts() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
         let style = crate::text::TextStyle {
             // Mermaid's default global font family includes the trailing semicolon, and Sequence
@@ -307,6 +377,8 @@ mod tests {
         for text in cases {
             let (measured_width, measured_height) =
                 super::measure_svg_like_with_html_br(&measurer, text, &style);
+            let (_, drawn_height) =
+                super::measure_drawn_svg_like_with_html_br(&measurer, text, &style);
             let expected_width =
                 TextMeasurer::measure_svg_simple_text_bbox_width_px(&measurer, text, &style)
                     .round()
@@ -316,10 +388,32 @@ mod tests {
                 measured_width, expected_width,
                 "expected Sequence message width to stay aligned with the current single-run SVG bbox fact for {text:?}"
             );
-            assert!(
-                measured_height > 0.0,
-                "expected positive Sequence label height for {text:?}"
+            assert_eq!(
+                measured_height, 17.0,
+                "expected Sequence message height to use the Chrome 131 single-run SVG bbox fact for {text:?}"
+            );
+            assert_eq!(
+                drawn_height, 19.0,
+                "expected Sequence drawn text to retain its getBBox height for {text:?}"
             );
         }
+    }
+
+    #[test]
+    fn sequence_small_font_drawn_height_uses_chrome_bbox_curve() {
+        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let style = crate::text::TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif;".to_string()),
+            font_size: 10.0,
+            font_weight: None,
+        };
+
+        let (_, calculated_height) =
+            super::measure_svg_like_with_html_br(&measurer, "Note", &style);
+        let (_, drawn_height) =
+            super::measure_drawn_svg_like_with_html_br(&measurer, "Note", &style);
+
+        assert_eq!(calculated_height, 11.0);
+        assert_eq!(drawn_height, 11.0);
     }
 }

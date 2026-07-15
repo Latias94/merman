@@ -1,15 +1,16 @@
 use futures::executor::block_on;
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
     RenderEnvironment, RenderSession, RootViewportOverridePolicy, TextMeasurementPhase,
 };
-use merman_render::flowchart::{layout_flowchart_v2_typed, render_flowchart_v2_typed_with_debug};
-use merman_render::model::FlowchartV2Layout;
+use merman_render::family;
+use merman_render::flowchart::layout_flowchart_typed;
+use merman_render::model::FlowchartLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
-fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartV2Model {
+fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
     let RenderSemanticModel::Flowchart(model) = &parsed.model else {
         panic!("expected Flowchart render model");
     };
@@ -20,7 +21,7 @@ fn layout_flowchart_render_model(
     parsed: &ParsedDiagramRender,
     _options: &LayoutOptions,
     session: &RenderSession,
-) -> merman_render::Result<FlowchartV2Layout> {
+) -> merman_render::Result<FlowchartLayout> {
     let model = flowchart_model(parsed);
     session
         .resource_limits()
@@ -48,7 +49,7 @@ fn layout_flowchart_render_model(
         }
     }
 
-    layout_flowchart_v2_typed(
+    layout_flowchart_typed(
         model,
         &parsed.meta.effective_config,
         &measurer,
@@ -56,20 +57,15 @@ fn layout_flowchart_render_model(
     )
 }
 
-fn render_laid_out_flowchart(
-    parsed: &ParsedDiagramRender,
-    layout: &FlowchartV2Layout,
-    session: &RenderSession,
+fn render_flowchart_artifact(
+    parsed: ParsedDiagramRender,
+    layout_options: &LayoutOptions,
+    session: RenderSession,
 ) -> merman_render::Result<String> {
-    render_flowchart_v2_typed_with_debug(
-        layout,
-        flowchart_model(parsed),
-        &parsed.meta.effective_config,
-        parsed.meta.title.as_deref(),
-        session,
-        &SvgRenderOptions::default(),
-        &SvgDebugOptions::default(),
-    )
+    let artifact = family::prepare(parsed, layout_options, session)?;
+    let rendered =
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
+    Ok(rendered.svg().to_owned())
 }
 
 fn attr_value<'a>(s: &'a str, name: &str) -> &'a str {
@@ -163,7 +159,7 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
         layout_flowchart_render_model(&parsed, &layout_options, &_session).expect("layout ok");
     let node = layout.nodes.iter().find(|n| n.id == "n0").expect("node n0");
 
-    let svg = render_laid_out_flowchart(&parsed, &layout, &_session).expect("render svg");
+    let svg = render_flowchart_artifact(parsed, &layout_options, _session).expect("render svg");
 
     let node_start = svg.find(r#"<g class="node default""#).expect("node group");
     let node_chunk = &svg[node_start..];
@@ -222,10 +218,7 @@ fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
     let layout_options = LayoutOptions {
         ..Default::default()
     };
-    let layout =
-        layout_flowchart_render_model(&parsed, &layout_options, &_session).expect("layout ok");
-
-    let svg = render_laid_out_flowchart(&parsed, &layout, &_session).expect("render svg");
+    let svg = render_flowchart_artifact(parsed, &layout_options, _session).expect("render svg");
 
     let node_start = svg.find(r#"<g class="node default""#).expect("node group");
     let node_chunk = &svg[node_start..];

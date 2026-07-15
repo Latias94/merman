@@ -1,18 +1,18 @@
 //! Flowchart debug utilities.
 
 use crate::XtaskError;
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderSession, TextMeasurementPhase};
-use merman_render::model::FlowchartV2Layout;
+use merman_render::model::FlowchartLayout;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-fn flowchart_model(parsed: &ParsedDiagramRender) -> Result<&FlowchartV2Model, XtaskError> {
+fn flowchart_model(parsed: &ParsedDiagramRender) -> Result<&FlowchartModel, XtaskError> {
     let RenderSemanticModel::Flowchart(model) = &parsed.model else {
         return Err(XtaskError::DebugSvgFailed(format!(
             "expected Flowchart render model, got {}",
@@ -26,7 +26,7 @@ fn layout_flowchart_render_model(
     parsed: &ParsedDiagramRender,
     options: &LayoutOptions,
     session: &RenderSession,
-) -> Result<FlowchartV2Layout, XtaskError> {
+) -> Result<FlowchartLayout, XtaskError> {
     let model = flowchart_model(parsed)?;
     session
         .resource_limits()
@@ -45,7 +45,7 @@ fn layout_flowchart_render_model(
             options.flowchart_elk_backend,
         )
     } else {
-        merman_render::flowchart::layout_flowchart_v2_typed(
+        merman_render::flowchart::layout_flowchart_typed(
             model,
             &parsed.meta.effective_config,
             &measurer,

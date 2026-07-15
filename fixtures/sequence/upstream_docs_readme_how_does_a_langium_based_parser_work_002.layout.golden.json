@@ -54,7 +54,7 @@
         {
           "id": "actor-bottom-Package",
           "x": 75.0,
-          "y": 459.1,
+          "y": 449.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -62,7 +62,7 @@
         {
           "id": "actor-bottom-Module",
           "x": 275.0,
-          "y": 459.1,
+          "y": 449.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -70,7 +70,7 @@
         {
           "id": "actor-bottom-TokenBuilder",
           "x": 475.0,
-          "y": 459.1,
+          "y": 449.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -78,7 +78,7 @@
         {
           "id": "actor-bottom-Lexer",
           "x": 744.0,
-          "y": 459.1,
+          "y": 449.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -86,7 +86,7 @@
         {
           "id": "actor-bottom-Parser",
           "x": 944.0,
-          "y": 459.1,
+          "y": 449.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -94,7 +94,7 @@
         {
           "id": "actor-bottom-ValueConverter",
           "x": 1167.0,
-          "y": 459.1,
+          "y": 449.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -110,18 +110,18 @@
           "points": [
             {
               "x": 76.0,
-              "y": 110.2
+              "y": 109.0
             },
             {
               "x": 271.0,
-              "y": 110.2
+              "y": 109.0
             }
           ],
           "label": {
             "x": 174.0,
             "y": 80.0,
             "width": 102.0,
-            "height": 17.6
+            "height": 17.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -140,18 +140,18 @@
           "points": [
             {
               "x": 276.0,
-              "y": 173.0
+              "y": 170.0
             },
             {
               "x": 471.0,
-              "y": 173.0
+              "y": 170.0
             }
           ],
           "label": {
             "x": 374.0,
-            "y": 125.0,
+            "y": 124.0,
             "width": 100.0,
-            "height": 35.2
+            "height": 34.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -170,18 +170,18 @@
           "points": [
             {
               "x": 476.0,
-              "y": 235.8
+              "y": 231.0
             },
             {
               "x": 740.0,
-              "y": 235.8
+              "y": 231.0
             }
           ],
           "label": {
             "x": 608.0,
-            "y": 188.0,
+            "y": 185.0,
             "width": 199.0,
-            "height": 35.2
+            "height": 34.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -200,18 +200,18 @@
           "points": [
             {
               "x": 745.0,
-              "y": 298.6
+              "y": 292.0
             },
             {
               "x": 940.0,
-              "y": 298.6
+              "y": 292.0
             }
           ],
           "label": {
             "x": 843.0,
-            "y": 251.0,
+            "y": 246.0,
             "width": 111.0,
-            "height": 35.2
+            "height": 34.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -230,18 +230,18 @@
           "points": [
             {
               "x": 945.0,
-              "y": 361.4
+              "y": 353.0
             },
             {
               "x": 1163.0,
-              "y": 361.4
+              "y": 353.0
             }
           ],
           "label": {
             "x": 1054.0,
-            "y": 314.0,
+            "y": 307.0,
             "width": 153.0,
-            "height": 35.2
+            "height": 34.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -260,18 +260,18 @@
           "points": [
             {
               "x": 1166.0,
-              "y": 406.6
+              "y": 397.0
             },
             {
               "x": 79.0,
-              "y": 406.6
+              "y": 397.0
             }
           ],
           "label": {
             "x": 623.0,
-            "y": 376.0,
+            "y": 368.0,
             "width": 78.0,
-            "height": 17.6
+            "height": 17.0
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -294,7 +294,7 @@
             },
             {
               "x": 75.0,
-              "y": 426.6
+              "y": 417.0
             }
           ],
           "label": null,
@@ -319,7 +319,7 @@
             },
             {
               "x": 275.0,
-              "y": 426.6
+              "y": 417.0
             }
           ],
           "label": null,
@@ -344,7 +344,7 @@
             },
             {
               "x": 475.0,
-              "y": 426.6
+              "y": 417.0
             }
           ],
           "label": null,
@@ -369,7 +369,7 @@
             },
             {
               "x": 744.0,
-              "y": 426.6
+              "y": 417.0
             }
           ],
           "label": null,
@@ -394,7 +394,7 @@
             },
             {
               "x": 944.0,
-              "y": 426.6
+              "y": 417.0
             }
           ],
           "label": null,
@@ -419,7 +419,7 @@
             },
             {
               "x": 1167.0,
-              "y": 426.6
+              "y": 417.0
             }
           ],
           "label": null,
@@ -437,7 +437,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 1292.0,
-        "max_y": 502.6
+        "max_y": 493.0
       }
     }
   }

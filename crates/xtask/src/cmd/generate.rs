@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DOMPURIFY_BASELINE_VERSION: &str = "3.4.0";
 const PINNED_MERMAID_PACKAGE_SHA256: &str =
-    "9182344905d95e67ff6d5baf0f902a73bc77ee007aa6bcc5f7833ef133505a1b";
+    "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0";
 const PINNED_MERMAID_CLI_PACKAGE_SHA256: &str =
     "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632";
 
@@ -62,6 +62,10 @@ const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
 
 static UPSTREAM_SVG_CHECK_RUN_COUNTER: AtomicU64 = AtomicU64::new(0);
 static UPSTREAM_SVG_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn uses_seeded_upstream_svg_renderer(diagram: &str) -> bool {
+    matches!(diagram, "architecture" | "gitgraph" | "sequence")
+}
 
 fn upstream_svg_supported_diagrams_message() -> String {
     format!("{}, all", UPSTREAM_SVG_DIAGRAMS.join(", "))
@@ -1090,7 +1094,7 @@ fn gen_upstream_svgs_impl(
             )));
         }
         let node_cwd = crate::cmd::mermaid_cli_root();
-        let use_seeded_renderer = diagram == "architecture" || diagram == "gitgraph";
+        let use_seeded_renderer = uses_seeded_upstream_svg_renderer(diagram);
         let seeded_script = if use_seeded_renderer {
             Some(ensure_seeded_upstream_svg_renderer_script()?)
         } else {
@@ -1243,9 +1247,8 @@ fn gen_upstream_svgs_impl(
                 use std::io::Write;
                 use std::process::Stdio;
 
-                // Architecture layout relies on cytoscape-fcose, which uses `Math.random()` for
-                // spectral initialization. To keep upstream baselines reproducible, we render via
-                // a small puppeteer wrapper that seeds `Math.random()` deterministically.
+                // Architecture and GitGraph need deterministic randomness. Sequence also uses this
+                // wrapper so deferred participant MathML is complete before SVG serialization.
                 let pinned_config = node_cwd.join("mermaid-config.json");
                 let seed: u64 = 1;
                 let output_abs = if temp_out_path.is_absolute() {
@@ -1857,6 +1860,7 @@ function packageTreeSha256(root) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const fullPath = path.join(directory, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue;
         visit(fullPath);
       } else if (entry.isFile()) {
         entries.push({
@@ -2290,27 +2294,139 @@ const zenumlIifePath = path.join(process.cwd(), 'node_modules', '@mermaid-js', '
       }
     }
 
+    function participantActorRects(svg) {
+      return Array.from(
+        svg.querySelectorAll('rect.actor.actor-top, rect.actor.actor-bottom')
+      );
+    }
+
+    function participantActorLabels(svg) {
+      return Array.from(svg.querySelectorAll('text.actor.actor-box'));
+    }
+
+    function actorMathSwitch(rect) {
+      return Array.from(rect.parentElement?.children || []).find(
+        (child) =>
+          child.localName === 'switch' &&
+          child.querySelector('text.actor.actor-box')
+      );
+    }
+
+    function incompleteActorMathSwitches(rect) {
+      return Array.from(rect.parentElement?.children || []).filter(
+        (child) =>
+          child.localName === 'switch' &&
+          child.querySelector('foreignObject') &&
+          !child.querySelector('text.actor.actor-box')
+      );
+    }
+
+    async function completeDeferredSequenceActorMath(renderedSvgText) {
+      if (!code.includes('$$')) return renderedSvgText;
+
+      const parsed = new DOMParser().parseFromString(renderedSvgText, 'image/svg+xml');
+      if (parsed.querySelector('parsererror')) {
+        throw new Error('Mermaid returned invalid SVG while completing Sequence actor math');
+      }
+      const renderedSvg = parsed.documentElement;
+      if (renderedSvg.getAttribute('aria-roledescription') !== 'sequence') {
+        return renderedSvgText;
+      }
+
+      const renderedRects = participantActorRects(renderedSvg);
+      if (
+        renderedRects.length === 0 ||
+        participantActorLabels(renderedSvg).length >= renderedRects.length
+      ) {
+        return renderedSvgText;
+      }
+
+      const liveSvg = container.querySelector('svg');
+      if (!liveSvg) {
+        throw new Error('Sequence actor math was incomplete and the live SVG was unavailable');
+      }
+
+      const deadline = performance.now() + 5000;
+      while (participantActorLabels(liveSvg).length < renderedRects.length) {
+        if (performance.now() >= deadline) {
+          throw new Error(
+            `timed out waiting for Sequence actor math labels: expected ${renderedRects.length}, found ${participantActorLabels(liveSvg).length}`
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      const liveRects = participantActorRects(liveSvg);
+      if (liveRects.length !== renderedRects.length) {
+        throw new Error(
+          `Sequence actor placement count changed while awaiting math: rendered=${renderedRects.length}, live=${liveRects.length}`
+        );
+      }
+
+      for (let index = 0; index < liveRects.length; index++) {
+        const liveSwitch = actorMathSwitch(liveRects[index]);
+        const renderedParent = renderedRects[index].parentElement;
+        if (!liveSwitch || !renderedParent) {
+          throw new Error(`Sequence actor math label ${index} completed without a mergeable switch`);
+        }
+
+        for (const incomplete of incompleteActorMathSwitches(renderedRects[index])) {
+          incomplete.parentElement?.removeChild(incomplete);
+        }
+        if (actorMathSwitch(renderedRects[index])) continue;
+
+        const liveChildren = Array.from(liveRects[index].parentElement?.children || []);
+        const insertionIndex = liveChildren.indexOf(liveSwitch);
+        const insertionPoint = renderedParent.children[insertionIndex] || null;
+        renderedParent.insertBefore(parsed.importNode(liveSwitch, true), insertionPoint);
+      }
+
+      return new XMLSerializer().serializeToString(renderedSvg);
+    }
+
     async function tryRenderViaMermaidRender() {
       if (typeof mermaid.render !== 'function') return undefined;
-      const rendered = await mermaid.render(svgId, code, container);
-      let svg =
-        typeof rendered === 'string'
-          ? rendered
-          : Array.isArray(rendered)
-            ? rendered[0]
-            : rendered && rendered.svg;
-      if (typeof svg !== 'string' && rendered != null) {
-        const asStr = String(rendered);
-        if (asStr.trim().startsWith('<svg')) {
-          svg = asStr;
+      const deferredContainers = [];
+      const shouldRetainLiveSvg = code.includes('$$');
+      const originalRemove = Element.prototype.remove;
+      if (shouldRetainLiveSvg) {
+        Element.prototype.remove = function () {
+          if (this.id === `d${svgId}` && container.contains(this)) {
+            if (!deferredContainers.includes(this)) deferredContainers.push(this);
+            return;
+          }
+          return originalRemove.call(this);
+        };
+      }
+
+      try {
+        const rendered = await mermaid.render(svgId, code, container);
+        let svg =
+          typeof rendered === 'string'
+            ? rendered
+            : Array.isArray(rendered)
+              ? rendered[0]
+              : rendered && rendered.svg;
+        if (typeof svg !== 'string' && rendered != null) {
+          const asStr = String(rendered);
+          if (asStr.trim().startsWith('<svg')) {
+            svg = asStr;
+          }
+        }
+        if (typeof svg === 'string') {
+          return await completeDeferredSequenceActorMath(svg);
+        }
+        const domSvg = container.querySelector && container.querySelector('svg');
+        if (domSvg && typeof domSvg.outerHTML === 'string' && domSvg.outerHTML.trim().startsWith('<svg')) {
+          return domSvg.outerHTML;
+        }
+        return undefined;
+      } finally {
+        if (shouldRetainLiveSvg) Element.prototype.remove = originalRemove;
+        for (const deferred of deferredContainers) {
+          originalRemove.call(deferred);
         }
       }
-      if (typeof svg === 'string') return svg;
-      const domSvg = container.querySelector && container.querySelector('svg');
-      if (domSvg && typeof domSvg.outerHTML === 'string' && domSvg.outerHTML.trim().startsWith('<svg')) {
-        return domSvg.outerHTML;
-      }
-      return undefined;
     }
 
     async function tryRenderViaMermaidApi() {
@@ -3274,7 +3390,7 @@ mod tests {
         REQUIREMENT_FONT_PRECEDENCE_FIXTURE, UPSTREAM_SVG_DIAGRAMS, UpstreamSvgRenderProbe,
         UpstreamSvgRuntimePackageRoots, absolutize_workspace_path, apply_default_config_overrides,
         create_upstream_svg_check_output_root, ensure_content_addressed_js_script,
-        ensure_fresh_upstream_svg_output_is_empty,
+        ensure_fresh_upstream_svg_output_is_empty, ensure_seeded_upstream_svg_renderer_script,
         ensure_upstream_svg_render_environment_probe_script, gen_default_config,
         map_bounded_in_order, parse_gen_upstream_svgs_options, parse_upstream_svg_jobs,
         partition_upstream_svg_fixtures, promote_upstream_svg_batch, read_bounded_child_pipe,
@@ -3282,9 +3398,10 @@ mod tests {
         sort_json_value_keys, spawn_timeout_managed_child, unique_upstream_svg_failure_report_path,
         unique_upstream_svg_temp_path, upstream_svg_check_dom_mode, upstream_svg_filter_matches,
         upstream_svg_package_tree_sha256, use_or_acquire_upstream_svg_family_lock,
-        validate_and_promote_upstream_svg_temp, validate_external_upstream_svg_family_lock,
-        validate_mermaid_cli_install, validate_upstream_svg_filter_selection,
-        validate_upstream_svg_render_probe, wait_with_bounded_output, wait_with_timeout,
+        uses_seeded_upstream_svg_renderer, validate_and_promote_upstream_svg_temp,
+        validate_external_upstream_svg_family_lock, validate_mermaid_cli_install,
+        validate_upstream_svg_filter_selection, validate_upstream_svg_render_probe,
+        wait_with_bounded_output, wait_with_timeout,
     };
     use crate::cmd::{
         acquire_upstream_svg_family_lock, acquire_upstream_svg_family_lock_with_timeout,
@@ -3913,6 +4030,35 @@ mod tests {
             script.contains("timezone,"),
             "the resolved timezone must be emitted in the browser attestation"
         );
+    }
+
+    #[test]
+    fn seeded_renderer_completes_deferred_sequence_actor_math_before_serializing() {
+        let script_path = ensure_seeded_upstream_svg_renderer_script()
+            .expect("install seeded upstream SVG renderer script");
+        let script = fs::read_to_string(script_path).expect("read seeded renderer script");
+
+        for required in [
+            "completeDeferredSequenceActorMath",
+            "Element.prototype.remove",
+            "participantActorLabels(liveSvg).length < renderedRects.length",
+            "incompleteActorMathSwitches",
+            "incomplete.parentElement?.removeChild(incomplete)",
+            "parsed.importNode(liveSwitch, true)",
+        ] {
+            assert!(
+                script.contains(required),
+                "seeded renderer must retain and complete async Sequence actor math: {required}"
+            );
+        }
+    }
+
+    #[test]
+    fn sequence_uses_the_seeded_renderer_that_settles_actor_math() {
+        assert!(uses_seeded_upstream_svg_renderer("sequence"));
+        assert!(uses_seeded_upstream_svg_renderer("architecture"));
+        assert!(uses_seeded_upstream_svg_renderer("gitgraph"));
+        assert!(!uses_seeded_upstream_svg_renderer("flowchart"));
     }
 
     #[test]

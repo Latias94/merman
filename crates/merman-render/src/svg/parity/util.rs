@@ -182,15 +182,6 @@ pub(super) fn scoped_svg_url(diagram_id: &str, local_id: &str) -> String {
 
 use std::fmt::Write as _;
 
-fn trim_trailing_zeros_and_dot(out: &mut String, start: usize) {
-    while out.len() > start && out.as_bytes()[out.len() - 1] == b'0' {
-        out.pop();
-    }
-    if out.len() > start && out.as_bytes()[out.len() - 1] == b'.' {
-        out.pop();
-    }
-}
-
 pub(super) fn fmt_string(v: f64) -> String {
     let mut out = String::new();
     fmt_into(&mut out, v);
@@ -394,83 +385,6 @@ fn js_number_to_string(mut v: f64, buf: &mut ryu_js::Buffer) -> &str {
     buf.format_finite(v)
 }
 
-pub(super) fn fmt_max_width_px(v: f64) -> String {
-    let mut out = String::new();
-    fmt_max_width_px_into(&mut out, v);
-    out
-}
-
-pub(super) fn apply_root_viewport_override(
-    diagram_id: &str,
-    viewbox_attr: &mut String,
-    width_attr: &mut String,
-    height_attr: &mut String,
-    max_width_style: &mut String,
-    lookup: fn(&str) -> Option<(&'static str, &'static str)>,
-) {
-    let Some((viewbox, max_w)) = lookup(diagram_id) else {
-        return;
-    };
-
-    *viewbox_attr = viewbox.to_string();
-    let mut it = viewbox.split_whitespace();
-    let _ = it.next(); // min-x
-    let _ = it.next(); // min-y
-    *width_attr = it.next().unwrap_or("0").to_string();
-    *height_attr = it.next().unwrap_or("0").to_string();
-    *max_width_style = max_w.to_string();
-}
-
-pub(super) fn fmt_max_width_px_into(out: &mut String, v: f64) {
-    // Mermaid's `max-width: ...px` strings are effectively rendered with ~6 significant digits,
-    // trimming trailing zeros (see upstream fixtures: `1184.88`, `432.812`, `85.4375`, `2019.2`).
-    if !v.is_finite() || v.abs() < 0.0005 {
-        out.push('0');
-        return;
-    }
-
-    let abs = v.abs().max(0.0005);
-    let exp10 = abs.log10().floor() as i32;
-    let sig = 6i32;
-    let decimals = (sig - 1 - exp10).clamp(0, 6) as usize;
-
-    fn round_ties_to_even(x: f64) -> f64 {
-        if !x.is_finite() {
-            return 0.0;
-        }
-        let sign = if x.is_sign_negative() { -1.0 } else { 1.0 };
-        let ax = x.abs();
-        let f = ax.floor();
-        let frac = ax - f;
-        let i = if frac < 0.5 {
-            f
-        } else if frac > 0.5 {
-            f + 1.0
-        } else {
-            // exactly halfway: choose the even integer
-            let fi = f as i64;
-            if fi % 2 == 0 { f } else { f + 1.0 }
-        };
-        sign * i
-    }
-
-    let scale = 10f64.powi(decimals as i32);
-    let mut rounded = round_ties_to_even(v * scale) / scale;
-    if rounded.abs() < 0.0005 {
-        rounded = 0.0;
-    }
-
-    let start = out.len();
-    let _ = write!(out, "{:.*}", decimals, rounded);
-    if out.as_bytes()[start..].contains(&b'.') {
-        trim_trailing_zeros_and_dot(out, start);
-    }
-    if out.len() == start + 2 && &out[start..] == "-0" {
-        out.truncate(start);
-        out.push('0');
-    }
-}
-
 pub(super) fn escape_xml(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     escape_xml_into(&mut out, text);
@@ -650,44 +564,6 @@ impl std::fmt::Display for EscapeAttrDisplay<'_> {
     }
 }
 
-pub(super) fn replace_placeholders_once(out: &str, replacements: &[(&str, &str)]) -> String {
-    if replacements.is_empty() {
-        return out.to_string();
-    }
-
-    let mut hits: Vec<(usize, &str, &str)> = Vec::with_capacity(replacements.len());
-    for (needle, value) in replacements {
-        let Some(pos) = out.find(needle) else {
-            continue;
-        };
-        hits.push((pos, *needle, *value));
-    }
-
-    if hits.is_empty() {
-        return out.to_string();
-    }
-
-    hits.sort_by_key(|(pos, _, _)| *pos);
-
-    let mut cap = out.len();
-    for (_pos, needle, value) in &hits {
-        cap = cap.saturating_sub(needle.len()).saturating_add(value.len());
-    }
-
-    let mut rebuilt = String::with_capacity(cap);
-    let mut cursor: usize = 0;
-    for (pos, needle, value) in hits {
-        if pos < cursor {
-            continue;
-        }
-        rebuilt.push_str(&out[cursor..pos]);
-        rebuilt.push_str(value);
-        cursor = pos + needle.len();
-    }
-    rebuilt.push_str(&out[cursor..]);
-    rebuilt
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -822,19 +698,5 @@ mod tests {
         assert_eq!(fmt_path_into_string(1.23456), "1.235");
         assert_eq!(fmt_path_into_string(1.0), "1");
         assert_eq!(fmt_path_into_string(-1.2345), "-1.235");
-    }
-
-    #[test]
-    fn fmt_max_width_px_into_matches_expected() {
-        fn fmt_max_width_px_into_string(v: f64) -> String {
-            let mut s = String::new();
-            fmt_max_width_px_into(&mut s, v);
-            s
-        }
-
-        assert_eq!(fmt_max_width_px_into_string(f64::NAN), "0");
-        assert_eq!(fmt_max_width_px_into_string(0.0004), "0");
-        assert_eq!(fmt_max_width_px_into_string(1184.88), "1184.88");
-        assert_eq!(fmt_max_width_px_into_string(2019.2), "2019.2");
     }
 }

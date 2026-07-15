@@ -8,20 +8,20 @@ use super::nodes::{
     ClassNodesRenderContext, ClassNodesRenderState, render_class_namespace_subgraph_body,
     render_class_nodes,
 };
-use super::root::{CLASS_GRAPH_MARGIN_PX, write_class_svg_root_open};
+use super::root::{CLASS_GRAPH_MARGIN_PX, begin_class_svg_document};
 use super::settings::ClassRenderSettings;
-use super::viewbox::{ClassViewBoxContext, class_viewbox_attrs};
+use super::viewbox::{ClassViewBoxContext, class_viewbox};
 use super::*;
 
-pub(super) fn render_class_diagram_v2_svg_model_impl_with_config(
-    layout: &ClassDiagramV2Layout,
+pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
+    layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
     effective_config: &merman_core::MermaidConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<String> {
-    render_class_diagram_v2_svg_model_impl_inner(
+    render_class_diagram_svg_model_inner(
         layout,
         model,
         effective_config.as_value(),
@@ -32,8 +32,8 @@ pub(super) fn render_class_diagram_v2_svg_model_impl_with_config(
     )
 }
 
-fn render_class_diagram_v2_svg_model_impl_inner(
-    layout: &ClassDiagramV2Layout,
+fn render_class_diagram_svg_model_inner(
+    layout: &ClassDiagramLayout,
     model: &ClassSvgModel,
     effective_config: &serde_json::Value,
     borrowed_sanitize_config: Option<&merman_core::MermaidConfig>,
@@ -75,7 +75,18 @@ fn render_class_diagram_v2_svg_model_impl_inner(
         + model.notes.len().saturating_mul(256)
         + model.namespaces.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
-    let root_open = write_class_svg_root_open(&mut out, model, diagram_id, aria_roledescription)?;
+    let root_context = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Class,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    );
+    let document = begin_class_svg_document(
+        &mut out,
+        model,
+        diagram_id,
+        aria_roledescription,
+        &root_context,
+    )?;
 
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     let css = class_css(
@@ -261,18 +272,18 @@ fn render_class_diagram_v2_svg_model_impl_inner(
     drop(render_guard);
     let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));
 
-    let viewbox_attrs = class_viewbox_attrs(ClassViewBoxContext {
+    let view_box = class_viewbox(ClassViewBoxContext {
         model,
         content_bounds,
         viewport_padding: settings.viewport_padding,
         diagram_title,
-        has_acc_title: root_open.has_acc_title,
-        has_acc_descr: root_open.has_acc_descr,
+        has_acc_title: document.has_acc_title,
+        has_acc_descr: document.has_acc_descr,
     });
 
     // Mermaid renders the diagram title as a direct child of `<svg>` (outside the wrapper `<g>`),
     // centered in the root viewport.
-    if let Some(title) = viewbox_attrs.title.as_ref() {
+    if let Some(title) = view_box.title.as_ref() {
         let _ = write!(
             &mut out,
             r#"<text text-anchor="middle" x="{}" y="{}" class="classDiagramTitleText">{}</text>"#,
@@ -285,16 +296,15 @@ fn render_class_diagram_v2_svg_model_impl_inner(
     drop(viewbox_guard);
     let finalize_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.finalize_svg));
 
-    // Avoid a full-string scan + allocation for placeholder replacement by patching the initial
-    // `<svg ...>` attributes in-place.
-    out.replace_range(
-        root_open.viewbox_placeholder_range,
-        viewbox_attrs.view_box_attr.as_str(),
-    );
-    out.replace_range(
-        root_open.max_width_placeholder_range,
-        viewbox_attrs.max_w_attr.as_str(),
-    );
+    let final_root_spec =
+        root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
+            view_box.min_x,
+            view_box.min_y,
+            view_box.width,
+            view_box.height,
+        ))
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(view_box.width));
+    root_context.finish_document(&mut out, document.root, final_root_spec)?;
 
     out.push_str("</svg>");
     drop(finalize_guard);

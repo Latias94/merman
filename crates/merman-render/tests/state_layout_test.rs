@@ -1,7 +1,7 @@
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
-use merman_render::model::StateDiagramV2Layout;
-use merman_render::state::layout_state_diagram_v2_typed;
+use merman_render::model::StateDiagramLayout;
+use merman_render::state::layout_state_diagram_typed;
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -43,14 +43,14 @@ fn deep_state_composite_chain(depth: usize) -> String {
     input
 }
 
-fn layout_state_from_text(text: &str) -> StateDiagramV2Layout {
+fn layout_state_from_text(text: &str) -> StateDiagramLayout {
     layout_state_from_text_with_options(text, ParseOptions::default())
 }
 
 fn layout_state_from_text_with_options(
     text: &str,
     parse_options: ParseOptions,
-) -> StateDiagramV2Layout {
+) -> StateDiagramLayout {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(text, parse_options)
         .expect("parse ok")
@@ -61,7 +61,7 @@ fn layout_state_from_text_with_options(
     let session = RenderEnvironment::parity().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
-    layout_state_diagram_v2_typed(&model, parsed.meta.effective_config.as_value(), &measurer)
+    layout_state_diagram_typed(&model, parsed.meta.effective_config.as_value(), &measurer)
         .expect("typed State layout")
 }
 

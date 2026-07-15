@@ -7,7 +7,9 @@
 // These overrides keep `parity-root` stable where deterministic headless font
 // measurement differs only by sub-pixel browser text metrics.
 
-pub fn lookup_pie_root_viewport_override(diagram_id: &str) -> Option<(&'static str, &'static str)> {
+pub(super) fn lookup_pie_root_viewport_override(
+    diagram_id: &str,
+) -> Option<(&'static str, &'static str)> {
     match diagram_id {
         "upstream_cypress_pie_spec_example_001" => Some(("0 0 596.171875 450", "596.172")),
         "upstream_cypress_pie_spec_should_render_a_pie_diagram_when_textposition_is_set_004" => {

@@ -1250,25 +1250,6 @@ pub fn layout_architecture_diagram_typed(
     )
 }
 
-/// Renders a typed Architecture model and layout without compatibility JSON.
-pub fn render_architecture_diagram_typed_with_debug(
-    layout: &ArchitectureDiagramLayout,
-    model: &ArchitectureDiagramRenderModel,
-    effective_config: &merman_core::MermaidConfig,
-    session: &crate::environment::RenderSession,
-    options: &crate::svg::SvgRenderOptions,
-    debug: &crate::svg::SvgDebugOptions,
-) -> Result<String> {
-    crate::svg::render_architecture_diagram_svg_model_with_config_and_debug(
-        layout,
-        model,
-        effective_config,
-        session,
-        options,
-        debug,
-    )
-}
-
 fn layout_architecture_diagram_model(
     model: &ArchitectureModelView<'_>,
     effective_config: &Value,

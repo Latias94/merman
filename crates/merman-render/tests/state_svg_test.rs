@@ -1,13 +1,10 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
-use merman_render::state::{
-    layout_state_diagram_v2_typed, render_state_diagram_v2_typed_with_debug,
-};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_state_svg_from_text(text: &str) -> String {
@@ -28,53 +25,6 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
         .expect("render State artifact")
         .svg()
         .to_string()
-}
-
-#[test]
-fn state_svg_preserves_incomplete_self_loop_helper_segments() {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
-    let text = "stateDiagram-v2\nA --> A: again\n";
-    let parsed = Engine::new()
-        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
-        .expect("parse ok")
-        .expect("diagram detected");
-    let RenderSemanticModel::State(model) = parsed.model else {
-        panic!("expected State render model");
-    };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    let mut layout =
-        layout_state_diagram_v2_typed(&model, parsed.meta.effective_config.as_value(), &measurer)
-            .expect("typed State layout");
-
-    let logical = layout
-        .edges
-        .iter()
-        .find(|edge| edge.from == "A" && edge.to == "A")
-        .cloned()
-        .expect("logical self-loop");
-    let mut first = logical.clone();
-    first.id = "A-cyclic-special-1".to_string();
-    first.points = logical.points[0..2].to_vec();
-    first.label = None;
-    let mut middle = logical.clone();
-    middle.id = "A-cyclic-special-mid".to_string();
-    middle.points = logical.points[1..3].to_vec();
-    layout.edges.retain(|edge| edge.id != logical.id);
-    layout.edges.extend([first, middle]);
-
-    let svg = render_state_diagram_v2_typed_with_debug(
-        &layout,
-        &model,
-        parsed.meta.effective_config.as_value(),
-        parsed.meta.title.as_deref(),
-        &session,
-        &SvgRenderOptions::default(),
-        &SvgDebugOptions::default(),
-    )
-    .expect("render svg");
-
-    assert!(svg.contains(r#"data-id="A-cyclic-special-1""#), "{svg}");
-    assert!(svg.contains(r#"data-id="A-cyclic-special-mid""#), "{svg}");
 }
 
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {

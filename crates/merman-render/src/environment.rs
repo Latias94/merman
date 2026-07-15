@@ -181,7 +181,7 @@ fn vendored_parity_profile() -> TextMeasurementProfile {
     .expect("static vendored profile version is valid")
     .with_decorators([
         "flowchart-text-overrides@11.12.2",
-        "sequence-svg-overrides@11.12.2",
+        "sequence-svg-overrides@11.16.0",
     ])
     .expect("static vendored decorators are valid");
     TextMeasurementProfile::new(
@@ -761,6 +761,21 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
                 )
             },
             |profile| profile.measure_svg_simple_text_bbox_width_for_wrap_px(text, style),
+            valid_length,
+        )
+    }
+
+    fn measure_mermaid_calculate_text_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            TextMeasurementOperation::WrapProbeBBoxWidth,
+            |host| {
+                host.measure_svg_simple_text_bbox_width_for_wrap_px(
+                    TextMeasurementPhase::Wrap,
+                    text,
+                    style,
+                )
+            },
+            |profile| profile.measure_mermaid_calculate_text_width_px(text, style),
             valid_length,
         )
     }

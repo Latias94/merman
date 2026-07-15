@@ -1,17 +1,19 @@
 use crate::model::Bounds;
 
-use super::super::{fmt, fmt_string, svg_emitted_bounds_from_svg};
+use super::super::{root_svg, svg_emitted_bounds_from_svg};
 use super::model::ArchitectureModelAccess;
-use super::root::ArchitectureRootOpen;
 
-pub(super) struct ArchitectureRootViewportContext<'a, M: ArchitectureModelAccess> {
+pub(super) struct ArchitectureRootViewportContext<'a, 'id, M: ArchitectureModelAccess> {
     pub(super) out: String,
     pub(super) model: &'a M,
-    pub(super) root_open: ArchitectureRootOpen,
+    pub(super) root_viewport: &'a root_svg::RootViewportContext<'id>,
+    pub(super) root_document: root_svg::RootDocument,
     pub(super) content_bounds: Option<Bounds>,
     pub(super) padding_px: f64,
+    pub(super) half_icon: f64,
     pub(super) icon_size_px: f64,
     pub(super) use_max_width: bool,
+    pub(super) is_empty: bool,
     pub(super) trust_content_bounds: bool,
 }
 
@@ -61,18 +63,6 @@ struct ArchitectureRootViewport {
     min_y: f64,
     width: f64,
     height: f64,
-}
-
-impl ArchitectureRootViewport {
-    fn view_box_attr(self) -> String {
-        format!(
-            "{} {} {} {}",
-            fmt(self.min_x),
-            fmt(self.min_y),
-            fmt(self.width),
-            fmt(self.height)
-        )
-    }
 }
 
 fn architecture_root_bbox_from_svg(
@@ -138,42 +128,48 @@ fn architecture_root_viewport_from_bbox(
 }
 
 pub(super) fn finalize_architecture_root_viewport<M: ArchitectureModelAccess>(
-    ctx: ArchitectureRootViewportContext<'_, M>,
-) -> String {
+    ctx: ArchitectureRootViewportContext<'_, '_, M>,
+) -> crate::Result<String> {
     let ArchitectureRootViewportContext {
         mut out,
         model,
-        root_open,
+        root_viewport,
+        root_document,
         content_bounds,
         padding_px,
+        half_icon,
         icon_size_px,
         use_max_width,
+        is_empty,
         trust_content_bounds,
     } = ctx;
 
-    let b =
-        architecture_root_bbox_from_svg(&out, content_bounds, icon_size_px, trust_content_bounds);
-    let profile = ArchitectureRootViewportProfile::from_model(model);
-    let viewport = architecture_root_viewport_from_bbox(&b, padding_px, profile);
-
-    let view_box_attr = viewport.view_box_attr();
-    let max_w_attr = fmt_string(viewport.width);
-
-    let mut replacements: Vec<(usize, std::ops::Range<usize>, &str)> =
-        Vec::with_capacity(if use_max_width { 2 } else { 1 });
-    replacements.push((
-        root_open.viewbox_placeholder_range.start,
-        root_open.viewbox_placeholder_range,
-        view_box_attr.as_str(),
-    ));
-    if use_max_width && let Some(range) = root_open.max_width_placeholder_range {
-        replacements.push((range.start, range, max_w_attr.as_str()));
-    }
-    replacements.sort_by_key(|(start, _, _)| std::cmp::Reverse(*start));
-    for (_, range, replacement) in replacements {
-        out.replace_range(range, replacement);
-    }
-    out
+    let viewport = if is_empty {
+        ArchitectureRootViewport {
+            min_x: -half_icon,
+            min_y: -half_icon,
+            width: icon_size_px.max(1.0),
+            height: icon_size_px.max(1.0),
+        }
+    } else {
+        let bounds = architecture_root_bbox_from_svg(
+            &out,
+            content_bounds,
+            icon_size_px,
+            trust_content_bounds,
+        );
+        let profile = ArchitectureRootViewportProfile::from_model(model);
+        architecture_root_viewport_from_bbox(&bounds, padding_px, profile)
+    };
+    let root_bounds = root_svg::DiagramBounds::from_view_box(
+        viewport.min_x,
+        viewport.min_y,
+        viewport.width,
+        viewport.height,
+    );
+    let root_spec = root_svg::RootViewportSpec::mermaid_or_intrinsic(root_bounds, use_max_width);
+    root_viewport.finish_document(&mut out, root_document, root_spec)?;
+    Ok(out)
 }
 
 #[cfg(test)]

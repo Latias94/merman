@@ -1149,12 +1149,11 @@ fn current_source() -> Result<UpstreamSvgSource, XtaskError> {
 }
 
 fn renderer_profile(diagram: &str) -> &'static str {
-    if matches!(diagram, "architecture" | "gitgraph") {
-        "seeded-puppeteer-seed-1"
-    } else if diagram == "gantt" {
-        "mmdc-default-width-1200"
-    } else {
-        "mmdc-default"
+    match diagram {
+        "sequence" => "seeded-puppeteer-seed-1-sequence-math-settled-v1",
+        "architecture" | "gitgraph" => "seeded-puppeteer-seed-1",
+        "gantt" => "mmdc-default-width-1200",
+        _ => "mmdc-default",
     }
 }
 

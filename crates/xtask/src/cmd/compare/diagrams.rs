@@ -26,7 +26,7 @@ macro_rules! verification_fact {
     (
         $diagram:literal, $command:literal, $title:literal, $mode:literal,
         $parse:ident, $profile:ident, $id:ident, $skip:ident, $compare:ident,
-        $report:ident, $diagnostics:ident, $specialist:ident, $root_overrides:literal
+        $report:ident, $diagnostics:ident, $specialist:ident
     ) => {
         DiagramVerificationFact {
             diagram: $diagram,
@@ -41,7 +41,6 @@ macro_rules! verification_fact {
             report_policy: FixtureReportPolicy::$report,
             diagnostics: DiagnosticsPolicy::$diagnostics,
             specialist: SpecialistHook::$specialist,
-            supports_root_overrides: $root_overrides,
         }
     };
 }
@@ -59,8 +58,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Specialist,
         Specialist,
         Specialist,
-        ErAdapter,
-        false
+        ErAdapter
     ),
     verification_fact!(
         "flowchart",
@@ -74,8 +72,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Specialist,
         Specialist,
         RootDelta,
-        FlowchartAdapter,
-        true
+        FlowchartAdapter
     ),
     verification_fact!(
         "state",
@@ -89,8 +86,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "class",
@@ -104,8 +100,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        ClassV2Role,
-        false
+        ClassV2Role
     ),
     verification_fact!(
         "sequence",
@@ -119,8 +114,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        SequenceMath,
-        true
+        SequenceMath
     ),
     verification_fact!(
         "info",
@@ -134,8 +128,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "pie",
@@ -149,8 +142,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "sankey",
@@ -164,8 +156,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "packet",
@@ -179,8 +170,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "timeline",
@@ -194,8 +184,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "journey",
@@ -209,8 +198,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "kanban",
@@ -224,8 +212,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "gitgraph",
@@ -239,8 +226,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "gantt",
@@ -254,8 +240,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Specialist,
         Specialist,
         None,
-        GanttAdapter,
-        false
+        GanttAdapter
     ),
     verification_fact!(
         "c4",
@@ -269,8 +254,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "block",
@@ -284,8 +268,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "radar",
@@ -299,8 +282,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "requirement",
@@ -314,8 +296,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         DomAndRawSvgFallback,
         StatusLines,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "mindmap",
@@ -329,8 +310,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "architecture",
@@ -344,8 +324,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        None,
-        true
+        None
     ),
     verification_fact!(
         "quadrantchart",
@@ -359,8 +338,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         DomAndRawSvgFallback,
         StatusLines,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "treemap",
@@ -374,8 +352,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "xychart",
@@ -389,8 +366,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "treeView",
@@ -404,8 +380,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "ishikawa",
@@ -419,8 +394,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "eventmodeling",
@@ -434,8 +408,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "venn",
@@ -449,8 +422,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "cynefin",
@@ -464,8 +436,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "railroad",
@@ -479,8 +450,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "railroadEbnf",
@@ -494,8 +464,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "railroadAbnf",
@@ -509,8 +478,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
     verification_fact!(
         "railroadPeg",
@@ -524,8 +492,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         None,
-        None,
-        false
+        None
     ),
 ];
 
@@ -625,14 +592,16 @@ mod tests {
 
     #[test]
     fn compare_adapters_do_not_rebuild_the_legacy_render_pipeline() {
-        let adapters_dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare/diagrams");
+        let compare_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare");
+        let adapters_dir = compare_dir.join("diagrams");
         let forbidden = [
-            ".parse_diagram(",
+            ".parse_diagram",
+            "merman_render::family::prepare(",
             "merman_render::layout_parsed(",
             "merman_render::svg::render_",
         ];
         let mut violations = Vec::new();
+        let mut adapter_paths = vec![compare_dir.join("xml.rs")];
 
         for entry in std::fs::read_dir(&adapters_dir).expect("compare adapter directory") {
             let entry = entry.expect("compare adapter entry");
@@ -640,6 +609,10 @@ mod tests {
             if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
                 continue;
             }
+            adapter_paths.push(path);
+        }
+
+        for path in adapter_paths {
             let source = std::fs::read_to_string(&path).expect("compare adapter source");
             for symbol in forbidden {
                 if source.contains(symbol) {
@@ -658,6 +631,54 @@ mod tests {
             "per-family compare adapters must use the canonical prepared operation:\n{}",
             violations.join("\n")
         );
+    }
+
+    #[test]
+    fn gantt_today_policy_uses_each_prepared_operation_once() {
+        let compare_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare");
+
+        for relative_path in ["diagrams/gantt.rs", "xml.rs"] {
+            let path = compare_dir.join(relative_path);
+            let source = std::fs::read_to_string(&path).expect("Gantt compare source");
+            let production = source.split("#[cfg(test)]").next().unwrap_or(&source);
+            assert_eq!(
+                production.matches(".prepare_semantic_sync(").count(),
+                1,
+                "{relative_path} must prepare semantics exactly once"
+            );
+            assert_eq!(
+                production.matches(".continue_layout()").count(),
+                1,
+                "{relative_path} must continue layout exactly once"
+            );
+            assert!(
+                !production.contains(".prepare_render_sync("),
+                "{relative_path} must not rebuild parse/layout after deriving Gantt today"
+            );
+            assert!(
+                production.contains("current_time_unix_ms"),
+                "{relative_path} must pass derived Gantt today as SVG request policy"
+            );
+        }
+    }
+
+    #[test]
+    fn specialist_adapters_use_the_shared_compare_render_environment() {
+        let adapters_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare/diagrams");
+
+        for adapter in ["er.rs", "flowchart.rs", "gantt.rs"] {
+            let path = adapters_dir.join(adapter);
+            let source = std::fs::read_to_string(&path).expect("compare adapter source");
+            assert!(
+                source.contains("compare_render_environment"),
+                "{adapter} must inject the shared root override policy"
+            );
+            assert!(
+                !source.contains("RenderEnvironment::parity()"),
+                "{adapter} must not construct an unscoped render environment"
+            );
+        }
     }
 
     #[test]

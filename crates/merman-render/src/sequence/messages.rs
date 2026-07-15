@@ -3,9 +3,10 @@ use super::constants::SEQUENCE_MESSAGE_WRAP_PADDING_SIDES;
 use super::metrics::{
     SequenceMathHeightMode, measure_sequence_label_for_layout, measure_svg_like_with_html_br,
 };
+use super::wrap_sequence_label_like_mermaid_lines;
 use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
+use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
 use merman_core::MermaidConfig;
 use merman_core::diagrams::sequence::SequenceMessage;
 
@@ -425,7 +426,8 @@ fn wrapped_message_text(
     let wrap_w = (bounded_width + SEQUENCE_MESSAGE_WRAP_PADDING_SIDES * ctx.wrap_padding)
         .max(ctx.actor_width_min)
         .max(1.0);
-    let lines = wrap_label_like_mermaid_lines(text, ctx.measurer, ctx.msg_text_style, wrap_w);
+    let lines =
+        wrap_sequence_label_like_mermaid_lines(text, ctx.measurer, ctx.msg_text_style, wrap_w);
     Some(lines.join("<br>"))
 }
 

@@ -3,8 +3,8 @@
 use crate::XtaskError;
 use crate::cmd::compare::{
     CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
-    DiagramVerificationFact, run_svg_compare, write_compare_result_section,
-    write_verification_policy_metadata,
+    DiagramVerificationFact, compare_render_environment, run_svg_compare,
+    write_compare_result_section, write_verification_policy_metadata,
 };
 use regex::Regex;
 use std::fmt::Write as _;
@@ -39,6 +39,7 @@ pub(super) fn compare_er_args(
             }
             "--check-markers" => check_markers = true,
             "--check-dom" => request.check_dom = true,
+            "--no-root-overrides" => request.apply_root_overrides = false,
             "--dom-decimals" => {
                 i += 1;
                 request.dom_decimals = Some(
@@ -101,6 +102,11 @@ fn run_er_compare(
 
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
+    let renderer = merman::render::HeadlessRenderer::new()
+        .with_engine(engine)
+        .with_parse_options(fact.parse_policy.options())
+        .with_layout_options(layout_opts)
+        .with_environment(compare_render_environment(&request.common));
     let re_marker_id = Regex::new(r#"<marker[^>]*\bid="([^"]+)""#).unwrap();
     let re_marker_ref = Regex::new(r#"marker-(?:start|end)="url\(#([^)]+)\)""#).unwrap();
     let mut state = ErCompareState { rows: Vec::new() };
@@ -126,6 +132,15 @@ fn run_er_compare(
             let _ = writeln!(report, "- Command: `{}`", fact.command);
             let _ = writeln!(report, "- Mode: `{}`", options.dom_mode);
             let _ = writeln!(report, "- Decimals: `{}`", options.dom_decimals);
+            let _ = writeln!(
+                report,
+                "- Root overrides: `{}`",
+                if request.common.apply_root_overrides {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
             write_verification_policy_metadata(
                 report,
                 &request.common,
@@ -168,12 +183,7 @@ fn run_er_compare(
                 }
             }
 
-            let semantic = match merman::render::prepare_semantic_sync(
-                &engine,
-                input.text,
-                fact.parse_policy.options(),
-                &layout_opts,
-            ) {
+            let semantic = match renderer.prepare_semantic_sync(input.text) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     return Err(format!(

@@ -7,7 +7,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
     model: &RailroadDiagramRenderModel,
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("railroad");
     let diagram_id_esc = escape_xml(diagram_id);
@@ -21,24 +21,24 @@ pub(crate) fn render_railroad_diagram_svg_model(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id_esc}"));
-    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id_esc}"));
+    let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
+    let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
-    let viewport_plan = root_svg::build_root_viewport_plan(root_bounds, None, layout.use_max_width);
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
     let style = crate::railroad::railroad_style(effective_config);
 
     let mut out = String::new();
-    root_svg::push_svg_root_open_with_viewport_plan(
-        &mut out,
-        root_svg::SvgRootAttrs {
-            class: Some("railroad-diagram"),
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, &layout.diagram_type)
-        },
-        &viewport_plan,
-    );
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, &layout.diagram_type);
+    root_chrome.class = Some("railroad-diagram");
+    root_chrome.aria_labelledby = aria_labelledby.as_deref();
+    root_chrome.aria_describedby = aria_describedby.as_deref();
+    root_chrome.dom.trailing_newline = false;
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Railroad,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(

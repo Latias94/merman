@@ -305,7 +305,7 @@ fn write_actor_label(
     // Split/wrap before decoding Mermaid entities so escaped `<br>` (`#lt;br#gt;`) remains
     // literal text rather than being treated as an actual `<br>` break.
     if wrap {
-        let raw_lines = crate::text::wrap_label_like_mermaid_lines(
+        let raw_lines = crate::sequence::wrap_sequence_label_like_mermaid_lines(
             label,
             ctx.measurer,
             ctx.style,

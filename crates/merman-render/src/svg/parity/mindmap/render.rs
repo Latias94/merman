@@ -959,38 +959,33 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         })
         .unwrap_or((0.0, 0.0, 100.0, 100.0));
 
-    let mut view_box_attr = format!("{} {} {} {}", fmt(vx), fmt(vy), fmt(vw), fmt(vh));
-    let mut max_w_attr = fmt_max_width_px(vw);
-    let mut w_attr = fmt_string(vw);
-    let mut h_attr = fmt_string(vh);
-    if options.root_viewport_override_policy().applies_generated() {
-        apply_root_viewport_override(
-            diagram_id,
-            &mut view_box_attr,
-            &mut w_attr,
-            &mut h_attr,
-            &mut max_w_attr,
-            crate::generated::mindmap_root_overrides_11_12_2::lookup_mindmap_root_viewport_override,
-        );
-    }
+    let root_spec = root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
+        vx, vy, vw, vh,
+    ))
+    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vw));
 
     drop(_g_viewbox);
 
     let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
 
     let mut out = String::new();
-    let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-    root_svg::push_svg_root_open(
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Mindmap,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
         &mut out,
-        root_svg::SvgRootAttrs {
+        root_spec,
+        root_svg::RootChrome {
             class: Some("mindmapDiagram"),
-            width: root_svg::SvgRootWidth::Percent100,
-            style_attr: Some(style_attr.as_str()),
-            viewbox_attr: Some(view_box_attr.as_str()),
-            trailing_newline: false,
-            ..root_svg::SvgRootAttrs::new(diagram_id, "mindmap")
+            dom: root_svg::RootDomProfile {
+                trailing_newline: false,
+                ..Default::default()
+            },
+            ..root_svg::RootChrome::new(diagram_id, "mindmap")
         },
-    );
+    )?;
     let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str(&mindmap_gradient_defs(diagram_id, config.as_value()));

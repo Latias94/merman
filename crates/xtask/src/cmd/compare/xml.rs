@@ -115,6 +115,51 @@ fn svg_xml_compare_skip_reason(diagram: &str, stem: &str) -> Option<&'static str
     crate::cmd::upstream_svg_compare_skip_reason(diagram, stem)
 }
 
+fn svg_xml_report_header(
+    mode: svgdom::DomMode,
+    dom_decimals: u32,
+    provenance_coverage: Option<ProvenanceCoverage>,
+) -> String {
+    let mut report = String::new();
+    let _ = writeln!(&mut report, "# SVG Canonical XML Compare Report");
+    let _ = writeln!(&mut report);
+    let _ = writeln!(
+        &mut report,
+        "- Render path: `{}`",
+        super::VerificationRenderPath::HeadlessOperationTyped.label()
+    );
+    let _ = writeln!(
+        &mut report,
+        "- Mode: `{}`",
+        match mode {
+            svgdom::DomMode::Strict => "strict",
+            svgdom::DomMode::Structure => "structure",
+            svgdom::DomMode::Parity => "parity",
+            svgdom::DomMode::ParityRoot => "parity-root",
+        }
+    );
+    let _ = writeln!(&mut report, "- Decimals: `{dom_decimals}`");
+    let _ = writeln!(
+        &mut report,
+        "- Upstream provenance: {}",
+        match provenance_coverage {
+            Some(ProvenanceCoverage::CompleteFamily) => {
+                "`pinned canonical (complete family validated)`"
+            }
+            Some(ProvenanceCoverage::SelectedFixtures) => {
+                "`pinned canonical (selected fixtures validated)`"
+            }
+            None => "`untrusted custom (debug only)`",
+        }
+    );
+    let _ = writeln!(
+        &mut report,
+        "- Output: `target/compare/xml/<diagram>/<fixture>.(upstream|local).xml`"
+    );
+    let _ = writeln!(&mut report);
+    report
+}
+
 pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     let mut check: bool = false;
     let mut dom_mode: Option<String> = None;
@@ -414,12 +459,21 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let parsed = match futures::executor::block_on(engine.parse_diagram_for_render_model(
-                &text,
-                merman::ParseOptions {
+            let mut environment = merman::render::RenderEnvironment::parity()
+                .with_text_measurement_policy(text_measurement_policy.clone());
+            if matches!(diagram.as_str(), "flowchart" | "sequence")
+                && let Some(renderer) = node_math_renderer.clone()
+            {
+                environment = environment.with_math_renderer(renderer);
+            }
+            let renderer = merman::render::HeadlessRenderer::new()
+                .with_engine(engine.clone())
+                .with_parse_options(merman::ParseOptions {
                     suppress_errors: true,
-                },
-            )) {
+                })
+                .with_layout_options(layout_opts.clone())
+                .with_environment(environment);
+            let semantic = match renderer.prepare_semantic_sync(&text) {
                 Ok(Some(v)) => v,
                 Ok(None) => {
                     missing.push(format!("{diagram}/{stem}: no diagram detected"));
@@ -432,10 +486,10 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             };
 
             if diagram == "flowchart" {
-                let flowchart_layout_elk = parsed.meta.diagram_type == "flowchart-elk"
-                    || parsed.meta.effective_config.get_str("layout") == Some("elk")
-                    || parsed
-                        .meta
+                let flowchart_layout_elk = semantic.metadata().diagram_type == "flowchart-elk"
+                    || semantic.metadata().effective_config.get_str("layout") == Some("elk")
+                    || semantic
+                        .metadata()
                         .effective_config
                         .get_str("flowchart.defaultRenderer")
                         == Some("elk");
@@ -458,23 +512,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             }
 
-            let layout_opts = layout_opts.clone();
-            let mut environment = merman::render::RenderEnvironment::parity()
-                .with_text_measurement_policy(text_measurement_policy.clone());
-            if matches!(diagram.as_str(), "flowchart" | "sequence")
-                && let Some(renderer) = node_math_renderer.clone()
-            {
-                environment = environment.with_math_renderer(renderer);
-            }
-            let session = match environment.begin_session() {
-                Ok(session) => session,
-                Err(err) => {
-                    missing.push(format!("{diagram}/{stem}: session failed: {err}"));
-                    continue;
-                }
-            };
-            let gantt_rerender_model = (diagram == "gantt").then(|| parsed.clone());
-            let mut artifact = match merman_render::family::prepare(parsed, &layout_opts, session) {
+            let prepared = match semantic.continue_layout() {
                 Ok(v) => v,
                 Err(err) => {
                     missing.push(format!("{diagram}/{stem}: layout failed: {err}"));
@@ -498,48 +536,20 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
             } else {
                 sanitize_svg_id(stem)
             };
-            let svg_opts = merman_render::svg::SvgRenderOptions {
+            let mut svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(diagram_id),
                 aria_roledescription: is_classdiagram_v2_header.then(|| "classDiagram".to_string()),
                 ..Default::default()
             };
             if diagram == "gantt"
-                && let Some(diagnostics) = artifact.gantt_time_axis_diagnostics()
+                && let Some(diagnostics) = prepared.gantt_time_axis_diagnostics()
                 && let Some(now_ms) =
                     gantt_derive_now_ms_from_upstream_today(&upstream_svg, diagnostics)
-                && let Some(parsed) = gantt_rerender_model
             {
-                let snapshot = match merman::render::RenderTimeSnapshot::from_unix_millis(now_ms, 0)
-                {
-                    Ok(snapshot) => snapshot,
-                    Err(err) => {
-                        missing.push(format!("{diagram}/{stem}: invalid baseline time: {err}"));
-                        continue;
-                    }
-                };
-                let session = match environment
-                    .clone()
-                    .with_time_snapshot(snapshot)
-                    .begin_session()
-                {
-                    Ok(session) => session,
-                    Err(err) => {
-                        missing.push(format!("{diagram}/{stem}: session failed: {err}"));
-                        continue;
-                    }
-                };
-                artifact = match merman_render::family::prepare(parsed, &layout_opts, session) {
-                    Ok(artifact) => artifact,
-                    Err(err) => {
-                        missing.push(format!("{diagram}/{stem}: final layout failed: {err}"));
-                        continue;
-                    }
-                };
+                svg_opts.current_time_unix_ms = Some(now_ms);
             }
-            let local_svg = match artifact
-                .render_svg(&svg_opts, &merman_render::svg::SvgDebugOptions::default())
-            {
-                Ok(rendered) => rendered.into_parts().0,
+            let local_svg = match prepared.render_svg(&svg_opts) {
+                Ok(rendered) => rendered,
                 Err(err) => {
                     missing.push(format!("{diagram}/{stem}: render failed: {err}"));
                     continue;
@@ -581,38 +591,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     let report_path = out_root.join("xml_report.md");
-    let mut report = String::new();
-    let _ = writeln!(&mut report, "# SVG Canonical XML Compare Report");
-    let _ = writeln!(&mut report);
-    let _ = writeln!(
-        &mut report,
-        "- Mode: `{}`",
-        match mode {
-            svgdom::DomMode::Strict => "strict",
-            svgdom::DomMode::Structure => "structure",
-            svgdom::DomMode::Parity => "parity",
-            svgdom::DomMode::ParityRoot => "parity-root",
-        }
-    );
-    let _ = writeln!(&mut report, "- Decimals: `{dom_decimals}`");
-    let _ = writeln!(
-        &mut report,
-        "- Upstream provenance: {}",
-        match provenance_coverage {
-            Some(ProvenanceCoverage::CompleteFamily) => {
-                "`pinned canonical (complete family validated)`"
-            }
-            Some(ProvenanceCoverage::SelectedFixtures) => {
-                "`pinned canonical (selected fixtures validated)`"
-            }
-            None => "`untrusted custom (debug only)`",
-        }
-    );
-    let _ = writeln!(
-        &mut report,
-        "- Output: `target/compare/xml/<diagram>/<fixture>.(upstream|local).xml`"
-    );
-    let _ = writeln!(&mut report);
+    let mut report = svg_xml_report_header(mode, dom_decimals, provenance_coverage);
     let _ = writeln!(&mut report, "## Mismatches ({})", mismatches.len());
     let _ = writeln!(&mut report);
     for (diagram, stem, upstream_out, local_out) in &mismatches {
@@ -725,8 +704,26 @@ pub(crate) fn canon_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 mod tests {
     use super::{
         ProvenanceCoverage, UpstreamRootTrust, classify_upstream_root, compare_svg_xml,
-        svg_xml_compare_skip_reason, svg_xml_family_dir, validate_svg_xml_diagram,
+        svg_xml_compare_skip_reason, svg_xml_family_dir, svg_xml_report_header,
+        validate_svg_xml_diagram,
     };
+
+    #[test]
+    fn svg_xml_report_names_the_canonical_operation_and_provenance() {
+        let pinned = svg_xml_report_header(
+            crate::svgdom::DomMode::Parity,
+            3,
+            Some(ProvenanceCoverage::SelectedFixtures),
+        );
+        assert!(pinned.contains("- Render path: `headless-operation-typed`"));
+        assert!(pinned.contains("- Mode: `parity`"));
+        assert!(pinned.contains("`pinned canonical (selected fixtures validated)`"));
+
+        let custom = svg_xml_report_header(crate::svgdom::DomMode::Strict, 6, None);
+        assert!(custom.contains("- Mode: `strict`"));
+        assert!(custom.contains("- Decimals: `6`"));
+        assert!(custom.contains("`untrusted custom (debug only)`"));
+    }
 
     #[test]
     fn svg_xml_diagram_accepts_primary_matrix_family_names() {
@@ -1013,5 +1010,12 @@ mod tests {
             out_root.display().to_string(),
         ])
         .expect("default source-backed backend should admit and match the ELK probe fixture");
+
+        let report =
+            std::fs::read_to_string(out_root.join("xml_report.md")).expect("canonical XML report");
+        assert!(
+            report.contains("- Render path: `headless-operation-typed`"),
+            "report must expose the canonical typed operation: {report}"
+        );
     }
 }

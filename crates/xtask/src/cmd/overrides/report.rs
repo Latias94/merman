@@ -8,6 +8,7 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use syn::visit::Visit;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum OverrideCategory {
@@ -61,9 +62,9 @@ impl OverrideCategory {
 
     fn no_growth_budget(self) -> usize {
         match self {
-            OverrideCategory::RootViewport => 183,
+            OverrideCategory::RootViewport => 192,
             OverrideCategory::TextLookup => 689,
-            OverrideCategory::SvgTextMetrics => 1036,
+            OverrideCategory::SvgTextMetrics => 1039,
             OverrideCategory::FontMetrics => 3774,
             OverrideCategory::HandCuratedHelpers => 0,
             OverrideCategory::RawPathBridge => 0,
@@ -134,7 +135,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
                 println!();
                 println!("Options:");
                 println!(
-                    "  --check-no-growth  fail if any category grows beyond the explicit budget or root viewport lookups bypass the shared helper"
+                    "  --check-no-growth  fail if any category grows beyond the explicit budget or root viewport ownership bypasses the typed router"
                 );
                 return Ok(());
             }
@@ -193,8 +194,8 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     if check_no_growth {
         check_override_no_growth(&entries)?;
         println!("Override growth check: ok");
-        check_root_viewport_lookup_usage(&parity_dir, &source_root)?;
-        println!("Root viewport override usage check: ok");
+        check_root_viewport_architecture(&generated_dir, &parity_dir, &source_root)?;
+        println!("Root viewport ownership check: ok");
         println!();
     }
 
@@ -205,7 +206,7 @@ pub(crate) fn report_overrides(args: Vec<String>) -> Result<(), XtaskError> {
     );
     println!("- Root viewport entries count match arms returning `Some((viewBox, max_width))`.");
     println!(
-        "- Root viewport lookups in parity renderers must be applied through `apply_root_viewport_override`."
+        "- Root viewport tables are private implementation details reached only through the typed `RenderFamilyKind` router."
     );
     println!(
         "- Text lookup entries count generated or hand-curated `=> Some(...)` parity branches and rows in generated lookup tables."
@@ -240,26 +241,95 @@ fn check_override_no_growth(entries: &[OverrideFootprintEntry]) -> Result<(), Xt
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-struct RootViewportLookupViolation {
+struct RootViewportArchitectureViolation {
     file_name: String,
     line_number: usize,
     line: String,
+    message: String,
 }
 
-fn check_root_viewport_lookup_usage(
+#[derive(Debug, Clone, Copy)]
+struct RootViewportTableRoute {
+    family_variant: &'static str,
+    module: &'static str,
+    lookup: &'static str,
+}
+
+const ROOT_VIEWPORT_TABLE_ROUTES: [RootViewportTableRoute; 10] = [
+    RootViewportTableRoute {
+        family_variant: "C4",
+        module: "c4_root_overrides_11_12_2",
+        lookup: "lookup_c4_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "Er",
+        module: "er_root_overrides_11_12_2",
+        lookup: "lookup_er_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "EventModeling",
+        module: "eventmodeling_root_overrides_11_15_0",
+        lookup: "lookup_eventmodeling_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "Flowchart",
+        module: "flowchart_root_overrides_11_12_2",
+        lookup: "lookup_flowchart_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "Mindmap",
+        module: "mindmap_root_overrides_11_12_2",
+        lookup: "lookup_mindmap_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "Pie",
+        module: "pie_root_overrides_11_12_2",
+        lookup: "lookup_pie_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "Sankey",
+        module: "sankey_root_overrides_11_12_2",
+        lookup: "lookup_sankey_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "Sequence",
+        module: "sequence_root_overrides_11_16_0",
+        lookup: "lookup_sequence_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "State",
+        module: "state_root_overrides_11_12_2",
+        lookup: "lookup_state_root_viewport_override",
+    },
+    RootViewportTableRoute {
+        family_variant: "Timeline",
+        module: "timeline_root_overrides_11_12_2",
+        lookup: "lookup_timeline_root_viewport_override",
+    },
+];
+
+fn check_root_viewport_architecture(
+    generated_dir: &Path,
     parity_dir: &Path,
     source_root: &Path,
 ) -> Result<(), XtaskError> {
+    let router_path = generated_dir.join("root_viewports.rs");
+    let generated_mod_path = generated_dir.join("mod.rs");
+    let router_text = read_text(&router_path)?;
+    let generated_mod_text = read_text(&generated_mod_path)?;
+
+    let mut violations = find_root_viewport_router_violations(&router_text);
+    violations.extend(find_root_viewport_module_violations(&generated_mod_text));
+
     let mut files = collect_parity_rs_files(parity_dir)?;
     files.sort();
 
-    let mut violations = Vec::new();
     for path in files {
         let Some(file_name) = path.strip_prefix(source_root).ok().map(report_path_name) else {
             continue;
         };
         let text = read_text(&path)?;
-        violations.extend(find_root_viewport_lookup_violations(&file_name, &text));
+        violations.extend(find_root_viewport_renderer_violations(&file_name, &text));
     }
 
     if violations.is_empty() {
@@ -270,75 +340,375 @@ fn check_root_viewport_lookup_usage(
         .iter()
         .map(|violation| {
             format!(
-                "{}:{}: {}",
+                "{}:{}: {} ({})",
                 violation.file_name,
                 violation.line_number,
+                violation.message,
                 violation.line.trim()
             )
         })
         .collect::<Vec<_>>()
         .join("\n");
     Err(XtaskError::VerifyFailed(format!(
-        "root viewport override lookup bypassed shared helper:\n{details}"
+        "root viewport ownership bypassed the typed generated router:\n{details}"
     )))
 }
 
-fn find_root_viewport_lookup_violations(
-    file_name: &str,
-    text: &str,
-) -> Vec<RootViewportLookupViolation> {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    let re = RE.get_or_init(|| {
-        Regex::new(r#"\blookup_[A-Za-z0-9_]+_root_viewport_override\b"#).expect("valid regex")
-    });
-
+fn find_root_viewport_router_violations(text: &str) -> Vec<RootViewportArchitectureViolation> {
+    const FILE_NAME: &str = "generated/root_viewports.rs";
     let mut violations = Vec::new();
-    let mut apply_call_depth: Option<i32> = None;
-    for (line_index, line) in text.lines().enumerate() {
-        let code = strip_line_comment(line);
-        let mut delta_input = None;
-        if apply_call_depth.is_none() {
-            if let Some(start) = code.find("apply_root_viewport_override(") {
-                apply_call_depth = Some(0);
-                delta_input = Some(&code[start..]);
-            }
-        } else {
-            delta_input = Some(code);
-        }
 
-        if re.is_match(code) && apply_call_depth.is_none() {
-            violations.push(RootViewportLookupViolation {
-                file_name: file_name.to_string(),
-                line_number: line_index + 1,
-                line: line.to_string(),
-            });
+    for (needle, message) in [
+        (
+            "use crate::family::RenderFamilyKind;",
+            "typed router must import RenderFamilyKind",
+        ),
+        (
+            "pub(crate) struct GeneratedRootViewport",
+            "typed router must return GeneratedRootViewport",
+        ),
+        (
+            "pub(crate) fn lookup_root_viewport_override",
+            "typed root viewport lookup router is missing",
+        ),
+        (
+            "family: RenderFamilyKind",
+            "root viewport router must dispatch on RenderFamilyKind",
+        ),
+        (
+            "Option<GeneratedRootViewport>",
+            "root viewport router must return the typed viewport value",
+        ),
+        (
+            "PINNED_MERMAID_BASELINE_VERSION",
+            "root viewport router must reject non-pinned baselines",
+        ),
+        (
+            "GeneratedRootViewport {",
+            "raw generated table values must be wrapped in the typed viewport value",
+        ),
+        (
+            "raw.map",
+            "typed router must convert raw table tuples in one place",
+        ),
+    ] {
+        if !text.contains(needle) {
+            violations.push(root_viewport_violation(FILE_NAME, text, 0, message));
         }
+    }
 
-        if let (Some(depth), Some(delta_input)) = (apply_call_depth.as_mut(), delta_input) {
-            *depth += paren_delta(delta_input);
-            if *depth <= 0 {
-                apply_call_depth = None;
-            }
+    let arms = match parse_root_viewport_match_arms(text) {
+        Ok(arms) => arms,
+        Err(message) => {
+            violations.push(root_viewport_violation(
+                FILE_NAME,
+                text,
+                text.find("lookup_root_viewport_override")
+                    .unwrap_or_default(),
+                &message,
+            ));
+            return violations;
+        }
+    };
+
+    for arm in &arms {
+        if arm.wildcard || arm.variants.is_empty() {
+            violations.push(root_viewport_violation(
+                FILE_NAME,
+                text,
+                text.find("match family").unwrap_or_default(),
+                "RenderFamilyKind router must not use a wildcard or catch-all arm",
+            ));
+        }
+    }
+
+    for route in ROOT_VIEWPORT_TABLE_ROUTES {
+        let family = format!("RenderFamilyKind::{}", route.family_variant);
+        let matching_arms = arms
+            .iter()
+            .filter(|arm| {
+                arm.variants
+                    .iter()
+                    .any(|variant| variant == route.family_variant)
+            })
+            .collect::<Vec<_>>();
+        if matching_arms.len() != 1
+            || matching_arms[0].variants.as_slice() != [route.family_variant]
+            || !matching_arms[0].calls_lookup(route.module, route.lookup)
+        {
+            let offset = text.find(&family).unwrap_or_default();
+            violations.push(root_viewport_violation(
+                FILE_NAME,
+                text,
+                offset,
+                &format!(
+                    "{family} must route exactly once through private table `{}`",
+                    route.module
+                ),
+            ));
+        }
+    }
+
+    for arm in arms {
+        let owns_generated_table = arm.variants.iter().any(|variant| {
+            ROOT_VIEWPORT_TABLE_ROUTES
+                .iter()
+                .any(|route| route.family_variant == variant)
+        });
+        if !arm.variants.is_empty() && !owns_generated_table && !arm.returns_none {
+            violations.push(root_viewport_violation(
+                FILE_NAME,
+                text,
+                text.find("match family").unwrap_or_default(),
+                "families without generated root tables must explicitly return None",
+            ));
         }
     }
 
     violations
 }
 
-fn strip_line_comment(line: &str) -> &str {
-    line.split_once("//").map_or(line, |(code, _)| code)
-}
+fn find_root_viewport_module_violations(text: &str) -> Vec<RootViewportArchitectureViolation> {
+    const FILE_NAME: &str = "generated/mod.rs";
+    let mut violations = Vec::new();
 
-fn paren_delta(text: &str) -> i32 {
-    let mut delta = 0;
-    for ch in text.chars() {
-        match ch {
-            '(' => delta += 1,
-            ')' => delta -= 1,
-            _ => {}
+    for route in ROOT_VIEWPORT_TABLE_ROUTES {
+        let private_declaration = format!("mod {};", route.module);
+        let declarations = text
+            .lines()
+            .enumerate()
+            .filter_map(|(line_index, line)| {
+                let code = strip_line_comment(line).trim();
+                code.ends_with(&private_declaration)
+                    .then_some((line_index + 1, line, code))
+            })
+            .collect::<Vec<_>>();
+        if declarations.len() != 1 {
+            violations.push(RootViewportArchitectureViolation {
+                file_name: FILE_NAME.to_string(),
+                line_number: declarations.first().map_or(1, |item| item.0),
+                line: declarations
+                    .first()
+                    .map_or_else(String::new, |item| item.1.to_string()),
+                message: format!(
+                    "generated root table `{}` must have exactly one module declaration",
+                    route.module
+                ),
+            });
+            continue;
+        }
+
+        let (line_number, line, code) = declarations[0];
+        if code != private_declaration {
+            violations.push(RootViewportArchitectureViolation {
+                file_name: FILE_NAME.to_string(),
+                line_number,
+                line: line.to_string(),
+                message: format!(
+                    "generated root table `{}` must remain a private module",
+                    route.module
+                ),
+            });
         }
     }
-    delta
+
+    violations
+}
+
+fn find_root_viewport_renderer_violations(
+    file_name: &str,
+    text: &str,
+) -> Vec<RootViewportArchitectureViolation> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(
+            r#"(?:\blookup_[A-Za-z0-9_]+_root_viewport_override\b|\b[A-Za-z0-9_]+_root_overrides_[A-Za-z0-9_]+\b)"#,
+        )
+        .expect("valid regex")
+    });
+
+    let mut violations = Vec::new();
+    for (line_index, line) in text.lines().enumerate() {
+        let code = strip_line_comment(line);
+        if re.is_match(code) {
+            violations.push(RootViewportArchitectureViolation {
+                file_name: file_name.to_string(),
+                line_number: line_index + 1,
+                line: line.to_string(),
+                message: "family renderer must not reference generated root tables directly"
+                    .to_string(),
+            });
+        }
+    }
+
+    violations
+}
+
+fn root_viewport_violation(
+    file_name: &str,
+    text: &str,
+    offset: usize,
+    message: &str,
+) -> RootViewportArchitectureViolation {
+    let line_number = text[..offset.min(text.len())]
+        .bytes()
+        .filter(|byte| *byte == b'\n')
+        .count()
+        + 1;
+    let line = text.lines().nth(line_number - 1).unwrap_or_default();
+    RootViewportArchitectureViolation {
+        file_name: file_name.to_string(),
+        line_number,
+        line: line.to_string(),
+        message: message.to_string(),
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct ParsedRootViewportMatchArm {
+    variants: Vec<String>,
+    wildcard: bool,
+    returns_none: bool,
+    paths: Vec<Vec<String>>,
+}
+
+impl ParsedRootViewportMatchArm {
+    fn calls_lookup(&self, module: &str, lookup: &str) -> bool {
+        self.paths.iter().any(|path| {
+            path.len() >= 2 && path[path.len() - 2] == module && path[path.len() - 1] == lookup
+        })
+    }
+}
+
+fn parse_root_viewport_match_arms(text: &str) -> Result<Vec<ParsedRootViewportMatchArm>, String> {
+    let file = syn::parse_file(text)
+        .map_err(|error| format!("typed root viewport router must parse as Rust: {error}"))?;
+    let function = file
+        .items
+        .iter()
+        .find_map(|item| match item {
+            syn::Item::Fn(function) if function.sig.ident == "lookup_root_viewport_override" => {
+                Some(function)
+            }
+            _ => None,
+        })
+        .ok_or_else(|| "typed root viewport lookup function is missing".to_string())?;
+    let family_match = function
+        .block
+        .stmts
+        .iter()
+        .find_map(|statement| {
+            let syn::Stmt::Local(local) = statement else {
+                return None;
+            };
+            let syn::Pat::Ident(binding) = &local.pat else {
+                return None;
+            };
+            if binding.ident != "raw" {
+                return None;
+            }
+            let expression = local.init.as_ref()?.expr.as_ref();
+            let syn::Expr::Match(family_match) = expression else {
+                return None;
+            };
+            expr_is_ident(&family_match.expr, "family").then_some(family_match)
+        })
+        .ok_or_else(|| {
+            "typed router must assign `raw` from an explicit `match family`".to_string()
+        })?;
+
+    Ok(family_match
+        .arms
+        .iter()
+        .map(|arm| {
+            let mut variants = Vec::new();
+            let mut wildcard = false;
+            collect_render_family_pattern(&arm.pat, &mut variants, &mut wildcard);
+            let mut paths = RootViewportPathCollector::default();
+            paths.visit_expr(&arm.body);
+            ParsedRootViewportMatchArm {
+                variants,
+                wildcard,
+                returns_none: expr_is_none(&arm.body),
+                paths: paths.paths,
+            }
+        })
+        .collect())
+}
+
+fn expr_is_ident(expression: &syn::Expr, expected: &str) -> bool {
+    let syn::Expr::Path(path) = expression else {
+        return false;
+    };
+    path.qself.is_none() && path.path.segments.len() == 1 && path.path.segments[0].ident == expected
+}
+
+fn expr_is_none(expression: &syn::Expr) -> bool {
+    match expression {
+        syn::Expr::Path(path) => {
+            path.qself.is_none()
+                && path.path.segments.len() == 1
+                && path.path.segments[0].ident == "None"
+        }
+        syn::Expr::Group(group) => expr_is_none(&group.expr),
+        syn::Expr::Paren(paren) => expr_is_none(&paren.expr),
+        syn::Expr::Block(block) => block.block.stmts.last().is_some_and(|statement| {
+            matches!(statement, syn::Stmt::Expr(expression, None) if expr_is_none(expression))
+        }),
+        _ => false,
+    }
+}
+
+fn collect_render_family_pattern(
+    pattern: &syn::Pat,
+    variants: &mut Vec<String>,
+    wildcard: &mut bool,
+) {
+    match pattern {
+        syn::Pat::Or(or_pattern) => {
+            for case in &or_pattern.cases {
+                collect_render_family_pattern(case, variants, wildcard);
+            }
+        }
+        syn::Pat::Path(path_pattern) => {
+            let segments = path_pattern.path.segments.iter().collect::<Vec<_>>();
+            if segments.len() >= 2 && segments[segments.len() - 2].ident == "RenderFamilyKind" {
+                variants.push(segments[segments.len() - 1].ident.to_string());
+            }
+        }
+        syn::Pat::Paren(paren) => {
+            collect_render_family_pattern(&paren.pat, variants, wildcard);
+        }
+        syn::Pat::Reference(reference) => {
+            collect_render_family_pattern(&reference.pat, variants, wildcard);
+        }
+        syn::Pat::Type(typed) => {
+            collect_render_family_pattern(&typed.pat, variants, wildcard);
+        }
+        syn::Pat::Wild(_) => *wildcard = true,
+        _ => {}
+    }
+}
+
+#[derive(Default)]
+struct RootViewportPathCollector {
+    paths: Vec<Vec<String>>,
+}
+
+impl<'ast> Visit<'ast> for RootViewportPathCollector {
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        self.paths.push(
+            path.segments
+                .iter()
+                .map(|segment| segment.ident.to_string())
+                .collect(),
+        );
+        syn::visit::visit_path(self, path);
+    }
+}
+
+fn strip_line_comment(line: &str) -> &str {
+    line.split_once("//").map_or(line, |(code, _)| code)
 }
 
 fn collect_generated_override_footprint_entries(
@@ -733,7 +1103,8 @@ mod tests {
         classify_class_text_override_file, classify_generated_override_file,
         count_manual_bridge_functions, count_some_match_arms, count_some_match_arms_in_function,
         count_static_override_table_rows, count_visible_functions, extract_function_body,
-        find_root_viewport_lookup_violations, pinned_mermaid_baseline_label, report_path_name,
+        find_root_viewport_module_violations, find_root_viewport_renderer_violations,
+        find_root_viewport_router_violations, pinned_mermaid_baseline_label, report_path_name,
     };
     use std::fs;
     use std::path::Path;
@@ -1017,7 +1388,7 @@ pub fn lookup_c4_text_width_px(
         let err = check_override_no_growth(&entries).expect_err("growth should fail");
         let msg = err.to_string();
         assert!(msg.contains("Root viewport overrides grew"));
-        assert!(msg.contains("budget 183"));
+        assert!(msg.contains("budget 192"));
     }
 
     #[test]
@@ -1036,25 +1407,71 @@ pub fn lookup_c4_text_width_px(
     }
 
     #[test]
-    fn root_viewport_lookup_usage_accepts_shared_helper_call() {
-        let text = r#"
-fn apply(diagram_id: &str) {
-    apply_root_viewport_override(
-        diagram_id,
-        &mut viewbox_attr,
-        &mut width_attr,
-        &mut height_attr,
-        &mut max_width_attr,
-        crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override,
-    );
-}
-"#;
-
-        assert!(find_root_viewport_lookup_violations("state/render.rs", text).is_empty());
+    fn root_viewport_router_accepts_typed_table_dispatch_and_explicit_none_arm() {
+        let violations = find_root_viewport_router_violations(valid_root_viewport_router());
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:#?}"
+        );
     }
 
     #[test]
-    fn root_viewport_lookup_usage_rejects_direct_lookup_call() {
+    fn root_viewport_router_accepts_block_arms_without_commas() {
+        let router = valid_root_viewport_router().replace(
+            "RenderFamilyKind::C4 => super::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override(diagram_id),",
+            "RenderFamilyKind::C4 => {\n                super::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override(diagram_id)\n            }",
+        );
+
+        let violations = find_root_viewport_router_violations(&router);
+        assert!(
+            violations.is_empty(),
+            "block match arms are valid Rust and must remain auditable: {violations:#?}"
+        );
+    }
+
+    #[test]
+    fn root_viewport_router_rejects_missing_table_route() {
+        let router = valid_root_viewport_router().replace(
+            "RenderFamilyKind::C4 => super::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override(diagram_id),",
+            "RenderFamilyKind::C4 => None,",
+        );
+
+        let violations = find_root_viewport_router_violations(&router);
+        assert!(violations.iter().any(|violation| {
+            violation.message.contains("RenderFamilyKind::C4")
+                && violation.message.contains("c4_root_overrides_11_12_2")
+        }));
+    }
+
+    #[test]
+    fn root_viewport_router_rejects_wildcard_fallback() {
+        let router =
+            valid_root_viewport_router().replace("RenderFamilyKind::Error => None,", "_ => None,");
+
+        let violations = find_root_viewport_router_violations(&router);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.message.contains("wildcard"))
+        );
+    }
+
+    #[test]
+    fn root_viewport_modules_must_be_private() {
+        let generated_mod = private_root_viewport_modules().replace(
+            "mod c4_root_overrides_11_12_2;",
+            "pub mod c4_root_overrides_11_12_2;",
+        );
+
+        let violations = find_root_viewport_module_violations(&generated_mod);
+        assert!(violations.iter().any(|violation| {
+            violation.message.contains("c4_root_overrides_11_12_2")
+                && violation.message.contains("private")
+        }));
+    }
+
+    #[test]
+    fn root_viewport_renderer_rejects_direct_generated_lookup() {
         let text = r#"
 fn apply(diagram_id: &str) {
     if let Some((viewbox, max_w)) =
@@ -1068,20 +1485,75 @@ fn apply(diagram_id: &str) {
 }
 "#;
 
-        let violations = find_root_viewport_lookup_violations("state/render.rs", text);
+        let violations = find_root_viewport_renderer_violations("state/render.rs", text);
         assert_eq!(violations.len(), 1);
         assert_eq!(violations[0].file_name, "state/render.rs");
         assert_eq!(violations[0].line_number, 4);
     }
 
     #[test]
-    fn root_viewport_lookup_usage_ignores_line_comments() {
+    fn root_viewport_renderer_ignores_line_comments() {
         let text = r#"
 fn apply() {
     // crate::generated::state_root_overrides_11_12_2::lookup_state_root_viewport_override
 }
 "#;
 
-        assert!(find_root_viewport_lookup_violations("state/render.rs", text).is_empty());
+        assert!(find_root_viewport_renderer_violations("state/render.rs", text).is_empty());
+    }
+
+    fn valid_root_viewport_router() -> &'static str {
+        r#"
+use crate::family::RenderFamilyKind;
+
+pub(crate) struct GeneratedRootViewport {
+    pub(crate) view_box: &'static str,
+    pub(crate) max_width: &'static str,
+}
+
+pub(crate) fn lookup_root_viewport_override(
+    family: RenderFamilyKind,
+    baseline_version: &str,
+    diagram_id: &str,
+) -> Option<GeneratedRootViewport> {
+    if baseline_version != merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION {
+        return None;
+    }
+
+    let raw = match family {
+        RenderFamilyKind::C4 => super::c4_root_overrides_11_12_2::lookup_c4_root_viewport_override(diagram_id),
+        RenderFamilyKind::Er => super::er_root_overrides_11_12_2::lookup_er_root_viewport_override(diagram_id),
+        RenderFamilyKind::EventModeling => super::eventmodeling_root_overrides_11_15_0::lookup_eventmodeling_root_viewport_override(diagram_id),
+        RenderFamilyKind::Flowchart => super::flowchart_root_overrides_11_12_2::lookup_flowchart_root_viewport_override(diagram_id),
+        RenderFamilyKind::Mindmap => super::mindmap_root_overrides_11_12_2::lookup_mindmap_root_viewport_override(diagram_id),
+        RenderFamilyKind::Pie => super::pie_root_overrides_11_12_2::lookup_pie_root_viewport_override(diagram_id),
+        RenderFamilyKind::Sankey => super::sankey_root_overrides_11_12_2::lookup_sankey_root_viewport_override(diagram_id),
+        RenderFamilyKind::Sequence => super::sequence_root_overrides_11_16_0::lookup_sequence_root_viewport_override(diagram_id),
+        RenderFamilyKind::State => super::state_root_overrides_11_12_2::lookup_state_root_viewport_override(diagram_id),
+        RenderFamilyKind::Timeline => super::timeline_root_overrides_11_12_2::lookup_timeline_root_viewport_override(diagram_id),
+        RenderFamilyKind::Error => None,
+    };
+
+    raw.map(|(view_box, max_width)| GeneratedRootViewport {
+        view_box,
+        max_width,
+    })
+}
+"#
+    }
+
+    fn private_root_viewport_modules() -> &'static str {
+        r#"
+mod c4_root_overrides_11_12_2;
+mod er_root_overrides_11_12_2;
+mod eventmodeling_root_overrides_11_15_0;
+mod flowchart_root_overrides_11_12_2;
+mod mindmap_root_overrides_11_12_2;
+mod pie_root_overrides_11_12_2;
+mod sankey_root_overrides_11_12_2;
+mod sequence_root_overrides_11_16_0;
+mod state_root_overrides_11_12_2;
+mod timeline_root_overrides_11_12_2;
+"#
     }
 }

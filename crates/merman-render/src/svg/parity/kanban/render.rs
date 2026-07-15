@@ -151,7 +151,7 @@ pub(crate) fn render_kanban_diagram_svg(
     layout: &crate::model::KanbanDiagramLayout,
     effective_config: &serde_json::Value,
     text_measurer: &dyn crate::text::TextMeasurer,
-    options: &SvgRenderOptions,
+    options: &SvgExecution<'_>,
 ) -> Result<String> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
@@ -167,43 +167,25 @@ pub(crate) fn render_kanban_diagram_svg(
     let vb_h = calibrated_kanban_root_height(layout, (bounds.max_y - bounds.min_y).max(1.0));
 
     let mut out = String::new();
-    let max_w_attr = fmt_max_width_px(vb_w);
-    let w_attr = fmt_string(vb_w);
-    let h_attr = fmt_string(vb_h);
-    let viewbox_attr = format!(
-        "{} {} {} {}",
-        fmt(vb_min_x),
-        fmt(vb_min_y),
-        fmt(vb_w),
-        fmt(vb_h)
-    );
-    if layout.use_max_width {
-        let style_attr = format!("max-width: {max_w_attr}px; background-color: white;");
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Percent100,
-                style_attr: Some(style_attr.as_str()),
-                viewbox_attr: Some(&viewbox_attr),
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "kanban")
-            },
-        );
-    } else {
-        let tail_attrs: [(&str, &str); 1] = [("style", "background-color: white;")];
-        root_svg::push_svg_root_open(
-            &mut out,
-            root_svg::SvgRootAttrs {
-                width: root_svg::SvgRootWidth::Fixed(&w_attr),
-                height_attr: Some(&h_attr),
-                viewbox_attr: Some(&viewbox_attr),
-                tail_attrs: &tail_attrs,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                trailing_newline: false,
-                ..root_svg::SvgRootAttrs::new(diagram_id, "kanban")
-            },
-        );
-    }
+    let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
+    let mut root_chrome = root_svg::RootChrome::new(diagram_id, "kanban");
+    root_chrome.dom = root_svg::RootDomProfile {
+        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+        trailing_newline: false,
+        ..root_svg::RootDomProfile::default()
+    };
+    root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Kanban,
+        diagram_id,
+        options.root_viewport_override_policy(),
+    )
+    .write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+        root_chrome,
+    )?;
 
     let css = kanban_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
@@ -552,7 +534,9 @@ mod tests {
         options: &SvgRenderOptions,
     ) -> Result<String> {
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        render_kanban_diagram_svg(layout, effective_config, &measurer, options)
+        with_test_svg_execution(options, |options| {
+            render_kanban_diagram_svg(layout, effective_config, &measurer, options)
+        })
     }
 
     #[test]
@@ -861,7 +845,9 @@ mod tests {
         );
         let session = environment.begin_session().unwrap();
         let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
-        let options = SvgRenderOptions::default();
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let options = SvgExecution::new(&request, &debug, &session);
 
         let svg = render_kanban_diagram_svg(&layout, &serde_json::json!({}), &measurer, &options)
             .unwrap();

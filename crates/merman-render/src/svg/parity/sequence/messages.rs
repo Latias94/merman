@@ -330,7 +330,7 @@ pub(super) fn render_sequence_messages(out: &mut String, ctx: &SequenceMessageRe
                     + SEQUENCE_MESSAGE_WRAP_PADDING_SIDES * ctx.wrap_padding)
                     .max(ctx.sequence_width)
                     .max(1.0);
-                let raw_lines = crate::text::wrap_label_like_mermaid_lines(
+                let raw_lines = crate::sequence::wrap_sequence_label_like_mermaid_lines(
                     text,
                     ctx.measurer,
                     ctx.loop_text_style,

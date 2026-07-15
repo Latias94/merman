@@ -3,10 +3,10 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
-use merman_render::class::layout_class_diagram_v2_typed_with_config;
+use merman_render::class::layout_class_diagram_typed_with_config;
 use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
 use merman_render::family;
-use merman_render::model::ClassDiagramV2Layout;
+use merman_render::model::ClassDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use std::path::PathBuf;
 
@@ -74,14 +74,14 @@ fn class_model(parsed: &ParsedDiagramRender) -> &merman_core::models::class_diag
 fn layout_class_with_dagre(
     parsed: &ParsedDiagramRender,
     session: &RenderSession,
-) -> ClassDiagramV2Layout {
+) -> ClassDiagramLayout {
     let model = class_model(parsed);
     session
         .resource_limits()
         .check_class_complexity(model)
         .expect("class complexity within test limits");
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_class_diagram_v2_typed_with_config(model, &parsed.meta.effective_config, &measurer)
+    layout_class_diagram_typed_with_config(model, &parsed.meta.effective_config, &measurer)
         .expect("Dagre class layout")
 }
 

@@ -1,4 +1,4 @@
-use merman_core::diagrams::flowchart::FlowchartV2Model;
+use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::models::class_diagram::ClassDiagram;
 
 const KIB: usize = 1024;
@@ -116,7 +116,7 @@ impl RenderResourceLimits {
 
     pub fn check_flowchart_complexity(
         &self,
-        model: &FlowchartV2Model,
+        model: &FlowchartModel,
     ) -> Result<FlowchartComplexity, ResourceLimitExceeded> {
         let complexity = FlowchartComplexity::from_model(model);
         check_limit(
@@ -188,7 +188,7 @@ pub struct FlowchartComplexity {
 }
 
 impl FlowchartComplexity {
-    pub fn from_model(model: &FlowchartV2Model) -> Self {
+    pub fn from_model(model: &FlowchartModel) -> Self {
         let node_label_bytes = model
             .nodes
             .iter()
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn flowchart_complexity_counts_layout_nodes_and_labels() {
-        let model = FlowchartV2Model {
+        let model = FlowchartModel {
             keyword: "graph".to_string(),
             acc_descr: None,
             acc_title: None,
