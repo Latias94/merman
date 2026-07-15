@@ -557,8 +557,13 @@ impl FamilyRenderArtifact {
     }
 }
 
-fn pair<S, L>(semantic: S, layout: L) -> Box<FamilyPair<S, L>> {
-    Box::new(FamilyPair::new(semantic, layout))
+#[inline(never)]
+fn prepare_pair<S, L>(
+    semantic: S,
+    layout: impl FnOnce(&S) -> Result<L>,
+) -> Result<Box<FamilyPair<S, L>>> {
+    let layout = layout(&semantic)?;
+    Ok(Box::new(FamilyPair::new(semantic, layout)))
 }
 
 pub fn prepare(
@@ -590,22 +595,24 @@ pub fn prepare(
     let title = meta.title.as_deref();
     let family = match model {
         RenderSemanticModel::Error(model) => {
-            let layout = crate::error::layout_error_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Error(pair(model, layout))
+            BuiltinFamilyArtifact::Error(prepare_pair(model, |model| {
+                crate::error::layout_error_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         #[cfg(feature = "cytoscape-layout")]
         RenderSemanticModel::Mindmap(model) => {
-            let layout = crate::mindmap::layout_mindmap_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-                execution.use_manatee_layout,
-            )?;
-            BuiltinFamilyArtifact::Mindmap(pair(model, layout))
+            BuiltinFamilyArtifact::Mindmap(prepare_pair(model, |model| {
+                crate::mindmap::layout_mindmap_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                    execution.use_manatee_layout,
+                )
+            })?)
         }
         #[cfg(not(feature = "cytoscape-layout"))]
         RenderSemanticModel::Mindmap(_) => {
@@ -614,42 +621,46 @@ pub fn prepare(
             });
         }
         RenderSemanticModel::State(model) => {
-            let layout = crate::state::layout_state_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::State(pair(model, layout))
+            BuiltinFamilyArtifact::State(prepare_pair(model, |model| {
+                crate::state::layout_state_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Sequence(model) => {
-            let layout = crate::sequence::layout_sequence_diagram_typed_with_title(
-                &model,
-                title,
-                effective_config,
-                execution.text_measurer(),
-                execution.math_renderer(),
-            )?;
-            BuiltinFamilyArtifact::Sequence(pair(model, layout))
+            BuiltinFamilyArtifact::Sequence(prepare_pair(model, |model| {
+                crate::sequence::layout_sequence_diagram_typed_with_title(
+                    model,
+                    title,
+                    effective_config,
+                    execution.text_measurer(),
+                    execution.math_renderer(),
+                )
+            })?)
         }
         RenderSemanticModel::Flowchart(model) => {
-            let layout = crate::layout_flowchart_typed_by_engine(
-                diagram_type,
-                &model,
-                &meta.effective_config,
-                &execution,
-            )?;
-            BuiltinFamilyArtifact::Flowchart(pair(model, layout))
+            BuiltinFamilyArtifact::Flowchart(prepare_pair(model, |model| {
+                crate::layout_flowchart_typed_by_engine(
+                    diagram_type,
+                    model,
+                    &meta.effective_config,
+                    &execution,
+                )
+            })?)
         }
         #[cfg(feature = "cytoscape-layout")]
         RenderSemanticModel::Architecture(model) => {
-            let layout = crate::architecture::layout_architecture_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-                execution.use_manatee_layout,
-                execution.ambient_seed(),
-            )?;
-            BuiltinFamilyArtifact::Architecture(pair(model, layout))
+            BuiltinFamilyArtifact::Architecture(prepare_pair(model, |model| {
+                crate::architecture::layout_architecture_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                    execution.use_manatee_layout,
+                    execution.ambient_seed(),
+                )
+            })?)
         }
         #[cfg(not(feature = "cytoscape-layout"))]
         RenderSemanticModel::Architecture(_) => {
@@ -658,197 +669,221 @@ pub fn prepare(
             });
         }
         RenderSemanticModel::Class(model) => {
-            let layout = crate::layout_class_typed_by_engine(
-                diagram_type,
-                &model,
-                &meta.effective_config,
-                &execution,
-            )?;
-            BuiltinFamilyArtifact::Class(pair(model, layout))
+            BuiltinFamilyArtifact::Class(prepare_pair(model, |model| {
+                crate::layout_class_typed_by_engine(
+                    diagram_type,
+                    model,
+                    &meta.effective_config,
+                    &execution,
+                )
+            })?)
         }
         RenderSemanticModel::C4(model) => {
-            let layout = crate::c4::layout_c4_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-                execution.viewport_width,
-                execution.viewport_height,
-            )?;
-            BuiltinFamilyArtifact::C4(pair(model, layout))
+            BuiltinFamilyArtifact::C4(prepare_pair(model, |model| {
+                crate::c4::layout_c4_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                    execution.viewport_width,
+                    execution.viewport_height,
+                )
+            })?)
         }
         RenderSemanticModel::Cynefin(model) => {
-            let layout = crate::cynefin::layout_cynefin_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Cynefin(pair(model, layout))
+            BuiltinFamilyArtifact::Cynefin(prepare_pair(model, |model| {
+                crate::cynefin::layout_cynefin_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Railroad(model) => {
-            let layout = crate::railroad::layout_railroad_diagram_typed_for_type(
-                &model,
-                diagram_type,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Railroad(pair(model, layout))
+            BuiltinFamilyArtifact::Railroad(prepare_pair(model, |model| {
+                crate::railroad::layout_railroad_diagram_typed_for_type(
+                    model,
+                    diagram_type,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Kanban(model) => {
-            let layout = crate::kanban::layout_kanban_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Kanban(pair(model, layout))
+            BuiltinFamilyArtifact::Kanban(prepare_pair(model, |model| {
+                crate::kanban::layout_kanban_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Gantt(model) => {
-            let layout = crate::gantt::layout_gantt_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Gantt(pair(model, layout))
+            BuiltinFamilyArtifact::Gantt(prepare_pair(model, |model| {
+                crate::gantt::layout_gantt_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Pie(model) => {
-            let layout = crate::pie::layout_pie_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Pie(pair(model, layout))
+            BuiltinFamilyArtifact::Pie(prepare_pair(model, |model| {
+                crate::pie::layout_pie_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Packet(model) => {
-            let layout = crate::packet::layout_packet_diagram_typed(
-                &model,
-                title,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Packet(pair(model, layout))
+            BuiltinFamilyArtifact::Packet(prepare_pair(model, |model| {
+                crate::packet::layout_packet_diagram_typed(
+                    model,
+                    title,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Timeline(model) => {
-            let layout = crate::timeline::layout_timeline_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Timeline(pair(model, layout))
+            BuiltinFamilyArtifact::Timeline(prepare_pair(model, |model| {
+                crate::timeline::layout_timeline_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Journey(model) => {
-            let layout = crate::journey::layout_journey_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Journey(pair(model, layout))
+            BuiltinFamilyArtifact::Journey(prepare_pair(model, |model| {
+                crate::journey::layout_journey_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Requirement(model) => {
-            let layout = crate::requirement::layout_requirement_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Requirement(pair(model, layout))
+            BuiltinFamilyArtifact::Requirement(prepare_pair(model, |model| {
+                crate::requirement::layout_requirement_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Sankey(model) => {
-            let layout = crate::sankey::layout_sankey_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Sankey(pair(model, layout))
+            BuiltinFamilyArtifact::Sankey(prepare_pair(model, |model| {
+                crate::sankey::layout_sankey_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Radar(model) => {
-            let layout = crate::radar::layout_radar_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Radar(pair(model, layout))
+            BuiltinFamilyArtifact::Radar(prepare_pair(model, |model| {
+                crate::radar::layout_radar_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Info(model) => {
-            let layout = crate::info::layout_info_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Info(pair(model, layout))
+            BuiltinFamilyArtifact::Info(prepare_pair(model, |model| {
+                crate::info::layout_info_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Treemap(model) => {
-            let layout = crate::treemap::layout_treemap_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Treemap(pair(model, layout))
+            BuiltinFamilyArtifact::Treemap(prepare_pair(model, |model| {
+                crate::treemap::layout_treemap_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Block(model) => {
-            let layout = crate::block::layout_block_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Block(pair(model, layout))
+            BuiltinFamilyArtifact::Block(prepare_pair(model, |model| {
+                crate::block::layout_block_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Er(model) => {
-            let layout = crate::er::layout_er_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Er(pair(model, layout))
+            BuiltinFamilyArtifact::Er(prepare_pair(model, |model| {
+                crate::er::layout_er_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::QuadrantChart(model) => {
-            let layout = crate::quadrantchart::layout_quadrantchart_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::QuadrantChart(pair(model, layout))
+            BuiltinFamilyArtifact::QuadrantChart(prepare_pair(model, |model| {
+                crate::quadrantchart::layout_quadrantchart_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::XyChart(model) => {
-            let layout = crate::xychart::layout_xychart_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::XyChart(pair(model, layout))
+            BuiltinFamilyArtifact::XyChart(prepare_pair(model, |model| {
+                crate::xychart::layout_xychart_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::GitGraph(model) => {
-            let layout = crate::gitgraph::layout_gitgraph_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::GitGraph(pair(model, layout))
+            BuiltinFamilyArtifact::GitGraph(prepare_pair(model, |model| {
+                crate::gitgraph::layout_gitgraph_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::TreeView(model) => {
-            let layout = crate::tree_view::layout_tree_view_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::TreeView(pair(model, layout))
+            BuiltinFamilyArtifact::TreeView(prepare_pair(model, |model| {
+                crate::tree_view::layout_tree_view_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Ishikawa(model) => {
-            let layout = crate::ishikawa::layout_ishikawa_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::Ishikawa(pair(model, layout))
+            BuiltinFamilyArtifact::Ishikawa(prepare_pair(model, |model| {
+                crate::ishikawa::layout_ishikawa_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::EventModeling(model) => {
-            let layout = crate::eventmodeling::layout_eventmodeling_diagram_typed(
-                &model,
-                effective_config,
-                execution.text_measurer(),
-            )?;
-            BuiltinFamilyArtifact::EventModeling(pair(model, layout))
+            BuiltinFamilyArtifact::EventModeling(prepare_pair(model, |model| {
+                crate::eventmodeling::layout_eventmodeling_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
         }
         RenderSemanticModel::Venn(model) => {
-            let layout = crate::venn::layout_venn_diagram_typed(&model, title, effective_config)?;
-            BuiltinFamilyArtifact::Venn(pair(model, layout))
+            BuiltinFamilyArtifact::Venn(prepare_pair(model, |model| {
+                crate::venn::layout_venn_diagram_typed(model, title, effective_config)
+            })?)
         }
         RenderSemanticModel::CustomJson(_) => {
             unreachable!("custom JSON models return before built-in family dispatch")
