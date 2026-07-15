@@ -5,6 +5,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub const BLOCK_WIDTH_WARNING_RULE_ID: &str = "merman.block.width_exceeds_columns";
 pub const FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID: &str =
@@ -80,8 +81,8 @@ pub(crate) struct ResolvedParser<T> {
 /// Registry for semantic JSON parsers keyed by Mermaid diagram type id.
 #[derive(Debug, Clone)]
 pub struct DiagramRegistry {
-    builtins: HashMap<&'static str, DiagramSemanticParser>,
-    overlays: HashMap<&'static str, DiagramSemanticParser>,
+    builtins: Arc<HashMap<&'static str, DiagramSemanticParser>>,
+    overlays: Arc<HashMap<&'static str, DiagramSemanticParser>>,
     profile: BaselineRegistryProfile,
 }
 
@@ -99,15 +100,15 @@ impl DiagramRegistry {
 
     fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
-            builtins: HashMap::new(),
-            overlays: HashMap::new(),
+            builtins: Arc::new(HashMap::new()),
+            overlays: Arc::new(HashMap::new()),
             profile,
         }
     }
 
     /// Registers or replaces the parser for a Mermaid diagram type id.
     pub fn insert(&mut self, diagram_type: &'static str, parser: DiagramSemanticParser) {
-        self.overlays.insert(diagram_type, parser);
+        Arc::make_mut(&mut self.overlays).insert(diagram_type, parser);
     }
 
     /// Looks up a parser by Mermaid diagram type id.
@@ -138,7 +139,7 @@ impl DiagramRegistry {
     pub fn pinned_mermaid_baseline_full() -> Self {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
         for fact in crate::family::semantic_parser_facts(BaselineRegistryProfile::Full) {
-            reg.builtins.insert(fact.id, fact.parser);
+            Arc::make_mut(&mut reg.builtins).insert(fact.id, fact.parser);
         }
 
         reg
@@ -148,7 +149,7 @@ impl DiagramRegistry {
     pub fn pinned_mermaid_baseline_tiny() -> Self {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
         for fact in crate::family::semantic_parser_facts(BaselineRegistryProfile::Tiny) {
-            reg.builtins.insert(fact.id, fact.parser);
+            Arc::make_mut(&mut reg.builtins).insert(fact.id, fact.parser);
         }
 
         reg
@@ -622,8 +623,8 @@ impl RenderSemanticModel {
 /// Registry for typed render-model parsers keyed by Mermaid diagram type id.
 #[derive(Debug, Clone)]
 pub struct RenderDiagramRegistry {
-    builtins: HashMap<&'static str, BuiltInRenderSemanticParser>,
-    overlays: HashMap<&'static str, CustomJsonRenderParser>,
+    builtins: Arc<HashMap<&'static str, BuiltInRenderSemanticParser>>,
+    overlays: Arc<HashMap<&'static str, CustomJsonRenderParser>>,
     profile: BaselineRegistryProfile,
 }
 
@@ -647,15 +648,15 @@ impl RenderDiagramRegistry {
 
     fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
-            builtins: HashMap::new(),
-            overlays: HashMap::new(),
+            builtins: Arc::new(HashMap::new()),
+            overlays: Arc::new(HashMap::new()),
             profile,
         }
     }
 
     /// Registers or replaces a custom JSON render-model parser for a diagram type id.
     pub fn insert(&mut self, diagram_type: &'static str, parser: CustomJsonRenderParser) {
-        self.overlays.insert(diagram_type, parser);
+        Arc::make_mut(&mut self.overlays).insert(diagram_type, parser);
     }
 
     /// Returns whether a built-in or custom render-model parser is registered for the id.
@@ -675,14 +676,19 @@ impl RenderDiagramRegistry {
 
     #[cfg(test)]
     pub(crate) fn remove(&mut self, diagram_type: &str) -> bool {
-        self.overlays.remove(diagram_type).is_some() || self.builtins.remove(diagram_type).is_some()
+        Arc::make_mut(&mut self.overlays)
+            .remove(diagram_type)
+            .is_some()
+            || Arc::make_mut(&mut self.builtins)
+                .remove(diagram_type)
+                .is_some()
     }
 
     /// Builds the full typed render parser registry for the repository's pinned Mermaid baseline.
     pub fn pinned_mermaid_baseline_full() -> Self {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Full);
         for fact in crate::family::render_parser_facts(BaselineRegistryProfile::Full) {
-            reg.builtins.insert(fact.id, fact.parser);
+            Arc::make_mut(&mut reg.builtins).insert(fact.id, fact.parser);
         }
 
         reg
@@ -692,7 +698,7 @@ impl RenderDiagramRegistry {
     pub fn pinned_mermaid_baseline_tiny() -> Self {
         let mut reg = Self::with_profile(BaselineRegistryProfile::Tiny);
         for fact in crate::family::render_parser_facts(BaselineRegistryProfile::Tiny) {
-            reg.builtins.insert(fact.id, fact.parser);
+            Arc::make_mut(&mut reg.builtins).insert(fact.id, fact.parser);
         }
 
         reg
@@ -749,4 +755,53 @@ pub fn parse_or_unsupported(
         });
     };
     parser(code, meta)
+}
+
+#[cfg(test)]
+mod registry_clone_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn custom_semantic_parser(_code: &str, _meta: &ParseMetadata) -> Result<Value> {
+        Ok(Value::Null)
+    }
+
+    fn custom_render_parser(_code: &str, _meta: &ParseMetadata) -> Result<CustomJsonRenderModel> {
+        Ok(CustomJsonRenderModel::new(
+            "copy-on-write-render-test",
+            Value::Null,
+        ))
+    }
+
+    #[test]
+    fn semantic_registry_clone_uses_copy_on_write_storage() {
+        let original = DiagramRegistry::pinned_mermaid_baseline_full();
+        let mut cloned = original.clone();
+
+        assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
+        assert!(Arc::ptr_eq(&original.overlays, &cloned.overlays));
+
+        cloned.insert("copy-on-write-semantic-test", custom_semantic_parser);
+
+        assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
+        assert!(!Arc::ptr_eq(&original.overlays, &cloned.overlays));
+        assert!(original.get("copy-on-write-semantic-test").is_none());
+        assert!(cloned.get("copy-on-write-semantic-test").is_some());
+    }
+
+    #[test]
+    fn render_registry_clone_uses_copy_on_write_storage() {
+        let original = RenderDiagramRegistry::pinned_mermaid_baseline_full();
+        let mut cloned = original.clone();
+
+        assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
+        assert!(Arc::ptr_eq(&original.overlays, &cloned.overlays));
+
+        cloned.insert("copy-on-write-render-test", custom_render_parser);
+
+        assert!(Arc::ptr_eq(&original.builtins, &cloned.builtins));
+        assert!(!Arc::ptr_eq(&original.overlays, &cloned.overlays));
+        assert!(!original.contains("copy-on-write-render-test"));
+        assert!(cloned.contains("copy-on-write-render-test"));
+    }
 }

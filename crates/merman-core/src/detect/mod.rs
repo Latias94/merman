@@ -1,6 +1,7 @@
 use crate::baseline::BaselineRegistryProfile;
 use crate::{MermaidConfig, Result};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
 #[error("No diagram type detected matching given configuration for text: {text}")]
@@ -27,7 +28,7 @@ pub struct Detector {
 /// syntaxes in a fixed order.
 #[derive(Debug, Clone)]
 pub struct DetectorRegistry {
-    detectors: Vec<Detector>,
+    detectors: Arc<Vec<Detector>>,
     profile: BaselineRegistryProfile,
 }
 
@@ -39,14 +40,14 @@ impl DetectorRegistry {
 
     fn with_profile(profile: BaselineRegistryProfile) -> Self {
         Self {
-            detectors: Vec::new(),
+            detectors: Arc::new(Vec::new()),
             profile,
         }
     }
 
     /// Adds a detector entry to the end of the ordered registry.
     pub fn add(&mut self, detector: Detector) {
-        self.detectors.push(detector);
+        Arc::make_mut(&mut self.detectors).push(detector);
     }
 
     /// Adds a detector function to the end of the ordered registry.
@@ -66,7 +67,7 @@ impl DetectorRegistry {
             return Ok(id);
         }
 
-        for det in &self.detectors {
+        for det in self.detectors.iter() {
             if (det.detector)(cleaned.as_ref(), config) {
                 return Ok(det.id);
             }
@@ -89,7 +90,7 @@ impl DetectorRegistry {
             return Ok(id);
         }
 
-        for det in &self.detectors {
+        for det in self.detectors.iter() {
             if (det.detector)(text, config) {
                 return Ok(det.id);
             }
@@ -452,5 +453,29 @@ mod remove_directives_tests {
         let s = "flowchart\n%%{init: {\"theme\": \"dark\"}}\nA-->B;";
         let out = remove_directives(s);
         assert_eq!(out.as_ref().trim(), "flowchart");
+    }
+}
+
+#[cfg(test)]
+mod registry_clone_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn always_detects(_text: &str, _config: &mut MermaidConfig) -> bool {
+        true
+    }
+
+    #[test]
+    fn detector_registry_clone_uses_copy_on_write_storage() {
+        let original = DetectorRegistry::pinned_mermaid_baseline_full();
+        let mut cloned = original.clone();
+
+        assert!(Arc::ptr_eq(&original.detectors, &cloned.detectors));
+
+        cloned.add_fn("copy-on-write-test", always_detects);
+
+        assert!(!Arc::ptr_eq(&original.detectors, &cloned.detectors));
+        assert!(!original.detector_ids().any(|id| id == "copy-on-write-test"));
+        assert!(cloned.detector_ids().any(|id| id == "copy-on-write-test"));
     }
 }

@@ -10,9 +10,7 @@ use crate::text::{
 use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
 use std::fmt;
 use std::num::NonZeroU64;
-use std::sync::{Arc, Mutex, MutexGuard};
-
-#[cfg(feature = "host")]
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A render phase that may select a distinct complete text-measurement profile.
@@ -215,6 +213,40 @@ pub enum TextMeasurementOperation {
     WrappedRaw,
 }
 
+impl TextMeasurementOperation {
+    const ALL: [Self; 12] = [
+        Self::Measure,
+        Self::ComputedLength,
+        Self::BBoxX,
+        Self::BBoxXWithAsciiOverhang,
+        Self::TitleBBoxX,
+        Self::SimpleBBoxWidth,
+        Self::RawBBoxWidth,
+        Self::WrapProbeBBoxWidth,
+        Self::SimpleBBoxHeight,
+        Self::Wrapped,
+        Self::WrappedWithRawWidth,
+        Self::WrappedRaw,
+    ];
+
+    const fn index(self) -> usize {
+        match self {
+            Self::Measure => 0,
+            Self::ComputedLength => 1,
+            Self::BBoxX => 2,
+            Self::BBoxXWithAsciiOverhang => 3,
+            Self::TitleBBoxX => 4,
+            Self::SimpleBBoxWidth => 5,
+            Self::RawBBoxWidth => 6,
+            Self::WrapProbeBBoxWidth => 7,
+            Self::SimpleBBoxHeight => 8,
+            Self::Wrapped => 9,
+            Self::WrappedWithRawWidth => 10,
+            Self::WrappedRaw => 11,
+        }
+    }
+}
+
 /// The concrete backend kind that produced one result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextMeasurementSource {
@@ -261,38 +293,124 @@ impl TextMeasurementReport {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TextMeasurementRouteOutcome {
+    Profile,
+    Host,
+    Fallback(HostFallbackReason),
+}
+
+impl TextMeasurementRouteOutcome {
+    const ALL: [Self; 5] = [
+        Self::Profile,
+        Self::Host,
+        Self::Fallback(HostFallbackReason::Missing),
+        Self::Fallback(HostFallbackReason::Invalid),
+        Self::Fallback(HostFallbackReason::Error),
+    ];
+
+    const fn index(self) -> usize {
+        match self {
+            Self::Profile => 0,
+            Self::Host => 1,
+            Self::Fallback(HostFallbackReason::Missing) => 2,
+            Self::Fallback(HostFallbackReason::Invalid) => 3,
+            Self::Fallback(HostFallbackReason::Error) => 4,
+        }
+    }
+}
+
+#[derive(Debug)]
 struct TextMeasurementRecorder {
-    entries: Mutex<Vec<TextMeasurementSummary>>,
+    counts: [AtomicU64;
+        TextMeasurementPhase::ALL.len()
+            * TextMeasurementOperation::ALL.len()
+            * TextMeasurementRouteOutcome::ALL.len()],
+}
+
+impl Default for TextMeasurementRecorder {
+    fn default() -> Self {
+        Self {
+            counts: std::array::from_fn(|_| AtomicU64::new(0)),
+        }
+    }
 }
 
 impl TextMeasurementRecorder {
-    fn record(&self, provenance: TextMeasurementProvenance) {
-        let mut entries = lock_unpoisoned(&self.entries);
-        if let Some(existing) = entries
-            .iter_mut()
-            .find(|entry| entry.provenance == provenance)
-        {
-            existing.count = existing.count.saturating_add(1);
-            return;
-        }
-        entries.push(TextMeasurementSummary {
-            provenance,
-            count: 1,
+    const fn slot(
+        phase: TextMeasurementPhase,
+        operation: TextMeasurementOperation,
+        outcome: TextMeasurementRouteOutcome,
+    ) -> usize {
+        (phase.index() * TextMeasurementOperation::ALL.len() + operation.index())
+            * TextMeasurementRouteOutcome::ALL.len()
+            + outcome.index()
+    }
+
+    fn record(
+        &self,
+        phase: TextMeasurementPhase,
+        operation: TextMeasurementOperation,
+        outcome: TextMeasurementRouteOutcome,
+    ) {
+        let counter = &self.counts[Self::slot(phase, operation, outcome)];
+        let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+            Some(count.saturating_add(1))
         });
     }
 
-    fn report(&self) -> TextMeasurementReport {
-        TextMeasurementReport {
-            entries: lock_unpoisoned(&self.entries).clone(),
-        }
-    }
-}
+    fn report(&self, policy: &TextMeasurementPolicy) -> TextMeasurementReport {
+        let mut entries = Vec::new();
+        for phase in TextMeasurementPhase::ALL {
+            for operation in TextMeasurementOperation::ALL {
+                for outcome in TextMeasurementRouteOutcome::ALL {
+                    let count =
+                        self.counts[Self::slot(phase, operation, outcome)].load(Ordering::Relaxed);
+                    if count == 0 {
+                        continue;
+                    }
 
-fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    let provenance = match (&policy.routes[phase.index()], outcome) {
+                        (
+                            TextMeasurementRouteConfig::Profile(profile),
+                            TextMeasurementRouteOutcome::Profile,
+                        ) => TextMeasurementProvenance {
+                            phase,
+                            operation,
+                            source: TextMeasurementSource::Profile,
+                            identity: profile.identity.clone(),
+                            fallback_reason: None,
+                        },
+                        (
+                            TextMeasurementRouteConfig::Host { identity, .. },
+                            TextMeasurementRouteOutcome::Host,
+                        ) => TextMeasurementProvenance {
+                            phase,
+                            operation,
+                            source: TextMeasurementSource::Host,
+                            identity: identity.clone(),
+                            fallback_reason: None,
+                        },
+                        (
+                            TextMeasurementRouteConfig::Host { fallback, .. },
+                            TextMeasurementRouteOutcome::Fallback(reason),
+                        ) => TextMeasurementProvenance {
+                            phase,
+                            operation,
+                            source: TextMeasurementSource::Profile,
+                            identity: fallback.identity.clone(),
+                            fallback_reason: Some(reason),
+                        },
+                        _ => unreachable!(
+                            "recorded text measurement outcome does not match the configured route"
+                        ),
+                    };
+                    entries.push(TextMeasurementSummary { provenance, count });
+                }
+            }
+        }
+        TextMeasurementReport { entries }
+    }
 }
 
 /// A host callback failure converted to explicit fallback provenance by the policy.
@@ -611,28 +729,16 @@ impl RoutedTextMeasurer<'_> {
         match &self.policy.routes[phase.index()] {
             TextMeasurementRouteConfig::Profile(profile) => {
                 let value = profile_call(profile.backend.as_ref());
-                self.recorder.record(TextMeasurementProvenance {
-                    phase,
-                    operation,
-                    source: TextMeasurementSource::Profile,
-                    identity: profile.identity.clone(),
-                    fallback_reason: None,
-                });
+                self.recorder
+                    .record(phase, operation, TextMeasurementRouteOutcome::Profile);
                 value
             }
             TextMeasurementRouteConfig::Host {
-                identity,
-                backend,
-                fallback,
+                backend, fallback, ..
             } => match host_call(backend.as_ref()) {
                 Ok(Some(value)) if valid(&value) => {
-                    self.recorder.record(TextMeasurementProvenance {
-                        phase,
-                        operation,
-                        source: TextMeasurementSource::Host,
-                        identity: identity.clone(),
-                        fallback_reason: None,
-                    });
+                    self.recorder
+                        .record(phase, operation, TextMeasurementRouteOutcome::Host);
                     value
                 }
                 attempt => {
@@ -642,13 +748,11 @@ impl RoutedTextMeasurer<'_> {
                         Err(_) => HostFallbackReason::Error,
                     };
                     let value = profile_call(fallback.backend.as_ref());
-                    self.recorder.record(TextMeasurementProvenance {
+                    self.recorder.record(
                         phase,
                         operation,
-                        source: TextMeasurementSource::Profile,
-                        identity: fallback.identity.clone(),
-                        fallback_reason: Some(reason),
-                    });
+                        TextMeasurementRouteOutcome::Fallback(reason),
+                    );
                     value
                 }
             },
@@ -1291,7 +1395,7 @@ impl RenderSession {
     }
 
     pub fn text_measurement_report(&self) -> TextMeasurementReport {
-        self.measurement_recorder.report()
+        self.measurement_recorder.report(&self.text_measurement)
     }
 
     pub const fn time(&self) -> RenderTimeSnapshot {
@@ -1322,7 +1426,7 @@ impl RenderSession {
     pub fn report(&self) -> RenderOperationReport {
         RenderOperationReport {
             measurement_routes: self.text_measurement.routes(),
-            measurement: self.measurement_recorder.report(),
+            measurement: self.measurement_recorder.report(&self.text_measurement),
             time: self.time,
             seed: self.seed,
             root_viewport_overrides: self.root_viewport_overrides,
@@ -1536,17 +1640,18 @@ mod tests {
 
     #[test]
     fn repeated_measurements_are_aggregated_into_one_bounded_summary() {
-        let session = RenderEnvironment::parity()
-            .begin_session()
-            .expect("begin render session");
-        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        let style = TextStyle::default();
+        let policy = TextMeasurementPolicy::parity();
+        let recorder = TextMeasurementRecorder::default();
 
         for _ in 0..10_000 {
-            let _ = measurer.measure("same label", &style);
+            recorder.record(
+                TextMeasurementPhase::Layout,
+                TextMeasurementOperation::Measure,
+                TextMeasurementRouteOutcome::Profile,
+            );
         }
 
-        let report = session.text_measurement_report();
+        let report = recorder.report(&policy);
         assert_eq!(report.entries().len(), 1);
         assert_eq!(report.entries()[0].count(), 10_000);
         assert_eq!(
