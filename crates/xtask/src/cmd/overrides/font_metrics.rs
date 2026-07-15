@@ -6,8 +6,12 @@ use regex::Regex;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static GENERATED_FILE_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn solve_ridge(at_a: &mut [Vec<f64>], at_b: &mut [f64]) -> Vec<f64> {
     let n = at_b.len();
@@ -245,7 +249,209 @@ fn replace_html_overrides_for_font(
     Ok(out)
 }
 
+fn load_sequence_fixture_samples(
+    fixture_root: &Path,
+    font_keys: &[String],
+    base_font_size_px: f64,
+) -> Result<Vec<Sample>, XtaskError> {
+    let entries = fs::read_dir(fixture_root).map_err(|source| XtaskError::ReadFile {
+        path: fixture_root.display().to_string(),
+        source,
+    })?;
+    let mut fixture_paths = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|source| XtaskError::ReadFile {
+            path: fixture_root.display().to_string(),
+            source,
+        })?;
+        let path = entry.path();
+        if is_file_with_extension(&path, "mmd") {
+            fixture_paths.push(path);
+        }
+    }
+    fixture_paths.sort();
+    if fixture_paths.is_empty() {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "sequence fixture corpus {} contains no .mmd fixtures",
+            fixture_root.display()
+        )));
+    }
+
+    let engine = merman::Engine::new();
+    let parse_options = merman::ParseOptions::strict();
+    let mut parsed_fixture_count = 0usize;
+    let mut samples = Vec::new();
+    for path in fixture_paths {
+        let source = fs::read_to_string(&path).map_err(|source| XtaskError::ReadFile {
+            path: path.display().to_string(),
+            source,
+        })?;
+        let parsed = engine
+            .parse_diagram_sync(&source, parse_options)
+            .map_err(|error| {
+                XtaskError::SvgCompareFailed(format!(
+                    "failed to parse sequence fixture {}: {error}",
+                    path.display()
+                ))
+            })?
+            .ok_or_else(|| {
+                XtaskError::SvgCompareFailed(format!(
+                    "sequence fixture {} contained no diagram",
+                    path.display()
+                ))
+            })?;
+        if parsed.meta.diagram_type != "sequence" {
+            return Err(XtaskError::SvgCompareFailed(format!(
+                "sequence fixture {} detected unexpected diagram type {:?}",
+                path.display(),
+                parsed.meta.diagram_type
+            )));
+        }
+        parsed_fixture_count += 1;
+
+        let model = &parsed.model;
+        let mut labels = Vec::new();
+        if let Some(actors) = model.get("actors").and_then(serde_json::Value::as_object) {
+            labels.extend(
+                actors.values().filter_map(|actor| {
+                    actor.get("description").and_then(serde_json::Value::as_str)
+                }),
+            );
+        }
+        if let Some(messages) = model.get("messages").and_then(serde_json::Value::as_array) {
+            labels.extend(
+                messages.iter().filter_map(|message| {
+                    message.get("message").and_then(serde_json::Value::as_str)
+                }),
+            );
+        }
+        if let Some(boxes) = model.get("boxes").and_then(serde_json::Value::as_array) {
+            labels.extend(boxes.iter().filter_map(|sequence_box| {
+                sequence_box.get("name").and_then(serde_json::Value::as_str)
+            }));
+        }
+
+        for label in labels.into_iter().filter(|label| !label.is_empty()) {
+            for font_key in font_keys {
+                samples.push(Sample {
+                    font_key: font_key.clone(),
+                    text: label.to_string(),
+                    width_px: 0.0,
+                    font_size_px: base_font_size_px.max(1.0),
+                    plain_html_label: false,
+                });
+            }
+        }
+    }
+
+    if parsed_fixture_count == 0 {
+        return Err(XtaskError::SvgCompareFailed(format!(
+            "sequence fixture corpus {} produced no parsed fixtures",
+            fixture_root.display()
+        )));
+    }
+    Ok(samples)
+}
+
+fn write_generated_file_transactionally(path: &Path, contents: &str) -> Result<(), XtaskError> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
+            path: parent.display().to_string(),
+            source,
+        })?;
+    }
+
+    let sequence = GENERATED_FILE_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("font_metrics.rs");
+    let suffix = format!("{}-{sequence}", std::process::id());
+    let temp_path = path.with_file_name(format!(".{file_name}.{suffix}.tmp"));
+    let backup_path = path.with_file_name(format!(".{file_name}.{suffix}.backup"));
+
+    let write_temp_result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temp_path)?;
+        file.write_all(contents.as_bytes())?;
+        file.sync_all()
+    })();
+    if let Err(source) = write_temp_result {
+        let _ = fs::remove_file(&temp_path);
+        return Err(XtaskError::WriteFile {
+            path: temp_path.display().to_string(),
+            source,
+        });
+    }
+
+    let had_original = match fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => true,
+        Ok(_) => {
+            let _ = fs::remove_file(&temp_path);
+            return Err(XtaskError::WriteFile {
+                path: path.display().to_string(),
+                source: std::io::Error::other("font metrics output path is not a file"),
+            });
+        }
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => false,
+        Err(source) => {
+            let _ = fs::remove_file(&temp_path);
+            return Err(XtaskError::ReadFile {
+                path: path.display().to_string(),
+                source,
+            });
+        }
+    };
+
+    if had_original {
+        fs::rename(path, &backup_path).map_err(|source| {
+            let _ = fs::remove_file(&temp_path);
+            XtaskError::WriteFile {
+                path: backup_path.display().to_string(),
+                source,
+            }
+        })?;
+    }
+
+    if let Err(source) = fs::rename(&temp_path, path) {
+        let rollback_error = had_original
+            .then(|| fs::rename(&backup_path, path).err())
+            .flatten();
+        let _ = fs::remove_file(&temp_path);
+        return Err(XtaskError::WriteFile {
+            path: path.display().to_string(),
+            source: match rollback_error {
+                Some(rollback_error) => std::io::Error::other(format!(
+                    "failed to install generated font metrics: {source}; failed to restore backup: {rollback_error}"
+                )),
+                None => source,
+            },
+        });
+    }
+
+    if had_original && let Err(error) = fs::remove_file(&backup_path) {
+        eprintln!(
+            "warning: failed to remove generated font metrics backup {}: {error}",
+            backup_path.display()
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
+    let sequence_fixture_root = crate::cmd::fixtures_root().join("sequence");
+    gen_font_metrics_with_sequence_fixture_root(args, &sequence_fixture_root)
+}
+
+fn gen_font_metrics_with_sequence_fixture_root(
+    args: Vec<String>,
+    sequence_fixture_root: &Path,
+) -> Result<(), XtaskError> {
     let mut in_dir: Option<PathBuf> = None;
     let mut out_path: Option<PathBuf> = None;
     let mut base_font_size_px: f64 = 16.0;
@@ -685,59 +891,12 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
     }
 
     if svg_sample_mode == "sequence" {
-        let engine = merman::Engine::new();
-        let parse_opts = merman::ParseOptions {
-            suppress_errors: true,
-        };
-        let fixture_root = crate::cmd::fixtures_root().join("sequence");
         let font_keys = font_family_by_key.keys().cloned().collect::<Vec<_>>();
-        if let Ok(entries) = fs::read_dir(fixture_root) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !is_file_with_extension(&path, "mmd") {
-                    continue;
-                }
-                let Ok(source) = fs::read_to_string(path) else {
-                    continue;
-                };
-                let parsed =
-                    match futures::executor::block_on(engine.parse_diagram(&source, parse_opts)) {
-                        Ok(Some(parsed)) => parsed,
-                        _ => continue,
-                    };
-                let model = &parsed.model;
-                let mut labels = Vec::new();
-                if let Some(actors) = model.get("actors").and_then(serde_json::Value::as_object) {
-                    labels.extend(actors.values().filter_map(|actor| {
-                        actor.get("description").and_then(serde_json::Value::as_str)
-                    }));
-                }
-                if let Some(messages) = model.get("messages").and_then(serde_json::Value::as_array)
-                {
-                    labels.extend(messages.iter().filter_map(|message| {
-                        message.get("message").and_then(serde_json::Value::as_str)
-                    }));
-                }
-                if let Some(boxes) = model.get("boxes").and_then(serde_json::Value::as_array) {
-                    labels.extend(boxes.iter().filter_map(|sequence_box| {
-                        sequence_box.get("name").and_then(serde_json::Value::as_str)
-                    }));
-                }
-
-                for label in labels.into_iter().filter(|label| !label.is_empty()) {
-                    for font_key in &font_keys {
-                        let sample = Sample {
-                            font_key: font_key.clone(),
-                            text: label.to_string(),
-                            width_px: 0.0,
-                            font_size_px: base_font_size_px.max(1.0),
-                            plain_html_label: false,
-                        };
-                        html_seed_samples.push(sample.clone());
-                        svg_samples.push(sample);
-                    }
-                }
-            }
+        for sample in
+            load_sequence_fixture_samples(sequence_fixture_root, &font_keys, base_font_size_px)?
+        {
+            html_seed_samples.push(sample.clone());
+            svg_samples.push(sample);
         }
     }
 
@@ -823,16 +982,7 @@ pub(crate) fn gen_font_metrics(args: Vec<String>) -> Result<(), XtaskError> {
             ));
         }
 
-        if let Some(parent) = out_path.parent() {
-            fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
-                path: parent.display().to_string(),
-                source,
-            })?;
-        }
-        fs::write(&out_path, preserved).map_err(|source| XtaskError::WriteFile {
-            path: out_path.display().to_string(),
-            source,
-        })?;
+        write_generated_file_transactionally(&out_path, &preserved)?;
 
         return Ok(());
     }
@@ -2241,16 +2391,7 @@ const strings = input.strings;
     let _ = writeln!(&mut out, "        .find(|t| t.font_key == font_key)");
     let _ = writeln!(&mut out, "}}\n");
 
-    if let Some(parent) = out_path.parent() {
-        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
-            path: parent.display().to_string(),
-            source,
-        })?;
-    }
-    fs::write(&out_path, out).map_err(|source| XtaskError::WriteFile {
-        path: out_path.display().to_string(),
-        source,
-    })?;
+    write_generated_file_transactionally(&out_path, &out)?;
 
     Ok(())
 }
@@ -2259,15 +2400,171 @@ const strings = input.strings;
 mod tests {
     use super::{
         Sample, build_html_overrides_by_font, foreignobject_content_width_px,
-        replace_html_overrides_for_font, solve_ridge,
+        gen_font_metrics_with_sequence_fixture_root, load_sequence_fixture_samples,
+        replace_html_overrides_for_font, solve_ridge, write_generated_file_transactionally,
     };
     use std::collections::BTreeMap;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDir(PathBuf);
+
+    impl TestDir {
+        fn new(name: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "merman-font-metrics-{name}-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
 
     fn assert_close(actual: f64, expected: f64) {
         assert!(
             (actual - expected).abs() < 1e-9,
             "actual={actual}, expected={expected}"
         );
+    }
+
+    fn assert_sequence_corpus_failure(
+        name: &str,
+        prepare: impl FnOnce(&Path),
+        expected_error: &str,
+    ) {
+        let temp = TestDir::new(name);
+        let fixture_root = temp.path().join("sequence");
+        prepare(&fixture_root);
+
+        let error = load_sequence_fixture_samples(&fixture_root, &["serif".to_string()], 16.0)
+            .expect_err("invalid sequence corpus must fail closed");
+
+        let message = error.to_string();
+        assert!(
+            message.contains(expected_error),
+            "expected {expected_error:?} in {message:?}"
+        );
+    }
+
+    #[test]
+    fn sequence_fixture_corpus_rejects_missing_unreadable_and_unparsable_inputs() {
+        assert_sequence_corpus_failure("missing", |_| {}, "failed to read file");
+        assert_sequence_corpus_failure(
+            "unreadable",
+            |root| {
+                fs::create_dir_all(root).unwrap();
+                fs::write(root.join("invalid-utf8.mmd"), [0xff]).unwrap();
+            },
+            "invalid-utf8.mmd",
+        );
+        assert_sequence_corpus_failure(
+            "unparsable",
+            |root| {
+                fs::create_dir_all(root).unwrap();
+                fs::write(root.join("invalid.mmd"), "sequenceDiagram\n<\n").unwrap();
+            },
+            "invalid.mmd",
+        );
+        assert_sequence_corpus_failure(
+            "no-diagram",
+            |root| {
+                fs::create_dir_all(root).unwrap();
+                fs::write(root.join("empty.mmd"), "").unwrap();
+            },
+            "empty.mmd",
+        );
+        assert_sequence_corpus_failure(
+            "no-fixtures",
+            |root| {
+                fs::create_dir_all(root).unwrap();
+                fs::write(root.join("README.txt"), "not a fixture").unwrap();
+            },
+            "no .mmd fixtures",
+        );
+    }
+
+    #[test]
+    fn sequence_generator_corpus_failure_preserves_existing_output() {
+        let temp = TestDir::new("generator-corpus-failure");
+        let input = temp.path().join("input");
+        let fixture_root = temp.path().join("sequence");
+        let output = temp.path().join("generated.rs");
+        fs::create_dir_all(&input).unwrap();
+        fs::create_dir_all(&fixture_root).unwrap();
+        fs::write(
+            input.join("sample.svg"),
+            r#"<svg id="sample"><style>#sample{font-family:serif;font-size:16px;}</style><foreignObject width="40"><div><span><p>Seed</p></span></div></foreignObject><text class="messageText">Message</text></svg>"#,
+        )
+        .unwrap();
+        fs::write(fixture_root.join("invalid.mmd"), "sequenceDiagram\n<\n").unwrap();
+        fs::write(&output, "sentinel output").unwrap();
+
+        let error = gen_font_metrics_with_sequence_fixture_root(
+            vec![
+                "--in".to_string(),
+                input.display().to_string(),
+                "--out".to_string(),
+                output.display().to_string(),
+                "--backend".to_string(),
+                "heuristic".to_string(),
+                "--svg-sample-mode".to_string(),
+                "sequence".to_string(),
+            ],
+            &fixture_root,
+        )
+        .expect_err("invalid sequence corpus must abort generation");
+
+        assert!(error.to_string().contains("invalid.mmd"));
+        assert_eq!(fs::read_to_string(output).unwrap(), "sentinel output");
+    }
+
+    #[test]
+    fn sequence_fixture_corpus_collects_labels_from_parsed_fixtures() {
+        let temp = TestDir::new("valid-corpus");
+        let fixture_root = temp.path().join("sequence");
+        fs::create_dir_all(&fixture_root).unwrap();
+        fs::write(
+            fixture_root.join("valid.mmd"),
+            "sequenceDiagram\nparticipant A as Alice\nA->>B: Hello\n",
+        )
+        .unwrap();
+
+        let samples =
+            load_sequence_fixture_samples(&fixture_root, &["serif".to_string()], 16.0).unwrap();
+        let texts = samples
+            .iter()
+            .map(|sample| sample.text.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(texts.contains(&"Alice"));
+        assert!(texts.contains(&"Hello"));
+    }
+
+    #[test]
+    fn generated_font_metrics_replace_existing_output_transactionally() {
+        let temp = TestDir::new("transactional-output");
+        let output = temp.path().join("generated.rs");
+        fs::write(&output, "old output").unwrap();
+
+        write_generated_file_transactionally(&output, "new output").unwrap();
+
+        assert_eq!(fs::read_to_string(&output).unwrap(), "new output");
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
     }
 
     #[test]
