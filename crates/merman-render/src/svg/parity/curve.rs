@@ -521,11 +521,15 @@ fn curve_linear_path_d_impl(points: &[LayoutPoint], bounds: Option<&mut BoundsBu
 pub(super) fn curve_rounded_path_d_and_bounds(
     points: &[LayoutPoint],
     radius: f64,
+    compact_corners: bool,
 ) -> (String, Option<SvgPathBounds>) {
-    (curve_rounded_path_d_impl(points, radius), None)
+    (
+        curve_rounded_path_d_impl(points, radius, compact_corners),
+        None,
+    )
 }
 
-fn curve_rounded_path_d_impl(points: &[LayoutPoint], radius: f64) -> String {
+fn curve_rounded_path_d_impl(points: &[LayoutPoint], radius: f64, compact_corners: bool) -> String {
     if points.len() < 2 {
         return String::new();
     }
@@ -568,9 +572,13 @@ fn curve_rounded_path_d_impl(points: &[LayoutPoint], radius: f64) -> String {
             continue;
         }
 
-        let cut_len = (radius / (angle / 2.0).sin())
-            .min(len1 / 2.0)
-            .min(len2 / 2.0);
+        let mermaid_cut = radius / (angle / 2.0).sin();
+        let radius_cut = if compact_corners {
+            mermaid_cut.min(radius * (angle / 2.0).tan())
+        } else {
+            mermaid_cut
+        };
+        let cut_len = radius_cut.min(len1 / 2.0).min(len2 / 2.0);
         let start = PathPoint::new(curr.x - nx1 * cut_len, curr.y - ny1 * cut_len);
         let end = PathPoint::new(curr.x + nx2 * cut_len, curr.y + ny2 * cut_len);
 

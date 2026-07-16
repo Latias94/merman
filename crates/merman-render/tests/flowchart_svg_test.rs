@@ -821,7 +821,7 @@ flowchart TD
 fn flowchart_neo_uses_configurable_radius_shadow_and_round_edges() {
     let svg = render_flowchart_svg_from_text_with_engine(
         legacy_init_theme_compat_engine(),
-        r##"%%{init: {"theme": "redux", "look": "neo", "flowchart": {"curve": "rounded", "edgeCornerRadius": 14}}}%%
+        r##"%%{init: {"theme": "redux", "look": "neo", "themeVariables": {"edgeLabelBackground": "#FFFFFF"}, "flowchart": {"curve": "rounded", "edgeCornerRadius": 14, "edgeLabelPadding": 4, "compactEdgeCorners": true}}}%%
 flowchart TD
     A[Start] --> B{Condition?}
     B -->|Yes| C[Execute]
@@ -847,6 +847,14 @@ flowchart TD
     assert!(
         svg.contains(".edgeLabel rect{opacity:1;}"),
         "expected opaque Neo label backgrounds to mask the edge cleanly: {svg}"
+    );
+    assert!(
+        svg.contains(r#"rx="4" ry="4"/><g class="label" data-id="L_B_C_0""#),
+        "expected a padded, rounded background behind the Yes label: {svg}"
+    );
+    assert!(
+        svg.contains(r#"rx="4" ry="4"/><g class="label" data-id="L_B_D_0""#),
+        "expected a padded, rounded background behind the No label: {svg}"
     );
 }
 

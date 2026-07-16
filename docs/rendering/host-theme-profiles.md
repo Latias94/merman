@@ -5,9 +5,10 @@
 Default `render_svg_sync` stays parity-oriented. Use a profile only when a host wants product-owned preview or raster output.
 
 `HostThemePreset::MermanModern` is a config-only rendering profile for modern flowcharts. It selects
-the Redux theme, Neo look, and ELK flowchart renderer while leaving the SVG output pipeline at
-parity. Builds that render this profile must enable `elk-layout`. `HostThemePreset::Mermaid` is the
-explicit opt-out and compiles to upstream Mermaid defaults with parity output.
+the Redux theme, Neo look, ELK flowchart renderer, a violet flowchart palette, padded edge-label
+masks, and compact rounded corners while leaving the SVG output pipeline at parity. Builds that
+render this profile must enable `elk-layout`. `HostThemePreset::Mermaid` is the explicit opt-out and
+compiles to upstream Mermaid defaults with parity output.
 
 ## Rust API
 

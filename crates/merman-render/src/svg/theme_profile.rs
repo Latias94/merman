@@ -270,13 +270,33 @@ impl HostThemeProfile {
             "defaultRenderer".to_string(),
             Value::String("elk".to_string()),
         );
+        flowchart.insert("edgeLabelPadding".to_string(), Value::from(4));
+        flowchart.insert("compactEdgeCorners".to_string(), Value::Bool(true));
 
         let mut site_config = Map::new();
         site_config.insert("theme".to_string(), Value::String("redux".to_string()));
         site_config.insert("look".to_string(), Value::String("neo".to_string()));
         site_config.insert("flowchart".to_string(), Value::Object(flowchart));
 
+        let theme_variables = [
+            ("mainBkg", "#F5F3FF"),
+            ("nodeBorder", "#7C3AED"),
+            ("nodeTextColor", "#28253D"),
+            ("primaryColor", "#F5F3FF"),
+            ("primaryBorderColor", "#7C3AED"),
+            ("primaryTextColor", "#28253D"),
+            ("lineColor", "#6366F1"),
+            ("arrowheadColor", "#6366F1"),
+            ("edgeLabelBackground", "#FFFFFF"),
+            ("clusterBkg", "#FAFAFF"),
+            ("clusterBorder", "#C4B5FD"),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), Value::String(value.to_string())))
+        .collect();
+
         Self {
+            theme_variables,
             site_config,
             ..Self::default()
         }
@@ -1469,14 +1489,16 @@ mod tests {
     fn modern_and_mermaid_presets_compile_explicit_rendering_policies() {
         let modern = HostThemeProfile::merman_modern().compile();
 
-        assert_eq!(
-            modern.site_config.as_value(),
-            &serde_json::json!({
-                "theme": "redux",
-                "look": "neo",
-                "flowchart": { "defaultRenderer": "elk" }
-            })
-        );
+        let cfg = modern.site_config.as_value();
+        assert_eq!(cfg["theme"], "redux");
+        assert_eq!(cfg["look"], "neo");
+        assert_eq!(cfg["flowchart"]["defaultRenderer"], "elk");
+        assert_eq!(cfg["flowchart"]["edgeLabelPadding"], 4);
+        assert_eq!(cfg["flowchart"]["compactEdgeCorners"], true);
+        assert_eq!(cfg["themeVariables"]["mainBkg"], "#F5F3FF");
+        assert_eq!(cfg["themeVariables"]["nodeBorder"], "#7C3AED");
+        assert_eq!(cfg["themeVariables"]["lineColor"], "#6366F1");
+        assert_eq!(cfg["themeVariables"]["edgeLabelBackground"], "#FFFFFF");
         assert_eq!(modern.output.preset, SvgPipelinePreset::Parity);
 
         let mermaid = HostThemeProfile::mermaid().compile();

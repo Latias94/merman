@@ -261,7 +261,8 @@ unrelated nodes. An empty `{ "host_theme": {} }` is a no-op and does not force M
 
 `host_theme.preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`,
 `gruvbox-dark`, `ayu-light`, `ayu-dark`, `merman-modern`, or `mermaid`. `merman-modern`
-selects Redux, Neo, and the ELK flowchart renderer, so rendering it requires an `elk-layout` build.
+selects Redux, Neo, the ELK flowchart renderer, a violet palette, padded edge labels, and compact
+rounded corners, so rendering it requires an `elk-layout` build.
 `mermaid` explicitly selects upstream Mermaid defaults and parity SVG output. Explicit `roles`,
 `series_palette`, `themeVariables`, `site_config`, and `output` fields override the preset. Host theme presets are
 separate from Mermaid core theme names returned by `supported_themes`. Binding surfaces expose the

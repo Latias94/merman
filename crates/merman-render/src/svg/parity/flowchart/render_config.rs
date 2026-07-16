@@ -23,6 +23,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub node_fill_color: String,
     pub node_corner_radius: f64,
     pub edge_corner_radius: f64,
+    pub edge_label_padding: f64,
+    pub compact_edge_corners: bool,
 }
 
 fn config_f64_at(value: &serde_json::Value, path: &[&str]) -> Option<f64> {
@@ -88,6 +90,15 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         config_f64_at(effective_config_value, &["flowchart", "edgeCornerRadius"])
             .unwrap_or(node_corner_radius)
             .max(0.0);
+    let edge_label_padding =
+        config_f64_at(effective_config_value, &["flowchart", "edgeLabelPadding"])
+            .unwrap_or(0.0)
+            .max(0.0);
+    let compact_edge_corners = effective_config_value
+        .get("flowchart")
+        .and_then(|flowchart| flowchart.get("compactEdgeCorners"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
 
     FlowchartRenderConfig {
         font_family,
@@ -109,5 +120,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         node_fill_color,
         node_corner_radius,
         edge_corner_radius,
+        edge_label_padding,
+        compact_edge_corners,
     }
 }

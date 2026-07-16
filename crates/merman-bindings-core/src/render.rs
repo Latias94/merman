@@ -323,10 +323,16 @@ B -->|No| D[Debug]";
         assert!(svg.contains(r#"data-look="neo""#), "{svg}");
         assert!(svg.contains(r#"rx="12" ry="12""#), "{svg}");
         assert!(
+            svg.contains("fill:#F5F3FF;stroke:#7C3AED;stroke-width:2px;"),
+            "{svg}"
+        );
+        assert!(svg.contains("stroke:#6366F1"), "{svg}");
+        assert!(
             svg.contains("stroke-linecap:round;stroke-linejoin:round;"),
             "{svg}"
         );
         assert!(svg.contains(".edgeLabel rect{opacity:1;}"), "{svg}");
+        assert!(svg.contains(r#"rx="4" ry="4""#), "{svg}");
         assert!(svg.contains("bindings-merman-modern-drop-shadow"), "{svg}");
     }
 

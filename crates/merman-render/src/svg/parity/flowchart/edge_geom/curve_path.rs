@@ -13,6 +13,7 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
     abs_top_transform: f64,
     viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
     rounded_radius: f64,
+    compact_edge_corners: bool,
 ) -> (String, Option<path_bounds::SvgPathBounds>, bool) {
     let curve_is_basis = !matches!(
         interpolate,
@@ -60,6 +61,7 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
             "rounded" => crate::svg::parity::curve::curve_rounded_path_d_and_bounds(
                 line_data,
                 rounded_radius,
+                compact_edge_corners,
             ),
             // Unknown curve names fall back to Mermaid's historical `basis` behavior.
             _ => crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data),
@@ -109,6 +111,42 @@ mod tests {
         assert_eq!(
             maybe_close_single_point_path("M1,2L3,4".to_string(), &line_data),
             "M1,2L3,4"
+        );
+    }
+
+    #[test]
+    fn compact_rounded_corners_do_not_overrun_shallow_elk_endpoint_turns() {
+        let line_data = vec![
+            crate::model::LayoutPoint {
+                x: 130.484,
+                y: 214.303,
+            },
+            crate::model::LayoutPoint {
+                x: 135.784,
+                y: 230.203,
+            },
+            crate::model::LayoutPoint {
+                x: 135.784,
+                y: 250.203,
+            },
+            crate::model::LayoutPoint {
+                x: 260.023,
+                y: 250.203,
+            },
+        ];
+
+        let (parity, _, _) =
+            curve_path_d_and_bounds(&line_data, "rounded", 0.0, 0.0, None, 12.0, false);
+        let (compact, _, _) =
+            curve_path_d_and_bounds(&line_data, "rounded", 0.0, 0.0, None, 12.0, true);
+
+        assert!(
+            parity.starts_with("M130.484,214.303L133.134,222.253Q135.784,230.203 135.784,238.583"),
+            "expected the Mermaid-compatible half-segment cut: {parity}"
+        );
+        assert!(
+            compact.starts_with("M130.484,214.303L135.168,228.356Q135.784,230.203 135.784,232.15"),
+            "expected the compact tangent-length cut: {compact}"
         );
     }
 }
