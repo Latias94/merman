@@ -21,6 +21,19 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderConfig {
     pub default_edge_style: Vec<String>,
     pub node_border_color: String,
     pub node_fill_color: String,
+    pub node_corner_radius: f64,
+    pub edge_corner_radius: f64,
+}
+
+fn config_f64_at(value: &serde_json::Value, path: &[&str]) -> Option<f64> {
+    let mut current = value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    current
+        .as_f64()
+        .or_else(|| current.as_str()?.trim().parse::<f64>().ok())
+        .filter(|value| value.is_finite())
 }
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
@@ -68,6 +81,13 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
 
     let node_border_color = config.theme_color("nodeBorder", "#9370DB");
     let node_fill_color = config.theme_color("mainBkg", "#ECECFF");
+    let node_corner_radius = config_f64_at(effective_config_value, &["themeVariables", "radius"])
+        .unwrap_or(5.0)
+        .max(0.0);
+    let edge_corner_radius =
+        config_f64_at(effective_config_value, &["flowchart", "edgeCornerRadius"])
+            .unwrap_or(node_corner_radius)
+            .max(0.0);
 
     FlowchartRenderConfig {
         font_family,
@@ -87,5 +107,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_config(
         default_edge_style,
         node_border_color,
         node_fill_color,
+        node_corner_radius,
+        edge_corner_radius,
     }
 }

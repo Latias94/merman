@@ -136,6 +136,8 @@ fn render_flowchart_v2_svg_with_config_inner(
         default_edge_style,
         node_border_color,
         node_fill_color,
+        node_corner_radius,
+        edge_corner_radius,
     } = prepare_flowchart_render_config(model, effective_config_value, diagram_type);
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
@@ -239,6 +241,8 @@ fn render_flowchart_v2_svg_with_config_inner(
         class_defs: &model.class_defs,
         node_border_color,
         node_fill_color,
+        node_corner_radius,
+        edge_corner_radius,
         default_edge_interpolate,
         default_edge_style,
         trace_edge_id: std::env::var("MERMAN_TRACE_FLOWCHART_EDGE").ok(),

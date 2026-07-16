@@ -12,6 +12,7 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
     origin_x: f64,
     abs_top_transform: f64,
     viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
+    rounded_radius: f64,
 ) -> (String, Option<path_bounds::SvgPathBounds>, bool) {
     let curve_is_basis = !matches!(
         interpolate,
@@ -56,7 +57,10 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
             "monotoneY" => {
                 crate::svg::parity::curve::curve_monotone_path_d_and_bounds(line_data, true)
             }
-            "rounded" => crate::svg::parity::curve::curve_rounded_path_d_and_bounds(line_data, 5.0),
+            "rounded" => crate::svg::parity::curve::curve_rounded_path_d_and_bounds(
+                line_data,
+                rounded_radius,
+            ),
             // Unknown curve names fall back to Mermaid's historical `basis` behavior.
             _ => crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data),
         };

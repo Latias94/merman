@@ -818,6 +818,39 @@ flowchart TD
 }
 
 #[test]
+fn flowchart_neo_uses_configurable_radius_shadow_and_round_edges() {
+    let svg = render_flowchart_svg_from_text_with_engine(
+        legacy_init_theme_compat_engine(),
+        r##"%%{init: {"theme": "redux", "look": "neo", "flowchart": {"curve": "rounded", "edgeCornerRadius": 14}}}%%
+flowchart TD
+    A[Start] --> B{Condition?}
+    B -->|Yes| C[Execute]
+    B -->|No| D[End]
+    C --> D
+"##,
+    );
+
+    assert!(
+        svg.contains(r#"rx="12" ry="12""#),
+        "expected Redux radius on ordinary Neo rectangles: {svg}"
+    );
+    assert!(
+        svg.contains(r#".node[data-look="neo"] .label-container{filter:url(#merman-drop-shadow);stroke-linejoin:round;}"#),
+        "expected scoped Redux node shadow: {svg}"
+    );
+    assert!(
+        svg.contains(
+            r#".flowchart-link[data-look="neo"]{stroke-linecap:round;stroke-linejoin:round;}"#
+        ),
+        "expected rounded Neo edge caps and joins: {svg}"
+    );
+    assert!(
+        svg.contains(".edgeLabel rect{opacity:1;}"),
+        "expected opaque Neo label backgrounds to mask the edge cleanly: {svg}"
+    );
+}
+
+#[test]
 fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_false() {
     let text =
         "%%{init: {\"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[\"`**Node**`\"]\n";
@@ -1769,6 +1802,15 @@ fn flowchart_default_curve_renders_basis_edges_while_rounded_remains_available()
     assert!(
         rounded_d.contains('Q') && !rounded_d.contains('C'),
         "expected explicit flowchart.curve=rounded to render rounded corners: {rounded_d}"
+    );
+
+    let tight_radius_svg = render(&format!(
+        "%%{{init: {{\"flowchart\": {{\"curve\": \"rounded\", \"edgeCornerRadius\": 1}}}}}}%%\n{diagram}"
+    ));
+    let tight_radius_d = edge_path_d(&tight_radius_svg, "L_A_B_0");
+    assert_ne!(
+        rounded_d, tight_radius_d,
+        "expected flowchart.edgeCornerRadius to alter rounded edge geometry"
     );
 }
 

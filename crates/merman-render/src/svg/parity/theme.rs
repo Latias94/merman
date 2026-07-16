@@ -38,6 +38,8 @@ pub(super) struct NodeDiagramTheme {
     pub(super) node_border: String,
     pub(super) arrowhead_color: String,
     pub(super) stroke_width: String,
+    pub(super) radius: String,
+    pub(super) drop_shadow: String,
     pub(super) edge_label_background: String,
     pub(super) tertiary: String,
     pub(super) cluster_bkg: String,

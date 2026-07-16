@@ -432,6 +432,7 @@ pub(super) fn flowchart_compute_edge_path_geom(
         origin_x,
         abs_top_transform,
         viewbox_current_bounds,
+        ctx.edge_corner_radius,
     );
     let pb = svg_path_bounds_from_d(&d).or(raw_pb);
 

@@ -597,6 +597,8 @@ impl<'a> PresentationTheme<'a> {
                 .raw
                 .color("arrowheadColor", self.common.line_color.as_str()),
             stroke_width: self.raw.css_value("strokeWidth", "1"),
+            radius: self.raw.css_value("radius", "5"),
+            drop_shadow: self.raw.css_value("dropShadow", "none"),
             edge_label_background: self
                 .raw
                 .color("edgeLabelBackground", "rgba(232,232,232, 0.8)"),

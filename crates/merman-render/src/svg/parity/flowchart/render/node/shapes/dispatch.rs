@@ -248,12 +248,21 @@ pub(in super::super) fn render_flowchart_v2_shape(
 
             let _ = write!(
                 out,
-                r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+                r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"{} />"#,
                 escape_attr(style),
                 fmt(-w / 2.0),
                 fmt(-h / 2.0),
                 fmt(w),
-                fmt(h)
+                fmt(h),
+                if common.look_is_neo() {
+                    format!(
+                        r#" rx="{}" ry="{}""#,
+                        fmt(common.corner_radius),
+                        fmt(common.corner_radius)
+                    )
+                } else {
+                    String::new()
+                }
             );
         }
     }
