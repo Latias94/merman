@@ -1,0 +1,12 @@
+flowchart LR
+    START([Trigger]) --> VALIDATE[[Validate input]]
+
+    subgraph PIPELINE[Processing pipeline]
+        direction LR
+        VALIDATE --> APPROVED{Approved?}
+        APPROVED -->|Yes| EXECUTE[Execute workflow]
+        EXECUTE --> STORE[(Write result)]
+    end
+
+    APPROVED -->|No| REJECT([Rejected])
+    STORE --> COMPLETE([Complete])

@@ -1,0 +1,23 @@
+{
+  "theme": "redux",
+  "look": "neo",
+  "layout": "elk",
+  "themeVariables": {
+    "mainBkg": "#F8FAFC",
+    "nodeBorder": "#64748B",
+    "nodeTextColor": "#1E293B",
+    "primaryColor": "#F8FAFC",
+    "primaryBorderColor": "#64748B",
+    "primaryTextColor": "#1E293B",
+    "lineColor": "#64748B",
+    "arrowheadColor": "#64748B",
+    "edgeLabelBackground": "#FFFFFF",
+    "clusterBkg": "#F1F5F9",
+    "clusterBorder": "#CBD5E1"
+  },
+  "flowchart": {
+    "defaultRenderer": "elk",
+    "edgeLabelPadding": 4,
+    "compactEdgeCorners": true
+  }
+}
