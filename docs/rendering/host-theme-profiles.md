@@ -4,6 +4,11 @@
 
 Default `render_svg_sync` stays parity-oriented. Use a profile only when a host wants product-owned preview or raster output.
 
+`HostThemePreset::MermanModern` is a config-only rendering profile for modern flowcharts. It selects
+the Redux theme, Neo look, and ELK flowchart renderer while leaving the SVG output pipeline at
+parity. Builds that render this profile must enable `elk-layout`. `HostThemePreset::Mermaid` is the
+explicit opt-out and compiles to upstream Mermaid defaults with parity output.
+
 ## Rust API
 
 ```rust
@@ -90,7 +95,12 @@ Bindings accept the same profile through `host_theme`:
 native SVG text and generated fallback text are both visible. It is off by default because repeated
 labels can be intentional in unrelated nodes.
 
-`preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`, `ayu-light`, or `ayu-dark`. Explicit `roles`, `series_palette`, `themeVariables`, `site_config`, and `output` values override the preset. These host presets are separate from Mermaid core theme names returned by `supported_themes()`. Built-in host presets default to editor-safe `resvg-safe` output; an empty `{ "host_theme": {} }` remains a no-op.
+`preset` accepts `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`, `gruvbox-dark`,
+`ayu-light`, `ayu-dark`, `merman-modern`, or `mermaid`. Explicit `roles`, `series_palette`,
+`themeVariables`, `site_config`, and `output` values override the preset. These host presets are
+separate from Mermaid core theme names returned by `supported_themes()`. Editor palette presets
+default to editor-safe `resvg-safe` output. `merman-modern` and `mermaid` retain parity output, and
+an empty `{ "host_theme": {} }` remains a no-op.
 
 ## Design Notes
 

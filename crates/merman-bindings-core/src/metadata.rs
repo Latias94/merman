@@ -494,7 +494,9 @@ mod tests {
                     "gruvbox-light",
                     "gruvbox-dark",
                     "ayu-light",
-                    "ayu-dark"
+                    "ayu-dark",
+                    "merman-modern",
+                    "mermaid"
                 ]
             );
         } else {

@@ -305,6 +305,56 @@ B -->|No| D[Debug]";
         assert!(svg.contains("background-color: #282c34;"), "{svg}");
     }
 
+    #[cfg(feature = "elk-layout")]
+    #[test]
+    fn merman_modern_preset_renders_neo_elk_flowcharts() {
+        let svg = String::from_utf8(
+            render_svg(
+                b"flowchart LR\nA[Start] -->|Continue| B[Finish]",
+                br##"{
+                    "host_theme": { "preset": "merman-modern" },
+                    "svg": { "diagram_id": "bindings merman modern" }
+                }"##,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(svg.contains(r#"data-look="neo""#), "{svg}");
+        assert!(svg.contains(r#"rx="12" ry="12""#), "{svg}");
+        assert!(
+            svg.contains("stroke-linecap:round;stroke-linejoin:round;"),
+            "{svg}"
+        );
+        assert!(svg.contains(".edgeLabel rect{opacity:1;}"), "{svg}");
+        assert!(svg.contains("bindings-merman-modern-drop-shadow"), "{svg}");
+    }
+
+    #[test]
+    fn mermaid_preset_is_an_explicit_parity_opt_out() {
+        let plain = String::from_utf8(
+            render_svg(
+                b"flowchart TD\nA[Host] --> B[Parity]",
+                br##"{ "svg": { "diagram_id": "bindings mermaid parity" } }"##,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let parity = String::from_utf8(
+            render_svg(
+                b"flowchart TD\nA[Host] --> B[Parity]",
+                br##"{
+                    "host_theme": { "preset": "mermaid" },
+                    "svg": { "diagram_id": "bindings mermaid parity" }
+                }"##,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(parity, plain);
+    }
+
     #[test]
     fn host_theme_preset_allows_role_overrides() {
         let svg = String::from_utf8(

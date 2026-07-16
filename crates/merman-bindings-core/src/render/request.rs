@@ -565,6 +565,8 @@ fn binding_host_theme_preset(value: &str) -> Result<HostThemePreset, BindingErro
         "gruvbox-dark" | "gruvbox_dark" => Ok(HostThemePreset::GruvboxDark),
         "ayu-light" | "ayu_light" => Ok(HostThemePreset::AyuLight),
         "ayu-dark" | "ayu_dark" => Ok(HostThemePreset::AyuDark),
+        "merman-modern" | "merman_modern" => Ok(HostThemePreset::MermanModern),
+        "mermaid" => Ok(HostThemePreset::Mermaid),
         other => Err(BindingError::new(
             BindingStatus::InvalidArgument,
             format!("unsupported host_theme.preset: {other}"),
