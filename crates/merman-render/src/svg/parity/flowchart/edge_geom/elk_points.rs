@@ -111,6 +111,139 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
     }
 }
 
+pub(in crate::svg::parity::flowchart) fn align_elk_endpoint_adapters_to_route(
+    ctx: &FlowchartRenderCtx<'_>,
+    edge: &crate::flowchart::FlowEdge,
+    origin_x: f64,
+    origin_y: f64,
+    normalize_cyclic_special: bool,
+    adapters: &mut ElkEndpointAdapterCorners,
+    points: &mut Vec<crate::model::LayoutPoint>,
+) {
+    fn route_intersection(
+        ctx: &FlowchartRenderCtx<'_>,
+        node_id: &str,
+        shape: Option<&str>,
+        bounds: &BoundaryNode,
+        port: &crate::model::LayoutPoint,
+        route_neighbor: &crate::model::LayoutPoint,
+    ) -> Option<crate::model::LayoutPoint> {
+        let mut dx = route_neighbor.x - port.x;
+        let mut dy = route_neighbor.y - port.y;
+        let len = dx.hypot(dy);
+        if !len.is_finite() || len <= 1e-9 {
+            return None;
+        }
+        dx /= len;
+        dy /= len;
+        // For either endpoint, the neighboring route point lies away from the node.
+        let inward = -1.0;
+
+        let is_inside = |point: &crate::model::LayoutPoint| {
+            let boundary = intersect_for_layout_shape(ctx, node_id, bounds, shape, point);
+            let point_distance = (point.x - bounds.x).hypot(point.y - bounds.y);
+            let boundary_distance = (boundary.x - bounds.x).hypot(boundary.y - bounds.y);
+            if boundary_distance <= 1e-9 {
+                return (point.x - bounds.x).abs() <= bounds.width / 2.0
+                    && (point.y - bounds.y).abs() <= bounds.height / 2.0;
+            }
+            point_distance <= boundary_distance + 1e-6
+        };
+
+        if is_inside(port) {
+            return Some(port.clone());
+        }
+
+        let max_distance = (bounds.width + bounds.height).max(1.0) * 2.0;
+        let mut outside_distance = 0.0;
+        let mut inside_distance = 1.0;
+        while inside_distance <= max_distance {
+            let candidate = crate::model::LayoutPoint {
+                x: port.x + inward * dx * inside_distance,
+                y: port.y + inward * dy * inside_distance,
+            };
+            if is_inside(&candidate) {
+                for _ in 0..40 {
+                    let mid = (outside_distance + inside_distance) / 2.0;
+                    let candidate = crate::model::LayoutPoint {
+                        x: port.x + inward * dx * mid,
+                        y: port.y + inward * dy * mid,
+                    };
+                    if is_inside(&candidate) {
+                        inside_distance = mid;
+                    } else {
+                        outside_distance = mid;
+                    }
+                }
+                return Some(crate::model::LayoutPoint {
+                    x: port.x + inward * dx * inside_distance,
+                    y: port.y + inward * dy * inside_distance,
+                });
+            }
+            outside_distance = inside_distance;
+            inside_distance *= 2.0;
+        }
+        None
+    }
+
+    if adapters.source && points.len() >= 3 {
+        let bounds = boundary_for_node(
+            ctx,
+            edge.from.as_str(),
+            origin_x,
+            origin_y,
+            normalize_cyclic_special,
+        );
+        let shape = ctx
+            .nodes_by_id
+            .get(edge.from.as_str())
+            .and_then(|node| node.layout_shape.as_deref());
+        if let Some(bounds) = bounds
+            && let Some(intersection) = route_intersection(
+                ctx,
+                edge.from.as_str(),
+                shape,
+                &bounds,
+                &points[1],
+                &points[2],
+            )
+        {
+            points[0] = intersection;
+            points.remove(1);
+            adapters.source = false;
+        }
+    }
+
+    if adapters.target && points.len() >= 3 {
+        let bounds = boundary_for_node(
+            ctx,
+            edge.to.as_str(),
+            origin_x,
+            origin_y,
+            normalize_cyclic_special,
+        );
+        let shape = ctx
+            .nodes_by_id
+            .get(edge.to.as_str())
+            .and_then(|node| node.layout_shape.as_deref());
+        let n = points.len();
+        if let Some(bounds) = bounds
+            && let Some(intersection) = route_intersection(
+                ctx,
+                edge.to.as_str(),
+                shape,
+                &bounds,
+                &points[n - 2],
+                &points[n - 3],
+            )
+        {
+            points[n - 1] = intersection;
+            points.remove(n - 2);
+            adapters.target = false;
+        }
+    }
+}
+
 fn apply_start_intersection(
     ctx: &FlowchartRenderCtx<'_>,
     node_id: &str,

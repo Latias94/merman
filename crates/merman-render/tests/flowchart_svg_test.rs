@@ -858,6 +858,57 @@ flowchart TD
     );
 }
 
+#[cfg(feature = "elk-layout")]
+#[test]
+fn flowchart_modern_elk_projects_terminal_routes_directly_to_shape_boundaries() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "layout": "elk",
+        "look": "neo",
+        "flowchart": {"compactEdgeCorners": true}
+    })));
+    let text = r#"flowchart LR
+    ABOVE[Above] --> TARGET([Target])
+    MIDDLE[Middle] --> TARGET
+    BELOW[Below] --> TARGET
+"#;
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::default()))
+        .expect("parse ok")
+        .expect("diagram detected");
+    assert_eq!(
+        parsed.meta.effective_config.as_value()["flowchart"]["compactEdgeCorners"],
+        true
+    );
+    let layout_options = LayoutOptions::default();
+    let out = layout_parsed(&parsed, &layout_options).expect("layout ok");
+    let LayoutDiagram::FlowchartV2(layout) = out.layout else {
+        panic!("expected FlowchartV2 layout");
+    };
+    let svg = render_flowchart_v2_svg(
+        &layout,
+        &out.semantic,
+        &out.meta.effective_config,
+        out.meta.title.as_deref(),
+        layout_options.text_measurer.as_ref(),
+        &SvgRenderOptions::default(),
+    )
+    .expect("render svg");
+
+    for edge_id in ["L_ABOVE_TARGET_0", "L_BELOW_TARGET_0"] {
+        let points = flowchart_svg_edge_data_points(&svg, edge_id);
+        assert_eq!(
+            points.len(),
+            4,
+            "expected the ELK port adapter to be removed: {points:?}"
+        );
+        let route = &points[points.len() - 2];
+        let boundary = &points[points.len() - 1];
+        assert!(
+            (route.y - boundary.y).abs() <= 1e-6 && route.x < boundary.x,
+            "expected one horizontal segment from the route to the visible boundary: {points:?}"
+        );
+    }
+}
+
 #[test]
 fn flowchart_node_labels_use_root_html_labels_when_flowchart_html_labels_is_false() {
     let text =

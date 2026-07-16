@@ -148,16 +148,17 @@ pub(super) fn flowchart_compute_edge_path_geom(
     let local_points = scratch.local_points.as_slice();
 
     use super::{
-        FlowchartEdgeTraceInput, TraceEndpointIntersection, apply_flowchart_elk_endpoint_cutter,
-        boundary_for_cluster, boundary_for_node, collapse_short_terminal_marker_stub,
-        curve_path_d_and_bounds, cut_path_at_intersect_into, dedup_consecutive_points_into,
-        force_intersect_for_layout_shape, intersect_for_layout_shape,
-        is_rounded_intersect_shift_shape, line_with_offset_for_edge_type,
-        maybe_collapse_degenerate_subgraph_edge_route, maybe_fix_corners,
-        maybe_normalize_selfedge_loop_points, maybe_remove_redundant_cluster_run_point,
-        maybe_snap_data_point_to_f32, maybe_snap_shallow_basis_triplet_y_to_f32,
-        maybe_truncate_data_point, normalize_cyclic_special_data_points,
-        rounded_line_with_marker_offsets_for_edge_type, write_flowchart_edge_trace,
+        FlowchartEdgeTraceInput, TraceEndpointIntersection, align_elk_endpoint_adapters_to_route,
+        apply_flowchart_elk_endpoint_cutter, boundary_for_cluster, boundary_for_node,
+        collapse_short_terminal_marker_stub, curve_path_d_and_bounds, cut_path_at_intersect_into,
+        dedup_consecutive_points_into, force_intersect_for_layout_shape,
+        intersect_for_layout_shape, is_rounded_intersect_shift_shape,
+        line_with_offset_for_edge_type, maybe_collapse_degenerate_subgraph_edge_route,
+        maybe_fix_corners, maybe_normalize_selfedge_loop_points,
+        maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
+        maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
+        normalize_cyclic_special_data_points, rounded_line_with_marker_offsets_for_edge_type,
+        write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
@@ -185,6 +186,17 @@ pub(super) fn flowchart_compute_edge_path_geom(
             base_points,
             points_after_intersect,
         );
+        if ctx.compact_edge_corners {
+            align_elk_endpoint_adapters_to_route(
+                ctx,
+                edge,
+                origin_x,
+                origin_y,
+                is_cyclic_special,
+                &mut elk_endpoint_adapters,
+                points_after_intersect,
+            );
+        }
     } else if base_points.len() >= 3 {
         // The semantic edge keeps its original source/target, while explicit-direction cluster
         // extraction can rebind the Graphlib layout edge to a surviving cluster node. Mermaid
