@@ -85,6 +85,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
         Some("stadium"),
         metrics,
         ctx.node_padding,
+        crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
     );
 
     let w = render_w.max(1.0);

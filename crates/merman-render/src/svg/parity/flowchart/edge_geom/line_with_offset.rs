@@ -13,6 +13,34 @@ fn marker_offset_for(arrow_type: Option<&str>) -> Option<f64> {
     }
 }
 
+pub(in crate::svg::parity::flowchart) fn collapse_short_terminal_marker_stub(
+    points: &mut Vec<crate::model::LayoutPoint>,
+    edge_type: Option<&str>,
+) -> bool {
+    let (_, arrow_type_end) = arrow_types_for_edge(edge_type);
+    let Some(offset) = marker_offset_for(arrow_type_end) else {
+        return false;
+    };
+    if points.len() < 3 {
+        return false;
+    }
+
+    let n = points.len();
+    let incoming_x = points[n - 2].x - points[n - 3].x;
+    let incoming_y = points[n - 2].y - points[n - 3].y;
+    let terminal_x = points[n - 1].x - points[n - 2].x;
+    let terminal_y = points[n - 1].y - points[n - 2].y;
+    let terminal_len = terminal_x.hypot(terminal_y);
+    let continues_forward = incoming_x * terminal_x + incoming_y * terminal_y >= 0.0;
+
+    if terminal_len > 0.0 && terminal_len <= offset && continues_forward {
+        points.remove(n - 2);
+        true
+    } else {
+        false
+    }
+}
+
 pub(in crate::svg::parity::flowchart) fn line_with_offset_points(
     input: &[crate::model::LayoutPoint],
     arrow_type_start: Option<&str>,
@@ -224,4 +252,40 @@ pub(in crate::svg::parity::flowchart) fn rounded_line_with_marker_offsets_for_ed
 ) -> Vec<crate::model::LayoutPoint> {
     let (arrow_type_start, arrow_type_end) = arrow_types_for_edge(edge_type);
     rounded_line_with_marker_offsets_points(input, arrow_type_start, arrow_type_end)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_marker_geometry_collapses_only_short_forward_terminal_stubs() {
+        let mut short = vec![
+            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 20.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 22.0, y: 1.0 },
+        ];
+        assert!(collapse_short_terminal_marker_stub(
+            &mut short,
+            Some("arrow_point")
+        ));
+        assert_eq!(short.len(), 2);
+
+        let rendered = rounded_line_with_marker_offsets_points(&short, None, Some("arrow_point"));
+        let final_dx = rendered[1].x - rendered[0].x;
+        let final_dy = rendered[1].y - rendered[0].y;
+        assert!(final_dx > 0.0);
+        assert!(final_dx * 22.0 + final_dy > 0.0);
+
+        let mut long = vec![
+            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 20.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 30.0, y: 1.0 },
+        ];
+        assert!(!collapse_short_terminal_marker_stub(
+            &mut long,
+            Some("arrow_point")
+        ));
+        assert_eq!(long.len(), 3);
+    }
 }

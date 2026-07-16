@@ -10,6 +10,12 @@
 use super::super::*;
 use super::{BoundaryNode, boundary_for_node, intersect_for_layout_shape};
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(in crate::svg::parity::flowchart) struct ElkEndpointAdapterCorners {
+    pub source: bool,
+    pub target: bool,
+}
+
 pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
     ctx: &FlowchartRenderCtx<'_>,
     edge: &crate::flowchart::FlowEdge,
@@ -18,11 +24,11 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
     normalize_cyclic_special: bool,
     base_points: &[crate::model::LayoutPoint],
     out: &mut Vec<crate::model::LayoutPoint>,
-) {
+) -> ElkEndpointAdapterCorners {
     out.clear();
     out.extend_from_slice(base_points);
     if base_points.len() < 2 {
-        return;
+        return ElkEndpointAdapterCorners::default();
     }
 
     let Some(start_bounds) = boundary_for_node(
@@ -32,7 +38,7 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
         origin_y,
         normalize_cyclic_special,
     ) else {
-        return;
+        return ElkEndpointAdapterCorners::default();
     };
     let Some(end_bounds) = boundary_for_node(
         ctx,
@@ -41,7 +47,7 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
         origin_y,
         normalize_cyclic_special,
     ) else {
-        return;
+        return ElkEndpointAdapterCorners::default();
     };
 
     let start_shape = ctx
@@ -61,16 +67,20 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
         y: end_bounds.y,
     };
 
-    out.clear();
-    if !point_close(
+    let inserted_start_center = !point_close(
         base_points.first().unwrap_or(&start_center),
         &start_center,
         1e-6,
-    ) {
+    );
+    let inserted_end_center =
+        !point_close(base_points.last().unwrap_or(&end_center), &end_center, 1e-6);
+
+    out.clear();
+    if inserted_start_center {
         out.push(start_center.clone());
     }
     out.extend_from_slice(base_points);
-    if !point_close(base_points.last().unwrap_or(&end_center), &end_center, 1e-6) {
+    if inserted_end_center {
         out.push(end_center.clone());
     }
 
@@ -84,6 +94,20 @@ pub(in crate::svg::parity::flowchart) fn apply_flowchart_elk_endpoint_cutter(
         out.clear();
         out.extend(prev_points);
         dedup_consecutive_points_in_place(out);
+        return ElkEndpointAdapterCorners::default();
+    }
+
+    ElkEndpointAdapterCorners {
+        source: inserted_start_center
+            && out.len() > 2
+            && point_close(&out[1], &base_points[0], 1e-6),
+        target: inserted_end_center
+            && out.len() > 2
+            && point_close(
+                &out[out.len() - 2],
+                &base_points[base_points.len() - 1],
+                1e-6,
+            ),
     }
 }
 

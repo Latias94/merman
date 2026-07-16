@@ -323,10 +323,10 @@ B -->|No| D[Debug]";
         assert!(svg.contains(r#"data-look="neo""#), "{svg}");
         assert!(svg.contains(r#"rx="12" ry="12""#), "{svg}");
         assert!(
-            svg.contains("fill:#F5F3FF;stroke:#7C3AED;stroke-width:2px;"),
+            svg.contains("fill:#F8FAFC;stroke:#64748B;stroke-width:2px;"),
             "{svg}"
         );
-        assert!(svg.contains("stroke:#6366F1"), "{svg}");
+        assert!(svg.contains("stroke:#64748B"), "{svg}");
         assert!(
             svg.contains("stroke-linecap:round;stroke-linejoin:round;"),
             "{svg}"

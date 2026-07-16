@@ -522,14 +522,20 @@ pub(super) fn curve_rounded_path_d_and_bounds(
     points: &[LayoutPoint],
     radius: f64,
     compact_corners: bool,
+    rounded_corner_mask: Option<&[bool]>,
 ) -> (String, Option<SvgPathBounds>) {
     (
-        curve_rounded_path_d_impl(points, radius, compact_corners),
+        curve_rounded_path_d_impl(points, radius, compact_corners, rounded_corner_mask),
         None,
     )
 }
 
-fn curve_rounded_path_d_impl(points: &[LayoutPoint], radius: f64, compact_corners: bool) -> String {
+fn curve_rounded_path_d_impl(
+    points: &[LayoutPoint],
+    radius: f64,
+    compact_corners: bool,
+    rounded_corner_mask: Option<&[bool]>,
+) -> String {
     if points.len() < 2 {
         return String::new();
     }
@@ -549,6 +555,10 @@ fn curve_rounded_path_d_impl(points: &[LayoutPoint], radius: f64, compact_corner
 
         let prev = &points[idx - 1];
         let next = &points[idx + 1];
+        if rounded_corner_mask.is_some_and(|mask| mask.get(idx) == Some(&false)) {
+            emit_cmd_pair_no_bounds(&mut out, 'L', PathPoint::from_layout(curr));
+            continue;
+        }
 
         let dx1 = curr.x - prev.x;
         let dy1 = curr.y - prev.y;

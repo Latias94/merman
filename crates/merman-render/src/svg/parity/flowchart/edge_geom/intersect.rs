@@ -969,6 +969,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             Some("stadium"),
             metrics,
             ctx.node_padding,
+            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
         );
         let mut w = render_w.max(1.0);
         let mut h = render_h.max(1.0);
@@ -1082,6 +1083,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             Some("hexagon"),
             metrics,
             ctx.node_padding,
+            crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
         );
         let w = render_w.max(1.0);
         let h = render_h.max(1.0);
