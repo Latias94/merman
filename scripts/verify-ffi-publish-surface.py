@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_ALPHA_ABI_VERSION = 2
 
 
 class CheckFailure(Exception):
@@ -45,6 +46,13 @@ def check_equal_versions(group_name: str, entries: list[tuple[str, str, str]]) -
     value = values[0][1]
     print(f"{group_name}: {value}")
     return int(value)
+
+
+def require_alpha_abi(group_name: str, actual: int) -> None:
+    if actual != EXPECTED_ALPHA_ABI_VERSION:
+        raise CheckFailure(
+            f"{group_name} must remain {EXPECTED_ALPHA_ABI_VERSION} during alpha; got {actual}"
+        )
 
 
 def check_c_abi() -> int:
@@ -118,6 +126,24 @@ def check_uniffi_abi() -> int:
                 "package example",
                 "platforms/python/merman/examples/smoke.py",
                 r"abi_version\(\)\s*(?:==|!=)\s*(\d+)",
+            ),
+        ],
+    )
+
+
+def check_wasm_abi() -> int:
+    return check_equal_versions(
+        "WASM/Web ABI version",
+        [
+            (
+                "WASM constant",
+                "crates/merman-wasm/src/lib.rs",
+                r"const WASM_ABI_VERSION: u32 = (\d+);",
+            ),
+            (
+                "Web smoke",
+                "platforms/web/scripts/smoke.mjs",
+                r"assert\.equal\(api\.abiVersion\(\),\s*(\d+)\);",
             ),
         ],
     )
@@ -221,8 +247,9 @@ def check_flutter_package_metadata() -> None:
 
 def main() -> int:
     try:
-        check_c_abi()
-        check_uniffi_abi()
+        require_alpha_abi("C ABI version", check_c_abi())
+        require_alpha_abi("Python UniFFI ABI version", check_uniffi_abi())
+        require_alpha_abi("WASM/Web ABI version", check_wasm_abi())
         check_python_package_metadata()
         check_flutter_package_metadata()
     except CheckFailure as exc:
