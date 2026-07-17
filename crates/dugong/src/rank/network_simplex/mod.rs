@@ -6,7 +6,7 @@ use crate::{EdgeLabel, GraphLabel, NodeLabel};
 
 mod edges;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct DfsFrame {
     v_ix: usize,
     parent_ix: Option<usize>,
@@ -14,7 +14,7 @@ struct DfsFrame {
     next_neighbor: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct TreeState {
     /// Tree node index -> graph node index.
     g_ix_by_t_ix: Vec<Option<usize>>,
@@ -1129,6 +1129,56 @@ pub fn exchange_edges(
     f: &EdgeKey,
 ) {
     edges::exchange_edges(t, g, rank_by_ix, e, f);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graphlib::GraphOptions;
+
+    fn ranking_graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
+        let mut graph = Graph::new(GraphOptions::default());
+        graph.set_graph(GraphLabel::default());
+        graph.set_default_node_label(NodeLabel::default);
+        graph.set_default_edge_label(|| EdgeLabel {
+            minlen: 1,
+            weight: 1.0,
+            ..EdgeLabel::default()
+        });
+        graph.set_path(&["a", "b", "c", "d"]);
+        graph.set_edge("a", "c");
+        graph.set_edge("b", "d");
+        graph
+    }
+
+    fn tree(edges: &[(&str, &str)]) -> Graph<tree::TreeNodeLabel, tree::TreeEdgeLabel, ()> {
+        let mut tree = Graph::new(GraphOptions {
+            directed: false,
+            ..GraphOptions::default()
+        });
+        tree.set_default_node_label(tree::TreeNodeLabel::default);
+        tree.set_default_edge_label(tree::TreeEdgeLabel::default);
+        for &(source, target) in edges {
+            tree.set_edge(source, target);
+        }
+        tree
+    }
+
+    #[test]
+    fn tree_state_rebuild_matches_a_fresh_instance_after_tree_change() {
+        let graph = ranking_graph();
+        let first_tree = tree(&[("a", "b"), ("b", "c"), ("c", "d")]);
+        let second_tree = tree(&[("a", "b"), ("a", "c"), ("c", "d")]);
+
+        let mut reused = TreeState::new(&first_tree, &graph);
+        reused.rebuild(&first_tree, &graph, Some("a"));
+        reused.rebuild(&second_tree, &graph, Some("a"));
+
+        let mut fresh = TreeState::new(&second_tree, &graph);
+        fresh.rebuild(&second_tree, &graph, Some("a"));
+
+        assert_eq!(reused, fresh);
+    }
 }
 
 // NOTE: Dagre treats the feasible tree as an undirected structure. We consider an edge to be a

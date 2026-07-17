@@ -140,7 +140,7 @@ Exit criteria:
 
 - `layout/flowchart_medium` ratio improves materially (goal: 2x+), without correctness regressions.
 
-### M4: Make dugong’s dagreish pipeline index-based (highest potential, highest risk) (2–6 weeks)
+### M4: Make Dugong's canonical layout pipeline index-based (highest potential, highest risk) (2-6 weeks)
 
 Focus:
 
@@ -163,7 +163,8 @@ Exit criteria:
 
 - Skip expensive HTML-sanitizer passes for strict-mode plain text (`sanitize::remove_script` fast-path).
 - Cached hot regexes in class/gantt parsers (`perf(core): cache hot regexes in class/gantt`).
-- Reduced dagreish edge-proxy overhead in dugong (`perf(dugong): cut dagreish edge-proxy overhead`).
+- Reduced edge-proxy overhead in Dugong's canonical layout pipeline
+  (`perf(dugong): cut dagreish edge-proxy overhead`).
 - Made SVG number/path formatting allocation-free (`fmt_display`, `fmt_path_into`, curve/path emit refactors).
 - Reduced allocations in flowchart/state SVG emission (escape display wrappers, fewer intermediate `String`s).
 - Added an explicit per-request SVG render breakdown to cheaply localize SVG hotspots without

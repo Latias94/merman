@@ -10,13 +10,124 @@ use crate::{
     self_edges, util,
 };
 
-pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
-    let timing_enabled = std::env::var("DUGONG_DAGREISH_TIMING")
+pub fn layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    let mut layout_graph = build_layout_graph(g);
+    run_layout(&mut layout_graph);
+    update_input_graph(g, &layout_graph);
+}
+
+// Dagre runs its mutating phases on a temporary graph built from a whitelist of layout inputs.
+// Keeping the same ownership boundary prevents rank doubling, dummy metadata, and other
+// algorithm-local state from leaking into a later layout of the caller's graph.
+fn build_layout_graph(
+    input: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) -> graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel> {
+    let mut layout = graphlib::Graph::with_capacity(
+        graphlib::GraphOptions {
+            multigraph: true,
+            compound: true,
+            directed: true,
+        },
+        input.node_count(),
+        input.edge_count(),
+    );
+    let graph = input.graph();
+    layout.set_graph(GraphLabel {
+        rankdir: graph.rankdir,
+        nodesep: graph.nodesep,
+        ranksep: graph.ranksep,
+        edgesep: graph.edgesep,
+        marginx: graph.marginx,
+        marginy: graph.marginy,
+        align: graph.align.clone(),
+        ranker: graph.ranker.clone(),
+        acyclicer: graph.acyclicer.clone(),
+        ..GraphLabel::default()
+    });
+    layout.set_default_node_label(NodeLabel::default);
+    layout.set_default_edge_label(EdgeLabel::default);
+
+    for id in input.nodes() {
+        let Some(node) = input.node(id) else {
+            continue;
+        };
+        layout.set_node(
+            id,
+            NodeLabel {
+                width: node.width,
+                height: node.height,
+                ..NodeLabel::default()
+            },
+        );
+    }
+    for id in input.nodes() {
+        if let Some(parent) = input.parent(id) {
+            layout.set_parent_ref(id, parent);
+        }
+    }
+    input.for_each_edge(|key, edge| {
+        layout.set_edge_key(
+            key.clone(),
+            EdgeLabel {
+                width: edge.width,
+                height: edge.height,
+                labelpos: edge.labelpos,
+                labeloffset: edge.labeloffset,
+                minlen: edge.minlen,
+                weight: edge.weight,
+                ..EdgeLabel::default()
+            },
+        );
+    });
+
+    layout
+}
+
+fn update_input_graph(
+    input: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+    layout: &graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>,
+) {
+    for id in input.node_ids() {
+        let Some(layout_node) = layout.node(&id) else {
+            continue;
+        };
+        let is_compound = !input.children(&id).is_empty();
+        let Some(input_node) = input.node_mut(&id) else {
+            continue;
+        };
+        input_node.x = layout_node.x;
+        input_node.y = layout_node.y;
+        if is_compound {
+            input_node.width = layout_node.width;
+            input_node.height = layout_node.height;
+        }
+    }
+
+    for key in input.edge_keys() {
+        let Some(layout_edge) = layout.edge_by_key(&key) else {
+            continue;
+        };
+        let Some(input_edge) = input.edge_mut_by_key(&key) else {
+            continue;
+        };
+        input_edge.points.clone_from(&layout_edge.points);
+        if layout_edge.x.is_some() {
+            input_edge.x = layout_edge.x;
+            input_edge.y = layout_edge.y;
+        }
+    }
+
+    input.graph_mut().width = layout.graph().width;
+    input.graph_mut().height = layout.graph().height;
+}
+
+fn run_layout(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    let timing_enabled = std::env::var("DUGONG_LAYOUT_TIMING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false);
 
     #[derive(Debug, Default, Clone)]
-    struct DagreishTimings {
+    struct LayoutTimings {
         total: web_time::Duration,
         preprocess: web_time::Duration,
         self_edges_remove: web_time::Duration,
@@ -41,7 +152,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     }
 
     let total_start = timing_enabled.then(web_time::Instant::now);
-    let mut timings = DagreishTimings::default();
+    let mut timings = LayoutTimings::default();
 
     // Mirror Dagre's `makeSpaceForEdgeLabels` so edge-label proxy ranks become integers
     // (we later materialize label nodes in `normalize::run`).
@@ -390,6 +501,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
 
     let normalize_undo_start = timing_enabled.then(web_time::Instant::now);
     normalize::undo(g);
+    fixup_edge_label_coords(g);
     coordinate_system::undo(g);
     if let Some(s) = normalize_undo_start {
         timings.normalize_undo = s.elapsed();
@@ -563,7 +675,7 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
     if let Some(s) = total_start {
         timings.total = s.elapsed();
         eprintln!(
-            "[dugong-timing] pipeline=dagreish nodes={} edges={} total={:?} preprocess={:?} self_edges_remove={:?} acyclic={:?} nesting_run={:?} rank={:?} edge_label_proxies={:?} assign_rank_min_max={:?} normalize_run={:?} compound_border={:?} order={:?} coord_adjust={:?} self_edges_insert={:?} layering_y={:?} position_x={:?} self_edges_position={:?} remove_border_nodes={:?} normalize_undo={:?} translate={:?} edge_points={:?} acyclic_undo={:?}",
+            "[dugong-timing] pipeline=layout nodes={} edges={} total={:?} preprocess={:?} self_edges_remove={:?} acyclic={:?} nesting_run={:?} rank={:?} edge_label_proxies={:?} assign_rank_min_max={:?} normalize_run={:?} compound_border={:?} order={:?} coord_adjust={:?} self_edges_insert={:?} layering_y={:?} position_x={:?} self_edges_position={:?} remove_border_nodes={:?} normalize_undo={:?} translate={:?} edge_points={:?} acyclic_undo={:?}",
             g.node_count(),
             g.edge_count(),
             timings.total,
@@ -589,4 +701,27 @@ pub fn layout_dagreish(g: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>
             timings.acyclic_undo,
         );
     }
+}
+
+/// Restore non-centered edge-label geometry after `makeSpaceForEdgeLabels` and normalization.
+///
+/// Source: `@dagrejs/dagre` `layout.js::fixupEdgeLabelCoords` at the pinned Dagre revision.
+fn fixup_edge_label_coords(graph: &mut graphlib::Graph<NodeLabel, EdgeLabel, GraphLabel>) {
+    graph.for_each_edge_mut(|_key, edge| {
+        let Some(mut x) = edge.x else {
+            return;
+        };
+        match edge.labelpos {
+            LabelPos::C => return,
+            LabelPos::L => {
+                edge.width -= edge.labeloffset;
+                x -= edge.width / 2.0 + edge.labeloffset;
+            }
+            LabelPos::R => {
+                edge.width -= edge.labeloffset;
+                x += edge.width / 2.0 + edge.labeloffset;
+            }
+        }
+        edge.x = Some(x);
+    });
 }

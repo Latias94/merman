@@ -8,8 +8,8 @@ Source: `repo-ref/dagre/test/layout-test.js`
 - `can layout two nodes on the same rank` → `crates/dugong/tests/layout_test.rs::layout_can_layout_two_nodes_on_the_same_rank`
 - `can layout two nodes connected by an edge` → `crates/dugong/tests/layout_test.rs::layout_can_layout_two_nodes_connected_by_an_edge`
 - `can layout an edge with a label` → `crates/dugong/tests/layout_test.rs::layout_can_layout_an_edge_with_a_label`
-- `can layout a long edge with a label` → `crates/dugong/tests/layout_test.rs::layout_dagreish_can_layout_a_long_edge_with_a_label`
-- `can layout out a short cycle` → `crates/dugong/tests/layout_test.rs::layout_dagreish_can_layout_a_short_cycle`
+- `can layout a long edge with a label` → `crates/dugong/tests/layout_test.rs::layout_can_layout_a_long_edge_with_a_label`
+- `can layout out a short cycle` → `crates/dugong/tests/layout_test.rs::layout_can_layout_a_short_cycle`
 - `adds rectangle intersects for edges` → `crates/dugong/tests/layout_test.rs::layout_adds_rectangle_intersects_for_edges`
 - `adds rectangle intersects for edges spanning multiple ranks` → `crates/dugong/tests/layout_test.rs::layout_adds_rectangle_intersects_for_edges_spanning_multiple_ranks`
 - `can apply an offset, with rankdir = ...` → `crates/dugong/tests/layout_test.rs::layout_can_apply_an_offset`
@@ -17,15 +17,15 @@ Source: `repo-ref/dagre/test/layout-test.js`
 - `can layout a self loop` → `crates/dugong/tests/layout_test.rs::layout_can_layout_a_self_loop`
 - `can layout a graph with subgraphs` → `crates/dugong/tests/layout_test.rs::layout_can_layout_a_graph_with_subgraphs`
 - `minimizes the height of subgraphs` → `crates/dugong/tests/layout_test.rs::layout_minimizes_the_height_of_subgraphs`
-- `minimizes separation between nodes not adjacent to subgraphs` → `crates/dugong/tests/layout_test.rs::layout_dagreish_minimizes_separation_between_nodes_not_adjacent_to_subgraphs`
-- `can layout subgraphs with different rankdirs` → `crates/dugong/tests/layout_test.rs::layout_dagreish_can_layout_subgraphs_with_different_rankdirs`
-- `adds dimensions to the graph` → `crates/dugong/tests/layout_test.rs::layout_dagreish_adds_dimensions_to_graph`
-- `ensures all coordinates are in the bounding box for the graph / node` → `crates/dugong/tests/layout_test.rs::layout_dagreish_keeps_node_coordinates_in_graph_bounding_box_for_rankdirs`
-- `ensures all coordinates are in the bounding box for the graph / edge, labelpos = l` → `crates/dugong/tests/layout_test.rs::layout_dagreish_keeps_left_edge_label_coordinates_in_graph_bounding_box_for_rankdirs`
+- `minimizes separation between nodes not adjacent to subgraphs` → `crates/dugong/tests/layout_test.rs::layout_minimizes_separation_between_nodes_not_adjacent_to_subgraphs`
+- `can layout subgraphs with different rankdirs` → `crates/dugong/tests/layout_test.rs::layout_can_layout_subgraphs_with_different_rankdirs`
+- `adds dimensions to the graph` → `crates/dugong/tests/layout_test.rs::layout_adds_dimensions_to_graph`
+- `ensures all coordinates are in the bounding box for the graph / node` → `crates/dugong/tests/layout_test.rs::layout_keeps_node_coordinates_in_graph_bounding_box_for_rankdirs`
+- `ensures all coordinates are in the bounding box for the graph / edge, labelpos = l` → `crates/dugong/tests/layout_test.rs::layout_keeps_left_edge_label_coordinates_in_graph_bounding_box_for_rankdirs`
 
 Additional Rust regression:
 
-- `translateGraph graph dimensions include margins` → `crates/dugong/tests/layout_test.rs::layout_dagreish_graph_dimensions_include_margins`
+- `translateGraph graph dimensions include margins` → `crates/dugong/tests/layout_test.rs::layout_graph_dimensions_include_margins`
 
 ## Open API Shape Differences
 

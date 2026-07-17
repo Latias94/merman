@@ -30,5 +30,3 @@ pub mod util;
 
 mod pipeline;
 pub use pipeline::layout;
-#[cfg(feature = "dagreish")]
-pub use pipeline::layout_dagreish;

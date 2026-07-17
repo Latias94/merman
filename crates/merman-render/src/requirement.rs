@@ -430,7 +430,7 @@ pub fn layout_requirement_diagram_typed(
         g.set_edge_named(rel.src.clone(), rel.dst.clone(), Some(edge_id), Some(el));
     }
 
-    dugong::layout_dagreish(&mut g);
+    dugong::layout(&mut g);
 
     let mut out_nodes: Vec<LayoutNode> = Vec::new();
     for v in g.nodes() {

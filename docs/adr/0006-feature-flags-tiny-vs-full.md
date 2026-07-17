@@ -34,8 +34,8 @@ both without forking the codebase.
 
 Feature surfaces and host profile expectations are documented in `docs/FEATURES.md`.
 
-Related: `dugong` also exposes an optional parity-oriented pipeline (`layout_dagreish`) behind the
-`dugong/dagreish` feature (enabled by default).
+`dugong` exposes one source-backed Dagre layout pipeline. Diagram-profile feature flags do not
+select between correct and approximate graph algorithms.
 
 ## Consequences
 

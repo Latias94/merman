@@ -1,6 +1,6 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, NodeLabel, layout_dagreish, normalize};
+use dugong::{EdgeLabel, GraphLabel, NodeLabel, layout, normalize};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -97,8 +97,8 @@ fn build_layered_dag_spec(
     }
 }
 
-fn bench_layout_dagreish(c: &mut Criterion) {
-    let mut group = c.benchmark_group("layout_dagreish");
+fn bench_layout(c: &mut Criterion) {
+    let mut group = c.benchmark_group("layout");
     group.measurement_time(Duration::from_secs(10));
 
     for layer_count in [10_usize, 25, 50] {
@@ -108,7 +108,7 @@ fn bench_layout_dagreish(c: &mut Criterion) {
             b.iter_batched(
                 || spec.build(),
                 |mut g| {
-                    layout_dagreish(black_box(&mut g));
+                    layout(black_box(&mut g));
                     black_box(g.node_count());
                 },
                 BatchSize::LargeInput,
@@ -157,5 +157,5 @@ fn bench_normalize(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_layout_dagreish, bench_normalize);
+criterion_group!(benches, bench_layout, bench_normalize);
 criterion_main!(benches);

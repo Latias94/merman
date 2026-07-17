@@ -149,7 +149,7 @@ pub(crate) fn compare_dagre_layout(args: Vec<String>) -> Result<(), XtaskError> 
     write_dagre_reference_input(&g, &artifacts.input_path)?;
     run_js_dagre_harness(&workspace_root, &artifacts.input_path, &artifacts.js_path)?;
 
-    dugong::layout_dagreish(&mut g);
+    dugong::layout(&mut g);
     write_rust_dagre_output(&g, &artifacts.rust_path)?;
     let comparison = compare_graph_to_js_reference(&g, &artifacts.js_path)?;
 

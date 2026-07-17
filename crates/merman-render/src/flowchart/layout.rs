@@ -1788,7 +1788,7 @@ fn layout_flowchart_with_model(
             graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
             ctx: &mut RecursiveLayoutContext<'_>,
         ) {
-            dugong::layout_dagreish(graph);
+            dugong::layout(graph);
             apply_mermaid_subgraph_title_shifts(
                 graph,
                 ctx.extracted,

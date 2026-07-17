@@ -800,7 +800,7 @@ pub fn layout_er_diagram_typed(
         );
     }
 
-    dugong::layout_dagreish(&mut g);
+    dugong::layout(&mut g);
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     for id in g.node_ids() {
