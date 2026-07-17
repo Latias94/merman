@@ -148,16 +148,17 @@ pub(super) fn flowchart_compute_edge_path_geom(
     let local_points = scratch.local_points.as_slice();
 
     use super::{
-        FlowchartEdgeTraceInput, TraceEndpointIntersection, apply_flowchart_elk_endpoint_cutter,
-        boundary_for_cluster, boundary_for_node, curve_path_d_and_bounds,
-        cut_path_at_intersect_into, dedup_consecutive_points_into,
-        force_intersect_for_layout_shape, intersect_for_layout_shape,
-        is_rounded_intersect_shift_shape, line_with_offset_for_edge_type,
-        maybe_collapse_degenerate_subgraph_edge_route, maybe_fix_corners,
-        maybe_normalize_selfedge_loop_points, maybe_remove_redundant_cluster_run_point,
-        maybe_snap_data_point_to_f32, maybe_snap_shallow_basis_triplet_y_to_f32,
-        maybe_truncate_data_point, normalize_cyclic_special_data_points,
-        rounded_line_with_marker_offsets_for_edge_type, write_flowchart_edge_trace,
+        FlowchartEdgeTraceInput, TraceEndpointIntersection, align_elk_endpoint_adapters_to_route,
+        apply_flowchart_elk_endpoint_cutter, boundary_for_cluster, boundary_for_node,
+        collapse_short_terminal_marker_stub, curve_path_d_and_bounds, cut_path_at_intersect_into,
+        dedup_consecutive_points_into, force_intersect_for_layout_shape,
+        intersect_for_layout_shape, is_rounded_intersect_shift_shape,
+        line_with_offset_for_edge_type, maybe_collapse_degenerate_subgraph_edge_route,
+        maybe_fix_corners, maybe_normalize_selfedge_loop_points,
+        maybe_remove_redundant_cluster_run_point, maybe_snap_data_point_to_f32,
+        maybe_snap_shallow_basis_triplet_y_to_f32, maybe_truncate_data_point,
+        normalize_cyclic_special_data_points, rounded_line_with_marker_offsets_for_edge_type,
+        write_flowchart_edge_trace,
     };
 
     let is_cyclic_special = edge.id.contains("-cyclic-special-");
@@ -174,8 +175,9 @@ pub(super) fn flowchart_compute_edge_path_geom(
     scratch.tmp_points_b.extend_from_slice(base_points);
     let points_after_intersect: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
 
+    let mut elk_endpoint_adapters = super::ElkEndpointAdapterCorners::default();
     if is_elk_layout {
-        apply_flowchart_elk_endpoint_cutter(
+        elk_endpoint_adapters = apply_flowchart_elk_endpoint_cutter(
             ctx,
             edge,
             origin_x,
@@ -184,6 +186,17 @@ pub(super) fn flowchart_compute_edge_path_geom(
             base_points,
             points_after_intersect,
         );
+        if ctx.compact_edge_corners {
+            align_elk_endpoint_adapters_to_route(
+                ctx,
+                edge,
+                origin_x,
+                origin_y,
+                is_cyclic_special,
+                &mut elk_endpoint_adapters,
+                points_after_intersect,
+            );
+        }
     } else if base_points.len() >= 3 {
         // The semantic edge keeps its original source/target, while explicit-direction cluster
         // extraction can rebind the Graphlib layout edge to a surviving cluster node. Mermaid
@@ -414,6 +427,25 @@ pub(super) fn flowchart_compute_edge_path_geom(
     // Mermaid shortens edge paths so markers don't render on top of the line (see
     // `packages/mermaid/src/utils/lineWithOffset.ts`).
 
+    let collapsed_terminal_stub = if is_rounded && ctx.compact_edge_corners {
+        collapse_short_terminal_marker_stub(&mut line_data, edge.edge_type.as_deref())
+    } else {
+        false
+    };
+
+    let mut rounded_corner_mask = vec![true; line_data.len()];
+    if is_rounded && ctx.compact_edge_corners && is_elk_layout && line_data.len() > 2 {
+        if elk_endpoint_adapters.source && le.from_cluster.is_none() {
+            rounded_corner_mask[1] = false;
+        }
+        if elk_endpoint_adapters.target && le.to_cluster.is_none() && !collapsed_terminal_stub {
+            let target_anchor = line_data.len() - 2;
+            rounded_corner_mask[target_anchor] = false;
+        }
+    }
+    let rounded_corner_mask =
+        (is_rounded && ctx.compact_edge_corners).then_some(rounded_corner_mask);
+
     let mut line_data = if is_rounded {
         rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
     } else {
@@ -432,6 +464,9 @@ pub(super) fn flowchart_compute_edge_path_geom(
         origin_x,
         abs_top_transform,
         viewbox_current_bounds,
+        ctx.edge_corner_radius,
+        ctx.compact_edge_corners,
+        rounded_corner_mask.as_deref(),
     );
     let pb = svg_path_bounds_from_d(&d).or(raw_pb);
 

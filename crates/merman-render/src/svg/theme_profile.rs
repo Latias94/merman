@@ -38,11 +38,15 @@ pub enum HostThemePreset {
     AyuLight,
     /// Ayu dark-inspired editor preview palette.
     AyuDark,
+    /// Merman's modern flowchart rendering profile.
+    MermanModern,
+    /// Upstream Mermaid rendering defaults and parity output.
+    Mermaid,
 }
 
 impl HostThemePreset {
     /// All built-in host profile presets.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::EditorLight,
         Self::EditorDark,
         Self::OneDark,
@@ -50,6 +54,8 @@ impl HostThemePreset {
         Self::GruvboxDark,
         Self::AyuLight,
         Self::AyuDark,
+        Self::MermanModern,
+        Self::Mermaid,
     ];
 
     /// Stable `host_theme.preset` value accepted by bindings.
@@ -62,6 +68,8 @@ impl HostThemePreset {
             Self::GruvboxDark => "gruvbox-dark",
             Self::AyuLight => "ayu-light",
             Self::AyuDark => "ayu-dark",
+            Self::MermanModern => "merman-modern",
+            Self::Mermaid => "mermaid",
         }
     }
 }
@@ -250,7 +258,53 @@ impl HostThemeProfile {
             HostThemePreset::GruvboxDark => Self::gruvbox_dark(),
             HostThemePreset::AyuLight => Self::ayu_light(),
             HostThemePreset::AyuDark => Self::ayu_dark(),
+            HostThemePreset::MermanModern => Self::merman_modern(),
+            HostThemePreset::Mermaid => Self::mermaid(),
         }
+    }
+
+    /// Uses Merman's modern flowchart defaults without changing the SVG output pipeline.
+    pub fn merman_modern() -> Self {
+        let mut flowchart = Map::new();
+        flowchart.insert(
+            "defaultRenderer".to_string(),
+            Value::String("elk".to_string()),
+        );
+        flowchart.insert("edgeLabelPadding".to_string(), Value::from(4));
+        flowchart.insert("compactEdgeCorners".to_string(), Value::Bool(true));
+
+        let mut site_config = Map::new();
+        site_config.insert("theme".to_string(), Value::String("redux".to_string()));
+        site_config.insert("look".to_string(), Value::String("neo".to_string()));
+        site_config.insert("flowchart".to_string(), Value::Object(flowchart));
+
+        let theme_variables = [
+            ("mainBkg", "#F8FAFC"),
+            ("nodeBorder", "#64748B"),
+            ("nodeTextColor", "#1E293B"),
+            ("primaryColor", "#F8FAFC"),
+            ("primaryBorderColor", "#64748B"),
+            ("primaryTextColor", "#1E293B"),
+            ("lineColor", "#64748B"),
+            ("arrowheadColor", "#64748B"),
+            ("edgeLabelBackground", "#FFFFFF"),
+            ("clusterBkg", "#F1F5F9"),
+            ("clusterBorder", "#CBD5E1"),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), Value::String(value.to_string())))
+        .collect();
+
+        Self {
+            theme_variables,
+            site_config,
+            ..Self::default()
+        }
+    }
+
+    /// Uses upstream Mermaid defaults and parity SVG output.
+    pub fn mermaid() -> Self {
+        Self::default()
     }
 
     pub fn editor_light() -> Self {
@@ -1432,6 +1486,27 @@ mod tests {
     }
 
     #[test]
+    fn modern_and_mermaid_presets_compile_explicit_rendering_policies() {
+        let modern = HostThemeProfile::merman_modern().compile();
+
+        let cfg = modern.site_config.as_value();
+        assert_eq!(cfg["theme"], "redux");
+        assert_eq!(cfg["look"], "neo");
+        assert_eq!(cfg["flowchart"]["defaultRenderer"], "elk");
+        assert_eq!(cfg["flowchart"]["edgeLabelPadding"], 4);
+        assert_eq!(cfg["flowchart"]["compactEdgeCorners"], true);
+        assert_eq!(cfg["themeVariables"]["mainBkg"], "#F8FAFC");
+        assert_eq!(cfg["themeVariables"]["nodeBorder"], "#64748B");
+        assert_eq!(cfg["themeVariables"]["lineColor"], "#64748B");
+        assert_eq!(cfg["themeVariables"]["edgeLabelBackground"], "#FFFFFF");
+        assert_eq!(modern.output.preset, SvgPipelinePreset::Parity);
+
+        let mermaid = HostThemeProfile::mermaid().compile();
+        assert_eq!(mermaid.site_config.as_value(), &Value::Object(Map::new()));
+        assert_eq!(mermaid.output.preset, SvgPipelinePreset::Parity);
+    }
+
+    #[test]
     fn resvg_safe_host_output_can_drop_native_duplicate_fallbacks() {
         let mut output = HostThemeOutput::resvg_safe_editor();
         output.drop_native_duplicate_fallbacks = true;
@@ -1473,7 +1548,9 @@ mod tests {
                 "gruvbox-light",
                 "gruvbox-dark",
                 "ayu-light",
-                "ayu-dark"
+                "ayu-dark",
+                "merman-modern",
+                "mermaid"
             ]
         );
     }

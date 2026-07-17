@@ -4,6 +4,24 @@ use super::super::*;
 use super::root::flowchart_wrap_svg_text_lines;
 use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
 
+fn padded_html_edge_label_background(padding: f64, width: f64, height: f64) -> String {
+    if padding <= 0.0 || width <= 0.0 || height <= 0.0 {
+        return String::new();
+    }
+
+    let width = width + 2.0 * padding;
+    let height = height + 2.0 * padding;
+    format!(
+        r#"<rect class="background" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
+        fmt_display(-width / 2.0),
+        fmt_display(-height / 2.0),
+        fmt_display(width),
+        fmt_display(height),
+        fmt_display(padding),
+        fmt_display(padding),
+    )
+}
+
 pub(in crate::svg::parity) fn render_flowchart_edge_label(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
@@ -450,6 +468,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             let layout_w = lbl.width.max(0.0);
             let render_w = flowchart_html_edge_label_width_for_layout(ctx, layout_w);
             let h = lbl.height.max(0.0);
+            let background = padded_html_edge_label_background(ctx.edge_label_padding, render_w, h);
             let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
@@ -465,9 +484,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({},{})">{}<g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt_display(x),
                 fmt_display(y),
+                background,
                 escape_xml_display(&edge.id),
                 fmt_display(-render_w / 2.0),
                 fmt_display(-h / 2.0),
@@ -517,6 +537,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             let layout_w = metrics.width.max(1.0);
             let render_w = flowchart_html_edge_label_width_for_layout(ctx, layout_w);
             let h = metrics.height.max(1.0);
+            let background = padded_html_edge_label_background(ctx.edge_label_padding, render_w, h);
             let wrapped_style = if layout_w >= FLOWCHART_EDGE_LABEL_WRAP_WIDTH - 0.01 {
                 format!(
                     "display: table; white-space: break-spaces; line-height: 1.5; max-width: {mw}px; text-align: center; width: {mw}px;",
@@ -532,9 +553,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
             };
             let _ = write!(
                 out,
-                r#"<g class="edgeLabel" transform="translate({},{})"><g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
+                r#"<g class="edgeLabel" transform="translate({},{})">{}<g class="label" data-id="{}" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="{}"><span class="edgeLabel"{}>{}</span></div></foreignObject></g></g>"#,
                 fmt_display(x),
                 fmt_display(y),
+                background,
                 escape_xml_display(&edge.id),
                 fmt_display(-render_w / 2.0),
                 fmt_display(-h / 2.0),

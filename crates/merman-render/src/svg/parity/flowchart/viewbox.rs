@@ -133,13 +133,25 @@ where
         .into_iter()
         .flatten()
         {
+            let edge_label_padding = if ctx.edge_html_labels && lbl.width > 0.0 && lbl.height > 0.0
+            {
+                ctx.edge_label_padding
+            } else {
+                0.0
+            };
             let label_width = if ctx.edge_html_labels {
                 flowchart_html_edge_label_width_for_layout(ctx, lbl.width)
+                    + 2.0 * edge_label_padding
             } else {
                 lbl.width
             };
             let hw = label_width / 2.0;
-            let hh = lbl.height / 2.0;
+            let label_height = if ctx.edge_html_labels {
+                lbl.height + 2.0 * edge_label_padding
+            } else {
+                lbl.height
+            };
+            let hh = label_height / 2.0;
             let svg_label_y_offset = if ctx.edge_html_labels { 0.0 } else { 1.0 };
             include_rect(
                 lbl.x - hw,

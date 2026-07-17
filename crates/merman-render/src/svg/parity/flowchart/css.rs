@@ -19,6 +19,9 @@ pub(in crate::svg::parity) fn flowchart_css(
     let node_text_color = theme.node_text_color.as_str();
     let title_color = theme.title_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
+    let radius = theme.radius.as_str();
+    let drop_shadow = theme.drop_shadow.as_str();
+    let neo = theme.common.is_neo();
     let error_bkg = theme.common.error_bkg.as_str();
     let error_text = theme.common.error_text.as_str();
     let edge_label_background = theme.edge_label_background.as_str();
@@ -151,6 +154,12 @@ pub(in crate::svg::parity) fn flowchart_css(
     }
 
     let label_bkg = flowchart_label_bkg_from_edge_label_background(edge_label_background);
+    let scoped_drop_shadow = drop_shadow
+        .replace(
+            "url(#drop-shadow-small)",
+            &format!("url(#{id}-drop-shadow-small)"),
+        )
+        .replace("url(#drop-shadow)", &format!("url(#{id}-drop-shadow)"));
 
     let mut out = String::new();
     let _ = write!(
@@ -290,6 +299,12 @@ pub(in crate::svg::parity) fn flowchart_css(
         id.as_str(),
         font_family
     );
+    if neo {
+        let _ = write!(
+            &mut out,
+            r#"#{id} .node[data-look="neo"] rect.basic.label-container{{rx:{radius}px;ry:{radius}px;}}#{id} .node[data-look="neo"] .label-container{{filter:{scoped_drop_shadow};stroke-linejoin:round;}}#{id} .flowchart-link[data-look="neo"]{{stroke-linecap:round;stroke-linejoin:round;}}#{id} .edgeLabel rect{{opacity:1;}}#{id} .labelBkg{{background-color:{edge_label_background};}}"#,
+        );
+    }
 
     // Mermaid `createCssStyles(...)` chooses different selectors based on `htmlLabels`.
     // - HTML labels: `.classDef > *` + `.classDef span`

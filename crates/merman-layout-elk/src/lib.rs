@@ -990,6 +990,21 @@ mod tests {
     }
 
     #[test]
+    fn source_ported_layout_rejects_unported_routing_before_layout() {
+        let mut graph = flat_graph(vec![leaf("A"), leaf("B")], vec![edge("A-B", "A", "B")]);
+        graph.options.layered.edge_routing = EdgeRouting::Polyline;
+
+        assert!(matches!(
+            layout_source_ported(&graph, Algorithm::Layered),
+            Err(Error::SourcePipeline(
+                source_port::PipelineError::UnsupportedProcessor {
+                    kind: source_port::ProcessorKind::PolylineEdgeRouter,
+                }
+            ))
+        ));
+    }
+
+    #[test]
     fn source_ported_layout_routes_long_edge_after_joiner() {
         let graph = flat_graph(
             vec![leaf("A"), leaf("B"), leaf("C")],

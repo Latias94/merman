@@ -12,6 +12,9 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
     origin_x: f64,
     abs_top_transform: f64,
     viewbox_current_bounds: Option<(f64, f64, f64, f64)>,
+    rounded_radius: f64,
+    compact_edge_corners: bool,
+    rounded_corner_mask: Option<&[bool]>,
 ) -> (String, Option<path_bounds::SvgPathBounds>, bool) {
     let curve_is_basis = !matches!(
         interpolate,
@@ -56,7 +59,12 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
             "monotoneY" => {
                 crate::svg::parity::curve::curve_monotone_path_d_and_bounds(line_data, true)
             }
-            "rounded" => crate::svg::parity::curve::curve_rounded_path_d_and_bounds(line_data, 5.0),
+            "rounded" => crate::svg::parity::curve::curve_rounded_path_d_and_bounds(
+                line_data,
+                rounded_radius,
+                compact_edge_corners,
+                rounded_corner_mask,
+            ),
             // Unknown curve names fall back to Mermaid's historical `basis` behavior.
             _ => crate::svg::parity::curve::curve_basis_path_d_and_bounds(line_data),
         };
@@ -105,6 +113,59 @@ mod tests {
         assert_eq!(
             maybe_close_single_point_path("M1,2L3,4".to_string(), &line_data),
             "M1,2L3,4"
+        );
+    }
+
+    #[test]
+    fn compact_rounded_corners_do_not_overrun_shallow_elk_endpoint_turns() {
+        let line_data = vec![
+            crate::model::LayoutPoint {
+                x: 130.484,
+                y: 214.303,
+            },
+            crate::model::LayoutPoint {
+                x: 135.784,
+                y: 230.203,
+            },
+            crate::model::LayoutPoint {
+                x: 135.784,
+                y: 250.203,
+            },
+            crate::model::LayoutPoint {
+                x: 260.023,
+                y: 250.203,
+            },
+        ];
+
+        let (parity, _, _) =
+            curve_path_d_and_bounds(&line_data, "rounded", 0.0, 0.0, None, 12.0, false, None);
+        let (compact, _, _) =
+            curve_path_d_and_bounds(&line_data, "rounded", 0.0, 0.0, None, 12.0, true, None);
+
+        assert!(
+            parity.starts_with("M130.484,214.303L133.134,222.253Q135.784,230.203 135.784,238.583"),
+            "expected the Mermaid-compatible half-segment cut: {parity}"
+        );
+        assert!(
+            compact.starts_with("M130.484,214.303L135.168,228.356Q135.784,230.203 135.784,232.15"),
+            "expected the compact tangent-length cut: {compact}"
+        );
+
+        let corner_mask = [true, false, true, true];
+        let (adapter_linear, _, _) = curve_path_d_and_bounds(
+            &line_data,
+            "rounded",
+            0.0,
+            0.0,
+            None,
+            12.0,
+            true,
+            Some(&corner_mask),
+        );
+        assert!(
+            adapter_linear
+                .starts_with("M130.484,214.303L135.784,230.203L135.784,240.203Q135.784,250.203"),
+            "expected the endpoint adapter to stay linear while the ELK bend remains rounded: {adapter_linear}"
         );
     }
 }

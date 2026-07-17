@@ -450,7 +450,7 @@ fn binding_host_theme(
     }
 
     if let Some(theme_variables) = host_theme.theme_variables.as_ref() {
-        profile.theme_variables = theme_variables.clone();
+        profile.theme_variables.extend(theme_variables.clone());
     }
     if let Some(site_config) = host_theme.site_config.as_ref() {
         let Some(object) = site_config.as_object() else {
@@ -565,6 +565,8 @@ fn binding_host_theme_preset(value: &str) -> Result<HostThemePreset, BindingErro
         "gruvbox-dark" | "gruvbox_dark" => Ok(HostThemePreset::GruvboxDark),
         "ayu-light" | "ayu_light" => Ok(HostThemePreset::AyuLight),
         "ayu-dark" | "ayu_dark" => Ok(HostThemePreset::AyuDark),
+        "merman-modern" | "merman_modern" => Ok(HostThemePreset::MermanModern),
+        "mermaid" => Ok(HostThemePreset::Mermaid),
         other => Err(BindingError::new(
             BindingStatus::InvalidArgument,
             format!("unsupported host_theme.preset: {other}"),
