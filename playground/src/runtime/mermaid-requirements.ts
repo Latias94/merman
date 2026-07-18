@@ -1,5 +1,9 @@
 import type { DiagramDetectionFacts } from "@mermanjs/web";
 
+export const MERMAID_JS_VERSION = "11.16.0";
+export const MERMAID_ZENUML_VERSION = "0.2.2";
+export const MERMAID_LAYOUT_ELK_VERSION = "0.2.1";
+
 export interface MermaidExternalRequirements {
   readonly elkLayouts: boolean;
   readonly zenuml: boolean;

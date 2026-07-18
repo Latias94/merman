@@ -14,9 +14,14 @@ export default defineConfig({
   // 本地开发时使用 /
   base: process.env.NODE_ENV === "production" ? "/merman/" : "/",
   build: {
+    manifest: true,
     outDir: "dist",
     target: "esnext",
     rolldownOptions: {
+      input: {
+        playground: path.resolve(__dirname, "index.html"),
+        compareRealm: path.resolve(__dirname, "compare-realm.html"),
+      },
       output: {
         codeSplitting: true,
       },

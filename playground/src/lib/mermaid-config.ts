@@ -1,5 +1,5 @@
-import { normalizeThemeName } from "@mermanjs/web";
-import { diagramFontStack, type DiagramFont } from "@/src/lib/diagram-font";
+import { normalizeThemeName } from "@mermanjs/web/catalog";
+import { diagramFontStack, type DiagramFont } from "./diagram-font.ts";
 
 export type MermaidConfigObject = Record<string, unknown>;
 
@@ -49,6 +49,13 @@ export function sourceWithConfig(
   options: MermaidConfigBuildOptions = {}
 ): string {
   const config = buildMermaidConfig(configJson, theme, options);
+  return sourceWithMermaidConfig(source, config);
+}
+
+export function sourceWithMermaidConfig(
+  source: string,
+  config: MermaidConfigObject
+): string {
   if (Object.keys(config).length === 0) {
     return source;
   }
@@ -59,19 +66,22 @@ export function sourceWithConfig(
 
 function insertDirectiveAfterFrontmatter(source: string, directive: string): string {
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const firstLineEnd = source.search(/\r?\n/);
+  const firstLine = firstLineEnd < 0 ? source : source.slice(0, firstLineEnd);
+  if (firstLine.trim() !== "---") {
+    return `${directive}${newline}${source}`;
+  }
   const lines = source.split(/\r?\n/);
 
-  if (lines[0]?.trim() === "---") {
-    const frontmatterEnd = lines.findIndex(
-      (line, index) => index > 0 && line.trim() === "---"
-    );
-    if (frontmatterEnd > 0) {
-      return [
-        ...lines.slice(0, frontmatterEnd + 1),
-        directive,
-        ...lines.slice(frontmatterEnd + 1),
-      ].join(newline);
-    }
+  const frontmatterEnd = lines.findIndex(
+    (line, index) => index > 0 && line.trim() === "---"
+  );
+  if (frontmatterEnd > 0) {
+    return [
+      ...lines.slice(0, frontmatterEnd + 1),
+      directive,
+      ...lines.slice(frontmatterEnd + 1),
+    ].join(newline);
   }
 
   return `${directive}${newline}${source}`;

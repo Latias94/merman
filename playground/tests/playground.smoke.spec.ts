@@ -107,3 +107,105 @@ test("canonical detection clears invalid and stale diagram types", async ({
 
   errors.assertNone(isMobile ? [/^pageerror: Canceled$/] : []);
 });
+
+test("Compare owns one local Mermaid realm and publishes one coherent batch", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  const engineRequests: string[] = [];
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (
+      /\/assets\/(?:mermaid-(?!requirements-)|mermaid\.core|render-|zenuml-definition|mermaid-zenuml|mermaid-layout-elk)/.test(
+        pathname
+      )
+    ) {
+      engineRequests.push(request.url());
+    }
+  });
+
+  await openPlayground(page);
+  await replaceEditorSource(
+    page,
+    "flowchart LR\n  compare_start[Compare start] --> ready[Ready]"
+  );
+  if (isMobile) {
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+  }
+  await waitForPreviewSvg(page);
+  expect(engineRequests).toEqual([]);
+
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(1);
+  await expect
+    .poll(() => compareSvgTexts(page))
+    .toEqual([expect.stringContaining("Compare start"), expect.stringContaining("Compare start")]);
+  await expect
+    .poll(() => compareRealmMatchesViewportHost(page))
+    .toBe(true);
+  expect(engineRequests.length).toBeGreaterThan(0);
+  for (const requestUrl of engineRequests) {
+    expect(new URL(requestUrl).origin).toBe(new URL(page.url()).origin);
+  }
+
+  if (isMobile) {
+    await page.getByRole("button", { name: "Editor", exact: true }).click();
+  }
+  await replaceEditorSource(
+    page,
+    "flowchart LR\n  superseded[Superseded] --> stale[Stale]"
+  );
+  await replaceEditorSource(
+    page,
+    "flowchart LR\n  latest_batch[Latest batch] --> coherent[Coherent]"
+  );
+  if (isMobile) {
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+  }
+
+  await expect
+    .poll(() => compareSvgTexts(page))
+    .toEqual([expect.stringContaining("Latest batch"), expect.stringContaining("Latest batch")]);
+  const texts = await compareSvgTexts(page);
+  expect(texts.join(" ")).not.toContain("Superseded");
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(1);
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+  });
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(0);
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+  });
+  await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(1);
+  await expect
+    .poll(() => compareSvgTexts(page))
+    .toEqual([expect.stringContaining("Latest batch"), expect.stringContaining("Latest batch")]);
+  errors.assertNone(isMobile ? [/^pageerror: Canceled$/] : []);
+});
+
+async function compareSvgTexts(page: import("@playwright/test").Page): Promise<string[]> {
+  return page.locator(".preview-container > div").evaluateAll((hosts) =>
+    hosts.map(
+      (host) => host.shadowRoot?.querySelector("svg")?.textContent ?? ""
+    )
+  );
+}
+
+async function compareRealmMatchesViewportHost(
+  page: import("@playwright/test").Page
+): Promise<boolean> {
+  return page.evaluate(() => {
+    const realm = document.querySelector('iframe[data-merman-realm="compare"]');
+    const host = document.querySelector("[data-merman-compare-viewport-host]");
+    if (!(realm instanceof HTMLIFrameElement) || !(host instanceof HTMLElement)) {
+      return false;
+    }
+    return (
+      realm.clientWidth === Math.floor(host.clientWidth) &&
+      realm.clientHeight === Math.floor(host.clientHeight)
+    );
+  });
+}

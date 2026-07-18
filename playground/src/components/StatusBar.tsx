@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { selectCurrentDiagramType, useAppStore } from "@/src/store";
+import { useShallow } from "zustand/react/shallow";
+import { useAppStore } from "@/src/store";
+import {
+  selectCurrentDiagramType,
+  selectCurrentMermanRenderTime,
+  useRenderCoordinator,
+} from "@/src/runtime/use-render-coordinator";
 import { cn } from "@/lib/utils";
 import {
   selectMermanFacade,
@@ -13,13 +19,21 @@ export function StatusBar() {
   const { t } = useTranslation();
   const {
     code,
-    lastRenderTime,
     diagramTheme,
     hostThemePreset,
     textMeasurementMode,
     diagramFont,
-  } = useAppStore();
-  const diagramType = useAppStore(selectCurrentDiagramType);
+  } = useAppStore(
+    useShallow((state) => ({
+      code: state.code,
+      diagramFont: state.diagramFont,
+      diagramTheme: state.diagramTheme,
+      hostThemePreset: state.hostThemePreset,
+      textMeasurementMode: state.textMeasurementMode,
+    }))
+  );
+  const diagramType = useRenderCoordinator(selectCurrentDiagramType);
+  const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const facade = useMermanRuntime(selectMermanFacade);
   const runtimeFailure = useMermanRuntime(selectMermanFailure);

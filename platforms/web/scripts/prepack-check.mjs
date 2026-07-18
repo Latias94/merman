@@ -13,6 +13,10 @@ const wasmBinary = path.join(root, "pkg", "merman_wasm_bg.wasm");
 const required = [
   path.join(root, "dist", "index.js"),
   path.join(root, "dist", "index.d.ts"),
+  path.join(root, "dist", "public-catalog.js"),
+  path.join(root, "dist", "public-catalog.d.ts"),
+  path.join(root, "dist", "svg-safety.js"),
+  path.join(root, "dist", "svg-safety.d.ts"),
   generatedPackageJson,
   presetManifest,
   path.join(root, "pkg", "merman_wasm.js"),

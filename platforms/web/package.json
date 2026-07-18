@@ -46,6 +46,14 @@
       "import": "./dist/surfaces/full.js",
       "types": "./dist/surfaces/full.d.ts"
     },
+    "./catalog": {
+      "import": "./dist/public-catalog.js",
+      "types": "./dist/public-catalog.d.ts"
+    },
+    "./svg-safety": {
+      "import": "./dist/svg-safety.js",
+      "types": "./dist/svg-safety.d.ts"
+    },
     "./pkg/merman_wasm.js": {
       "import": "./pkg/merman_wasm.js",
       "types": "./pkg/merman_wasm.d.ts"

@@ -9,7 +9,7 @@ import {
   type RefObject,
   type WheelEvent,
 } from "react";
-import { assertSafeSvgForDom } from "@mermanjs/web";
+import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
 import {
   normalizeSvgDimensions,
   parseSvgDimensions,
@@ -190,20 +190,26 @@ export function useSvgViewport({
 
 interface SvgViewportProps {
   svg: string | null;
+  presentationKey: number | null;
   controller: SvgViewportController;
   className?: string;
   contentClassName?: string;
   empty?: ReactNode;
+  onPresentationReady?: (at: number) => void;
 }
 
 export function SvgViewport({
   svg,
+  presentationKey,
   controller,
   className,
   contentClassName,
   empty,
+  onPresentationReady,
 }: SvgViewportProps) {
   const shadowHostRef = useRef<HTMLDivElement>(null);
+  const onPresentationReadyRef = useRef(onPresentationReady);
+  onPresentationReadyRef.current = onPresentationReady;
   const displaySvg = useMemo(() => {
     if (!svg) return null;
 
@@ -223,11 +229,25 @@ export function SvgViewport({
 
     const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
     root.innerHTML = displaySvg;
+    const frame = requestAnimationFrame(() => {
+      const renderedSvg = root.querySelector("svg");
+      if (!renderedSvg) return;
+      const bounds = renderedSvg.getBoundingClientRect();
+      if (
+        Number.isFinite(bounds.width) &&
+        Number.isFinite(bounds.height) &&
+        bounds.width > 0 &&
+        bounds.height > 0
+      ) {
+        onPresentationReadyRef.current?.(performance.now());
+      }
+    });
 
     return () => {
+      cancelAnimationFrame(frame);
       root.replaceChildren();
     };
-  }, [displaySvg]);
+  }, [displaySvg, presentationKey]);
 
   return (
     <div

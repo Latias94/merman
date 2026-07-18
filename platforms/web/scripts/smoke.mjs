@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { parseSmokeCli, smokeUsage } from "./smoke-cli.mjs";
 import {
   allSurfaceRuntimeExportNames,
@@ -29,6 +30,7 @@ const surfaceSmokeCases = [
 ];
 
 if (args.length === 0) {
+  await runPureSubpathSmoke();
   for (const smokeCase of surfaceSmokeCases) {
     const result = spawnSync(
       process.execPath,
@@ -1121,6 +1123,90 @@ async function runSameProcessSurfaceSmoke() {
   assert.match(full.renderSvg(source, options), /<svg/);
   assert.equal(core.bindingCapabilities().render, false);
   assert.equal(typeof core.renderSvg, "undefined");
+}
+
+async function runPureSubpathSmoke() {
+  const catalogSpecifier = toPackageSpecifier("./catalog");
+  const svgSafetySpecifier = toPackageSpecifier("./svg-safety");
+  const catalogFile = fileURLToPath(import.meta.resolve(catalogSpecifier));
+  const svgSafetyFile = fileURLToPath(import.meta.resolve(svgSafetySpecifier));
+  assert.equal(catalogFile, path.join(packageRoot, "dist", "public-catalog.js"));
+  assert.equal(svgSafetyFile, path.join(packageRoot, "dist", "svg-safety.js"));
+  await assertPureDistModuleGraph([catalogFile, svgSafetyFile]);
+
+  const [catalog, svgSafety] = await Promise.all([
+    import(catalogSpecifier),
+    import(svgSafetySpecifier),
+  ]);
+  assert.equal(catalog.SUPPORTED_DIAGRAMS.length, 35);
+  assert.equal(catalog.isDiagramType("swimlane"), true);
+  assert.equal(catalog.normalizeThemeName("neo-dark"), "neo-dark");
+  assert.equal("initMerman" in catalog, false);
+  assert.equal(typeof svgSafety.assertSafeSvgForDom, "function");
+  svgSafety.assertSafeSvgForDom('<svg xmlns="http://www.w3.org/2000/svg" />');
+  assert.throws(
+    () =>
+      svgSafety.assertSafeSvgForDom(
+        '<svg xmlns="http://www.w3.org/2000/svg"><script /></svg>'
+      ),
+    /active embedded content/
+  );
+}
+
+async function assertPureDistModuleGraph(entries) {
+  const distRoot = path.join(packageRoot, "dist");
+  const pending = [...entries];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const file = path.resolve(pending.pop());
+    if (visited.has(file)) continue;
+    const relative = path.relative(distRoot, file);
+    assert.ok(
+      relative && !relative.startsWith("..") && !path.isAbsolute(relative),
+      `pure Web subpath escaped dist: ${file}`
+    );
+    assert.notEqual(relative, "index.js", "pure Web subpath reached the WASM facade");
+    visited.add(file);
+
+    const source = await readFile(file, "utf8");
+    for (const specifier of moduleSpecifiers(source, file)) {
+      assert.ok(
+        specifier.startsWith("."),
+        `pure Web subpath has a non-local dependency: ${specifier}`
+      );
+      pending.push(path.resolve(path.dirname(file), specifier));
+    }
+  }
+}
+
+function moduleSpecifiers(source, file) {
+  const syntax = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS
+  );
+  const specifiers = [];
+  const visit = (node) => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteralLike(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      specifiers.push(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(syntax);
+  return specifiers;
 }
 
 function surfaceContractForEntry(subpath) {

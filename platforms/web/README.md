@@ -73,6 +73,8 @@ The package publishes one default full artifact plus opt-in subpath entry points
 | `@mermanjs/web/render-only` | `browser-render-only` | SVG/layout/parse plus metadata. Analysis, validation, lint catalog, ASCII, and editor API wrappers are not exported. |
 | `@mermanjs/web/ascii` | `browser-ascii` | ASCII/Unicode rendering plus metadata. Analysis, validation, lint catalog, SVG/layout/parse, and editor API wrappers are not exported. |
 | `@mermanjs/web/full` | `browser-full` | Explicit full preset import; equivalent capabilities to the default package. |
+| `@mermanjs/web/catalog` | None | Pure generated diagram/theme/capability catalogs and normalizers; does not initialize or import WASM. |
+| `@mermanjs/web/svg-safety` | None | Pure SVG DOM-safety assertion and policy helpers for isolated render realms; does not initialize or import WASM. |
 
 There is no separate `@mermanjs/web/analysis` entry point. `@mermanjs/web/core` is already the
 smallest analysis-capable artifact, so an analysis alias would add API surface without reducing the

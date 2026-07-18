@@ -14,6 +14,7 @@ import { useShare } from "./hooks/useShare";
 import { normalizeHostThemePresetName, normalizeThemeName } from "@mermanjs/web";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
 
 const CodeEditor = lazy(() =>
   import("./components/Editor").then((module) => ({
@@ -129,6 +130,7 @@ export default function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
+      <RenderCoordinatorBridge />
       <div className="h-screen flex flex-col bg-background">
         {/* 顶部工具栏 */}
         <Toolbar />

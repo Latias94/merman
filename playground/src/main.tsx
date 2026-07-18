@@ -8,12 +8,21 @@ import {
   ensureMermanReady,
   installMermanDocumentLifecycle,
 } from "./runtime/merman";
+import {
+  disposeRenderCoordinator,
+  resumeRenderCoordinator,
+  suspendRenderCoordinator,
+} from "./runtime/render-coordinator-browser";
 
 void ensureMermanReady().catch(() => undefined);
-const removeDocumentLifecycle = installMermanDocumentLifecycle({
-  document,
-  window,
-});
+const removeDocumentLifecycle = installMermanDocumentLifecycle(
+  { document, window },
+  {
+    onDestroy: disposeRenderCoordinator,
+    onResume: resumeRenderCoordinator,
+    onSuspend: suspendRenderCoordinator,
+  }
+);
 const root = createRoot(document.getElementById("root")!);
 
 root.render(
@@ -25,6 +34,7 @@ root.render(
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     removeDocumentLifecycle();
+    disposeRenderCoordinator();
     disposeMermanRuntime();
     root.unmount();
   });
