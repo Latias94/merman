@@ -491,35 +491,27 @@ pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str
     find_variant(diagram_type).and_then(|(_, variant)| variant.render_model_kind)
 }
 
-pub(crate) fn apply_known_type_detector_side_effects(
+pub(crate) fn apply_diagram_type_config_effects(
     diagram_type: &str,
+    user_config: &MermaidConfig,
     effective_config: &mut MermaidConfig,
 ) {
-    let effect = find_variant(diagram_type)
-        .map(|(_, variant)| variant.known_type_effect)
-        .unwrap_or(KnownTypeEffect::None);
+    let (effect, default_effect) = find_variant(diagram_type)
+        .map(|(_, variant)| (variant.known_type_effect, variant.default_effect))
+        .unwrap_or((KnownTypeEffect::None, DefaultEffect::None));
     match effect {
         KnownTypeEffect::None => {}
         KnownTypeEffect::ForceElk => {
             effective_config.set_value("layout", Value::String("elk".to_string()));
         }
-        KnownTypeEffect::FlowchartConfiguredRenderer => {
-            if effective_config.get_str("flowchart.defaultRenderer") == Some("elk") {
+        KnownTypeEffect::RendererSelectsElk(config_path) => {
+            if effective_config.get_str(config_path) == Some("elk") {
                 effective_config.set_value("layout", Value::String("elk".to_string()));
             }
         }
     }
-}
 
-pub(crate) fn apply_diagram_type_config_defaults(
-    diagram_type: &str,
-    user_config: &MermaidConfig,
-    effective_config: &mut MermaidConfig,
-) {
-    let effect = find_variant(diagram_type)
-        .map(|(_, variant)| variant.default_effect)
-        .unwrap_or(DefaultEffect::None);
-    match effect {
+    match default_effect {
         DefaultEffect::None => {}
         DefaultEffect::SwimlaneLayout if user_config.get_str("layout").is_none() => {
             effective_config.set_value("layout", Value::String("swimlane".to_string()));
@@ -898,7 +890,7 @@ const fn header(order: u16, label: &'static str, detail: &'static str) -> Header
 enum KnownTypeEffect {
     None,
     ForceElk,
-    FlowchartConfiguredRenderer,
+    RendererSelectsElk(&'static str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1209,7 +1201,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("flowchart", Some(7))),
         headers: FLOWCHART_HEADERS,
         config_alias_order: Some(2),
-        known_effect: KnownTypeEffect::FlowchartConfiguredRenderer,
+        known_effect: KnownTypeEffect::RendererSelectsElk("flowchart.defaultRenderer"),
         default_effect: DefaultEffect::None,
     },
     variant! {
@@ -1226,7 +1218,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         metadata: Some(metadata("flowchart", None)),
         headers: &[],
         config_alias_order: None,
-        known_effect: KnownTypeEffect::FlowchartConfiguredRenderer,
+        known_effect: KnownTypeEffect::RendererSelectsElk("flowchart.defaultRenderer"),
         default_effect: DefaultEffect::None,
     },
 ];

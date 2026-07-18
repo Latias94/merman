@@ -597,6 +597,7 @@ mod tests {
             "parser_complete"
         );
         assert_eq!(value["diagrams"][0]["syntax"]["source_mapped_spans"], true);
+        assert_eq!(value["diagrams"][0]["syntax"]["effective_layout"], "dagre");
         assert!(
             value["diagrams"][0]["syntax"]["semantic_items"]
                 .as_array()

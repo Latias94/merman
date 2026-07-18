@@ -32,6 +32,7 @@ import type {
   AsciiBindingOptions,
   BrowserTextMeasurementSession,
   CommonBindingOptions,
+  DiagramDetectionFacts,
   EditorCodeAction,
   EditorCompletionList,
   EditorDiagnosticsResult,
@@ -809,6 +810,60 @@ export function analysisFacts(
   return facts(source, encodeOptions(options));
 }
 
+const unavailableDiagramDetectionFacts: DiagramDetectionFacts = Object.freeze({
+  status: "unavailable",
+  diagramType: null,
+  syntaxId: null,
+  effectiveLayoutId: null,
+});
+
+export function detectDiagramFacts(
+  source: string,
+  options?: SvgBindingOptions | string
+): DiagramDetectionFacts {
+  try {
+    const facts: unknown = analysisFacts(source, options);
+    if (!isRecord(facts) || facts.version !== 1 || facts.valid !== true) {
+      return unavailableDiagramDetectionFacts;
+    }
+
+    const diagrams = facts.diagrams;
+    if (!Array.isArray(diagrams) || diagrams.length !== 1 || !isRecord(diagrams[0])) {
+      return unavailableDiagramDetectionFacts;
+    }
+
+    const syntax = diagrams[0].syntax;
+    if (!isRecord(syntax)) {
+      return unavailableDiagramDetectionFacts;
+    }
+
+    const syntaxId = syntax.diagram_type;
+    const effectiveLayoutId = syntax.effective_layout;
+    if (
+      typeof syntaxId !== "string" ||
+      syntaxId.trim().length === 0 ||
+      typeof effectiveLayoutId !== "string" ||
+      effectiveLayoutId.trim().length === 0
+    ) {
+      return unavailableDiagramDetectionFacts;
+    }
+
+    const diagramType = diagramMetadataBySyntaxId().get(syntaxId);
+    if (diagramType == null) {
+      return unavailableDiagramDetectionFacts;
+    }
+
+    return Object.freeze({
+      status: "available",
+      diagramType,
+      syntaxId,
+      effectiveLayoutId,
+    });
+  } catch {
+    return unavailableDiagramDetectionFacts;
+  }
+}
+
 export function analyzeDocument(
   source: string,
   options?: SvgBindingOptions | string,
@@ -979,11 +1034,34 @@ export function supportedDiagrams(): DiagramType[] {
 }
 
 export function diagramFamilyCapabilities(): DiagramFamilyCapability[] {
+  return cachedDiagramFamilyCapabilities().map((capability) => ({ ...capability }));
+}
+
+function cachedDiagramFamilyCapabilities(): readonly DiagramFamilyCapability[] {
   const state = currentMermanRuntimeState(defaultRuntimeState);
   state.diagramFamilyCapabilitiesCache ??= getMerman()
     .diagramFamilyCapabilities()
     .map(normalizeDiagramFamilyCapability);
-  return state.diagramFamilyCapabilitiesCache.map((capability) => ({ ...capability }));
+  return state.diagramFamilyCapabilitiesCache;
+}
+
+function diagramMetadataBySyntaxId(): ReadonlyMap<string, DiagramType | null> {
+  const state = currentMermanRuntimeState(defaultRuntimeState);
+  if (state.diagramMetadataBySyntaxIdCache) {
+    return state.diagramMetadataBySyntaxIdCache;
+  }
+
+  const index = new Map<string, DiagramType | null>();
+  for (const capability of cachedDiagramFamilyCapabilities()) {
+    const syntaxId = capability.diagram_type;
+    if (index.has(syntaxId)) {
+      index.set(syntaxId, null);
+    } else {
+      index.set(syntaxId, capability.metadata_id);
+    }
+  }
+  state.diagramMetadataBySyntaxIdCache = index;
+  return index;
 }
 
 export function lintRuleCatalog(): LintRuleCatalogEntry[] {
@@ -1054,6 +1132,10 @@ function assertDiagramType(diagram: string): DiagramType {
     return diagram;
   }
   throw new Error(`Merman WASM returned unknown diagram type: ${diagram}`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
 }
 
 function assertAsciiDiagramType(diagram: string): AsciiDiagramType {

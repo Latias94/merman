@@ -69,3 +69,41 @@ test("editing the source publishes the matching SVG without page overflow", asyn
   // The current mobile pane unmounts Monaco; U7 removes this loader cancellation.
   errors.assertNone([/^pageerror: Canceled$/]);
 });
+
+test("canonical detection clears invalid and stale diagram types", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+
+  await replaceEditorSource(page, "flowchart LR\n  A --> B");
+  if (isMobile) {
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+  }
+  await expect(page.locator("footer")).toContainText("Flowchart");
+
+  if (isMobile) {
+    await page.getByRole("button", { name: "Editor", exact: true }).click();
+  }
+  await replaceEditorSource(page, "unknownDiagram\n  A --> B");
+  if (isMobile) {
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+  }
+  await expect(page.locator("footer")).toContainText("Unknown");
+
+  if (isMobile) {
+    await page.getByRole("button", { name: "Editor", exact: true }).click();
+  }
+  await replaceEditorSource(page, "flowchart TD\n  stale --> result");
+  await replaceEditorSource(
+    page,
+    'gitGraph\n  commit id:"C0"\n  branch feature'
+  );
+  if (isMobile) {
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+  }
+  await expect(page.locator("footer")).toContainText("Git Graph");
+
+  errors.assertNone(isMobile ? [/^pageerror: Canceled$/] : []);
+});

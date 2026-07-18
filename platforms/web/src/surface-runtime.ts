@@ -62,6 +62,8 @@ export function bindSurfaceRuntime(surfaceLoader: root.MermanWasmLoader) {
       withState(() => root.analyzeJson(source, options)),
     analysisFacts: (source: string, options?: root.SvgBindingOptions | string) =>
       withState(() => root.analysisFacts(source, options)),
+    detectDiagramFacts: (source: string, options?: root.SvgBindingOptions | string) =>
+      withState(() => root.detectDiagramFacts(source, options)),
     analyzeDocument: (
       source: string,
       options?: root.SvgBindingOptions | string,

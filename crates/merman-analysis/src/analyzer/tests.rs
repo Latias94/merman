@@ -9,6 +9,55 @@ use merman_core::{
 use serde_json::json;
 
 #[test]
+fn analysis_facts_project_canonical_effective_layout() {
+    let cases = [
+        (
+            Analyzer::new(),
+            "flowchart-elk TD\nA-->B\n",
+            "flowchart-elk",
+            "elk",
+        ),
+        (
+            Analyzer::new(),
+            "%%{init: {\"layout\": \"elk\"}}%%\nclassDiagram\nclass A\n",
+            "class",
+            "elk",
+        ),
+        (
+            Analyzer::with_options(
+                AnalysisOptions::default()
+                    .with_site_config(MermaidConfig::from_value(json!({ "layout": "elk" }))),
+            ),
+            "erDiagram\nA ||--o{ B : owns\n",
+            "er",
+            "elk",
+        ),
+        (
+            Analyzer::with_options(AnalysisOptions::default().with_site_config(
+                MermaidConfig::from_value(json!({
+                    "class": { "defaultRenderer": "elk" }
+                })),
+            )),
+            "classDiagram\nclass A\n",
+            "class",
+            "dagre",
+        ),
+    ];
+
+    for (analyzer, source, syntax_id, effective_layout) in cases {
+        let payload = analyzer.analyze_facts(source);
+        assert!(payload.valid, "{source}");
+        let syntax = &payload.diagrams[0].syntax;
+        assert_eq!(syntax.diagram_type.as_deref(), Some(syntax_id), "{source}");
+        assert_eq!(
+            syntax.effective_layout.as_deref(),
+            Some(effective_layout),
+            "{source}"
+        );
+    }
+}
+
+#[test]
 fn analyze_state_parse_failure_deduplicates_matching_recovery_diagnostic() {
     let analyzer = Analyzer::new();
     let source = "stateDiagram-v2\nIdle --> Running\nRunning -->";

@@ -13,6 +13,10 @@ import {
   type BenchEngineStats,
   type BenchRunResult,
 } from "@/src/lib/bench-runner";
+import {
+  mermaidExternalRequirementsFor,
+  NO_MERMAID_EXTERNAL_REQUIREMENTS,
+} from "@/src/runtime/mermaid-requirements";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,11 +96,22 @@ export function BenchDialog() {
     setResult(null);
 
     try {
+      const externalRequirements = engines.includes("mermaid")
+        ? mermaidExternalRequirementsFor(
+            readyFacade.detectDiagram(
+              code,
+              diagramTheme,
+              mermaidConfig,
+              renderOptions
+            )
+          )
+        : NO_MERMAID_EXTERNAL_REQUIREMENTS;
       const nextResult = await runLocalRenderBench({
         source: code,
         theme: diagramTheme,
         configJson: mermaidConfig,
         diagramFont,
+        externalRequirements,
         engines,
         warmupIterations,
         measureIterations,

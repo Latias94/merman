@@ -18,6 +18,7 @@ export interface MermanRuntimeState {
   asciiSupportedDiagramsCache: AsciiDiagramType[] | null;
   asciiCapabilitiesCache: AsciiCapability[] | null;
   diagramFamilyCapabilitiesCache: DiagramFamilyCapability[] | null;
+  diagramMetadataBySyntaxIdCache: ReadonlyMap<string, DiagramType | null> | null;
   lintRuleCatalogCache: LintRuleCatalogEntry[] | null;
   supportedHostThemePresetsCache: HostThemePresetName[] | null;
   supportedThemesCache: ThemeName[] | null;
@@ -36,6 +37,7 @@ export function createMermanRuntimeState(
     asciiSupportedDiagramsCache: null,
     asciiCapabilitiesCache: null,
     diagramFamilyCapabilitiesCache: null,
+    diagramMetadataBySyntaxIdCache: null,
     lintRuleCatalogCache: null,
     supportedHostThemePresetsCache: null,
     supportedThemesCache: null,

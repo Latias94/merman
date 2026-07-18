@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  selectCurrentDiagramType,
   useAppStore,
   type HostThemePreset,
   type TextMeasurementMode,
@@ -108,8 +109,8 @@ export function Toolbar() {
     toggleExamples,
     showExamples,
     lastRenderTime,
-    diagramType,
   } = useAppStore();
+  const diagramType = useAppStore(selectCurrentDiagramType);
   const { copyShareUrl } = useShare();
   const facade = useMermanRuntime(selectMermanFacade);
   const asciiSupport = useAsciiSupport();

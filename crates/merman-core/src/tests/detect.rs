@@ -114,6 +114,23 @@ class Class1
 }
 
 #[test]
+fn class_diagram_detection_does_not_treat_renderer_as_root_layout() {
+    let engine = Engine::new().with_site_config({
+        let mut cfg = MermaidConfig::empty_object();
+        cfg.set_value("class.defaultRenderer", json!("elk"));
+        cfg
+    });
+
+    let res =
+        block_on(engine.parse_metadata("classDiagram\nclass Class1\n", ParseOptions::default()))
+            .unwrap()
+            .unwrap();
+
+    assert_eq!(res.diagram_type, "class");
+    assert_eq!(res.effective_config.get_str("layout"), Some("dagre"));
+}
+
+#[test]
 fn state_diagram_detection_respects_non_default_renderer() {
     let engine = Engine::new().with_site_config({
         let mut cfg = MermaidConfig::empty_object();

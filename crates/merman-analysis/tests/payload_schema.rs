@@ -187,6 +187,20 @@ fn analysis_facts_v1_rejects_other_wire_versions() {
 }
 
 #[test]
+fn analysis_facts_v1_accepts_payload_without_additive_effective_layout() {
+    let mut value = parser_backed_facts_json();
+    let syntax = value["diagrams"][0]["syntax"]
+        .as_object_mut()
+        .expect("syntax facts should be an object");
+    assert_eq!(syntax.remove("effective_layout"), Some(json!("dagre")));
+
+    let payload = serde_json::from_value::<AnalysisFactsPayload>(value)
+        .expect("older facts v1 payload should remain readable");
+    assert_eq!(payload.version, 1);
+    assert_eq!(payload.diagrams[0].syntax.effective_layout, None);
+}
+
+#[test]
 fn analysis_facts_v1_rejects_semantic_items_without_rename_policy() {
     let mut value = parser_backed_facts_json();
     let semantic_item = value["diagrams"][0]["syntax"]["semantic_items"]

@@ -8,6 +8,7 @@ const analysisRuntimeExportNames = [
   "analyze",
   "analyzeJson",
   "analysisFacts",
+  "detectDiagramFacts",
   "analyzeDocument",
   "analyzeDocumentFacts",
   "validate",

@@ -98,6 +98,7 @@ impl AnalyzedDiagram {
 #[derive(Debug, Clone)]
 pub struct AnalysisSyntaxFacts {
     pub diagram_type: Option<String>,
+    pub effective_layout: Option<String>,
     pub text_index: FenceTextIndex,
     pub flowchart: Option<AnalysisFlowchartFacts>,
 }
@@ -106,6 +107,7 @@ impl AnalysisSyntaxFacts {
     pub fn new(diagram_type: Option<String>, text_index: FenceTextIndex) -> Self {
         Self {
             diagram_type,
+            effective_layout: None,
             text_index,
             flowchart: None,
         }
@@ -115,6 +117,7 @@ impl AnalysisSyntaxFacts {
         Self {
             text_index: FenceTextIndex::default(),
             diagram_type,
+            effective_layout: None,
             flowchart: None,
         }
     }
@@ -125,6 +128,11 @@ impl AnalysisSyntaxFacts {
 
     pub fn with_flowchart(mut self, flowchart: Option<AnalysisFlowchartFacts>) -> Self {
         self.flowchart = flowchart;
+        self
+    }
+
+    pub fn with_effective_layout(mut self, effective_layout: Option<String>) -> Self {
+        self.effective_layout = effective_layout;
         self
     }
 }
@@ -218,6 +226,8 @@ impl From<FenceDelimiter> for AnalysisFenceDelimiterFacts {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnalysisDiagramSyntaxFacts {
     pub diagram_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effective_layout: Option<String>,
     pub fact_source: FenceTextIndexSource,
     pub parser_backed: bool,
     pub recovered: bool,
@@ -244,6 +254,7 @@ impl AnalysisDiagramSyntaxFacts {
 
         Self {
             diagram_type: syntax.diagram_type.clone(),
+            effective_layout: syntax.effective_layout.clone(),
             fact_source,
             parser_backed: fact_source.is_parser_backed(),
             recovered: fact_source.is_recovered(),

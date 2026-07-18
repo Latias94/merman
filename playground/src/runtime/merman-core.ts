@@ -4,6 +4,7 @@ import type {
   AsciiCapability,
   AsciiDiagramType,
   BindingCapabilities,
+  DiagramDetectionFacts,
   DiagramType,
   EditorCodeAction,
   EditorCompletionList,
@@ -77,6 +78,12 @@ export interface MermanEditorService {
 export interface MermanDomainFacade extends MermanEditorService {
   readonly packageVersion: string;
   bindingCapabilities(): BindingCapabilities;
+  detectDiagram(
+    code: string,
+    theme?: string,
+    configJson?: string,
+    options?: MermanRenderOptions
+  ): DiagramDetectionFacts;
   getAsciiCapabilities(): AsciiCapability[];
   getAsciiSupportedDiagrams(): AsciiDiagramType[];
   getSupportedDiagrams(): DiagramType[];

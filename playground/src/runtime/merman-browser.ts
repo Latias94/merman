@@ -4,6 +4,7 @@ import {
   assertSafeSvgForDom,
   bindingCapabilities,
   createBrowserTextMeasurementSession,
+  detectDiagramFacts,
   editorCodeActions,
   editorCompletions,
   editorDefinition,
@@ -28,6 +29,7 @@ import {
   supportedDiagrams,
   supportedThemes,
   validate,
+  type DiagramDetectionFacts,
   type HostTextMeasurer,
   type MermanWasmModule,
   type SvgBindingOptions,
@@ -47,6 +49,12 @@ import type {
 } from "./merman-core.ts";
 
 const PLAYGROUND_DOCUMENT_URI = "file:///merman/playground.mmd";
+const UNAVAILABLE_DIAGRAM_DETECTION: DiagramDetectionFacts = Object.freeze({
+  status: "unavailable",
+  diagramType: null,
+  syntaxId: null,
+  effectiveLayoutId: null,
+});
 
 export const mermanBrowserDependencies: MermanRuntimeDependencies = {
   createSession,
@@ -79,6 +87,22 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     packageVersion: packageVersion(),
 
     bindingCapabilities,
+
+    detectDiagram(
+      code,
+      theme = "default",
+      configJson = DEFAULT_MERMAID_CONFIG,
+      options
+    ) {
+      try {
+        return detectDiagramFacts(
+          configuredSource(code, theme, configJson, options),
+          bindingOptionsForRender(options)
+        );
+      } catch {
+        return UNAVAILABLE_DIAGRAM_DETECTION;
+      }
+    },
 
     editorCodeActions(code) {
       return editorCodeActions(code, undefined, PLAYGROUND_DOCUMENT_URI);

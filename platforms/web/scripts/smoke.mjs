@@ -419,6 +419,7 @@ if (capabilities.analysis) {
   assert.equal(flowchartFacts.valid, true);
   assert.equal(flowchartFacts.diagrams[0].syntax.fact_source, "parser_complete");
   assert.equal(flowchartFacts.diagrams[0].syntax.source_mapped_spans, true);
+  assert.equal(flowchartFacts.diagrams[0].syntax.effective_layout, "dagre");
   assert.equal(
     flowchartFacts.diagrams[0].syntax.flowchart.nodes.some((node) => node.id === "A"),
     true
@@ -435,6 +436,48 @@ if (capabilities.analysis) {
     ),
     true
   );
+
+  assert.deepEqual(api.detectDiagramFacts("flowchart TD\nA-->B\n", deterministicTime), {
+    status: "available",
+    diagramType: "flowchart",
+    syntaxId: "flowchart-v2",
+    effectiveLayoutId: "dagre",
+  });
+  assert.deepEqual(
+    api.detectDiagramFacts("classDiagram\nclass A\n", {
+      ...deterministicTime,
+      site_config: { layout: "elk" },
+    }),
+    {
+      status: "available",
+      diagramType: "class",
+      syntaxId: "class",
+      effectiveLayoutId: "elk",
+    }
+  );
+  const unavailableDetection = {
+    status: "unavailable",
+    diagramType: null,
+    syntaxId: null,
+    effectiveLayoutId: null,
+  };
+  assert.deepEqual(api.detectDiagramFacts("", deterministicTime), unavailableDetection);
+  assert.deepEqual(
+    api.detectDiagramFacts("unknownDiagram\nA-->B\n", deterministicTime),
+    unavailableDetection
+  );
+  assert.deepEqual(
+    api.detectDiagramFacts("flowchart TD\nA[unterminated\n", deterministicTime),
+    unavailableDetection
+  );
+  if (capabilities.core_full) {
+    assert.deepEqual(api.detectDiagramFacts("flowchart-elk TD\nA-->B\n", deterministicTime), {
+      status: "available",
+      diagramType: "flowchart",
+      syntaxId: "flowchart-elk",
+      effectiveLayoutId: "elk",
+    });
+  }
 
   const degradedSequenceFacts = api.analysisFacts(
     [
@@ -501,6 +544,7 @@ if (capabilities.analysis) {
   assert.equal(typeof api.analyze, "undefined");
   assert.equal(typeof api.analyzeJson, "undefined");
   assert.equal(typeof api.analysisFacts, "undefined");
+  assert.equal(typeof api.detectDiagramFacts, "undefined");
   assert.equal(typeof api.analyzeDocument, "undefined");
   assert.equal(typeof api.analyzeDocumentFacts, "undefined");
   assert.equal(typeof api.validate, "undefined");
@@ -868,6 +912,16 @@ if (capabilities.render) {
       : path.join(repoRoot, ...repositoryFixturePath);
     const fixture = await readFile(fixturePath, "utf8");
     assert.match(api.renderSvg(fixture, deterministicTime), /<svg/);
+    if (capabilities.analysis) {
+      const detection = api.detectDiagramFacts(fixture, deterministicTime);
+      assert.equal(detection.status, "available", `detection unavailable for ${diagram}`);
+      assert.equal(detection.diagramType, diagram, `detection mismatch for ${diagram}`);
+      assert.equal(typeof detection.syntaxId, "string");
+      assert.equal(typeof detection.effectiveLayoutId, "string");
+      if (diagram === "swimlane") {
+        assert.equal(detection.effectiveLayoutId, "swimlane");
+      }
+    }
   }
 }
 

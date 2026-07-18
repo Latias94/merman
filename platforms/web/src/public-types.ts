@@ -3,6 +3,7 @@ import type {
   BindingCapabilities,
   BindingStatusCodeName,
   DiagramFamilyCapability,
+  DiagramType,
   HostThemePresetName,
   LintBindingOptions,
   LintRuleCatalogEntry,
@@ -518,6 +519,7 @@ export interface AnalysisFlowchartFacts {
 
 export interface AnalysisDiagramSyntaxFacts {
   diagram_type?: string | null;
+  effective_layout?: string | null;
   fact_source: EditorSemanticFactSource;
   parser_backed: boolean;
   recovered: boolean;
@@ -548,6 +550,24 @@ export interface AnalysisFactsResult extends AnalysisPayloadFields {
   version: 1;
   diagrams: AnalysisDiagramFacts[];
 }
+
+export interface AvailableDiagramDetectionFacts {
+  readonly status: "available";
+  readonly diagramType: DiagramType;
+  readonly syntaxId: string;
+  readonly effectiveLayoutId: string;
+}
+
+export interface UnavailableDiagramDetectionFacts {
+  readonly status: "unavailable";
+  readonly diagramType: null;
+  readonly syntaxId: null;
+  readonly effectiveLayoutId: null;
+}
+
+export type DiagramDetectionFacts =
+  | AvailableDiagramDetectionFacts
+  | UnavailableDiagramDetectionFacts;
 
 export interface EditorPosition {
   line: number;

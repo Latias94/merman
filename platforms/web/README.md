@@ -53,7 +53,8 @@ exports.
 `@mermanjs/web/ascii` has no analysis, validation, lint catalog, render, parse, layout, or
 editor-language exports.
 `bindingCapabilities().analysis` is the supported runtime contract for whether the loaded artifact
-exposes `analyze()`, `analysisFacts()`, document analysis, validation, and `lintRuleCatalog()`.
+exposes `analyze()`, `analysisFacts()`, `detectDiagramFacts()`, document analysis, validation, and
+`lintRuleCatalog()`.
 `bindingCapabilities().editor_language` is the supported runtime contract for whether the loaded
 artifact exposes `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`,
 `editorHover()`, `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,
@@ -207,6 +208,14 @@ diagnostics shape remains compatible with `analyze()` / `analyzeDocument()`; the
 `diagrams[].syntax` data is for editor, lint, and preview integrations that want Merman's parser
 facts without speaking LSP.
 
+Successful syntax facts add `effective_layout` from the canonical parsed effective configuration.
+The field is additive within facts schema `1`; consumers deserializing older schema `1` payloads
+must treat it as absent. `detectDiagramFacts(source, options)` validates that payload and maps its
+raw parser syntax id through the runtime family catalog. It returns either
+`{ status: "available", diagramType, syntaxId, effectiveLayoutId }` or an explicit unavailable
+result. The projection is neutral metadata: choosing or loading Mermaid JS external packages remains
+the host application's responsibility.
+
 The diagnostics and facts endpoints expose separate payload contracts. The diagnostics-only
 payload remains version 1. The current parser-only facts payload is also version 1: it uses explicit
 `fact_source: "unavailable"` provenance when body semantics are unavailable, and every
@@ -335,7 +344,7 @@ The default `@mermanjs/web` entry point and `@mermanjs/web/full` expose the full
 - `renderAscii()`
 - `parseJson()`, `parseObject()`
 - `layoutJson()`, `layoutJsonWithTextMeasurer()`, `layoutObject()`
-- `analyze()`, `analyzeJson()`, `analyzeDocument()`, `analysisFacts()`,
+- `analyze()`, `analyzeJson()`, `analyzeDocument()`, `analysisFacts()`, `detectDiagramFacts()`,
   `analyzeDocumentFacts()`, `validate()`
 - `editorDiagnostics()`, `editorCodeActions()`, `editorCompletions()`, `editorHover()`,
   `editorDocumentSymbols()`, `editorWorkspaceSymbols()`, `editorDefinition()`,

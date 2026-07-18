@@ -33,6 +33,7 @@ export const {
   analyze,
   analyzeJson,
   analysisFacts,
+  detectDiagramFacts,
   analyzeDocument,
   analyzeDocumentFacts,
   validate,

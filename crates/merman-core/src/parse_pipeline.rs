@@ -1299,7 +1299,7 @@ impl<'a> ParsePipeline<'a> {
                 return Err(err);
             }
         };
-        family::apply_diagram_type_config_defaults(
+        family::apply_diagram_type_config_effects(
             &diagram_type,
             &pre.config,
             &mut effective_config,
@@ -1344,12 +1344,7 @@ impl<'a> ParsePipeline<'a> {
         let has_config_overrides = !pre.config.is_empty_object();
         let mut effective_config = self.effective_config_before_detect(&pre.config);
         let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
-        family::apply_known_type_detector_side_effects(diagram_type, &mut effective_config);
-        family::apply_diagram_type_config_defaults(
-            diagram_type,
-            &pre.config,
-            &mut effective_config,
-        );
+        family::apply_diagram_type_config_effects(diagram_type, &pre.config, &mut effective_config);
         if has_config_overrides {
             theme::apply_theme_defaults(&mut effective_config);
         } else if cached_effective_config

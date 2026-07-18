@@ -24,14 +24,18 @@ import {
   asciiSupportLabelKey,
   type AsciiCapability,
 } from "@/src/lib/ascii-support";
-import { detectDiagramType } from "@/src/lib/diagram-detection";
 import {
   bindRenderArtifact,
+  createDiagramDetectionKey,
   createPreviewRenderKey,
   freshRenderArtifactValue,
   type RenderArtifact,
 } from "@/src/lib/render-artifacts";
-import { useAppStore } from "@/src/store";
+import {
+  selectCurrentDiagramDetection,
+  useAppStore,
+} from "@/src/store";
+import { mermaidExternalRequirementsFor } from "@/src/runtime/mermaid-requirements";
 import {
   getMermaidLoadSource,
   isMermaidLoaded,
@@ -130,9 +134,10 @@ export function Preview({ className }: PreviewProps) {
     textMeasurementMode,
     diagramFont,
     setLastRenderTime,
-    setDiagramType,
+    setDiagramDetectionArtifact,
     isDarkMode,
   } = useAppStore();
+  const currentDetection = useAppStore(selectCurrentDiagramDetection);
   const facade = useMermanRuntime(selectMermanFacade);
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const runtimeFailure = useMermanRuntime(selectMermanFailure);
@@ -177,10 +182,6 @@ export function Preview({ className }: PreviewProps) {
     [activeHostThemePreset, diagramFont, textMeasurementMode]
   );
 
-  const detectedDiagramType = useMemo(
-    () => (code.trim() ? detectDiagramType(code) : "flowchart"),
-    [code]
-  );
   const previewRenderKey = useMemo(
     () =>
       createPreviewRenderKey({
@@ -202,6 +203,16 @@ export function Preview({ className }: PreviewProps) {
       textMeasurementMode,
     ]
   );
+  const diagramDetectionKey = useMemo(
+    () =>
+      createDiagramDetectionKey({
+        code,
+        diagramTheme,
+        mermaidConfig,
+        hostThemePreset: activeHostThemePreset ?? null,
+      }),
+    [activeHostThemePreset, code, diagramTheme, mermaidConfig]
+  );
   const mermanSvgActionKey = useMemo(
     () => artifactActionKey("merman-svg", previewRenderKey),
     [previewRenderKey]
@@ -221,6 +232,17 @@ export function Preview({ className }: PreviewProps) {
   const freshMermaidArtifact = freshRenderArtifactValue(
     mermaidRenderArtifact,
     previewRenderKey
+  );
+  const detectedDiagramType =
+    currentDetection?.status === "available"
+      ? currentDetection.diagramType
+      : "unknown";
+  const externalRequirements = useMemo(
+    () =>
+      currentDetection
+        ? mermaidExternalRequirementsFor(currentDetection)
+        : null,
+    [currentDetection]
   );
   const svg = freshMermanArtifact?.svg ?? null;
   const ascii = freshMermanArtifact?.ascii ?? null;
@@ -255,10 +277,12 @@ export function Preview({ className }: PreviewProps) {
     [t]
   );
   const warmCompareRenderer = useCallback(() => {
+    if (!externalRequirements) return;
     void prewarmMermaidRenderer(diagramTheme, mermaidConfig, {
       diagramFont,
+      externalRequirements,
     });
-  }, [diagramFont, diagramTheme, mermaidConfig]);
+  }, [diagramFont, diagramTheme, externalRequirements, mermaidConfig]);
   useEffect(() => {
     let cancelled = false;
 
@@ -266,34 +290,51 @@ export function Preview({ className }: PreviewProps) {
       clearTimeout(debounceRef.current);
     }
 
-    debounceRef.current = setTimeout(() => {
-      if (facade && code.trim()) {
-        const diagramType = detectedDiagramType;
-        setDiagramType(diagramType);
-
-        const result = facade.render(
-          code,
-          diagramTheme,
-          mermaidConfig,
-          renderOptions
-        );
-        if (cancelled) return;
-
-        const renderedAscii = asciiSupport.isSupported(diagramType)
-          ? facade.renderAscii(code, diagramTheme, mermaidConfig)
-          : null;
-        setMermanRenderArtifact(
-          bindRenderArtifact(previewRenderKey, {
-            svg: result.svg,
-            ascii: renderedAscii,
-            error: result.error,
-            renderTime: result.error ? null : result.renderTime,
-          })
-        );
-        setLastRenderTime(result.renderTime);
-      } else if (!code.trim()) {
+    if (!facade || !code.trim()) {
+      setDiagramDetectionArtifact(null);
+      if (!code.trim()) {
         setMermanRenderArtifact(null);
       }
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    debounceRef.current = setTimeout(() => {
+      const detection = facade.detectDiagram(
+        code,
+        diagramTheme,
+        mermaidConfig,
+        renderOptions
+      );
+      if (cancelled) return;
+      setDiagramDetectionArtifact(
+        bindRenderArtifact(diagramDetectionKey, detection)
+      );
+      const diagramType =
+        detection.status === "available"
+          ? detection.diagramType
+          : "unknown";
+      const result = facade.render(
+        code,
+        diagramTheme,
+        mermaidConfig,
+        renderOptions
+      );
+      if (cancelled) return;
+
+      const renderedAscii = asciiSupport.isSupported(diagramType)
+        ? facade.renderAscii(code, diagramTheme, mermaidConfig)
+        : null;
+      setMermanRenderArtifact(
+        bindRenderArtifact(previewRenderKey, {
+          svg: result.svg,
+          ascii: renderedAscii,
+          error: result.error,
+          renderTime: result.error ? null : result.renderTime,
+        })
+      );
+      setLastRenderTime(result.renderTime);
     }, 300);
 
     return () => {
@@ -305,13 +346,13 @@ export function Preview({ className }: PreviewProps) {
   }, [
     code,
     asciiSupport,
-    detectedDiagramType,
+    diagramDetectionKey,
     diagramTheme,
     facade,
     mermaidConfig,
     previewRenderKey,
     renderOptions,
-    setDiagramType,
+    setDiagramDetectionArtifact,
     setLastRenderTime,
   ]);
 
@@ -322,7 +363,11 @@ export function Preview({ className }: PreviewProps) {
   }, [isAsciiSupported, previewMode]);
 
   useEffect(() => {
-    if (previewMode !== "compare" || !code.trim()) {
+    if (
+      previewMode !== "compare" ||
+      !code.trim() ||
+      !externalRequirements
+    ) {
       setMermaidStatus("idle");
       if (!code.trim()) {
         setMermaidRenderArtifact(null);
@@ -336,11 +381,13 @@ export function Preview({ className }: PreviewProps) {
       void (async () => {
         await prewarmMermaidRenderer(diagramTheme, mermaidConfig, {
           diagramFont,
+          externalRequirements,
         });
         if (cancelled) return;
         setMermaidStatus("rendering");
         const result = await renderMermaidSvg(code, diagramTheme, mermaidConfig, {
           diagramFont,
+          externalRequirements,
         });
         if (cancelled) return;
         setMermaidRenderArtifact(
@@ -352,7 +399,7 @@ export function Preview({ className }: PreviewProps) {
         );
         setMermaidStatus("idle");
       })();
-    }, 300);
+    }, 0);
 
     return () => {
       cancelled = true;
@@ -362,6 +409,7 @@ export function Preview({ className }: PreviewProps) {
     code,
     diagramFont,
     diagramTheme,
+    externalRequirements,
     localizeMermaidError,
     mermaidConfig,
     previewRenderKey,

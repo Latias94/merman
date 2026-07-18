@@ -3,6 +3,7 @@ import {
   renderMermaidSvg,
 } from "@/src/lib/mermaid-renderer";
 import type { DiagramFont } from "@/src/lib/diagram-font";
+import type { MermaidExternalRequirements } from "@/src/runtime/mermaid-requirements";
 
 export type BenchEngine = "merman" | "mermaid";
 
@@ -44,6 +45,7 @@ export interface BenchRunOptions {
   theme: string;
   configJson: string;
   diagramFont?: DiagramFont;
+  externalRequirements: MermaidExternalRequirements;
   engines: BenchEngine[];
   warmupIterations: number;
   measureIterations: number;
@@ -56,6 +58,7 @@ export async function runLocalRenderBench({
   theme,
   configJson,
   diagramFont,
+  externalRequirements,
   engines,
   warmupIterations,
   measureIterations,
@@ -66,7 +69,13 @@ export async function runLocalRenderBench({
 
   for (const engine of engines) {
     throwIfAborted(signal);
-    await prepareEngine(engine, theme, configJson, diagramFont);
+    await prepareEngine(
+      engine,
+      theme,
+      configJson,
+      diagramFont,
+      externalRequirements
+    );
     throwIfAborted(signal);
     await runWarmup({
       engine,
@@ -74,6 +83,7 @@ export async function runLocalRenderBench({
       theme,
       configJson,
       diagramFont,
+      externalRequirements,
       iterations: warmupIterations,
       renderMerman,
       signal,
@@ -85,6 +95,7 @@ export async function runLocalRenderBench({
         theme,
         configJson,
         diagramFont,
+        externalRequirements,
         iterations: measureIterations,
         renderMerman,
         signal,
@@ -103,10 +114,14 @@ async function prepareEngine(
   engine: BenchEngine,
   theme: string,
   configJson: string,
-  diagramFont: DiagramFont | undefined
+  diagramFont: DiagramFont | undefined,
+  externalRequirements: MermaidExternalRequirements
 ) {
   if (engine === "mermaid") {
-    await prewarmMermaidRenderer(theme, configJson, { diagramFont });
+    await prewarmMermaidRenderer(theme, configJson, {
+      diagramFont,
+      externalRequirements,
+    });
   }
 }
 
@@ -156,6 +171,7 @@ interface RunLoopOptions {
   theme: string;
   configJson: string;
   diagramFont?: DiagramFont;
+  externalRequirements: MermaidExternalRequirements;
   renderMerman: MermanRenderFn;
   signal?: AbortSignal;
 }
@@ -166,6 +182,7 @@ async function renderOnce({
   theme,
   configJson,
   diagramFont,
+  externalRequirements,
   renderMerman,
 }: Omit<RunLoopOptions, "signal">): Promise<{
   elapsedMs: number;
@@ -175,6 +192,7 @@ async function renderOnce({
   if (engine === "mermaid") {
     const result = await renderMermaidSvg(source, theme, configJson, {
       diagramFont,
+      externalRequirements,
     });
     return {
       elapsedMs: result.renderTime,

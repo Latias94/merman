@@ -1,17 +1,28 @@
 import { create } from "zustand";
-import type { HostThemePresetName, ThemeName } from "@mermanjs/web";
+import type {
+  DiagramDetectionFacts,
+  DiagramType,
+  HostThemePresetName,
+  ThemeName,
+} from "@mermanjs/web";
 import type { DiagramFont } from "@/src/lib/diagram-font";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
 import type { MermanTextMeasurementMode } from "@/src/runtime/merman-core";
+import {
+  createDiagramDetectionKey,
+  freshRenderArtifactValue,
+  type RenderArtifact,
+} from "@/src/lib/render-artifacts";
 
 export type Theme = ThemeName;
 export type HostThemePreset = "none" | HostThemePresetName;
 export type UITheme = "light" | "dark" | "system";
 export type EditorMode = "code" | "config";
 export type TextMeasurementMode = MermanTextMeasurementMode;
+export type LiveDiagramType = DiagramType | "unknown";
 export type { DiagramFont };
 
-interface AppState {
+export interface AppState {
   // 编辑器状态
   code: string;
   setCode: (code: string) => void;
@@ -20,9 +31,11 @@ interface AppState {
   editorMode: EditorMode;
   setEditorMode: (mode: EditorMode) => void;
 
-  // 当前图表类型
-  diagramType: string;
-  setDiagramType: (type: string) => void;
+  // Canonical parser facts for the latest detection request.
+  diagramDetectionArtifact: RenderArtifact<DiagramDetectionFacts> | null;
+  setDiagramDetectionArtifact: (
+    artifact: RenderArtifact<DiagramDetectionFacts> | null
+  ) => void;
 
   // Mermaid 主题
   diagramTheme: Theme;
@@ -83,9 +96,14 @@ export const useAppStore = create<AppState>((set) => ({
   editorMode: "code",
   setEditorMode: (editorMode) => set({ editorMode }),
 
-  // 当前图表类型
-  diagramType: "flowchart",
-  setDiagramType: (diagramType) => set({ diagramType }),
+  // Canonical parser facts for the latest detection request.
+  diagramDetectionArtifact: null,
+  setDiagramDetectionArtifact: (diagramDetectionArtifact) =>
+    set((state) =>
+      state.diagramDetectionArtifact === diagramDetectionArtifact
+        ? state
+        : { diagramDetectionArtifact }
+    ),
 
   // Mermaid 主题
   diagramTheme: "default",
@@ -118,3 +136,23 @@ export const useAppStore = create<AppState>((set) => ({
   lastRenderTime: 0,
   setLastRenderTime: (lastRenderTime) => set({ lastRenderTime }),
 }));
+
+export function selectCurrentDiagramDetection(
+  state: AppState
+): DiagramDetectionFacts | null {
+  return freshRenderArtifactValue(
+    state.diagramDetectionArtifact,
+    createDiagramDetectionKey({
+      code: state.code,
+      diagramTheme: state.diagramTheme,
+      mermaidConfig: state.mermaidConfig,
+      hostThemePreset:
+        state.hostThemePreset === "none" ? null : state.hostThemePreset,
+    })
+  );
+}
+
+export function selectCurrentDiagramType(state: AppState): LiveDiagramType {
+  const detection = selectCurrentDiagramDetection(state);
+  return detection?.status === "available" ? detection.diagramType : "unknown";
+}

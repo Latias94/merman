@@ -8,6 +8,11 @@ export interface PreviewRenderInputs {
   refreshNonce: number;
 }
 
+export type DiagramDetectionInputs = Pick<
+  PreviewRenderInputs,
+  "code" | "diagramTheme" | "mermaidConfig" | "hostThemePreset"
+>;
+
 export interface RenderArtifact<T> {
   key: string;
   value: T;
@@ -22,6 +27,17 @@ export function createPreviewRenderKey(inputs: PreviewRenderInputs): string {
     inputs.textMeasurementMode,
     inputs.diagramFont,
     inputs.refreshNonce,
+  ]);
+}
+
+export function createDiagramDetectionKey(
+  inputs: DiagramDetectionInputs
+): string {
+  return JSON.stringify([
+    inputs.code,
+    inputs.diagramTheme,
+    inputs.mermaidConfig,
+    inputs.hostThemePreset,
   ]);
 }
 

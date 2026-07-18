@@ -255,6 +255,11 @@ impl Analyzer {
                 LocalAnalysis::empty_syntax_with_type(Some(diagram_type), diagnostics)
             }
             AnalysisMode::RichFacts => {
+                let effective_layout = parsed
+                    .meta
+                    .effective_config
+                    .get_str("layout")
+                    .map(str::to_owned);
                 let flowchart_projection =
                     self.flowchart_facts_projection(&parsed.model, &diagram_type, source_map);
                 diagnostics.extend(flowchart_projection.diagnostics);
@@ -282,6 +287,7 @@ impl Analyzer {
                         Some(diagram_type),
                         editor_projection.text_index,
                     )
+                    .with_effective_layout(effective_layout)
                     .with_flowchart(flowchart_projection.facts),
                 }
             }

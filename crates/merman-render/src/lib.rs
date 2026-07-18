@@ -176,16 +176,8 @@ impl std::ops::Deref for LayoutExecution<'_> {
     }
 }
 
-fn flowchart_uses_elk_layout(
-    diagram_type: &str,
-    effective_config: &merman_core::MermaidConfig,
-) -> bool {
-    diagram_type == "flowchart-elk" || effective_config.get_str("layout") == Some("elk")
-}
-
-fn class_uses_elk_layout(effective_config: &merman_core::MermaidConfig) -> bool {
+fn uses_elk_layout(effective_config: &merman_core::MermaidConfig) -> bool {
     effective_config.get_str("layout") == Some("elk")
-        || effective_config.get_str("class.defaultRenderer") == Some("elk")
 }
 
 pub(crate) fn layout_class_typed_by_engine(
@@ -194,7 +186,7 @@ pub(crate) fn layout_class_typed_by_engine(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::ClassDiagramLayout> {
-    if class_uses_elk_layout(effective_config) {
+    if uses_elk_layout(effective_config) {
         return layout_class_elk_typed_by_feature(diagram_type, model, effective_config, options);
     }
 
@@ -235,7 +227,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    if flowchart_uses_elk_layout(diagram_type, effective_config) {
+    if uses_elk_layout(effective_config) {
         return layout_flowchart_elk_typed_by_feature(
             diagram_type,
             model,
@@ -441,44 +433,6 @@ A-->B
                 r#"---
 config:
   layout: elk
----
-classDiagram
-direction LR
-Animal <|-- Duck
-"#,
-                ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(parsed.meta.diagram_type, "class");
-        let layout = class_layout(&parsed, &LayoutOptions::default(), &session);
-        let animal = layout
-            .nodes
-            .iter()
-            .find(|node| node.id == "Animal")
-            .unwrap();
-        let duck = layout.nodes.iter().find(|node| node.id == "Duck").unwrap();
-        assert!(
-            duck.x > animal.x,
-            "ELK LR class layout should place Duck to the right of Animal; Animal={}, Duck={}",
-            animal.x,
-            duck.x
-        );
-    }
-
-    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
-    #[test]
-    fn render_model_dispatch_uses_elk_for_class_default_renderer_config() {
-        let session = crate::environment::RenderEnvironment::parity()
-            .begin_session()
-            .unwrap();
-        let parsed = Engine::new()
-            .parse_diagram_for_render_model_sync(
-                r#"---
-config:
-  class:
-    defaultRenderer: elk
 ---
 classDiagram
 direction LR

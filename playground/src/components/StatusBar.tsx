@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "@/src/store";
+import { selectCurrentDiagramType, useAppStore } from "@/src/store";
 import { cn } from "@/lib/utils";
 import {
   selectMermanFacade,
@@ -16,10 +16,10 @@ export function StatusBar() {
     lastRenderTime,
     diagramTheme,
     hostThemePreset,
-    diagramType,
     textMeasurementMode,
     diagramFont,
   } = useAppStore();
+  const diagramType = useAppStore(selectCurrentDiagramType);
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const facade = useMermanRuntime(selectMermanFacade);
   const runtimeFailure = useMermanRuntime(selectMermanFailure);

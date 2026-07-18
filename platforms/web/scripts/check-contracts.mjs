@@ -5,6 +5,7 @@ import {
   allSurfaceRuntimeExportNames,
   surfaces,
 } from "./surface-manifest.mjs";
+import { scanWebArchitecture } from "./web-architecture.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fullWasmTypes = path.join(root, "pkg", "full", "merman_wasm.d.ts");
@@ -26,6 +27,7 @@ const runtimeWrapperOnlyExports = new Set([
   "renderSvgToElement",
   "parseObject",
   "layoutObject",
+  "detectDiagramFacts",
 ]);
 const stableWrapperOnlyExports = new Set([
   "createBrowserTextMeasurementSession",
@@ -85,7 +87,15 @@ const requiredTypeProperties = new Map([
   ],
   [
     "AnalysisDiagramSyntaxFacts",
-    ["source_mapped_spans"],
+    ["source_mapped_spans", "effective_layout"],
+  ],
+  [
+    "AvailableDiagramDetectionFacts",
+    ["status", "diagramType", "syntaxId", "effectiveLayoutId"],
+  ],
+  [
+    "UnavailableDiagramDetectionFacts",
+    ["status", "diagramType", "syntaxId", "effectiveLayoutId"],
   ],
   [
     "AnalysisSemanticItemFacts",
@@ -181,6 +191,13 @@ failed ||= reportMissing(
 failed ||= reportMissing(
   "check-contracts: build-surface-packages.mjs will not regenerate runtime-bound wrappers",
   requiredRuntimeBindings.filter((name) => !generatedSurfaceBindings.has(name)),
+);
+failed ||= reportUnexpected(
+  "check-contracts: platform Web source owns forbidden Mermaid loading policy",
+  scanWebArchitecture(path.join(root, "src")).map(
+    ({ file, line, column, rule, detail }) =>
+      `${file}:${line}:${column} [${rule}] ${detail}`,
+  ),
 );
 
 for (const [interfaceName, requiredProperties] of requiredTypeProperties) {

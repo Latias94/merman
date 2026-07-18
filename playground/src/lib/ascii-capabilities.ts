@@ -3,7 +3,6 @@ import {
   FALLBACK_ASCII_CAPABILITIES,
   FALLBACK_ASCII_SUPPORTED_TYPES,
   type AsciiCapability,
-  normalizeAsciiDiagramType,
 } from "@/src/lib/ascii-support";
 import {
   selectMermanFacade,
@@ -23,7 +22,7 @@ export function useAsciiSupport() {
   const capabilityMap = useMemo(() => {
     const map = new Map<string, AsciiCapability>();
     for (const capability of capabilities) {
-      map.set(normalizeAsciiDiagramType(capability.diagram_type), capability);
+      map.set(capability.diagram_type, capability);
     }
     return map;
   }, [capabilities]);
@@ -31,12 +30,10 @@ export function useAsciiSupport() {
   const supportedTypes = useMemo(() => {
     const fromCapabilities = capabilities
       .filter((capability) => capability.support_level !== "unsupported")
-      .map((capability) => normalizeAsciiDiagramType(capability.diagram_type));
+      .map((capability) => capability.diagram_type);
     return fromCapabilities.length > 0
       ? fromCapabilities
-      : (facade?.getAsciiSupportedDiagrams() ?? FALLBACK_ASCII_SUPPORTED_TYPES).map(
-          normalizeAsciiDiagramType
-        );
+      : (facade?.getAsciiSupportedDiagrams() ?? FALLBACK_ASCII_SUPPORTED_TYPES);
   }, [capabilities, facade]);
 
   const supportedTypeSet = useMemo(() => new Set(supportedTypes), [supportedTypes]);
@@ -47,9 +44,9 @@ export function useAsciiSupport() {
       capabilityMap,
       supportedTypes,
       capabilityFor: (diagramType: string) =>
-        capabilityMap.get(normalizeAsciiDiagramType(diagramType)) ?? null,
+        capabilityMap.get(diagramType) ?? null,
       isSupported: (diagramType: string) =>
-        supportedTypeSet.has(normalizeAsciiDiagramType(diagramType)),
+        supportedTypeSet.has(diagramType),
     }),
     [capabilities, capabilityMap, supportedTypeSet, supportedTypes]
   );
@@ -58,7 +55,6 @@ export function useAsciiSupport() {
 function normalizeCapability(capability: AsciiCapability): AsciiCapability {
   return {
     ...capability,
-    diagram_type: normalizeAsciiDiagramType(capability.diagram_type),
     supported_semantics: [...capability.supported_semantics],
     limits: [...capability.limits],
     evidence: capability.evidence.map((evidence) => ({ ...evidence })),

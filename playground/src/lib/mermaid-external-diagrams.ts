@@ -1,4 +1,5 @@
 import { MERMAID_CDN_LOAD_ERROR, type MermaidApi } from "@/src/lib/mermaid-runtime";
+import type { MermaidExternalRequirements } from "@/src/runtime/mermaid-requirements";
 
 export const MERMAID_ZENUML_VERSION = "0.2.2";
 export const MERMAID_LAYOUT_ELK_VERSION = "0.2.1";
@@ -25,10 +26,7 @@ let elkLayoutsRegisteredMermaid: MermaidApi | null = null;
 
 export async function ensureMermaidExternalDiagrams(
   mermaid: MermaidApi,
-  options: {
-    elkLayouts?: boolean;
-    zenuml?: boolean;
-  }
+  options: MermaidExternalRequirements
 ): Promise<void> {
   if (options.elkLayouts) {
     await ensureElkLayoutsRegistered(mermaid);
