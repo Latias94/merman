@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use super::diagrams::compare_diagram_request;
 use super::{
     AcceptedResidualPolicy, CompareEvidence, CompareRequest, CompareRunResult,
-    QuadrantStructureResidualPolicy, RootDeltaReportLimit, RootParityResidualPolicy,
-    diagram_supports_root_delta_report, parse_root_delta_report_limit,
+    RootDeltaReportLimit, RootParityResidualPolicy, diagram_supports_root_delta_report,
+    parse_root_delta_report_limit,
 };
 
 pub(crate) fn compare_all_svgs(args: Vec<String>) -> Result<(), XtaskError> {
@@ -183,15 +183,6 @@ impl CompareAllOptions {
                 .is_some_and(|mode| matches!(mode.trim(), "parity-root" | "parity_root"))
     }
 
-    fn quadrant_structure_policy_enabled(&self) -> bool {
-        self.check_dom
-            && self.filter.is_none()
-            && self
-                .dom_mode
-                .as_deref()
-                .is_some_and(|mode| mode.trim() == "structure")
-    }
-
     fn invocation_options(&self) -> CompareAllInvocationOptions<'_> {
         CompareAllInvocationOptions {
             check_dom: self.check_dom,
@@ -201,7 +192,6 @@ impl CompareAllOptions {
             flowchart_text_measurer: self.flowchart_text_measurer.as_deref(),
             report_root: self.report_root,
             root_report_limit: self.root_report_limit,
-            quadrant_structure_policy_enabled: self.quadrant_structure_policy_enabled(),
             root_parity_policy_enabled: self.root_parity_policy_enabled(),
         }
     }
@@ -247,7 +237,6 @@ struct CompareAllFailures {
     skip_unmatched_filter_messages: bool,
     check_dom: bool,
     evidence: CompareEvidence,
-    quadrant_structure_policy: Option<QuadrantStructureResidualPolicy>,
     root_parity_policy: Option<RootParityResidualPolicy>,
     failures: Vec<String>,
 }
@@ -269,9 +258,6 @@ impl CompareAllFailures {
                 && options.only_diagrams.is_empty(),
             check_dom: options.check_dom,
             evidence: CompareEvidence::default(),
-            quadrant_structure_policy: options.quadrant_structure_policy_enabled().then(|| {
-                QuadrantStructureResidualPolicy::new(diagrams, options.dom_decimals.unwrap_or(3))
-            }),
             root_parity_policy,
             failures: Vec::new(),
         })
@@ -300,17 +286,6 @@ impl CompareAllFailures {
     }
 
     fn finish(mut self) -> Result<(), XtaskError> {
-        if let Some(policy) = self.quadrant_structure_policy {
-            let accepted = policy.accepted_summaries();
-            if !accepted.is_empty() {
-                println!("\n== accepted QuadrantChart structure renderability corrections ==");
-                for line in accepted {
-                    println!("{line}");
-                }
-            }
-            self.failures.extend(policy.missing_failures());
-        }
-
         if let Some(policy) = self.root_parity_policy {
             match policy.finish() {
                 Ok(finish) => {
@@ -345,13 +320,7 @@ impl CompareAllFailures {
     }
 
     fn record_svg_compare_failure(&mut self, diagram: &str, msg: &str, report_path: Option<&Path>) {
-        if diagram == "quadrantchart"
-            && let Some(policy) = self.quadrant_structure_policy.as_mut()
-        {
-            if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
-                self.failures.push(failure);
-            }
-        } else if let Some(policy) = self.root_parity_policy.as_mut() {
+        if let Some(policy) = self.root_parity_policy.as_mut() {
             if let Some(failure) = policy.accept_or_summarize_failure(diagram, msg, report_path) {
                 self.failures.push(failure);
             }
@@ -380,7 +349,6 @@ struct CompareAllInvocationOptions<'a> {
     flowchart_text_measurer: Option<&'a str>,
     report_root: bool,
     root_report_limit: Option<RootDeltaReportLimit>,
-    quadrant_structure_policy_enabled: bool,
     root_parity_policy_enabled: bool,
 }
 
@@ -405,11 +373,7 @@ impl CompareAllInvocationOptions<'_> {
                 .then_some(self.flowchart_text_measurer)
                 .flatten()
                 .map(str::to_string),
-            accepted_residual_policy: if diagram == "quadrantchart"
-                && self.quadrant_structure_policy_enabled
-            {
-                AcceptedResidualPolicy::QuadrantStructureRenderability
-            } else if self.root_parity_policy_enabled {
+            accepted_residual_policy: if self.root_parity_policy_enabled {
                 AcceptedResidualPolicy::RootParityExact
             } else if matches!(diagram, "ishikawa" | "venn") {
                 AcceptedResidualPolicy::ExactFixtureDomEvidence
@@ -613,7 +577,7 @@ mod tests {
                 .for_diagram("quadrantchart", compare_dir)
                 .request
                 .accepted_residual_policy,
-            AcceptedResidualPolicy::QuadrantStructureRenderability
+            AcceptedResidualPolicy::None
         );
         assert_eq!(
             invocation

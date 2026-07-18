@@ -50,7 +50,7 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     render_sequence_diagram_svg_inner(
         layout,
         model,
@@ -70,7 +70,7 @@ fn render_sequence_diagram_svg_inner(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let effective_title =
         crate::sequence::sequence_render_title(model.title.as_deref(), diagram_title);
 
@@ -214,5 +214,5 @@ fn render_sequence_diagram_svg_inner(
     }
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_metrics.document.complete(out)
 }

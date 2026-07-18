@@ -7,7 +7,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     layout: &EventModelingDiagramLayout,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("eventmodeling");
     let theme = PresentationTheme::new(effective_config).eventmodeling();
     let mut out = String::new();
@@ -21,8 +21,11 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         .with_max_width(root_svg::RootMaxWidth::SvgNumber(layout.total_width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "eventmodeling");
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::EventModeling, diagram_id)
-        .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::EventModeling,
+        diagram_id,
+    )
+    .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = eventmodeling_css(&theme);
     let marker_id = format!("em-arrowhead-{diagram_id}");
@@ -87,7 +90,7 @@ pub(crate) fn render_eventmodeling_diagram_svg(
     escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_box_html_label(out: &mut String, text: &str) {

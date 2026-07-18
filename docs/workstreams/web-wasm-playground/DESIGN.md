@@ -1,100 +1,152 @@
 # Web WASM Playground
 
 Status: Closed
-Last updated: 2026-06-29
+Last updated: 2026-07-18
 
-## Why This Lane Exists
+## Purpose
 
-Merman already has a safe binding facade, C ABI, UniFFI bindings, and platform packaging work. The
-web surface is still missing: users cannot run merman in a browser or try it from GitHub Pages
-without installing native tooling. `repo-ref/merman-page` proves the desired live-editor UX, and
-`repo-ref/RaTeX` proves a suitable Rust WASM plus TypeScript package structure.
+This lane established Merman's browser package and Playground. The current implementation is a
+local-first Mermaid authoring surface: Rust/WASM owns parsing, rendering, analysis, and editor
+semantics; product code owns browser lifecycle, presentation, Compare, and benchmark policy.
 
-## Relevant Authority
+Current architecture is governed by:
 
-- ADRs:
-  - `docs/adr/0003-workspace-structure.md`
-  - `docs/adr/0066-ffi-binding-strategy.md`
-- Existing docs:
-  - `docs/bindings/OPTIONS_JSON.md`
-  - `docs/release/PACKAGE_SURFACES.md`
-- Related reference code:
-  - `repo-ref/RaTeX/crates/ratex-wasm`
-  - `repo-ref/RaTeX/platforms/web`
-  - `repo-ref/RaTeX/website/scripts/verify-dist-wasm.mjs`
-  - `repo-ref/merman-page`
+- `docs/adr/0069-wasm-package-surface-semantics.md` for browser/Typst package separation;
+- `docs/adr/0074-browser-runtime-and-benchmark-ownership.md` for document, realm, Worker, cache, and
+  measurement ownership;
+- `docs/adr/0073-family-owned-diagram-architecture.md` for the canonical 35-family catalog and
+  semantic construction;
+- `platforms/web/README.md` for public TypeScript entry points and ABI requirements.
 
-## Problem
-
-The current repository has no `merman-wasm` crate, no TypeScript package, and no Pages build. The
-reference playground contains a mock WASM loader and a placeholder Rust crate that cannot be
-checked from its current `repo-ref` location. The real browser path must first prove that the
-existing safe facade can compile for `wasm32-unknown-unknown`.
-
-## Target State
-
-- A workspace `crates/merman-wasm` crate exposes a small `wasm-bindgen` API over
-  `merman-bindings-core`.
-- A `platforms/web` TypeScript package builds the WASM package and exposes typed helpers.
-- A `playground` app consumes the web package and provides a live editor suitable for GitHub Pages.
-- CI/Pages builds fail if the generated static output misses the WASM JavaScript shim or `.wasm`
-  binary.
-- Docs record the web/WASM package surface and local build commands.
-
-## In Scope
-
-- Browser WASM rendering to SVG, semantic JSON, and layout JSON.
-- A validation helper that maps binding errors into JavaScript-friendly results.
-- A Ratex-style TypeScript wrapper package under `platforms/web`.
-- Migrating and hardening the existing `repo-ref/merman-page` live editor.
-- GitHub Pages build and static artifact verification.
-
-## Out Of Scope
-
-- Replacing the existing C ABI, UniFFI, Python, Apple, Android, or Flutter binding surfaces.
-- Browser raster/PDF output from Rust in the first slice.
-- Publishing an npm package before local and Pages builds are stable.
-- Reworking Mermaid parity fixtures or unrelated rendering behavior.
-
-## Starting Assumptions
-
-| Assumption | Confidence | Evidence | Consequence if wrong |
-| --- | --- | --- | --- |
-| `merman-bindings-core` is the correct WASM backend boundary. | High | ADR 0066 and existing facade tests | Duplicate browser-specific render logic would drift from native bindings. |
-| Browser WASM should use `wasm-bindgen`, not UniFFI or the C ABI. | High | RaTeX web surface and UniFFI browser limitations | Generated bindings would be larger or awkward for web consumers. |
-| First browser output should be SVG/JSON only. | High | `docs/bindings/OPTIONS_JSON.md` current surface | Raster/PDF can be split after the core browser package is stable. |
-| The first compile blockers are target randomness features. | High | 2026-06-01 wasm checks hit `uuid` and `getrandom` errors | The first implementation task must fix target compatibility before adding frontend build complexity. |
-
-## Architecture Direction
-
-Keep the same layering as the native binding work:
+## Current Layers
 
 ```text
-merman-core / merman-render / merman
-        |
-merman-bindings-core       (safe facade, options JSON, error classification)
-        |
-merman-editor-core         (shared editor diagnostics, completion, symbols, navigation)
-        |
-crates/merman-wasm        (wasm-bindgen transport, JS values, panic hook)
-        |
-platforms/web             (TypeScript package, typed options, dynamic WASM init)
-        |
-playground                (live editor / GitHub Pages app)
+merman-core / merman-analysis / merman-editor-core / merman-render
+                              |
+                    merman-bindings-core
+                              |
+                     crates/merman-wasm
+                              |
+       @mermanjs/web capability-specific package subpaths
+                              |
+          Playground document runtime and Render Coordinator
+             |                 |                    |
+    editor module Worker   Compare iframe     benchmark iframes
 ```
 
-The WASM crate should expose strings and JSON instead of Rust structs. The TypeScript package can
-layer typed options over the same JSON contract already used by native bindings. Browser editor
-APIs are stateless document queries over `merman-editor-core`; the playground projects those results
-into Monaco providers for diagnostics, completion, hover, document symbols, definition,
-references, rename, code actions, and semantic tokens.
+The package boundary is deliberately narrower than the application boundary:
 
-## Closeout Condition
+- `@mermanjs/web` exposes stateless browser binding operations and capability metadata.
+- `@mermanjs/web/editor` exposes the full family catalog and parser-backed language intelligence
+  through `browser-editor`; it does not contain SVG, ASCII, host, or ELK capabilities.
+- The Playground owns loading/retry policy, BFCache behavior, the latest-wins render coordinator,
+  Compare and benchmark realms, UI state, and local report download.
+- `merman-wasm` is wasm-bindgen browser transport. `merman-typst-plugin` remains the separate
+  wasm-minimal-protocol transport.
 
-This lane can close when:
+Native browser ABI remains `2`. Editor diagnostics and analysis/facts payloads remain schema `1`.
 
-- the WASM crate builds with `wasm-pack`,
-- the TypeScript package builds against the generated package,
-- the playground renders with the real WASM module,
-- the Pages workflow uploads a verified static artifact,
-- and any npm publishing or raster follow-ons are split or explicitly deferred.
+## Document Runtime
+
+One module-level document runtime owns `idle`, staged `loading`, `ready`, and staged `error` states,
+one coalesced acquisition, exact package version, and a disposable browser text-measurement
+session. React components observe narrow store selectors; React mount/unmount does not own the
+session.
+
+The ESM shim import and hashed WASM fetch start concurrently. The response must be successful and
+use `application/wasm`. Browser HTTP cache is the sole persistent byte cache. A retryable
+compile/initialization failure may refetch once with `cache: reload`; there is no application Cache
+Storage, service worker, or product warmup.
+
+BFCache entry suspends publication and disposes replaceable realms while retaining a valid main
+session. BFCache restoration resumes or reacquires it and schedules the latest request once.
+Non-persisted exit and HMR dispose explicitly release owned resources. Window-realm destruction
+ultimately owns the initialized wasm-bindgen module.
+
+## Rendering And Compare
+
+The Render Coordinator freezes source, config, theme, font, measurement mode, SVG pipeline,
+viewport, and package version. It publishes only the latest coherent batch and keeps request
+failures outside runtime lifecycle state.
+
+The main document never imports Mermaid. Compare uses a same-origin iframe, authenticated
+MessagePort, closed protocol, message budgets, and SVG validation in both the realm and parent. One
+recovering queue owns local imports, external registration, initialization, render, ZenUML
+recovery, and validation. Timeout or protocol corruption destroys the realm.
+
+The visible interactive render timer measures the actual source. There is no hidden synthetic
+render. The preview separately records when a validated artifact reaches its presentation
+boundary; this feedback is not represented as a formal cross-engine benchmark.
+
+## Benchmark
+
+Benchmark is a separate product surface with one Window realm per engine. `realm-cold` recreates an
+iframe/module realm; `warm` reuses it. It does not claim that realm-cold means network-cold.
+Resource Timing entries are retained as observations without inferring unavailable HTTP-cache
+provenance.
+
+Protocol `1` and trace schema `1` record realm-local events for font readiness, adapter/engine
+imports, resource acquisition, registration, initialization, rendering, SVG safety, DOM insertion,
+layout, and presentation. The controller alone derives intervals and aggregate statistics. Equal
+real-source warmups, a recorded seed, and balanced AB/BA blocks reduce order bias. Failed samples
+are excluded, ratios fail closed, and hidden/frozen/navigation boundaries invalidate the run and
+suppress aggregates. Evidence can be downloaded locally as versioned JSON; it is not uploaded.
+
+## Editor
+
+The Playground configures a local Monaco instance before mounting the editor. Monaco's editor
+worker and the Merman language Worker are local module workers; no CDN loader is used.
+
+The Merman Worker imports `@mermanjs/web/editor`, owns one document URI/version, and projects
+`merman-editor-core` diagnostics, completions, hover, code actions, symbols, definition,
+references, rename, and semantic tokens. Stale/cancelled requests are discarded and protocol or
+schema mismatch fails closed. TypeScript syntax heuristics are not a fallback language service.
+
+This is VS Code-like language analysis over the shared Rust editor core, not a browser-hosted LSP
+process. LSP transport concerns remain in `merman-lsp`; editor behavior is shared below both
+adapters.
+
+## Examples And Detection
+
+`playground/examples/manifest.json` selects exactly one fixture-backed example for every full
+profile logical family. `xtask` proves the 35-family set, source provenance, canonical detection,
+Mermaid `11.16.0` baseline, and generated output freshness. The gallery searches generated titles,
+categories, aliases, syntax ids, and family types.
+
+Live diagram identity comes from typed Rust/WASM parser facts, including logical family, syntax id,
+and effective layout. Playground-only Mermaid registration requirements project those facts.
+First-line prefix and regex classification are not canonical paths.
+
+## Browser Trust And Cache Boundary
+
+All runtime modules, Monaco workers, Mermaid, ZenUML, ELK, and WASM assets are production-bundled
+and same-origin. Realm channels validate capabilities rather than accepting ambient globals. SVG
+must pass the shared DOM-safety policy before insertion.
+
+Vite content hashes allow HTTP caching, but deployment headers are externally owned. The currently
+observed hashed-asset policy is `Cache-Control: max-age=14400`, without `immutable`. Long-lived
+immutable caching for hashed assets and HTML revalidation remain the desired host configuration;
+the app does not simulate that policy with Cache Storage.
+
+## Verification
+
+The closed lane is protected by:
+
+- Web package type/export/preset/smoke/ABI and size-budget gates;
+- exact generated diagram and example catalog checks;
+- runtime, render coordinator, realm protocol, queue, benchmark, and Worker unit tests;
+- production build graph and artifact checks;
+- real-browser startup, render, Compare, Monaco Worker, BFCache/teardown, accessibility, responsive,
+  CSP, and benchmark tests.
+
+Historical `TODO.md`, `MILESTONES.md`, `EVIDENCE_AND_GATES.md`, and journal entries record how the
+lane was built. They are not current runtime or release contracts.
+
+## Deferred
+
+- A reusable public browser engine/session API requires measured construction-cost evidence and a
+  separate ADR.
+- Overlay/pixel-diff Compare tools remain optional inspection work.
+- Offline/PWA behavior, service workers, remote benchmark storage, analytics, and a benchmark
+  leaderboard are not product requirements.
+- Immutable deployment headers require hosting-layer authority outside this static repository.

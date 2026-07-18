@@ -1,7 +1,7 @@
 # Releasing
 
 Status: draft release operator guide.
-Last updated: 2026-07-09
+Last updated: 2026-07-18
 
 Merman releases use a preflight-first flow. Run the release preflight workflow against the intended
 source ref and version before any registry or GitHub Release publication. After preflight passes,
@@ -230,7 +230,10 @@ default `browser-full` wasm against `docs/release/WASM_SIZE_BUDGETS.json`.
 
 `@mermanjs/web` publishes the `browser-full` artifact under the default import path and exposes
 public subpaths for `@mermanjs/web/core`, `@mermanjs/web/render`,
-`@mermanjs/web/render-only`, `@mermanjs/web/ascii`, and `@mermanjs/web/full`.
+`@mermanjs/web/render-only`, `@mermanjs/web/ascii`, `@mermanjs/web/editor`, and
+`@mermanjs/web/full`. Release preflight must build/check the editor subpath's matching TypeScript,
+wasm-bindgen, WASM, preset manifest, ABI 2, editor schema 1, full 35-family registry, and
+`browser-editor` size budget; it is not valid to publish only the wrapper declaration.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts.
 

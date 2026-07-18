@@ -11,7 +11,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     fn requirement_marker_id(diagram_id: &str, suffix: &str) -> String {
         format!("{diagram_id}_requirement-{suffix}")
     }
@@ -421,19 +421,22 @@ pub(crate) fn render_requirement_diagram_svg_model(
         fixed_style_placement: root_svg::RootStylePlacement::Tail,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Requirement, diagram_id)
-        .write_open(
-            &mut out,
-            root_svg::RootViewportSpec::mermaid(
-                root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
-                render_settings.use_max_width,
-            )
-            .with_max_width(root_svg::RootMaxWidth::Precision {
-                value: vb_w,
-                significant_digits: 6,
-            }),
-            root_chrome,
-        )?;
+    let root_document = root_svg::RootViewportContext::new(
+        crate::family::RenderFamilyKind::Requirement,
+        diagram_id,
+    )
+    .write_open(
+        &mut out,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+            render_settings.use_max_width,
+        )
+        .with_max_width(root_svg::RootMaxWidth::Precision {
+            value: vb_w,
+            significant_digits: 6,
+        }),
+        root_chrome,
+    )?;
 
     out.push_str(&a11y_nodes);
 
@@ -1062,7 +1065,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     push_requirement_shadow_defs(&mut out, diagram_id, effective_config);
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_requirement_shadow_defs(
@@ -1141,6 +1144,7 @@ mod tests {
                 options,
             )
         })
+        .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Requirement))
     }
 
     #[test]

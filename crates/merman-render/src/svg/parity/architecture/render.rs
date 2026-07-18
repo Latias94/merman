@@ -78,7 +78,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     model: &merman_core::diagrams::architecture::ArchitectureDiagramRenderModel,
     effective_config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = super::super::timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
@@ -102,7 +102,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
 fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     req: ArchitectureRenderRequest<'_, M>,
     timing: ArchitectureTimingState<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let ArchitectureRenderRequest {
         layout,
         model,
@@ -344,7 +344,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     out.push_str("</svg>\n");
 
-    out = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
+    let rooted_svg = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
         out,
         root_viewport: &root_viewport,
         root_document,
@@ -372,5 +372,5 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         );
     }
 
-    Ok(out)
+    Ok(rooted_svg)
 }

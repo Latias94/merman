@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
   type RefObject,
   type ReactNode,
 } from "react";
@@ -70,6 +71,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -125,7 +127,9 @@ const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
 export function Preview({ className }: PreviewProps) {
   const { t } = useTranslation();
   const code = useAppStore((state) => state.code);
-  const isDarkMode = useAppStore((state) => state.isDarkMode);
+  const isDarkMode = useAppStore((state) => state.resolvedTheme === "dark");
+  const previewMode = useAppStore((state) => state.previewMode);
+  const setPreviewMode = useAppStore((state) => state.setPreviewMode);
   const renderState = useRenderCoordinator((state) => state);
   const currentBatch = selectCompletedRenderBatch(renderState);
   const visibleBatch = selectVisibleRenderBatch(renderState);
@@ -136,7 +140,6 @@ export function Preview({ className }: PreviewProps) {
   const ready = facade !== null;
   const loading = runtimeStatus === "idle" || runtimeStatus === "loading";
   const asciiSupport = useAsciiSupport();
-  const [previewMode, setPreviewMode] = useState<PreviewMode>("svg");
   const [svgDisplayMode, setSvgDisplayMode] =
     useState<SvgDisplayMode>("visual");
   const [copiedAsciiKey, setCopiedAsciiKey] = useState<string | null>(null);
@@ -201,7 +204,7 @@ export function Preview({ className }: PreviewProps) {
     if (previewMode === "ascii" && !isAsciiSupported) {
       setPreviewMode("svg");
     }
-  }, [isAsciiSupported, previewMode]);
+  }, [isAsciiSupported, previewMode, setPreviewMode]);
 
   useEffect(() => {
     setDiagnosticsEnabled(previewMode === "diagnostics");
@@ -410,11 +413,18 @@ export function Preview({ className }: PreviewProps) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
-        <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
-          {runtimeLoadStage
-            ? `${t("preview.loading")} (${runtimeLoadStage})`
-            : t("preview.loading")}
-        </CenteredMessage>
+        <div
+          id="preview-mode-panel"
+          role="tabpanel"
+          aria-labelledby={`preview-${previewMode}-tab`}
+          className="min-h-0 flex-1"
+        >
+          <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
+            {runtimeLoadStage
+              ? `${t("preview.loading")} (${runtimeLoadStage})`
+              : t("preview.loading")}
+          </CenteredMessage>
+        </div>
       </div>
     );
   }
@@ -423,7 +433,14 @@ export function Preview({ className }: PreviewProps) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
-        <RuntimeFailureView failure={runtimeFailure} t={t} />
+        <div
+          id="preview-mode-panel"
+          role="tabpanel"
+          aria-labelledby={`preview-${previewMode}-tab`}
+          className="min-h-0 flex-1"
+        >
+          <RuntimeFailureView failure={runtimeFailure} t={t} />
+        </div>
       </div>
     );
   }
@@ -432,7 +449,12 @@ export function Preview({ className }: PreviewProps) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
-        <div className="flex-1 flex items-center justify-center">
+        <div
+          id="preview-mode-panel"
+          role="tabpanel"
+          aria-labelledby={`preview-${previewMode}-tab`}
+          className="flex min-h-0 flex-1 items-center justify-center"
+        >
           <div className="text-center text-muted-foreground">
             <p className="text-sm">{t("preview.empty")}</p>
             <p className="text-xs mt-1">{t("preview.emptyHint")}</p>
@@ -446,7 +468,14 @@ export function Preview({ className }: PreviewProps) {
     return (
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
-        <RenderError message={error} t={t} />
+        <div
+          id="preview-mode-panel"
+          role="tabpanel"
+          aria-labelledby={`preview-${previewMode}-tab`}
+          className="min-h-0 flex-1"
+        >
+          <RenderError message={error} t={t} />
+        </div>
       </div>
     );
   }
@@ -532,7 +561,14 @@ export function Preview({ className }: PreviewProps) {
           {previewMode === "ascii" && ascii && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon-sm" onClick={handleCopyAscii}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={handleCopyAscii}
+                  aria-label={
+                    copiedAscii ? t("preview.copied") : t("preview.copyAscii")
+                  }
+                >
                   {copiedAscii ? (
                     <Check className="size-4 text-green-500" />
                   ) : (
@@ -576,7 +612,10 @@ export function Preview({ className }: PreviewProps) {
       )}
 
       <div
-        className="flex-1 min-h-0 relative overflow-hidden"
+        id="preview-mode-panel"
+        role="tabpanel"
+        aria-labelledby={`preview-${previewMode}-tab`}
+        className="relative min-h-0 flex-1 overflow-hidden"
       >
         {previewMode === "svg" && (
           svgDisplayMode === "source" ? (
@@ -718,13 +757,29 @@ function TabBar({
 }: TabBarProps) {
   return (
     <div className="flex h-10 shrink-0 items-center justify-between gap-2 overflow-hidden border-b bg-muted/30 px-2">
-      <div className="scrollbar-thin flex min-w-0 items-center gap-1 overflow-x-auto">
-        <TabButton active={mode === "svg"} onClick={() => onModeChange("svg")}>
+      <div
+        role="tablist"
+        aria-label={t("preview.title")}
+        aria-orientation="horizontal"
+        className="scrollbar-thin flex min-w-0 items-center gap-1 overflow-x-auto"
+        onKeyDown={handleTabListKeyDown}
+      >
+        <TabButton
+          value="svg"
+          active={mode === "svg"}
+          onClick={() => onModeChange("svg")}
+        >
           SVG
         </TabButton>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
+              id="preview-ascii-tab"
+              type="button"
+              role="tab"
+              tabIndex={mode === "ascii" ? 0 : -1}
+              aria-selected={mode === "ascii"}
+              aria-controls="preview-mode-panel"
               onClick={() =>
                 runtimeReady && isAsciiSupported && onModeChange("ascii")
               }
@@ -753,6 +808,7 @@ function TabBar({
           </span>
         )}
         <TabButton
+          value="compare"
           active={mode === "compare"}
           onClick={() => onModeChange("compare")}
           disabled={!runtimeReady}
@@ -760,6 +816,7 @@ function TabBar({
           {t("preview.compareMode")}
         </TabButton>
         <TabButton
+          value="diagnostics"
           active={mode === "diagnostics"}
           onClick={() => onModeChange("diagnostics")}
           disabled={!runtimeReady}
@@ -816,6 +873,7 @@ function asciiSupportTooltip(
 }
 
 interface TabButtonProps {
+  value: PreviewMode;
   active: boolean;
   onClick(): void;
   disabled?: boolean;
@@ -823,6 +881,7 @@ interface TabButtonProps {
 }
 
 function TabButton({
+  value,
   active,
   onClick,
   disabled = false,
@@ -830,6 +889,12 @@ function TabButton({
 }: TabButtonProps) {
   return (
     <button
+      id={`preview-${value}-tab`}
+      type="button"
+      role="tab"
+      tabIndex={active ? 0 : -1}
+      aria-selected={active}
+      aria-controls="preview-mode-panel"
       onClick={onClick}
       disabled={disabled}
       className={cn(
@@ -843,6 +908,28 @@ function TabButton({
       {children}
     </button>
   );
+}
+
+function handleTabListKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+  if (!(event.target instanceof HTMLButtonElement)) return;
+  const tabs = Array.from(
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      '[role="tab"]:not(:disabled)'
+    )
+  );
+  const currentIndex = tabs.indexOf(event.target);
+  if (currentIndex < 0) return;
+
+  let nextIndex: number | null = null;
+  if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+  if (event.key === "ArrowLeft") {
+    nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+  }
+  if (event.key === "Home") nextIndex = 0;
+  if (event.key === "End") nextIndex = tabs.length - 1;
+  if (nextIndex === null) return;
+  event.preventDefault();
+  tabs[nextIndex]?.focus();
 }
 
 function DiagnosticsView({
@@ -863,22 +950,24 @@ function DiagnosticsView({
   const current = diagnostics[activeTab];
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => onActiveTabChange(value as DiagnosticKey)}
+      activationMode="manual"
+      className="h-full gap-0 bg-background"
+    >
       <div className="flex min-h-10 items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-          <TabButton
-            active={activeTab === "parse"}
-            onClick={() => onActiveTabChange("parse")}
-          >
+        <TabsList
+          aria-label={t("preview.diagnosticsMode")}
+          className="h-8 bg-muted/70 p-0.5"
+        >
+          <TabsTrigger value="parse" className="px-2.5 text-xs">
             {t("preview.parseJson")}
-          </TabButton>
-          <TabButton
-            active={activeTab === "layout"}
-            onClick={() => onActiveTabChange("layout")}
-          >
+          </TabsTrigger>
+          <TabsTrigger value="layout" className="px-2.5 text-xs">
             {t("preview.layoutJson")}
-          </TabButton>
-        </div>
+          </TabsTrigger>
+        </TabsList>
         <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
           {loading
             ? t("preview.runningDiagnostics")
@@ -888,42 +977,75 @@ function DiagnosticsView({
         </p>
       </div>
 
-      <div className="min-h-0 flex-1">
-        {loading ? (
-          <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
-            {t("preview.runningDiagnostics")}
-          </CenteredMessage>
-        ) : current.error ? (
-          <RenderError message={current.error} t={t} compact />
-        ) : current.json ? (
-          <Editor
-            height="100%"
-            language="json"
-            value={current.json}
-            theme={isDarkMode ? "vs-dark" : "light"}
-            options={{
-              readOnly: true,
-              domReadOnly: true,
-              minimap: { enabled: false },
-              fontSize: 13,
-              fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-              scrollBeyondLastLine: false,
-              wordWrap: "on",
-              renderLineHighlight: "none",
-              selectionHighlight: false,
-              occurrencesHighlight: "off",
-              folding: true,
-              automaticLayout: true,
-              padding: { top: 16, bottom: 16 },
-            }}
+      {(["parse", "layout"] as const).map((tab) => (
+        <TabsContent
+          key={tab}
+          value={tab}
+          forceMount
+          className="mt-0 min-h-0 data-[state=inactive]:hidden"
+        >
+          <DiagnosticArtifactView
+            artifact={diagnostics[tab]}
+            loading={loading}
+            isDarkMode={isDarkMode}
+            t={t}
           />
-        ) : (
-          <CenteredMessage icon={<FileCode className="size-8" />}>
-            {t("preview.diagnosticsEmpty")}
-          </CenteredMessage>
-        )}
-      </div>
-    </div>
+        </TabsContent>
+      ))}
+    </Tabs>
+  );
+}
+
+function DiagnosticArtifactView({
+  artifact,
+  loading,
+  isDarkMode,
+  t,
+}: {
+  artifact: DiagnosticArtifact;
+  loading: boolean;
+  isDarkMode: boolean;
+  t: (key: string) => string;
+}) {
+  if (loading) {
+    return (
+      <CenteredMessage icon={<Loader2 className="size-6 animate-spin" />}>
+        {t("preview.runningDiagnostics")}
+      </CenteredMessage>
+    );
+  }
+  if (artifact.error) {
+    return <RenderError message={artifact.error} t={t} compact />;
+  }
+  if (!artifact.json) {
+    return (
+      <CenteredMessage icon={<FileCode className="size-8" />}>
+        {t("preview.diagnosticsEmpty")}
+      </CenteredMessage>
+    );
+  }
+  return (
+    <Editor
+      height="100%"
+      language="json"
+      value={artifact.json}
+      theme={isDarkMode ? "vs-dark" : "light"}
+      options={{
+        readOnly: true,
+        domReadOnly: true,
+        minimap: { enabled: false },
+        fontSize: 13,
+        fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+        scrollBeyondLastLine: false,
+        wordWrap: "on",
+        renderLineHighlight: "none",
+        selectionHighlight: false,
+        occurrencesHighlight: "off",
+        folding: true,
+        automaticLayout: true,
+        padding: { top: 16, bottom: 16 },
+      }}
+    />
   );
 }
 

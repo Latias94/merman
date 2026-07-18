@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - ".github/workflows/pages.yml"
+      - "abi/**"
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
@@ -20,6 +21,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/pages.yml"
+      - "abi/**"
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/**"
@@ -72,6 +74,12 @@ jobs:
           cargo install wasm-bindgen-cli --version 0.2.108 --locked
           cargo install wasm-pack --version 0.15.0 --locked
 
+      - name: Verify generated browser contracts
+        run: |
+          cargo run -p xtask -- verify-text-measurement-abi
+          cargo run -p xtask -- verify-web-diagram-catalog
+          cargo run -p xtask -- verify-playground-example-catalog
+
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
 
@@ -107,6 +115,17 @@ jobs:
 
       - name: Test playground in Chromium
         run: npm run test:browser:chromium --prefix playground
+
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playground-browser-failure-${{ github.run_attempt }}
+          path: |
+            playground/playwright-report
+            playground/test-results
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Configure Pages
         if: github.event_name != 'pull_request'

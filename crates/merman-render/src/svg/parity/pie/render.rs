@@ -161,7 +161,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     model: &PieDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -198,23 +198,24 @@ pub(crate) fn render_pie_diagram_svg_model(
         .acc_descr
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id}"));
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Pie, diagram_id)
-        .write_open(
-            &mut out,
-            root_spec,
-            root_svg::RootChrome {
-                aria_labelledby: aria_labelledby.as_deref(),
-                aria_describedby: aria_describedby.as_deref(),
-                dom: root_svg::RootDomProfile {
-                    style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                    trailing_newline: false,
-                    ..Default::default()
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Pie, diagram_id)
+            .write_open(
+                &mut out,
+                root_spec,
+                root_svg::RootChrome {
+                    aria_labelledby: aria_labelledby.as_deref(),
+                    aria_describedby: aria_describedby.as_deref(),
+                    dom: root_svg::RootDomProfile {
+                        style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                        trailing_newline: false,
+                        ..Default::default()
+                    },
+                    ..root_svg::RootChrome::new(diagram_id, "pie")
                 },
-                ..root_svg::RootChrome::new(diagram_id, "pie")
-            },
-        )?;
+            )?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -406,7 +407,7 @@ pub(crate) fn render_pie_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]

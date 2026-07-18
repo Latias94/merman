@@ -31,7 +31,7 @@ fn assert_contains(haystack: &str, needle: &str) {
 }
 
 #[test]
-fn quadrantchart_default_point_fill_is_valid_for_headless_renderability() {
+fn quadrantchart_default_point_fill_matches_mermaid_11_16_theme_output() {
     let svg = render_quadrantchart_svg_from_text(
         r#"quadrantChart
   title Boundary points
@@ -46,10 +46,9 @@ fn quadrantchart_default_point_fill_is_valid_for_headless_renderability() {
 "#,
     );
 
-    assert!(!svg.contains("NaN"), "SVG leaked invalid color: {svg}");
     assert_contains(
         &svg,
-        r#"<circle cx="31" cy="469" r="5" fill="rgb(185, 185, 255)" stroke="rgb(185, 185, 255)" stroke-width="0px"/>"#,
+        r#"<circle cx="31" cy="469" r="5" fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)" stroke-width="0px"/>"#,
     );
 }
 

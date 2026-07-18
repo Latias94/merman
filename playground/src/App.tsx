@@ -1,19 +1,30 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+  type KeyboardEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Toolbar } from "./components/Toolbar";
 import { StatusBar } from "./components/StatusBar";
-import { useAppStore, type TextMeasurementMode } from "./store";
+import {
+  useAppStore,
+  type TextMeasurementMode,
+  type WorkspacePane,
+} from "./store";
 import { isDiagramFont } from "./lib/diagram-font";
 import { useShare } from "./hooks/useShare";
 import { normalizeHostThemePresetName, normalizeThemeName } from "@mermanjs/web";
-import { cn } from "@/lib/utils";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { RenderCoordinatorBridge } from "@/src/runtime/RenderCoordinatorBridge";
 
 const CodeEditor = lazy(() =>
@@ -52,12 +63,24 @@ export default function App() {
     setMermaidConfig,
     editorMode,
     setEditorMode,
-    uiTheme,
-    showExamples,
-  } = useAppStore();
+    workspacePane,
+    setWorkspacePane,
+  } = useAppStore(
+    useShallow((state) => ({
+      editorMode: state.editorMode,
+      setCode: state.setCode,
+      setDiagramFont: state.setDiagramFont,
+      setDiagramTheme: state.setDiagramTheme,
+      setEditorMode: state.setEditorMode,
+      setHostThemePreset: state.setHostThemePreset,
+      setMermaidConfig: state.setMermaidConfig,
+      setTextMeasurementMode: state.setTextMeasurementMode,
+      setWorkspacePane: state.setWorkspacePane,
+      workspacePane: state.workspacePane,
+    }))
+  );
   const { initialData } = useShare();
-  const isMobile = useIsMobile();
-  const [mobilePane, setMobilePane] = useState<"editor" | "preview">("editor");
+  const isNarrowLayout = useNarrowLayout();
 
   useEffect(() => {
     const lang = i18n.language.startsWith("zh") ? "zh-CN" : "en";
@@ -68,7 +91,7 @@ export default function App() {
       ?.setAttribute("content", t("app.description"));
   }, [i18n.language, t]);
 
-  // 从 URL 加载分享的数据
+  // Apply shared inputs only after the URL payload has been decoded and validated.
   useEffect(() => {
     if (initialData) {
       setCode(initialData.code);
@@ -105,82 +128,36 @@ export default function App() {
     setTextMeasurementMode,
   ]);
 
-  // 应用 UI 主题
-  useEffect(() => {
-    const root = document.documentElement;
-    if (uiTheme === "dark") {
-      root.classList.add("dark");
-    } else if (uiTheme === "light") {
-      root.classList.remove("dark");
-    } else {
-      // system
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      const handleChange = (e: MediaQueryListEvent | MediaQueryList) => {
-        if (e.matches) {
-          root.classList.add("dark");
-        } else {
-          root.classList.remove("dark");
-        }
-      };
-      handleChange(mediaQuery);
-      mediaQuery.addEventListener("change", handleChange);
-      return () => mediaQuery.removeEventListener("change", handleChange);
-    }
-  }, [uiTheme]);
-
   return (
     <TooltipProvider delayDuration={300}>
       <RenderCoordinatorBridge />
-      <div className="h-screen flex flex-col bg-background">
-        {/* 顶部工具栏 */}
+      <div className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
         <Toolbar />
 
-        {/* 主内容区 */}
-        <main className="flex-1 overflow-hidden relative">
-          {/* 示例库覆盖层 */}
-          {showExamples && (
-            <Suspense fallback={null}>
-              <ExampleGallery />
-            </Suspense>
-          )}
+        <main className="relative min-h-0 flex-1 overflow-hidden">
+          <Suspense fallback={null}>
+            <ExampleGallery />
+          </Suspense>
 
-          {isMobile ? (
-            <div className="flex h-full flex-col overflow-hidden">
-              <div className="flex h-10 shrink-0 items-center gap-1 border-b bg-muted/30 px-2">
-                <MobilePaneButton
-                  active={mobilePane === "editor"}
-                  onClick={() => setMobilePane("editor")}
-                >
-                  {t("layout.editor")}
-                </MobilePaneButton>
-                <MobilePaneButton
-                  active={mobilePane === "preview"}
-                  onClick={() => setMobilePane("preview")}
-                >
-                  {t("layout.preview")}
-                </MobilePaneButton>
-              </div>
-              <div className="min-h-0 flex-1">
-                {mobilePane === "editor" ? (
-                  <EditorPanel
-                    editorMode={editorMode}
-                    setEditorMode={setEditorMode}
-                    t={t}
-                  />
-                ) : (
-                  <PreviewPanel t={t} />
-                )}
-              </div>
-            </div>
-          ) : (
-            /* 可调整大小的面板 */
-            <ResizablePanelGroup direction="horizontal" className="h-full">
-              {/* 编辑器面板 */}
+          <div className="flex h-full min-h-0 flex-col overflow-hidden">
+            {isNarrowLayout && (
+              <WorkspaceTabs
+                value={workspacePane}
+                onValueChange={setWorkspacePane}
+                editorLabel={t("layout.editor")}
+                previewLabel={t("layout.preview")}
+              />
+            )}
+            <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
               <ResizablePanel
                 defaultSize={45}
                 minSize={25}
                 maxSize={75}
                 className="bg-card"
+                id={isNarrowLayout ? "workspace-editor-panel" : undefined}
+                role={isNarrowLayout ? "tabpanel" : undefined}
+                aria-labelledby={isNarrowLayout ? "workspace-editor-tab" : undefined}
+                hidden={isNarrowLayout && workspacePane !== "editor"}
               >
                 <EditorPanel
                   editorMode={editorMode}
@@ -189,18 +166,25 @@ export default function App() {
                 />
               </ResizablePanel>
 
-              {/* 拖拽手柄 */}
-              <ResizableHandle withHandle />
+              <ResizableHandle
+                withHandle
+                className={isNarrowLayout ? "hidden" : undefined}
+              />
 
-              {/* 预览面板 */}
-              <ResizablePanel defaultSize={55} minSize={25}>
+              <ResizablePanel
+                defaultSize={55}
+                minSize={25}
+                id={isNarrowLayout ? "workspace-preview-panel" : undefined}
+                role={isNarrowLayout ? "tabpanel" : undefined}
+                aria-labelledby={isNarrowLayout ? "workspace-preview-tab" : undefined}
+                hidden={isNarrowLayout && workspacePane !== "preview"}
+              >
                 <PreviewPanel t={t} />
               </ResizablePanel>
             </ResizablePanelGroup>
-          )}
+          </div>
         </main>
 
-        {/* 底部状态栏 */}
         <StatusBar />
       </div>
     </TooltipProvider>
@@ -223,44 +207,55 @@ function EditorPanel({
   t(key: string): string;
 }) {
   return (
-    <div className="h-full min-h-0 flex flex-col bg-card">
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b bg-muted/30">
-        <div className="flex items-center gap-1">
-          <EditorModeButton
-            active={editorMode === "code"}
-            onClick={() => setEditorMode("code")}
-          >
+    <Tabs
+      value={editorMode}
+      onValueChange={(value) => setEditorMode(value as "code" | "config")}
+      activationMode="manual"
+      className="h-full min-h-0 gap-0 bg-card"
+    >
+      <div className="flex h-11 shrink-0 items-center justify-between border-b bg-muted/20 px-3 sm:px-4">
+        <TabsList
+          aria-label={t("layout.editor")}
+          className="h-8 rounded-md bg-muted/70 p-0.5"
+        >
+          <TabsTrigger value="code" className="px-2.5 text-xs">
             {t("editor.codeMode")}
-          </EditorModeButton>
-          <EditorModeButton
-            active={editorMode === "config"}
-            onClick={() => setEditorMode("config")}
-          >
+          </TabsTrigger>
+          <TabsTrigger value="config" className="px-2.5 text-xs">
             {t("editor.configMode")}
-          </EditorModeButton>
-        </div>
+          </TabsTrigger>
+        </TabsList>
         <span className="text-xs text-muted-foreground">
           {editorMode === "code" ? "Mermaid" : "JSON"}
         </span>
       </div>
-      {editorMode === "code" ? (
+      <TabsContent
+        value="code"
+        forceMount
+        className="mt-0 min-h-0 data-[state=inactive]:hidden"
+      >
         <Suspense fallback={<PanelLoading label={t("editor.loading")} />}>
-          <CodeEditor className="min-h-0 flex-1" />
+          <CodeEditor className="h-full min-h-0" />
         </Suspense>
-      ) : (
+      </TabsContent>
+      <TabsContent
+        value="config"
+        forceMount
+        className="mt-0 min-h-0 data-[state=inactive]:hidden"
+      >
         <Suspense fallback={<PanelLoading label={t("editor.loading")} />}>
-          <ConfigEditor className="min-h-0 flex-1" />
+          <ConfigEditor className="h-full min-h-0" />
         </Suspense>
-      )}
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }
 
 function PreviewPanel({ t }: { t(key: string): string }) {
   return (
     <div className="h-full min-h-0 flex flex-col">
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b bg-muted/30">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b bg-muted/20 px-3 sm:px-4">
+        <span className="text-xs font-medium text-muted-foreground">
           {t("preview.title")}
         </span>
         <span className="hidden text-xs text-muted-foreground sm:inline">
@@ -268,7 +263,7 @@ function PreviewPanel({ t }: { t(key: string): string }) {
         </span>
       </div>
       <Suspense fallback={<PanelLoading label={t("preview.loading")} />}>
-        <Preview className="min-h-0 flex-1 bg-[repeating-conic-gradient(#80808010_0%_25%,transparent_0%_50%)] bg-[length:20px_20px]" />
+        <Preview className="min-h-0 flex-1 bg-[linear-gradient(to_right,var(--preview-grid)_1px,transparent_1px),linear-gradient(to_bottom,var(--preview-grid)_1px,transparent_1px)] bg-[size:20px_20px]" />
       </Suspense>
     </div>
   );
@@ -282,50 +277,81 @@ function PanelLoading({ label }: { label: string }) {
   );
 }
 
-function MobilePaneButton({
-  active,
-  onClick,
-  children,
+function WorkspaceTabs({
+  value,
+  onValueChange,
+  editorLabel,
+  previewLabel,
 }: {
-  active: boolean;
-  onClick(): void;
-  children: ReactNode;
+  value: WorkspacePane;
+  onValueChange(value: WorkspacePane): void;
+  editorLabel: string;
+  previewLabel: string;
 }) {
+  const editorRef = useRef<HTMLButtonElement>(null);
+  const previewRef = useRef<HTMLButtonElement>(null);
+  const tabs = [
+    { value: "editor" as const, label: editorLabel, ref: editorRef },
+    { value: "preview" as const, label: previewLabel, ref: previewRef },
+  ];
+
+  const handleKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    index: number
+  ) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
+    if (event.key === "ArrowLeft") nextIndex = (index - 1 + tabs.length) % tabs.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = tabs.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    tabs[nextIndex]?.ref.current?.focus();
+  };
+
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
-      )}
+    <div
+      role="tablist"
+      aria-label={`${editorLabel} / ${previewLabel}`}
+      aria-orientation="horizontal"
+      className="flex h-11 shrink-0 items-center gap-1 border-b bg-muted/20 p-1.5"
     >
-      {children}
-    </button>
+      {tabs.map((tab, index) => (
+        <button
+          key={tab.value}
+          ref={tab.ref}
+          id={`workspace-${tab.value}-tab`}
+          type="button"
+          role="tab"
+          tabIndex={value === tab.value ? 0 : -1}
+          aria-selected={value === tab.value}
+          aria-controls={`workspace-${tab.value}-panel`}
+          onClick={() => onValueChange(tab.value)}
+          onKeyDown={(event) => handleKeyDown(event, index)}
+          className="flex-1 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+          data-active={value === tab.value}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
-function EditorModeButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick(): void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
-        active
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
-      )}
-    >
-      {children}
-    </button>
+function subscribeNarrowLayout(onChange: () => void): () => void {
+  const mediaQuery = window.matchMedia("(max-width: 767px)");
+  mediaQuery.addEventListener("change", onChange);
+  return () => mediaQuery.removeEventListener("change", onChange);
+}
+
+function getNarrowLayoutSnapshot(): boolean {
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
+function useNarrowLayout(): boolean {
+  return useSyncExternalStore(
+    subscribeNarrowLayout,
+    getNarrowLayoutSnapshot,
+    () => false
   );
 }

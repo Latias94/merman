@@ -243,6 +243,17 @@ export const ASCII_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabiliti
   editor_language: false,
 });
 
+export const EDITOR_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
+  render: false,
+  analysis: true,
+  ascii: false,
+  core_full: true,
+  core_host: false,
+  elk_layout: false,
+  ratex_math: false,
+  editor_language: true,
+});
+
 export const FULL_BINDING_CAPABILITIES: BindingCapabilities = bindingCapabilities({
   render: true,
   analysis: true,

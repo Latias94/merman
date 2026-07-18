@@ -1008,6 +1008,19 @@ fn init_directive_config_sanitizes_deep_values_with_small_stack() {
 }
 
 #[test]
+fn default_engine_construction_uses_bounded_stack() {
+    let handle = std::thread::Builder::new()
+        .name("merman-core-default-engine-small-stack".to_string())
+        .stack_size(256 * 1024)
+        .spawn(|| std::hint::black_box(Engine::new()))
+        .expect("spawn default engine construction test");
+
+    handle
+        .join()
+        .expect("default engine construction should not overflow a 256 KiB stack");
+}
+
+#[test]
 #[cfg(feature = "full-config")]
 fn frontmatter_config_deep_merge_handles_deep_values_with_small_stack() {
     const DEPTH: usize = 32;

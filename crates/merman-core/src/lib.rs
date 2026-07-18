@@ -169,7 +169,7 @@ pub struct Engine {
     site_config: MermaidConfig,
     default_effective_config: MermaidConfig,
     fixed_today_local: Option<chrono::NaiveDate>,
-    fixed_local_offset_minutes: Option<i32>,
+    local_time_zone: std::result::Result<time::LocalTimeZone, time::LocalTimeZoneError>,
 }
 
 impl Default for Engine {
@@ -184,7 +184,7 @@ impl Default for Engine {
             site_config,
             default_effective_config,
             fixed_today_local: None,
-            fixed_local_offset_minutes: None,
+            local_time_zone: Ok(time::LocalTimeZone::ambient()),
         }
     }
 }
@@ -235,13 +235,31 @@ impl Engine {
     /// This exists primarily to make fixture snapshots deterministic across CI runners. When
     /// `None`, the system local timezone is used.
     pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
-        self.fixed_local_offset_minutes = offset_minutes;
+        self.local_time_zone = match offset_minutes {
+            Some(offset_minutes) => time::LocalTimeZone::fixed(offset_minutes),
+            None => Ok(time::LocalTimeZone::ambient()),
+        };
+        self
+    }
+
+    /// Installs an already-resolved local timezone without consulting ambient process state.
+    pub fn with_local_time_zone(mut self, time_zone: time::LocalTimeZone) -> Self {
+        self.local_time_zone = Ok(time_zone);
         self
     }
 
     /// Returns the fixed local timezone offset configured for this engine.
     pub fn fixed_local_offset_minutes(&self) -> Option<i32> {
-        self.fixed_local_offset_minutes
+        self.local_time_zone
+            .as_ref()
+            .ok()
+            .and_then(time::LocalTimeZone::fixed_offset_minutes)
+    }
+
+    pub fn local_time_zone(
+        &self,
+    ) -> std::result::Result<&time::LocalTimeZone, &time::LocalTimeZoneError> {
+        self.local_time_zone.as_ref()
     }
 
     /// Applies site-level Mermaid config defaults.

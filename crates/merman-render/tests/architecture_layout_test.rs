@@ -8,8 +8,12 @@ use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
-    let session = RenderEnvironment::parity().begin_session().unwrap();
     let engine = Engine::new();
+    layout_architecture_with_engine(&engine, text)
+}
+
+fn layout_architecture_with_engine(engine: &Engine, text: &str) -> ArchitectureDiagramLayout {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
@@ -171,11 +175,11 @@ fn architecture_default_layout_options_execute_fcose_layout() {
 fn architecture_parse_for_render_model_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
+    let engine = Engine::new();
     let handle = std::thread::Builder::new()
         .name("architecture-deep-group-parse".to_string())
         .stack_size(128 * 1024)
         .spawn(move || {
-            let engine = Engine::new();
             engine
                 .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                 .expect("parse ok")
@@ -191,10 +195,11 @@ fn architecture_parse_for_render_model_handles_deep_group_chain() {
 fn architecture_layout_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
+    let engine = Engine::new();
     let handle = std::thread::Builder::new()
         .name("architecture-deep-group-layout".to_string())
         .stack_size(128 * 1024)
-        .spawn(move || layout_architecture(&source))
+        .spawn(move || layout_architecture_with_engine(&engine, &source))
         .expect("spawn architecture deep group layout test");
     let layout = handle
         .join()

@@ -13,6 +13,8 @@ pub enum HeadlessAsciiError {
     Parse(#[from] merman_core::Error),
     #[error(transparent)]
     Ascii(#[from] merman_ascii::AsciiError),
+    #[error(transparent)]
+    LocalTimeZone(#[from] merman_core::time::LocalTimeZoneError),
 }
 
 pub type Result<T> = std::result::Result<T, HeadlessAsciiError>;
@@ -22,10 +24,10 @@ fn render_model_with_engine_time(
     model: &merman_core::diagram::RenderSemanticModel,
     ascii_options: &AsciiRenderOptions,
 ) -> Result<String> {
-    Ok(merman_core::time::with_fixed_local_offset_minutes(
-        engine.fixed_local_offset_minutes(),
-        || merman_ascii::render_model(model, ascii_options),
-    )?)
+    let time_zone = engine.local_time_zone().map_err(Clone::clone)?;
+    Ok(merman_core::time::with_local_time_zone(time_zone, || {
+        merman_ascii::render_model(model, ascii_options)
+    })?)
 }
 
 /// Synchronous ASCII/Unicode render helper (executor-free).
@@ -100,6 +102,11 @@ impl HeadlessAsciiRenderer {
 
     pub fn with_fixed_local_offset_minutes(mut self, offset_minutes: Option<i32>) -> Self {
         self.engine = self.engine.with_fixed_local_offset_minutes(offset_minutes);
+        self
+    }
+
+    pub fn with_local_time_zone(mut self, time_zone: merman_core::time::LocalTimeZone) -> Self {
+        self.engine = self.engine.with_local_time_zone(time_zone);
         self
     }
 
@@ -199,7 +206,8 @@ Missing ref: id2,after missing,1d
             .with_strict_parsing()
             .with_fixed_local_offset_minutes(Some(14 * 60));
 
-        let rendered = merman_core::time::with_fixed_local_offset_minutes(Some(0), || {
+        let ambient_utc = merman_core::time::LocalTimeZone::utc();
+        let rendered = merman_core::time::with_local_time_zone(&ambient_utc, || {
             renderer.render_ascii_sync(
                 r#"gantt
 dateFormat YYYY-MM-DD

@@ -49,7 +49,7 @@ fn architecture_root_bbox_from_svg(
 
 pub(super) fn finalize_architecture_root_viewport(
     ctx: ArchitectureRootViewportContext<'_, '_>,
-) -> crate::Result<String> {
+) -> crate::Result<root_svg::RootedSvg> {
     let ArchitectureRootViewportContext {
         mut out,
         root_viewport,
@@ -81,8 +81,8 @@ pub(super) fn finalize_architecture_root_viewport(
         )
     };
     let root_spec = root_svg::RootViewportSpec::mermaid_or_intrinsic(root_bounds, use_max_width);
-    root_viewport.finish_document(&mut out, root_document, root_spec)?;
-    Ok(out)
+    let root_document = root_viewport.finish_document(&mut out, root_document, root_spec)?;
+    root_document.complete(out)
 }
 
 #[cfg(test)]
@@ -151,6 +151,7 @@ mod tests {
                 root_svg::RootChrome::new(diagram_id, "architecture"),
             )
             .unwrap();
+        out.push_str("</svg>");
         let content = bounds(
             1.123_456_789,
             2.123_456_789,
@@ -171,6 +172,8 @@ mod tests {
             is_empty: false,
             trust_content_bounds: true,
         })
+        .unwrap()
+        .into_string_for(crate::family::RenderFamilyKind::Architecture)
         .unwrap();
         let view_box = svg
             .split_once("viewBox=\"")

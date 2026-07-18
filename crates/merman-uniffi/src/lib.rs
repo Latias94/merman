@@ -13,8 +13,6 @@ use serde_json::Value;
 use std::sync::Mutex;
 use std::sync::{Arc, OnceLock, RwLock};
 
-pub const MERMAN_UNIFFI_ABI_VERSION: u32 = 2;
-
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
 static SUPPORTED_THEMES: OnceLock<Vec<String>> = OnceLock::new();
@@ -248,36 +246,7 @@ pub enum MermanTextMeasurementPhase {
     ComputedLength,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum MermanTextMeasurementOperation {
-    Measure,
-    ComputedLength,
-    BBoxX,
-    BBoxXWithAsciiOverhang,
-    TitleBBoxX,
-    SimpleBBoxWidth,
-    RawBBoxWidth,
-    TspanBBoxWidth,
-    TspanBBoxHeight,
-    WrapProbeBBoxWidth,
-    SimpleBBoxHeight,
-    Wrapped,
-    WrappedWithRawWidth,
-    BoundingClientRectWidth,
-    CreateTextBBoxYOffset,
-    MermaidCalculateTextDimensions,
-    CanvasMeasureTextWidth,
-    CreateTextMiddleBBoxYOffset,
-    RawBBoxHeight,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum MermanTextMeasurementResultKind {
-    Metrics,
-    Length,
-    HorizontalExtents,
-    WrappedWithRawWidth,
-}
+include!("generated/text_measurement_abi.rs");
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct MermanTextMeasureRequest {
@@ -391,91 +360,6 @@ impl HostTextMeasurer for UniffiHostTextMeasurer {
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> merman_bindings_core::HostMeasurementResult {
         self.call_host(request)
-    }
-}
-
-#[cfg(feature = "render")]
-fn uniffi_measurement_operation(
-    operation: merman_bindings_core::TextMeasurementOperation,
-) -> MermanTextMeasurementOperation {
-    match operation {
-        merman_bindings_core::TextMeasurementOperation::Measure => {
-            MermanTextMeasurementOperation::Measure
-        }
-        merman_bindings_core::TextMeasurementOperation::ComputedLength => {
-            MermanTextMeasurementOperation::ComputedLength
-        }
-        merman_bindings_core::TextMeasurementOperation::BBoxX => {
-            MermanTextMeasurementOperation::BBoxX
-        }
-        merman_bindings_core::TextMeasurementOperation::BBoxXWithAsciiOverhang => {
-            MermanTextMeasurementOperation::BBoxXWithAsciiOverhang
-        }
-        merman_bindings_core::TextMeasurementOperation::TitleBBoxX => {
-            MermanTextMeasurementOperation::TitleBBoxX
-        }
-        merman_bindings_core::TextMeasurementOperation::SimpleBBoxWidth => {
-            MermanTextMeasurementOperation::SimpleBBoxWidth
-        }
-        merman_bindings_core::TextMeasurementOperation::RawBBoxWidth => {
-            MermanTextMeasurementOperation::RawBBoxWidth
-        }
-        merman_bindings_core::TextMeasurementOperation::TspanBBoxWidth => {
-            MermanTextMeasurementOperation::TspanBBoxWidth
-        }
-        merman_bindings_core::TextMeasurementOperation::TspanBBoxHeight => {
-            MermanTextMeasurementOperation::TspanBBoxHeight
-        }
-        merman_bindings_core::TextMeasurementOperation::WrapProbeBBoxWidth => {
-            MermanTextMeasurementOperation::WrapProbeBBoxWidth
-        }
-        merman_bindings_core::TextMeasurementOperation::SimpleBBoxHeight => {
-            MermanTextMeasurementOperation::SimpleBBoxHeight
-        }
-        merman_bindings_core::TextMeasurementOperation::Wrapped => {
-            MermanTextMeasurementOperation::Wrapped
-        }
-        merman_bindings_core::TextMeasurementOperation::WrappedWithRawWidth => {
-            MermanTextMeasurementOperation::WrappedWithRawWidth
-        }
-        merman_bindings_core::TextMeasurementOperation::BoundingClientRectWidth => {
-            MermanTextMeasurementOperation::BoundingClientRectWidth
-        }
-        merman_bindings_core::TextMeasurementOperation::CreateTextBBoxYOffset => {
-            MermanTextMeasurementOperation::CreateTextBBoxYOffset
-        }
-        merman_bindings_core::TextMeasurementOperation::MermaidCalculateTextDimensions => {
-            MermanTextMeasurementOperation::MermaidCalculateTextDimensions
-        }
-        merman_bindings_core::TextMeasurementOperation::CanvasMeasureTextWidth => {
-            MermanTextMeasurementOperation::CanvasMeasureTextWidth
-        }
-        merman_bindings_core::TextMeasurementOperation::CreateTextMiddleBBoxYOffset => {
-            MermanTextMeasurementOperation::CreateTextMiddleBBoxYOffset
-        }
-        merman_bindings_core::TextMeasurementOperation::RawBBoxHeight => {
-            MermanTextMeasurementOperation::RawBBoxHeight
-        }
-    }
-}
-
-#[cfg(feature = "render")]
-fn uniffi_result_kind(
-    kind: MermanTextMeasurementResultKind,
-) -> merman_bindings_core::HostTextMeasurementResultKind {
-    match kind {
-        MermanTextMeasurementResultKind::Metrics => {
-            merman_bindings_core::HostTextMeasurementResultKind::Metrics
-        }
-        MermanTextMeasurementResultKind::Length => {
-            merman_bindings_core::HostTextMeasurementResultKind::Length
-        }
-        MermanTextMeasurementResultKind::HorizontalExtents => {
-            merman_bindings_core::HostTextMeasurementResultKind::HorizontalExtents
-        }
-        MermanTextMeasurementResultKind::WrappedWithRawWidth => {
-            merman_bindings_core::HostTextMeasurementResultKind::WrappedWithRawWidth
-        }
     }
 }
 

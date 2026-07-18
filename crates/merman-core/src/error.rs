@@ -136,6 +136,9 @@ impl ParseDiagnostic {
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
+    InvalidLocalTimeZone(#[from] crate::time::LocalTimeZoneError),
+
+    #[error(transparent)]
     DetectType(#[from] DetectTypeError),
 
     #[error("Unsupported diagram type: {diagram_type}")]

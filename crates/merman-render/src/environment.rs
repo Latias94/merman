@@ -7,7 +7,8 @@ use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
     VendoredFontMetricsTextMeasurer, WrapMode,
 };
-use chrono::{DateTime, FixedOffset, NaiveDate, Utc};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, Utc};
+use merman_core::time::{LocalTimeZone, LocalTimeZoneProvenance};
 use std::fmt;
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -188,106 +189,11 @@ pub enum HostFallbackReason {
     Error,
 }
 
-/// The exact [`TextMeasurer`] operation performed through a phase facade.
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TextMeasurementOperation {
-    Measure = 0,
-    ComputedLength = 1,
-    BBoxX = 2,
-    BBoxXWithAsciiOverhang = 3,
-    TitleBBoxX = 4,
-    SimpleBBoxWidth = 5,
-    RawBBoxWidth = 6,
-    TspanBBoxWidth = 7,
-    TspanBBoxHeight = 8,
-    WrapProbeBBoxWidth = 9,
-    SimpleBBoxHeight = 10,
-    Wrapped = 11,
-    WrappedWithRawWidth = 12,
-    BoundingClientRectWidth = 13,
-    CreateTextBBoxYOffset = 14,
-    MermaidCalculateTextDimensions = 15,
-    CanvasMeasureTextWidth = 16,
-    CreateTextMiddleBBoxYOffset = 17,
-    RawBBoxHeight = 18,
-}
-
-impl TextMeasurementOperation {
-    pub const ALL: [Self; 19] = [
-        Self::Measure,
-        Self::ComputedLength,
-        Self::BBoxX,
-        Self::BBoxXWithAsciiOverhang,
-        Self::TitleBBoxX,
-        Self::SimpleBBoxWidth,
-        Self::RawBBoxWidth,
-        Self::TspanBBoxWidth,
-        Self::TspanBBoxHeight,
-        Self::WrapProbeBBoxWidth,
-        Self::SimpleBBoxHeight,
-        Self::Wrapped,
-        Self::WrappedWithRawWidth,
-        Self::BoundingClientRectWidth,
-        Self::CreateTextBBoxYOffset,
-        Self::MermaidCalculateTextDimensions,
-        Self::CanvasMeasureTextWidth,
-        Self::CreateTextMiddleBBoxYOffset,
-        Self::RawBBoxHeight,
-    ];
-
-    const fn index(self) -> usize {
-        match self {
-            Self::Measure => 0,
-            Self::ComputedLength => 1,
-            Self::BBoxX => 2,
-            Self::BBoxXWithAsciiOverhang => 3,
-            Self::TitleBBoxX => 4,
-            Self::SimpleBBoxWidth => 5,
-            Self::RawBBoxWidth => 6,
-            Self::TspanBBoxWidth => 7,
-            Self::TspanBBoxHeight => 8,
-            Self::WrapProbeBBoxWidth => 9,
-            Self::SimpleBBoxHeight => 10,
-            Self::Wrapped => 11,
-            Self::WrappedWithRawWidth => 12,
-            Self::BoundingClientRectWidth => 13,
-            Self::CreateTextBBoxYOffset => 14,
-            Self::MermaidCalculateTextDimensions => 15,
-            Self::CanvasMeasureTextWidth => 16,
-            Self::CreateTextMiddleBBoxYOffset => 17,
-            Self::RawBBoxHeight => 18,
-        }
-    }
-
-    pub const fn external_code(self) -> i32 {
-        self as i32
-    }
-
-    pub const fn external_name(self) -> &'static str {
-        match self {
-            Self::Measure => "measure",
-            Self::ComputedLength => "computed-length",
-            Self::BBoxX => "bbox-x",
-            Self::BBoxXWithAsciiOverhang => "bbox-x-with-ascii-overhang",
-            Self::TitleBBoxX => "title-bbox-x",
-            Self::SimpleBBoxWidth => "simple-bbox-width",
-            Self::RawBBoxWidth => "raw-bbox-width",
-            Self::TspanBBoxWidth => "tspan-bbox-width",
-            Self::TspanBBoxHeight => "tspan-bbox-height",
-            Self::WrapProbeBBoxWidth => "wrap-probe-bbox-width",
-            Self::SimpleBBoxHeight => "simple-bbox-height",
-            Self::Wrapped => "wrapped",
-            Self::WrappedWithRawWidth => "wrapped-with-raw-width",
-            Self::BoundingClientRectWidth => "bounding-client-rect-width",
-            Self::CreateTextBBoxYOffset => "create-text-bbox-y-offset",
-            Self::MermaidCalculateTextDimensions => "mermaid-calculate-text-dimensions",
-            Self::CanvasMeasureTextWidth => "canvas-measure-text-width",
-            Self::CreateTextMiddleBBoxYOffset => "create-text-middle-bbox-y-offset",
-            Self::RawBBoxHeight => "raw-bbox-height",
-        }
-    }
-}
+/// The exact [`TextMeasurer`] operation performed through a phase facade and its required host
+/// result shape. Both types are generated from the native ABI descriptor shared by every binding.
+pub use crate::generated::text_measurement_abi::{
+    TEXT_MEASUREMENT_ABI_VERSION, TextMeasurementOperation, TextMeasurementResultKind,
+};
 
 /// The concrete backend kind that produced one result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -670,7 +576,6 @@ impl RoutedTextMeasurer<'_> {
         request: HostTextMeasurementRequest<'_>,
         decode_host: impl FnOnce(HostTextMeasurement) -> Option<T>,
         profile_call: impl FnOnce(&(dyn TextMeasurer + Send + Sync)) -> T,
-        valid: impl FnOnce(&T) -> bool,
     ) -> T {
         let phase = request.phase;
         let operation = request.operation;
@@ -686,10 +591,13 @@ impl RoutedTextMeasurer<'_> {
             } => {
                 let attempt = backend.measure(request);
                 let decoded = match &attempt {
-                    Ok(Some(value)) => decode_host(*value),
+                    Ok(Some(value)) if valid_host_measurement(operation, value) => {
+                        decode_host(*value)
+                    }
                     Ok(None) | Err(_) => None,
+                    Ok(Some(_)) => None,
                 };
-                if let Some(value) = decoded.filter(|value| valid(value)) {
+                if let Some(value) = decoded {
                     self.recorder
                         .record(phase, operation, TextMeasurementRouteOutcome::Host);
                     return value;
@@ -742,7 +650,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_metrics,
             |profile| profile.measure(text, style),
-            valid_metrics,
         )
     }
 
@@ -757,7 +664,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_text_computed_length_px(text, style),
-            valid_length,
         )
     }
 
@@ -772,7 +678,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_extents,
             |profile| profile.measure_svg_text_bbox_x(text, style),
-            valid_extents,
         )
     }
 
@@ -791,7 +696,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_extents,
             |profile| profile.measure_svg_text_bbox_x_with_ascii_overhang(text, style),
-            valid_extents,
         )
     }
 
@@ -806,7 +710,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_extents,
             |profile| profile.measure_svg_title_bbox_x(text, style),
-            valid_extents,
         )
     }
 
@@ -821,7 +724,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_simple_text_bbox_width_px(text, style),
-            valid_length,
         )
     }
 
@@ -836,7 +738,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_raw_text_bbox_width_px(text, style),
-            valid_length,
         )
     }
 
@@ -851,7 +752,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_raw_text_bbox_height_px(text, style),
-            valid_length,
         )
     }
 
@@ -866,7 +766,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_text_bounding_client_rect_width_px(text, style),
-            valid_length,
         )
     }
 
@@ -881,7 +780,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_tspan_text_bbox_width_px(text, style),
-            valid_length,
         )
     }
 
@@ -896,7 +794,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_tspan_text_bbox_height_px(text, style),
-            valid_length,
         )
     }
 
@@ -911,7 +808,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_create_text_bbox_y_offset_px(text, style),
-            valid_signed_length,
         )
     }
 
@@ -930,7 +826,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_create_text_middle_bbox_y_offset_px(text, style),
-            valid_signed_length,
         )
     }
 
@@ -945,7 +840,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_simple_text_bbox_width_for_wrap_px(text, style),
-            valid_length,
         )
     }
 
@@ -964,7 +858,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_metrics,
             |profile| profile.measure_mermaid_calculate_text_dimensions(text, style),
-            valid_metrics,
         )
     }
 
@@ -979,7 +872,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_canvas_text_width_px(text, style),
-            valid_length,
         )
     }
 
@@ -994,7 +886,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_simple_text_bbox_height_px(text, style),
-            valid_length,
         )
     }
 
@@ -1015,7 +906,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_metrics,
             |profile| profile.measure_wrapped(text, style, max_width, wrap_mode),
-            valid_metrics,
         )
     }
 
@@ -1036,7 +926,6 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_wrapped_with_raw_width,
             |profile| profile.measure_wrapped_with_raw_width(text, style, max_width, wrap_mode),
-            valid_wrapped_with_raw_width,
         )
     }
 }
@@ -1073,6 +962,31 @@ fn decode_host_wrapped_with_raw_width(
     }
 }
 
+fn valid_host_measurement(
+    operation: TextMeasurementOperation,
+    measurement: &HostTextMeasurement,
+) -> bool {
+    match measurement {
+        HostTextMeasurement::Metrics(metrics) => {
+            operation.required_result_kind() == TextMeasurementResultKind::Metrics
+                && valid_metrics(metrics)
+        }
+        HostTextMeasurement::Length(value) => {
+            operation.required_result_kind() == TextMeasurementResultKind::Length
+                && value.is_finite()
+                && (operation.accepts_signed_length() || *value >= 0.0)
+        }
+        HostTextMeasurement::HorizontalExtents { left, right } => {
+            operation.required_result_kind() == TextMeasurementResultKind::HorizontalExtents
+                && valid_extents(&(*left, *right))
+        }
+        HostTextMeasurement::WrappedWithRawWidth { metrics, raw_width } => {
+            operation.required_result_kind() == TextMeasurementResultKind::WrappedWithRawWidth
+                && valid_wrapped_with_raw_width(&(*metrics, *raw_width))
+        }
+    }
+}
+
 fn valid_metrics(metrics: &TextMetrics) -> bool {
     metrics.width.is_finite()
         && metrics.height.is_finite()
@@ -1083,10 +997,6 @@ fn valid_metrics(metrics: &TextMetrics) -> bool {
 
 fn valid_length(value: &f64) -> bool {
     value.is_finite() && *value >= 0.0
-}
-
-fn valid_signed_length(value: &f64) -> bool {
-    value.is_finite()
 }
 
 fn valid_extents(value: &(f64, f64)) -> bool {
@@ -1103,6 +1013,18 @@ pub struct RenderTimeSnapshot {
     unix_ms: i64,
     local_date: NaiveDate,
     local_offset_minutes: i32,
+}
+
+/// Local-time semantics retained for date parsing during one render operation.
+///
+/// A snapshot offset describes only the sampled instant. It must not be reused for
+/// another date when the host timezone may cross a daylight-saving transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderLocalTimePolicy {
+    /// Resolve every target date through the host timezone and its transition rules.
+    SystemTimeZone,
+    /// Apply the sampled fixed UTC offset to every target date.
+    FixedOffset,
 }
 
 impl RenderTimeSnapshot {
@@ -1128,6 +1050,29 @@ impl RenderTimeSnapshot {
         Self::from_unix_millis(0, 0).expect("Unix epoch is a valid UTC instant")
     }
 
+    /// Resolves local midnight through the host timezone at the target date.
+    #[cfg(feature = "host")]
+    pub fn from_system_local_midnight(local_date: NaiveDate) -> Result<Self, RenderTimeError> {
+        Self::from_local_midnight(local_date, &LocalTimeZone::system())
+    }
+
+    /// Resolves local midnight through one immutable timezone resolver.
+    pub fn from_local_midnight(
+        local_date: NaiveDate,
+        time_zone: &LocalTimeZone,
+    ) -> Result<Self, RenderTimeError> {
+        let local_midnight = local_date
+            .and_hms_opt(0, 0, 0)
+            .expect("every valid date has a valid midnight");
+        let local = time_zone
+            .datetime_from_naive_local(local_midnight)
+            .ok_or(RenderTimeError::InvalidLocalDateTime(local_midnight))?;
+        Self::from_unix_millis(
+            local.timestamp_millis(),
+            local.offset().local_minus_utc() / 60,
+        )
+    }
+
     pub const fn unix_ms(self) -> i64 {
         self.unix_ms
     }
@@ -1147,6 +1092,8 @@ pub enum RenderTimeError {
     InvalidLocalOffset(i32),
     #[error("Unix timestamp in milliseconds is outside chrono's supported range: {0}")]
     InstantOutOfRange(i64),
+    #[error("local datetime cannot be resolved in the selected local timezone: {0}")]
+    InvalidLocalDateTime(NaiveDateTime),
 }
 
 /// Supplies an instant and offset; the environment derives the date when the session begins.
@@ -1337,8 +1284,17 @@ pub struct RenderEnvironment {
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
     icon_registry: Option<Arc<IconRegistry>>,
     clock: Arc<dyn RenderClock>,
+    local_time_source: RenderLocalTimeSource,
     randomness: RenderRandomnessPolicy,
     resource_limits: RenderResourceLimits,
+}
+
+#[derive(Debug, Clone)]
+enum RenderLocalTimeSource {
+    ClockFixedOffset,
+    #[cfg(feature = "host")]
+    AmbientSystem,
+    Captured(LocalTimeZone),
 }
 
 impl fmt::Debug for RenderEnvironment {
@@ -1347,6 +1303,7 @@ impl fmt::Debug for RenderEnvironment {
             .field("text_measurement", &self.text_measurement)
             .field("has_math_renderer", &self.math_renderer.is_some())
             .field("has_icon_registry", &self.icon_registry.is_some())
+            .field("local_time_source", &self.local_time_source)
             .field("randomness", &self.randomness)
             .field("resource_limits", &self.resource_limits)
             .finish_non_exhaustive()
@@ -1360,6 +1317,7 @@ impl RenderEnvironment {
             math_renderer: None,
             icon_registry: None,
             clock: Arc::new(FixedRenderClock::new(RenderTimeSnapshot::unix_epoch_utc())),
+            local_time_source: RenderLocalTimeSource::ClockFixedOffset,
             randomness: RenderRandomnessPolicy::parity(),
             resource_limits: RenderResourceLimits::interactive(),
         }
@@ -1373,6 +1331,7 @@ impl RenderEnvironment {
             math_renderer: None,
             icon_registry: None,
             clock: Arc::new(SystemRenderClock),
+            local_time_source: RenderLocalTimeSource::AmbientSystem,
             randomness: RenderRandomnessPolicy::ambient(Arc::new(SystemRenderSeedSource)),
             resource_limits: RenderResourceLimits::interactive(),
         }
@@ -1395,7 +1354,37 @@ impl RenderEnvironment {
 
     pub fn with_clock(mut self, clock: Arc<dyn RenderClock>) -> Self {
         self.clock = clock;
+        // RenderClock exposes an offset, not a timezone rule set. A custom clock
+        // therefore has deterministic fixed-offset semantics unless a host
+        // SystemRenderClock is selected by RenderEnvironment::host().
+        self.local_time_source = RenderLocalTimeSource::ClockFixedOffset;
         self
+    }
+
+    /// Replaces the instant source while retaining host timezone transition rules.
+    ///
+    /// This is useful for deterministic host tests and embeddings that own their
+    /// clock but still want target dates resolved with the system timezone.
+    #[cfg(feature = "host")]
+    pub fn with_system_time_zone_clock(mut self, clock: Arc<dyn RenderClock>) -> Self {
+        self.clock = clock;
+        self.local_time_source = RenderLocalTimeSource::AmbientSystem;
+        self
+    }
+
+    /// Uses a timezone rule set that was already captured by the caller.
+    ///
+    /// This is the operation handoff used by CLI and binding request plans: parsing, layout and
+    /// evidence all retain the same resolver even if the ambient `TZ` changes later.
+    pub fn with_local_time_zone(mut self, time_zone: LocalTimeZone) -> Self {
+        self.local_time_source = RenderLocalTimeSource::Captured(time_zone);
+        self
+    }
+
+    /// Freezes an instant while retaining host timezone transition rules for target dates.
+    #[cfg(feature = "host")]
+    pub fn with_system_time_snapshot(self, snapshot: RenderTimeSnapshot) -> Self {
+        self.with_system_time_zone_clock(Arc::new(FixedRenderClock::new(snapshot)))
     }
 
     /// Preserves the configured clock's advancing instant while overriding its local UTC offset.
@@ -1407,6 +1396,7 @@ impl RenderEnvironment {
             self.clock,
             local_offset_minutes,
         )?);
+        self.local_time_source = RenderLocalTimeSource::ClockFixedOffset;
         Ok(self)
     }
 
@@ -1427,15 +1417,49 @@ impl RenderEnvironment {
     /// Freezes time, ambient seed, and provenance collection exactly once per operation.
     pub fn begin_session(&self) -> Result<RenderSession, RenderTimeError> {
         let (unix_ms, offset) = self.clock.unix_millis_and_offset();
+        let local_time_zone = resolve_local_time_zone(offset, &self.local_time_source)?;
+        let local_time_policy = if local_time_zone.is_system() {
+            RenderLocalTimePolicy::SystemTimeZone
+        } else {
+            RenderLocalTimePolicy::FixedOffset
+        };
         Ok(RenderSession {
             text_measurement: self.text_measurement.clone(),
             measurement_recorder: TextMeasurementRecorder::default(),
             math_renderer: self.math_renderer.clone(),
             icon_registry: self.icon_registry.clone(),
-            time: RenderTimeSnapshot::from_unix_millis(unix_ms, offset)?,
+            time: resolve_time_snapshot(unix_ms, &local_time_zone)?,
+            local_time_zone,
+            local_time_policy,
             seed: self.randomness.resolve(),
             resource_limits: self.resource_limits,
         })
+    }
+}
+
+fn resolve_time_snapshot(
+    unix_ms: i64,
+    local_time_zone: &LocalTimeZone,
+) -> Result<RenderTimeSnapshot, RenderTimeError> {
+    let instant = DateTime::<Utc>::from_timestamp_millis(unix_ms)
+        .ok_or(RenderTimeError::InstantOutOfRange(unix_ms))?
+        .with_timezone(&merman_core::time::utc_fixed_offset());
+    let local = local_time_zone
+        .datetime_to_local_fixed(instant)
+        .ok_or(RenderTimeError::InstantOutOfRange(unix_ms))?;
+    RenderTimeSnapshot::from_unix_millis(unix_ms, local.offset().local_minus_utc() / 60)
+}
+
+fn resolve_local_time_zone(
+    sampled_offset_minutes: i32,
+    source: &RenderLocalTimeSource,
+) -> Result<LocalTimeZone, RenderTimeError> {
+    match source {
+        RenderLocalTimeSource::ClockFixedOffset => LocalTimeZone::fixed(sampled_offset_minutes)
+            .map_err(|_| RenderTimeError::InvalidLocalOffset(sampled_offset_minutes)),
+        #[cfg(feature = "host")]
+        RenderLocalTimeSource::AmbientSystem => Ok(LocalTimeZone::system()),
+        RenderLocalTimeSource::Captured(time_zone) => Ok(time_zone.clone()),
     }
 }
 
@@ -1452,6 +1476,8 @@ pub struct RenderSession {
     math_renderer: Option<Arc<dyn MathRenderer + Send + Sync>>,
     icon_registry: Option<Arc<IconRegistry>>,
     time: RenderTimeSnapshot,
+    local_time_zone: LocalTimeZone,
+    local_time_policy: RenderLocalTimePolicy,
     seed: ResolvedRenderSeed,
     resource_limits: RenderResourceLimits,
 }
@@ -1477,6 +1503,14 @@ impl RenderSession {
         self.time
     }
 
+    pub const fn local_time_policy(&self) -> RenderLocalTimePolicy {
+        self.local_time_policy
+    }
+
+    pub fn local_time_zone(&self) -> &LocalTimeZone {
+        &self.local_time_zone
+    }
+
     pub const fn seed(&self) -> ResolvedRenderSeed {
         self.seed
     }
@@ -1499,6 +1533,8 @@ impl RenderSession {
             measurement_routes: self.text_measurement.routes(),
             measurement: self.measurement_recorder.report(&self.text_measurement),
             time: self.time,
+            local_time_policy: self.local_time_policy,
+            local_time_zone: self.local_time_zone.provenance().clone(),
             seed: self.seed,
         }
     }
@@ -1510,6 +1546,8 @@ pub struct RenderSessionReport {
     measurement_routes: [TextMeasurementRoute; 4],
     measurement: TextMeasurementReport,
     time: RenderTimeSnapshot,
+    local_time_policy: RenderLocalTimePolicy,
+    local_time_zone: LocalTimeZoneProvenance,
     seed: ResolvedRenderSeed,
 }
 
@@ -1524,6 +1562,14 @@ impl RenderSessionReport {
 
     pub const fn time(&self) -> RenderTimeSnapshot {
         self.time
+    }
+
+    pub const fn local_time_policy(&self) -> RenderLocalTimePolicy {
+        self.local_time_policy
+    }
+
+    pub fn local_time_zone(&self) -> &LocalTimeZoneProvenance {
+        &self.local_time_zone
     }
 
     pub const fn seed(&self) -> ResolvedRenderSeed {
@@ -1566,6 +1612,61 @@ mod tests {
                 (18, "raw-bbox-height"),
             ]
         );
+    }
+
+    #[test]
+    fn descriptor_drives_host_result_validation_for_every_operation() {
+        let valid_metrics_value = HostTextMeasurement::Metrics(metrics(10.0));
+        let valid_length = HostTextMeasurement::Length(10.0);
+        let negative_length = HostTextMeasurement::Length(-10.0);
+        let invalid_length = HostTextMeasurement::Length(f64::NAN);
+        let valid_extents = HostTextMeasurement::HorizontalExtents {
+            left: 1.0,
+            right: 2.0,
+        };
+        let valid_wrapped = HostTextMeasurement::WrappedWithRawWidth {
+            metrics: metrics(10.0),
+            raw_width: Some(11.0),
+        };
+
+        for operation in TextMeasurementOperation::ALL {
+            let required = operation.required_result_kind();
+            assert_eq!(
+                valid_host_measurement(operation, &valid_metrics_value),
+                required == TextMeasurementResultKind::Metrics,
+                "{} metrics contract",
+                operation.external_name()
+            );
+            assert_eq!(
+                valid_host_measurement(operation, &valid_length),
+                required == TextMeasurementResultKind::Length,
+                "{} length contract",
+                operation.external_name()
+            );
+            assert_eq!(
+                valid_host_measurement(operation, &negative_length),
+                required == TextMeasurementResultKind::Length && operation.accepts_signed_length(),
+                "{} signed-length contract",
+                operation.external_name()
+            );
+            assert!(
+                !valid_host_measurement(operation, &invalid_length),
+                "{} accepted a non-finite length",
+                operation.external_name()
+            );
+            assert_eq!(
+                valid_host_measurement(operation, &valid_extents),
+                required == TextMeasurementResultKind::HorizontalExtents,
+                "{} extents contract",
+                operation.external_name()
+            );
+            assert_eq!(
+                valid_host_measurement(operation, &valid_wrapped),
+                required == TextMeasurementResultKind::WrappedWithRawWidth,
+                "{} wrapped contract",
+                operation.external_name()
+            );
+        }
     }
 
     struct OperationAwareHost {

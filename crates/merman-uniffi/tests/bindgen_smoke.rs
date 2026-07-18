@@ -8,37 +8,6 @@ use std::{
 };
 
 #[test]
-fn python_smoke_abi_expectations_match_uniffi_abi() {
-    let workspace_root = workspace_root();
-    let expected_eq = format!(
-        "abi_version() == {}",
-        merman_uniffi::MERMAN_UNIFFI_ABI_VERSION
-    );
-    let expected_ne = format!(
-        "abi_version() != {}",
-        merman_uniffi::MERMAN_UNIFFI_ABI_VERSION
-    );
-
-    for rel_path in [
-        "scripts/build-python-uniffi-wheel.py",
-        ".github/workflows/release-python.yml",
-        "docs/bindings/PYTHON_UNIFFI.md",
-        "platforms/python/merman/README.md",
-        "platforms/python/merman/examples/smoke.py",
-    ] {
-        let path = workspace_root.join(rel_path);
-        let text = fs::read_to_string(&path)
-            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-        assert!(
-            text.contains(&expected_eq) || text.contains(&expected_ne),
-            "{} should assert UniFFI ABI version {}",
-            rel_path,
-            merman_uniffi::MERMAN_UNIFFI_ABI_VERSION
-        );
-    }
-}
-
-#[test]
 fn generates_python_binding_from_cdylib_metadata() {
     let workspace_root = workspace_root();
     let cdylib = build_cdylib(&workspace_root);
@@ -198,6 +167,11 @@ fn staged_python_package_imports_and_calls_rust_engine() {
     fs::create_dir_all(&module_dir).expect("create staged Python module directory");
     fs::write(module_dir.join("__init__.py"), PYTHON_PACKAGE_INIT)
         .expect("write staged Python package shim");
+    fs::write(
+        module_dir.join("_abi.py"),
+        merman_uniffi::MERMAN_UNIFFI_PYTHON_ABI_MODULE,
+    )
+    .expect("write staged Python ABI contract");
 
     generate_python_bindings(&cdylib, &module_dir);
     copy_cdylib_next_to_generated_module(&cdylib, &module_dir);
@@ -222,6 +196,13 @@ fn staged_python_package_imports_and_calls_rust_engine() {
 }
 
 const PYTHON_PACKAGE_INIT: &str = r#"
+from ._abi import (
+    ABI_VERSION,
+    TEXT_MEASUREMENT_OPERATIONS,
+    TEXT_MEASUREMENT_RESULT_KINDS,
+    AbiVersionMismatch,
+    require_abi_version,
+)
 from .merman_uniffi import (
     MermanAsciiCapability,
     MermanAsciiCapabilityEvidence,
@@ -243,6 +224,10 @@ from .merman_uniffi import (
 )
 
 __all__ = [
+    "ABI_VERSION",
+    "AbiVersionMismatch",
+    "TEXT_MEASUREMENT_OPERATIONS",
+    "TEXT_MEASUREMENT_RESULT_KINDS",
     "MermanAsciiCapability",
     "MermanAsciiCapabilityEvidence",
     "MermanDiagramFamilyCapability",
@@ -260,6 +245,7 @@ __all__ = [
     "MermanTextWhiteSpace",
     "MermanTextWrapMode",
     "MermanValidationResult",
+    "require_abi_version",
 ]
 "#;
 
@@ -268,28 +254,6 @@ import json
 from dataclasses import dataclass
 
 import merman
-
-EXPECTED_TEXT_MEASUREMENT_OPERATIONS = {
-    "MEASURE",
-    "COMPUTED_LENGTH",
-    "B_BOX_X",
-    "B_BOX_X_WITH_ASCII_OVERHANG",
-    "TITLE_B_BOX_X",
-    "SIMPLE_B_BOX_WIDTH",
-    "RAW_B_BOX_WIDTH",
-    "TSPAN_B_BOX_WIDTH",
-    "TSPAN_B_BOX_HEIGHT",
-    "WRAP_PROBE_B_BOX_WIDTH",
-    "SIMPLE_B_BOX_HEIGHT",
-    "WRAPPED",
-    "WRAPPED_WITH_RAW_WIDTH",
-    "BOUNDING_CLIENT_RECT_WIDTH",
-    "CREATE_TEXT_B_BOX_Y_OFFSET",
-    "MERMAID_CALCULATE_TEXT_DIMENSIONS",
-    "CANVAS_MEASURE_TEXT_WIDTH",
-    "CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET",
-    "RAW_B_BOX_HEIGHT",
-}
 
 for exported_name in (
     "MermanTextMeasurementOperation",
@@ -300,11 +264,22 @@ for exported_name in (
     assert exported_name in merman.__all__, exported_name
 
 operation_type = merman.MermanTextMeasurementOperation
-assert set(operation_type.__members__) == EXPECTED_TEXT_MEASUREMENT_OPERATIONS
-assert {operation.value for operation in operation_type} == set(range(19))
+assert {operation.value for operation in operation_type} == {
+    entry[0] for entry in merman.TEXT_MEASUREMENT_OPERATIONS
+}
+assert {kind.value for kind in merman.MermanTextMeasurementResultKind} == {
+    entry[0] for entry in merman.TEXT_MEASUREMENT_RESULT_KINDS
+}
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+merman.require_abi_version(engine.abi_version())
+try:
+    merman.require_abi_version(merman.ABI_VERSION + 1)
+except merman.AbiVersionMismatch as error:
+    assert error.expected == merman.ABI_VERSION
+    assert error.actual == merman.ABI_VERSION + 1
+else:
+    raise AssertionError("expected mismatched ABI to be rejected")
 assert engine.package_version()
 source = "---\ntitle: Host measurement phases\n---\nflowchart TD\nA[Hello] --> B[World]"
 

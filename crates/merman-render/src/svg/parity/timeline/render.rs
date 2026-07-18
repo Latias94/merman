@@ -136,7 +136,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     render_timeline_diagram_svg_inner(layout, effective_config, diagram_title, measurer, options)
 }
 
@@ -146,7 +146,7 @@ fn render_timeline_diagram_svg_inner(
     _diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let theme = PresentationTheme::new(effective_config).timeline();
     let is_redux_theme = theme.is_redux_theme;
@@ -259,8 +259,9 @@ fn render_timeline_diagram_svg_inner(
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
 
     let mut out = String::new();
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Timeline, diagram_id)
-        .write_open(
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Timeline, diagram_id)
+            .write_open(
             &mut out,
             root_spec,
             root_svg::RootChrome {
@@ -420,7 +421,7 @@ fn render_timeline_diagram_svg_inner(
     );
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]

@@ -178,7 +178,8 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
             merman_render::environment::TextMeasurementPolicy::deterministic(),
         );
     // Pin a fixed local timezone offset so Gantt (and related layout logic) stays deterministic on CI.
-    merman_core::time::with_fixed_local_offset_minutes(Some(0), || {
+    let utc = merman_core::time::LocalTimeZone::utc();
+    merman_core::time::with_local_time_zone(&utc, || {
         let fixtures_root = workspace_root().join("fixtures");
         let mmd_files = collect_mmd_files(&fixtures_root);
         assert!(

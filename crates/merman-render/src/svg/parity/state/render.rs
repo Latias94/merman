@@ -7,7 +7,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = super::timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
@@ -401,7 +401,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         viewport_padding,
     );
 
-    root_context.finish_document(
+    let root_document = root_context.finish_document(
         &mut out,
         root_document,
         root_svg::RootViewportSpec::responsive(root_bounds)
@@ -441,7 +441,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             detail.self_loop_placeholders,
         );
     }
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn render_state_root(

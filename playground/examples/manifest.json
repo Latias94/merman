@@ -1,0 +1,321 @@
+{
+  "schemaVersion": 1,
+  "mermaidBaseline": "mermaid@11.16.0",
+  "examples": [
+    {
+      "diagramType": "architecture",
+      "id": "architecture-services",
+      "title": "Architecture Services",
+      "category": "Software",
+      "order": 10,
+      "aliases": ["architecture-beta", "services", "systems"],
+      "fixture": "fixtures/architecture/upstream_architecture_docs_example.mmd"
+    },
+    {
+      "diagramType": "block",
+      "id": "block-layout",
+      "title": "Block Layout",
+      "category": "Software",
+      "order": 20,
+      "aliases": ["block-beta", "block diagram"],
+      "fixture": "fixtures/block/upstream_examples_block_basic_block_layout_001.mmd"
+    },
+    {
+      "diagramType": "c4",
+      "id": "c4-system-context",
+      "title": "C4 System Context",
+      "category": "Software",
+      "order": 30,
+      "aliases": ["C4Context", "C4Container", "C4Component", "C4Dynamic"],
+      "fixture": "fixtures/c4/basic.mmd"
+    },
+    {
+      "diagramType": "class",
+      "id": "class-relationships",
+      "title": "Class Relationships",
+      "category": "Software",
+      "order": 40,
+      "aliases": ["classDiagram", "types", "inheritance"],
+      "fixture": "fixtures/class/basic.mmd"
+    },
+    {
+      "diagramType": "cynefin",
+      "id": "cynefin-domains",
+      "title": "Cynefin Domains",
+      "category": "Strategy",
+      "order": 50,
+      "aliases": ["cynefin-beta", "sense making", "domains"],
+      "fixture": "fixtures/cynefin/basic_domains_transitions.mmd"
+    },
+    {
+      "diagramType": "er",
+      "id": "entity-relationships",
+      "title": "Entity Relationships",
+      "category": "Data",
+      "order": 60,
+      "aliases": ["erDiagram", "entity relationship", "database"],
+      "fixture": "fixtures/er/basic.mmd"
+    },
+    {
+      "diagramType": "eventmodeling",
+      "id": "event-model",
+      "title": "Event Model",
+      "category": "Flow",
+      "order": 70,
+      "aliases": ["event modeling", "eventmodeling", "state change"],
+      "fixture": "fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd"
+    },
+    {
+      "diagramType": "flowchart",
+      "id": "basic-flowchart",
+      "title": "Basic Flowchart",
+      "category": "Flow",
+      "order": 80,
+      "aliases": ["graph", "flowchart-v2", "dagre"],
+      "fixture": "fixtures/flowchart/basic.mmd"
+    },
+    {
+      "diagramType": "gantt",
+      "id": "project-gantt",
+      "title": "Project Gantt",
+      "category": "Planning",
+      "order": 90,
+      "aliases": ["schedule", "project plan", "tasks"],
+      "fixture": "fixtures/gantt/basic.mmd"
+    },
+    {
+      "diagramType": "gitgraph",
+      "id": "git-commit-flow",
+      "title": "Git Commit Flow",
+      "category": "Planning",
+      "order": 100,
+      "aliases": ["gitGraph", "branch", "commit"],
+      "fixture": "fixtures/gitgraph/upstream_cypress_appli_spec_1_should_render_a_simple_gitgraph_with_commit_on_main_branch_001.mmd"
+    },
+    {
+      "diagramType": "info",
+      "id": "mermaid-version",
+      "title": "Mermaid Version",
+      "category": "Reference",
+      "order": 110,
+      "aliases": ["info diagram", "showInfo", "version"],
+      "fixture": "fixtures/info/upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_info_001.mmd"
+    },
+    {
+      "diagramType": "ishikawa",
+      "id": "cause-and-effect",
+      "title": "Cause and Effect",
+      "category": "Strategy",
+      "order": 120,
+      "aliases": ["ishikawa-beta", "fishbone", "root cause"],
+      "fixture": "fixtures/ishikawa/upstream_docs_ishikawa_basic.mmd"
+    },
+    {
+      "diagramType": "journey",
+      "id": "working-day-journey",
+      "title": "Working Day Journey",
+      "category": "Planning",
+      "order": 130,
+      "aliases": ["user journey", "experience", "satisfaction"],
+      "fixture": "fixtures/journey/upstream_examples_user_journey_my_working_day_001.mmd"
+    },
+    {
+      "diagramType": "kanban",
+      "id": "kanban-board",
+      "title": "Kanban Board",
+      "category": "Planning",
+      "order": 140,
+      "aliases": ["board", "cards", "workflow"],
+      "fixture": "fixtures/kanban/basic.mmd"
+    },
+    {
+      "diagramType": "mindmap",
+      "id": "mind-map",
+      "title": "Mind Map",
+      "category": "Strategy",
+      "order": 150,
+      "aliases": ["mindmap", "concept map", "tree"],
+      "fixture": "fixtures/mindmap/basic.mmd"
+    },
+    {
+      "diagramType": "packet",
+      "id": "packet-layout",
+      "title": "Packet Layout",
+      "category": "Data",
+      "order": 160,
+      "aliases": ["packet-beta", "protocol", "bits"],
+      "fixture": "fixtures/packet/upstream_cypress_packet_spec_should_render_a_simple_packet_diagram_002.mmd"
+    },
+    {
+      "diagramType": "pie",
+      "id": "pie-distribution",
+      "title": "Pie Distribution",
+      "category": "Data",
+      "order": 170,
+      "aliases": ["pie chart", "proportion", "share"],
+      "fixture": "fixtures/pie/upstream_docs_examples_basic_pie_chart_001.mmd"
+    },
+    {
+      "diagramType": "quadrantchart",
+      "id": "quadrant-priorities",
+      "title": "Quadrant Priorities",
+      "category": "Strategy",
+      "order": 180,
+      "aliases": ["quadrantChart", "matrix", "priority"],
+      "fixture": "fixtures/quadrantchart/upstream_quadrant_docs_example_reach_engagement.mmd"
+    },
+    {
+      "diagramType": "radar",
+      "id": "radar-comparison",
+      "title": "Radar Comparison",
+      "category": "Strategy",
+      "order": 190,
+      "aliases": ["radar-beta", "spider chart", "axes"],
+      "fixture": "fixtures/radar/upstream_docs_radar_examples_003.mmd"
+    },
+    {
+      "diagramType": "railroad",
+      "id": "railroad-grammar",
+      "title": "Railroad Grammar",
+      "category": "Grammar",
+      "order": 200,
+      "aliases": ["railroad-beta", "syntax diagram", "grammar"],
+      "fixture": "fixtures/railroad/basic_ir.mmd"
+    },
+    {
+      "diagramType": "railroadAbnf",
+      "id": "abnf-grammar",
+      "title": "ABNF Grammar",
+      "category": "Grammar",
+      "order": 210,
+      "aliases": ["railroad-abnf-beta", "ABNF", "grammar"],
+      "fixture": "fixtures/railroadAbnf/repetition_optional_numval.mmd"
+    },
+    {
+      "diagramType": "railroadEbnf",
+      "id": "ebnf-grammar",
+      "title": "EBNF Grammar",
+      "category": "Grammar",
+      "order": 220,
+      "aliases": ["railroad-ebnf-beta", "EBNF", "grammar"],
+      "fixture": "fixtures/railroadEbnf/choice_optional_repetition.mmd"
+    },
+    {
+      "diagramType": "railroadPeg",
+      "id": "peg-grammar",
+      "title": "PEG Grammar",
+      "category": "Grammar",
+      "order": 230,
+      "aliases": ["railroad-peg-beta", "PEG", "grammar"],
+      "fixture": "fixtures/railroadPeg/prefix_suffix_any.mmd"
+    },
+    {
+      "diagramType": "requirement",
+      "id": "requirement-trace",
+      "title": "Requirement Trace",
+      "category": "Planning",
+      "order": 240,
+      "aliases": ["requirementDiagram", "traceability", "verification"],
+      "fixture": "fixtures/requirement/basic.mmd"
+    },
+    {
+      "diagramType": "sankey",
+      "id": "sankey-energy-flow",
+      "title": "Sankey Energy Flow",
+      "category": "Data",
+      "order": 250,
+      "aliases": ["flow distribution", "links", "energy"],
+      "fixture": "fixtures/sankey/upstream_docs_sankey_basic_004.mmd"
+    },
+    {
+      "diagramType": "sequence",
+      "id": "sequence-interaction",
+      "title": "Sequence Interaction",
+      "category": "Flow",
+      "order": 260,
+      "aliases": ["sequenceDiagram", "messages", "actors"],
+      "fixture": "fixtures/sequence/basic.mmd"
+    },
+    {
+      "diagramType": "state",
+      "id": "state-machine",
+      "title": "State Machine",
+      "category": "Flow",
+      "order": 270,
+      "aliases": ["stateDiagram-v2", "states", "transitions"],
+      "fixture": "fixtures/state/basic.mmd"
+    },
+    {
+      "diagramType": "swimlane",
+      "id": "customer-support-swimlane",
+      "title": "Customer Support Swimlane",
+      "category": "Flow",
+      "order": 280,
+      "aliases": ["swimlane-beta", "lanes", "responsibilities"],
+      "fixture": "fixtures/swimlane/upstream_docs_basic.mmd"
+    },
+    {
+      "diagramType": "timeline",
+      "id": "project-timeline",
+      "title": "Project Timeline",
+      "category": "Planning",
+      "order": 290,
+      "aliases": ["chronology", "milestones", "periods"],
+      "fixture": "fixtures/timeline/upstream_docs_timeline_an_example_of_a_timeline_002.mmd"
+    },
+    {
+      "diagramType": "treeView",
+      "id": "project-tree",
+      "title": "Project Tree",
+      "category": "Software",
+      "order": 300,
+      "aliases": ["treeView-beta", "directory tree", "filesystem"],
+      "fixture": "fixtures/treeView/upstream_docs_treeview_basic.mmd"
+    },
+    {
+      "diagramType": "treemap",
+      "id": "treemap-hierarchy",
+      "title": "Treemap Hierarchy",
+      "category": "Data",
+      "order": 310,
+      "aliases": ["treemap-beta", "hierarchy", "area"],
+      "fixture": "fixtures/treemap/upstream_docs_treemap_syntax_001.mmd"
+    },
+    {
+      "diagramType": "venn",
+      "id": "team-overlap",
+      "title": "Team Overlap",
+      "category": "Data",
+      "order": 320,
+      "aliases": ["venn-beta", "sets", "overlap"],
+      "fixture": "fixtures/venn/upstream_docs_venn_team_overlap_001.mmd"
+    },
+    {
+      "diagramType": "wardley",
+      "id": "tea-shop-wardley-map",
+      "title": "Tea Shop Wardley Map",
+      "category": "Strategy",
+      "order": 330,
+      "aliases": ["wardley-beta", "value chain", "evolution"],
+      "fixture": "fixtures/wardley/upstream_cypress_wardley_spec_1_should_render_tea_shop_001.mmd"
+    },
+    {
+      "diagramType": "xychart",
+      "id": "xy-series",
+      "title": "XY Series",
+      "category": "Data",
+      "order": 340,
+      "aliases": ["xychart-beta", "bar chart", "line chart"],
+      "fixture": "fixtures/xychart/upstream_cypress_xychart_spec_should_render_the_simplest_possible_xy_chart_002.mmd"
+    },
+    {
+      "diagramType": "zenuml",
+      "id": "zenuml-interaction",
+      "title": "ZenUML Interaction",
+      "category": "Flow",
+      "order": 350,
+      "aliases": ["ZenUML", "sequence syntax", "interaction"],
+      "fixture": "fixtures/zenuml/basic.mmd"
+    }
+  ]
+}

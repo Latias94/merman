@@ -21,9 +21,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Renamed `LayoutOptions.viewport_width` / `viewport_height` and the corresponding binding, Web, and Typst request fields to `container_width` / `container_height` (Typst: `container-width` / `container-height`) without aliases. These values describe the host layout container, not a browser page viewport; callers using the removed names now receive an options error. The CLI keeps `--width` / `--height` and removes the misleading `--viewport-width` / `--viewport-height` aliases.
 - Removed `LayoutOptions::use_manatee_layout` without an alias. The `cytoscape-layout` feature is now the sole capability boundary: enabled builds always execute Architecture FCoSE and non-`tidy-tree` Mindmap COSE-Bilkent layout, while disabled builds report those families as unsupported.
 - Removed the alpha `FlowchartElkBackend` selector and its CLI, binding JSON, and Web options without aliases. Flowchart ELK now always uses the source-backed Mermaid adapter and Eclipse ELK layered implementation; the older lightweight compatibility backend is removed.
+- Replaced the browser `createBrowserTextMeasurer()` helper with the owned `createBrowserTextMeasurementSession()` contract. Browser hosts must retain the returned `measure` callback for the session and call `dispose()` when its realm/session ends; no deprecated alias is retained.
 
 ### New and changed
 
+- Rebuilt the Playground around one document-owned Merman lifecycle and a separate latest-wins Render Coordinator. WASM import/fetch run concurrently, browser HTTP cache is the only persistent byte-cache authority, retry is staged and bounded, BFCache suspend/resume is distinct from final disposal, and the product renders the actual source without a hidden synthetic warmup.
+- Added `@mermanjs/web/editor` backed by the `browser-editor` preset: the full 35-family catalog, analysis, and `merman-editor-core` language intelligence without SVG, ASCII, host, or ELK dependencies. The Playground runs it in a dedicated local module Worker and projects diagnostics, completion, hover, code actions, symbols, navigation, rename, and semantic tokens into Monaco while keeping native ABI 2 and editor/analysis/facts schema 1.
+- Replaced the handwritten Playground example registry with an exact 35-family fixture manifest and generated typed catalog. Search, provenance, canonical detection, and generated-output freshness are checked by `xtask` against the Mermaid 11.16 baseline.
+- Isolated Compare and Bench in authenticated same-origin realms. Compare owns one failure-resilient Mermaid operation queue; Bench uses equivalent per-engine realms, versioned raw phase events, equal real-source warmups, deterministic balanced AB/BA order, explicit failure/invalidation states, fail-closed ratios, and local JSON evidence download.
 - Added parser and editor facts, typed layout, and SVG rendering for `cynefin-beta` and all four Railroad dialects: `railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`, and `railroad-peg-beta`. #21 #24
 - Added source-backed `swimlane-beta` parser and editor facts through shared Flowchart semantics, plus dedicated typed Swimlane layout, routing, and SVG rendering; Swimlane now participates in the primary Mermaid 11.16 parity matrix.
 - Aligned Mermaid 11.16 behavior across existing diagrams, including Flowchart and State self-loops, Sequence blocks and wrapping, Ishikawa recursive DOM structure, TreeView ordering, XYChart point labels, Architecture hints, Pie highlighting, Gantt timing, and config/frontmatter handling.
@@ -36,6 +41,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixes and polish
 
+- Simplified and polished the Playground shell with persistent editor/config/preview state, generated example search, keyboard-correct tabs and dialogs, synchronized system theme, safe-area/dynamic-viewport sizing, local Monaco assets, and accessible labels/focus behavior.
 - TreeView now embeds configured Iconify pack bodies at Mermaid's 14px size and shows the standard unknown icon for missing packs or entries. #23
 - Replaced the remaining fixture-scoped root viewport pins with computed family and emitted-content bounds. Browser-only root differences remain explicit verification residuals rather than production lookup data. #22
 - Kept centered Railroad choice branches straight when equivalent lane coordinates differ only because of floating-point addition order. #22

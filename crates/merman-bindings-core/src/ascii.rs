@@ -1,6 +1,6 @@
 use crate::common::{
-    BindingError, BindingStatus, binding_fixed_local_offset_minutes, binding_fixed_today,
-    binding_site_config, no_diagram_error, parse_options, source_text,
+    BindingError, BindingStatus, binding_local_time_policy, binding_site_config, no_diagram_error,
+    parse_options, source_text,
 };
 
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -44,9 +44,10 @@ fn build_ascii_renderer(
         merman::ParseOptions::strict()
     };
 
+    let time = binding_local_time_policy(options)?;
     let mut renderer = merman::ascii::HeadlessAsciiRenderer::new()
-        .with_fixed_today(binding_fixed_today(options)?)
-        .with_fixed_local_offset_minutes(binding_fixed_local_offset_minutes(options)?)
+        .with_fixed_today(time.today)
+        .with_local_time_zone(time.time_zone)
         .with_parse_options(parse)
         .with_ascii_options(ascii_options_from_json(options)?);
     if let Some(site_config) = binding_site_config(options)? {
@@ -233,6 +234,9 @@ fn render_ascii_with_renderer(
 
 fn classify_ascii_error(err: merman::ascii::HeadlessAsciiError) -> BindingError {
     match err {
+        merman::ascii::HeadlessAsciiError::LocalTimeZone(err) => {
+            BindingError::new(BindingStatus::InvalidArgument, err.to_string())
+        }
         merman::ascii::HeadlessAsciiError::Parse(err) => {
             BindingError::new(BindingStatus::ParseError, err.to_string())
         }

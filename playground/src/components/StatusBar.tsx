@@ -52,43 +52,49 @@ export function StatusBar() {
   const lineCount = code.split("\n").length;
   const charCount = code.length;
 
-  // 获取图表类型的翻译
   const getDiagramTypeLabel = () => {
     const typeKey = `diagramTypes.${diagramType}`;
     return t(typeKey, { defaultValue: diagramType });
   };
 
   return (
-    <footer className="h-7 overflow-hidden border-t bg-card px-3 sm:px-4 flex items-center justify-between text-xs text-muted-foreground">
-      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-        <span className="flex items-center gap-1.5">
+    <footer className="flex h-8 shrink-0 items-center justify-between gap-3 overflow-hidden border-t bg-card px-3 text-xs text-muted-foreground sm:px-4">
+      <div className="flex min-w-0 shrink items-center gap-3 sm:gap-4">
+        <span className="flex min-w-0 items-center gap-1.5">
           <span
+            aria-hidden="true"
             className={cn(
               "size-2 rounded-full",
               diagramType !== "unknown" ? "bg-green-500" : "bg-yellow-500"
             )}
           />
-          {getDiagramTypeLabel()}
+          <span className="truncate">{getDiagramTypeLabel()}</span>
         </span>
-        <span>{lineCount} {t("status.lines")}</span>
-        <span className="hidden sm:inline">{charCount} {t("status.chars")}</span>
+        <span className="shrink-0">
+          {lineCount} {t("status.lines")}
+        </span>
+        <span className="hidden shrink-0 sm:inline">
+          {charCount} {t("status.chars")}
+        </span>
       </div>
-      <div className="hidden items-center gap-4 sm:flex">
-        <span>
+      <div className="scrollbar-thin flex min-w-0 items-center gap-3 overflow-x-auto sm:gap-4">
+        <span className="shrink-0 whitespace-nowrap" aria-live="polite">
           {t("status.wasm")}: {runtimeLabel}
         </span>
         {runtimeFailure && (
           <span
-            className="max-w-52 truncate text-destructive"
+            className="hidden max-w-52 truncate text-destructive sm:inline"
             title={runtimeFailure.message}
           >
             {runtimeFailure.stage}: {runtimeFailure.message}
           </span>
         )}
         {capabilities && (
-          <span>
+          <span className="hidden shrink-0 md:inline">
             {t("status.editorLanguage")}:{" "}
-            {capabilities.editor_language ? t("status.enabled") : t("status.disabled")}
+            {capabilities.editor_language
+              ? t("status.enabled")
+              : t("status.disabled")}
           </span>
         )}
         {registryProfile && (
@@ -97,9 +103,11 @@ export function StatusBar() {
           </span>
         )}
         {lastRenderTime > 0 && (
-          <span>{t("status.renderTime")}: {lastRenderTime.toFixed(1)}ms</span>
+          <span className="hidden shrink-0 whitespace-nowrap sm:inline">
+            {t("status.renderTime")}: {lastRenderTime.toFixed(1)}ms
+          </span>
         )}
-        <span>
+        <span className="hidden shrink-0 lg:inline">
           {t("status.theme")}:{" "}
           {hostThemePreset === "none"
             ? t(`themes.${diagramTheme}`)

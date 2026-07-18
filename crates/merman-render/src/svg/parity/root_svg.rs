@@ -295,13 +295,36 @@ impl DeferredRootSpec {
 }
 
 #[derive(Debug)]
+enum RootDocumentState {
+    Deferred {
+        view_box_range: Range<usize>,
+        max_width_range: Option<Range<usize>>,
+        responsive: bool,
+        background: RootBackground,
+        root_open_snapshot: String,
+        root_open_end: usize,
+    },
+    Ready {
+        root_open: String,
+    },
+}
+
+#[derive(Debug)]
 pub(super) struct RootDocument {
     family: RenderFamilyKind,
     diagram_id: String,
-    view_box_range: Range<usize>,
-    max_width_range: Option<Range<usize>>,
-    responsive: bool,
-    background: RootBackground,
+    state: RootDocumentState,
+}
+
+/// A complete built-in SVG whose root was emitted and finalized by this module.
+///
+/// The field is intentionally private: sibling family modules may return this type, but only the
+/// Root Viewport protocol can construct or unwrap it.
+#[derive(Debug)]
+pub(super) struct RootedSvg {
+    svg: String,
+    family: RenderFamilyKind,
+    diagram_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -321,6 +344,7 @@ impl<'a> RootViewportContext<'a> {
         spec: DeferredRootSpec,
         chrome: RootChrome<'_>,
     ) -> Result<RootDocument> {
+        self.require_empty_document(out)?;
         if chrome.diagram_id != self.diagram_id {
             return Err(Error::InvalidModel {
                 message: "deferred root chrome belongs to a different render context".to_string(),
@@ -348,14 +372,17 @@ impl<'a> RootViewportContext<'a> {
                 });
             }
         };
-        let style = root_style(responsive.then_some(MAX_WIDTH_PLACEHOLDER), spec.background);
+        let fixed_style = if responsive {
+            None
+        } else {
+            root_style(None, spec.background)
+        };
         let style_placement = if responsive {
             chrome.dom.responsive_style_placement
         } else {
             chrome.dom.fixed_style_placement
         };
-        let start = out.len();
-        push_svg_root_open(
+        let tracked_ranges = push_svg_root_open(
             out,
             SvgRootAttrs {
                 diagram_id: chrome.diagram_id,
@@ -366,8 +393,12 @@ impl<'a> RootViewportContext<'a> {
                     SvgRootWidth::None
                 },
                 height_attr: None,
-                style_attr: style.as_deref(),
-                viewbox_attr: Some(VIEW_BOX_PLACEHOLDER),
+                style_attr: if responsive {
+                    Some(deferred_root_style(spec.background))
+                } else {
+                    fixed_style.as_deref().map(SvgRootAttributeValue::plain)
+                },
+                viewbox_attr: Some(SvgRootAttributeValue::tracked("", VIEW_BOX_PLACEHOLDER, "")),
                 style_viewbox_order: chrome.dom.style_viewbox_order,
                 style_placement,
                 responsive_height_placement: chrome.dom.responsive_height_placement,
@@ -382,24 +413,18 @@ impl<'a> RootViewportContext<'a> {
                 aria_attr_order: chrome.dom.aria_attr_order,
             },
         );
-        let root_open = &out[start..];
-        let view_box_start =
-            root_open
-                .find(VIEW_BOX_PLACEHOLDER)
-                .ok_or_else(|| Error::InvalidModel {
-                    message: "deferred SVG root is missing its viewBox placeholder".to_string(),
-                })?
-                + start;
+        let view_box_range = tracked_ranges.view_box.ok_or_else(|| Error::InvalidModel {
+            message: "deferred SVG root is missing its viewBox placeholder".to_string(),
+        })?;
         let max_width_range = if responsive {
-            let max_width_start =
-                root_open
-                    .find(MAX_WIDTH_PLACEHOLDER)
+            Some(
+                tracked_ranges
+                    .max_width
                     .ok_or_else(|| Error::InvalidModel {
                         message: "deferred SVG root is missing its max-width placeholder"
                             .to_string(),
-                    })?
-                    + start;
-            Some(max_width_start..max_width_start + MAX_WIDTH_PLACEHOLDER.len())
+                    })?,
+            )
         } else {
             None
         };
@@ -407,10 +432,14 @@ impl<'a> RootViewportContext<'a> {
         Ok(RootDocument {
             family: self.family,
             diagram_id: self.diagram_id.to_string(),
-            view_box_range: view_box_start..view_box_start + VIEW_BOX_PLACEHOLDER.len(),
-            max_width_range,
-            responsive,
-            background: spec.background,
+            state: RootDocumentState::Deferred {
+                view_box_range,
+                max_width_range,
+                responsive,
+                background: spec.background,
+                root_open_snapshot: out.clone(),
+                root_open_end: out.len(),
+            },
         })
     }
 
@@ -419,17 +448,32 @@ impl<'a> RootViewportContext<'a> {
         out: &mut String,
         document: RootDocument,
         spec: RootViewportSpec,
-    ) -> Result<RootViewportPlan> {
-        if document.family != self.family
-            || document.diagram_id != self.diagram_id
-            || document.background != spec.background
-        {
+    ) -> Result<RootDocument> {
+        if document.family != self.family || document.diagram_id != self.diagram_id {
+            return Err(Error::InvalidModel {
+                message: "deferred root document belongs to a different render context".to_string(),
+            });
+        }
+        let RootDocumentState::Deferred {
+            view_box_range,
+            max_width_range,
+            responsive,
+            background,
+            root_open_snapshot,
+            mut root_open_end,
+        } = document.state
+        else {
+            return Err(Error::InvalidModel {
+                message: "root document viewport was already finalized".to_string(),
+            });
+        };
+        if background != spec.background {
             return Err(Error::InvalidModel {
                 message: "deferred root document belongs to a different render context".to_string(),
             });
         }
         let plan = self.plan(spec)?;
-        if plan.responsive != document.responsive || plan.height.is_some() {
+        if plan.responsive != responsive || plan.height.is_some() {
             return Err(Error::InvalidModel {
                 message: "deferred root sizing changed between open and finalize".to_string(),
             });
@@ -437,9 +481,9 @@ impl<'a> RootViewportContext<'a> {
         let view_box = plan.view_box.ok_or_else(|| Error::InvalidModel {
             message: "deferred root viewport did not resolve a viewBox".to_string(),
         })?;
-        if out.get(document.view_box_range.clone()) != Some(VIEW_BOX_PLACEHOLDER)
-            || document
-                .max_width_range
+        if out.get(..root_open_end) != Some(root_open_snapshot.as_str())
+            || out.get(view_box_range.clone()) != Some(VIEW_BOX_PLACEHOLDER)
+            || max_width_range
                 .as_ref()
                 .is_some_and(|range| out.get(range.clone()) != Some(MAX_WIDTH_PLACEHOLDER))
         {
@@ -447,8 +491,8 @@ impl<'a> RootViewportContext<'a> {
                 message: "deferred root document was mutated before viewport finalize".to_string(),
             });
         }
-        let mut replacements = vec![(document.view_box_range, view_box.attr())];
-        match (document.max_width_range, plan.responsive) {
+        let mut replacements = vec![(view_box_range, view_box.attr())];
+        match (max_width_range, plan.responsive) {
             (Some(range), true) => replacements.push((range, plan.max_width.clone())),
             (None, false) => {}
             _ => {
@@ -459,9 +503,26 @@ impl<'a> RootViewportContext<'a> {
         }
         replacements.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
         for (range, replacement) in replacements {
+            root_open_end = root_open_end
+                .checked_add(replacement.len())
+                .and_then(|end| end.checked_sub(range.len()))
+                .ok_or_else(|| Error::InvalidModel {
+                    message: "deferred root attribute replacement overflowed".to_string(),
+                })?;
             out.replace_range(range, replacement.as_str());
         }
-        Ok(plan)
+        let root_open = out
+            .get(..root_open_end)
+            .ok_or_else(|| Error::InvalidModel {
+                message: "deferred root document was truncated before viewport finalize"
+                    .to_string(),
+            })?
+            .to_string();
+        Ok(RootDocument {
+            family: self.family,
+            diagram_id: self.diagram_id.to_string(),
+            state: RootDocumentState::Ready { root_open },
+        })
     }
 
     pub(super) fn write_open(
@@ -469,7 +530,7 @@ impl<'a> RootViewportContext<'a> {
         out: &mut String,
         spec: RootViewportSpec,
         chrome: RootChrome<'_>,
-    ) -> Result<()> {
+    ) -> Result<RootDocument> {
         if chrome.diagram_id != self.diagram_id {
             return Err(Error::InvalidModel {
                 message: format!(
@@ -487,7 +548,8 @@ impl<'a> RootViewportContext<'a> {
         out: &mut String,
         plan: &RootViewportPlan,
         chrome: RootChrome<'_>,
-    ) -> Result<()> {
+    ) -> Result<RootDocument> {
+        self.require_empty_document(out)?;
         if plan.family != self.family
             || plan.diagram_id != self.diagram_id
             || chrome.diagram_id != self.diagram_id
@@ -515,8 +577,8 @@ impl<'a> RootViewportContext<'a> {
                 class: chrome.class,
                 width,
                 height_attr: plan.height.as_deref(),
-                style_attr: plan.style.as_deref(),
-                viewbox_attr: viewbox_attr.as_deref(),
+                style_attr: plan.style.as_deref().map(SvgRootAttributeValue::plain),
+                viewbox_attr: viewbox_attr.as_deref().map(SvgRootAttributeValue::plain),
                 style_viewbox_order: chrome.dom.style_viewbox_order,
                 style_placement,
                 responsive_height_placement: chrome.dom.responsive_height_placement,
@@ -531,7 +593,50 @@ impl<'a> RootViewportContext<'a> {
                 aria_attr_order: chrome.dom.aria_attr_order,
             },
         );
-        Ok(())
+        Ok(RootDocument {
+            family: self.family,
+            diagram_id: self.diagram_id.to_string(),
+            state: RootDocumentState::Ready {
+                root_open: out.clone(),
+            },
+        })
+    }
+
+    fn complete_document(&self, out: String, document: RootDocument) -> Result<RootedSvg> {
+        if document.family != self.family || document.diagram_id != self.diagram_id {
+            return Err(Error::InvalidModel {
+                message: "root document belongs to a different render context".to_string(),
+            });
+        }
+        let RootDocumentState::Ready { root_open } = document.state else {
+            return Err(Error::InvalidModel {
+                message: "root document viewport was not finalized".to_string(),
+            });
+        };
+        if !out.starts_with(&root_open) {
+            return Err(Error::InvalidModel {
+                message: "family mutated operation-owned SVG root attributes".to_string(),
+            });
+        }
+        if !out.trim_end().ends_with("</svg>") {
+            return Err(Error::InvalidModel {
+                message: "family returned an incomplete SVG root document".to_string(),
+            });
+        }
+        Ok(RootedSvg {
+            svg: out,
+            family: self.family,
+            diagram_id: self.diagram_id.to_string(),
+        })
+    }
+
+    fn require_empty_document(&self, out: &str) -> Result<()> {
+        if out.is_empty() {
+            return Ok(());
+        }
+        Err(Error::InvalidModel {
+            message: "root SVG emission must begin with an empty document buffer".to_string(),
+        })
     }
 
     pub(super) fn plan(&self, spec: RootViewportSpec) -> Result<RootViewportPlan> {
@@ -600,6 +705,42 @@ impl<'a> RootViewportContext<'a> {
             responsive,
             max_width,
         })
+    }
+}
+
+impl RootedSvg {
+    pub(super) fn into_string_for(self, expected_family: RenderFamilyKind) -> Result<String> {
+        if self.family != expected_family {
+            return Err(Error::InvalidModel {
+                message: format!(
+                    "{} root document '{}' was returned for {expected_family}",
+                    self.family, self.diagram_id
+                ),
+            });
+        }
+        Ok(self.svg)
+    }
+}
+
+impl std::ops::Deref for RootedSvg {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.svg
+    }
+}
+
+impl std::fmt::Display for RootedSvg {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.svg)
+    }
+}
+
+impl RootDocument {
+    pub(super) fn complete(self, out: String) -> Result<RootedSvg> {
+        let family = self.family;
+        let diagram_id = self.diagram_id.clone();
+        RootViewportContext::new(family, &diagram_id).complete_document(out, self)
     }
 }
 
@@ -725,13 +866,72 @@ pub(super) enum SvgRootFixedHeightPlacement {
     AfterClass,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SvgRootAttributeValue<'a> {
+    Plain(&'a str),
+    Tracked {
+        prefix: &'a str,
+        value: &'a str,
+        suffix: &'a str,
+    },
+}
+
+impl<'a> SvgRootAttributeValue<'a> {
+    const fn plain(value: &'a str) -> Self {
+        Self::Plain(value)
+    }
+
+    const fn tracked(prefix: &'a str, value: &'a str, suffix: &'a str) -> Self {
+        Self::Tracked {
+            prefix,
+            value,
+            suffix,
+        }
+    }
+
+    fn write_escaped(self, out: &mut String) -> Option<Range<usize>> {
+        match self {
+            Self::Plain(value) => {
+                escape_attr_into(out, value);
+                None
+            }
+            Self::Tracked {
+                prefix,
+                value,
+                suffix,
+            } => {
+                escape_attr_into(out, prefix);
+                let start = out.len();
+                escape_attr_into(out, value);
+                let end = out.len();
+                escape_attr_into(out, suffix);
+                Some(start..end)
+            }
+        }
+    }
+}
+
+fn deferred_root_style(background: RootBackground) -> SvgRootAttributeValue<'static> {
+    let suffix = match background {
+        RootBackground::None => "px;",
+        RootBackground::White => "px; background-color: white;",
+    };
+    SvgRootAttributeValue::tracked("max-width: ", MAX_WIDTH_PLACEHOLDER, suffix)
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct SvgRootTrackedRanges {
+    view_box: Option<Range<usize>>,
+    max_width: Option<Range<usize>>,
+}
+
 struct SvgRootAttrs<'a> {
     diagram_id: &'a str,
     class: Option<&'a str>,
     width: SvgRootWidth<'a>,
     height_attr: Option<&'a str>,
-    style_attr: Option<&'a str>,
-    viewbox_attr: Option<&'a str>,
+    style_attr: Option<SvgRootAttributeValue<'a>>,
+    viewbox_attr: Option<SvgRootAttributeValue<'a>>,
     style_viewbox_order: SvgRootStyleViewBoxOrder,
     style_placement: RootStylePlacement,
     responsive_height_placement: RootResponsiveHeightPlacement,
@@ -746,7 +946,20 @@ struct SvgRootAttrs<'a> {
     aria_attr_order: SvgRootAriaAttrOrder,
 }
 
-fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
+fn push_svg_root_attribute(
+    out: &mut String,
+    name: &str,
+    value: SvgRootAttributeValue<'_>,
+) -> Option<Range<usize>> {
+    out.push(' ');
+    out.push_str(name);
+    out.push_str(r#"=""#);
+    let tracked_range = value.write_escaped(out);
+    out.push('"');
+    tracked_range
+}
+
+fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) -> SvgRootTrackedRanges {
     let SvgRootAttrs {
         diagram_id,
         class,
@@ -772,6 +985,7 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
     // id, width/height (with configurable fixed-height placement), xmlns, class?,
     // style?/viewBox (configurable), extra-attrs..., role, aria-roledescription, aria-*, tail-attrs..., >\n?
     let mut deferred_height_after_class: Option<&str> = None;
+    let mut tracked_ranges = SvgRootTrackedRanges::default();
     out.push_str(r#"<svg id=""#);
     escape_attr_into(out, diagram_id);
     let responsive_height_attr = matches!(width, SvgRootWidth::Percent100)
@@ -832,28 +1046,20 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
             if style_placement == RootStylePlacement::Viewport
                 && let Some(style_attr) = style_attr
             {
-                out.push_str(r#" style=""#);
-                escape_attr_into(out, style_attr);
-                out.push('"');
+                tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr);
             }
             if let Some(viewbox_attr) = viewbox_attr {
-                out.push_str(r#" viewBox=""#);
-                escape_attr_into(out, viewbox_attr);
-                out.push('"');
+                tracked_ranges.view_box = push_svg_root_attribute(out, "viewBox", viewbox_attr);
             }
         }
         SvgRootStyleViewBoxOrder::ViewBoxThenStyle => {
             if let Some(viewbox_attr) = viewbox_attr {
-                out.push_str(r#" viewBox=""#);
-                escape_attr_into(out, viewbox_attr);
-                out.push('"');
+                tracked_ranges.view_box = push_svg_root_attribute(out, "viewBox", viewbox_attr);
             }
             if style_placement == RootStylePlacement::Viewport
                 && let Some(style_attr) = style_attr
             {
-                out.push_str(r#" style=""#);
-                escape_attr_into(out, style_attr);
-                out.push('"');
+                tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr);
             }
         }
     }
@@ -885,9 +1091,7 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
     if style_placement == RootStylePlacement::AfterRoleDescription
         && let Some(style_attr) = style_attr
     {
-        out.push_str(r#" style=""#);
-        escape_attr_into(out, style_attr);
-        out.push('"');
+        tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr);
     }
     for (k, v) in after_roledescription_attrs {
         out.push(' ');
@@ -926,9 +1130,7 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
     if style_placement == RootStylePlacement::Tail
         && let Some(style_attr) = style_attr
     {
-        out.push_str(r#" style=""#);
-        escape_attr_into(out, style_attr);
-        out.push('"');
+        tracked_ranges.max_width = push_svg_root_attribute(out, "style", style_attr);
     }
     for (k, v) in tail_attrs {
         out.push(' ');
@@ -942,6 +1144,7 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
     if trailing_newline {
         out.push('\n');
     }
+    tracked_ranges
 }
 
 #[cfg(test)]
@@ -1044,6 +1247,88 @@ mod tests {
     }
 
     #[test]
+    fn completed_root_document_carries_family_provenance() {
+        let context = computed_context(RenderFamilyKind::Info, "root-id");
+        let mut chrome = RootChrome::new("root-id", "info");
+        chrome.dom.trailing_newline = false;
+        let mut out = String::new();
+        let document = context
+            .write_open(
+                &mut out,
+                RootViewportSpec::responsive_without_view_box(400.0),
+                chrome,
+            )
+            .unwrap();
+        out.push_str("</svg>");
+
+        let svg = document
+            .complete(out)
+            .unwrap()
+            .into_string_for(RenderFamilyKind::Info)
+            .unwrap();
+
+        assert!(svg.starts_with(r#"<svg id="root-id""#));
+        assert!(svg.ends_with("</svg>"));
+    }
+
+    #[test]
+    fn completed_root_document_rejects_root_attribute_mutation() {
+        let context = computed_context(RenderFamilyKind::Info, "root-id");
+        let mut chrome = RootChrome::new("root-id", "info");
+        chrome.dom.trailing_newline = false;
+        let mut out = String::new();
+        let document = context
+            .write_open(
+                &mut out,
+                RootViewportSpec::responsive_without_view_box(400.0),
+                chrome,
+            )
+            .unwrap();
+        out = out.replacen(r#"id="root-id""#, r#"id="forged""#, 1);
+        out.push_str("</svg>");
+
+        let error = document.complete(out).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("mutated operation-owned SVG root attributes")
+        );
+    }
+
+    #[test]
+    fn completed_root_document_rejects_incomplete_and_wrong_family_outputs() {
+        let context = computed_context(RenderFamilyKind::Info, "root-id");
+        let mut chrome = RootChrome::new("root-id", "info");
+        chrome.dom.trailing_newline = false;
+        let mut incomplete = String::new();
+        let incomplete_document = context
+            .write_open(
+                &mut incomplete,
+                RootViewportSpec::responsive_without_view_box(400.0),
+                chrome,
+            )
+            .unwrap();
+        let error = incomplete_document.complete(incomplete).unwrap_err();
+        assert!(error.to_string().contains("incomplete SVG root document"));
+
+        let mut complete = String::new();
+        let complete_document = context
+            .write_open(
+                &mut complete,
+                RootViewportSpec::responsive_without_view_box(400.0),
+                RootChrome::new("root-id", "info"),
+            )
+            .unwrap();
+        complete.push_str("</svg>");
+        let error = complete_document
+            .complete(complete)
+            .unwrap()
+            .into_string_for(RenderFamilyKind::Venn)
+            .unwrap_err();
+        assert!(error.to_string().contains("was returned for venn"));
+    }
+
+    #[test]
     fn deferred_document_finalizes_computed_root_without_leaking_markers() {
         let diagram_id = "stress_state_accdescr_block_and_markdown_labels_049";
         let context = RootViewportContext::new(RenderFamilyKind::State, diagram_id);
@@ -1054,7 +1339,7 @@ mod tests {
             .begin_document(&mut out, DeferredRootSpec::responsive(), chrome)
             .unwrap();
         out.push_str("<g/></svg>");
-        let plan = context
+        let document = context
             .finish_document(
                 &mut out,
                 document,
@@ -1063,10 +1348,42 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(plan.view_box(), Some(ViewBox::new(0.0, 0.0, 10.0, 10.0)));
+        let rooted = document.complete(out.clone()).unwrap();
+        assert_eq!(rooted.family, RenderFamilyKind::State);
         assert!(out.contains(r#"viewBox="0 0 10 10""#));
         assert!(out.contains("max-width: 10px"));
         assert!(!out.contains("__MERMAN_ROOT_"));
+    }
+
+    #[test]
+    fn deferred_document_tracks_root_attributes_when_a_valid_id_matches_markers() {
+        let diagram_id = format!("valid_{VIEW_BOX_PLACEHOLDER}_{MAX_WIDTH_PLACEHOLDER}_diagram");
+        let context = RootViewportContext::new(RenderFamilyKind::State, &diagram_id);
+        let mut chrome = RootChrome::new(&diagram_id, "stateDiagram");
+        chrome.dom.trailing_newline = false;
+        let mut out = String::new();
+        let document = context
+            .begin_document(&mut out, DeferredRootSpec::responsive(), chrome)
+            .unwrap();
+        out.push_str("</svg>");
+        let document = context
+            .finish_document(
+                &mut out,
+                document,
+                RootViewportSpec::responsive(DiagramBounds::from_view_box(1.0, 2.0, 30.0, 40.0))
+                    .with_max_width(RootMaxWidth::CssSixSignificant(30.0)),
+            )
+            .unwrap();
+
+        let rooted = document.complete(out).unwrap();
+        let document = roxmltree::Document::parse(&rooted).unwrap();
+        let root = document.root_element();
+        assert_eq!(root.attribute("id"), Some(diagram_id.as_str()));
+        assert_eq!(root.attribute("viewBox"), Some("1 2 30 40"));
+        assert_eq!(
+            root.attribute("style"),
+            Some("max-width: 30px; background-color: white;")
+        );
     }
 
     #[test]
@@ -1093,6 +1410,61 @@ mod tests {
                 .contains("mutated before viewport finalize")
         );
     }
+
+    #[test]
+    fn deferred_document_rejects_untracked_root_attribute_insertion() {
+        let context = computed_context(RenderFamilyKind::State, "state");
+        let mut chrome = RootChrome::new("state", "stateDiagram");
+        chrome.dom.trailing_newline = false;
+        let mut out = String::new();
+        let document = context
+            .begin_document(&mut out, DeferredRootSpec::responsive(), chrome)
+            .unwrap();
+        let root_open_end = out.rfind('>').expect("root open delimiter");
+        out.insert_str(root_open_end, r#" data-forged="true""#);
+
+        let error = context
+            .finish_document(
+                &mut out,
+                document,
+                RootViewportSpec::responsive(DiagramBounds::from_view_box(0.0, 0.0, 10.0, 10.0)),
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("mutated before viewport finalize")
+        );
+    }
+
+    #[test]
+    fn deferred_document_rejects_same_length_root_tail_mutation() {
+        let context = computed_context(RenderFamilyKind::State, "state");
+        let mut chrome = RootChrome::new("state", "stateDiagram");
+        chrome.dom.trailing_newline = false;
+        let mut out = String::new();
+        let document = context
+            .begin_document(&mut out, DeferredRootSpec::responsive(), chrome)
+            .unwrap();
+        let start = out
+            .find("stateDiagram")
+            .expect("root aria role description");
+        out.replace_range(start..start + "stateDiagram".len(), "stateDiagrax");
+
+        let error = context
+            .finish_document(
+                &mut out,
+                document,
+                RootViewportSpec::responsive(DiagramBounds::from_view_box(0.0, 0.0, 10.0, 10.0)),
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("mutated before viewport finalize")
+        );
+    }
+
     #[test]
     fn css_max_width_uses_mermaid_six_significant_digit_format() {
         assert_eq!(format_css_max_width(1184.88), "1184.88");

@@ -34,6 +34,7 @@
       "browser-render",
       "browser-render-only",
       "browser-ascii",
+      "browser-editor",
       "browser-full",
       "browser-full-no-elk",
       "browser-ratex-math"
@@ -43,11 +44,14 @@
       "browser-render",
       "browser-render-only",
       "browser-ascii",
+      "browser-editor",
       "browser-full",
       "browser-full-no-elk",
       "browser-ratex-math"
     ],
-    "web_subpaths": [".", "./core", "./render", "./render-only", "./ascii", "./full"],
+    "web_descriptor": "platforms/web/web-surface-descriptor.json",
+    "web_default_preset": "browser-full",
+    "web_subpaths": [".", "./core", "./render", "./render-only", "./ascii", "./editor", "./full"],
     "analysis_subpath": null
   },
   "surfaces": [
@@ -250,8 +254,8 @@
       "install": "npm install @mermanjs/web@{version}",
       "support_level": "published",
       "dependency_weight": "preset-dependent",
-      "capabilities": ["browser-wasm", "analysis", "render-svg", "ascii", "editor-language", "optional-ratex"],
-      "docs": ["README.md", "platforms/web/README.md", "docs/release/PACKAGE_SURFACES.md"],
+      "capabilities": ["browser-wasm", "analysis", "render-svg", "ascii", "editor-language", "editor-worker", "optional-ratex"],
+      "docs": ["README.md", "platforms/web/README.md", "docs/release/PACKAGE_SURFACES.md", "docs/adr/0069-wasm-package-surface-semantics.md", "docs/adr/0074-browser-runtime-and-benchmark-ownership.md"],
       "packages": [
         { "kind": "npm", "name": "@mermanjs/web", "manifest": "platforms/web/package.json" },
         { "kind": "crate", "name": "merman-wasm", "manifest": "crates/merman-wasm/Cargo.toml" }
@@ -269,7 +273,8 @@
       "gates": [
         "npm run check:contracts --prefix platforms/web",
         "npm run build --prefix platforms/web",
-        "npm run prepack --prefix platforms/web"
+        "npm run prepack --prefix platforms/web",
+        "cargo run -p xtask -- wasm-size-matrix --surface browser --preset browser-editor --budget-file docs/release/WASM_SIZE_BUDGETS.json"
       ]
     },
     {

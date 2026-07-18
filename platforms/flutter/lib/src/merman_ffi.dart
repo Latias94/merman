@@ -5,8 +5,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-/// C ABI version expected by this Dart binding.
-const int mermanAbiVersion = 2;
+import 'generated/text_measurement_abi.dart';
 
 /// Result status codes returned by the native `merman-ffi` ABI.
 enum MermanStatus {
@@ -294,54 +293,6 @@ enum MermanTextMeasurementPhase {
     }
     return null;
   }
-}
-
-/// Exact text-measurement primitive requested by the native renderer.
-enum MermanTextMeasurementOperation {
-  measure(0),
-  computedLength(1),
-  bboxX(2),
-  bboxXWithAsciiOverhang(3),
-  titleBBoxX(4),
-  simpleBBoxWidth(5),
-  rawBBoxWidth(6),
-  tspanBBoxWidth(7),
-  tspanBBoxHeight(8),
-  wrapProbeBBoxWidth(9),
-  simpleBBoxHeight(10),
-  wrapped(11),
-  wrappedWithRawWidth(12),
-  boundingClientRectWidth(13),
-  createTextBBoxYOffset(14),
-  mermaidCalculateTextDimensions(15),
-  canvasMeasureTextWidth(16),
-  createTextMiddleBBoxYOffset(17),
-  rawBBoxHeight(18);
-
-  const MermanTextMeasurementOperation(this.code);
-
-  final int code;
-
-  static MermanTextMeasurementOperation? fromCode(int code) {
-    for (final value in values) {
-      if (value.code == code) {
-        return value;
-      }
-    }
-    return null;
-  }
-}
-
-/// Shape of a handled host text-measurement result.
-enum MermanTextMeasurementResultKind {
-  metrics(0),
-  length(1),
-  horizontalExtents(2),
-  wrappedWithRawWidth(3);
-
-  const MermanTextMeasurementResultKind(this.code);
-
-  final int code;
 }
 
 /// Dart representation of a native host text-measurement request.

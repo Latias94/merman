@@ -2,19 +2,69 @@ use crate::cli::{MathRendererKind, ParseCliArgs, RenderCliArgs, TextMeasurerKind
 use crate::error::CliError;
 use crate::io::read_named_text_file;
 use merman::render::{
-    HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer, RenderEnvironment,
-    RenderTimeSnapshot, SvgRenderOptions, TextMeasurementPolicy,
+    FixedRenderClock, HeadlessRenderer, IconRegistry, LayoutOptions, MathRenderer,
+    RenderEnvironment, RenderTimeSnapshot, SvgRenderOptions, TextMeasurementPolicy,
 };
-use merman::{Engine, MermaidConfig, ParseOptions};
+use merman::{Engine, MermaidConfig, ParseOptions, time::LocalTimeZone};
 use serde_json::Value;
 use std::sync::Arc;
 
 pub(crate) fn engine_for(parse: &ParseCliArgs, render: &RenderCliArgs) -> Result<Engine, CliError> {
     let site_config = site_config_for(parse, render)?;
-    Ok(Engine::new()
-        .with_fixed_today(parse.fixed_today)
-        .with_fixed_local_offset_minutes(parse.fixed_local_offset_minutes)
-        .with_site_config(site_config))
+    let time = ResolvedCliTimePolicy::new(parse)?;
+    Ok(time.apply_engine(Engine::new().with_site_config(site_config)))
+}
+
+#[derive(Debug, Clone)]
+struct ResolvedCliTimePolicy {
+    today: Option<chrono::NaiveDate>,
+    time_zone: LocalTimeZone,
+    snapshot: Option<RenderTimeSnapshot>,
+    captures_environment: bool,
+}
+
+impl ResolvedCliTimePolicy {
+    fn new(parse: &ParseCliArgs) -> Result<Self, CliError> {
+        let time_zone = match parse.fixed_local_offset_minutes {
+            Some(offset_minutes) => LocalTimeZone::fixed(offset_minutes)
+                .map_err(|err| CliError::InvalidInput(err.to_string()))?,
+            None => LocalTimeZone::system(),
+        };
+        let snapshot = parse
+            .fixed_today
+            .map(|today| RenderTimeSnapshot::from_local_midnight(today, &time_zone))
+            .transpose()
+            .map_err(|err| {
+                CliError::InvalidInput(format!("--fixed-today cannot be resolved: {err}"))
+            })?;
+        Ok(Self {
+            today: parse.fixed_today,
+            time_zone,
+            snapshot,
+            captures_environment: parse.fixed_today.is_some()
+                || parse.fixed_local_offset_minutes.is_some(),
+        })
+    }
+
+    fn apply_engine(&self, engine: Engine) -> Engine {
+        engine
+            .with_fixed_today(self.today)
+            .with_local_time_zone(self.time_zone.clone())
+    }
+
+    fn apply_environment(&self, mut environment: RenderEnvironment) -> RenderEnvironment {
+        if let Some(snapshot) = self.snapshot {
+            environment = environment.with_clock(Arc::new(FixedRenderClock::new(snapshot)));
+        }
+        if self.captures_environment {
+            environment = environment.with_local_time_zone(self.time_zone.clone());
+        }
+        environment
+    }
+}
+
+pub(crate) fn validate_time_policy(parse: &ParseCliArgs) -> Result<(), CliError> {
+    ResolvedCliTimePolicy::new(parse).map(|_| ())
 }
 
 pub(crate) fn site_config_for(
@@ -97,6 +147,7 @@ pub(crate) fn renderer_for(
     render: &RenderCliArgs,
     icon_registry: Option<Arc<IconRegistry>>,
 ) -> Result<HeadlessRenderer, CliError> {
+    let time = ResolvedCliTimePolicy::new(parse)?;
     let mut environment = RenderEnvironment::host()
         .with_text_measurement_policy(text_measurement_policy(render.text_measurer))
         .with_resource_limits(merman::render::RenderResourceLimits::for_profile(
@@ -108,7 +159,7 @@ pub(crate) fn renderer_for(
     if let Some(registry) = icon_registry {
         environment = environment.with_icon_registry(registry);
     }
-    environment = apply_render_time_policy(environment, parse)?;
+    environment = time.apply_environment(environment);
 
     let svg = SvgRenderOptions {
         diagram_id: render
@@ -119,38 +170,13 @@ pub(crate) fn renderer_for(
     };
 
     Ok(HeadlessRenderer::new()
-        .with_engine(engine_for(parse, render)?)
+        .with_engine(
+            time.apply_engine(Engine::new().with_site_config(site_config_for(parse, render)?)),
+        )
         .with_parse_options(parse_options(parse))
         .with_environment(environment)
         .with_layout_options(layout_options(render))
         .with_svg_options(svg))
-}
-
-fn apply_render_time_policy(
-    environment: RenderEnvironment,
-    parse: &ParseCliArgs,
-) -> Result<RenderEnvironment, CliError> {
-    match (parse.fixed_today, parse.fixed_local_offset_minutes) {
-        (Some(today), requested_offset) => {
-            let offset_minutes = requested_offset
-                .unwrap_or_else(|| chrono::Local::now().offset().local_minus_utc() / 60);
-            let local_midnight = today.and_hms_opt(0, 0, 0).expect("valid midnight");
-            let utc_midnight =
-                local_midnight - chrono::TimeDelta::minutes(i64::from(offset_minutes));
-            let unix_ms = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
-                utc_midnight,
-                chrono::Utc,
-            )
-            .timestamp_millis();
-            let snapshot = RenderTimeSnapshot::from_unix_millis(unix_ms, offset_minutes)
-                .map_err(|err| CliError::InvalidInput(err.to_string()))?;
-            Ok(environment.with_time_snapshot(snapshot))
-        }
-        (None, Some(offset_minutes)) => environment
-            .with_fixed_local_offset_minutes(offset_minutes)
-            .map_err(|err| CliError::InvalidInput(err.to_string())),
-        (None, None) => Ok(environment),
-    }
 }
 
 #[cfg(test)]
@@ -175,7 +201,9 @@ mod tests {
         };
         let environment =
             RenderEnvironment::parity().with_clock(Arc::new(AdvancingClock(AtomicUsize::new(0))));
-        let environment = apply_render_time_policy(environment, &parse).expect("CLI time policy");
+        let environment = ResolvedCliTimePolicy::new(&parse)
+            .expect("CLI time policy")
+            .apply_environment(environment);
 
         let first = environment.begin_session().expect("first session");
         let second = environment.begin_session().expect("second session");
@@ -184,5 +212,19 @@ mod tests {
         assert_eq!(second.time().unix_ms(), 86_400_000);
         assert_eq!(first.time().local_offset_minutes(), 480);
         assert_eq!(second.time().local_offset_minutes(), 480);
+    }
+
+    #[test]
+    fn boundary_fixed_today_returns_invalid_input_instead_of_panicking() {
+        let parse = ParseCliArgs {
+            fixed_today: Some(chrono::NaiveDate::MIN),
+            fixed_local_offset_minutes: Some(1439),
+            ..Default::default()
+        };
+
+        let error =
+            ResolvedCliTimePolicy::new(&parse).expect_err("boundary instant must be rejected");
+        assert!(matches!(error, CliError::InvalidInput(_)));
+        assert!(error.to_string().contains("local datetime"));
     }
 }

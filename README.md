@@ -36,7 +36,7 @@ Mermaid license and provenance notes.
 
 | You want to... | Start with | Notes |
 | --- | --- | --- |
-| Try or share Mermaid diagrams in the browser | [Merman Playground](https://frankorz.com/merman/) | Static live editor powered by the wasm web package. |
+| Try or share Mermaid diagrams in the browser | [Merman Playground](https://frankorz.com/merman/) | Local-first Monaco editor with Rust/WASM diagnostics, completion, hover, navigation, rename, semantic tokens, SVG/ASCII, Compare, and phase-correct local benchmarks. |
 | Render Mermaid from Rust | [`merman`](https://crates.io/crates/merman) | Enable `render` for SVG, `ascii` for terminal text, `raster` for PNG/JPG/PDF. |
 | Use a command-line tool | [`merman-cli`](https://crates.io/crates/merman-cli) / [Homebrew](https://formulae.brew.sh/formula/merman-cli) | Detect, parse, layout, render SVG, render raster formats, and render ASCII/Unicode text. |
 | Lint Mermaid without rendering | [`merman-analysis`](https://crates.io/crates/merman-analysis) / `merman-cli lint` | Diagnostics, lint metadata, Markdown/MDX fence handling, and source ranges without pulling in SVG rendering. |
@@ -867,12 +867,22 @@ users who want less code loaded in browser bundles:
 | `@mermanjs/web/render` | `browser-render` | SVG/layout/parse plus analysis and validation; no ASCII or editor-language wrappers. |
 | `@mermanjs/web/render-only` | `browser-render-only` | SVG/layout/parse and metadata only; no analysis, validation, lint catalog, ASCII, or editor-language wrappers. |
 | `@mermanjs/web/ascii` | `browser-ascii` | ASCII/Unicode rendering and metadata only; no analysis, SVG/layout/parse, or editor-language wrappers. |
+| `@mermanjs/web/editor` | `browser-editor` | Full 35-family analysis and parser-backed editor intelligence for a module Worker; no SVG, ASCII, host, or ELK wrappers. |
 | `@mermanjs/web/full` | `browser-full` | Explicit full-preset import, equivalent to the default package. |
 
 There is no `@mermanjs/web/analysis` subpath because `@mermanjs/web/core` is already the smallest
 analysis-capable browser artifact. Source and CI builds can still use custom presets such as
 `browser-full-no-elk` and `browser-ratex-math`; browser callers can inspect the active artifact with
 `bindingCapabilities()`.
+
+The Playground keeps runtime lifecycle, rendering, and language analysis separate. One
+document-owned runtime handles staged WASM loading, retry, BFCache suspension/restoration, exact
+package version, and disposable browser measurement resources. A latest-wins Render Coordinator
+publishes the actual source without synthetic warmup. Local Monaco and a dedicated
+`@mermanjs/web/editor` Worker project the same `merman-editor-core` semantics used by the LSP; the
+browser Worker keeps native ABI 2 and editor/analysis/facts schema 1. Compare and benchmark use
+separate same-origin realms so Mermaid's global configuration cannot race product rendering, and
+the benchmark reports phase events rather than one unfair load/render total.
 
 Typst-compatible WASM uses `merman-typst-plugin`, not `merman-wasm`. The plugin crate exports
 wasm-minimal-protocol functions and is gated so package artifacts import only Typst's `typst_env`

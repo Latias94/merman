@@ -129,11 +129,7 @@ impl<'a> PresentationTheme<'a> {
         set(&mut theme.quadrant3_text_fill, "quadrant3TextFill");
         set(&mut theme.quadrant4_text_fill, "quadrant4TextFill");
 
-        if let Some(v) = self.raw.optional_color("quadrantPointFill")
-            && !is_invalid_css_token(&v)
-        {
-            theme.quadrant_point_fill = v;
-        }
+        set(&mut theme.quadrant_point_fill, "quadrantPointFill");
         set(&mut theme.quadrant_point_text_fill, "quadrantPointTextFill");
         set(
             &mut theme.quadrant_x_axis_text_fill,

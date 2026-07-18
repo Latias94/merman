@@ -957,7 +957,7 @@ impl<'a> ParsePipeline<'a> {
             });
 
         let parse_start = runtime::timing_start(timing_enabled);
-        let parse_res = self.with_fixed_time(|| match resolved {
+        let parse_res = self.with_local_time(|| match resolved {
             Some(resolved) => {
                 if let Some(parser) = combined {
                     parser(editor_input, &meta).map(|(model, facts)| (model, Some(facts)))
@@ -1147,7 +1147,7 @@ impl<'a> ParsePipeline<'a> {
         let preprocess = preprocess_start.map(runtime::timing_elapsed);
 
         let parse_start = runtime::timing_start(timing_enabled);
-        let parse_res = self.with_fixed_time(|| parse(self, source_map.parser_input(), &meta));
+        let parse_res = self.with_local_time(|| parse(self, source_map.parser_input(), &meta));
         let parse = parse_start.map(runtime::timing_elapsed);
 
         let mut model = match parse_res {
@@ -1369,9 +1369,10 @@ impl<'a> ParsePipeline<'a> {
         )))
     }
 
-    fn with_fixed_time<R>(&self, f: impl FnOnce() -> R) -> R {
+    fn with_local_time<R>(&self, f: impl FnOnce() -> Result<R>) -> Result<R> {
+        let time_zone = self.engine.local_time_zone.as_ref().map_err(Clone::clone)?;
         runtime::with_fixed_today_local(self.engine.fixed_today_local, || {
-            runtime::with_fixed_local_offset_minutes(self.engine.fixed_local_offset_minutes, f)
+            runtime::with_local_time_zone(time_zone, f)
         })
     }
 

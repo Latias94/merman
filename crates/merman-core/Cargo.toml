@@ -23,7 +23,7 @@ full = ["full-config", "full-sanitization"]
 full-config = ["dep:granit-parser", "dep:json5"]
 full-sanitization = ["dep:lol_html", "dep:url"]
 host = ["host-clock", "host-random", "host-timing"]
-host-clock = ["chrono/clock", "chrono/wasmbind"]
+host-clock = ["chrono/clock", "chrono/wasmbind", "dep:jiff", "dep:sha2"]
 host-random = ["dep:uuid", "uuid/js", "uuid/v4"]
 host-timing = ["dep:web-time"]
 
@@ -42,8 +42,10 @@ lol_html = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }
 chrono.workspace = true
+jiff = { workspace = true, optional = true }
 ryu-js.workspace = true
 rustc-hash.workspace = true
+sha2 = { workspace = true, optional = true }
 web-time = { workspace = true, optional = true }
 
 [build-dependencies]

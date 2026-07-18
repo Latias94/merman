@@ -120,7 +120,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -179,8 +179,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::C4, diagram_id)
-        .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::C4, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = model
         .acc_title
@@ -764,7 +765,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
 
     out.push_str("</svg>");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]

@@ -138,9 +138,9 @@
         {
           "x": 133.08,
           "y": 405.4,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Emoji reactions",
@@ -156,9 +156,9 @@
         {
           "x": 332.6,
           "y": 108.6,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Audit logging",
@@ -174,9 +174,9 @@
         {
           "x": 86.68,
           "y": 180.68,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Keyboard shortcuts",
@@ -192,9 +192,9 @@
         {
           "x": 439.32,
           "y": 151.0,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Real-time collab",
@@ -210,9 +210,9 @@
         {
           "x": 114.52,
           "y": 278.2,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Email notifications",
@@ -228,9 +228,9 @@
         {
           "x": 272.28,
           "y": 333.32,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Custom themes",
@@ -246,9 +246,9 @@
         {
           "x": 193.4,
           "y": 223.08,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Export to PDF",
@@ -264,9 +264,9 @@
         {
           "x": 392.92,
           "y": 83.16,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "SSO integration",
@@ -282,9 +282,9 @@
         {
           "x": 147.0,
           "y": 121.32,
-          "fill": "rgb(185, 185, 255)",
+          "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "Dark mode support",

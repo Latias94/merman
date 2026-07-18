@@ -154,10 +154,14 @@ may add narrow diagnostics, but they may not rebuild parsing, layout, or SVG ren
 Compatibility JSON checks remain explicit projection tests. They supplement typed operation tests;
 they are not the SVG oracle for built-in families.
 
-Architecture guards and repository audits enforce ownership invariants rather than private naming.
-They reject reintroduction of generic body scans, JSON-first built-in rendering, independent typed
-semantic/layout pairing, hidden production measurers, direct family root override mutation, and
-compare adapters that rebuild the operation.
+Ownership is enforced at interfaces rather than by scanning private spelling. Closed Rust types and
+module visibility make raw compatibility JSON, independent semantic/layout pairs, and unfinalized
+root SVG strings impossible inputs to the canonical path. Compile-fail examples prove those
+boundaries from an external caller's perspective. Completed operation reports and compare evidence
+prove at runtime that verification consumed the typed operation and its selected environment.
+Behavior, snapshot, and parity tests cover numeric and SVG outcomes. Repository source searches may
+inventory migration leftovers once, but parameter names, function prefixes, literals, and source
+substrings are not durable architecture guards.
 
 ## Consequences
 

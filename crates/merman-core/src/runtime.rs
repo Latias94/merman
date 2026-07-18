@@ -1,9 +1,9 @@
-use chrono::{FixedOffset, NaiveDate, NaiveDateTime, TimeZone};
-use std::cell::Cell;
+use chrono::{FixedOffset, NaiveDate, NaiveDateTime};
+use std::cell::{Cell, RefCell};
 
 thread_local! {
     static FIXED_TODAY_LOCAL: Cell<Option<NaiveDate>> = const { Cell::new(None) };
-    static FIXED_LOCAL_OFFSET_MINUTES: Cell<Option<i32>> = const { Cell::new(None) };
+    static LOCAL_TIME_ZONE: RefCell<Option<crate::time::LocalTimeZone>> = const { RefCell::new(None) };
 }
 
 #[cfg(feature = "host-timing")]
@@ -54,22 +54,38 @@ pub(crate) fn timing_zero_duration() -> TimingDuration {
 
 pub(crate) fn with_fixed_today_local<R>(today: Option<NaiveDate>, f: impl FnOnce() -> R) -> R {
     FIXED_TODAY_LOCAL.with(|cell| {
-        let prev = cell.replace(today);
-        let out = f();
-        cell.set(prev);
-        out
+        let previous = cell.replace(today);
+        struct Restore<'a> {
+            cell: &'a Cell<Option<NaiveDate>>,
+            previous: Option<NaiveDate>,
+        }
+        impl Drop for Restore<'_> {
+            fn drop(&mut self) {
+                self.cell.set(self.previous);
+            }
+        }
+        let _restore = Restore { cell, previous };
+        f()
     })
 }
 
-pub(crate) fn with_fixed_local_offset_minutes<R>(
-    offset_minutes: Option<i32>,
+pub(crate) fn with_local_time_zone<R>(
+    time_zone: &crate::time::LocalTimeZone,
     f: impl FnOnce() -> R,
 ) -> R {
-    FIXED_LOCAL_OFFSET_MINUTES.with(|cell| {
-        let prev = cell.replace(offset_minutes);
-        let out = f();
-        cell.set(prev);
-        out
+    LOCAL_TIME_ZONE.with(|cell| {
+        let previous = cell.replace(Some(time_zone.clone()));
+        struct Restore<'a> {
+            cell: &'a RefCell<Option<crate::time::LocalTimeZone>>,
+            previous: Option<crate::time::LocalTimeZone>,
+        }
+        impl Drop for Restore<'_> {
+            fn drop(&mut self) {
+                self.cell.replace(self.previous.take());
+            }
+        }
+        let _restore = Restore { cell, previous };
+        f()
     })
 }
 
@@ -79,53 +95,18 @@ pub(crate) fn today_naive_local() -> NaiveDate {
         .unwrap_or_else(default_today_naive_local)
 }
 
-pub(crate) fn datetime_from_naive_local(naive: NaiveDateTime) -> chrono::DateTime<FixedOffset> {
-    if let Some(mins) = FIXED_LOCAL_OFFSET_MINUTES.with(|cell| cell.get()) {
-        let offset = FixedOffset::east_opt(mins.saturating_mul(60))
-            .unwrap_or_else(crate::time::utc_fixed_offset);
-        return offset
-            .from_local_datetime(&naive)
-            .single()
-            .unwrap_or_else(|| {
-                chrono::DateTime::<FixedOffset>::from_naive_utc_and_offset(naive, offset)
-            });
-    }
-
-    #[cfg(not(feature = "host-clock"))]
-    {
-        return chrono::DateTime::<FixedOffset>::from_naive_utc_and_offset(
-            naive,
-            crate::time::utc_fixed_offset(),
-        );
-    }
-
-    #[cfg(feature = "host-clock")]
-    match chrono::Local.from_local_datetime(&naive) {
-        chrono::LocalResult::Single(dt) => dt.fixed_offset(),
-        chrono::LocalResult::Ambiguous(a, _b) => a.fixed_offset(),
-        chrono::LocalResult::None => chrono::DateTime::<FixedOffset>::from_naive_utc_and_offset(
-            naive,
-            crate::time::utc_fixed_offset(),
-        ),
-    }
+pub(crate) fn datetime_from_naive_local(
+    naive: NaiveDateTime,
+) -> Option<chrono::DateTime<FixedOffset>> {
+    active_local_time_zone().datetime_from_naive_local(naive)
 }
 
 pub(crate) fn datetime_to_local_fixed(
     dt: chrono::DateTime<FixedOffset>,
 ) -> chrono::DateTime<FixedOffset> {
-    if let Some(mins) = FIXED_LOCAL_OFFSET_MINUTES.with(|cell| cell.get()) {
-        let offset = FixedOffset::east_opt(mins.saturating_mul(60))
-            .unwrap_or_else(crate::time::utc_fixed_offset);
-        return dt.with_timezone(&offset);
-    }
-
-    #[cfg(not(feature = "host-clock"))]
-    {
-        return dt.with_timezone(&crate::time::utc_fixed_offset());
-    }
-
-    #[cfg(feature = "host-clock")]
-    dt.with_timezone(&chrono::Local).fixed_offset()
+    active_local_time_zone()
+        .datetime_to_local_fixed(dt)
+        .unwrap_or(dt)
 }
 
 pub(crate) fn datetime_to_naive_local(dt: chrono::DateTime<FixedOffset>) -> NaiveDateTime {
@@ -174,12 +155,41 @@ fn splitmix64(state: u64) -> u64 {
 fn default_today_naive_local() -> NaiveDate {
     #[cfg(feature = "host-clock")]
     {
-        chrono::Local::now().date_naive()
+        let now = chrono::Utc::now().fixed_offset();
+        active_local_time_zone()
+            .datetime_to_local_fixed(now)
+            .map(|local| local.date_naive())
+            .unwrap_or_else(|| now.date_naive())
     }
 
     #[cfg(not(feature = "host-clock"))]
     {
         NaiveDate::from_ymd_opt(1970, 1, 1).unwrap_or(NaiveDate::MIN)
+    }
+}
+
+fn active_local_time_zone() -> crate::time::LocalTimeZone {
+    LOCAL_TIME_ZONE
+        .with(|cell| cell.borrow().clone())
+        .unwrap_or_else(crate::time::LocalTimeZone::ambient)
+}
+
+#[cfg(test)]
+mod time_context_tests {
+    use super::*;
+
+    #[test]
+    fn fixed_today_context_restores_after_panic() {
+        let outer = NaiveDate::from_ymd_opt(2026, 7, 18).expect("valid date");
+        let inner = NaiveDate::from_ymd_opt(2030, 1, 2).expect("valid date");
+
+        with_fixed_today_local(Some(outer), || {
+            let panic = std::panic::catch_unwind(|| {
+                with_fixed_today_local(Some(inner), || panic!("test panic"));
+            });
+            assert!(panic.is_err());
+            assert_eq!(today_naive_local(), outer);
+        });
     }
 }
 
@@ -201,7 +211,7 @@ mod no_host_clock_tests {
             .unwrap()
             .and_hms_opt(3, 4, 5)
             .unwrap();
-        let dt = datetime_from_naive_local(naive);
+        let dt = datetime_from_naive_local(naive).expect("UTC supports this datetime");
 
         assert_eq!(dt.offset(), &crate::time::utc_fixed_offset());
         assert_eq!(datetime_to_naive_local(dt), naive);

@@ -272,11 +272,13 @@ fn assert_close(actual: f64, expected: f64, message: &str) {
 fn architecture_svg_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
+    let engine = Engine::new();
     let handle = std::thread::Builder::new()
         .name("architecture-deep-group-svg".to_string())
         .stack_size(128 * 1024)
         .spawn(move || {
-            render_architecture_text_with_options(
+            render_architecture_text_with_engine_and_options(
+                &engine,
                 &source,
                 &SvgRenderOptions {
                     diagram_id: Some("architecture-deep-groups".to_string()),

@@ -116,7 +116,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     diagram_title: Option<&str>,
     _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let diagram_id_esc = escape_xml(diagram_id);
 
@@ -315,18 +315,19 @@ pub(crate) fn render_journey_diagram_svg_model(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Journey, diagram_id)
-        .write_open(
-            &mut out,
-            root_svg::RootViewportSpec::mermaid(
-                root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
-                layout.use_max_width,
-            )
-            .with_mermaid_responsive_height(layout.use_max_width, svg_height)
-            .with_fixed_size(layout.width, svg_height)
-            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
-            root_chrome,
-        )?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Journey, diagram_id)
+            .write_open(
+                &mut out,
+                root_svg::RootViewportSpec::mermaid(
+                    root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
+                    layout.use_max_width,
+                )
+                .with_mermaid_responsive_height(layout.use_max_width, svg_height)
+                .with_fixed_size(layout.width, svg_height)
+                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
+                root_chrome,
+            )?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(
@@ -552,7 +553,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]

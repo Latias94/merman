@@ -261,7 +261,7 @@ pub(crate) fn render_er_diagram_svg_model(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     // Mermaid's internal diagram type for ER is `er` (not `erDiagram`), and marker ids are derived
     // from this type (e.g. `<diagramId>_er-zeroOrMoreEnd`).
@@ -434,7 +434,7 @@ pub(crate) fn render_er_diagram_svg_model(
     root_chrome.class = Some("erDiagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
-    root_viewport.write_plan(&mut out, &root_plan, root_chrome)?;
+    let root_document = root_viewport.write_plan(&mut out, &root_plan, root_chrome)?;
 
     if has_acc_title {
         let _ = write!(
@@ -1474,7 +1474,7 @@ pub(crate) fn render_er_diagram_svg_model(
     push_er_shadow_defs(&mut out, diagram_id, effective_config);
 
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_er_shadow_defs(

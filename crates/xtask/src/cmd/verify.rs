@@ -47,6 +47,8 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("Default gates:");
         println!("  cargo fmt --check");
         println!("  cargo nextest run");
+        println!("  cargo test -p merman-render --doc");
+        println!("  cargo test -p merman --doc --features render");
         println!("  compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3");
         println!("  compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3");
         println!();
@@ -138,6 +140,24 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         .arg("run")
         .current_dir(&workspace_root);
     run_checked("cargo nextest run", &mut nextest_cmd)?;
+
+    println!("\n== architecture compile-fail contracts ==");
+    for (what, package, features) in [
+        ("cargo test -p merman-render --doc", "merman-render", None),
+        (
+            "cargo test -p merman --doc --features render",
+            "merman",
+            Some("render"),
+        ),
+    ] {
+        let mut doctest_cmd = Command::new("cargo");
+        doctest_cmd.args(["test", "-p", package, "--doc"]);
+        if let Some(features) = features {
+            doctest_cmd.args(["--features", features]);
+        }
+        doctest_cmd.current_dir(&workspace_root);
+        run_checked(what, &mut doctest_cmd)?;
+    }
 
     println!("\n== svg dom structure ==");
     cmd::compare_all_svgs(vec![

@@ -11,6 +11,12 @@ import type {
   LintRuleCategory,
   LintRuleSeverity,
 } from "./public-catalog.js";
+import type { HostTextMeasurementOperation } from "./generated/text-measurement-abi.js";
+
+export type {
+  HostTextMeasurementOperation,
+  HostTextMeasurementResultKind,
+} from "./generated/text-measurement-abi.js";
 
 export interface ParseOptions {
   suppress_errors?: boolean;
@@ -205,27 +211,6 @@ export type HostTextWhiteSpace =
   | "nowrap"
   | "break-spaces"
   | "pre-wrap";
-
-export type HostTextMeasurementOperation =
-  | "measure"
-  | "computed-length"
-  | "bbox-x"
-  | "bbox-x-with-ascii-overhang"
-  | "title-bbox-x"
-  | "simple-bbox-width"
-  | "raw-bbox-width"
-  | "tspan-bbox-width"
-  | "tspan-bbox-height"
-  | "wrap-probe-bbox-width"
-  | "simple-bbox-height"
-  | "wrapped"
-  | "wrapped-with-raw-width"
-  | "bounding-client-rect-width"
-  | "create-text-bbox-y-offset"
-  | "mermaid-calculate-text-dimensions"
-  | "canvas-measure-text-width"
-  | "create-text-middle-bbox-y-offset"
-  | "raw-bbox-height";
 
 export interface HostTextMeasureRequest {
   operation: HostTextMeasurementOperation;

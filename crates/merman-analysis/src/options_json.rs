@@ -143,6 +143,9 @@ fn analysis_option_keys_present(map: &Map<String, Value>) -> bool {
 
 impl AnalysisOptionsJson {
     pub fn to_analysis_options(&self) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
+        let today = self.fixed_today()?;
+        let offset_minutes = self.fixed_local_offset_minutes()?;
+        validate_local_time_combination(today, offset_minutes)?;
         let mut analysis = AnalysisOptions::default()
             .with_parse_options(self.parse_options())
             .with_max_source_bytes(self.max_source_bytes()?);
@@ -150,10 +153,10 @@ impl AnalysisOptionsJson {
         if let Some(site_config) = self.site_config()? {
             analysis = analysis.with_site_config(site_config);
         }
-        if let Some(today) = self.fixed_today()? {
+        if let Some(today) = today {
             analysis = analysis.with_fixed_today(Some(today));
         }
-        if let Some(offset_minutes) = self.fixed_local_offset_minutes()? {
+        if let Some(offset_minutes) = offset_minutes {
             analysis = analysis.with_fixed_local_offset_minutes(Some(offset_minutes));
         }
 
@@ -267,6 +270,38 @@ impl AnalysisOptionsJson {
         }
         Ok(Some(MermaidConfig::from_value(site_config.clone())))
     }
+}
+
+fn validate_local_time_combination(
+    today: Option<NaiveDate>,
+    offset_minutes: Option<i32>,
+) -> Result<(), AnalysisOptionsJsonError> {
+    let Some(today) = today else {
+        return Ok(());
+    };
+    let time_zone = match offset_minutes {
+        Some(offset_minutes) => merman_core::time::LocalTimeZone::fixed(offset_minutes)
+            .map_err(|err| AnalysisOptionsJsonError::new(err.to_string()))?,
+        None => {
+            #[cfg(feature = "core-host")]
+            {
+                merman_core::time::LocalTimeZone::system()
+            }
+            #[cfg(not(feature = "core-host"))]
+            {
+                merman_core::time::LocalTimeZone::utc()
+            }
+        }
+    };
+    let midnight = today
+        .and_hms_opt(0, 0, 0)
+        .expect("every valid date has a valid midnight");
+    if time_zone.datetime_from_naive_local(midnight).is_none() {
+        return Err(AnalysisOptionsJsonError::new(format!(
+            "fixed_today is outside the supported range of the selected local timezone: {today}"
+        )));
+    }
+    Ok(())
 }
 
 fn parse_lint_profile(value: &str) -> Result<AnalysisRuleProfile, AnalysisOptionsJsonError> {

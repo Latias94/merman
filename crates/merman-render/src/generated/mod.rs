@@ -3,3 +3,5 @@
 
 pub mod mermaid_calculate_text_dimensions_font_metrics_11_16_0;
 pub mod mermaid_font_metrics_11_16_0;
+#[rustfmt::skip]
+pub(crate) mod text_measurement_abi;

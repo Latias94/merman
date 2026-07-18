@@ -96,7 +96,7 @@ pub(crate) fn render_kanban_diagram_svg(
     effective_config: &serde_json::Value,
     text_measurer: &dyn crate::text::TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -119,13 +119,14 @@ pub(crate) fn render_kanban_diagram_svg(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Kanban, diagram_id)
-        .write_open(
-            &mut out,
-            root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
-                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
-            root_chrome,
-        )?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Kanban, diagram_id)
+            .write_open(
+                &mut out,
+                root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+                    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+                root_chrome,
+            )?;
 
     let css = kanban_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
@@ -421,7 +422,7 @@ pub(crate) fn render_kanban_diagram_svg(
 
     out.push_str("</g>");
     out.push_str("</svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]
@@ -463,6 +464,7 @@ mod tests {
         with_test_svg_execution(options, |options| {
             render_kanban_diagram_svg(layout, effective_config, &measurer, options)
         })
+        .and_then(|svg| svg.into_string_for(crate::family::RenderFamilyKind::Kanban))
     }
 
     fn attr_f64(tag: &str, name: &str) -> f64 {

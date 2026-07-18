@@ -24,6 +24,8 @@ artifact is useful:
 
 The WASM build uses the workspace `wasm-size` Cargo profile through `wasm-pack --profile
 wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
+`web-surface-descriptor.json` is the machine-readable source for preset features/capabilities and
+public subpath mappings; build, generated-surface, release, and size gates consume that descriptor.
 
 | Preset | Command | Capability |
 | --- | --- | --- |
@@ -31,6 +33,7 @@ wasm-size`. Use `wasm-pack` 0.15.0 or newer for local builds.
 | `browser-render` | `npm run build:wasm:render --prefix platforms/web` | SVG, semantic JSON, layout JSON, metadata, analysis, facts, and validation over the minimal core profile. Editor-language calls are unavailable. |
 | `browser-render-only` | `npm run build:wasm:render-only --prefix platforms/web` | SVG, semantic JSON, layout JSON, and metadata without diagnostics analysis, validation, lint catalog, ASCII, or editor-language dependencies. |
 | `browser-ascii` | `npm run build:wasm:ascii --prefix platforms/web` | ASCII/Unicode rendering and metadata without diagnostics analysis or editor-language dependencies. |
+| `browser-editor` | `npm run build:wasm:editor --prefix platforms/web` | Full 35-family catalog, analysis, and parser-backed editor-language APIs without SVG rendering, ASCII, host capabilities, or ELK. |
 | `browser-full` | `npm run build:wasm:full --prefix platforms/web` | Default browser artifact: full core profile, SVG/layout/parse/analysis/validate, ASCII, editor-language APIs, host browser capabilities, and ELK layout. Includes EPL-backed ELK code. |
 | `browser-full-no-elk` | `node platforms/web/scripts/build-wasm.mjs --preset browser-full-no-elk` | Evidence preset for the full browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
 | `browser-ratex-math` | `npm run build:wasm:ratex-math --prefix platforms/web` | Full browser artifact plus the RaTeX math renderer and ELK layout. Keeps editor-language enabled. |
@@ -52,6 +55,9 @@ Slim subpaths do not export wrappers for capabilities they intentionally omit. F
 exports.
 `@mermanjs/web/ascii` has no analysis, validation, lint catalog, render, parse, layout, or
 editor-language exports.
+`@mermanjs/web/editor` has no render, parse/layout JSON, ASCII, browser text-measurement, host, or
+ELK exports. It includes all 35 full-profile family parsers so browser editor behavior does not
+silently fall back to the tiny registry.
 `bindingCapabilities().analysis` is the supported runtime contract for whether the loaded artifact
 exposes `analyze()`, `analysisFacts()`, `detectDiagramFacts()`, document analysis, validation, and
 `lintRuleCatalog()`.
@@ -72,9 +78,11 @@ The package publishes one default full artifact plus opt-in subpath entry points
 | `@mermanjs/web/render` | `browser-render` | SVG/layout/parse plus metadata, analysis, facts, and validation over the minimal core registry. ASCII and editor API wrappers are not exported. |
 | `@mermanjs/web/render-only` | `browser-render-only` | SVG/layout/parse plus metadata. Analysis, validation, lint catalog, ASCII, and editor API wrappers are not exported. |
 | `@mermanjs/web/ascii` | `browser-ascii` | ASCII/Unicode rendering plus metadata. Analysis, validation, lint catalog, SVG/layout/parse, and editor API wrappers are not exported. |
+| `@mermanjs/web/editor` | `browser-editor` | Full-family analysis, validation, facts, and parser-backed editor APIs for a dedicated Worker. Render, layout, parse JSON, ASCII, host, and ELK wrappers are not exported. |
 | `@mermanjs/web/full` | `browser-full` | Explicit full preset import; equivalent capabilities to the default package. |
 | `@mermanjs/web/catalog` | None | Pure generated diagram/theme/capability catalogs and normalizers; does not initialize or import WASM. |
 | `@mermanjs/web/svg-safety` | None | Pure SVG DOM-safety assertion and policy helpers for isolated render realms; does not initialize or import WASM. |
+| `@mermanjs/web/text-measurement-abi` | None | Generated ABI 2 text-measurement operation descriptors; does not initialize or import WASM. |
 
 There is no separate `@mermanjs/web/analysis` entry point. `@mermanjs/web/core` is already the
 smallest analysis-capable artifact, so an analysis alias would add API surface without reducing the
@@ -255,17 +263,20 @@ The published `@mermanjs/web` package currently ships the `browser-full` artifac
 playgrounds, diagram editors, documentation previews, and applications that need headless Mermaid
 rendering in the browser. Treat it as a feature module, not as first-paint UI code:
 
-- Call `initMerman()` lazily when the editor, preview pane, or first diagram render is needed.
+- Call `initMerman()` lazily when analysis, the preview pane, or the first diagram render is needed.
+- Use `@mermanjs/web/editor` inside a dedicated module Worker when an editor needs the full family
+  catalog and language intelligence without the renderer artifact.
 - Preload on route hover, editor open, or `requestIdleCallback` when you know rendering is likely.
 - Keep one initialized module per page; `initMerman()` is asynchronous, idempotent, and shares
   concurrent initialization work.
-- Serve `pkg/merman_wasm_bg.wasm` with `Content-Type: application/wasm`, gzip or brotli
-  compression, and long-lived immutable caching for versioned assets.
+- Serve content-hashed WASM with `Content-Type: application/wasm`, gzip or brotli compression, and
+  long-lived immutable HTTP caching. HTML should revalidate. Do not add Cache Storage unless the
+  product has an explicit offline lifecycle and freshness contract.
 - Use `renderSvg()` in framework code and mount the returned SVG string through your normal
   framework path. Use `renderSvgElement()` / `renderSvgToElement()` only on the main thread because
   they require `DOMParser` and `document`.
 
-The package publishes subpaths for the core, render, ASCII, and full browser artifacts. Call
+The package publishes subpaths for the core, render, ASCII, editor, and full browser artifacts. Call
 `bindingCapabilities()` after initialization before relying on optional `render`, `ascii`,
 `analysis`, `core_full`, `core_host`, `elk_layout`, `ratex_math`, or `editor_language`
 capabilities.
@@ -287,10 +298,12 @@ cache.
 
 ## Web Worker integration
 
-`@mermanjs/web` does not bundle an opinionated worker wrapper yet. Worker queues, cancellation,
-timeouts, transfer protocol, and framework integration usually belong to the host application. The
-recommended pattern is to initialize Merman once inside a module worker and send SVG strings back to
-the main thread:
+`@mermanjs/web` does not bundle an opinionated worker protocol. Worker queues, cancellation,
+document versioning, timeouts, and framework integration belong to the host application. The
+recommended pattern is to initialize one capability-specific subpath inside a module Worker. For
+language intelligence, use `@mermanjs/web/editor`, keep a URI plus monotonically increasing
+document version, and discard stale query results. For off-main-thread rendering, initialize the
+full or render subpath and send SVG strings back to the main thread:
 
 ```ts
 // merman.worker.ts
@@ -365,6 +378,9 @@ wrappers.
 `@mermanjs/web/ascii` adds `renderAscii()`, `asciiSupportedDiagrams()`, and
 `asciiCapabilities()` without the diagnostics analysis wrappers. Unsupported wrappers are absent
 from slim entry points rather than exported as throwing stubs.
+`@mermanjs/web/editor` exports analysis/facts, validation, metadata, and all editor-language
+queries over the full 35-family catalog. Its native browser ABI is 2; editor diagnostics and shared
+analysis/facts payloads remain schema 1.
 
 All render, parse, layout, analysis, validation, editor, and metadata functions require
 `initMerman()` first. The editor functions are stateless document queries backed by
@@ -381,17 +397,18 @@ family membership alone.
 
 ## Benchmarking against Mermaid JS
 
-The web binding is suitable for browser-to-browser benchmarks after initialization:
+Do not compare one engine after initialization with the other's load plus first render. A valid
+browser comparison uses equivalent isolated Window realms and reports acquisition, initialization,
+valid SVG, and presentation as separate observations. A cold realm is not necessarily a
+network-cold request; retain Resource Timing evidence without inferring cache provenance the
+browser did not expose.
 
-1. Build `@mermanjs/web` once.
-2. Launch one headless Chromium instance.
-3. Initialize `@mermanjs/web` and Mermaid JS before measuring.
-4. Measure repeated `renderSvg()` calls against repeated `mermaid.render()` calls on the same
-   fixtures, theme, viewport width, and warmup/measurement windows.
-
-This is the useful comparison for playground and browser embedding performance. Native
-`merman-cli` benchmarks should be reported separately because they do not include the same runtime
-or DOM costs as Mermaid JS.
+Use identical frozen source/options, await fonts, apply equal real-source warmups, balance AB/BA
+order with a recorded seed, retain raw samples and failures, and omit ratios when either side is
+invalid. Hidden/frozen/navigation boundaries invalidate the run. The Playground implements this as
+benchmark protocol 1 and trace schema 1; Compare's interactive render duration is deliberately not
+the benchmark. Native `merman-cli` benchmarks remain separate because they do not include the same
+realm, module, DOM, or presentation costs.
 
 ## License
 

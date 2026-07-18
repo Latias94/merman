@@ -1,165 +1,120 @@
 # Mermaid Compare Mode
 
-Status: First side-by-side slice implemented
-Last updated: 2026-06-01
+Status: Implemented
+Last updated: 2026-07-18
 
 ## Purpose
 
-The playground should eventually support an optional comparison mode that renders the same Mermaid
-source through both Merman WASM and Mermaid JS. This is more useful than comparing the native CLI
-against Mermaid JS because the playground question is browser-specific: users need to know whether
-the web renderer is compatible, visually close enough, and fast enough in the same runtime.
+Compare renders one frozen Mermaid source through Merman WASM and pinned Mermaid JS
+`11.16.0@7c0cafcf` for interactive side-by-side inspection. It is a compatibility aid, not a
+pixel-diff oracle and not the formal benchmark.
 
-## Design Goals
+## User Contract
 
-- Keep the default editor fast: do not load Mermaid JS on the initial page load.
-- Make visual parity easy to inspect without turning the main editor into a debugging tool.
-- Compare SVG first; generate PNG from either SVG through the same browser export path.
-- Record render time and errors for both engines, but avoid presenting this as a rigorous benchmark
-  unless a dedicated measurement loop is running.
-- Keep the comparison mode useful on both desktop and narrow screens.
+- Normal SVG and ASCII views remain Merman-owned.
+- Compare is selected explicitly and loads the reference engine lazily.
+- Both panes show the exact engine version, render status, and an interactive render duration.
+- Desktop uses side-by-side panes; narrow viewports stack them without changing artifact identity.
+- SVG/PNG export and copy actions consume the validated displayed artifact.
+- A Merman failure and Mermaid failure remain independent evidence; partial success is visible.
+- Source/config/theme/font changes produce one latest coherent batch. Actions are disabled while a
+  replacement batch is pending.
+
+Interactive durations describe engine execution for the actual source. They exclude no work by
+performing a hidden synthetic warmup, and they are not presented as cross-engine benchmark phases.
+`presentedAt` is recorded separately when a validated SVG reaches its preview presentation
+boundary.
+
+## Ownership
+
+```text
+top document
+  |
+  +-- Merman document runtime ----> Merman request artifact
+  |
+  +-- Render Coordinator ---------> latest coherent batch
+  |
+  +-- Compare realm controller ---> same-origin Mermaid iframe
+                                      |
+                                      +-- local Mermaid/ZenUML/ELK imports
+                                      +-- operation queue
+                                      +-- SVG safety validation
+```
+
+The main document does not import, register, initialize, or render Mermaid. A same-origin iframe
+owns one Mermaid realm and receives a transferred `MessagePort` after exact origin/Window
+handshake. The channel validates an unpredictable token, protocol version, realm id, sequence,
+message/source/config/result budgets, and request identity. The parent validates returned SVG again
+before DOM insertion.
+
+One recovering queue owns the complete reference operation:
+
+1. import the local adapter and pinned Mermaid module;
+2. register only the external diagram/layout requirements derived from canonical parser facts;
+3. initialize stable site and request configuration;
+4. render under a unique request id;
+5. recover and retry the bounded ZenUML registration case when applicable;
+6. validate the SVG before returning it.
+
+A rejected operation does not poison the queue. A timeout, malformed protocol, or stuck global
+mutation poisons and destroys the iframe; the next request must create a fresh realm.
+
+## Canonical Requirements
+
+Merman's typed detection facts provide the logical family, syntax id, and effective layout id.
+Playground code maps those neutral facts to Mermaid-only requirements such as ZenUML or ELK
+registration. Compare does not scan source prefixes or regular expressions as a fallback. This
+keeps frontmatter, directives, aliases, incomplete input, ELK selection, and Mermaid 11.16 families
+aligned with the shared Rust parser.
+
+## Render Coordinator
+
+The coordinator freezes:
+
+- source;
+- config JSON;
+- theme and diagram font;
+- text-measurement mode and SVG pipeline;
+- Compare viewport;
+- diagnostics/Compare flags;
+- exact Merman package version.
+
+It invokes Merman and, when enabled, the Compare realm. Monotonic request ids make publication
+latest-wins even when non-abortable work completes out of order. Parse/layout diagnostics and
+engine render failures remain request artifacts; they do not change the Merman runtime lifecycle.
+Benchmark pauses coordinator scheduling and resumes exactly the latest input after cleanup.
+
+## Security And Resource Lifecycle
+
+Mermaid, ZenUML, ELK, and all adapters are lockfile-pinned, production-bundled, and same-origin.
+There is no runtime CDN import. The realm is attached and sized for real layout measurement, but it
+is capability-isolated from application state.
+
+Compare owns its iframe, port, handshake listeners, pending request, timeout, and operation queue.
+It disposes them on replacement, HMR, non-persisted exit, BFCache suspension, or protocol poison.
+BFCache restoration creates the realm lazily when Compare is needed again.
+
+## Relationship To Benchmark
+
+The benchmark never reuses the Compare iframe or Mermaid object. It creates equivalent dedicated
+Window realms for both engines and records versioned realm-local phase events. It uses equal
+real-source warmups, deterministic balanced AB/BA ordering, raw failure retention, visibility
+invalidation, and fail-closed ratios. See
+`docs/adr/0074-browser-runtime-and-benchmark-ownership.md`.
+
+Compare's render duration answers \"how long did this interactive engine call take?\" The benchmark
+answers separate acquisition, initialization, valid-SVG, and presentation questions. Neither value
+is derived from the other.
 
 ## Non-Goals
 
-- Native CLI vs Mermaid JS benchmarking in the playground.
-- Pixel-perfect diffing in the first slice.
-- Loading every Mermaid JS dependency before the user asks for comparison.
-- Replacing the existing Merman-first live editor flow.
+- Native CLI versus Mermaid JS benchmarking.
+- A claim of pixel-perfect equivalence.
+- Overlay, swipe, source-DOM diff, or raster pixel diff in the core Compare flow.
+- A user-selectable unpinned Mermaid version.
+- Sharing Mermaid global state with the main document or benchmark.
+- Loading reference-engine dependencies before Compare is requested.
 
-## UI Options Considered
-
-### Option A: Engine Selector
-
-Add a segmented control in the preview tab: `Merman | Mermaid | ASCII`.
-
-This is the smallest UI, but it is weak for comparison because users must remember what changed
-between engine switches. It is still useful as a fallback on very small screens.
-
-### Option B: Side-by-Side Compare
-
-Add a `Compare` tab next to `SVG` and `ASCII`. The compare tab renders two panes:
-
-- left: Merman
-- right: Mermaid JS
-
-Each pane has a compact header with engine name, version, render time, status, and export/copy
-actions. Pan and zoom should be linked by default, with a toggle to unlink them when inspecting
-large layout differences.
-
-This should be the first implementation because it directly answers the parity question and fits
-the current resizable editor/preview layout.
-
-### Option C: Overlay and Difference Inspector
-
-Render both SVGs into a shared viewport with an opacity slider, swipe handle, or generated PNG
-pixel diff.
-
-This is powerful for deep parity work, but it adds more complexity: SVG sizes need normalization,
-text rendering differences can create noisy diffs, and PNG conversion can fail on SVG features such
-as `foreignObject`. This should be a later inspector mode, not the first comparison surface.
-
-## Recommended UX
-
-The preview tab bar should become:
-
-```text
-SVG | ASCII | Compare
-```
-
-`SVG` remains the default Merman preview. `ASCII` stays available only for supported diagrams.
-`Compare` is optional and lazy-loads Mermaid JS the first time it is opened.
-
-Inside `Compare`, use:
-
-```text
-[Side by side] [Overlay] [Source]
-
-┌ Merman 0.7.0  12.4ms  OK ───────────────┐ ┌ Mermaid 11.15.0  38.1ms  OK ──────────┐
-│                                          │ │                                          │
-│                 SVG viewport             │ │                 SVG viewport             │
-│                                          │ │                                          │
-└ Export SVG  Export PNG  Copy SVG ───────┘ └ Export SVG  Export PNG  Copy SVG ───────┘
-```
-
-The first slice only needs the `Side by side` view. `Overlay` and `Source` can be disabled or
-hidden until implemented.
-
-For narrow screens, stack the panes vertically and keep the same linked zoom state.
-
-## Loading Model
-
-Mermaid JS should be a dynamic import:
-
-```ts
-const mermaid = await import("mermaid");
-```
-
-Initialization should happen once per page session. Use the same effective theme and security
-configuration as the upstream parity tools where possible. The package version should be pinned to
-the same Mermaid baseline used by the repository, currently `mermaid@11.16.0`.
-
-The first time the user opens `Compare`, show a loading state:
-
-```text
-Loading Mermaid JS for comparison...
-```
-
-After loading, re-render automatically when source code or theme changes.
-
-## Data Model
-
-Use one artifact shape for both engines:
-
-```ts
-type RenderEngine = "merman" | "mermaid";
-
-interface RenderArtifact {
-  engine: RenderEngine;
-  engineVersion: string;
-  svg: string | null;
-  error: string | null;
-  renderTimeMs: number | null;
-}
-```
-
-The Merman artifact is produced by the existing `useMerman()` path. The Mermaid artifact should
-come from a new `playground/src/lib/mermaid-renderer.ts` module that hides dynamic import,
-initialization, IDs, Mermaid config, and error normalization.
-
-## Export Behavior
-
-The existing SVG and PNG export helpers can be reused for either engine:
-
-- `Export Merman SVG`
-- `Export Merman PNG`
-- `Export Mermaid SVG`
-- `Export Mermaid PNG`
-
-PNG should be generated from the displayed SVG, not from a separate renderer. This keeps export
-behavior consistent and makes visual comparison easier to reason about.
-
-## Benchmark Relationship
-
-The compare UI should show render times as interactive feedback only. A real browser benchmark
-should still use a separate warmup/measurement loop in one Chromium session, measuring repeated
-Merman `renderSvg()` calls against repeated Mermaid `mermaid.render()` calls on the same fixtures.
-
-The compare UI can later expose a `Run sample` action that runs a small in-browser benchmark for
-the current diagram, but that should be clearly labeled as local and approximate.
-
-## Implementation Slices
-
-1. Done: Add `mermaid@11.15.0` to the playground and implement a lazy `mermaid-renderer.ts` wrapper.
-2. Done: Extract the current pan/zoom SVG preview into a reusable `SvgViewport` component.
-3. Done: Add the `Compare` tab with side-by-side Merman and Mermaid artifacts.
-4. Done: Add per-pane SVG/PNG export and copy actions.
-5. Deferred: Add optional overlay/source/diff tools after the side-by-side path is proven useful.
-
-## Open Questions
-
-- Should the URL share state include the selected preview mode, or should shared links always open
-  in the normal Merman SVG preview?
-- Should Mermaid render errors appear beside Merman render errors, or should a Merman error keep the
-  current full-panel error treatment in normal SVG mode?
-- Should we expose a user-visible Mermaid version selector later, or keep the baseline fixed for
-  parity with repository tests?
+Overlay or structured DOM inspection may be added later as an explicitly separate inspector, but
+browser text, `getBBox()`, font, `foreignObject`, RoughJS, and wrapper differences must remain
+visible residuals rather than being normalized away in production.

@@ -13,7 +13,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     render_class_diagram_svg_model_inner(
         layout,
         model,
@@ -33,7 +33,7 @@ fn render_class_diagram_svg_model_inner(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let timing_enabled = options.debug.include_timing_diagnostics;
     let total_start = timing_enabled.then(web_time::Instant::now);
     let mut timings = RenderTimings::default();
@@ -229,7 +229,7 @@ fn render_class_diagram_svg_model_inner(
             view_box.height,
         ))
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(view_box.width));
-    root_context.finish_document(&mut out, document.root, final_root_spec)?;
+    let root_document = root_context.finish_document(&mut out, document.root, final_root_spec)?;
 
     out.push_str("</svg>");
     drop(finalize_guard);
@@ -238,5 +238,5 @@ fn render_class_diagram_svg_model_inner(
         timings.total = s.elapsed();
         emit_class_render_timing(&timings, &detail, layout);
     }
-    Ok(out)
+    root_document.complete(out)
 }

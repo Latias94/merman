@@ -80,6 +80,9 @@ const {
 } = parseCli(args);
 
 const api = await import(toPackageSpecifier(entrySubpath));
+const textMeasurementAbi = await import(
+  toPackageSpecifier("./text-measurement-abi")
+);
 const exportedWasmModule = await import(toPackageSpecifier(wasmModuleSubpath));
 const surfaceContract = surfaceContractForEntry(entrySubpath);
 
@@ -219,7 +222,7 @@ class FakeMeasureElement {
 }
 
 assert.equal(api.isMermanInitialized(), true);
-assert.equal(api.abiVersion(), 2);
+assert.equal(api.abiVersion(), textMeasurementAbi.MERMAN_ABI_VERSION);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 if (surfaceContract.render) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
@@ -1128,21 +1131,57 @@ async function runSameProcessSurfaceSmoke() {
 async function runPureSubpathSmoke() {
   const catalogSpecifier = toPackageSpecifier("./catalog");
   const svgSafetySpecifier = toPackageSpecifier("./svg-safety");
+  const textMeasurementAbiSpecifier = toPackageSpecifier(
+    "./text-measurement-abi"
+  );
   const catalogFile = fileURLToPath(import.meta.resolve(catalogSpecifier));
   const svgSafetyFile = fileURLToPath(import.meta.resolve(svgSafetySpecifier));
+  const textMeasurementAbiFile = fileURLToPath(
+    import.meta.resolve(textMeasurementAbiSpecifier)
+  );
   assert.equal(catalogFile, path.join(packageRoot, "dist", "public-catalog.js"));
   assert.equal(svgSafetyFile, path.join(packageRoot, "dist", "svg-safety.js"));
-  await assertPureDistModuleGraph([catalogFile, svgSafetyFile]);
+  assert.equal(
+    textMeasurementAbiFile,
+    path.join(packageRoot, "dist", "generated", "text-measurement-abi.js")
+  );
+  await assertPureDistModuleGraph([
+    catalogFile,
+    svgSafetyFile,
+    textMeasurementAbiFile,
+  ]);
 
-  const [catalog, svgSafety] = await Promise.all([
+  const [catalog, svgSafety, textMeasurementAbi] = await Promise.all([
     import(catalogSpecifier),
     import(svgSafetySpecifier),
+    import(textMeasurementAbiSpecifier),
   ]);
   assert.equal(catalog.SUPPORTED_DIAGRAMS.length, 35);
   assert.equal(catalog.isDiagramType("swimlane"), true);
   assert.equal(catalog.normalizeThemeName("neo-dark"), "neo-dark");
   assert.equal("initMerman" in catalog, false);
   assert.equal(typeof svgSafety.assertSafeSvgForDom, "function");
+  assert.equal(textMeasurementAbi.MERMAN_ABI_VERSION, 2);
+  assert.deepEqual(
+    textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ code }) => code),
+    Array.from({ length: 19 }, (_, code) => code)
+  );
+  assert.deepEqual(
+    textMeasurementAbi.HOST_TEXT_MEASUREMENT_RESULT_KINDS.map(({ code }) => code),
+    Array.from({ length: 4 }, (_, code) => code)
+  );
+  assert.equal(
+    new Set(
+      textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ name }) => name)
+    ).size,
+    19
+  );
+  assert.deepEqual(
+    textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS
+      .filter(({ acceptsSignedLength }) => acceptsSignedLength)
+      .map(({ name }) => name),
+    ["create-text-bbox-y-offset", "create-text-middle-bbox-y-offset"]
+  );
   svgSafety.assertSafeSvgForDom('<svg xmlns="http://www.w3.org/2000/svg" />');
   assert.throws(
     () =>

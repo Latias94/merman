@@ -30,6 +30,7 @@ WEB_GENERATED_PACKAGE_MANIFESTS = {
     "platforms/web/pkg/render/package.json",
     "platforms/web/pkg/render-only/package.json",
     "platforms/web/pkg/ascii/package.json",
+    "platforms/web/pkg/editor/package.json",
     "platforms/web/pkg/full/package.json",
     "platforms/web/pkg/full-no-elk/package.json",
     "platforms/web/pkg/ratex-math/package.json",
@@ -41,13 +42,20 @@ REQUIRED_SURFACE_DOCS = [
     "docs/release/MERMAID_UPGRADE_PLAYBOOK.md",
     "docs/security/RENDERING_SECURITY.md",
 ]
-REQUIRED_WEB_DOC_SUBPATHS = [
-    "@mermanjs/web/core",
-    "@mermanjs/web/render",
-    "@mermanjs/web/render-only",
-    "@mermanjs/web/ascii",
-    "@mermanjs/web/full",
-]
+WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION = 1
+WEB_SURFACE_DESCRIPTOR_PATH = "platforms/web/web-surface-descriptor.json"
+WEB_CAPABILITY_NAMES = {
+    "render",
+    "analysis",
+    "ascii",
+    "core_full",
+    "core_host",
+    "elk_layout",
+    "ratex_math",
+    "editor_language",
+}
+WEB_RUNTIME_PROFILES = {"core", "render", "render-only", "ascii", "editor", "full"}
+EVIDENCE_ONLY_WEB_PRESETS = {"browser-full-no-elk", "browser-ratex-math"}
 FORBIDDEN_WEB_SUBPATHS = [
     "@mermanjs/web/analysis",
     '"./analysis"',
@@ -60,6 +68,7 @@ REQUIRED_FEATURE_DOC_TERMS = [
     "browser-render",
     "browser-render-only",
     "browser-ascii",
+    "browser-editor",
     "browser-full",
     "browser-full-no-elk",
     "browser-ratex-math",
@@ -227,6 +236,7 @@ def iter_package_jsons(root: Path) -> list[Path]:
 
 def check_web_contract(root: Path, contract: dict[str, Any]) -> None:
     feature_contract = contract["feature_contract"]
+    descriptor = load_web_surface_descriptor(root, feature_contract)
     web_package = read_json(root, "platforms/web/package.json")
     exports = set(web_package.get("exports", {}))
     expected_subpaths = set(feature_contract["web_subpaths"])
@@ -238,38 +248,51 @@ def check_web_contract(root: Path, contract: dict[str, Any]) -> None:
     if "./analysis" in exports:
         fail("platforms/web/package.json", "@mermanjs/web/analysis is not a supported export")
 
-    presets = extract_browser_presets(read_text(root, "platforms/web/scripts/build-wasm.mjs"))
     expected_presets = set(feature_contract["browser_presets"])
-    if presets != expected_presets:
+    descriptor_presets = {preset["name"] for preset in descriptor["presets"]}
+    if descriptor_presets != expected_presets:
         fail(
-            "platforms/web/scripts/build-wasm.mjs",
+            feature_contract["web_descriptor"],
             "browser preset mismatch: expected "
             + ", ".join(sorted(expected_presets))
             + "; found "
-            + ", ".join(sorted(presets)),
+            + ", ".join(sorted(descriptor_presets)),
         )
 
-    wrappers = extract_wrapper_surfaces(read_text(root, "platforms/web/scripts/surface-manifest.mjs"))
-    wrapper_subpaths = {"."} | {f"./{entry}" for entry, _preset in wrappers}
-    if wrapper_subpaths != expected_subpaths:
+    public_surfaces = descriptor["public_surfaces"]
+    descriptor_subpaths = {"."} | {f"./{surface['entry']}" for surface in public_surfaces}
+    if descriptor_subpaths != expected_subpaths:
         fail(
-            "platforms/web/scripts/surface-manifest.mjs",
-            "wrapper subpaths do not match package surface contract: "
-            + ", ".join(sorted(wrapper_subpaths)),
+            feature_contract["web_descriptor"],
+            "descriptor subpaths do not match package surface contract: "
+            + ", ".join(sorted(descriptor_subpaths)),
         )
-    wrapper_presets = {preset for _entry, preset in wrappers}
-    required_wrapped_presets = expected_presets - {"browser-full-no-elk", "browser-ratex-math"}
-    if wrapper_presets != required_wrapped_presets:
+    public_presets = {surface["preset"] for surface in public_surfaces}
+    required_public_presets = expected_presets - EVIDENCE_ONLY_WEB_PRESETS
+    if public_presets != required_public_presets:
         fail(
-            "platforms/web/scripts/surface-manifest.mjs",
-            "wrapper presets should cover shipped subpaths only: "
-            + ", ".join(sorted(wrapper_presets)),
+            feature_contract["web_descriptor"],
+            "public surfaces should cover shipped presets only: "
+            + ", ".join(sorted(public_presets)),
+        )
+    expected_default = feature_contract["web_default_preset"]
+    if descriptor["default_preset"] != expected_default:
+        fail(
+            feature_contract["web_descriptor"],
+            f"default preset is {descriptor['default_preset']!r}, expected {expected_default!r}",
         )
 
     wasm_features = cargo_features(root, "crates/merman-wasm/Cargo.toml")
     for feature in ["core-full", "core-host", "analysis", "ascii", "render", "cytoscape-layout", "elk-layout", "editor-language", "ratex-math"]:
         if feature not in wasm_features:
             fail("crates/merman-wasm/Cargo.toml", f"missing wasm feature {feature}")
+    for preset in descriptor["presets"]:
+        for feature in preset["features"]:
+            if feature not in wasm_features:
+                fail(
+                    feature_contract["web_descriptor"],
+                    f"preset {preset['name']} references missing wasm feature {feature}",
+                )
 
     web_docs = "\n".join(
         [
@@ -278,7 +301,8 @@ def check_web_contract(root: Path, contract: dict[str, Any]) -> None:
             read_text(root, "docs/release/PACKAGE_SURFACES.md"),
         ]
     )
-    for term in REQUIRED_WEB_DOC_SUBPATHS:
+    for surface in public_surfaces:
+        term = f"@mermanjs/web/{surface['entry']}"
         if term not in web_docs:
             fail("docs/release/PACKAGE_SURFACES.md", f"missing web subpath docs for {term}")
     if "@mermanjs/web/analysis" in web_docs and "no `@mermanjs/web/analysis`" not in web_docs:
@@ -388,12 +412,155 @@ def cargo_features(root: Path, manifest: str) -> set[str]:
     return set(data.get("features", {}))
 
 
-def extract_browser_presets(text: str) -> set[str]:
-    return set(re.findall(r'^\s+"(browser-[^"]+)":\s+\{', text, flags=re.MULTILINE))
+def load_web_surface_descriptor(
+    root: Path,
+    feature_contract: dict[str, Any],
+) -> dict[str, Any]:
+    rel_path = feature_contract.get("web_descriptor")
+    if not isinstance(rel_path, str) or not rel_path:
+        fail("docs/release/SURFACES.json", "feature_contract.web_descriptor is required")
+    if rel_path != WEB_SURFACE_DESCRIPTOR_PATH:
+        fail(
+            "docs/release/SURFACES.json",
+            f"web_descriptor must be {WEB_SURFACE_DESCRIPTOR_PATH}",
+        )
+    require_path(root, rel_path)
+    return validate_web_surface_descriptor(read_json(root, rel_path), rel_path)
 
 
-def extract_wrapper_surfaces(text: str) -> set[tuple[str, str]]:
-    return set(re.findall(r'entry:\s*"([^"]+)".*?preset:\s*"([^"]+)"', text, flags=re.DOTALL))
+def validate_web_surface_descriptor(
+    descriptor: dict[str, Any],
+    rel_path: str = WEB_SURFACE_DESCRIPTOR_PATH,
+) -> dict[str, Any]:
+    require_exact_keys(
+        descriptor,
+        {"schema_version", "default_preset", "presets", "public_surfaces"},
+        rel_path,
+        "Web surface descriptor",
+    )
+    if descriptor["schema_version"] != WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION:
+        fail(
+            rel_path,
+            f"Web surface descriptor schema must be {WEB_SURFACE_DESCRIPTOR_SCHEMA_VERSION}",
+        )
+
+    presets = descriptor["presets"]
+    if not isinstance(presets, list) or not presets:
+        fail(rel_path, "Web surface descriptor presets must be a non-empty array")
+    preset_names: set[str] = set()
+    for index, preset in enumerate(presets):
+        label = f"presets[{index}]"
+        require_exact_keys(
+            preset,
+            {"name", "surface", "default_features", "features", "capabilities"},
+            rel_path,
+            label,
+        )
+        name = require_web_name(preset["name"], rel_path, f"{label}.name")
+        if name in preset_names:
+            fail(rel_path, f"duplicate Web preset name: {name}")
+        preset_names.add(name)
+        if preset["surface"] != "browser":
+            fail(rel_path, f"preset {name} must declare surface browser")
+        if not isinstance(preset["default_features"], bool):
+            fail(rel_path, f"preset {name} default_features must be boolean")
+        features = preset["features"]
+        if not isinstance(features, list):
+            fail(rel_path, f"preset {name} features must be an array")
+        normalized_features = [
+            require_web_name(feature, rel_path, f"preset {name} feature")
+            for feature in features
+        ]
+        if len(set(normalized_features)) != len(normalized_features):
+            fail(rel_path, f"preset {name} contains duplicate features")
+        capabilities = preset["capabilities"]
+        require_exact_keys(
+            capabilities,
+            WEB_CAPABILITY_NAMES,
+            rel_path,
+            f"preset {name} capabilities",
+        )
+        for capability, enabled in capabilities.items():
+            if not isinstance(enabled, bool):
+                fail(rel_path, f"preset {name} capability {capability} must be boolean")
+
+    default_preset = require_web_name(
+        descriptor["default_preset"],
+        rel_path,
+        "default_preset",
+    )
+    if default_preset not in preset_names:
+        fail(rel_path, f"default_preset references unknown preset {default_preset}")
+
+    public_surfaces = descriptor["public_surfaces"]
+    if not isinstance(public_surfaces, list) or not public_surfaces:
+        fail(rel_path, "public_surfaces must be a non-empty array")
+    entries: set[str] = set()
+    public_presets: set[str] = set()
+    package_dirs: set[str] = set()
+    for index, surface in enumerate(public_surfaces):
+        label = f"public_surfaces[{index}]"
+        require_exact_keys(
+            surface,
+            {"entry", "preset", "pkg_dir_rel", "runtime_profile"},
+            rel_path,
+            label,
+        )
+        entry = require_web_name(surface["entry"], rel_path, f"{label}.entry")
+        preset = require_web_name(surface["preset"], rel_path, f"surface {entry} preset")
+        package_dir = surface["pkg_dir_rel"]
+        if not isinstance(package_dir, str) or not re.fullmatch(
+            r"pkg/[a-z0-9][a-z0-9-]*",
+            package_dir,
+        ):
+            fail(rel_path, f"surface {entry} pkg_dir_rel must be a package-relative directory")
+        runtime_profile = require_web_name(
+            surface["runtime_profile"],
+            rel_path,
+            f"surface {entry} runtime_profile",
+        )
+        if entry in entries:
+            fail(rel_path, f"duplicate public Web surface entry: {entry}")
+        if preset in public_presets:
+            fail(rel_path, f"duplicate public Web surface preset: {preset}")
+        if package_dir in package_dirs:
+            fail(rel_path, f"duplicate public Web package directory: {package_dir}")
+        entries.add(entry)
+        public_presets.add(preset)
+        package_dirs.add(package_dir)
+        if preset not in preset_names:
+            fail(rel_path, f"public surface {entry} references unknown preset {preset}")
+        if package_dir != f"pkg/{entry}":
+            fail(rel_path, f"public surface {entry} pkg_dir_rel must be pkg/{entry}")
+        if runtime_profile not in WEB_RUNTIME_PROFILES:
+            fail(
+                rel_path,
+                f"public surface {entry} has unknown runtime profile {runtime_profile}",
+            )
+
+    return descriptor
+
+
+def require_exact_keys(
+    value: Any,
+    expected: set[str],
+    rel_path: str,
+    label: str,
+) -> None:
+    if not isinstance(value, dict):
+        fail(rel_path, f"{label} must be an object")
+    actual = set(value)
+    if actual != expected:
+        fail(
+            rel_path,
+            f"{label} keys must be exactly: {', '.join(sorted(expected))}",
+        )
+
+
+def require_web_name(value: Any, rel_path: str, label: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", value):
+        fail(rel_path, f"{label} must be a lowercase kebab-case name")
+    return value
 
 
 def require_path(root: Path, rel_path: str) -> None:

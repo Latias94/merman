@@ -29,7 +29,7 @@ For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md).
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+merman.require_abi_version(engine.abi_version())
 print(engine.package_version())
 
 source = "flowchart TD\nA[Hello] --> B[World]"

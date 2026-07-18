@@ -42,6 +42,10 @@
       "import": "./dist/surfaces/ascii.js",
       "types": "./dist/surfaces/ascii.d.ts"
     },
+    "./editor": {
+      "import": "./dist/surfaces/editor.js",
+      "types": "./dist/surfaces/editor.d.ts"
+    },
     "./full": {
       "import": "./dist/surfaces/full.js",
       "types": "./dist/surfaces/full.d.ts"
@@ -53,6 +57,10 @@
     "./svg-safety": {
       "import": "./dist/svg-safety.js",
       "types": "./dist/svg-safety.d.ts"
+    },
+    "./text-measurement-abi": {
+      "import": "./dist/generated/text-measurement-abi.js",
+      "types": "./dist/generated/text-measurement-abi.d.ts"
     },
     "./pkg/merman_wasm.js": {
       "import": "./pkg/merman_wasm.js",
@@ -79,6 +87,11 @@
       "types": "./pkg/ascii/merman_wasm.d.ts"
     },
     "./pkg/ascii/merman_wasm_bg.wasm": "./pkg/ascii/merman_wasm_bg.wasm",
+    "./pkg/editor/merman_wasm.js": {
+      "import": "./pkg/editor/merman_wasm.js",
+      "types": "./pkg/editor/merman_wasm.d.ts"
+    },
+    "./pkg/editor/merman_wasm_bg.wasm": "./pkg/editor/merman_wasm_bg.wasm",
     "./pkg/full/merman_wasm.js": {
       "import": "./pkg/full/merman_wasm.js",
       "types": "./pkg/full/merman_wasm.d.ts"
@@ -94,6 +107,7 @@
     "build:wasm:render": "node scripts/build-wasm.mjs --preset browser-render",
     "build:wasm:render-only": "node scripts/build-wasm.mjs --preset browser-render-only",
     "build:wasm:ascii": "node scripts/build-wasm.mjs --preset browser-ascii",
+    "build:wasm:editor": "node scripts/build-wasm.mjs --preset browser-editor --out-dir-rel pkg/editor",
     "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
     "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",
     "check:contracts": "node scripts/check-contracts.mjs",

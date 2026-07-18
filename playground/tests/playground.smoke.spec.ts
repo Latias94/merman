@@ -25,7 +25,7 @@ test("@smoke loads the production WASM and renders a safe SVG", async ({
   );
   expect(wasmResponse.url()).not.toContain("/@fs/");
   if (isMobile) {
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
   }
   await waitForPreviewSvg(page);
   const resources = await playgroundResourceCounts(page);
@@ -38,7 +38,7 @@ test("@smoke loads the production WASM and renders a safe SVG", async ({
     body: JSON.stringify(accessibility, null, 2),
     contentType: "application/json",
   });
-  expect(accessibility.passes.length).toBeGreaterThan(0);
+  expect(accessibility.violations).toEqual([]);
 
   errors.assertNone();
 });
@@ -59,15 +59,14 @@ test("editing the source publishes the matching SVG without page overflow", asyn
   );
   await expect(page.locator("footer")).toContainText("2 Lines");
   if (isMobile) {
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
   }
 
   await expect.poll(() => previewSvgText(page)).toContain("Browser smoke");
   await expectNoDocumentOverflow(page);
   await expect(page.locator("header")).toBeVisible();
   await expect(page.locator("footer")).toBeVisible();
-  // The current mobile pane unmounts Monaco; U7 removes this loader cancellation.
-  errors.assertNone([/^pageerror: Canceled$/]);
+  errors.assertNone();
 });
 
 test("canonical detection clears invalid and stale diagram types", async ({
@@ -79,21 +78,21 @@ test("canonical detection clears invalid and stale diagram types", async ({
 
   await replaceEditorSource(page, "flowchart LR\n  A --> B");
   if (isMobile) {
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
   }
   await expect(page.locator("footer")).toContainText("Flowchart");
 
   if (isMobile) {
-    await page.getByRole("button", { name: "Editor", exact: true }).click();
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
   }
   await replaceEditorSource(page, "unknownDiagram\n  A --> B");
   if (isMobile) {
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
   }
   await expect(page.locator("footer")).toContainText("Unknown");
 
   if (isMobile) {
-    await page.getByRole("button", { name: "Editor", exact: true }).click();
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
   }
   await replaceEditorSource(page, "flowchart TD\n  stale --> result");
   await replaceEditorSource(
@@ -101,11 +100,11 @@ test("canonical detection clears invalid and stale diagram types", async ({
     'gitGraph\n  commit id:"C0"\n  branch feature'
   );
   if (isMobile) {
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
   }
   await expect(page.locator("footer")).toContainText("Git Graph");
 
-  errors.assertNone(isMobile ? [/^pageerror: Canceled$/] : []);
+  errors.assertNone();
 });
 
 test("Compare owns one local Mermaid realm and publishes one coherent batch", async ({
@@ -117,7 +116,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   page.on("request", (request) => {
     const pathname = new URL(request.url()).pathname;
     if (
-      /\/assets\/(?:mermaid-(?!requirements-)|mermaid\.core|render-|zenuml-definition|mermaid-zenuml|mermaid-layout-elk)/.test(
+      /\/assets\/(?:mermaid-(?!(?:config|requirements)-)|mermaid\.core|render-|zenuml-definition|mermaid-zenuml|mermaid-layout-elk)/.test(
         pathname
       )
     ) {
@@ -131,12 +130,12 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
     "flowchart LR\n  compare_start[Compare start] --> ready[Ready]"
   );
   if (isMobile) {
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
   }
   await waitForPreviewSvg(page);
   expect(engineRequests).toEqual([]);
 
-  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
   await expect(page.locator('iframe[data-merman-realm="compare"]')).toHaveCount(1);
   await expect
     .poll(() => compareSvgTexts(page))
@@ -150,7 +149,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   }
 
   if (isMobile) {
-    await page.getByRole("button", { name: "Editor", exact: true }).click();
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
   }
   await replaceEditorSource(
     page,
@@ -161,8 +160,8 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
     "flowchart LR\n  latest_batch[Latest batch] --> coherent[Coherent]"
   );
   if (isMobile) {
-    await page.getByRole("button", { name: "Preview", exact: true }).click();
-    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
+    await page.getByRole("tab", { name: "Compare", exact: true }).click();
   }
 
   await expect
@@ -183,7 +182,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   await expect
     .poll(() => compareSvgTexts(page))
     .toEqual([expect.stringContaining("Latest batch"), expect.stringContaining("Latest batch")]);
-  errors.assertNone(isMobile ? [/^pageerror: Canceled$/] : []);
+  errors.assertNone();
 });
 
 async function compareSvgTexts(page: import("@playwright/test").Page): Promise<string[]> {

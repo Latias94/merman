@@ -204,7 +204,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
     }
 
     let environment = layout_snapshot_environment();
-    merman::time::with_fixed_local_offset_minutes(Some(0), || {
+    let utc = merman::time::LocalTimeZone::utc();
+    merman::time::with_local_time_zone(&utc, || {
         let engine = merman::Engine::new()
             .with_site_config(layout_snapshot_site_config())
             .with_fixed_today(Some(
@@ -526,6 +527,8 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 enum GeneratedArtifactCheck {
     DefaultConfig,
     DompurifyDefaults,
+    PlaygroundExampleCatalog,
+    TextMeasurementAbi,
     WebDiagramCatalog,
 }
 
@@ -541,10 +544,12 @@ fn verify_web_diagram_catalog_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::WebDiagramCatalog]
 }
 
-fn verify_generated_checks() -> [GeneratedArtifactCheck; 3] {
+fn verify_generated_checks() -> [GeneratedArtifactCheck; 5] {
     [
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
+        GeneratedArtifactCheck::PlaygroundExampleCatalog,
+        GeneratedArtifactCheck::TextMeasurementAbi,
         GeneratedArtifactCheck::WebDiagramCatalog,
     ]
 }
@@ -554,6 +559,8 @@ impl GeneratedArtifactCheck {
         match self {
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
+            GeneratedArtifactCheck::PlaygroundExampleCatalog => "Playground example catalog",
+            GeneratedArtifactCheck::TextMeasurementAbi => "text-measurement ABI",
             GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
         }
     }
@@ -604,6 +611,12 @@ fn verify_generated_artifact_check(
     match check {
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
+        GeneratedArtifactCheck::PlaygroundExampleCatalog => {
+            super::verify_playground_example_catalog(Vec::new()).map(|()| None)
+        }
+        GeneratedArtifactCheck::TextMeasurementAbi => {
+            super::verify_text_measurement_abi_artifacts()
+        }
         GeneratedArtifactCheck::WebDiagramCatalog => verify_web_diagram_catalog_artifact(tmp_dir),
     }
 }
@@ -921,6 +934,8 @@ mod tests {
             [
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
+                GeneratedArtifactCheck::PlaygroundExampleCatalog,
+                GeneratedArtifactCheck::TextMeasurementAbi,
                 GeneratedArtifactCheck::WebDiagramCatalog,
             ]
         );
@@ -931,6 +946,14 @@ mod tests {
         assert_eq!(
             GeneratedArtifactCheck::DompurifyDefaults.label(),
             "dompurify defaults"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::PlaygroundExampleCatalog.label(),
+            "Playground example catalog"
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::TextMeasurementAbi.label(),
+            "text-measurement ABI"
         );
         assert_eq!(
             verify_web_diagram_catalog_checks(),

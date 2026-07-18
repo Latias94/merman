@@ -75,6 +75,30 @@ The remaining issues are not implicitly closed by ADR-0073. In particular, large
 binding contract generation, ASCII ownership, benchmark inventory, and historical documentation
 maintenance retain their own scope.
 
+## Browser Runtime Contract Refresh - 2026-07-18
+
+The original 2026-06-01 audit predates the document-runtime, Compare-realm, browser benchmark, and
+Monaco Worker implementation. ADR-0074 now owns those browser concerns. Historical references to
+the removed component-local `useMerman` hook, combined WASM loader/Cache Storage adapter,
+synthetic product warmup, main-realm Mermaid mutation, handwritten examples, or source-prefix
+detection are evidence of the superseded implementation, not current architectural guidance.
+
+| Browser scope | Disposition | Current contract and evidence |
+| --- | --- | --- |
+| Merman loading and lifecycle | Closed | One document-owned staged runtime coalesces import/fetch/init/session work, uses browser HTTP cache only, bounds reload recovery, distinguishes BFCache suspension from destruction, and owns disposable browser measurement resources. React effects do not own the session. |
+| Live render publication | Closed | A separate Render Coordinator freezes request inputs, publishes latest-wins coherent batches, records the actual source's presentation boundary, and keeps request failures outside runtime lifecycle state. Product SVG warmup is removed. |
+| Mermaid Compare isolation | Closed | The main document does not import Mermaid. An authenticated same-origin iframe and failure-resilient operation queue own local import, external registration, initialization, recovery, render, and SVG validation. |
+| Browser benchmark validity | Closed for the Playground product | Equivalent per-engine Window realms emit protocol/trace schema 1 phase events; the controller owns derivation, deterministic balanced AB/BA order, equal real-source warmups, failure retention, visibility invalidation, and fail-closed ratios. This does not close ARCH-021's native Criterion scenario-inventory finding. |
+| Browser editor intelligence | Closed | Local Monaco uses a dedicated `@mermanjs/web/editor` module Worker backed by `core-full + editor-language`, the 35-family Rust catalog, native ABI 2, and editor/analysis/facts schema 1. TypeScript syntax heuristics are not a fallback path. |
+| Examples and live type detection | Closed | One fixture manifest generates exact 35-family Playground examples. Rust/WASM parser facts provide family, syntax, and effective layout; `xtask` proves provenance, detection, baseline, and freshness. |
+| Web release surface | Closed for current subpaths | One structured Web descriptor owns preset features/capabilities and public entry/preset/package-directory/runtime-profile mappings. Build/surface generation and the Python release verifier consume it without source regexes; `SURFACES.json`, package smoke, ABI checks, and WASM size budgets include `@mermanjs/web/editor` / `browser-editor`. This does not close ARCH-027's broader cross-adapter contract-matrix finding. |
+
+The browser runtime is intentionally application code above `@mermanjs/web`; no reusable public
+engine/session factory was introduced. Browser HTTP headers remain an operational residual: the
+observed hashed asset uses `Cache-Control: max-age=14400` without `immutable`, so desired immutable
+hashed-asset caching must be configured by the hosting layer rather than simulated with Cache
+Storage.
+
 ## Issues
 
 ### ARCH-001 - Repository lacks a root context entry point

@@ -28,7 +28,9 @@ fn local_ms(y: i32, m0: u32, d: u32, h: u32, min: u32, s: u32) -> i64 {
         .unwrap()
         .and_hms_opt(h, min, s)
         .unwrap();
-    crate::time::datetime_from_naive_local(naive).timestamp_millis()
+    crate::time::datetime_from_naive_local(naive)
+        .expect("test datetime is supported by the active timezone")
+        .timestamp_millis()
 }
 
 #[test]
@@ -731,11 +733,14 @@ test1: id1,202304,1d
 
 #[test]
 fn gantt_js_date_fallback_year_bounds_match_upstream_guardrail() {
-    let dt = parse_js_date_fallback("10000").unwrap();
-    assert_eq!(dt.year(), 10000);
+    let utc = crate::time::LocalTimeZone::utc();
+    crate::time::with_local_time_zone(&utc, || {
+        let dt = parse_js_date_fallback("10000").unwrap();
+        assert_eq!(dt.year(), 10000);
 
-    let err = parse_js_date_fallback("10001").unwrap_err();
-    assert!(err.to_string().contains("Invalid date:10001"));
+        let err = parse_js_date_fallback("10001").unwrap_err();
+        assert!(err.to_string().contains("Invalid date:10001"));
+    });
 }
 
 #[test]
@@ -772,6 +777,69 @@ fn gantt_parse_duration_matches_upstream_examples() {
         assert!(value.is_nan(), "expected invalid duration for {invalid:?}");
         assert_eq!(unit, "ms");
     }
+}
+
+#[test]
+fn gantt_duration_arithmetic_rejects_unrepresentable_ranges_without_panicking() {
+    let utc = crate::time::LocalTimeZone::utc();
+    crate::time::with_local_time_zone(&utc, || {
+        let base = local_from_naive(
+            NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        )
+        .unwrap();
+        let max = local_from_naive(chrono::NaiveDateTime::MAX).unwrap();
+
+        assert!(add_days_local(base, i64::MIN).is_none());
+        assert!(add_months_local(base, i64::MAX).is_none());
+        assert!(add_months_local(base, i64::MIN).is_none());
+        assert!(add_years_local(base, i64::MAX).is_none());
+        assert!(add_years_local(base, i64::MIN).is_none());
+        let db = GanttDb::default();
+        assert_eq!(
+            get_end_date(&db, max, "x", "1ms", false).unwrap(),
+            Some(max)
+        );
+        assert_eq!(
+            get_end_date(&db, base, "x", "1000000000000000000000000000000M", false).unwrap(),
+            Some(base)
+        );
+        assert_eq!(
+            get_end_date(&db, base, "x", "1000000000000000000000000000000y", false).unwrap(),
+            Some(base)
+        );
+    });
+}
+
+#[test]
+fn gantt_huge_calendar_durations_use_the_existing_zero_duration_fallback() {
+    for duration in ["9223372036854775808M", "999999999999999999999999999999999y"] {
+        let model = parse(&format!(
+            "gantt\ndateFormat x\nsection Boundary\nTask: task,0,{duration}\n"
+        ));
+        let task = &model["tasks"][0];
+        assert_eq!(task["startTime"], task["endTime"], "duration {duration}");
+    }
+}
+
+#[test]
+fn gantt_maximum_date_semantic_model_supports_one_millisecond_duration() {
+    let max_midnight = NaiveDate::MAX.and_hms_opt(0, 0, 0).unwrap();
+    let max_ms =
+        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(max_midnight, chrono::Utc)
+            .timestamp_millis();
+    let source = format!("gantt\ndateFormat x\nsection Boundary\nTask: task,{max_ms},1ms\n");
+    let utc = crate::time::LocalTimeZone::utc();
+    let parsed = crate::time::with_local_time_zone(&utc, || {
+        block_on(Engine::new().parse_diagram(&source, ParseOptions::default()))
+    })
+    .expect("one millisecond remains representable on NaiveDate::MAX")
+    .expect("gantt detected");
+    let task = &parsed.model["tasks"][0];
+    assert_eq!(task["startTime"], max_ms);
+    assert_eq!(task["endTime"], max_ms + 1);
 }
 
 #[test]
@@ -1932,6 +2000,8 @@ test2: id2,after missing,1d
 "#,
     );
     let tasks = model["tasks"].as_array().unwrap();
-    let expected = today_midnight_local().timestamp_millis();
+    let expected = today_midnight_local()
+        .expect("current date is supported by the active timezone")
+        .timestamp_millis();
     assert_eq!(tasks[1]["startTime"].as_i64().unwrap(), expected);
 }

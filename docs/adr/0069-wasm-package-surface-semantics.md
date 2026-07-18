@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-06-10
+- Last amended: 2026-07-18
 
 ## Context
 
@@ -36,11 +37,22 @@ flowchart LR
     TypstPlugin --> Render
 ```
 
-1. `@mermanjs/web` remains one npm package with one published WASM artifact per version.
-   - The published artifact is `browser-full`.
-   - `browser-core`, `browser-render`, `browser-ascii`, and `browser-ratex-math` are source-build
-     presets for local builds and CI evidence, not public npm entry points yet.
-   - `bindingCapabilities()` is the runtime discovery API for the active artifact.
+1. `@mermanjs/web` remains one npm package with capability-specific public subpaths.
+   - `platforms/web/web-surface-descriptor.json` is the machine-readable owner of browser preset
+     features/capabilities and public entry/preset/package-directory/runtime-profile mappings.
+     Build and release tools consume it as structured data rather than parsing JavaScript source.
+   - The default entry point publishes `browser-full`.
+   - `./core`, `./render`, `./render-only`, `./ascii`, `./editor`, and `./full` each bind to the
+     matching generated WASM artifact and omit unsupported runtime wrappers from their TypeScript
+     surface.
+   - `browser-editor` contains the full diagram catalog, analysis, and `merman-editor-core`
+     language intelligence without SVG, ASCII, host, or ELK dependencies. It is the browser Worker
+     surface described by ADR-0074.
+   - `browser-full-no-elk` and `browser-ratex-math` remain source/CI evidence presets rather than
+     public wrapper subpaths.
+   - Pure `./catalog`, `./svg-safety`, and `./text-measurement-abi` helpers do not initialize WASM.
+   - `bindingCapabilities()` is the runtime discovery API for the active artifact. Package names
+     are not a substitute for capability checks when consumers supply a custom generated artifact.
 
 2. `merman-wasm` remains explicitly browser/JS WASM.
    - It may use wasm-bindgen, serde-wasm-bindgen, and browser-compatible glue.
@@ -62,8 +74,10 @@ flowchart LR
 
 | Metric | Target | Measurement |
 | --- | --- | --- |
-| Browser publication default | npm package uses `browser-full` | `npm run prepack --prefix platforms/web` rejects non-full artifacts unless `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` |
-| Browser preset evidence | All named browser presets build and smoke according to capability metadata | `npm run build:wasm:* --prefix platforms/web` plus `npm run smoke --prefix platforms/web` |
+| Browser publication default | Default npm entry uses `browser-full` | `npm run prepack --prefix platforms/web` rejects a non-full default artifact unless `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` |
+| Public browser subpaths | Every wrapper has matching TS, wasm-bindgen, WASM, preset metadata, exports, and size evidence | package contract/smoke checks, `SURFACES.json`, and `xtask wasm-size-matrix` |
+| Editor Worker surface | `./editor` exposes parser-backed language APIs on ABI 2/editor schema 1 without render/ASCII/ELK | Web contract tests plus Playground Worker browser tests |
+| Browser preset evidence | All named browser presets build and report accurate capabilities | `npm run build:surfaces --prefix platforms/web`, package smoke, and preset manifests |
 | Runtime capability discovery | Active artifact reports compiled capabilities | `bindingCapabilities()` returns booleans and legacy artifacts fall back to full capabilities |
 | Typst import boundary | Only the two `typst_env` protocol imports are present | `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>` |
 | Typst execution boundary | Plugin can be loaded by a Typst-compatible host and return SVG JSON | `cargo run -p xtask -- typst-plugin-smoke --wasm <plugin.wasm>` |
@@ -71,16 +85,15 @@ flowchart LR
 
 ## Alternatives Considered
 
-### Option A: Multiple npm packages or export paths now
+### Option A: Multiple npm packages
 
-Publish `@mermanjs/web-core`, `@mermanjs/web-render`, or package export variants immediately.
+Publish `@mermanjs/web-core`, `@mermanjs/web-render`, and `@mermanjs/web-editor` as independent
+packages.
 
-- Pros: consumers can install smaller browser artifacts directly.
-- Cons: locks public API and semver commitments before enough usage evidence; increases release
-  workflow and documentation surface; risks users importing unsupported slim artifacts as if they
-  were the default full package.
-- Decision: rejected for this lane. Source-build presets give evidence without freezing the public
-  npm surface.
+- Pros: package installation makes the selected dependency posture explicit.
+- Cons: multiplies versions, provenance, release workflows, and shared TypeScript type ownership.
+- Decision: rejected. Capability-specific subpaths provide small artifacts while one npm package
+  keeps versioning and shared contract generation atomic.
 
 ### Option B: Make the slim browser artifact the npm default
 
@@ -114,7 +127,9 @@ Keep `merman-typst-plugin` as an internal probe until the Typst package wrapper 
 
 | Risk | Severity | Likelihood | Mitigation |
 | --- | --- | --- | --- |
-| Users assume browser slim presets are stable public npm entry points | Medium | Medium | Document presets as source-build only; keep package default `browser-full`; prepack rejects non-full artifacts by default |
+| Users assume every named preset is a public npm subpath | Medium | Medium | Generate the exact subpath list from release/package manifests; document evidence-only presets separately |
+| A subpath ships the wrong WASM capability set | High | Low | Bind wrapper, preset metadata, generated declarations, smoke, ABI, and size budget in one release gate |
+| Editor helpers drift from LSP/parser semantics | High | Low | Keep behavior in `merman-editor-core`; run it through the dedicated ABI-2/schema-1 WASM Worker rather than TypeScript heuristics |
 | Typst docs imply full package readiness from transport smoke | Medium | Medium | Label Typst package publication as manual/future; document smoke as transport validation only |
 | Browser changes reintroduce JS imports into Typst builds | High | Low | Keep `profile-budget check-wasm --profile typst-wasm` and `typst-plugin-smoke` as release gates |
 | Feature defaults become unclear across crates | Medium | Medium | Record defaults in `docs/FEATURES.md`, README, and package surface docs |
@@ -123,7 +138,12 @@ Keep `merman-typst-plugin` as an internal probe until the Typst package wrapper 
 ## Consequences
 
 - Existing browser and Rust/native users keep compatible defaults.
-- Browser size work can continue behind named source-build presets without multiplying npm package
-  contracts.
+- Browser consumers can choose a capability-specific public subpath without splitting package
+  versioning across multiple npm names.
+- Playground language intelligence can load the editor-only Worker artifact instead of duplicating
+  the full renderer artifact.
 - Typst work has a concrete, testable transport gate before registry packaging.
-- Future public slim browser packages or export paths require a new ADR or migration plan.
+- Future independent browser packages, a changed default preset, or a reusable public engine/session
+  API require a new ADR or migration plan.
+- Playground runtime, BFCache, Compare realms, and benchmark ownership remain application concerns
+  defined by ADR-0074; they are not exported from `@mermanjs/web`.

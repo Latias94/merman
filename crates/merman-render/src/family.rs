@@ -483,6 +483,21 @@ impl GanttTimeAxisDiagnostics {
     }
 }
 
+/// A completed family SVG produced by the canonical typed render operation.
+///
+/// Root completion evidence is private to the renderer and cannot be named by callers:
+///
+/// ```compile_fail
+/// use merman_render::svg::RootedSvg;
+/// ```
+///
+/// A raw string cannot be substituted for a completed family SVG:
+///
+/// ```compile_fail
+/// use merman_render::family::RenderedFamilySvg;
+///
+/// let forged: RenderedFamilySvg = String::from("<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
+/// ```
 pub struct RenderedFamilySvg {
     svg: String,
     metadata: ParseMetadata,
@@ -591,6 +606,23 @@ fn prepare_pair<S, L>(
     Ok(Box::new(FamilyPair::new(semantic, layout)))
 }
 
+/// Prepares one family-owned typed semantic model for layout and SVG rendering.
+///
+/// Compatibility JSON is deliberately not accepted by this interface:
+///
+/// ```compile_fail
+/// use merman_render::{LayoutOptions, environment::RenderEnvironment};
+///
+/// let session = RenderEnvironment::parity().begin_session().unwrap();
+/// let raw_json = serde_json::json!({ "type": "flowchart-v2" });
+/// let _ = merman_render::family::prepare(raw_json, &LayoutOptions::default(), session);
+/// ```
+///
+/// Family semantic/layout pairing is private and therefore cannot be assembled independently:
+///
+/// ```compile_fail
+/// use merman_render::family::FamilyPair;
+/// ```
 pub fn prepare(
     parsed: ParsedDiagramRender,
     options: &LayoutOptions,
@@ -613,6 +645,12 @@ pub fn prepare(
                 model.kind()
             ),
         });
+    }
+
+    if let RenderSemanticModel::Flowchart(model) = &model {
+        session
+            .resource_limits()
+            .check_flowchart_complexity(model)?;
     }
 
     let execution = LayoutExecution::new(options, &session);
@@ -968,6 +1006,64 @@ mod tests {
         crate::environment::RenderEnvironment::parity()
             .begin_session()
             .unwrap()
+    }
+
+    #[cfg(feature = "core-full")]
+    fn prepare_with_flowchart_node_limit(
+        source: &str,
+        max_flowchart_nodes: usize,
+    ) -> Result<FamilyRenderArtifact> {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("flowchart source should produce a render model");
+        let session = crate::environment::RenderEnvironment::parity()
+            .with_resource_limits(crate::resources::RenderResourceLimits {
+                max_flowchart_nodes: Some(max_flowchart_nodes),
+                ..crate::resources::RenderResourceLimits::unbounded_for_trusted_input()
+            })
+            .begin_session()
+            .unwrap();
+        prepare(parsed, &LayoutOptions::default(), session)
+    }
+
+    #[cfg(feature = "core-full")]
+    fn assert_flowchart_node_limit(error: Error, actual: usize, max: usize) {
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected max_flowchart_nodes resource limit error")
+        };
+        assert_eq!(limit.phase, ResourceLimitPhase::LayoutModel);
+        assert_eq!(limit.limit, "max_flowchart_nodes");
+        assert_eq!(limit.actual, actual);
+        assert_eq!(limit.max, max);
+    }
+
+    #[cfg(feature = "core-full")]
+    #[test]
+    fn dagre_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
+        let source = "flowchart TD\nA --> B";
+        let artifact = prepare_with_flowchart_node_limit(source, 2).unwrap();
+        assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
+
+        let error = match prepare_with_flowchart_node_limit(source, 1) {
+            Err(error) => error,
+            Ok(_) => panic!("flowchart above the node limit unexpectedly rendered"),
+        };
+        assert_flowchart_node_limit(error, 2, 1);
+    }
+
+    #[cfg(feature = "core-full")]
+    #[test]
+    fn swimlane_node_limit_accepts_boundary_and_rejects_one_beyond() {
+        let source = "swimlane-beta LR\nA --> B";
+        let artifact = prepare_with_flowchart_node_limit(source, 2).unwrap();
+        assert_eq!(artifact.family_kind(), RenderFamilyKind::Swimlane);
+
+        let error = match prepare_with_flowchart_node_limit(source, 1) {
+            Err(error) => error,
+            Ok(_) => panic!("swimlane above the node limit unexpectedly rendered"),
+        };
+        assert_flowchart_node_limit(error, 2, 1);
     }
 
     #[test]

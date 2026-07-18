@@ -19,6 +19,16 @@ execution: code
 - **Stop conditions:** Do not force a browser-only residual into parser or model semantics, broaden comparator normalization, grow fixture-specific overrides without source evidence, or guess when a change would contradict pinned Mermaid behavior.
 - **Tail ownership:** Execute on a feature branch with focused Conventional Commits. Complete local verification and commits; do not push or open a PR unless separately requested.
 
+### Post-plan scope amendment (2026-07-18)
+
+After the architecture migration units were implemented, the maintainer explicitly expanded the
+Mermaid 11.16 alignment scope to every new diagram family. Wardley was then admitted through its
+own source-backed workflow rather than being smuggled into this migration. Its capability contract,
+ten-case upstream corpus, provenance, and zero-residual parity evidence are recorded in
+`docs/alignment/WARDLEY_MINIMUM.md` and `docs/alignment/WARDLEY_UPSTREAM_TEST_COVERAGE.md`. This
+amendment supersedes the original "Wardley remains unsupported" outcome below while preserving the
+original unit boundaries as historical execution constraints.
+
 ---
 
 ## Product Contract
@@ -66,7 +76,7 @@ The verification layer compounds the risk: all current per-family compare comman
 - AE1. Parsing one Architecture source produces compatibility JSON and a typed render model with identical title, accessibility, group, node, edge, ordering, and layout-hint semantics; editor facts for the same source use the same statement facts and exact original-source spans.
 - AE2. An incomplete Architecture statement yields registered recovered editor facts and a precise diagnostic without running a separate editor-only grammar or generic body scan.
 - AE3. `packet` with a multiline `accDescr { ... }` parses successfully, preserves all lines in compatibility JSON and the typed render model, and exposes the payload span through editor facts.
-- AE4. Architecture, Cynefin, GitGraph, Info, Packet, Pie, and Radar agree on upstream `common.langium` behavior for inline values, multiline blocks, comments, CRLF input, empty values, and unterminated-block recovery; unsupported Wardley remains an explicit capability state rather than an accidental adapter.
+- AE4. Architecture, Cynefin, GitGraph, Info, Packet, Pie, and Radar agree on upstream `common.langium` behavior for inline values, multiline blocks, comments, CRLF input, empty values, and unterminated-block recovery. Wardley is either an explicit unsupported capability during this migration or a separately admitted family with its own source-backed evidence; it is never an accidental adapter.
 - AE5. Every admitted family and alias has an explicit editor adapter in Diagram Family Facts for its selected profile. A custom parser without editor capability returns visible unavailability rather than guessed symbols.
 - AE6. Empty source still offers diagram-header authoring choices, but malformed unknown source and parser failure never manufacture node identifiers, document symbols, references, or semantic tokens from body text.
 - AE7. A built-in render request cannot pair a Packet semantic model with a Pie layout. Alias and feature-gated variants reach the correct family-owned adapter, the error family uses its dedicated renderer, and a registered custom semantic parser without a render family returns explicit unavailable layout/SVG capability.
@@ -91,7 +101,9 @@ The verification layer compounds the risk: all current per-family compare comman
 - Replacing all family parsers with one parser generator or forcing Jison-derived, hand-written, and Langium grammars through one shallow global parser.
 - Splitting `ParsePipeline` or `HeadlessOperation`; both remain deep orchestration modules and should become smaller only because leaked family policy moves behind their interfaces.
 - Implementing a browser, CSS cascade, or general SVG text-layout engine.
-- Adding new Mermaid diagram families or expanding Wardley support as part of this architecture migration.
+- Admitting new Mermaid diagram families inside the architecture migration units. The later
+  Mermaid 11.16 family expansion is a separate admission workflow, as recorded in the post-plan
+  amendment and family alignment documents.
 - Broad comparator normalization, model distortion, or magic-number tuning to make fixtures pass.
 - Publishing, pushing, opening a PR, or releasing packages.
 
@@ -291,7 +303,7 @@ Profile selection is observable and testable. Family-specific browser residuals 
 - **Requirements:** R1, R2, R4, R13; AE3, AE4.
 - **Dependencies:** U2, U3.
 - **Files:** Create `crates/merman-core/src/diagrams/langium_common.rs`. Modify `crates/merman-core/src/diagrams/mod.rs`, `crates/merman-core/src/common_db.rs`, `crates/merman-core/src/diagrams/architecture.rs`, `crates/merman-core/src/diagrams/cynefin.rs`, `crates/merman-core/src/diagrams/git_graph.rs`, `crates/merman-core/src/diagrams/info.rs`, `crates/merman-core/src/diagrams/packet.rs`, `crates/merman-core/src/diagrams/pie.rs`, `crates/merman-core/src/diagrams/radar.rs`, and `crates/merman-core/src/tests/misc.rs`. Keep focused tests in each family module.
-- **Approach:** Port only `TitleAndAccessibilities`, `TITLE`, `ACC_TITLE`, `ACC_DESCR`, newline, and comment behavior from `repo-ref/mermaid/packages/parser/src/language/common/common.langium`. Produce owned values plus original-source spans and recovery diagnostics. Family parsers consume common facts while retaining their own headers and statements. Delete family-local title/accessibility scanner families after migration. Wardley remains explicitly unsupported.
+- **Approach:** Port only `TitleAndAccessibilities`, `TITLE`, `ACC_TITLE`, `ACC_DESCR`, newline, and comment behavior from `repo-ref/mermaid/packages/parser/src/language/common/common.langium`. Produce owned values plus original-source spans and recovery diagnostics. Family parsers consume common facts while retaining their own headers and statements. Delete family-local title/accessibility scanner families after migration. U4 does not admit Wardley; Wardley was later admitted through the independent source-backed workflow named in the post-plan scope amendment.
 - **Execution note:** Begin with the reproduced failing Packet multiline `accDescr` case, then add a common conformance table before migrating other families.
 - **Patterns to follow:** Upstream `common.langium`; source-span and remapping conventions in `crates/merman-core/src/diagrams/scan.rs`; family semantic-source pattern proven by U2.
 - **Test scenarios:**
@@ -396,7 +408,7 @@ Profile selection is observable and testable. Family-specific browser residuals 
 - **Requirements:** R10, R11, R12, R13; AE12.
 - **Dependencies:** U1-U8, U10.
 - **Files:** Create `docs/adr/0073-family-owned-diagram-architecture.md`. Modify `docs/adr/0010-semantic-model-boundary.md`, `docs/adr/0057-headless-svg-text-bbox.md`, `docs/adr/0062-fixture-derived-overrides.md`, `docs/adr/0071-editor-parser-semantic-seam.md`, `docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md`, `docs/lsp/CAPABILITIES.md`, `README.md`, `CHANGELOG.md`, public crate documentation, examples, benchmarks, and tests/audits that enforce forbidden legacy paths.
-- **Approach:** Audit every removed public and internal symbol, delete unused modules and compatibility wrappers, update migration guidance for changed Rust and serialized APIs, close or rewrite architecture ledger items based on the final code, and add source-level architecture guards only where they enforce ownership rather than implementation spelling. Run formatting, clippy, workspace tests, strict verification, parity modes, and override audits from a clean feature branch.
+- **Approach:** Audit every removed public and internal symbol, delete unused modules and compatibility wrappers, update migration guidance for changed Rust and serialized APIs, and close or rewrite architecture ledger items based on the final code. Enforce lasting ownership through closed types, visibility, compile-fail contracts, runtime operation evidence, and behavior/parity tests. Source searches are migration inventory only; they must not become parameter-name, function-prefix, literal, or substring architecture guards. Run formatting, clippy, workspace tests, strict verification, parity modes, and override audits from a clean feature branch.
 - **Execution note:** Treat this as deletion and verification, not a place to defer unfinished migrations. Any remaining old path sends work back to its owning U-ID before this unit can complete.
 - **Patterns to follow:** ADR-0014 upstream authority, ADR-0050 release gates, the repository's 11.16 upgrade playbook, and existing no-growth audits.
 - **Test scenarios:**

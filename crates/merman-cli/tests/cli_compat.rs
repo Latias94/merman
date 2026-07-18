@@ -834,6 +834,32 @@ Shifted midnight: id1,2013-01-01,1d
 }
 
 #[test]
+fn cli_commands_reject_out_of_range_fixed_local_midnight_consistently() {
+    let source = "flowchart TD\nA-->B\n";
+    for command in ["detect", "parse", "layout"] {
+        let output = run_with_stdin(
+            &[
+                command,
+                "--fixed-today=-262143-01-01",
+                "--fixed-local-offset-minutes",
+                "1439",
+                "-",
+            ],
+            source,
+        );
+        assert!(
+            !output.status.success(),
+            "{command} unexpectedly accepted an out-of-range local midnight"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("local datetime"),
+            "unexpected {command} error: {stderr}"
+        );
+    }
+}
+
+#[test]
 fn top_level_gantt_fixed_today_is_carried_through_export_args() {
     let diagram = r#"gantt
 dateFormat YYYY-MM-DD

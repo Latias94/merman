@@ -41,6 +41,12 @@
       "max_gzip_bytes": 1100000,
       "max_brotli_bytes": 830000
     },
+    "browser-editor": {
+      "max_raw_bytes": 5750000,
+      "max_stripped_bytes": 4200000,
+      "max_gzip_bytes": 1380000,
+      "max_brotli_bytes": 1020000
+    },
     "browser-full": {
       "max_raw_bytes": 14000000,
       "max_stripped_bytes": 11000000,

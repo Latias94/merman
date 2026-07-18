@@ -245,13 +245,14 @@ pub(crate) fn render_builtin_family_artifact(
     debug: &SvgDebugOptions,
 ) -> Result<String> {
     let execution = SvgExecution::new(options, debug, session);
-    let svg = render_builtin_family_artifact_raw(
+    let rooted_svg = render_builtin_family_artifact_raw(
         family,
         effective_config,
         diagram_type,
         title,
         &execution,
     )?;
+    let svg = rooted_svg.into_string_for(family.kind())?;
     apply_theme_css(svg, effective_config.as_value(), session)
 }
 
@@ -261,7 +262,7 @@ fn render_builtin_family_artifact_raw(
     diagram_type: &str,
     title: Option<&str>,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     use crate::family::BuiltinFamilyArtifact;
 
     let measurer = options.text_measurer();

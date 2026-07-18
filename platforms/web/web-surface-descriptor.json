@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "default_preset": "browser-full",
+  "presets": [
+    {
+      "name": "browser-core",
+      "surface": "browser",
+      "default_features": false,
+      "features": ["analysis"],
+      "capabilities": {
+        "render": false,
+        "analysis": true,
+        "ascii": false,
+        "core_full": false,
+        "core_host": false,
+        "elk_layout": false,
+        "ratex_math": false,
+        "editor_language": false
+      }
+    },
+    {
+      "name": "browser-render",
+      "surface": "browser",
+      "default_features": false,
+      "features": ["render", "analysis"],
+      "capabilities": {
+        "render": true,
+        "analysis": true,
+        "ascii": false,
+        "core_full": false,
+        "core_host": false,
+        "elk_layout": false,
+        "ratex_math": false,
+        "editor_language": false
+      }
+    },
+    {
+      "name": "browser-render-only",
+      "surface": "browser",
+      "default_features": false,
+      "features": ["render"],
+      "capabilities": {
+        "render": true,
+        "analysis": false,
+        "ascii": false,
+        "core_full": false,
+        "core_host": false,
+        "elk_layout": false,
+        "ratex_math": false,
+        "editor_language": false
+      }
+    },
+    {
+      "name": "browser-ascii",
+      "surface": "browser",
+      "default_features": false,
+      "features": ["ascii"],
+      "capabilities": {
+        "render": false,
+        "analysis": false,
+        "ascii": true,
+        "core_full": false,
+        "core_host": false,
+        "elk_layout": false,
+        "ratex_math": false,
+        "editor_language": false
+      }
+    },
+    {
+      "name": "browser-editor",
+      "surface": "browser",
+      "default_features": false,
+      "features": ["core-full", "editor-language"],
+      "capabilities": {
+        "render": false,
+        "analysis": true,
+        "ascii": false,
+        "core_full": true,
+        "core_host": false,
+        "elk_layout": false,
+        "ratex_math": false,
+        "editor_language": true
+      }
+    },
+    {
+      "name": "browser-full",
+      "surface": "browser",
+      "default_features": true,
+      "features": [],
+      "capabilities": {
+        "render": true,
+        "analysis": true,
+        "ascii": true,
+        "core_full": true,
+        "core_host": true,
+        "elk_layout": true,
+        "ratex_math": false,
+        "editor_language": true
+      }
+    },
+    {
+      "name": "browser-full-no-elk",
+      "surface": "browser",
+      "default_features": false,
+      "features": [
+        "core-full",
+        "core-host",
+        "render",
+        "analysis",
+        "ascii",
+        "editor-language"
+      ],
+      "capabilities": {
+        "render": true,
+        "analysis": true,
+        "ascii": true,
+        "core_full": true,
+        "core_host": true,
+        "elk_layout": false,
+        "ratex_math": false,
+        "editor_language": true
+      }
+    },
+    {
+      "name": "browser-ratex-math",
+      "surface": "browser",
+      "default_features": true,
+      "features": ["ratex-math"],
+      "capabilities": {
+        "render": true,
+        "analysis": true,
+        "ascii": true,
+        "core_full": true,
+        "core_host": true,
+        "elk_layout": true,
+        "ratex_math": true,
+        "editor_language": true
+      }
+    }
+  ],
+  "public_surfaces": [
+    {
+      "entry": "core",
+      "preset": "browser-core",
+      "pkg_dir_rel": "pkg/core",
+      "runtime_profile": "core"
+    },
+    {
+      "entry": "render",
+      "preset": "browser-render",
+      "pkg_dir_rel": "pkg/render",
+      "runtime_profile": "render"
+    },
+    {
+      "entry": "render-only",
+      "preset": "browser-render-only",
+      "pkg_dir_rel": "pkg/render-only",
+      "runtime_profile": "render-only"
+    },
+    {
+      "entry": "ascii",
+      "preset": "browser-ascii",
+      "pkg_dir_rel": "pkg/ascii",
+      "runtime_profile": "ascii"
+    },
+    {
+      "entry": "editor",
+      "preset": "browser-editor",
+      "pkg_dir_rel": "pkg/editor",
+      "runtime_profile": "editor"
+    },
+    {
+      "entry": "full",
+      "preset": "browser-full",
+      "pkg_dir_rel": "pkg/full",
+      "runtime_profile": "full"
+    }
+  ]
+}

@@ -140,7 +140,7 @@
           "y": 384.2,
           "fill": "#0000ff",
           "radius": 10.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "W3",
@@ -176,7 +176,7 @@
           "y": 87.4,
           "fill": "#ff3300",
           "radius": 10.0,
-          "strokeColor": "rgb(185, 185, 255)",
+          "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
             "text": "W1",

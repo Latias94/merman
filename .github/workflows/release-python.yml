@@ -252,7 +252,13 @@ jobs:
           )
           assert middle_y_offset.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
           assert middle_y_offset.length < 0.0
-          assert e.abi_version() == 2
+          merman.require_abi_version(e.abi_version())
+          try:
+              merman.require_abi_version(merman.ABI_VERSION + 1)
+          except merman.AbiVersionMismatch:
+              pass
+          else:
+              raise AssertionError('expected mismatched ABI to be rejected')
           assert e.render_svg(s, None).startswith('<svg')
           assert 'Hello' in e.render_ascii(s, None)
           assert e.validate(s, None).valid

@@ -236,9 +236,6 @@ pub(crate) fn layout_flowchart_typed_by_engine(
         );
     }
 
-    options
-        .resource_limits()
-        .check_flowchart_complexity(model)?;
     flowchart::layout_flowchart_typed(
         model,
         effective_config,
@@ -254,9 +251,6 @@ fn layout_flowchart_elk_typed_by_feature(
     effective_config: &merman_core::MermaidConfig,
     options: &LayoutExecution<'_>,
 ) -> Result<model::FlowchartLayout> {
-    options
-        .resource_limits()
-        .check_flowchart_complexity(model)?;
     flowchart::elk::layout_flowchart_elk_typed(
         model,
         effective_config,

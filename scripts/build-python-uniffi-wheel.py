@@ -18,29 +18,6 @@ WHEEL_SMOKE = """
 import merman
 
 
-EXPECTED_TEXT_MEASUREMENT_OPERATIONS = {
-    "MEASURE",
-    "COMPUTED_LENGTH",
-    "B_BOX_X",
-    "B_BOX_X_WITH_ASCII_OVERHANG",
-    "TITLE_B_BOX_X",
-    "SIMPLE_B_BOX_WIDTH",
-    "RAW_B_BOX_WIDTH",
-    "TSPAN_B_BOX_WIDTH",
-    "TSPAN_B_BOX_HEIGHT",
-    "WRAP_PROBE_B_BOX_WIDTH",
-    "SIMPLE_B_BOX_HEIGHT",
-    "WRAPPED",
-    "WRAPPED_WITH_RAW_WIDTH",
-    "BOUNDING_CLIENT_RECT_WIDTH",
-    "CREATE_TEXT_B_BOX_Y_OFFSET",
-    "MERMAID_CALCULATE_TEXT_DIMENSIONS",
-    "CANVAS_MEASURE_TEXT_WIDTH",
-    "CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET",
-    "RAW_B_BOX_HEIGHT",
-}
-
-
 def measurement_result(operation, width, height):
     operation_type = merman.MermanTextMeasurementOperation
     values = dict(
@@ -130,8 +107,12 @@ class Measurer(merman.MermanTextMeasurer):
 
 
 operation_type = merman.MermanTextMeasurementOperation
-assert set(operation_type.__members__) == EXPECTED_TEXT_MEASUREMENT_OPERATIONS
-assert {operation.value for operation in operation_type} == set(range(19))
+expected_operation_codes = {entry[0] for entry in merman.TEXT_MEASUREMENT_OPERATIONS}
+expected_result_kind_codes = {entry[0] for entry in merman.TEXT_MEASUREMENT_RESULT_KINDS}
+assert {operation.value for operation in operation_type} == expected_operation_codes
+assert {
+    kind.value for kind in merman.MermanTextMeasurementResultKind
+} == expected_result_kind_codes
 dimensions = measurement_result(
     merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
     42.0,
@@ -166,7 +147,14 @@ assert middle_y_offset.result_kind == merman.MermanTextMeasurementResultKind.LEN
 assert middle_y_offset.length < 0.0
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 2
+merman.require_abi_version(engine.abi_version())
+try:
+    merman.require_abi_version(merman.ABI_VERSION + 1)
+except merman.AbiVersionMismatch as error:
+    assert error.expected == merman.ABI_VERSION
+    assert error.actual == merman.ABI_VERSION + 1
+else:
+    raise AssertionError("expected mismatched ABI to be rejected")
 assert engine.package_version()
 source = "flowchart TD\\nA[Hello] --> B[World]"
 assert "Hello" in engine.render_svg(source, None)

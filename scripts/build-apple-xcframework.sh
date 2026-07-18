@@ -84,6 +84,8 @@ require_tool lipo
 rm -rf "$OUT_DIR"
 mkdir -p "$INCLUDE_DIR"
 cp "$REPO_ROOT/crates/merman-ffi/include/merman.h" "$INCLUDE_DIR/merman.h"
+cp "$REPO_ROOT/crates/merman-ffi/include/merman_text_measurement_abi.h" \
+    "$INCLUDE_DIR/merman_text_measurement_abi.h"
 
 XC_ARGS=()
 

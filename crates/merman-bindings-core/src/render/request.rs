@@ -1,14 +1,13 @@
 use crate::common::{
     BindingError, BindingOptions, BindingStatus, HostThemeOptionsJson, ResourceOptionsJson,
-    binding_fixed_local_offset_minutes, binding_fixed_today, binding_site_config,
-    css_declaration_value, finite_positive, internal_json_error, no_diagram_error,
-    normalize_option,
+    binding_local_time_policy, binding_site_config, css_declaration_value, finite_positive,
+    internal_json_error, no_diagram_error, normalize_option,
 };
 use merman::render::{
-    HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset, HostThemePreset,
-    HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions, MeasurementProfileId,
-    RenderEnvironment, RenderTimeSnapshot, TextMeasurementPhase, TextMeasurementPolicy,
-    TextMeasurementProfileIdentity,
+    FixedRenderClock, HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset,
+    HostThemePreset, HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
+    MeasurementProfileId, RenderEnvironment, RenderTimeSnapshot, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use std::sync::Arc;
 
@@ -322,41 +321,23 @@ fn apply_binding_time_policy(
     environment: RenderEnvironment,
     options: &BindingOptions,
 ) -> Result<RenderEnvironment, BindingError> {
-    let today = binding_fixed_today(options)?;
-    let requested_offset = binding_fixed_local_offset_minutes(options)?;
-    match (today, requested_offset) {
-        (Some(today), requested_offset) => {
-            let offset_minutes = requested_offset.unwrap_or_else(default_local_offset_minutes);
-            let snapshot = RenderTimeSnapshot::from_unix_millis(
-                fixed_local_midnight_unix_ms(today, offset_minutes),
-                offset_minutes,
-            )
-            .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
-            Ok(environment.with_time_snapshot(snapshot))
-        }
-        (None, Some(offset_minutes)) => environment
-            .with_fixed_local_offset_minutes(offset_minutes)
-            .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string())),
-        (None, None) => Ok(environment),
+    let policy = binding_local_time_policy(options)?;
+    if !policy.explicit {
+        return Ok(environment);
     }
-}
 
-fn fixed_local_midnight_unix_ms(today: chrono::NaiveDate, offset_minutes: i32) -> i64 {
-    let local_midnight = today.and_hms_opt(0, 0, 0).expect("valid midnight");
-    let utc_midnight = local_midnight - chrono::TimeDelta::minutes(i64::from(offset_minutes));
-    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(utc_midnight, chrono::Utc)
-        .timestamp_millis()
-}
-
-fn default_local_offset_minutes() -> i32 {
-    #[cfg(feature = "core-host")]
-    {
-        chrono::Local::now().offset().local_minus_utc() / 60
+    let mut environment = environment;
+    if let Some(today) = policy.today {
+        let snapshot =
+            RenderTimeSnapshot::from_local_midnight(today, &policy.time_zone).map_err(|err| {
+                BindingError::new(
+                    BindingStatus::InvalidArgument,
+                    format!("fixed_today cannot be resolved: {err}"),
+                )
+            })?;
+        environment = environment.with_clock(Arc::new(FixedRenderClock::new(snapshot)));
     }
-    #[cfg(not(feature = "core-host"))]
-    {
-        0
-    }
+    Ok(environment.with_local_time_zone(policy.time_zone))
 }
 
 fn binding_host_theme(
@@ -737,6 +718,7 @@ fn classify_render_error(err: merman::render::HeadlessError) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use merman::time::LocalTimeZone;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct AdvancingClock(AtomicUsize);
@@ -752,8 +734,35 @@ mod tests {
     fn fixed_local_midnight_uses_fixed_local_offset() {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 6, 10).unwrap();
 
-        assert_eq!(fixed_local_midnight_unix_ms(today, 0), 1_781_049_600_000);
-        assert_eq!(fixed_local_midnight_unix_ms(today, 60), 1_781_046_000_000);
+        assert_eq!(
+            RenderTimeSnapshot::from_local_midnight(today, &LocalTimeZone::utc())
+                .expect("valid UTC midnight")
+                .unix_ms(),
+            1_781_049_600_000
+        );
+        let east_one = LocalTimeZone::fixed(60).expect("valid fixed offset");
+        assert_eq!(
+            RenderTimeSnapshot::from_local_midnight(today, &east_one)
+                .expect("valid fixed-offset midnight")
+                .unix_ms(),
+            1_781_046_000_000
+        );
+    }
+
+    #[test]
+    fn boundary_fixed_today_returns_invalid_argument_instead_of_panicking() {
+        let options = crate::common::parse_options(
+            br#"{
+                "fixed_today": "-262143-01-01",
+                "fixed_local_offset_minutes": 1439
+            }"#,
+        )
+        .expect("binding options JSON");
+        let error = apply_binding_time_policy(RenderEnvironment::parity(), &options)
+            .expect_err("boundary instant must be rejected");
+
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("fixed_today"));
     }
 
     #[test]

@@ -4,7 +4,7 @@ use super::{
 };
 use merman_render::{
     ResourceLimitExceeded, ResourceLimitPhase,
-    environment::{RenderEnvironment, RenderSession, RenderSessionReport},
+    environment::{RenderEnvironment, RenderLocalTimePolicy, RenderSession, RenderSessionReport},
 };
 
 #[cfg(feature = "raster")]
@@ -37,6 +37,19 @@ impl RenderExecutionPath {
 /// let snapshot = RenderEnvironment::parity().begin_session().unwrap().report();
 /// retain_completed(&snapshot);
 /// ```
+///
+/// The report also cannot be forged from a fresh session because its completion fields are
+/// private:
+///
+/// ```compile_fail
+/// use merman::render::{RenderEnvironment, RenderExecutionPath, RenderOperationReport};
+///
+/// let snapshot = RenderEnvironment::parity().begin_session().unwrap().report();
+/// let forged = RenderOperationReport {
+///     execution_path: RenderExecutionPath::HeadlessOperationTyped,
+///     session: snapshot,
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderOperationReport {
     execution_path: RenderExecutionPath,
@@ -58,6 +71,14 @@ impl RenderOperationReport {
 
     pub const fn time(&self) -> super::RenderTimeSnapshot {
         self.session.time()
+    }
+
+    pub const fn local_time_policy(&self) -> RenderLocalTimePolicy {
+        self.session.local_time_policy()
+    }
+
+    pub fn local_time_zone(&self) -> &merman_core::time::LocalTimeZoneProvenance {
+        self.session.local_time_zone()
     }
 
     pub const fn seed(&self) -> merman_render::environment::ResolvedRenderSeed {
@@ -300,11 +321,7 @@ impl<'a> HeadlessOperation<'a> {
         environment: &RenderEnvironment,
     ) -> Result<Self> {
         let session = environment.begin_session()?;
-        let snapshot = session.time();
-        let engine = engine
-            .clone()
-            .with_fixed_today(Some(snapshot.local_date()))
-            .with_fixed_local_offset_minutes(Some(snapshot.local_offset_minutes()));
+        let engine = super::engine_with_session_time(engine, &session);
         Ok(Self {
             engine,
             text,

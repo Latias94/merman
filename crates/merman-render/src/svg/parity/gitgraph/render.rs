@@ -524,7 +524,7 @@ pub(crate) fn render_gitgraph_diagram_svg_model(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_title = model
         .title
         .as_deref()
@@ -561,7 +561,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     const THEME_COLOR_LIMIT: i64 = 8;
     const PX: f64 = 4.0;
     const PY: f64 = 2.0;
@@ -1280,14 +1280,14 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         b.max_y,
         VIEWBOX_PADDING_PX,
     );
-    root_context.finish_document(
+    let root_document = root_context.finish_document(
         &mut out,
         root_document,
         root_svg::RootViewportSpec::responsive(root_bounds)
             .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_bounds.width)),
     )?;
     out = out.replacen(TITLE_X_PLACEHOLDER, &fmt_string(title_anchor_x), 1);
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]
@@ -1352,6 +1352,8 @@ mod tests {
             )
         })
         .expect("render gitGraph SVG")
+        .into_string_for(crate::family::RenderFamilyKind::GitGraph)
+        .expect("gitGraph root provenance")
     }
 
     #[test]

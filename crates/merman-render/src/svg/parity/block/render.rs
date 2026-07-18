@@ -11,7 +11,7 @@ pub(crate) fn render_block_diagram_svg_model(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     fn decode_block_label_html(raw: &str) -> String {
         // Mermaid's block diagram labels are rendered via an HTML foreignObject label helper,
         // which decodes HTML entities (notably `&nbsp;`).
@@ -755,8 +755,9 @@ pub(crate) fn render_block_diagram_svg_model(
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "block");
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Block, diagram_id)
-        .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Block, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
     out.push_str(&block_css(diagram_id, effective_config));
     out.push_str("</style><g/>");
@@ -1319,5 +1320,5 @@ pub(crate) fn render_block_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }

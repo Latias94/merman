@@ -91,7 +91,10 @@ pub(super) fn compare_gantt_request(
         .with_parse_options(fact.parse_policy.options())
         .with_layout_options(layout_opts.clone())
         .with_environment(environment);
-    merman::time::with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes), || {
+    let baseline_time_zone = merman::time::LocalTimeZone::fixed(baseline_local_offset_minutes)
+        .map_err(|err| XtaskError::SvgCompareFailed(format!("invalid Gantt baseline time: {err}")))
+        .map_err(CompareRunFailure::without_evidence)?;
+    merman::time::with_local_time_zone(&baseline_time_zone, || {
         run_svg_compare(
             CompareHarnessOptions::new(CompareRunOptions {
                 diagram: fact.diagram,

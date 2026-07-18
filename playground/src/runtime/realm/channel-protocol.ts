@@ -18,6 +18,15 @@ export const REALM_BUDGETS = Object.freeze({
   maxViewportPixels: 4096 * 4096,
 });
 
+export const BENCHMARK_BUDGETS = Object.freeze({
+  maxActiveRuns: 1,
+  maxIterations: 1_000,
+  maxLiveRealms: 2,
+  maxResourceObservations: 128,
+  maxRetainedSamples: 2_000,
+  maxWarmups: 200,
+});
+
 export type RealmKind = "compare" | "benchmark";
 
 export interface RealmIdentity {
@@ -243,10 +252,10 @@ export function createOneTimeRealmInitGate(expected: RealmBootIdentity) {
   return {
     consume(value: unknown, transferredPortCount: number): RealmInit {
       if (consumed) {
-        throw new RealmProtocolError("Mermaid realm INIT was replayed.");
+        throw new RealmProtocolError("Realm INIT was replayed.");
       }
       if (transferredPortCount !== 1) {
-        throw new RealmProtocolError("Mermaid realm INIT must transfer one port.");
+        throw new RealmProtocolError("Realm INIT must transfer one port.");
       }
       const init = validateRealmInit(value, expected);
       consumed = true;
@@ -327,7 +336,22 @@ export function validateCompareRenderRequest(
   ]);
   assertEnvelope(message, identity, expectedSequence, "render");
   const requestId = expectBoundedString(message.requestId, "requestId", 128);
-  const payload = expectRecord(message.payload, "render payload");
+  const payload = validateCompareRenderPayload(message.payload);
+  return {
+    type: "render",
+    protocol: REALM_PROTOCOL_VERSION,
+    ...identity,
+    sequence: expectedSequence,
+    requestId,
+    payload,
+  };
+}
+
+export function validateCompareRenderPayload(
+  value: unknown
+): CompareRenderPayload {
+  assertEncodedMessageBudget(value);
+  const payload = expectRecord(value, "render payload");
   assertExactKeys(payload, [
     "source",
     "configJson",
@@ -360,22 +384,15 @@ export function validateCompareRenderRequest(
   }
 
   return {
-    type: "render",
-    protocol: REALM_PROTOCOL_VERSION,
-    ...identity,
-    sequence: expectedSequence,
-    requestId,
-    payload: {
-      source,
-      configJson,
-      theme,
-      diagramFont: diagramFont as DiagramFont,
-      externalRequirements: {
-        elkLayouts: requirements.elkLayouts,
-        zenuml: requirements.zenuml,
-      },
-      viewport: validateRealmViewport(payload.viewport),
+    source,
+    configJson,
+    theme,
+    diagramFont: diagramFont as DiagramFont,
+    externalRequirements: {
+      elkLayouts: requirements.elkLayouts,
+      zenuml: requirements.zenuml,
     },
+    viewport: validateRealmViewport(payload.viewport),
   };
 }
 

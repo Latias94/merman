@@ -27,7 +27,7 @@ use merman_bindings_core::{TextStyle, WrapMode};
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 use serde::Deserialize;
 
-const WASM_ABI_VERSION: u32 = 2;
+include!("generated/abi.rs");
 
 #[derive(Debug, Serialize)]
 struct WasmErrorPayload<'a> {

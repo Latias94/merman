@@ -23,7 +23,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
     layout: &IshikawaDiagramLayout,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("ishikawa");
     let mut out = String::new();
     let root_bounds = root_svg::DiagramBounds::from_view_box(
@@ -35,8 +35,9 @@ pub(crate) fn render_ishikawa_diagram_svg(
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "ishikawa");
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Ishikawa, diagram_id)
-        .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Ishikawa, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = ishikawa_css(layout, effective_config);
     let _ = write!(&mut out, "<style>{css}</style>");
@@ -58,7 +59,7 @@ pub(crate) fn render_ishikawa_diagram_svg(
     }
 
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_classic_diagram(out: &mut String, layout: &IshikawaDiagramLayout, marker_id: &str) {

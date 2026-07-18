@@ -127,6 +127,11 @@ jobs:
       - name: Test (nextest)
         run: cargo nextest run --cargo-quiet
 
+      - name: Test architecture compile-fail contracts
+        run: |
+          cargo test -p merman-render --doc
+          cargo test -p merman --doc --features render
+
       - name: Verify Cypress corpus against pinned Mermaid source
         if: matrix.parity
         run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
@@ -166,10 +171,6 @@ jobs:
 
       - name: Build (release)
         run: cargo build --release --locked -p merman-cli
-
-      - name: Override-free architecture guard
-        if: matrix.parity
-        run: cargo nextest run -p merman-render -E 'test(production_rendering_contains_no_fixture_or_exact_text_overrides)'
 
       - name: SVG DOM structure
         if: matrix.parity

@@ -13,7 +13,11 @@ import {
   resumeRenderCoordinator,
   suspendRenderCoordinator,
 } from "./runtime/render-coordinator-browser";
+import { configureLocalMonaco } from "./editor/monaco";
+import { installUIThemeLifecycle } from "./store";
 
+const monacoOwner = configureLocalMonaco();
+const removeThemeLifecycle = installUIThemeLifecycle();
 void ensureMermanReady().catch(() => undefined);
 const removeDocumentLifecycle = installMermanDocumentLifecycle(
   { document, window },
@@ -34,8 +38,10 @@ root.render(
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     removeDocumentLifecycle();
+    removeThemeLifecycle();
     disposeRenderCoordinator();
     disposeMermanRuntime();
+    monacoOwner.dispose();
     root.unmount();
   });
 }

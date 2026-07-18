@@ -2,7 +2,9 @@ use crate::cli::{
     Cli, Command, CompletionArgs, DetectArgs, LayoutArgs, LintArgs, LintOutputFormat,
     LintRulesArgs, ParseArgs, RenderCliArgs,
 };
-use crate::config::{engine_for, parse_options, renderer_for, site_config_for};
+use crate::config::{
+    engine_for, parse_options, renderer_for, site_config_for, validate_time_policy,
+};
 use crate::error::CliError;
 use crate::io::{read_input, write_stdout, write_stdout_line};
 use crate::render::{render_plan_for_mmdc, render_plan_for_subcommand, run_render};
@@ -224,19 +226,18 @@ fn lint_analyzer_options(
     args: &LintArgs,
     source: SourceDescriptor,
 ) -> Result<merman_analysis::AnalysisOptions, CliError> {
+    let time_args = crate::cli::ParseCliArgs {
+        config_file: args.config_file.clone(),
+        theme: None,
+        fixed_today: args.fixed_today,
+        fixed_local_offset_minutes: args.fixed_local_offset_minutes,
+        ..Default::default()
+    };
+    validate_time_policy(&time_args)?;
     let parse = merman::ParseOptions {
         suppress_errors: false,
     };
-    let site_config = site_config_for(
-        &crate::cli::ParseCliArgs {
-            config_file: args.config_file.clone(),
-            theme: None,
-            fixed_today: args.fixed_today,
-            fixed_local_offset_minutes: args.fixed_local_offset_minutes,
-            ..Default::default()
-        },
-        &RenderCliArgs::default(),
-    )?;
+    let site_config = site_config_for(&time_args, &RenderCliArgs::default())?;
     Ok(merman_analysis::AnalysisOptions::default()
         .with_parse_options(parse)
         .with_source(source)

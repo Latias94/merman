@@ -1,6 +1,7 @@
 import Editor from "@monaco-editor/react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 import {
   AlertCircle,
   CheckCircle2,
@@ -27,18 +28,19 @@ interface ConfigEditorProps {
 
 export function ConfigEditor({ className }: ConfigEditorProps) {
   const { t } = useTranslation();
-  const { mermaidConfig, setMermaidConfig, uiTheme } = useAppStore();
+  const { mermaidConfig, setMermaidConfig, resolvedTheme } = useAppStore(
+    useShallow((state) => ({
+      mermaidConfig: state.mermaidConfig,
+      resolvedTheme: state.resolvedTheme,
+      setMermaidConfig: state.setMermaidConfig,
+    }))
+  );
   const validation = useMemo(
     () => validateConfig(mermaidConfig, t),
     [mermaidConfig, t]
   );
 
-  const editorTheme =
-    uiTheme === "dark" ||
-    (uiTheme === "system" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches)
-      ? "vs-dark"
-      : "light";
+  const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
 
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
@@ -65,6 +67,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
                 variant="ghost"
                 size="icon-sm"
                 disabled={!validation.valid}
+                aria-label={t("config.format")}
                 onClick={() =>
                   setMermaidConfig(formatMermaidConfigJson(mermaidConfig))
                 }
@@ -79,6 +82,7 @@ export function ConfigEditor({ className }: ConfigEditorProps) {
               <Button
                 variant="ghost"
                 size="icon-sm"
+                aria-label={t("config.reset")}
                 onClick={() => setMermaidConfig(DEFAULT_MERMAID_CONFIG)}
               >
                 <RotateCcw className="size-4" />

@@ -1,87 +1,98 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { categories, getExamplesByCategory, type Example } from "@/src/lib/examples";
-import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
-import type { AsciiCapability } from "@/src/lib/ascii-support";
-import { detectDiagramType } from "@/src/lib/diagram-detection";
-import { useAppStore } from "@/src/store";
+import { useShallow } from "zustand/react/shallow";
+import { ChevronRight, Code, Search, X } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Code, ChevronRight } from "lucide-react";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useAppStore } from "@/src/store";
+import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
+import type { AsciiCapability } from "@/src/lib/ascii-support";
+import {
+  categories,
+  examples,
+  filterExamples,
+  type Example,
+} from "@/src/lib/examples";
 
-// 分类翻译映射
 const categoryKeys: Record<string, string> = {
   All: "examples.all",
-  Flowchart: "examples.categories.flowchart",
-  Sequence: "examples.categories.sequence",
-  Class: "examples.categories.class",
-  State: "examples.categories.state",
-  ER: "examples.categories.er",
-  Gantt: "examples.categories.gantt",
-  Pie: "examples.categories.pie",
-  Mindmap: "examples.categories.mindmap",
-  Git: "examples.categories.git",
-  Timeline: "examples.categories.timeline",
-  Journey: "examples.categories.journey",
-  Info: "examples.categories.info",
-  ZenUML: "examples.categories.zenuml",
-  "XY Chart": "examples.categories.xychart",
-  Architecture: "examples.categories.architecture",
-  C4: "examples.categories.c4",
-  Block: "examples.categories.block",
-  Packet: "examples.categories.packet",
-  Kanban: "examples.categories.kanban",
-  Quadrant: "examples.categories.quadrant",
-  Sankey: "examples.categories.sankey",
-  Radar: "examples.categories.radar",
-  Treemap: "examples.categories.treemap",
-  TreeView: "examples.categories.treeview",
-  Requirement: "examples.categories.requirement",
+  Software: "examples.categories.software",
+  Strategy: "examples.categories.strategy",
+  Data: "examples.categories.data",
+  Flow: "examples.categories.flow",
+  Planning: "examples.categories.planning",
+  Reference: "examples.categories.reference",
+  Grammar: "examples.categories.grammar",
 };
 
 export function ExampleGallery() {
   const { t } = useTranslation();
-  const { showExamples, toggleExamples, setCode } = useAppStore();
+  const { showExamples, setShowExamples, setCode } = useAppStore(
+    useShallow((state) => ({
+      setCode: state.setCode,
+      setShowExamples: state.setShowExamples,
+      showExamples: state.showExamples,
+    }))
+  );
   const asciiSupport = useAsciiSupport();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [query, setQuery] = useState("");
   const [asciiOnly, setAsciiOnly] = useState(false);
 
-  const isExampleAsciiSupported = useMemo(
-    () => (example: Example) =>
-      example.asciiSupported ??
-      asciiSupport.isSupported(detectDiagramType(example.code)),
-    [asciiSupport]
+  const asciiDiagramTypes = useMemo(
+    () => new Set(asciiSupport.supportedTypes),
+    [asciiSupport.supportedTypes]
   );
-
+  const searchableExamples = useMemo(
+    () =>
+      filterExamples({
+        query,
+        asciiOnly,
+        asciiDiagramTypes,
+      }),
+    [asciiDiagramTypes, asciiOnly, query]
+  );
   const visibleCategories = useMemo(
     () =>
       categories.filter(
         (category) =>
           category === "All" ||
-          !asciiOnly ||
-          getExamplesByCategory(category).some(isExampleAsciiSupported)
+          searchableExamples.some((example) => example.category === category)
       ),
-    [asciiOnly, isExampleAsciiSupported]
+    [searchableExamples]
   );
-
+  const activeCategory = visibleCategories.includes(selectedCategory)
+    ? selectedCategory
+    : "All";
   const filteredExamples = useMemo(
     () =>
-      getExamplesByCategory(selectedCategory).filter(
-        (example) => !asciiOnly || isExampleAsciiSupported(example)
-      ),
-    [asciiOnly, isExampleAsciiSupported, selectedCategory]
+      filterExamples({
+        category: activeCategory,
+        query,
+        asciiOnly,
+        asciiDiagramTypes,
+      }),
+    [activeCategory, asciiDiagramTypes, asciiOnly, query]
   );
   const asciiReadyCount = useMemo(
-    () => getExamplesByCategory("All").filter(isExampleAsciiSupported).length,
-    [isExampleAsciiSupported]
-  );
-
-  const asciiCapabilityForExample = useMemo(
-    () => (example: Example) =>
-      asciiSupport.capabilityFor(detectDiagramType(example.code)),
-    [asciiSupport]
+    () =>
+      examples.filter((example) =>
+        asciiDiagramTypes.has(example.diagramType)
+      ).length,
+    [asciiDiagramTypes]
   );
 
   useEffect(() => {
@@ -90,13 +101,18 @@ export function ExampleGallery() {
     }
   }, [selectedCategory, visibleCategories]);
 
-  if (!showExamples) return null;
+  const handleSelectExample = (example: Example) => {
+    setCode(example.source);
+    setShowExamples(false);
+  };
 
-  const toggleAsciiOnly = () => setAsciiOnly((value) => !value);
-
-  const handleSelectExample = (code: string) => {
-    setCode(code);
-    toggleExamples();
+  const handleOpenChange = (open: boolean) => {
+    setShowExamples(open);
+    if (!open) {
+      setQuery("");
+      setSelectedCategory("All");
+      setAsciiOnly(false);
+    }
   };
 
   const getCategoryLabel = (category: string) => {
@@ -105,122 +121,198 @@ export function ExampleGallery() {
   };
 
   return (
-    <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-sm flex flex-col">
-      {/* 头部 */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <div>
-          <h2 className="text-lg font-semibold">{t("examples.title")}</h2>
-          <p className="text-sm text-muted-foreground">
-            {t("examples.description")}
-          </p>
-        </div>
-        <Button variant="ghost" size="icon" onClick={toggleExamples}>
-          <X className="size-5" />
-        </Button>
-      </div>
-
-      <div className="flex-1 flex flex-col overflow-hidden md:flex-row">
-        {/* 左侧分类 */}
-        <div className="scrollbar-thin shrink-0 overflow-x-auto border-b p-2 md:w-48 md:overflow-y-auto md:border-b-0 md:border-r">
-          <div className="mb-2 hidden w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground md:flex">
-            <Checkbox
-              checked={asciiOnly}
-              onCheckedChange={(checked) => setAsciiOnly(checked === true)}
-            />
-            <button
-              type="button"
-              onClick={toggleAsciiOnly}
-              className="flex-1 text-left"
+    <Dialog open={showExamples} onOpenChange={handleOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="grid h-[100dvh] w-screen max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[min(90dvh,54rem)] sm:w-[calc(100vw-2rem)] sm:max-w-[76rem] sm:rounded-md sm:border"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          searchRef.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          document.getElementById("examples-trigger")?.focus();
+        }}
+      >
+        <DialogHeader className="border-b bg-muted/15 p-4 pr-14 text-left sm:px-5">
+          <DialogTitle>{t("examples.title")}</DialogTitle>
+          <DialogDescription>{t("examples.description")}</DialogDescription>
+          <DialogClose asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-3 top-3"
+              aria-label={t("examples.close")}
             >
-              {t("examples.asciiOnly")}
-            </button>
-          </div>
-          <nav className="flex gap-1 md:block md:space-y-1">
-            <div className="flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground md:hidden">
-              <Checkbox
-                checked={asciiOnly}
-                onCheckedChange={(checked) => setAsciiOnly(checked === true)}
+              <X className="size-5" />
+            </Button>
+          </DialogClose>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
               />
-              <button
-                type="button"
-                onClick={toggleAsciiOnly}
-                className="text-left"
-              >
-                {t("examples.asciiOnly")}
-              </button>
+              <Input
+                ref={searchRef}
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={t("examples.searchPlaceholder")}
+                aria-label={t("examples.searchLabel")}
+                className="pl-9"
+              />
             </div>
-            {visibleCategories.map((category) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(category)}
-                className={cn(
-                  "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
-                  selectedCategory === category
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                )}
-              >
-                <Code className="size-4 flex-shrink-0" />
-                <span>{getCategoryLabel(category)}</span>
-                {selectedCategory === category && (
-                  <ChevronRight className="hidden size-4 ml-auto md:block" />
-                )}
-              </button>
-            ))}
-          </nav>
-        </div>
+            <p
+              className="shrink-0 text-xs text-muted-foreground"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {t("examples.resultCount", { count: filteredExamples.length })}
+            </p>
+          </div>
+        </DialogHeader>
 
-        {/* 右侧示例列表 */}
-        <ScrollArea className="flex-1">
-          <div className="border-b px-4 py-2 text-xs text-muted-foreground">
-            {asciiOnly
-              ? t("examples.asciiFilterActive", {
-                  count: filteredExamples.length,
-                  total: asciiReadyCount,
-                })
-              : t("examples.asciiFilterAvailable", {
-                  count: asciiReadyCount,
-                })}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+          <div className="shrink-0 overflow-hidden border-b p-2 md:w-48 md:overflow-y-auto md:border-b-0 md:border-r">
+            <AsciiFilter
+              id="ascii-only-desktop"
+              asciiOnly={asciiOnly}
+              onChange={setAsciiOnly}
+              label={t("examples.asciiOnly")}
+              className="mb-2 hidden md:flex"
+            />
+            <AsciiFilter
+              id="ascii-only-mobile"
+              asciiOnly={asciiOnly}
+              onChange={setAsciiOnly}
+              label={t("examples.asciiOnly")}
+              className="mb-2 flex md:hidden"
+            />
+            <nav
+              className="scrollbar-thin flex gap-1 overflow-x-auto pb-1 md:block md:space-y-1 md:overflow-visible md:pb-0"
+              aria-label={t("examples.categoriesLabel")}
+            >
+              {visibleCategories.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => setSelectedCategory(category)}
+                  aria-pressed={activeCategory === category}
+                  className={cn(
+                    "flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
+                    activeCategory === category
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  )}
+                >
+                  <Code className="size-4 shrink-0" aria-hidden="true" />
+                  <span>{getCategoryLabel(category)}</span>
+                  {activeCategory === category && (
+                    <ChevronRight
+                      className="ml-auto hidden size-4 md:block"
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
+              ))}
+            </nav>
           </div>
-          <div className="p-4 grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {filteredExamples.map((example) => (
-              <button
-                key={example.id}
-                onClick={() => handleSelectExample(example.code)}
-                className="group text-left p-4 border rounded-lg bg-card hover:border-primary/50 hover:shadow-md transition-all"
+
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="border-b px-4 py-2 text-xs text-muted-foreground">
+              {asciiOnly
+                ? t("examples.asciiFilterActive", {
+                    count: filteredExamples.length,
+                    total: asciiReadyCount,
+                  })
+                : t("examples.asciiFilterAvailable", {
+                    count: asciiReadyCount,
+                  })}
+            </div>
+            {filteredExamples.length === 0 ? (
+              <div
+                className="flex min-h-48 items-center justify-center px-6 text-center text-sm text-muted-foreground"
+                role="status"
               >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <h3 className="font-medium text-sm group-hover:text-primary transition-colors">
-                      {t(`examples.items.${example.id}`, {
-                        defaultValue: example.name,
-                      })}
-                    </h3>
-                    <span className="text-xs text-muted-foreground">
-                      {getCategoryLabel(example.category)}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <div className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                      {example.code.split("\n").length} {t("examples.lines")}
+                {t("examples.empty")}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredExamples.map((example) => (
+                  <button
+                    key={example.id}
+                    type="button"
+                    onClick={() => handleSelectExample(example)}
+                    className="group rounded-md border bg-card p-4 text-left transition-[border-color,box-shadow,transform] hover:border-primary/50 hover:shadow-sm active:scale-[0.99]"
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-medium transition-colors group-hover:text-primary">
+                          {example.title}
+                        </h3>
+                        <span className="text-xs text-muted-foreground">
+                          {getCategoryLabel(example.category)}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <div className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                          {example.source.split("\n").length}{" "}
+                          {t("examples.lines")}
+                        </div>
+                        {asciiDiagramTypes.has(example.diagramType) && (
+                          <AsciiCapabilityBadge
+                            capability={asciiSupport.capabilityFor(
+                              example.diagramType
+                            )}
+                            t={t}
+                          />
+                        )}
+                      </div>
                     </div>
-                    {isExampleAsciiSupported(example) && (
-                      <AsciiCapabilityBadge
-                        capability={asciiCapabilityForExample(example)}
-                        t={t}
-                      />
-                    )}
-                  </div>
-                </div>
-                <pre className="text-xs text-muted-foreground bg-muted/50 p-2 rounded overflow-hidden max-h-24 font-mono">
-                  {example.code.slice(0, 200)}
-                  {example.code.length > 200 && "..."}
-                </pre>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
+                    <pre className="max-h-24 overflow-hidden rounded bg-muted/50 p-2 font-mono text-xs text-muted-foreground">
+                      {example.source.slice(0, 200)}
+                      {example.source.length > 200 && "..."}
+                    </pre>
+                  </button>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AsciiFilter({
+  id,
+  asciiOnly,
+  onChange,
+  label,
+  className,
+}: {
+  id: string;
+  asciiOnly: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        className
+      )}
+    >
+      <Checkbox
+        id={id}
+        checked={asciiOnly}
+        onCheckedChange={(checked) => onChange(checked === true)}
+      />
+      <label htmlFor={id} className="flex-1 cursor-pointer text-left">
+        {label}
+      </label>
     </div>
   );
 }

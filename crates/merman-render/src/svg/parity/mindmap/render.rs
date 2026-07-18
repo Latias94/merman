@@ -612,7 +612,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
     config: &merman_core::MermaidConfig,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let timing_enabled = options.debug.include_timing_diagnostics;
     let mut timings = super::super::timing::RenderTimings::default();
     let total_start = web_time::Instant::now();
@@ -810,19 +810,20 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let _g_render_svg = section(timing_enabled, &mut timings.render_svg);
 
     let mut out = String::new();
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Mindmap, diagram_id)
-        .write_open(
-            &mut out,
-            root_spec,
-            root_svg::RootChrome {
-                class: Some("mindmapDiagram"),
-                dom: root_svg::RootDomProfile {
-                    trailing_newline: false,
-                    ..Default::default()
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Mindmap, diagram_id)
+            .write_open(
+                &mut out,
+                root_spec,
+                root_svg::RootChrome {
+                    class: Some("mindmapDiagram"),
+                    dom: root_svg::RootDomProfile {
+                        trailing_newline: false,
+                        ..Default::default()
+                    },
+                    ..root_svg::RootChrome::new(diagram_id, "mindmap")
                 },
-                ..root_svg::RootChrome::new(diagram_id, "mindmap")
-            },
-        )?;
+            )?;
     let css = mindmap_css(diagram_id, config.as_value());
     let _ = write!(&mut out, "<style>{}</style>", css);
     out.push_str(&mindmap_gradient_defs(diagram_id, config.as_value()));
@@ -1241,7 +1242,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         );
     }
 
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]

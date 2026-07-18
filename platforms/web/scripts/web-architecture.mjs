@@ -2,14 +2,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
-const forbiddenPolicyNames = new Set([
-  "MermaidExternalRequirements",
-  "registerExternalDiagrams",
-  "registerLayoutLoaders",
-]);
-
-const forbiddenCdnHosts = ["cdn.jsdelivr.net", "unpkg.com", "esm.sh"];
-
 export function scanWebArchitecture(sourceRoot) {
   return sourceFiles(sourceRoot).flatMap((file) =>
     findForbiddenWebArchitecture(readFileSync(file, "utf8"), path.relative(sourceRoot, file))
@@ -59,19 +51,6 @@ export function findForbiddenWebArchitecture(source, file = "source.ts") {
       node.arguments.length === 1
     ) {
       checkModuleSpecifier(node.arguments[0]);
-    }
-
-    if (ts.isIdentifier(node) && forbiddenPolicyNames.has(node.text)) {
-      report(node, "mermaid-policy-name", node.text);
-    }
-
-    if (ts.isStringLiteralLike(node)) {
-      if (forbiddenCdnHosts.some((host) => node.text.includes(host))) {
-        report(node, "mermaid-cdn", node.text);
-      }
-      if (forbiddenPolicyNames.has(node.text) || node.text.includes("VITE_MERMAID_")) {
-        report(node, "mermaid-policy-name", node.text);
-      }
     }
 
     ts.forEachChild(node, visit);

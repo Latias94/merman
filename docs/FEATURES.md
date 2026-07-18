@@ -103,6 +103,9 @@ such as `merman-wasm --no-default-features --features ascii` can omit `merman-an
 lint support, and editor-language dependencies.
 For browser package users, `@mermanjs/web/render` keeps analysis for compatibility and
 `@mermanjs/web/render-only` is the render/parse/layout artifact that omits analysis.
+`@mermanjs/web/editor` uses `core-full + editor-language` so its dedicated Worker covers all 35
+full-profile logical families while omitting render, ASCII, host, and ELK dependencies. Native
+browser ABI remains 2; editor diagnostics and analysis/facts payloads remain schema 1.
 
 ## Host Profiles
 

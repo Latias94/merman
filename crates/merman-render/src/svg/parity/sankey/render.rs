@@ -4,7 +4,7 @@ pub(crate) fn render_sankey_diagram_svg(
     layout: &SankeyDiagramLayout,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let render_settings = crate::sankey::SankeyConfigView::new(effective_config).render_settings();
     let use_max_width = render_settings.use_max_width;
     let show_values = render_settings.show_values;
@@ -67,20 +67,21 @@ pub(crate) fn render_sankey_diagram_svg(
     .with_max_width(root_svg::RootMaxWidth::SvgNumber(vb_w));
 
     let mut out = String::new();
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Sankey, diagram_id)
-        .write_open(
-            &mut out,
-            root_spec,
-            root_svg::RootChrome {
-                dom: root_svg::RootDomProfile {
-                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                    trailing_newline: false,
-                    ..Default::default()
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Sankey, diagram_id)
+            .write_open(
+                &mut out,
+                root_spec,
+                root_svg::RootChrome {
+                    dom: root_svg::RootDomProfile {
+                        fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                        fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                        trailing_newline: false,
+                        ..Default::default()
+                    },
+                    ..root_svg::RootChrome::new(diagram_id, "sankey")
                 },
-                ..root_svg::RootChrome::new(diagram_id, "sankey")
-            },
-        )?;
+            )?;
     let _ = write!(
         &mut out,
         "<style>{}</style>",
@@ -282,5 +283,5 @@ pub(crate) fn render_sankey_diagram_svg(
 
     out.push_str("</g>");
     out.push_str("</svg>");
-    Ok(out)
+    root_document.complete(out)
 }

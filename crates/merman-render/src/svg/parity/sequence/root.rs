@@ -3,6 +3,7 @@ use super::model::SequenceSvgModel;
 
 pub(super) struct SequenceRootMetrics {
     pub(super) viewbox_width: f64,
+    pub(super) document: root_svg::RootDocument,
 }
 
 pub(super) fn write_sequence_svg_root_open(
@@ -40,8 +41,9 @@ pub(super) fn write_sequence_svg_root_open(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Sequence, diagram_id)
-        .write_open(out, root_spec, root_chrome)?;
+    let document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Sequence, diagram_id)
+            .write_open(out, root_spec, root_chrome)?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(
@@ -62,5 +64,6 @@ pub(super) fn write_sequence_svg_root_open(
 
     Ok(SequenceRootMetrics {
         viewbox_width: root_bounds.width,
+        document,
     })
 }

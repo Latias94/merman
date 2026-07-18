@@ -128,6 +128,14 @@ const PRESETS: &[WasmPreset] = &[
         features: &["ascii"],
     },
     WasmPreset {
+        name: "browser-editor",
+        surface: Surface::Browser,
+        package: "merman-wasm",
+        artifact_name: "merman_wasm.wasm",
+        no_default_features: true,
+        features: &["core-full", "editor-language"],
+    },
+    WasmPreset {
         name: "browser-full",
         surface: Surface::Browser,
         package: "merman-wasm",
@@ -644,6 +652,18 @@ mod tests {
         assert_eq!(presets[0].name, "browser-render-only");
         assert_eq!(presets[0].features, &["render"]);
         assert!(presets[0].no_default_features);
+    }
+
+    #[test]
+    fn browser_editor_measures_full_family_editor_surface() {
+        let preset = PRESETS
+            .iter()
+            .find(|preset| preset.name == "browser-editor")
+            .unwrap();
+
+        assert_eq!(preset.surface, Surface::Browser);
+        assert_eq!(preset.features, &["core-full", "editor-language"]);
+        assert!(preset.no_default_features);
     }
 
     #[test]

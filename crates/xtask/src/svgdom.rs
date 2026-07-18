@@ -57,13 +57,6 @@ impl DomComparisonProfile {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SignaturePolicy {
-    Standard,
-    QuadrantInvalidUpstream,
-    QuadrantRenderableLocal,
-}
-
 impl DomMode {
     pub(crate) fn parse(s: &str) -> Self {
         match s {
@@ -398,13 +391,7 @@ fn is_geometry_attr(name: &str) -> bool {
     )
 }
 
-fn build_node(
-    n: roxmltree::Node<'_, '_>,
-    mode: DomMode,
-    decimals: u32,
-    policy: SignaturePolicy,
-    policy_replacements: &mut usize,
-) -> SvgDomNode {
+fn build_node(n: roxmltree::Node<'_, '_>, mode: DomMode, decimals: u32) -> SvgDomNode {
     let mut attrs: BTreeMap<String, String> = BTreeMap::new();
 
     fn is_block_diagram(n: roxmltree::Node<'_, '_>) -> bool {
@@ -644,79 +631,6 @@ fn build_node(
             has_plot && has_bar_plot
         }
 
-        fn is_quadrantchart_data_point_circle(n: roxmltree::Node<'_, '_>) -> bool {
-            if !(n.is_element() && n.tag_name().name() == "circle") {
-                return false;
-            }
-
-            let mut in_quadrantchart_svg = false;
-            let mut in_data_point = false;
-            for a in n.ancestors() {
-                if !a.is_element() {
-                    continue;
-                }
-                if a.tag_name().name() == "svg"
-                    && a.attribute("aria-roledescription")
-                        .is_some_and(|v| v == "quadrantChart")
-                {
-                    in_quadrantchart_svg = true;
-                }
-                if a.tag_name().name() == "g" && has_class_token(a, "data-point") {
-                    in_data_point = true;
-                }
-            }
-
-            in_quadrantchart_svg && in_data_point
-        }
-
-        fn is_invalid_svg_token(value: &str) -> bool {
-            let lower = value.trim().to_ascii_lowercase();
-            lower.contains("nan") || lower.contains("undefined") || lower.contains("infinity")
-        }
-
-        fn normalize_quadrantchart_default_point_color(
-            key: &str,
-            value: &str,
-            n: roxmltree::Node<'_, '_>,
-            mode: DomMode,
-        ) -> Option<String> {
-            if !matches!(mode, DomMode::Parity | DomMode::ParityRoot) {
-                return None;
-            }
-            if !matches!(key, "fill" | "stroke") || !is_quadrantchart_data_point_circle(n) {
-                return None;
-            }
-            let value = value.trim();
-            if is_invalid_svg_token(value) || value == "rgb(185, 185, 255)" {
-                Some("<quadrant-point-default-color>".to_string())
-            } else {
-                None
-            }
-        }
-
-        fn normalize_quadrantchart_structure_renderability_color(
-            key: &str,
-            value: &str,
-            n: roxmltree::Node<'_, '_>,
-            mode: DomMode,
-            policy: SignaturePolicy,
-        ) -> Option<String> {
-            if mode != DomMode::Structure
-                || !matches!(key, "fill" | "stroke")
-                || !is_quadrantchart_data_point_circle(n)
-            {
-                return None;
-            }
-
-            let value = value.trim();
-            let accepted = match policy {
-                SignaturePolicy::Standard => false,
-                SignaturePolicy::QuadrantInvalidUpstream => value == "hsl(240, 100%, NaN%)",
-                SignaturePolicy::QuadrantRenderableLocal => value == "rgb(185, 185, 255)",
-            };
-            accepted.then(|| "<quadrant-point-default-color>".to_string())
-        }
-
         for a in n.attributes() {
             let key = a.name().to_string();
             let mut val = a.value().to_string();
@@ -729,21 +643,6 @@ fn build_node(
                 // Merman keeps headless HTML label boxes non-clipping to absorb host font
                 // fallback drift. Treat that explicit browser-safety marker as non-semantic in
                 // parity DOM gates while preserving it in strict signatures.
-                continue;
-            }
-
-            if let Some(normalized) =
-                normalize_quadrantchart_default_point_color(&key, &val, n, mode)
-            {
-                attrs.insert(key, normalized);
-                continue;
-            }
-
-            if let Some(normalized) =
-                normalize_quadrantchart_structure_renderability_color(&key, &val, n, mode, policy)
-            {
-                *policy_replacements += 1;
-                attrs.insert(key, normalized);
                 continue;
             }
 
@@ -976,7 +875,7 @@ fn build_node(
         if has_element_child {
             for c in n.children() {
                 if c.is_element() {
-                    children.push(build_node(c, mode, decimals, policy, policy_replacements));
+                    children.push(build_node(c, mode, decimals));
                 } else if c.is_text()
                     && let Some(t) = c.text().and_then(normalize_text_node_text)
                 {
@@ -991,13 +890,13 @@ fn build_node(
         } else {
             text = n.text().and_then(normalize_text_node_text);
             for c in n.children().filter(|c| c.is_element()) {
-                children.push(build_node(c, mode, decimals, policy, policy_replacements));
+                children.push(build_node(c, mode, decimals));
             }
         }
     } else {
         // Non-strict modes treat text as non-semantic and only track element structure.
         for c in n.children().filter(|c| c.is_element()) {
-            children.push(build_node(c, mode, decimals, policy, policy_replacements));
+            children.push(build_node(c, mode, decimals));
         }
         if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
             && n.is_element()
@@ -1335,7 +1234,13 @@ pub(crate) fn normalize_xml_entities(svg: &str) -> Cow<'_, str> {
 }
 
 pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<SvgDomNode, String> {
-    dom_signature_with_policy(svg, mode, decimals, SignaturePolicy::Standard).map(|(node, _)| node)
+    let svg = normalize_xml_entities(svg);
+    let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
+    let root = doc
+        .descendants()
+        .find(|n| n.has_tag_name("svg"))
+        .ok_or_else(|| "missing <svg> root".to_string())?;
+    Ok(build_node(root, mode, decimals))
 }
 
 pub(crate) fn dom_signature_for_comparison(
@@ -1357,59 +1262,6 @@ pub(crate) fn dom_signature_for_comparison(
         }
     }
     Ok(signature)
-}
-
-fn dom_signature_with_policy(
-    svg: &str,
-    mode: DomMode,
-    decimals: u32,
-    policy: SignaturePolicy,
-) -> Result<(SvgDomNode, usize), String> {
-    let svg = normalize_xml_entities(svg);
-    let doc = roxmltree::Document::parse(svg.as_ref()).map_err(|e| e.to_string())?;
-    let root = doc
-        .descendants()
-        .find(|n| n.has_tag_name("svg"))
-        .ok_or_else(|| "missing <svg> root".to_string())?;
-    let mut replacements = 0;
-    let node = build_node(root, mode, decimals, policy, &mut replacements);
-    Ok((node, replacements))
-}
-
-/// Proves the pinned QuadrantChart default-point color divergence without weakening Structure.
-///
-/// Mermaid 11.16 emits an invalid color token for some default points. Merman deliberately emits
-/// a browser-renderable RGB equivalent. This directional classifier accepts only that correction:
-/// the exact pinned invalid upstream `fill`/`stroke` token and exact local RGB attributes on
-/// QuadrantChart data-point circles. The ordinary Structure signatures must differ, while
-/// signatures normalized under those two directional rules must otherwise be identical.
-pub(crate) fn is_quadrant_structure_renderability_divergence(
-    upstream_svg: &str,
-    local_svg: &str,
-    decimals: u32,
-) -> Result<bool, String> {
-    let upstream = dom_signature(upstream_svg, DomMode::Structure, decimals)?;
-    let local = dom_signature(local_svg, DomMode::Structure, decimals)?;
-    if upstream == local {
-        return Ok(false);
-    }
-
-    let (normalized_upstream, upstream_replacements) = dom_signature_with_policy(
-        upstream_svg,
-        DomMode::Structure,
-        decimals,
-        SignaturePolicy::QuadrantInvalidUpstream,
-    )?;
-    let (normalized_local, local_replacements) = dom_signature_with_policy(
-        local_svg,
-        DomMode::Structure,
-        decimals,
-        SignaturePolicy::QuadrantRenderableLocal,
-    )?;
-
-    Ok(upstream_replacements > 0
-        && upstream_replacements == local_replacements
-        && normalized_upstream == normalized_local)
 }
 
 fn escape_xml_text(s: &str) -> String {
@@ -2221,58 +2073,6 @@ mod tests {
         let new_dom = dom_signature(new_path, DomMode::Parity, 3).unwrap();
 
         assert_eq!(old_dom, new_dom);
-    }
-
-    #[test]
-    fn parity_normalizes_quadrantchart_invalid_default_point_color() {
-        let upstream = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle cx="1" cy="2" r="5" fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
-        let local = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle cx="1" cy="2" r="5" fill="rgb(185, 185, 255)" stroke="rgb(185, 185, 255)"/></g></g></svg>"#;
-
-        let upstream_dom = dom_signature(upstream, DomMode::Parity, 3).unwrap();
-        let local_dom = dom_signature(local, DomMode::Parity, 3).unwrap();
-
-        assert_eq!(upstream_dom, local_dom);
-
-        let upstream_strict = dom_signature(upstream, DomMode::Strict, 3).unwrap();
-        let local_strict = dom_signature(local, DomMode::Strict, 3).unwrap();
-
-        assert_ne!(upstream_strict, local_strict);
-        assert_ne!(
-            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
-            dom_signature(local, DomMode::Structure, 3).unwrap()
-        );
-        assert!(is_quadrant_structure_renderability_divergence(upstream, local, 3).unwrap());
-    }
-
-    #[test]
-    fn quadrant_structure_renderability_classifier_is_directional() {
-        let invalid = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
-        let renderable = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="rgb(185, 185, 255)" stroke="rgb(185, 185, 255)"/></g></g></svg>"#;
-
-        assert!(is_quadrant_structure_renderability_divergence(invalid, renderable, 3).unwrap());
-        assert!(!is_quadrant_structure_renderability_divergence(renderable, invalid, 3).unwrap());
-    }
-
-    #[test]
-    fn quadrant_structure_renderability_classifier_rejects_extra_dom_differences() {
-        let invalid = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
-        let renderable_with_extra_node = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="rgb(185, 185, 255)" stroke="rgb(185, 185, 255)"/><text>extra</text></g></g></svg>"#;
-
-        assert!(
-            !is_quadrant_structure_renderability_divergence(invalid, renderable_with_extra_node, 3)
-                .unwrap()
-        );
-    }
-
-    #[test]
-    fn quadrant_structure_renderability_classifier_requires_exact_endpoint_values() {
-        let undefined = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, undefined)" stroke="hsl(240, 100%, undefined)"/></g></g></svg>"#;
-        let invalid = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
-        let renderable = r#"<svg aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="rgb(185, 185, 255)" stroke="rgb(185, 185, 255)"/></g></g></svg>"#;
-        let changed_rgb = renderable.replace("rgb(185, 185, 255)", "rgb(186, 185, 255)");
-
-        assert!(!is_quadrant_structure_renderability_divergence(undefined, renderable, 3).unwrap());
-        assert!(!is_quadrant_structure_renderability_divergence(invalid, &changed_rgb, 3).unwrap());
     }
 
     #[test]

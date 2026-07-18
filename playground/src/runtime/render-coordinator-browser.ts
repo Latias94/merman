@@ -15,6 +15,7 @@ export const markRenderCoordinatorPresented = (
   engine: "merman" | "mermaid",
   at: number
 ) => renderCoordinator.markPresented(requestId, engine, at);
+export const pauseRenderCoordinator = () => renderCoordinator.pause();
 export const refreshRenderCoordinator = () => renderCoordinator.refresh();
 export const resumeRenderCoordinator = () => renderCoordinator.resume();
 export const setCompareEnabled = (enabled: boolean) =>

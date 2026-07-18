@@ -3,31 +3,23 @@ import test from "node:test";
 
 import { findForbiddenWebArchitecture } from "./web-architecture.mjs";
 
-test("Web architecture guard rejects Mermaid loading policy", () => {
+test("Web dependency boundary rejects Mermaid modules in every import form", () => {
   const violations = findForbiddenWebArchitecture(
     `
       import mermaid from "mermaid";
       type MermaidApi = import("mermaid").Mermaid;
       const load = () => import("@mermaid-js/layout-elk");
-      const cdn = "https://cdn.jsdelivr.net/npm/mermaid";
-      interface MermaidExternalRequirements {}
-      registerExternalDiagrams([]);
-      registerLayoutLoaders([]);
     `,
     "synthetic.ts"
   );
 
   assert.deepEqual(
     new Set(violations.map(({ rule }) => rule)),
-    new Set([
-      "mermaid-module",
-      "mermaid-cdn",
-      "mermaid-policy-name",
-    ])
+    new Set(["mermaid-module"])
   );
 });
 
-test("Web architecture guard permits neutral parser facts", () => {
+test("Web dependency boundary does not infer ownership from private spelling", () => {
   assert.deepEqual(
     findForbiddenWebArchitecture(
       `
@@ -36,6 +28,10 @@ test("Web architecture guard permits neutral parser facts", () => {
           syntaxId: "zenuml",
           effectiveLayoutId: "elk",
         };
+        interface MermaidExternalRequirements {}
+        const registerExternalDiagrams = () => undefined;
+        const policyLabel = "VITE_MERMAID_MODULE_URL";
+        void [facts, registerExternalDiagrams, policyLabel];
       `,
       "neutral-facts.ts"
     ),

@@ -295,7 +295,7 @@ fn root_open(
     layout: &VennDiagramLayout,
     aria_labelledby: Option<&str>,
     aria_describedby: Option<&str>,
-) -> Result<()> {
+) -> Result<root_svg::RootDocument> {
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "venn");
     root_chrome.aria_labelledby = aria_labelledby;
     root_chrome.aria_describedby = aria_describedby;
@@ -335,7 +335,7 @@ pub(crate) fn render_venn_diagram_svg_model(
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("venn");
     let diagram_id_esc = escape_xml(diagram_id);
     let title = model
@@ -360,7 +360,7 @@ pub(crate) fn render_venn_diagram_svg_model(
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
 
     let mut out = String::new();
-    root_open(
+    let root_document = root_open(
         &mut out,
         diagram_id,
         layout,
@@ -602,5 +602,5 @@ pub(crate) fn render_venn_diagram_svg_model(
     }
 
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }

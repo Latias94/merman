@@ -773,6 +773,9 @@ Current repository reality to preserve:
     preserving valid explicit `quadrantPointFill` overrides. xtask DOM parity normalization treats
     only this known QuadrantChart default point-color slot as an upstream invalid-token artifact;
     strict DOM comparison still exposes the real difference.
+    **Superseded 2026-07-18:** the Mermaid 11.16 admission contract now reproduces the pinned raw
+    `hsl(...NaN%)` token exactly and deletes the xtask normalization. Renderability is handled by
+    the explicit `resvg-safe` pipeline, not by changing canonical parity SVG.
   - A twenty-second HPD-080 slice removed useless invalid inline style artifacts from ER and
     Mindmap edge paths. Upstream fixtures contain `style="undefined;;;undefined"`, but the visible
     edge behavior is class-driven and the token is not a meaningful style contract. Local raw SVG

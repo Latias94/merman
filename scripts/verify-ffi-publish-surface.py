@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -33,21 +34,6 @@ def require_contains(rel_path: str, needle: str, label: str) -> None:
         raise CheckFailure(f"{rel_path}: missing {label}")
 
 
-def check_equal_versions(group_name: str, entries: list[tuple[str, str, str]]) -> int:
-    values: list[tuple[str, str]] = []
-    for label, rel_path, pattern in entries:
-        values.append((label, require_match(rel_path, pattern, label)))
-
-    unique_values = {value for _, value in values}
-    if len(unique_values) != 1:
-        details = ", ".join(f"{label}={value}" for label, value in values)
-        raise CheckFailure(f"{group_name} mismatch: {details}")
-
-    value = values[0][1]
-    print(f"{group_name}: {value}")
-    return int(value)
-
-
 def require_alpha_abi(group_name: str, actual: int) -> None:
     if actual != EXPECTED_ALPHA_ABI_VERSION:
         raise CheckFailure(
@@ -55,98 +41,31 @@ def require_alpha_abi(group_name: str, actual: int) -> None:
         )
 
 
+def text_measurement_abi_version() -> int:
+    descriptor_path = ROOT / "abi" / "merman-v2.json"
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    version = descriptor.get("abi_version")
+    if not isinstance(version, int):
+        raise CheckFailure(f"{descriptor_path}: abi_version must be an integer")
+    return version
+
+
 def check_c_abi() -> int:
-    return check_equal_versions(
-        "C ABI version",
-        [
-            (
-                "Rust constant",
-                "crates/merman-ffi/src/lib.rs",
-                r"pub const MERMAN_ABI_VERSION: u32 = (\d+);",
-            ),
-            (
-                "C header",
-                "crates/merman-ffi/include/merman.h",
-                r"#define\s+MERMAN_ABI_VERSION\s+(\d+)",
-            ),
-            (
-                "protocol docs",
-                "docs/bindings/FFI_PROTOCOL.md",
-                r"#define\s+MERMAN_ABI_VERSION\s+(\d+)",
-            ),
-            (
-                "Android wrapper",
-                "platforms/android/src/main/kotlin/io/merman/MermanEngine.kt",
-                r"const val ABI_VERSION: Int = (\d+)",
-            ),
-            (
-                "Apple wrapper",
-                "platforms/apple/Sources/Merman/MermanEngine.swift",
-                r"public static let abiVersion: UInt32 = (\d+)",
-            ),
-            (
-                "Flutter wrapper",
-                "platforms/flutter/lib/src/merman_ffi.dart",
-                r"const int mermanAbiVersion = (\d+);",
-            ),
-        ],
-    )
+    version = text_measurement_abi_version()
+    print(f"C ABI descriptor version: {version}")
+    return version
 
 
 def check_uniffi_abi() -> int:
-    return check_equal_versions(
-        "Python UniFFI ABI version",
-        [
-            (
-                "Rust constant",
-                "crates/merman-uniffi/src/lib.rs",
-                r"pub const MERMAN_UNIFFI_ABI_VERSION: u32 = (\d+);",
-            ),
-            (
-                "wheel smoke",
-                "scripts/build-python-uniffi-wheel.py",
-                r"abi_version\(\)\s*(?:==|!=)\s*(\d+)",
-            ),
-            (
-                "release smoke",
-                ".github/workflows/release-python.yml",
-                r"abi_version\(\)\s*(?:==|!=)\s*(\d+)",
-            ),
-            (
-                "binding docs",
-                "docs/bindings/PYTHON_UNIFFI.md",
-                r"abi_version\(\)\s*(?:==|!=)\s*(\d+)",
-            ),
-            (
-                "package README",
-                "platforms/python/merman/README.md",
-                r"abi_version\(\)\s*(?:==|!=)\s*(\d+)",
-            ),
-            (
-                "package example",
-                "platforms/python/merman/examples/smoke.py",
-                r"abi_version\(\)\s*(?:==|!=)\s*(\d+)",
-            ),
-        ],
-    )
+    version = text_measurement_abi_version()
+    print(f"Python UniFFI ABI descriptor version: {version}")
+    return version
 
 
 def check_wasm_abi() -> int:
-    return check_equal_versions(
-        "WASM/Web ABI version",
-        [
-            (
-                "WASM constant",
-                "crates/merman-wasm/src/lib.rs",
-                r"const WASM_ABI_VERSION: u32 = (\d+);",
-            ),
-            (
-                "Web smoke",
-                "platforms/web/scripts/smoke.mjs",
-                r"assert\.equal\(api\.abiVersion\(\),\s*(\d+)\);",
-            ),
-        ],
-    )
+    version = text_measurement_abi_version()
+    print(f"WASM/Web ABI descriptor version: {version}")
+    return version
 
 
 def check_python_package_metadata() -> None:

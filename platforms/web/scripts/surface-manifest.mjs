@@ -1,3 +1,7 @@
+import {
+  publicWebSurfaceDescriptors,
+} from "./web-surface-descriptor.mjs";
+
 const lifecycleRuntimeExportNames = [
   "initMerman",
   "getMerman",
@@ -109,63 +113,70 @@ const asciiSurfaceRuntimeExportNames = [
   ...asciiRuntimeExportNames,
 ];
 
+const editorSurfaceRuntimeExportNames = [
+  ...lifecycleRuntimeExportNames,
+  ...analysisRuntimeExportNames,
+  ...metadataRuntimeExportNames,
+  ...analysisMetadataRuntimeExportNames,
+  ...editorRuntimeExportNames,
+];
+
 const fullRuntimeExportNames = [
   ...renderSurfaceRuntimeExportNames,
   ...asciiRuntimeExportNames,
   ...editorRuntimeExportNames,
 ];
 
-export const surfaces = [
-  {
-    entry: "core",
-    preset: "browser-core",
-    pkgDirRel: "pkg/core",
-    defaultBindingCapabilitiesExportName: "CORE_BINDING_CAPABILITIES",
+const runtimeProfiles = Object.freeze({
+  core: {
     runtimeExportNames: coreRuntimeExportNames,
     valueExportNames: surfaceStableValueExportNames,
   },
-  {
-    entry: "render",
-    preset: "browser-render",
-    pkgDirRel: "pkg/render",
-    defaultBindingCapabilitiesExportName: "RENDER_BINDING_CAPABILITIES",
+  render: {
     runtimeExportNames: renderSurfaceRuntimeExportNames,
     valueExportNames: [
       ...surfaceStableValueExportNames,
       ...surfaceRenderValueExportNames,
     ],
   },
-  {
-    entry: "render-only",
-    preset: "browser-render-only",
-    pkgDirRel: "pkg/render-only",
-    defaultBindingCapabilitiesExportName: "RENDER_ONLY_BINDING_CAPABILITIES",
+  "render-only": {
     runtimeExportNames: renderOnlySurfaceRuntimeExportNames,
     valueExportNames: [
       ...surfaceStableValueExportNames,
       ...surfaceRenderValueExportNames,
     ],
   },
-  {
-    entry: "ascii",
-    preset: "browser-ascii",
-    pkgDirRel: "pkg/ascii",
-    defaultBindingCapabilitiesExportName: "ASCII_BINDING_CAPABILITIES",
+  ascii: {
     runtimeExportNames: asciiSurfaceRuntimeExportNames,
     valueExportNames: surfaceStableValueExportNames,
   },
-  {
-    entry: "full",
-    preset: "browser-full",
-    pkgDirRel: "pkg/full",
-    defaultBindingCapabilitiesExportName: "FULL_BINDING_CAPABILITIES",
+  editor: {
+    runtimeExportNames: editorSurfaceRuntimeExportNames,
+    valueExportNames: surfaceStableValueExportNames,
+  },
+  full: {
     runtimeExportNames: fullRuntimeExportNames,
     valueExportNames: [
       ...surfaceStableValueExportNames,
       ...surfaceRenderValueExportNames,
     ],
   },
-];
+});
+
+export const surfaces = publicWebSurfaceDescriptors.map((descriptor) => {
+  const profile = runtimeProfiles[descriptor.runtime_profile];
+  return Object.freeze({
+    entry: descriptor.entry,
+    preset: descriptor.preset,
+    pkgDirRel: descriptor.pkg_dir_rel,
+    runtimeProfile: descriptor.runtime_profile,
+    defaultBindingCapabilitiesExportName:
+      descriptor.entry.replaceAll("-", "_").toUpperCase() +
+      "_BINDING_CAPABILITIES",
+    runtimeExportNames: profile.runtimeExportNames,
+    valueExportNames: profile.valueExportNames,
+  });
+});
 
 export const allSurfaceRuntimeExportNames = unique(
   surfaces.flatMap((surface) => surface.runtimeExportNames),

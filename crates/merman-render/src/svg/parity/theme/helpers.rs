@@ -376,19 +376,6 @@ pub(super) fn style_has_non_empty_decl(style: &str, property: &str) -> bool {
     })
 }
 
-fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
-    fn to_linear(channel: u8) -> f64 {
-        let v = channel as f64 / 255.0;
-        if v <= 0.04045 {
-            v / 12.92
-        } else {
-            ((v + 0.055) / 1.055).powf(2.4)
-        }
-    }
-
-    0.2126 * to_linear(r) + 0.7152 * to_linear(g) + 0.0722 * to_linear(b)
-}
-
 fn rgb_to_hsl_pct(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
     let r = r as f64 / 255.0;
     let g = g as f64 / 255.0;
@@ -422,23 +409,9 @@ pub(super) fn derive_quadrant_point_fill(quadrant1_fill: &str, fallback: &str) -
     let Some((r, g, b)) = css_color_to_rgb(quadrant1_fill) else {
         return fallback.to_string();
     };
-    let (h, s, l) = rgb_to_hsl_pct(r, g, b);
-    let delta = if relative_luminance(r, g, b) < 0.5 {
-        10.0
-    } else {
-        -10.0
-    };
-    let adjusted_l = (l + delta).clamp(0.0, 100.0);
-    let Some((r, g, b)) = hsl_to_rgb_u8(h, s, adjusted_l) else {
-        return fallback.to_string();
-    };
-    fmt_rgb(r, g, b)
-}
-
-pub(super) fn is_invalid_css_token(value: &str) -> bool {
-    let lower = value.trim().to_ascii_lowercase();
-    lower.is_empty()
-        || lower.contains("nan")
-        || lower.contains("undefined")
-        || lower.contains("infinity")
+    let (h, s, _) = rgb_to_hsl_pct(r, g, b);
+    // Mermaid 11.16 calls khroma's `lighten`/`darken` without the required amount in every
+    // built-in theme. Khroma preserves hue and saturation and serializes the missing lightness as
+    // `NaN%`; this source-backed token is part of the pinned SVG contract.
+    format!("hsl({h}, {s}%, NaN%)")
 }

@@ -35,6 +35,8 @@ enum XtaskError {
     ParseDompurify(String),
     #[error("failed to project Mermaid default config: {0}")]
     DefaultConfigProjection(String),
+    #[error("text-measurement ABI descriptor is invalid: {0}")]
+    TextMeasurementAbi(String),
     #[error("missing reference checkout: {0}")]
     MissingReference(String),
     #[error("verification failed:\n{0}")]
@@ -80,6 +82,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify");
     println!("  verify-default-config");
     println!("  verify-dompurify-defaults");
+    println!("  verify-playground-example-catalog");
     println!("  verify-web-diagram-catalog");
     println!("  check-alignment");
     println!("  profile-budget");
@@ -114,6 +117,9 @@ fn print_help(topic: Option<&str>) {
     println!("  debug-mindmap-svg-positions");
     println!("  gen-font-metrics");
     println!("  measure-text");
+    println!("  gen-text-measurement-abi");
+    println!("  verify-text-measurement-abi");
+    println!("  gen-playground-example-catalog");
     println!("  gen-web-diagram-catalog");
     println!();
     println!("Per-diagram SVG compare commands:");
@@ -162,11 +168,17 @@ fn main() -> Result<(), XtaskError> {
     match cmd_name.as_str() {
         "gen-default-config" => cmd::gen_default_config(args.collect()),
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
+        "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
         "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
+        "gen-text-measurement-abi" => cmd::gen_text_measurement_abi(args.collect()),
         "verify" => cmd::verify(args.collect()),
         "verify-default-config" => cmd::verify_default_config(args.collect()),
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
+        "verify-playground-example-catalog" => {
+            cmd::verify_playground_example_catalog(args.collect())
+        }
         "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),
+        "verify-text-measurement-abi" => cmd::verify_text_measurement_abi(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),

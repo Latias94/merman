@@ -1,3 +1,4 @@
+use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
@@ -9,7 +10,7 @@ use merman_render::family;
 use merman_render::gantt::layout_gantt_diagram_typed;
 use merman_render::model::GanttDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -147,6 +148,45 @@ fn gantt_label_placement_uses_the_resolved_container_edges() {
     assert!(start.label.x > start.bar.x + start.bar.width);
     assert!(end.label.class.contains("taskTextOutsideLeft"));
     assert_eq!(end.label.x, end.bar.x - 5.0);
+}
+
+#[test]
+fn gantt_layout_stops_at_the_maximum_utc_date_without_panicking() {
+    let max_midnight = chrono::NaiveDate::MAX.and_hms_opt(0, 0, 0).unwrap();
+    let max_ms =
+        chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(max_midnight, chrono::Utc)
+            .timestamp_millis();
+    let mut model = GanttDiagramRenderModel::default();
+    model.date_format = "x".to_string();
+    model.axis_format = "%Y-%m-%d".to_string();
+    model.tick_interval = Some("1day".to_string());
+    model.excludes = vec!["weekends".to_string()];
+    model.weekend = "saturday".to_string();
+    model.tasks.push(GanttRenderTask {
+        id: "boundary".to_string(),
+        task: "Boundary".to_string(),
+        section: "Boundary".to_string(),
+        task_type: "Boundary".to_string(),
+        start_ms: max_ms,
+        end_ms: max_ms,
+        ..GanttRenderTask::default()
+    });
+
+    let utc = merman_core::time::LocalTimeZone::utc();
+    let measurer = DeterministicTextMeasurer::default();
+    let layout = merman_core::time::with_local_time_zone(&utc, || {
+        layout_gantt_diagram_typed(
+            &model,
+            &serde_json::json!({}),
+            &measurer,
+            LayoutOptions::default().container_width,
+        )
+    })
+    .expect("maximum-date layout should terminate successfully");
+
+    assert_eq!(layout.tasks.len(), 1);
+    assert_eq!(layout.tasks[0].start_ms, max_ms);
+    assert_eq!(layout.bottom_ticks.len(), 1);
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {

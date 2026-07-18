@@ -4,6 +4,11 @@
 /// SVG or ASCII text, inspect parsed diagram JSON, or query binding metadata.
 library;
 
+export 'src/generated/text_measurement_abi.dart'
+    show
+        MermanTextMeasurementOperation,
+        MermanTextMeasurementResultKind,
+        mermanAbiVersion;
 export 'src/merman_ffi.dart'
     show
         Merman,
@@ -17,13 +22,10 @@ export 'src/merman_ffi.dart'
         MermanTextDirection,
         MermanTextMeasureRequest,
         MermanTextMeasureResult,
-        MermanTextMeasurementOperation,
         MermanTextMeasurementPhase,
-        MermanTextMeasurementResultKind,
         MermanTextMeasurer,
         MermanTextWhiteSpace,
         MermanTextWrapMode,
         MermanValidationResult,
-        mermanAbiVersion,
         openMermanLibrary,
         openMermanLibraryFromPath;

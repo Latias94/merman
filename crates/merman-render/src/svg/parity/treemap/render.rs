@@ -7,7 +7,7 @@ pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     #[derive(Default)]
     struct OrdinalScale {
         range: Vec<String>,
@@ -427,14 +427,15 @@ pub(crate) fn render_treemap_diagram_svg(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Treemap, diagram_id)
-        .write_open(
-            &mut out,
-            root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
-                vb_x, vb_y, vb_w, vb_h,
-            )),
-            root_chrome,
-        )?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Treemap, diagram_id)
+            .write_open(
+                &mut out,
+                root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
+                    vb_x, vb_y, vb_w, vb_h,
+                )),
+                root_chrome,
+            )?;
 
     if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
         let _ = write!(
@@ -914,7 +915,7 @@ pub(crate) fn render_treemap_diagram_svg(
     }
 
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 #[cfg(test)]

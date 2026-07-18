@@ -254,12 +254,16 @@ fn start_of_day_ms(ms: i64) -> Option<i64> {
     let dt = dt_utc_to_local_fixed(dt_utc);
     let d = dt.date_naive();
     let local_midnight = merman_core::time::datetime_from_naive_local(d.and_hms_opt(0, 0, 0)?);
-    Some(local_midnight.timestamp_millis())
+    Some(local_midnight?.timestamp_millis())
 }
 
 fn end_of_day_ms(ms: i64) -> Option<i64> {
     let start = start_of_day_ms(ms)?;
-    Some(start + MS_PER_DAY - 1)
+    start.checked_add(MS_PER_DAY)?.checked_sub(1)
+}
+
+fn absolute_millis_between(a: i64, b: i64) -> i128 {
+    (i128::from(a) - i128::from(b)).abs()
 }
 
 fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
@@ -268,7 +272,9 @@ fn scale_time(ms: i64, min_ms: i64, max_ms: i64, range: f64) -> f64 {
         // This matters for fixtures where parsing fails and `startTime == endTime` (width=0).
         return (range / 2.0).round();
     }
-    let t = (ms - min_ms) as f64 / (max_ms - min_ms) as f64;
+    let elapsed = i128::from(ms) - i128::from(min_ms);
+    let span = i128::from(max_ms) - i128::from(min_ms);
+    let t = elapsed as f64 / span as f64;
     (t * range).round()
 }
 
@@ -347,7 +353,7 @@ fn auto_tick_interval(min_ms: i64, max_ms: i64) -> (i64, &'static str) {
     const MONTH: f64 = (MS_PER_DAY * 30) as f64;
     const YEAR: f64 = (MS_PER_DAY * 365) as f64;
 
-    let span_ms = (max_ms - min_ms).abs().max(1) as f64;
+    let span_ms = absolute_millis_between(max_ms, min_ms).max(1) as f64;
     let target = span_ms / TARGET_TICKS;
 
     let mut intervals: Vec<(f64, i64, &'static str)> = Vec::new();
@@ -443,25 +449,23 @@ fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
     let naive = dt.naive_local();
 
     let next = match unit {
-        "millisecond" => naive + chrono::Duration::milliseconds(every),
-        "second" => naive + chrono::Duration::seconds(every),
-        "minute" => naive + chrono::Duration::minutes(every),
-        "hour" => naive + chrono::Duration::hours(every),
-        "day" => naive + chrono::Duration::days(every),
-        "week" => naive + chrono::Duration::days(every * 7),
+        "millisecond" => naive.checked_add_signed(chrono::Duration::try_milliseconds(every)?)?,
+        "second" => naive.checked_add_signed(chrono::Duration::try_seconds(every)?)?,
+        "minute" => naive.checked_add_signed(chrono::Duration::try_minutes(every)?)?,
+        "hour" => naive.checked_add_signed(chrono::Duration::try_hours(every)?)?,
+        "day" => naive.checked_add_signed(chrono::Duration::try_days(every)?)?,
+        "week" => naive.checked_add_signed(chrono::Duration::try_weeks(every)?)?,
         "month" => {
-            let mut y = naive.date().year();
-            let mut m = naive.date().month() as i32 + every as i32;
-            while m > 12 {
-                y += 1;
-                m -= 12;
-            }
-            while m < 1 {
-                y -= 1;
-                m += 12;
-            }
+            let month_index = i64::from(naive.date().year())
+                .checked_mul(12)?
+                .checked_add(i64::from(naive.date().month0()))?
+                .checked_add(every)?;
+            let y: i32 = month_index.div_euclid(12).try_into().ok()?;
+            let m = u32::try_from(month_index.rem_euclid(12))
+                .ok()?
+                .checked_add(1)?;
             let d = naive.date().day().min(28);
-            let date = chrono::NaiveDate::from_ymd_opt(y, m as u32, d)?;
+            let date = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
             date.and_hms_opt(
                 naive.time().hour(),
                 naive.time().minute(),
@@ -469,7 +473,8 @@ fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
             )?
         }
         "year" => {
-            let y = naive.date().year() + every as i32;
+            let every: i32 = every.try_into().ok()?;
+            let y = naive.date().year().checked_add(every)?;
             let m = naive.date().month();
             let d = naive.date().day().min(28);
             let date = chrono::NaiveDate::from_ymd_opt(y, m, d)?;
@@ -483,7 +488,7 @@ fn add_interval(ms: i64, every: i64, unit: &str) -> Option<i64> {
     };
 
     let out = merman_core::time::datetime_from_naive_local(next);
-    Some(out.timestamp_millis())
+    Some(out?.timestamp_millis())
 }
 
 fn weekday_from_str(s: &str) -> Option<chrono::Weekday> {
@@ -509,9 +514,12 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let e = every.max(1);
             // D3's `millisecond.every(e)` aligns using `Math.floor(date / e) * e`, and `range`
             // starts at `ceil(start)`. Use Euclidean division so negative timestamps match D3.
-            let q = min_ms.div_euclid(e);
             let r = min_ms.rem_euclid(e);
-            let aligned = if r == 0 { q * e } else { (q + 1) * e };
+            let aligned = if r == 0 {
+                min_ms
+            } else {
+                min_ms.checked_add(e.checked_sub(r)?)?
+            };
             return Some(aligned);
         }
         "second" => {
@@ -522,16 +530,16 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             )?;
             let mut cur = base;
             if cur < naive {
-                cur += chrono::Duration::seconds(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_seconds(1)?)?;
             }
             let e = every.max(1);
             loop {
                 let sec = cur.time().second() as i64;
-                let rem = (sec % e + e) % e;
+                let rem = sec.rem_euclid(e);
                 if rem == 0 {
                     break;
                 }
-                cur += chrono::Duration::seconds(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_seconds(1)?)?;
             }
             cur
         }
@@ -541,16 +549,16 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
                 .and_hms_opt(naive.time().hour(), naive.time().minute(), 0)?;
             let mut cur = base;
             if cur < naive {
-                cur += chrono::Duration::minutes(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_minutes(1)?)?;
             }
             let e = every.max(1);
             loop {
                 let min = cur.time().minute() as i64;
-                let rem = (min % e + e) % e;
+                let rem = min.rem_euclid(e);
                 if rem == 0 {
                     break;
                 }
-                cur += chrono::Duration::minutes(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_minutes(1)?)?;
             }
             cur
         }
@@ -558,23 +566,23 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let base = naive.date().and_hms_opt(naive.time().hour(), 0, 0)?;
             let mut cur = base;
             if cur < naive {
-                cur += chrono::Duration::hours(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_hours(1)?)?;
             }
             let e = every.max(1);
             loop {
                 let hour = cur.time().hour() as i64;
-                let rem = (hour % e + e) % e;
+                let rem = hour.rem_euclid(e);
                 if rem == 0 {
                     break;
                 }
-                cur += chrono::Duration::hours(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_hours(1)?)?;
             }
             cur
         }
         "day" => {
             let mut cur = naive.date().and_hms_opt(0, 0, 0)?;
             if cur < naive {
-                cur += chrono::Duration::days(1);
+                cur = cur.checked_add_signed(chrono::Duration::try_days(1)?)?;
             }
             let e = every.max(1);
             if e > 1 {
@@ -582,9 +590,9 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
                 // modulus resets at each month boundary (days 1, 1+e, 1+2e, ... within a month).
                 let mut d = cur.date();
                 let day0 = d.day0() as i64;
-                let rem = (day0 % e + e) % e;
+                let rem = day0.rem_euclid(e);
                 if rem != 0 {
-                    d += chrono::Duration::days(e - rem);
+                    d = d.checked_add_signed(chrono::Duration::try_days(e.checked_sub(rem)?)?)?;
                 }
                 cur = d.and_hms_opt(0, 0, 0)?;
             }
@@ -599,23 +607,21 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let mut d = naive.date();
             let cur_wd = d.weekday().num_days_from_sunday() as i64;
             let start_wd = start.num_days_from_sunday() as i64;
-            let delta = (cur_wd - start_wd + 7) % 7;
-            d -= chrono::Duration::days(delta);
+            let delta = (cur_wd - start_wd).rem_euclid(7);
+            d = d.checked_sub_signed(chrono::Duration::try_days(delta)?)?;
             let mut cur = d.and_hms_opt(0, 0, 0)?;
             if cur < naive {
-                cur += chrono::Duration::days(7);
+                cur = cur.checked_add_signed(chrono::Duration::try_days(7)?)?;
             }
 
             let e = every.max(1);
             if e > 1 {
                 let mut ws = cur.date();
-                loop {
-                    let weeks = ws.signed_duration_since(epoch).num_days() / 7;
-                    let rem = (weeks % e + e) % e;
-                    if rem == 0 {
-                        break;
-                    }
-                    ws += chrono::Duration::days(7);
+                let weeks = ws.signed_duration_since(epoch).num_days() / 7;
+                let rem = weeks.rem_euclid(e);
+                if rem != 0 {
+                    let delta_days = e.checked_sub(rem)?.checked_mul(7)?;
+                    ws = ws.checked_add_signed(chrono::Duration::try_days(delta_days)?)?;
                 }
                 cur = ws.and_hms_opt(0, 0, 0)?;
             }
@@ -628,10 +634,11 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let mut m = naive.date().month();
             let mut cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
             if cur < naive {
-                m += 1;
-                if m > 12 {
+                if m == 12 {
                     m = 1;
-                    y += 1;
+                    y = y.checked_add(1)?;
+                } else {
+                    m = m.checked_add(1)?;
                 }
                 cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
             }
@@ -639,29 +646,33 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
             let e = every.max(1);
             if e > 1 {
                 let mut idx = month_index(y, m);
-                let rem = (idx % e + e) % e;
+                let rem = idx.rem_euclid(e);
                 if rem != 0 {
-                    idx += e - rem;
-                    y = (idx / 12) as i32;
-                    m = (idx % 12) as u32 + 1;
+                    idx = idx.checked_add(e.checked_sub(rem)?)?;
+                    y = idx.div_euclid(12).try_into().ok()?;
+                    m = u32::try_from(idx.rem_euclid(12)).ok()?.checked_add(1)?;
                     cur = chrono::NaiveDate::from_ymd_opt(y, m, 1)?.and_hms_opt(0, 0, 0)?;
                 }
             }
             cur
         }
         "year" => {
-            let mut y = naive.date().year();
-            let mut cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+            let mut y = i64::from(naive.date().year());
+            let initial_year: i32 = y.try_into().ok()?;
+            let mut cur =
+                chrono::NaiveDate::from_ymd_opt(initial_year, 1, 1)?.and_hms_opt(0, 0, 0)?;
             if cur < naive {
-                y += 1;
-                cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+                y = y.checked_add(1)?;
+                let year: i32 = y.try_into().ok()?;
+                cur = chrono::NaiveDate::from_ymd_opt(year, 1, 1)?.and_hms_opt(0, 0, 0)?;
             }
-            let e = every.max(1) as i32;
+            let e = every.max(1);
             if e > 1 {
-                let rem = (y % e + e) % e;
+                let rem = y.rem_euclid(e);
                 if rem != 0 {
-                    y += e - rem;
-                    cur = chrono::NaiveDate::from_ymd_opt(y, 1, 1)?.and_hms_opt(0, 0, 0)?;
+                    y = y.checked_add(e.checked_sub(rem)?)?;
+                    let year: i32 = y.try_into().ok()?;
+                    cur = chrono::NaiveDate::from_ymd_opt(year, 1, 1)?.and_hms_opt(0, 0, 0)?;
                 }
             }
             cur
@@ -670,7 +681,7 @@ fn ceil_tick_start(min_ms: i64, every: i64, unit: &str, week_start: Option<&str>
     };
 
     let out = merman_core::time::datetime_from_naive_local(start);
-    Some(out.timestamp_millis())
+    Some(out?.timestamp_millis())
 }
 
 fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
@@ -688,14 +699,18 @@ fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
     // `+e days` for months with non-multiple-of-e lengths.
     let cur_date = naive.date();
     let day0 = cur_date.day0() as i64;
-    let next_day0 = day0 + 1;
-    let rem = (next_day0 % e + e) % e;
+    let next_day0 = day0.checked_add(1)?;
+    let rem = next_day0.rem_euclid(e);
     let delta = if rem == 0 { 0 } else { e - rem };
-    let cand_day0 = next_day0 + delta;
+    let cand_day0 = next_day0.checked_add(delta)?;
 
     let (y, m) = (cur_date.year(), cur_date.month());
     let first_this_month = chrono::NaiveDate::from_ymd_opt(y, m, 1)?;
-    let (ny, nm) = if m == 12 { (y + 1, 1) } else { (y, m + 1) };
+    let (ny, nm) = if m == 12 {
+        (y.checked_add(1)?, 1)
+    } else {
+        (y, m.checked_add(1)?)
+    };
     let first_next_month = chrono::NaiveDate::from_ymd_opt(ny, nm, 1)?;
     let days_in_month = first_next_month
         .signed_duration_since(first_this_month)
@@ -714,7 +729,7 @@ fn add_d3_time_day_every(ms: i64, every: i64) -> Option<i64> {
     )?;
 
     let out = merman_core::time::datetime_from_naive_local(next);
-    Some(out.timestamp_millis())
+    Some(out?.timestamp_millis())
 }
 
 fn axis_format_to_strftime(axis_format: &str, date_format: &str, cfg_axis_format: &str) -> String {
@@ -909,7 +924,7 @@ fn build_ticks(
             return f64::INFINITY;
         }
 
-        let time_diff_ms = (max_ms - min_ms).abs().max(1) as f64;
+        let time_diff_ms = absolute_millis_between(max_ms, min_ms).max(1) as f64;
         let interval_ms = match unit {
             "millisecond" => every as f64,
             "second" => (every as f64) * 1_000.0,
@@ -1077,9 +1092,11 @@ pub fn layout_gantt_diagram_typed(
         (0, 0)
     };
     let range = (width - left_padding - right_padding).max(1.0);
-    let span_days = (max_ms - min_ms).abs() / MS_PER_DAY;
-    let has_excludes_layer =
-        has_tasks && (!m.excludes.is_empty() || !m.includes.is_empty()) && span_days <= 365 * 5;
+    let span_ms = absolute_millis_between(max_ms, min_ms);
+    let max_exclude_span_ms = i128::from(MS_PER_DAY) * 365 * 5;
+    let has_excludes_layer = has_tasks
+        && (!m.excludes.is_empty() || !m.includes.is_empty())
+        && span_ms <= max_exclude_span_ms;
 
     // Sort by start time for rendering.
     m.tasks.sort_by_key(|a| a.start_ms);
@@ -1120,7 +1137,13 @@ pub fn layout_gantt_diagram_typed(
                     height: (height - top_padding - grid_line_start_padding).max(0.0),
                 });
             }
-            cur += MS_PER_DAY;
+            let Some(next) = cur.checked_add(MS_PER_DAY) else {
+                break;
+            };
+            if next <= cur {
+                break;
+            }
+            cur = next;
         }
     }
 

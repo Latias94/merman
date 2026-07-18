@@ -3,6 +3,13 @@
 Date: 2026-06-02
 Task: HPD-080 visible rendering defect triage
 
+## Superseded
+
+The 2026-07-18 Mermaid 11.16 family admission replaced this decision. Canonical raw parity now
+reproduces the pinned `hsl(...NaN%)` token exactly, and the Quadrant-specific xtask normalization
+was deleted. Consumers that require strictly renderable SVG use the explicit `resvg-safe` pipeline.
+The remainder of this entry records the earlier 11.15 decision for historical context.
+
 ## Context
 
 The remaining dark-theme renderability scan found a supported diagram that could pass structural

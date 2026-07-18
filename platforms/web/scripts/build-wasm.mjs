@@ -8,119 +8,17 @@ import {
   parseArgValue,
   resolvePackageSubdir,
 } from "./arg-parse.mjs";
+import {
+  defaultWebPresetName,
+  webPresetDescriptors,
+} from "./web-surface-descriptor.mjs";
 
 const packageRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.join(packageRoot, "..", "..");
 
-const presets = {
-  "browser-core": {
-    surface: "browser",
-    defaultFeatures: false,
-    features: ["analysis"],
-    capabilities: {
-      render: false,
-      analysis: true,
-      ascii: false,
-      core_full: false,
-      core_host: false,
-      elk_layout: false,
-      ratex_math: false,
-      editor_language: false,
-    },
-  },
-  "browser-render": {
-    surface: "browser",
-    defaultFeatures: false,
-    features: ["render", "analysis"],
-    capabilities: {
-      render: true,
-      analysis: true,
-      ascii: false,
-      core_full: false,
-      core_host: false,
-      elk_layout: false,
-      ratex_math: false,
-      editor_language: false,
-    },
-  },
-  "browser-render-only": {
-    surface: "browser",
-    defaultFeatures: false,
-    features: ["render"],
-    capabilities: {
-      render: true,
-      analysis: false,
-      ascii: false,
-      core_full: false,
-      core_host: false,
-      elk_layout: false,
-      ratex_math: false,
-      editor_language: false,
-    },
-  },
-  "browser-ascii": {
-    surface: "browser",
-    defaultFeatures: false,
-    features: ["ascii"],
-    capabilities: {
-      render: false,
-      analysis: false,
-      ascii: true,
-      core_full: false,
-      core_host: false,
-      elk_layout: false,
-      ratex_math: false,
-      editor_language: false,
-    },
-  },
-  "browser-full": {
-    surface: "browser",
-    defaultFeatures: true,
-    features: [],
-    capabilities: {
-      render: true,
-      analysis: true,
-      ascii: true,
-      core_full: true,
-      core_host: true,
-      elk_layout: true,
-      ratex_math: false,
-      editor_language: true,
-    },
-  },
-  "browser-full-no-elk": {
-    surface: "browser",
-    defaultFeatures: false,
-    features: ["core-full", "core-host", "render", "analysis", "ascii", "editor-language"],
-    capabilities: {
-      render: true,
-      analysis: true,
-      ascii: true,
-      core_full: true,
-      core_host: true,
-      elk_layout: false,
-      ratex_math: false,
-      editor_language: true,
-    },
-  },
-  "browser-ratex-math": {
-    surface: "browser",
-    defaultFeatures: true,
-    features: ["ratex-math"],
-    capabilities: {
-      render: true,
-      analysis: true,
-      ascii: true,
-      core_full: true,
-      core_host: true,
-      elk_layout: true,
-      ratex_math: true,
-      editor_language: true,
-    },
-  },
-};
-
-const defaultPresetName = "browser-full";
+const presets = Object.fromEntries(
+  webPresetDescriptors.map((preset) => [preset.name, preset]),
+);
 const args = process.argv.slice(2);
 const { presetName, outputDir } = parseCli(args);
 const preset = presets[presetName];
@@ -136,7 +34,7 @@ if (!preset) {
 console.log(
   [
     `build-wasm: preset=${presetName}`,
-    `default_features=${preset.defaultFeatures}`,
+    `default_features=${preset.default_features}`,
     `features=${preset.features.length > 0 ? preset.features.join("+") : "none"}`,
   ].join(" ")
 );
@@ -178,7 +76,7 @@ function parseCli(inputArgs) {
       presetName:
         parseArgValue(inputArgs, "--preset") ??
         process.env.MERMAN_WEB_PRESET ??
-        defaultPresetName,
+        defaultWebPresetName,
       outputDir: resolvePackageSubdir(packageRoot, outDirRel, "--out-dir-rel"),
     };
   } catch (error) {
@@ -190,7 +88,7 @@ function parseCli(inputArgs) {
 
 function cargoFeatureArgs(selectedPreset) {
   const args = [];
-  if (!selectedPreset.defaultFeatures) {
+  if (!selectedPreset.default_features) {
     args.push("--no-default-features");
   }
   if (selectedPreset.features.length > 0) {
@@ -206,7 +104,7 @@ function writePresetManifest(name, selectedPreset, outDir) {
     preset: name,
     surface: selectedPreset.surface,
     package: "merman-wasm",
-    default_features: selectedPreset.defaultFeatures,
+    default_features: selectedPreset.default_features,
     features: selectedPreset.features,
     capabilities: selectedPreset.capabilities,
   };
@@ -286,7 +184,7 @@ function printUsage() {
     console.log(
       [
         `  ${name.padEnd(20)}`,
-        `default_features=${selectedPreset.defaultFeatures}`,
+        `default_features=${selectedPreset.default_features}`,
         `features=${selectedPreset.features.length > 0 ? selectedPreset.features.join("+") : "none"}`,
       ].join(" ")
     );

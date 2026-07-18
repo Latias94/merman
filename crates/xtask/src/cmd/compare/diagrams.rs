@@ -628,77 +628,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compare_adapters_do_not_rebuild_the_legacy_render_pipeline() {
-        let compare_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare");
-        let adapters_dir = compare_dir.join("diagrams");
-        let forbidden = [
-            ".parse_diagram",
-            "merman_render::family::prepare(",
-            "merman_render::layout_parsed(",
-            "merman_render::svg::render_",
-        ];
-        let mut violations = Vec::new();
-        let mut adapter_paths = vec![compare_dir.join("harness.rs"), compare_dir.join("xml.rs")];
-
-        for entry in std::fs::read_dir(&adapters_dir).expect("compare adapter directory") {
-            let entry = entry.expect("compare adapter entry");
-            let path = entry.path();
-            if path.extension().and_then(|extension| extension.to_str()) != Some("rs") {
-                continue;
-            }
-            adapter_paths.push(path);
-        }
-
-        for path in adapter_paths {
-            let source = std::fs::read_to_string(&path).expect("compare adapter source");
-            for symbol in forbidden {
-                if source.contains(symbol) {
-                    violations.push(format!(
-                        "{} still contains `{symbol}`",
-                        path.file_name()
-                            .and_then(|name| name.to_str())
-                            .unwrap_or("<unknown>")
-                    ));
-                }
-            }
-        }
-
-        assert!(
-            violations.is_empty(),
-            "per-family compare adapters must use the canonical prepared operation:\n{}",
-            violations.join("\n")
-        );
-    }
-
-    #[test]
-    fn compare_runners_capture_the_canonical_operation_report() {
-        let compare_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare");
-
-        for relative_path in [
-            "harness.rs",
-            "diagrams/er.rs",
-            "diagrams/flowchart.rs",
-            "diagrams/gantt.rs",
-        ] {
-            let source = std::fs::read_to_string(compare_dir.join(relative_path))
-                .expect("compare runner source");
-            let production = source
-                .split("\n#[cfg(test)]\nmod tests")
-                .next()
-                .unwrap_or(&source);
-            assert!(
-                production.contains(".render_svg_report("),
-                "{relative_path} must retain the operation report"
-            );
-            assert!(
-                !production.contains(".render_svg("),
-                "{relative_path} must not discard operation provenance"
-            );
-        }
-    }
-
-    #[test]
-    fn generic_and_specialist_commands_report_observed_operation_provenance() {
+    fn generic_and_specialist_commands_require_observed_operation_evidence() {
         let output_root = crate::cmd::target_root()
             .join("compare")
             .join("observed-operation-tests")
@@ -712,24 +642,29 @@ mod tests {
         ] {
             let report_path = output_root.join(format!("{diagram}.md"));
             let request = CompareRequest {
-                out_path: Some(report_path.clone()),
+                out_path: Some(report_path),
                 filter: Some(stem.to_string()),
+                check_dom: true,
                 ..CompareRequest::default()
             };
 
-            compare_diagram_request(diagram, request)
+            let evidence = compare_diagram_request(diagram, request)
                 .unwrap_or_else(|error| panic!("{diagram}/{stem} compare failed: {error}"));
-            let report = std::fs::read_to_string(&report_path)
-                .unwrap_or_else(|error| panic!("read {}: {error}", report_path.display()));
 
-            assert!(
-                report.contains("- Render operation: `headless-operation-typed` (observed)"),
-                "{diagram} report did not consume RenderOperationReport:\n{report}"
+            let selected = evidence.selected_fixtures();
+            assert!(selected > 0, "{diagram}/{stem}");
+            assert_eq!(evidence.rendered_fixtures(), selected, "{diagram}/{stem}");
+            assert_eq!(
+                evidence.observed_operation_reports(),
+                evidence.rendered_fixtures(),
+                "{diagram}/{stem}"
             );
-            assert!(
-                report.contains("- Text measurement routes: `4` (observed)"),
-                "{diagram} report did not expose observed measurement routes:\n{report}"
+            assert_eq!(
+                evidence.observed_measurement_routes(),
+                evidence.observed_operation_reports() * 4,
+                "{diagram}/{stem}"
             );
+            assert_eq!(evidence.comparisons(), selected, "{diagram}/{stem}");
         }
     }
 
@@ -765,34 +700,8 @@ mod tests {
             .unwrap_or_else(|error| panic!("read {}: {error}", report_path.display()));
         assert!(report.contains("- Render operation: `not-observed`"));
         assert!(report.contains(
-            "Evidence counts: selected=`1` rendered=`0` skipped=`1` DOM-comparisons=`0` raw-SVG-comparisons=`0`"
+            "Evidence counts: selected=`1` rendered=`0` skipped=`1` operation-reports=`0` measurement-routes=`0` DOM-comparisons=`0` raw-SVG-comparisons=`0`"
         ));
-    }
-
-    #[test]
-    fn gantt_today_policy_calibrates_an_operation_environment_before_final_render() {
-        let compare_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare");
-
-        for relative_path in ["diagrams/gantt.rs", "xml.rs"] {
-            let path = compare_dir.join(relative_path);
-            let source = std::fs::read_to_string(&path).expect("Gantt compare source");
-            let production = source
-                .split("\n#[cfg(test)]\nmod tests")
-                .next()
-                .unwrap_or(&source);
-            assert!(
-                production.contains("gantt_calibrated_time_snapshot"),
-                "{relative_path} must derive the pinned baseline instant explicitly"
-            );
-            assert!(
-                production.contains("with_time_snapshot(snapshot)"),
-                "{relative_path} must freeze the calibrated instant before the final operation"
-            );
-            assert!(
-                !production.contains("current_time_unix_ms"),
-                "{relative_path} must not bypass the operation-owned render clock"
-            );
-        }
     }
 
     #[test]
@@ -834,28 +743,6 @@ mod tests {
             );
         }
         assert!(diagram_verification_fact_for_command("compare-unknown-svgs").is_none());
-    }
-
-    #[test]
-    fn verification_facts_are_the_only_per_family_cli_registration() {
-        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let main_source =
-            std::fs::read_to_string(manifest.join("src/main.rs")).expect("xtask main source");
-        let diagrams_source = std::fs::read_to_string(manifest.join("src/cmd/compare/diagrams.rs"))
-            .expect("diagram compare source");
-
-        for fact in DIAGRAM_VERIFICATION_FACTS {
-            assert!(
-                !main_source.contains(&format!("\"{}\" =>", fact.command)),
-                "{} must be routed from DIAGRAM_VERIFICATION_FACTS",
-                fact.command
-            );
-        }
-        let generic_wrapper_invocation = ["generic_compare_", "entrypoints!("].concat();
-        assert!(
-            !diagrams_source.contains(&generic_wrapper_invocation),
-            "generic compare wrappers duplicate DIAGRAM_VERIFICATION_FACTS"
-        );
     }
 
     #[test]

@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 pub(crate) enum AcceptedResidualPolicy {
     #[default]
     None,
-    QuadrantStructureRenderability,
     ExactFixtureDomEvidence,
     RootParityExact,
 }
@@ -20,9 +19,6 @@ impl AcceptedResidualPolicy {
     fn label(self) -> &'static str {
         match self {
             Self::None => "none",
-            Self::QuadrantStructureRenderability => {
-                "compare-all source-backed QuadrantChart renderability correction registry"
-            }
             Self::ExactFixtureDomEvidence => "exact family-scoped fixture DOM evidence catalog",
             Self::RootParityExact => "compare-all exact fail-closed root residual registry",
         }
@@ -253,13 +249,20 @@ pub(crate) struct ObservedRenderOperations {
 
 #[derive(Debug)]
 pub(crate) struct ObservedRenderEvidence {
-    _private: (),
+    execution_path: merman::render::RenderExecutionPath,
+    measurement_routes: usize,
 }
 
 impl ObservedRenderEvidence {
-    const fn render_count(self) -> usize {
-        match self {
-            Self { _private: () } => 1,
+    const fn render_count(&self) -> usize {
+        1
+    }
+
+    #[cfg(test)]
+    const fn test_only() -> Self {
+        Self {
+            execution_path: merman::render::RenderExecutionPath::HeadlessOperationTyped,
+            measurement_routes: 4,
         }
     }
 }
@@ -288,7 +291,10 @@ impl ObservedRenderOperations {
             ));
         }
         self.observed = true;
-        Ok(ObservedRenderEvidence { _private: () })
+        Ok(ObservedRenderEvidence {
+            execution_path: observed.render_path,
+            measurement_routes: observed.measurement_routes.len(),
+        })
     }
 
     pub(crate) fn write_report(&self, report: &mut String) {
@@ -389,11 +395,33 @@ pub(crate) struct CompareEvidence {
     selected_fixtures: usize,
     rendered_fixtures: usize,
     skipped_fixtures: usize,
+    observed_operation_reports: usize,
+    observed_measurement_routes: usize,
     dom_comparisons: usize,
     raw_svg_comparisons: usize,
 }
 
 impl CompareEvidence {
+    #[cfg(test)]
+    pub(crate) const fn selected_fixtures(self) -> usize {
+        self.selected_fixtures
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn rendered_fixtures(self) -> usize {
+        self.rendered_fixtures
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn observed_operation_reports(self) -> usize {
+        self.observed_operation_reports
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn observed_measurement_routes(self) -> usize {
+        self.observed_measurement_routes
+    }
+
     pub(crate) const fn comparisons(self) -> usize {
         self.dom_comparisons + self.raw_svg_comparisons
     }
@@ -404,6 +432,18 @@ impl CompareEvidence {
             failures.push(format!(
                 "no canonical typed render evidence for {subject}: selected={} skipped={}",
                 self.selected_fixtures, self.skipped_fixtures
+            ));
+        }
+        if self.observed_operation_reports != self.rendered_fixtures {
+            failures.push(format!(
+                "canonical typed render evidence mismatch for {subject}: rendered={} operation-reports={}",
+                self.rendered_fixtures, self.observed_operation_reports
+            ));
+        }
+        if self.observed_measurement_routes != self.observed_operation_reports * 4 {
+            failures.push(format!(
+                "render measurement-route evidence mismatch for {subject}: operation-reports={} measurement-routes={}",
+                self.observed_operation_reports, self.observed_measurement_routes
             ));
         }
         if check_dom && self.comparisons() == 0 {
@@ -418,13 +458,25 @@ impl CompareEvidence {
     fn write_report(self, report: &mut String) {
         let _ = writeln!(
             report,
-            "- Evidence counts: selected=`{}` rendered=`{}` skipped=`{}` DOM-comparisons=`{}` raw-SVG-comparisons=`{}`",
+            "- Evidence counts: selected=`{}` rendered=`{}` skipped=`{}` operation-reports=`{}` measurement-routes=`{}` DOM-comparisons=`{}` raw-SVG-comparisons=`{}`",
             self.selected_fixtures,
             self.rendered_fixtures,
             self.skipped_fixtures,
+            self.observed_operation_reports,
+            self.observed_measurement_routes,
             self.dom_comparisons,
             self.raw_svg_comparisons,
         );
+    }
+
+    fn record_render(&mut self, evidence: ObservedRenderEvidence) {
+        debug_assert_eq!(
+            evidence.execution_path,
+            merman::render::RenderExecutionPath::HeadlessOperationTyped
+        );
+        self.rendered_fixtures += evidence.render_count();
+        self.observed_operation_reports += 1;
+        self.observed_measurement_routes += evidence.measurement_routes;
     }
 
     fn record_comparison(&mut self, comparison: FixtureComparison) {
@@ -441,6 +493,8 @@ impl AddAssign for CompareEvidence {
         self.selected_fixtures += rhs.selected_fixtures;
         self.rendered_fixtures += rhs.rendered_fixtures;
         self.skipped_fixtures += rhs.skipped_fixtures;
+        self.observed_operation_reports += rhs.observed_operation_reports;
+        self.observed_measurement_routes += rhs.observed_measurement_routes;
         self.dom_comparisons += rhs.dom_comparisons;
         self.raw_svg_comparisons += rhs.raw_svg_comparisons;
     }
@@ -1002,7 +1056,7 @@ where
                 issues,
                 notes: fixture_notes,
             } => {
-                evidence.rendered_fixtures += render_evidence.render_count();
+                evidence.record_render(render_evidence);
                 let comparison = write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
@@ -1031,7 +1085,7 @@ where
                 issues,
                 notes: fixture_notes,
             } => {
-                evidence.rendered_fixtures += render_evidence.render_count();
+                evidence.record_render(render_evidence);
                 let comparison = write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
@@ -1362,8 +1416,8 @@ mod tests {
             ("sequence", AcceptedResidualPolicy::None, "policy: `none`"),
             (
                 "quadrantchart",
-                AcceptedResidualPolicy::QuadrantStructureRenderability,
-                "source-backed QuadrantChart renderability correction registry",
+                AcceptedResidualPolicy::None,
+                "policy: `none`",
             ),
             (
                 "ishikawa",
@@ -1582,7 +1636,7 @@ mod tests {
                     });
                 }
                 Ok(CompareFixtureResult::Rendered {
-                    render_evidence: ObservedRenderEvidence { _private: () },
+                    render_evidence: ObservedRenderEvidence::test_only(),
                     local_svg: input.upstream_svg.to_string(),
                     compare_dom: true,
                     issues: Vec::new(),
@@ -1609,6 +1663,8 @@ mod tests {
                 selected_fixtures: 2,
                 rendered_fixtures: 1,
                 skipped_fixtures: 1,
+                observed_operation_reports: 1,
+                observed_measurement_routes: 4,
                 dom_comparisons: 1,
                 raw_svg_comparisons: 0,
             }
@@ -1616,7 +1672,7 @@ mod tests {
         let report = fs::read_to_string(&out_path).expect("report should be written");
         assert!(report.contains("All fixtures matched."));
         assert!(report.contains(
-            "Evidence counts: selected=`2` rendered=`1` skipped=`1` DOM-comparisons=`1` raw-SVG-comparisons=`0`"
+            "Evidence counts: selected=`2` rendered=`1` skipped=`1` operation-reports=`1` measurement-routes=`4` DOM-comparisons=`1` raw-SVG-comparisons=`0`"
         ));
         assert!(report.contains("skipped skipped: parse-time admission policy"));
         let out_svg_dir = out_path
@@ -1687,6 +1743,8 @@ mod tests {
                 selected_fixtures: 1,
                 rendered_fixtures: 1,
                 skipped_fixtures: 0,
+                observed_operation_reports: 1,
+                observed_measurement_routes: 4,
                 dom_comparisons: 0,
                 raw_svg_comparisons: 0,
             }
@@ -1753,6 +1811,8 @@ mod tests {
                 selected_fixtures: 1,
                 rendered_fixtures: 1,
                 skipped_fixtures: 0,
+                observed_operation_reports: 1,
+                observed_measurement_routes: 4,
                 dom_comparisons: 1,
                 raw_svg_comparisons: 0,
             }

@@ -2,29 +2,6 @@ from dataclasses import dataclass
 
 import merman
 
-EXPECTED_TEXT_MEASUREMENT_OPERATIONS = {
-    "MEASURE",
-    "COMPUTED_LENGTH",
-    "B_BOX_X",
-    "B_BOX_X_WITH_ASCII_OVERHANG",
-    "TITLE_B_BOX_X",
-    "SIMPLE_B_BOX_WIDTH",
-    "RAW_B_BOX_WIDTH",
-    "TSPAN_B_BOX_WIDTH",
-    "TSPAN_B_BOX_HEIGHT",
-    "WRAP_PROBE_B_BOX_WIDTH",
-    "SIMPLE_B_BOX_HEIGHT",
-    "WRAPPED",
-    "WRAPPED_WITH_RAW_WIDTH",
-    "BOUNDING_CLIENT_RECT_WIDTH",
-    "CREATE_TEXT_B_BOX_Y_OFFSET",
-    "MERMAID_CALCULATE_TEXT_DIMENSIONS",
-    "CANVAS_MEASURE_TEXT_WIDTH",
-    "CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET",
-    "RAW_B_BOX_HEIGHT",
-}
-
-
 def text_measurement_result(operation, width: float, height: float):
     operation_type = merman.MermanTextMeasurementOperation
     values = dict(
@@ -102,12 +79,22 @@ def text_measurement_result(operation, width: float, height: float):
 
 def assert_text_measurement_contract() -> None:
     operation_type = merman.MermanTextMeasurementOperation
-    operation_names = set(operation_type.__members__)
-    if operation_names != EXPECTED_TEXT_MEASUREMENT_OPERATIONS:
-        raise RuntimeError(f"unexpected text measurement operations: {operation_names}")
+    expected_operation_codes = {
+        entry[0] for entry in merman.TEXT_MEASUREMENT_OPERATIONS
+    }
     operation_codes = {operation.value for operation in operation_type}
-    if operation_codes != set(range(19)):
+    if operation_codes != expected_operation_codes:
         raise RuntimeError(f"unexpected text measurement operation codes: {operation_codes}")
+    expected_result_kind_codes = {
+        entry[0] for entry in merman.TEXT_MEASUREMENT_RESULT_KINDS
+    }
+    result_kind_codes = {
+        kind.value for kind in merman.MermanTextMeasurementResultKind
+    }
+    if result_kind_codes != expected_result_kind_codes:
+        raise RuntimeError(
+            f"unexpected text measurement result-kind codes: {result_kind_codes}"
+        )
 
     dimensions = text_measurement_result(
         merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
@@ -162,8 +149,17 @@ def main() -> None:
     assert_text_measurement_contract()
 
     engine = merman.MermanEngine()
-    if engine.abi_version() != 2:
-        raise RuntimeError(f"unexpected ABI version: {engine.abi_version()}")
+    merman.require_abi_version(engine.abi_version())
+    try:
+        merman.require_abi_version(merman.ABI_VERSION + 1)
+    except merman.AbiVersionMismatch as error:
+        if (
+            error.expected != merman.ABI_VERSION
+            or error.actual != merman.ABI_VERSION + 1
+        ):
+            raise
+    else:
+        raise RuntimeError("expected mismatched ABI to be rejected")
     if not engine.package_version():
         raise RuntimeError("empty package version")
 

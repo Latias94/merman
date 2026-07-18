@@ -5386,6 +5386,11 @@ Residual note:
 - This is an intentional renderability-over-byte-parity correction for an invalid upstream CSS
   token. It should not be generalized into broad color normalization or cosmetic palette changes.
 
+Superseded 2026-07-18 by the Mermaid 11.16 source-backed admission contract: canonical raw parity
+now emits the pinned `hsl(...NaN%)` attribute, the Quadrant-specific comparator normalization and
+fixture whitelist were deleted, and renderability cleanup is available only through the explicit
+`resvg-safe` pipeline. The section above is retained as historical evidence, not current policy.
+
 Twenty-second slice outcome:
 
 - Audited the remaining raw SVG `undefined` hits from the renderability scan:

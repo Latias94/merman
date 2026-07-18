@@ -20,7 +20,7 @@ pub(in crate::svg::parity) fn render_flowchart_svg_model_with_config(
     diagram_type: &str,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(
         layout,
         None,
@@ -40,7 +40,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_svg_model_with_swimlan
     diagram_type: &str,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     render_flowchart_svg_model(
         layout,
         Some(swimlane_layout),
@@ -60,7 +60,7 @@ fn render_flowchart_svg_model(
     diagram_type: &str,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     if model
         .nodes
         .iter()
@@ -368,7 +368,7 @@ fn render_flowchart_svg_model(
         + layout.clusters.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
 
-    document.push_root_open(&mut out)?;
+    let root_document = document.push_root_open(&mut out)?;
     document.push_accessibility_metadata(&mut out);
     out.push_str("<style>");
     out.push_str(&css);
@@ -444,7 +444,7 @@ fn render_flowchart_svg_model(
             detail.nested_roots,
         );
     }
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_flowchart_shadow_defs(

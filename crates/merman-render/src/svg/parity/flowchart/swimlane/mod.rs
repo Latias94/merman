@@ -17,7 +17,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_model_with_config(
     diagram_type: &str,
     diagram_title: Option<&str>,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let flowchart_layout = adapt_swimlane_layout(model, layout);
     super::svg_emit::render_flowchart_svg_model_with_swimlane(
         &flowchart_layout,

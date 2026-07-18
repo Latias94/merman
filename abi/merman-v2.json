@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "abi_version": 2,
+  "text_measurement": {
+    "result_kinds": [
+    {
+      "id": "metrics",
+      "external_name": "metrics",
+      "rust_variant": "Metrics",
+      "code": 0
+    },
+    {
+      "id": "length",
+      "external_name": "length",
+      "rust_variant": "Length",
+      "code": 1
+    },
+    {
+      "id": "horizontal_extents",
+      "external_name": "horizontal-extents",
+      "rust_variant": "HorizontalExtents",
+      "code": 2
+    },
+    {
+      "id": "wrapped_with_raw_width",
+      "external_name": "wrapped-with-raw-width",
+      "rust_variant": "WrappedWithRawWidth",
+      "code": 3
+    }
+    ],
+    "operations": [
+    {
+      "id": "measure",
+      "external_name": "measure",
+      "rust_variant": "Measure",
+      "code": 0,
+      "result_kind": "metrics",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "computed_length",
+      "external_name": "computed-length",
+      "rust_variant": "ComputedLength",
+      "code": 1,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "bbox_x",
+      "external_name": "bbox-x",
+      "rust_variant": "BBoxX",
+      "code": 2,
+      "result_kind": "horizontal_extents",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "bbox_x_with_ascii_overhang",
+      "external_name": "bbox-x-with-ascii-overhang",
+      "rust_variant": "BBoxXWithAsciiOverhang",
+      "code": 3,
+      "result_kind": "horizontal_extents",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "title_bbox_x",
+      "external_name": "title-bbox-x",
+      "rust_variant": "TitleBBoxX",
+      "code": 4,
+      "result_kind": "horizontal_extents",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "simple_bbox_width",
+      "external_name": "simple-bbox-width",
+      "rust_variant": "SimpleBBoxWidth",
+      "code": 5,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "raw_bbox_width",
+      "external_name": "raw-bbox-width",
+      "rust_variant": "RawBBoxWidth",
+      "code": 6,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "tspan_bbox_width",
+      "external_name": "tspan-bbox-width",
+      "rust_variant": "TspanBBoxWidth",
+      "code": 7,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "tspan_bbox_height",
+      "external_name": "tspan-bbox-height",
+      "rust_variant": "TspanBBoxHeight",
+      "code": 8,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "wrap_probe_bbox_width",
+      "external_name": "wrap-probe-bbox-width",
+      "rust_variant": "WrapProbeBBoxWidth",
+      "code": 9,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "simple_bbox_height",
+      "external_name": "simple-bbox-height",
+      "rust_variant": "SimpleBBoxHeight",
+      "code": 10,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "wrapped",
+      "external_name": "wrapped",
+      "rust_variant": "Wrapped",
+      "code": 11,
+      "result_kind": "metrics",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "wrapped_with_raw_width",
+      "external_name": "wrapped-with-raw-width",
+      "rust_variant": "WrappedWithRawWidth",
+      "code": 12,
+      "result_kind": "wrapped_with_raw_width",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "bounding_client_rect_width",
+      "external_name": "bounding-client-rect-width",
+      "rust_variant": "BoundingClientRectWidth",
+      "code": 13,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "create_text_bbox_y_offset",
+      "external_name": "create-text-bbox-y-offset",
+      "rust_variant": "CreateTextBBoxYOffset",
+      "code": 14,
+      "result_kind": "length",
+      "accepts_signed_length": true
+    },
+    {
+      "id": "mermaid_calculate_text_dimensions",
+      "external_name": "mermaid-calculate-text-dimensions",
+      "rust_variant": "MermaidCalculateTextDimensions",
+      "code": 15,
+      "result_kind": "metrics",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "canvas_measure_text_width",
+      "external_name": "canvas-measure-text-width",
+      "rust_variant": "CanvasMeasureTextWidth",
+      "code": 16,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    },
+    {
+      "id": "create_text_middle_bbox_y_offset",
+      "external_name": "create-text-middle-bbox-y-offset",
+      "rust_variant": "CreateTextMiddleBBoxYOffset",
+      "code": 17,
+      "result_kind": "length",
+      "accepts_signed_length": true
+    },
+    {
+      "id": "raw_bbox_height",
+      "external_name": "raw-bbox-height",
+      "rust_variant": "RawBBoxHeight",
+      "code": 18,
+      "result_kind": "length",
+      "accepts_signed_length": false
+    }
+    ]
+  }
+}

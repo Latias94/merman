@@ -51,7 +51,7 @@ Status terms:
 | Mindmap | `mindmap/styles.ts` | Covered for current visible DOM, with native-text caveats | Section/root/icon/span colors are covered. Public smoke counts root `git0` fill, redux `nodeBorder` through the current root XHTML `span`, and child `cScale1` / `cScaleLabel1` / `cScaleInv1` through matching `.section-0` DOM. The `look` seam is now source-backed through JSON, typed render data, and SVG: current `neo` output emits matching `data-look="neo"` node/edge DOM plus Mermaid 11.15 neo node/root/edge/drop-shadow/gradient CSS and scoped gradient defs. Compact `cScale0` / `cScaleLabel0` root-section rules and `gitBranchLabel0` native-text CSS are provider/overridden or native-text-only for current output, not visible signals. Classic/default SVG intentionally omits `data-look` to preserve structural parity. |
 | Packet | `packet/styles.ts` | Covered | `packet.*` style options drive byte, label, title, and block CSS; public smoke now requires matching `.packetByte`, `.packetLabel`, `.packetTitle`, and `.packetBlock` DOM before counting those colors as visible. |
 | Pie | `pie/pieStyles.ts` | Covered | Stroke, opacity, title, slice, legend, font family, text colors, and slice/legend palette colors read Mermaid 11.15 theme variables. |
-| QuadrantChart | `quadrant-chart/quadrantDiagram.ts` uses `styles: () => ''` | Inline, render-path covered | Theme behavior is inline through quadrant chart config, classDef, and point styles. No CSS provider should be invented. Mermaid 11.15's default `quadrantPointFill` currently expands to `hsl(...NaN%)`; merman intentionally emits a valid derived default while preserving valid explicit point-color overrides. |
+| QuadrantChart | `quadrant-chart/quadrantDiagram.ts` uses `styles: () => ''` | Inline, render-path covered | Theme behavior is inline through quadrant chart config, classDef, and point styles. No CSS provider should be invented. The canonical parity SVG reproduces Mermaid 11.16's source-backed `hsl(...NaN%)` default token exactly; `resvg-safe` remains the explicit renderability boundary for consumers that reject invalid CSS colors. |
 | Radar | `radar/styles.ts` | Covered | Top-level `radar.*` overrides are resolved before `themeVariables.radar.*`, matching Mermaid's clean-and-merge behavior. |
 | Requirement | `requirement/styles.js` | Covered for current visible DOM, with legacy provider-rule caveats | Relationship lines/markers, edge-label backgrounds, and `look: neo` node/divider borders are covered for current output. Mermaid 11.15 also emits legacy `.reqBox`, `.reqTitle`, `.reqLabel`, `.reqLabelBox`, and `.relationshipLabel` rules that ordinary Requirement DOM does not consume, so those colors are provider coverage rather than public visible-signal coverage. `data-color-id` palette rules remain deferred until local output emits matching attributes. |
 | Sankey | `sankey/styles.js` | Covered | Label, outlined-label background, node, and link style options are emitted; public smoke now requires outlined `.sankey-label-bg` / `.sankey-label-fg`, node rect fills, and link groups before counting those colors as visible. |
@@ -63,9 +63,10 @@ Status terms:
 | Error | none | Shared/error renderer | Not maintained as a full upstream SVG baseline family. No diagram-specific style provider exists in 11.15. |
 | ZenUML | external plugin compatibility | Boundary | Local support is a headless Sequence compatibility subset, not Mermaid browser-plugin CSS parity. |
 
-Unsupported Mermaid 11.15 families with style providers remain outside HPD-080 until admitted by
-`docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`: `treeView`, `ishikawa`,
-`eventmodeling`, `venn`, and `wardley`.
+Families that were outside the original Mermaid 11.15 HPD-080 matrix were admitted later through
+the Mermaid 11.16 source-backed family workflow. The generated capability catalog and per-family
+alignment documents are authoritative for current support; this ledger no longer maintains a
+second unsupported-family list.
 
 ## Public Renderability Smoke
 
@@ -137,10 +138,11 @@ or `svg.root_background_color`.
 Do not make browser font metrics look exact by hardcoding fixture-specific widths. Continue using
 the measurement seams from HPD-040 and classify residuals honestly.
 
-Do not preserve invalid SVG tokens for byte parity when they break supported headless rendering.
-The current QuadrantChart default point color is the narrow precedent: upstream's `hsl(...NaN%)`
-comes from a missing khroma amount argument, so local SVG output uses a valid default and xtask
-normalizes only that known default point-color slot in parity modes.
+Do not hide source-backed raw-SVG differences in comparator normalization. Mermaid 11.16's
+QuadrantChart default `hsl(...NaN%)` token is reproduced by the canonical parity renderer, so
+Structure and Parity compare the real attributes without a fixture whitelist. Consumers that need
+strictly renderable SVG must select `resvg-safe`, where invalid CSS tokens are removed by the owned
+postprocessing contract rather than rewritten inside the semantic renderer or comparator.
 
 Do not keep useless invalid inline style attributes only because upstream fixtures contain them.
 ER relationship paths and Mindmap edge paths now omit upstream's `style="undefined;;;undefined"`

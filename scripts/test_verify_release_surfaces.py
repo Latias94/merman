@@ -19,32 +19,48 @@ SPEC.loader.exec_module(verify_release_surfaces)
 
 
 class ReleaseSurfaceParsingTests(unittest.TestCase):
-    def test_extract_browser_presets_reads_build_wasm_keys(self) -> None:
-        presets = verify_release_surfaces.extract_browser_presets(
-            """
-            const presets = {
-              "browser-core": { features: ["analysis"] },
-              "browser-render-only": { features: ["render"] },
-            };
-            """
+    def test_validate_web_descriptor_reads_closed_preset_and_surface_graph(self) -> None:
+        descriptor = verify_release_surfaces.validate_web_surface_descriptor(
+            minimal_web_descriptor()
         )
 
-        self.assertEqual(presets, {"browser-core", "browser-render-only"})
-
-    def test_extract_wrapper_surfaces_reads_entry_to_preset_pairs(self) -> None:
-        wrappers = verify_release_surfaces.extract_wrapper_surfaces(
-            """
-            export const surfaces = [
-              { entry: "core", preset: "browser-core" },
-              { entry: "render-only", preset: "browser-render-only" },
-            ];
-            """
-        )
-
+        self.assertEqual(descriptor["schema_version"], 1)
+        self.assertEqual(descriptor["default_preset"], "browser-full")
         self.assertEqual(
-            wrappers,
-            {("core", "browser-core"), ("render-only", "browser-render-only")},
+            {preset["name"] for preset in descriptor["presets"]},
+            set(web_contract()["feature_contract"]["browser_presets"]),
         )
+        self.assertEqual(
+            {surface["entry"] for surface in descriptor["public_surfaces"]},
+            {"core", "render", "render-only", "ascii", "editor", "full"},
+        )
+
+    def test_validate_web_descriptor_rejects_duplicates_and_dangling_references(self) -> None:
+        duplicate = minimal_web_descriptor()
+        duplicate["presets"].append(dict(duplicate["presets"][0]))
+        with self.assertRaisesRegex(
+            verify_release_surfaces.CheckFailure,
+            "duplicate Web preset name",
+        ):
+            verify_release_surfaces.validate_web_surface_descriptor(duplicate)
+
+        dangling = minimal_web_descriptor()
+        dangling["public_surfaces"][0]["preset"] = "browser-missing"
+        with self.assertRaisesRegex(
+            verify_release_surfaces.CheckFailure,
+            "references unknown preset browser-missing",
+        ):
+            verify_release_surfaces.validate_web_surface_descriptor(dangling)
+
+    def test_validate_web_descriptor_rejects_incomplete_capabilities(self) -> None:
+        descriptor = minimal_web_descriptor()
+        del descriptor["presets"][0]["capabilities"]["editor_language"]
+
+        with self.assertRaisesRegex(
+            verify_release_surfaces.CheckFailure,
+            "capabilities keys must be exactly",
+        ):
+            verify_release_surfaces.validate_web_surface_descriptor(descriptor)
 
     def test_package_manifest_name_reads_multiple_manifest_formats(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -225,15 +241,72 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
                 verify_release_surfaces.check_web_contract(root, web_contract())
 
 
+def minimal_web_descriptor() -> dict:
+    capabilities = {
+        name: False for name in verify_release_surfaces.WEB_CAPABILITY_NAMES
+    }
+    preset_features = {
+        "browser-core": ["analysis"],
+        "browser-render": ["render", "analysis"],
+        "browser-render-only": ["render"],
+        "browser-ascii": ["ascii"],
+        "browser-editor": ["core-full", "editor-language"],
+        "browser-full": [],
+        "browser-full-no-elk": [
+            "core-full",
+            "core-host",
+            "render",
+            "analysis",
+            "ascii",
+            "editor-language",
+        ],
+        "browser-ratex-math": ["ratex-math"],
+    }
+    public = [
+        ("core", "browser-core"),
+        ("render", "browser-render"),
+        ("render-only", "browser-render-only"),
+        ("ascii", "browser-ascii"),
+        ("editor", "browser-editor"),
+        ("full", "browser-full"),
+    ]
+    return {
+        "schema_version": 1,
+        "default_preset": "browser-full",
+        "presets": [
+            {
+                "name": name,
+                "surface": "browser",
+                "default_features": name in {"browser-full", "browser-ratex-math"},
+                "features": features,
+                "capabilities": dict(capabilities),
+            }
+            for name, features in preset_features.items()
+        ],
+        "public_surfaces": [
+            {
+                "entry": entry,
+                "preset": preset,
+                "pkg_dir_rel": f"pkg/{entry}",
+                "runtime_profile": entry,
+            }
+            for entry, preset in public
+        ],
+    }
+
+
 def web_contract() -> dict:
     return {
         "feature_contract": {
-            "web_subpaths": [".", "./core", "./render", "./render-only", "./ascii", "./full"],
+            "web_descriptor": verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH,
+            "web_default_preset": "browser-full",
+            "web_subpaths": [".", "./core", "./render", "./render-only", "./ascii", "./editor", "./full"],
             "browser_presets": [
                 "browser-core",
                 "browser-render",
                 "browser-render-only",
                 "browser-ascii",
+                "browser-editor",
                 "browser-full",
                 "browser-full-no-elk",
                 "browser-ratex-math",
@@ -249,6 +322,7 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
         "./render": "./render.js",
         "./render-only": "./render-only.js",
         "./ascii": "./ascii.js",
+        "./editor": "./editor.js",
         "./full": "./full.js",
     }
     exports.update(extra_exports or {})
@@ -259,31 +333,8 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
     )
     write(
         root,
-        "platforms/web/scripts/build-wasm.mjs",
-        """
-        const presets = {
-          "browser-core": {},
-          "browser-render": {},
-          "browser-render-only": {},
-          "browser-ascii": {},
-          "browser-full": {},
-          "browser-full-no-elk": {},
-          "browser-ratex-math": {},
-        };
-        """,
-    )
-    write(
-        root,
-        "platforms/web/scripts/surface-manifest.mjs",
-        """
-        export const surfaces = [
-          { entry: "core", preset: "browser-core" },
-          { entry: "render", preset: "browser-render" },
-          { entry: "render-only", preset: "browser-render-only" },
-          { entry: "ascii", preset: "browser-ascii" },
-          { entry: "full", preset: "browser-full" },
-        ];
-        """,
+        verify_release_surfaces.WEB_SURFACE_DESCRIPTOR_PATH,
+        json.dumps(minimal_web_descriptor()),
     )
     write(
         root,
@@ -304,9 +355,12 @@ def write_minimal_web_surface(root: Path, *, extra_exports: dict[str, str] | Non
         ratex-math = []
         """,
     )
-    for subdir in ["core", "render", "render-only", "ascii", "full"]:
+    for subdir in ["core", "render", "render-only", "ascii", "editor", "full"]:
         write(root, f"platforms/web/pkg/{subdir}/README.md", "# package\n")
-    docs = "\n".join(verify_release_surfaces.REQUIRED_WEB_DOC_SUBPATHS)
+    docs = "\n".join(
+        f"@mermanjs/web/{surface['entry']}"
+        for surface in minimal_web_descriptor()["public_surfaces"]
+    )
     write(root, "README.md", docs)
     write(root, "platforms/web/README.md", docs)
     write(root, "docs/release/PACKAGE_SURFACES.md", docs)

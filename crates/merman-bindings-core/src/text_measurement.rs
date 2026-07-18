@@ -1,77 +1,7 @@
-use crate::{HostTextMeasurement, TextMeasurementOperation, TextMetrics};
+use crate::{HostTextMeasurement, TextMetrics};
 
 /// Stable result-shape discriminator shared by all host text-measurement transports.
-#[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HostTextMeasurementResultKind {
-    Metrics = 0,
-    Length = 1,
-    HorizontalExtents = 2,
-    WrappedWithRawWidth = 3,
-}
-
-impl HostTextMeasurementResultKind {
-    pub const ALL: [Self; 4] = [
-        Self::Metrics,
-        Self::Length,
-        Self::HorizontalExtents,
-        Self::WrappedWithRawWidth,
-    ];
-
-    pub const fn external_code(self) -> i32 {
-        self as i32
-    }
-
-    pub const fn external_name(self) -> &'static str {
-        match self {
-            Self::Metrics => "metrics",
-            Self::Length => "length",
-            Self::HorizontalExtents => "horizontal-extents",
-            Self::WrappedWithRawWidth => "wrapped-with-raw-width",
-        }
-    }
-
-    pub const fn from_external_code(code: i32) -> Option<Self> {
-        match code {
-            0 => Some(Self::Metrics),
-            1 => Some(Self::Length),
-            2 => Some(Self::HorizontalExtents),
-            3 => Some(Self::WrappedWithRawWidth),
-            _ => None,
-        }
-    }
-
-    pub fn from_external_name(name: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|kind| kind.external_name() == name)
-    }
-
-    /// Returns the result shape required by one host measurement operation.
-    pub const fn expected_for_operation(operation: TextMeasurementOperation) -> Self {
-        match operation {
-            TextMeasurementOperation::Measure
-            | TextMeasurementOperation::Wrapped
-            | TextMeasurementOperation::MermaidCalculateTextDimensions => Self::Metrics,
-            TextMeasurementOperation::ComputedLength
-            | TextMeasurementOperation::SimpleBBoxWidth
-            | TextMeasurementOperation::RawBBoxWidth
-            | TextMeasurementOperation::RawBBoxHeight
-            | TextMeasurementOperation::TspanBBoxWidth
-            | TextMeasurementOperation::TspanBBoxHeight
-            | TextMeasurementOperation::WrapProbeBBoxWidth
-            | TextMeasurementOperation::SimpleBBoxHeight
-            | TextMeasurementOperation::BoundingClientRectWidth
-            | TextMeasurementOperation::CreateTextBBoxYOffset
-            | TextMeasurementOperation::CanvasMeasureTextWidth
-            | TextMeasurementOperation::CreateTextMiddleBBoxYOffset => Self::Length,
-            TextMeasurementOperation::BBoxX
-            | TextMeasurementOperation::BBoxXWithAsciiOverhang
-            | TextMeasurementOperation::TitleBBoxX => Self::HorizontalExtents,
-            TextMeasurementOperation::WrappedWithRawWidth => Self::WrappedWithRawWidth,
-        }
-    }
-}
+pub use merman::render::TextMeasurementResultKind as HostTextMeasurementResultKind;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HostTextMeasurementValues {
@@ -119,6 +49,7 @@ pub fn host_text_measurement_from_values(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TextMeasurementOperation;
 
     fn values() -> HostTextMeasurementValues {
         HostTextMeasurementValues {

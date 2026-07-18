@@ -17,7 +17,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     model: &TreeViewDiagramRenderModel,
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
-) -> Result<String> {
+) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id.as_deref().unwrap_or("treeView");
     let diagram_id_esc = escape_xml(diagram_id);
     let acc_title = model
@@ -45,8 +45,9 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::TreeView, diagram_id)
-        .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::TreeView, diagram_id)
+            .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = tree_view_css(effective_config);
     if let Some(title) = acc_title {
@@ -115,7 +116,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         );
     }
     out.push_str("</g></svg>\n");
-    Ok(out)
+    root_document.complete(out)
 }
 
 fn push_tree_view_node(

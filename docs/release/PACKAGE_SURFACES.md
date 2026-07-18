@@ -1,7 +1,7 @@
 # Package Surfaces
 
 Status: draft release planning notes.
-Last updated: 2026-07-09
+Last updated: 2026-07-18
 
 This document records merman package surfaces, current readiness, and the CI gates that should
 protect them before any registry publication is enabled.
@@ -17,7 +17,7 @@ protect them before any registry publication is enabled.
 | Python | `merman` wheels | `release-python.yml` | GitHub Release + PyPI | Builds Linux, macOS, and Windows wheels, repairs Linux metadata, and publishes through PyPI Trusted Publishing. |
 | Flutter | `merman` | `release-flutter.yml` | pub.dev | Builds and injects Android, iOS, macOS, Windows, and Linux native artifacts before publishing. Real pub.dev publication must run from a pushed `v*` tag; manual runs are validation-only. |
 | Android | `io.merman:merman-android` Android library module | `release-android.yml` | GitHub Release AAR | Maven publication metadata is declared; Maven Central publishing still needs Central Portal credentials and signing secrets. |
-| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Browser/JS WASM package built through wasm-bindgen. The default entry point is full and ELK-bearing; `./core`, `./render`, `./render-only`, `./ascii`, and `./full` are opt-in package subpaths. This is not the Typst/pure-wasm surface. |
+| Web/WASM | `@mermanjs/web` | `release-web.yml` | npm | Browser/JS WASM package built through wasm-bindgen. The default entry point is full and ELK-bearing; `./core`, `./render`, `./render-only`, `./ascii`, `./editor`, and `./full` are capability-specific package subpaths. This is not the Typst/pure-wasm surface. |
 | VS Code | `merman-vscode` platform VSIX | `vscode-extension.yml` + `release-preflight.yml` | GitHub Actions artifact; Marketplace is `credential-blocked` | The VS Code manifest version is stable SemVer, for example `0.8.0`; workspace prereleases are packaged with the VSIX pre-release marker. |
 | Typst WASM | `packages/typst/merman` Typst package backed by `merman-typst-plugin` | manual `typst/packages` PR | Typst package registry | Uses wasm-minimal-protocol and must stay separate from wasm-bindgen browser glue. The publishable package wasm is artifact-owned and ELK-bearing because Typst users import the wasm rather than enabling Cargo features. |
 | React Native | none | none | none | Add only if a React Native API/package is built. |
@@ -93,10 +93,10 @@ configured per surface before the corresponding workflow can publish.
 
 ## Browser WASM Presets
 
-WFS-090 decision, updated by PR20 hardening: keep `@mermanjs/web` as one npm package. The default
+ADR-0069 keeps `@mermanjs/web` as one npm package. The default
 entry point uses the `browser-full` preset. The package also publishes opt-in subpaths for
-`browser-core`, `browser-render`, `browser-render-only`, `browser-ascii`, and explicit
-`browser-full` artifacts. Source,
+`browser-core`, `browser-render`, `browser-render-only`, `browser-ascii`, `browser-editor`, and
+explicit `browser-full` artifacts. Source,
 CI, and local package builds can still choose a different browser preset through
 `platforms/web/scripts/build-wasm.mjs`; the TypeScript wrapper exposes `bindingCapabilities()` so
 callers can discover the active artifact's compiled capabilities after initialization, including
@@ -108,6 +108,9 @@ The published subpaths are capability-specific TypeScript entry points: they typ
 shared public option/result types and stable helper values, then export only the runtime wrappers
 that the subpath supports. Unsupported render, ASCII, or editor wrappers are absent from slim
 subpaths instead of being exported as throwing stubs.
+`platforms/web/web-surface-descriptor.json` is the single machine-readable preset/subpath mapping;
+the WASM builder, surface generator, Python release verifier, package checks, and tests consume it
+without extracting private JavaScript names or source formatting.
 
 | Preset | Default features | Extra features | Intended use |
 | --- | ---: | --- | --- |
@@ -115,6 +118,7 @@ subpaths instead of being exported as throwing stubs.
 | `browser-render` | no | `render`, `analysis` | SVG/parse/layout artifact with metadata, analysis, facts, and validation over the minimal core profile. Editor-language entry points are unavailable. |
 | `browser-render-only` | no | `render` | SVG/parse/layout artifact with metadata only. Analysis, validation, lint catalog, ASCII, and editor-language entry points are unavailable. |
 | `browser-ascii` | no | `ascii` | ASCII/Unicode artifact with metadata only. Analysis, validation, lint catalog, render, parse, layout, and editor-language entry points are unavailable. |
+| `browser-editor` | no | `core-full`, `editor-language` | Full 35-family catalog, analysis, validation, facts, and parser-backed editor APIs for a dedicated Worker. Render, parse/layout JSON, ASCII, host, and ELK entry points are unavailable. |
 | `browser-full` | yes | none | Default npm artifact: full core profile, browser host capabilities, SVG/layout/parse/validate, ASCII, editor-language APIs, and ELK layout. Includes EPL-backed `merman-elk-layered`. |
 | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | Evidence preset for the same browser surface without ELK. Keeps editor-language enabled. Not the npm default. |
 | `browser-ratex-math` | yes | `ratex-math` | Full browser artifact plus RaTeX math rendering support and ELK layout. Keeps editor-language enabled. Includes EPL-backed `merman-elk-layered`. |
@@ -156,8 +160,10 @@ Current release semantics are intentionally explicit:
   current ABI 2 shape and handle the complete operation range.
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full` there. Slim
   browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`,
-  `@mermanjs/web/render-only`, and `@mermanjs/web/ascii`; these slim subpaths omit unsupported
-  runtime wrapper exports.
+  `@mermanjs/web/render-only`, `@mermanjs/web/ascii`, and `@mermanjs/web/editor`; these slim
+  subpaths omit unsupported runtime wrapper exports. The editor subpath retains `core-full` so its
+  Worker covers the same 35 logical families as the Playground and LSP rather than silently using
+  the tiny registry.
   `@mermanjs/web/full` is the explicit full-preset subpath.
 - Browser WASM ABI 2 is required by the current 0.8 wrapper and render-environment contract.
   `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
@@ -213,6 +219,7 @@ package artifacts measured during local release checks are:
 | `platforms/web/pkg/render/merman_wasm_bg.wasm` | `browser-render` | 6,078,214 | 2,293,073 | 1,571,777 | measured |
 | `platforms/web/pkg/render-only/merman_wasm_bg.wasm` | `browser-render-only` | 5,840,419 | 2,190,623 | 1,512,306 | measured |
 | `platforms/web/pkg/ascii/merman_wasm_bg.wasm` | `browser-ascii` | 2,283,094 | 853,450 | 656,666 | measured |
+| `platforms/web/pkg/editor/merman_wasm_bg.wasm` | `browser-editor` | 2,927,915 | 1,187,134 | 903,197 | measured 2026-07-18 |
 | `platforms/web/pkg/full/merman_wasm_bg.wasm` | `browser-full` | 8,005,098 | 3,102,011 | 2,168,495 | measured |
 
 For the current Typst render artifact, also run:
@@ -232,6 +239,7 @@ Recent observed matrix values:
 | Browser | `browser-render` | no | `render`, `analysis` | 9,502,672 | 7,255,388 | 2,262,060 | 1,496,657 |
 | Browser | `browser-render-only` | no | `render` | 9,066,926 | 6,960,684 | 2,161,312 | 1,444,596 |
 | Browser | `browser-ascii` | no | `ascii` | 3,967,774 | 2,847,511 | 857,787 | 645,191 |
+| Browser | `browser-editor` | no | `core-full`, `editor-language` | 4,985,370 | 3,631,466 | 1,192,175 | 883,268 |
 | Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 11,794,522 | 8,959,931 | 2,893,161 | 1,944,418 |
 | Browser | `browser-full` | yes | none | 12,696,661 | 9,606,018 | 3,081,122 | 2,075,165 |
 | Browser | `browser-ratex-math` | yes | `ratex-math` | 15,970,579 | 12,328,550 | 4,026,127 | 2,768,761 |

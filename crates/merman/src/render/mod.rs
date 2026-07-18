@@ -4,11 +4,12 @@ pub use merman_render::environment::{
     FixedOffsetRenderClock, FixedRenderClock, FixedRenderSeedSource, HostFallbackReason,
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderClock,
-    RenderEnvironment, RenderRandomnessPolicy, RenderSeedOrigin, RenderSession,
-    RenderSessionReport, RenderTimeError, RenderTimeSnapshot, TextMeasurementOperation,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementRoute,
-    TextMeasurementSource, TextMeasurementSummary,
+    RenderEnvironment, RenderLocalTimePolicy, RenderRandomnessPolicy, RenderSeedOrigin,
+    RenderSession, RenderSessionReport, RenderTimeError, RenderTimeSnapshot,
+    TEXT_MEASUREMENT_ABI_VERSION, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
+    TextMeasurementReport, TextMeasurementResultKind, TextMeasurementRoute, TextMeasurementSource,
+    TextMeasurementSummary,
 };
 pub use merman_render::family::RenderFamilyKind;
 #[cfg(feature = "ratex-math")]
@@ -64,6 +65,17 @@ fn default_render_environment() -> RenderEnvironment {
     {
         RenderEnvironment::parity()
     }
+}
+
+fn engine_with_session_time(
+    engine: &merman_core::Engine,
+    session: &merman_render::environment::RenderSession,
+) -> merman_core::Engine {
+    let snapshot = session.time();
+    engine
+        .clone()
+        .with_fixed_today(Some(snapshot.local_date()))
+        .with_local_time_zone(session.local_time_zone().clone())
 }
 
 /// Converts an arbitrary string into a conservative SVG `id` token suitable for embedding
@@ -1192,11 +1204,7 @@ impl HeadlessRenderer {
         &self,
         session: &merman_render::environment::RenderSession,
     ) -> merman_core::Engine {
-        let snapshot = session.time();
-        self.engine
-            .clone()
-            .with_fixed_today(Some(snapshot.local_date()))
-            .with_fixed_local_offset_minutes(Some(snapshot.local_offset_minutes()))
+        engine_with_session_time(&self.engine, session)
     }
 
     pub fn parse_metadata_sync(&self, text: &str) -> Result<Option<merman_core::ParseMetadata>> {
