@@ -208,12 +208,12 @@ package artifacts measured during local release checks are:
 
 | Package artifact | Preset | Raw bytes | gzip bytes | brotli bytes | Budget source |
 | --- | --- | ---: | ---: | ---: | --- |
-| `platforms/web/pkg/merman_wasm_bg.wasm` | `browser-full` | 6,936,158 | 2,649,766 | 1,958,841 | `docs/release/WASM_SIZE_BUDGETS.json` |
-| `platforms/web/pkg/core/merman_wasm_bg.wasm` | `browser-core` | 1,974,289 | 741,530 | 565,420 | measured |
-| `platforms/web/pkg/render/merman_wasm_bg.wasm` | `browser-render` | 4,914,321 | 1,813,940 | 1,340,229 | measured |
-| `platforms/web/pkg/render-only/merman_wasm_bg.wasm` | `browser-render-only` | 4,486,446 | 1,653,761 | 1,220,562 | measured |
-| `platforms/web/pkg/ascii/merman_wasm_bg.wasm` | `browser-ascii` | 2,974,716 | 1,213,252 | 931,113 | measured |
-| `platforms/web/pkg/full/merman_wasm_bg.wasm` | `browser-full` | 6,936,158 | 2,649,766 | 1,958,841 | measured |
+| `platforms/web/pkg/merman_wasm_bg.wasm` | `browser-full` | 8,005,078 | 3,102,009 | 2,169,792 | `docs/release/WASM_SIZE_BUDGETS.json` |
+| `platforms/web/pkg/core/merman_wasm_bg.wasm` | `browser-core` | 2,154,903 | 807,038 | 611,055 | measured |
+| `platforms/web/pkg/render/merman_wasm_bg.wasm` | `browser-render` | 6,078,214 | 2,293,073 | 1,571,777 | measured |
+| `platforms/web/pkg/render-only/merman_wasm_bg.wasm` | `browser-render-only` | 5,840,419 | 2,190,623 | 1,512,306 | measured |
+| `platforms/web/pkg/ascii/merman_wasm_bg.wasm` | `browser-ascii` | 2,283,094 | 853,450 | 656,666 | measured |
+| `platforms/web/pkg/full/merman_wasm_bg.wasm` | `browser-full` | 8,005,098 | 3,102,011 | 2,168,495 | measured |
 
 For the current Typst render artifact, also run:
 
@@ -227,14 +227,14 @@ Recent observed matrix values:
 
 | Surface | Preset | Default features | Extra features | Raw bytes | Stripped bytes | gzip bytes | brotli bytes |
 | --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| Browser | `browser-bridge` | no | none | 2,402,193 | 1,671,346 | 508,819 | 385,724 |
-| Browser | `browser-core` | no | `analysis` | 3,389,891 | 2,433,967 | 738,289 | 545,710 |
-| Browser | `browser-render` | no | `render`, `analysis` | 7,958,453 | 5,911,402 | 1,765,769 | 1,265,268 |
-| Browser | `browser-render-only` | no | `render` | 7,364,323 | 5,475,747 | 1,614,544 | 1,168,221 |
-| Browser | `browser-ascii` | no | `ascii` | 3,411,810 | 2,430,388 | 729,843 | 550,105 |
-| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 10,349,942 | 7,684,417 | 2,409,135 | 1,721,115 |
-| Browser | `browser-full` | yes | none | 11,385,227 | 8,407,735 | 2,619,570 | 1,862,231 |
-| Browser | `browser-ratex-math` | yes | `ratex-math` | 14,668,278 | 11,139,337 | 3,566,896 | 2,542,687 |
+| Browser | `browser-bridge` | no | none | 2,893,014 | 2,033,390 | 622,835 | 474,317 |
+| Browser | `browser-core` | no | `analysis` | 3,784,327 | 2,704,773 | 813,612 | 601,591 |
+| Browser | `browser-render` | no | `render`, `analysis` | 9,502,672 | 7,255,388 | 2,262,060 | 1,496,657 |
+| Browser | `browser-render-only` | no | `render` | 9,066,926 | 6,960,684 | 2,161,312 | 1,444,596 |
+| Browser | `browser-ascii` | no | `ascii` | 3,967,774 | 2,847,511 | 857,787 | 645,191 |
+| Browser | `browser-full-no-elk` | no | `core-full`, `core-host`, `render`, `analysis`, `ascii`, `editor-language` | 11,794,522 | 8,959,931 | 2,893,161 | 1,944,418 |
+| Browser | `browser-full` | yes | none | 12,696,661 | 9,606,018 | 3,081,122 | 2,075,165 |
+| Browser | `browser-ratex-math` | yes | `ratex-math` | 15,970,579 | 12,328,550 | 4,026,127 | 2,768,761 |
 | Typst | `typst-bridge` | no | none | 51,364 | 36,355 | 14,213 | 12,134 |
 | Typst | `typst-render-only-no-elk` | no | `render` | 6,751,372 | 5,201,760 | 1,554,893 | 1,122,068 |
 | Typst | `typst-render-analysis-no-elk` | no | `render`, `analysis` | 7,266,306 | 5,586,691 | 1,690,307 | 1,211,638 |

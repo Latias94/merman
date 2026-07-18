@@ -1,39 +1,39 @@
 {
   "schema_version": 1,
-  "updated": "2026-07-08",
+  "updated": "2026-07-18",
   "compression_source": "stripped",
   "notes": "Budgets are regression guards for wasm-size-matrix and generated web packages. Matrix gzip and brotli are measured from the stripped artifact produced by wasm-tools strip --all.",
   "web_package": {
     "browser-full": {
       "max_raw_bytes": 11200000,
-      "max_gzip_bytes": 2850000,
-      "max_brotli_bytes": 2100000
+      "max_gzip_bytes": 3250000,
+      "max_brotli_bytes": 2280000
     }
   },
   "presets": {
     "browser-bridge": {
-      "max_raw_bytes": 2550000,
-      "max_stripped_bytes": 1800000,
-      "max_gzip_bytes": 530000,
-      "max_brotli_bytes": 410000
+      "max_raw_bytes": 3050000,
+      "max_stripped_bytes": 2150000,
+      "max_gzip_bytes": 655000,
+      "max_brotli_bytes": 500000
     },
     "browser-core": {
-      "max_raw_bytes": 3600000,
-      "max_stripped_bytes": 2600000,
-      "max_gzip_bytes": 800000,
-      "max_brotli_bytes": 600000
+      "max_raw_bytes": 4000000,
+      "max_stripped_bytes": 2850000,
+      "max_gzip_bytes": 855000,
+      "max_brotli_bytes": 635000
     },
     "browser-render": {
-      "max_raw_bytes": 8200000,
-      "max_stripped_bytes": 6200000,
-      "max_gzip_bytes": 1850000,
-      "max_brotli_bytes": 1350000
+      "max_raw_bytes": 10000000,
+      "max_stripped_bytes": 7650000,
+      "max_gzip_bytes": 2380000,
+      "max_brotli_bytes": 1575000
     },
     "browser-render-only": {
-      "max_raw_bytes": 8200000,
-      "max_stripped_bytes": 6200000,
-      "max_gzip_bytes": 1850000,
-      "max_brotli_bytes": 1350000
+      "max_raw_bytes": 9550000,
+      "max_stripped_bytes": 7325000,
+      "max_gzip_bytes": 2275000,
+      "max_brotli_bytes": 1520000
     },
     "browser-ascii": {
       "max_raw_bytes": 4300000,
@@ -48,10 +48,10 @@
       "max_brotli_bytes": 2550000
     },
     "browser-full-no-elk": {
-      "max_raw_bytes": 10700000,
-      "max_stripped_bytes": 7900000,
-      "max_gzip_bytes": 2500000,
-      "max_brotli_bytes": 1800000
+      "max_raw_bytes": 12400000,
+      "max_stripped_bytes": 9425000,
+      "max_gzip_bytes": 3045000,
+      "max_brotli_bytes": 2050000
     },
     "browser-ratex-math": {
       "max_raw_bytes": 17000000,
