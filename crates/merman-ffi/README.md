@@ -24,7 +24,7 @@ Start with the main project README for product scope and diagram coverage:
 - Coverage status:
   <https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md>
 
-This crate exposes the low-level stable boundary described by
+This crate exposes the low-level C boundary described by
 [`docs/bindings/FFI_PROTOCOL.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/FFI_PROTOCOL.md).
 Higher-level generated bindings such as UniFFI should sit above the same behavior, not replace this
 C ABI.
@@ -68,7 +68,8 @@ Hosts that need SVG for strict renderers can still request the export-safe SVG p
 `options_json`, for example `{ "svg": { "pipeline": "resvg-safe" } }`. `NULL/0` options keep the
 default Mermaid-parity SVG contract.
 
-Capability metadata includes per-family parser/render availability through
+Capability metadata includes per-family logical/render identity, detector, parser/editor, header,
+config-namespace, and typed-render availability through
 `merman_diagram_family_capabilities_json()` and ASCII support grades through
 `merman_ascii_capabilities_json()`. Hosts can use those diagnostic surfaces to discover which full
 or tiny registry profile a build contains, and whether an ASCII diagram family is `full`, `partial`,
@@ -113,6 +114,20 @@ MermanResult set_result =
     merman_engine_set_text_measure_callback(engine.engine, measure_text, user_data);
 merman_buffer_free(set_result.data);
 ```
+
+The current alpha C contract reports ABI 2. Text measurement requests identify both the routing
+`phase` and exact `operation`. ABI 2 exposes 19 exact operations with contiguous codes `0..18`;
+operation 18 is `raw-bbox-height` and returns a length. A handled callback result must set
+`result_kind` and populate the matching metrics, `length`, horizontal-extents, or
+wrapped-with-raw-width fields. Returning a wrong kind is invalid and falls back; it is never
+inferred from zero/default fields. Return `handled = 0` when the exact operation is unsupported.
+
+Operation 14 (`create-text-bbox-y-offset`) measures the ordinary createText DOM. Operation 17
+(`create-text-middle-bbox-y-offset`) measures Architecture's `createFormattedText(...)` bbox y under
+inherited `dominant-baseline="middle"`; it cannot be substituted with operation 14. Both y-offset
+operations accept finite signed lengths, while every other valid length is non-negative. The header
+and C-consumer smokes lock ABI 2, the complete `0..18` operation range, and the distinct result
+shapes for operations 17 and 18.
 
 Return `handled=0` for measurement requests your host does not support. `merman` will fall back
 to its vendored Mermaid-compatible measurer for that request. The callback may be invoked from any

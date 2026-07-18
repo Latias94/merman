@@ -30,14 +30,52 @@ static MermanHostTextMeasureResult measure_text(
     if (
         request.text_len == 5 &&
         request.text != NULL &&
-        memcmp(request.text, "Hello", 5) == 0 &&
-        request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE
+        memcmp(request.text, "Hello", 5) == 0
     ) {
-        MermanHostTextMeasureResult result = {1, 40.0, request.line_height, 1};
+        MermanHostTextMeasureResult result = {0};
+        result.handled = 1;
+        switch (request.operation) {
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED:
+                if (request.wrap_mode != MERMAN_WRAP_MODE_HTML_LIKE) {
+                    result.handled = 0;
+                    break;
+                }
+                result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
+                result.width = 40.0;
+                result.height = request.line_height;
+                result.line_count = 1;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS:
+                result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
+                result.width = 40.0;
+                result.height = request.font_size;
+                result.line_count = 1;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH:
+                result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                result.length = 40.0;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET:
+                result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                result.length = request.operation ==
+                    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET
+                    ? -2.0
+                    : -1.0;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT:
+                result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                result.length = request.font_size;
+                break;
+            default:
+                result.handled = 0;
+                break;
+        }
         return result;
     }
 
-    MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
+    MermanHostTextMeasureResult fallback = {0};
     return fallback;
 }
 

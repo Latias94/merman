@@ -1,7 +1,9 @@
+use super::super::roughjs_common::ops_to_svg_path_d;
 use super::super::theme::VennTheme;
 use super::super::*;
 use merman_core::diagrams::venn::VennDiagramRenderModel;
 use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr as _;
 
 fn stable_sets_key(sets: &[String]) -> String {
     sets.join("|")
@@ -43,13 +45,256 @@ fn render_label(area: &crate::model::VennAreaLayout) -> &str {
     }
 }
 
+fn invalid_rough_options(context: &str, error: impl std::fmt::Display) -> Error {
+    Error::InvalidModel {
+        message: format!("invalid Venn {context} RoughJS options: {error}"),
+    }
+}
+
+fn rough_color(value: &str) -> Result<roughr::Srgba> {
+    let color = roughr::Color::from_str(value.trim()).map_err(|error| Error::InvalidModel {
+        message: format!("invalid Venn RoughJS color `{value}`: {error}"),
+    })?;
+    Ok(roughr::Srgba::new(
+        color.red as f32 / 255.0,
+        color.green as f32 / 255.0,
+        color.blue as f32 / 255.0,
+        color.alpha as f32 / 255.0,
+    ))
+}
+
+fn khroma_round(value: f64) -> f64 {
+    (value * 10_000_000_000.0).round() / 10_000_000_000.0
+}
+
+fn parse_css_function(value: &str) -> Option<(String, Vec<String>)> {
+    let value = value.trim();
+    let open = value.find('(')?;
+    let body = value.get(open + 1..)?.strip_suffix(')')?;
+    let name = value.get(..open)?.trim().to_ascii_lowercase();
+    let normalized: String = body
+        .chars()
+        .map(|ch| if ch == ',' || ch == '/' { ' ' } else { ch })
+        .collect();
+    let channels = normalized.split_whitespace().map(str::to_string).collect();
+    Some((name, channels))
+}
+
+fn parse_percentage(value: &str, scale: f64) -> Option<f64> {
+    value
+        .strip_suffix('%')
+        .and_then(|value| value.parse::<f64>().ok())
+        .map(|value| value * scale)
+}
+
+fn parse_alpha(value: Option<&String>) -> Option<f64> {
+    match value {
+        Some(value) => parse_percentage(value, 0.01).or_else(|| value.parse::<f64>().ok()),
+        None => Some(1.0),
+    }
+    .map(|value| value.clamp(0.0, 1.0))
+}
+
+fn parse_hue(value: &str) -> Option<f64> {
+    let lower = value.to_ascii_lowercase();
+    let hue = if let Some(value) = lower.strip_suffix("grad") {
+        value.parse::<f64>().ok()? * 0.9
+    } else if let Some(value) = lower.strip_suffix("rad") {
+        value.parse::<f64>().ok()? * 180.0 / std::f64::consts::PI
+    } else if let Some(value) = lower.strip_suffix("turn") {
+        value.parse::<f64>().ok()? * 360.0
+    } else {
+        lower
+            .strip_suffix("deg")
+            .unwrap_or(lower.as_str())
+            .parse::<f64>()
+            .ok()?
+    };
+    Some(hue % 360.0)
+}
+
+fn khroma_transparentize(color: &str, amount: f64) -> Result<String> {
+    if let Some((name, channels)) = parse_css_function(color) {
+        if (name == "hsl" || name == "hsla") && (3..=4).contains(&channels.len()) {
+            let hue = parse_hue(&channels[0]);
+            let saturation = parse_percentage(&channels[1], 1.0);
+            let lightness = parse_percentage(&channels[2], 1.0);
+            if let (Some(hue), Some(saturation), Some(lightness), Some(alpha)) =
+                (hue, saturation, lightness, parse_alpha(channels.get(3)))
+            {
+                let next_alpha = (alpha - amount).clamp(0.0, 1.0);
+                if next_alpha == alpha {
+                    return Ok(color.to_string());
+                }
+                return Ok(format!(
+                    "hsla({}, {}%, {}%, {})",
+                    khroma_round(hue),
+                    khroma_round(saturation.clamp(0.0, 100.0)),
+                    khroma_round(lightness.clamp(0.0, 100.0)),
+                    next_alpha
+                ));
+            }
+        }
+
+        if (name == "rgb" || name == "rgba") && (3..=4).contains(&channels.len()) {
+            let channel = |value: &str| {
+                parse_percentage(value, 2.55)
+                    .or_else(|| value.parse::<f64>().ok())
+                    .map(|value| value.clamp(0.0, 255.0))
+            };
+            if let (Some(red), Some(green), Some(blue), Some(alpha)) = (
+                channel(&channels[0]),
+                channel(&channels[1]),
+                channel(&channels[2]),
+                parse_alpha(channels.get(3)),
+            ) {
+                let next_alpha = (alpha - amount).clamp(0.0, 1.0);
+                if next_alpha == alpha {
+                    return Ok(color.to_string());
+                }
+                return Ok(format!(
+                    "rgba({}, {}, {}, {})",
+                    khroma_round(red),
+                    khroma_round(green),
+                    khroma_round(blue),
+                    khroma_round(next_alpha)
+                ));
+            }
+        }
+    }
+
+    let parsed = roughr::Color::from_str(color.trim()).map_err(|error| Error::InvalidModel {
+        message: format!("cannot transparentize Venn color `{color}`: {error}"),
+    })?;
+    let alpha = parsed.alpha as f64 / 255.0;
+    let next_alpha = (alpha - amount).clamp(0.0, 1.0);
+    if next_alpha == alpha {
+        return Ok(color.to_string());
+    }
+    Ok(format!(
+        "rgba({}, {}, {}, {})",
+        parsed.red,
+        parsed.green,
+        parsed.blue,
+        khroma_round(next_alpha)
+    ))
+}
+
+fn parse_stroke_width(value: &str) -> Option<f32> {
+    let value = value.trim_start();
+    value
+        .char_indices()
+        .map(|(index, _)| index)
+        .chain(std::iter::once(value.len()))
+        .filter(|end| *end > 0)
+        .rev()
+        .find_map(|end| value[..end].parse::<f32>().ok())
+        .filter(|value| value.is_finite())
+}
+
+fn rough_circle_paths(
+    circle: &crate::model::VennCircleLayout,
+    base_color: &str,
+    stroke_color: &str,
+    stroke_width: f32,
+    hachure_angle: f32,
+    seed: u64,
+) -> Result<(String, String)> {
+    let options = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(0.7)
+        .bowing(1.0)
+        .fill(rough_color(base_color)?)
+        .fill_style(roughr::core::FillStyle::Hachure)
+        .fill_weight(2.0)
+        .hachure_gap(8.0)
+        .hachure_angle(hachure_angle)
+        .stroke(rough_color(stroke_color)?)
+        .stroke_width(stroke_width)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .map_err(|error| invalid_rough_options("circle", error))?;
+    let drawable = roughr::generator::Generator::default().circle::<f64>(
+        circle.x,
+        circle.y,
+        circle.radius * 2.0,
+        &Some(options),
+    );
+    let mut fill_path = None;
+    let mut stroke_path = None;
+    for set in drawable.sets {
+        match set.op_set_type {
+            roughr::core::OpSetType::FillPath | roughr::core::OpSetType::FillSketch => {
+                fill_path = Some(ops_to_svg_path_d(&set));
+            }
+            roughr::core::OpSetType::Path => {
+                stroke_path = Some(ops_to_svg_path_d(&set));
+            }
+        }
+    }
+    match (fill_path, stroke_path) {
+        (Some(fill_path), Some(stroke_path)) => Ok((fill_path, stroke_path)),
+        _ => Err(Error::InvalidModel {
+            message: "Venn RoughJS circle did not produce fill and stroke paths".to_string(),
+        }),
+    }
+}
+
+fn rough_intersection_fill_path(path: &str, fill: &str, seed: u64) -> Result<String> {
+    let mut options = roughr::core::OptionsBuilder::default()
+        .seed(seed)
+        .roughness(0.7)
+        .bowing(1.0)
+        .fill(rough_color(fill)?)
+        .fill_style(roughr::core::FillStyle::CrossHatch)
+        .fill_weight(2.0)
+        .hachure_gap(6.0)
+        .hachure_angle(60.0)
+        .disable_multi_stroke(false)
+        .disable_multi_stroke_fill(false)
+        .build()
+        .map_err(|error| invalid_rough_options("intersection", error))?;
+    options.stroke = None;
+
+    let distance = (1.0 + options.roughness.unwrap_or(1.0) as f64) / 2.0;
+    let polygons =
+        roughr::points_on_path::points_on_path::<f64>(path.to_string(), Some(1.0), Some(distance));
+    // RoughJS computes the outline even when `stroke: none`, so its PRNG state advances before
+    // the cross-hatch fill is generated. The discarded operation is part of seeded parity.
+    let _discarded_outline = roughr::renderer::svg_path::<f64>(path.to_string(), &mut options);
+    let fill_path = roughr::renderer::pattern_fill_polygons(polygons, &mut options);
+    if fill_path.op_set_type != roughr::core::OpSetType::FillSketch {
+        return Err(Error::InvalidModel {
+            message: "Venn RoughJS intersection did not produce a sketch fill path".to_string(),
+        });
+    }
+    Ok(ops_to_svg_path_d(&fill_path))
+}
+
+fn write_area_label(
+    out: &mut String,
+    area: &crate::model::VennAreaLayout,
+    font_size: f64,
+    text_color: &str,
+) {
+    let _ = write!(
+        out,
+        r#"<text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text>"#,
+        x = fmt(area.text_x),
+        y = fmt(area.text_y),
+        font_size = fmt(font_size),
+        text_fill = escape_css_attr(text_color),
+        label = escape_xml(render_label(area)),
+    );
+}
+
 fn root_open(
     out: &mut String,
     diagram_id: &str,
     layout: &VennDiagramLayout,
     aria_labelledby: Option<&str>,
     aria_describedby: Option<&str>,
-    options: &SvgExecution<'_>,
 ) -> Result<()> {
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "venn");
     root_chrome.aria_labelledby = aria_labelledby;
@@ -60,19 +305,15 @@ fn root_open(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Venn,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        out,
-        root_svg::RootViewportSpec::mermaid(
-            root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height),
-            layout.use_max_width,
-        ),
-        root_chrome,
-    )
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Venn, diagram_id)
+        .write_open(
+            out,
+            root_svg::RootViewportSpec::mermaid(
+                root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height),
+                layout.use_max_width,
+            ),
+            root_chrome,
+        )
 }
 
 fn venn_css(diagram_id: &str, theme: &VennTheme) -> String {
@@ -125,7 +366,6 @@ pub(crate) fn render_venn_diagram_svg_model(
         layout,
         aria_labelledby.as_deref(),
         aria_describedby.as_deref(),
-        options,
     )?;
 
     if has_acc_title {
@@ -168,6 +408,12 @@ pub(crate) fn render_venn_diagram_svg_model(
     );
 
     let style_by_key = build_style_by_key(model);
+    let is_hand_drawn = config_diagram_look(effective_config).as_str() == "handDrawn";
+    let hand_drawn_seed = effective_config
+        .get("handDrawnSeed")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|seed| *seed != 0)
+        .unwrap_or_else(|| options.seed());
     let mut circle_index = 0usize;
 
     for area in &layout.areas {
@@ -193,42 +439,93 @@ pub(crate) fn render_venn_diagram_svg_model(
                 .unwrap_or_else(|| theme.circle_text_color(&base_color));
             let _ = write!(
                 &mut out,
-                r#"<g class="venn-area venn-circle venn-set-{set_class}" data-venn-sets="{sets}"><path d="{path}" style="fill: {fill}; fill-opacity: {fill_opacity}; stroke: {stroke}; stroke-width: {stroke_width}; stroke-opacity: 0.95;"/><text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text></g>"#,
+                r#"<g class="venn-area venn-circle venn-set-{set_class}" data-venn-sets="{sets}">"#,
                 set_class = circle_index % 8,
                 sets = escape_attr(&data_sets_attr(&area.sets)),
-                path = escape_attr(&area.path),
-                fill = escape_css_attr(&base_color),
-                fill_opacity = escape_css_attr(fill_opacity),
-                stroke = escape_css_attr(stroke_color),
-                stroke_width = escape_css_attr(&stroke_width),
-                x = fmt(area.text_x),
-                y = fmt(area.text_y),
-                font_size = fmt(48.0 * layout.scale),
-                text_fill = escape_css_attr(&text_color),
-                label = escape_xml(render_label(area))
             );
+            if is_hand_drawn {
+                let circle = area.circles.first().ok_or_else(|| Error::InvalidModel {
+                    message: format!(
+                        "Venn set `{sets_key}` has no circle geometry for hand-drawn rendering"
+                    ),
+                })?;
+                let stroke_width_value =
+                    parse_stroke_width(&stroke_width).ok_or_else(|| Error::InvalidModel {
+                        message: format!(
+                            "Venn set `{sets_key}` has invalid stroke width `{stroke_width}`"
+                        ),
+                    })?;
+                let (fill_path, stroke_path) = rough_circle_paths(
+                    circle,
+                    &base_color,
+                    stroke_color,
+                    stroke_width_value,
+                    -41.0 + circle_index as f32 * 60.0,
+                    hand_drawn_seed,
+                )?;
+                let fill_stroke = khroma_transparentize(&base_color, 0.7)?;
+                let _ = write!(
+                    &mut out,
+                    r#"<g><path d="{fill_path}" stroke="{fill_stroke}" stroke-width="2" fill="none"/><path d="{stroke_path}" stroke="{stroke}" stroke-width="{stroke_width}" fill="none"/></g>"#,
+                    fill_path = escape_attr(&fill_path),
+                    fill_stroke = escape_attr(&fill_stroke),
+                    stroke_path = escape_attr(&stroke_path),
+                    stroke = escape_attr(stroke_color),
+                    stroke_width = fmt(stroke_width_value as f64),
+                );
+            } else {
+                let _ = write!(
+                    &mut out,
+                    r#"<path d="{path}" style="fill: {fill}; fill-opacity: {fill_opacity}; stroke: {stroke}; stroke-width: {stroke_width}; stroke-opacity: 0.95;"/>"#,
+                    path = escape_attr(&area.path),
+                    fill = escape_css_attr(&base_color),
+                    fill_opacity = escape_css_attr(fill_opacity),
+                    stroke = escape_css_attr(stroke_color),
+                    stroke_width = escape_css_attr(&stroke_width),
+                );
+            }
+            write_area_label(&mut out, area, 48.0 * layout.scale, text_color.as_str());
+            out.push_str("</g>");
             circle_index += 1;
         } else {
-            let fill = style_value(styles, "fill").unwrap_or("transparent");
-            let fill_opacity = if style_value(styles, "fill").is_some() {
-                "1"
-            } else {
-                "0"
-            };
+            let custom_fill = style_value(styles, "fill");
             let text_color = style_value(styles, "color").unwrap_or(theme.set_text_color.as_str());
             let _ = write!(
                 &mut out,
-                r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}"><path d="{path}" style="fill-opacity: {fill_opacity}; fill: {fill};"/><text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text></g>"#,
+                r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}">"#,
                 sets = escape_attr(&data_sets_attr(&area.sets)),
-                path = escape_attr(&area.path),
-                fill_opacity = fill_opacity,
-                fill = escape_css_attr(fill),
-                x = fmt(area.text_x),
-                y = fmt(area.text_y),
-                font_size = fmt(48.0 * layout.scale),
-                text_fill = escape_css_attr(text_color),
-                label = escape_xml(render_label(area))
             );
+            if is_hand_drawn {
+                if let Some(fill) = custom_fill {
+                    let fill_path =
+                        rough_intersection_fill_path(&area.path, fill, hand_drawn_seed)?;
+                    let fill_stroke = khroma_transparentize(fill, 0.3)?;
+                    let _ = write!(
+                        &mut out,
+                        r#"<g><path d="{fill_path}" stroke="{fill_stroke}" stroke-width="2" fill="none"/></g>"#,
+                        fill_path = escape_attr(&fill_path),
+                        fill_stroke = escape_attr(&fill_stroke),
+                    );
+                } else {
+                    let _ = write!(
+                        &mut out,
+                        r#"<path d="{path}" style="fill-opacity: 0;"/>"#,
+                        path = escape_attr(&area.path),
+                    );
+                }
+            } else {
+                let fill = custom_fill.unwrap_or("transparent");
+                let fill_opacity = if custom_fill.is_some() { "1" } else { "0" };
+                let _ = write!(
+                    &mut out,
+                    r#"<path d="{path}" style="fill-opacity: {fill_opacity}; fill: {fill};"/>"#,
+                    path = escape_attr(&area.path),
+                    fill_opacity = fill_opacity,
+                    fill = escape_css_attr(fill),
+                );
+            }
+            write_area_label(&mut out, area, 48.0 * layout.scale, text_color);
+            out.push_str("</g>");
         }
     }
 

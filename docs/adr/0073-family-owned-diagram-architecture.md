@@ -22,7 +22,7 @@ architecture nevertheless interpreted the same input through several independent
 - detector, parser, editor, render, metadata, and authoring-header registries repeated family facts;
 - layout JSON and SVG could be produced through JSON-first or typed dispatch trees;
 - render services and deterministic policy were selected at different pipeline stages;
-- root SVG sizing and fixture-derived override lookup were spread across family renderers; and
+- root SVG sizing and fixture-derived viewport pins were spread across family renderers; and
 - parity commands rebuilt a parse-layout-render chain instead of exercising the operation used by
   public callers.
 
@@ -110,11 +110,10 @@ operation's `RenderSession`.
 
 `RenderEnvironment` selects immutable services and policy before an operation begins:
 
-- text measurement routes for `Layout`, `Wrap`, `SvgBBox`, `ComputedLength`, and `Visibility`;
+- text measurement routes for `Layout`, `Wrap`, `SvgBBox`, and `ComputedLength`;
 - math rendering and icon lookup;
 - clock and random-seed policy;
-- render resource limits; and
-- generated root viewport override policy.
+- and render resource limits.
 
 `begin_session()` freezes those choices once and produces an opaque `RenderSession`. Family code
 receives only the narrow session projection it needs. `SvgRenderOptions` contains request values,
@@ -123,7 +122,8 @@ measurers or read process-global render policy.
 
 The parity environment uses named vendored measurement and deterministic time/seed policy. Host
 environments may supply host services explicitly. The operation report records the resolved routes,
-measurement provenance, time, seed, and root override policy.
+measurement provenance, time, and seed. Successful host measurements bypass vendored fallback
+facts for their routed operation.
 
 ### Root Viewport owns every root SVG
 
@@ -132,20 +132,17 @@ Root Viewport module. That module owns:
 
 - finite viewport normalization and max-width formatting;
 - fixed, responsive, and Mermaid `useMaxWidth` sizing;
-- generated or computed viewport resolution;
 - root SVG attributes, accessibility chrome, escaping, and DOM-compatible attribute order; and
 - deferred root finalization for families whose bounds are known only after SVG emission.
 
 Family renderers use the typed `RootViewportContext`, `RootViewportSpec`, `RootViewportPlan`,
 `RootChrome`, and opaque `RootDocument` protocol. They do not emit root attributes directly or look
-up generated tables. Generated lookup is routed by `RenderFamilyKind`, pinned Mermaid version, and
-fixture id. The operation explicitly selects generated-or-computed policy;
-`RootViewportOverridePolicy::ComputedOnly` disables generated overrides without reading process
-state inside `merman-render`. There is no mutable or request-local explicit root override path.
+up generated tables. Root viewports always come from family-computed or emitted-content bounds.
+There is no generated-or-computed policy split and no mutable or request-local override path.
 
-Generated root values remain bounded residual evidence under ADR-0062. They do not authorize
-model distortion, comparator broadening, or fixture-specific tuning without pinned upstream
-evidence.
+Browser-dependent root differences remain verification residuals under ADR-0062. They do not
+authorize production fixture pins, model distortion, comparator broadening, or fixture-specific
+tuning.
 
 ### Verification exercises the same operation
 
@@ -171,7 +168,7 @@ compare adapters that rebuild the operation.
   render grammar exists.
 - Invalid cross-family render pairings are unrepresentable on the canonical path.
 - Host-specific rendering behavior is explicit, reproducible, and observable in operation reports.
-- Root viewport policy can evolve without reopening every family renderer, while family-specific
+- Root viewport algorithms can evolve without reopening every family renderer, while family-specific
   content-bounds algorithms remain local.
 - Adding a family or alias requires one catalog declaration, family-owned semantic projections,
   a typed render adapter when renderable, parser-backed editor facts when admitted, and parity
@@ -200,10 +197,11 @@ projection convergence solve the architecture problem without erasing source-bac
 Rejected because guessed node ids and references are indistinguishable from parser facts to users.
 Static source-start authoring does not require body scanning.
 
-### Make root residuals family-local constants
+### Keep version-pinned root or complete-text tables
 
-Rejected because override selection, auditability, and sizing policy must remain centralized and
-version-pinned.
+Rejected because a fixture-keyed answer is a second renderer path and cannot generalize to unseen
+diagrams. Browser-only differences belong in verification evidence, while production consumes
+computed bounds and general measurement facts.
 
 ## Related Decisions
 
@@ -211,5 +209,5 @@ version-pinned.
 - ADR-0014: Upstream Parity Policy
 - ADR-0050: Release Quality Gates
 - ADR-0057: Headless SVG Text `getBBox()` Approximation
-- ADR-0062: Fixture-Derived Overrides
+- ADR-0062: No Production Fixture Overrides
 - ADR-0071: Editor-Facing Parser and Semantic Seam

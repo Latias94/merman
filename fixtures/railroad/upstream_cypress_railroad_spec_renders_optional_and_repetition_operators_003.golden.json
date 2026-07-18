@@ -1,0 +1,121 @@
+{
+  "diagramType": "railroad",
+  "model": {
+    "type": "railroad",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "sign",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "+"
+            },
+            {
+              "type": "terminal",
+              "value": "-"
+            }
+          ]
+        }
+      },
+      {
+        "name": "number",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "optional",
+              "element": {
+                "type": "nonterminal",
+                "name": "sign"
+              }
+            },
+            {
+              "type": "repetition",
+              "element": {
+                "type": "nonterminal",
+                "name": "digit"
+              },
+              "min": 1,
+              "max": null
+            }
+          ]
+        }
+      },
+      {
+        "name": "list",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "terminal",
+              "value": "["
+            },
+            {
+              "type": "optional",
+              "element": {
+                "type": "sequence",
+                "elements": [
+                  {
+                    "type": "nonterminal",
+                    "name": "number"
+                  },
+                  {
+                    "type": "repetition",
+                    "element": {
+                      "type": "sequence",
+                      "elements": [
+                        {
+                          "type": "terminal",
+                          "value": ","
+                        },
+                        {
+                          "type": "nonterminal",
+                          "name": "number"
+                        }
+                      ]
+                    },
+                    "min": 0,
+                    "max": null
+                  }
+                ]
+              }
+            },
+            {
+              "type": "terminal",
+              "value": "]"
+            }
+          ]
+        }
+      },
+      {
+        "name": "digit",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "0"
+            },
+            {
+              "type": "terminal",
+              "value": "1"
+            },
+            {
+              "type": "terminal",
+              "value": "2"
+            },
+            {
+              "type": "terminal",
+              "value": "3"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -393,3 +393,28 @@ fn parse_railroad_variants_expose_typed_render_models() {
         assert_eq!(model.rules[0].name, "rule");
     }
 }
+
+#[test]
+fn railroad_detection_is_case_insensitive_but_semantic_headers_are_exact() {
+    let engine = Engine::new();
+    for (expected_type, source) in [
+        ("railroad", "RAILROAD-BETA\nrule = terminal(\"a\") ;\n"),
+        ("railroadEbnf", "RAILROAD-EBNF-BETA\nrule = \"a\" ;\n"),
+        ("railroadAbnf", "RAILROAD-ABNF-BETA\nrule = \"a\" ;\n"),
+        ("railroadPeg", "RAILROAD-PEG-BETA\nrule <- \"a\" ;\n"),
+    ] {
+        let metadata = engine
+            .parse_metadata_sync(source, ParseOptions::strict())
+            .unwrap()
+            .expect("case-insensitive detector should select the railroad family");
+        assert_eq!(metadata.diagram_type, expected_type);
+
+        let error = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err("Langium railroad header literals are case-sensitive");
+        assert!(
+            error.to_string().contains("expected railroad"),
+            "unexpected {expected_type} parse error: {error}"
+        );
+    }
+}

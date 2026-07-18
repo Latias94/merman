@@ -83,7 +83,8 @@ Exit criteria:
 
 Scope:
 
-- Sequence, Gantt, Class, State, Mindmap, Architecture “repeat offenders” from `docs/workstreams/TODO.md`.
+- Sequence, Gantt, Class, State, Mindmap, and Architecture residual families tracked by the
+  current alignment status and `PARITY_BOUNDARY.md`.
 
 Exit criteria:
 

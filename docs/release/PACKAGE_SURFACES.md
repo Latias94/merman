@@ -147,14 +147,19 @@ Current release semantics are intentionally explicit:
 - Rust source callers that match `merman_core::Error::DiagramParse` must migrate from the old raw
   message field to `diagnostic: ParseDiagnostic`. The displayed error message remains compatible,
   and callers can use `diagnostic.message()`, `span()`, `span_kind()`, and `code()` for structured
-  parser metadata. Native ABI version 3 is required because the host text-measurement request now
-  carries an explicit phase and therefore has a different C struct layout.
+  parser metadata. The current native ABI version remains 2 during alpha development. Its exact
+  host text-measurement contract has 19 operations with contiguous codes 0 through 18 and tagged
+  result kinds. Operation 17 (`create-text-middle-bbox-y-offset`, signed length) measures
+  Architecture createText under inherited `dominant-baseline="middle"`; it is not interchangeable
+  with operation 14's ordinary createText bbox y. Operation 18 (`raw-bbox-height`, length) measures
+  direct raw SVG `<text>.getBBox().height`. Callbacks and generated bindings must implement the
+  current ABI 2 shape and handle the complete operation range.
 - `@mermanjs/web` keeps the existing default import path and publishes `browser-full` there. Slim
   browser artifacts are available through `@mermanjs/web/core`, `@mermanjs/web/render`,
   `@mermanjs/web/render-only`, and `@mermanjs/web/ascii`; these slim subpaths omit unsupported
   runtime wrapper exports.
   `@mermanjs/web/full` is the explicit full-preset subpath.
-- Browser WASM ABI 3 is required by the current 0.8 wrapper and render-environment contract.
+- Browser WASM ABI 2 is required by the current 0.8 wrapper and render-environment contract.
   `bindingCapabilities()` reports the active browser artifact's compiled capabilities, including
   whether `analysis` and `editor_language` are available. `selectedRegistryProfile()` and
   `diagramFamilyCapabilities()` report the selected diagram registry profile and registered
@@ -162,8 +167,8 @@ Current release semantics are intentionally explicit:
   reports analyzer rule ids, evidence references, default profiles, origins, configurability, and
   fixability. Consumers that load custom artifacts must keep the generated wasm-bindgen artifact and
   TypeScript wrapper from the same package
-  version/ABI; the 0.8 wrapper does not provide compatibility fallback for pre-ABI-3 browser
-  artifacts that lack these metadata exports.
+  version/ABI; the 0.8 wrapper does not provide compatibility fallback for custom browser artifacts
+  with a different ABI or without these metadata exports.
 - `merman-wasm` is the browser/wasm-bindgen crate. It should not be used as evidence that an
   artifact is Typst-compatible or pure-WASM compatible.
 - `merman-typst-plugin` is the Typst-compatible transport. Its default artifact enables SVG render,

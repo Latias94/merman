@@ -755,12 +755,8 @@ pub(crate) fn render_block_diagram_svg_model(
         .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "block");
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Block,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Block, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
     out.push_str(&block_css(diagram_id, effective_config));
     out.push_str("</style><g/>");

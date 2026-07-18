@@ -105,12 +105,8 @@ pub(crate) fn render_packet_diagram_svg_model(
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Packet,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Packet, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(

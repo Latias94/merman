@@ -2,9 +2,9 @@
 
 use crate::XtaskError;
 use crate::cmd::compare::{
-    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
-    DiagramVerificationFact, ObservedRenderOperations, compare_render_environment, run_svg_compare,
-    write_compare_result_section, write_verification_policy_metadata,
+    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
+    CompareRunOptions, CompareRunResult, DiagramVerificationFact, ObservedRenderOperations,
+    run_svg_compare, write_compare_result_section, write_verification_policy_metadata,
 };
 use regex::Regex;
 use std::fmt::Write as _;
@@ -32,7 +32,6 @@ pub(super) fn compare_er_args(
             }
             "--check-markers" => check_markers = true,
             "--check-dom" => request.check_dom = true,
-            "--no-root-overrides" => request.apply_root_overrides = false,
             "--dom-decimals" => {
                 i += 1;
                 request.dom_decimals = Some(
@@ -62,12 +61,14 @@ pub(super) fn compare_er_args(
             check_markers,
         },
     )
+    .map(|_| ())
+    .map_err(CompareRunFailure::into_error)
 }
 
 pub(super) fn compare_er_request(
     fact: DiagramVerificationFact,
     request: CompareRequest,
-) -> Result<(), XtaskError> {
+) -> CompareRunResult {
     run_er_compare(
         fact,
         ErCompareRequest {
@@ -82,10 +83,7 @@ struct ErCompareRequest {
     check_markers: bool,
 }
 
-fn run_er_compare(
-    fact: DiagramVerificationFact,
-    request: ErCompareRequest,
-) -> Result<(), XtaskError> {
+fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> CompareRunResult {
     let dom_mode = request
         .common
         .dom_mode
@@ -95,8 +93,9 @@ fn run_er_compare(
 
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
-    let environment = compare_render_environment(&request.common);
-    let observed_operations = ObservedRenderOperations::from_environment(&environment)?;
+    let environment = merman::render::RenderEnvironment::parity();
+    let observed_operations = ObservedRenderOperations::from_environment(&environment)
+        .map_err(CompareRunFailure::without_evidence)?;
     let renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine)
         .with_parse_options(fact.parse_policy.options())
@@ -219,7 +218,7 @@ fn run_er_compare(
                     ));
                 }
             };
-            state
+            let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
@@ -267,6 +266,7 @@ fn run_er_compare(
             });
 
             Ok(CompareFixtureResult::Rendered {
+                render_evidence,
                 local_svg,
                 compare_dom: true,
                 issues,

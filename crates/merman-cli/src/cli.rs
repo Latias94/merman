@@ -1,5 +1,4 @@
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
-use merman::render::FlowchartElkBackend as RenderFlowchartElkBackend;
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
 
 #[derive(Debug, Parser)]
@@ -298,34 +297,23 @@ pub(crate) struct RenderCliArgs {
     )]
     pub(crate) math_renderer: MathRendererKind,
 
-    /// Flowchart ELK layout backend.
-    #[arg(
-        long = "flowchart-elk-backend",
-        value_enum,
-        default_value_t = FlowchartElkBackend::SourcePorted,
-        help_heading = "Rust renderer controls"
-    )]
-    pub(crate) flowchart_elk_backend: FlowchartElkBackend,
-
-    /// Viewport width for viewport-sensitive layouts. Top-level mmdc-compatible mode defaults to 800.
+    /// Available container width for size-sensitive layouts. Top-level mmdc-compatible mode defaults to 800.
     #[arg(
         short = 'w',
         long = "width",
-        alias = "viewport-width",
         value_parser = parse_positive_f64,
         help_heading = "Rust renderer controls"
     )]
-    pub(crate) width: Option<f64>,
+    pub(crate) container_width: Option<f64>,
 
-    /// Viewport height for viewport-sensitive layouts. Top-level mmdc-compatible mode defaults to 600.
+    /// Available container height for size-sensitive layouts. Top-level mmdc-compatible mode defaults to 600.
     #[arg(
         short = 'H',
         long = "height",
-        alias = "viewport-height",
         value_parser = parse_positive_f64,
         help_heading = "Rust renderer controls"
     )]
-    pub(crate) height: Option<f64>,
+    pub(crate) container_height: Option<f64>,
 
     /// Root SVG id and internal marker prefix.
     #[arg(
@@ -356,9 +344,8 @@ impl Default for RenderCliArgs {
         Self {
             text_measurer: TextMeasurerKind::Vendored,
             math_renderer: MathRendererKind::None,
-            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
-            width: None,
-            height: None,
+            container_width: None,
+            container_height: None,
             svg_id: None,
             hand_drawn_seed: None,
             resource_profile: ResourceProfile::TrustedNative,
@@ -734,13 +721,6 @@ pub(crate) enum MathRendererKind {
     Ratex,
 }
 
-#[derive(Debug, Clone, Copy, Default, ValueEnum)]
-pub(crate) enum FlowchartElkBackend {
-    Compat,
-    #[default]
-    SourcePorted,
-}
-
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum SvgPipelineKind {
     Parity,
@@ -765,15 +745,6 @@ impl From<ResourceProfile> for merman::render::RenderResourceProfile {
             ResourceProfile::TypstPackage => Self::TypstPackage,
             ResourceProfile::TrustedNative => Self::TrustedNative,
             ResourceProfile::UnboundedForTrustedInput => Self::UnboundedForTrustedInput,
-        }
-    }
-}
-
-impl From<FlowchartElkBackend> for RenderFlowchartElkBackend {
-    fn from(value: FlowchartElkBackend) -> Self {
-        match value {
-            FlowchartElkBackend::Compat => Self::Compat,
-            FlowchartElkBackend::SourcePorted => Self::SourcePorted,
         }
     }
 }

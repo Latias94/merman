@@ -1,8 +1,9 @@
 use crate::XtaskError;
 use crate::cmd::{MmdFixtureScan, collect_mmd_fixtures, fixtures_root_for_diagram};
 use crate::util::*;
+use merman_fixture_render_context::RenderContextCatalog;
 use regex::Regex;
-use serde_json::{Map, Value as JsonValue};
+use serde_json::Value as JsonValue;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -19,39 +20,32 @@ fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
         "er" => diagram_type == "erDiagram",
         "flowchart" => matches!(diagram_type, "flowchart-v2" | "flowchart-elk"),
         "state" => diagram_type == "stateDiagram",
-        "class" => diagram_type == "classDiagram",
+        "class" => matches!(diagram_type, "class" | "classDiagram"),
         "gitgraph" => diagram_type == "gitGraph",
         "quadrantchart" => diagram_type == "quadrantChart",
         _ => false,
     }
 }
 
-fn fixture_site_config_overrides() -> &'static Map<String, JsonValue> {
-    static OVERRIDES: OnceLock<Map<String, JsonValue>> = OnceLock::new();
-    OVERRIDES.get_or_init(|| {
-        let value: JsonValue = serde_json::from_str(include_str!(
-            "../../../../fixtures/_config/site_config_overrides.json"
-        ))
-        .expect("valid fixture site config override manifest");
-        match value {
-            JsonValue::Object(map) => map,
-            other => {
-                panic!("fixture site config override manifest must be a JSON object, got {other:?}")
-            }
-        }
+fn fixture_render_context_catalog() -> &'static RenderContextCatalog {
+    static CATALOG: OnceLock<RenderContextCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        RenderContextCatalog::load(crate::cmd::fixtures_root()).unwrap_or_else(|error| {
+            panic!("failed to load the committed fixture render-context catalog: {error}")
+        })
     })
 }
 
 pub(crate) fn fixture_site_config_for_path(path: &Path) -> Option<merman::MermaidConfig> {
-    let relative_name = path
-        .strip_prefix(crate::cmd::workspace_root().join("fixtures"))
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/");
-    fixture_site_config_overrides()
-        .get(&relative_name)
-        .cloned()
-        .map(merman::MermaidConfig::from_value)
+    fixture_render_context_catalog()
+        .context_for_fixture(path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "failed to resolve fixture render context for {}: {error}",
+                path.display()
+            )
+        })
+        .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
 }
 
 fn layout_snapshot_site_config() -> merman::MermaidConfig {
@@ -350,6 +344,12 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
     failures.extend(crate::cmd::admission_inventory_alignment_failures(
         &fixtures_root,
     ));
+    failures.extend(crate::cmd::committed_cypress_corpus_alignment_failures(
+        &workspace_root,
+    ));
+    if crate::cmd::mermaid_repo_root().is_dir() {
+        failures.extend(crate::cmd::cypress_corpus_source_alignment_failures());
+    }
 
     // 1) Every *_MINIMUM.md should have a *_UPSTREAM_TEST_COVERAGE.md sibling.
     let mut minimum_docs: Vec<PathBuf> = Vec::new();
@@ -411,7 +411,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         s.contains('*') || s.contains('?') || s.contains('[') || s.contains(']')
     }
 
-    fn is_flowchart_elk_source_backed_probe_fixture(path: &Path) -> bool {
+    fn is_flowchart_elk_parity_fixture(path: &Path) -> bool {
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
             return false;
         };
@@ -420,15 +420,15 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
             .and_then(|parent| parent.file_name())
             .and_then(|name| name.to_str())
             == Some("flowchart");
-        is_flowchart_fixture && crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem)
+        is_flowchart_fixture && crate::cmd::flowchart_elk_svg_parity_admitted(stem)
     }
 
     // 2) Every ordinary `fixtures/**/*.mmd` must have a sibling `.golden.json`.
     // `fixtures/_deferred/**` contains fixtures that were intentionally kept out of the alignment
     // gates (e.g. upstream CLI renders an error, or depends on unsupported options). Do not require
     // goldens for these files.
-    // Flowchart ELK source-backed probes are intentionally governed by the upstream SVG probe gate
-    // instead of the broad semantic golden snapshot lane.
+    // Flowchart ELK parity fixtures are governed by the dedicated upstream SVG parity gate instead
+    // of the broad semantic golden snapshot lane.
     let mmd_files = collect_mmd_fixtures(
         &fixtures_root,
         MmdFixtureScan {
@@ -439,7 +439,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
         },
     );
     for mmd in &mmd_files {
-        if is_flowchart_elk_source_backed_probe_fixture(mmd) {
+        if is_flowchart_elk_parity_fixture(mmd) {
             continue;
         }
         let golden = mmd.with_extension("golden.json");
@@ -526,7 +526,7 @@ pub(crate) fn check_alignment(args: Vec<String>) -> Result<(), XtaskError> {
 enum GeneratedArtifactCheck {
     DefaultConfig,
     DompurifyDefaults,
-    FlowchartFontMetrics,
+    WebDiagramCatalog,
 }
 
 fn verify_default_config_checks() -> [GeneratedArtifactCheck; 1] {
@@ -537,11 +537,15 @@ fn verify_dompurify_defaults_checks() -> [GeneratedArtifactCheck; 1] {
     [GeneratedArtifactCheck::DompurifyDefaults]
 }
 
+fn verify_web_diagram_catalog_checks() -> [GeneratedArtifactCheck; 1] {
+    [GeneratedArtifactCheck::WebDiagramCatalog]
+}
+
 fn verify_generated_checks() -> [GeneratedArtifactCheck; 3] {
     [
         GeneratedArtifactCheck::DefaultConfig,
         GeneratedArtifactCheck::DompurifyDefaults,
-        GeneratedArtifactCheck::FlowchartFontMetrics,
+        GeneratedArtifactCheck::WebDiagramCatalog,
     ]
 }
 
@@ -550,7 +554,7 @@ impl GeneratedArtifactCheck {
         match self {
             GeneratedArtifactCheck::DefaultConfig => "default config",
             GeneratedArtifactCheck::DompurifyDefaults => "dompurify defaults",
-            GeneratedArtifactCheck::FlowchartFontMetrics => "flowchart font metrics",
+            GeneratedArtifactCheck::WebDiagramCatalog => "web diagram catalog",
         }
     }
 }
@@ -600,25 +604,31 @@ fn verify_generated_artifact_check(
     match check {
         GeneratedArtifactCheck::DefaultConfig => verify_default_config_artifact(tmp_dir),
         GeneratedArtifactCheck::DompurifyDefaults => verify_dompurify_defaults_artifact(tmp_dir),
-        GeneratedArtifactCheck::FlowchartFontMetrics => {
-            verify_flowchart_font_metrics_artifact(tmp_dir)
-        }
+        GeneratedArtifactCheck::WebDiagramCatalog => verify_web_diagram_catalog_artifact(tmp_dir),
     }
 }
 
 fn verify_default_config_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
     let expected_config = PathBuf::from("crates/merman-core/src/generated/default_config.json");
+    let expected_shape =
+        PathBuf::from("crates/merman-core/src/generated/default_config_shape.json");
     let actual_config = tmp_dir.join("default_config.actual.json");
+    let actual_shape = tmp_dir.join("default_config_shape.actual.json");
     super::gen_default_config(vec![
         "--out".to_string(),
         actual_config.display().to_string(),
+        "--shape-out".to_string(),
+        actual_shape.display().to_string(),
     ])?;
     let expected_config_json: JsonValue = serde_json::from_str(&read_text(&expected_config)?)?;
     let actual_config_json: JsonValue = serde_json::from_str(&read_text(&actual_config)?)?;
-    if expected_config_json != actual_config_json {
+    let expected_shape_json: JsonValue = serde_json::from_str(&read_text(&expected_shape)?)?;
+    let actual_shape_json: JsonValue = serde_json::from_str(&read_text(&actual_shape)?)?;
+    if expected_config_json != actual_config_json || expected_shape_json != actual_shape_json {
         return Ok(Some(format!(
-            "default config mismatch: regenerate with `cargo run -p xtask -- gen-default-config` ({})",
-            expected_config.display()
+            "default config value/shape mismatch: regenerate with `cargo run -p xtask -- gen-default-config` ({}, {})",
+            expected_config.display(),
+            expected_shape.display()
         )));
     }
 
@@ -642,26 +652,14 @@ fn verify_dompurify_defaults_artifact(tmp_dir: &Path) -> Result<Option<String>, 
     Ok(None)
 }
 
-fn verify_flowchart_font_metrics_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
-    let expected_flowchart_font_metrics =
-        PathBuf::from("crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs");
-    let actual_flowchart_font_metrics = tmp_dir.join("font_metrics_flowchart_11_12_2.actual.rs");
-    super::gen_font_metrics(vec![
-        "--in".to_string(),
-        "fixtures/upstream-svgs/flowchart".to_string(),
-        "--out".to_string(),
-        actual_flowchart_font_metrics.display().to_string(),
-        "--font-size".to_string(),
-        "16".to_string(),
-        "--preserve-layout-from".to_string(),
-        expected_flowchart_font_metrics.display().to_string(),
-    ])?;
-    if read_text_normalized(&expected_flowchart_font_metrics)?
-        != read_text_normalized(&actual_flowchart_font_metrics)?
-    {
+fn verify_web_diagram_catalog_artifact(tmp_dir: &Path) -> Result<Option<String>, XtaskError> {
+    let expected = PathBuf::from("platforms/web/src/generated/diagram-catalog.ts");
+    let actual = tmp_dir.join("diagram-catalog.actual.ts");
+    super::gen_web_diagram_catalog(vec!["--out".to_string(), actual.display().to_string()])?;
+    if read_text_normalized(&expected)? != read_text_normalized(&actual)? {
         return Ok(Some(format!(
-            "flowchart font metrics mismatch: regenerate with `cargo run -p xtask -- gen-font-metrics --in fixtures/upstream-svgs/flowchart --out crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs --font-size 16 --preserve-layout-from crates/merman-render/src/generated/font_metrics_flowchart_11_12_2.rs` ({})",
-            expected_flowchart_font_metrics.display()
+            "web diagram catalog mismatch: regenerate with `cargo run -p xtask -- gen-web-diagram-catalog` ({})",
+            expected.display()
         )));
     }
 
@@ -675,6 +673,11 @@ pub(crate) fn verify_default_config(args: Vec<String>) -> Result<(), XtaskError>
 
 pub(crate) fn verify_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError> {
     let checks = verify_dompurify_defaults_checks();
+    verify_generated_artifact_checks(args, &checks)
+}
+
+pub(crate) fn verify_web_diagram_catalog(args: Vec<String>) -> Result<(), XtaskError> {
+    let checks = verify_web_diagram_catalog_checks();
     verify_generated_artifact_checks(args, &checks)
 }
 
@@ -895,9 +898,10 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
 mod tests {
     use super::{
         GeneratedArtifactCheck, MmdFixtureScan, collect_mmd_fixtures,
-        fixture_site_config_overrides, layout_snapshot_environment, snapshot_selector_accepts,
-        validate_verify_generated_args, verify_default_config_checks,
+        fixture_render_context_catalog, fixture_site_config_for_path, layout_snapshot_environment,
+        snapshot_selector_accepts, validate_verify_generated_args, verify_default_config_checks,
         verify_dompurify_defaults_checks, verify_generated_checks,
+        verify_web_diagram_catalog_checks,
     };
     use crate::cmd::is_parser_only_fixture;
     use crate::cmd::workspace_root;
@@ -917,7 +921,7 @@ mod tests {
             [
                 GeneratedArtifactCheck::DefaultConfig,
                 GeneratedArtifactCheck::DompurifyDefaults,
-                GeneratedArtifactCheck::FlowchartFontMetrics,
+                GeneratedArtifactCheck::WebDiagramCatalog,
             ]
         );
         assert_eq!(
@@ -927,6 +931,14 @@ mod tests {
         assert_eq!(
             GeneratedArtifactCheck::DompurifyDefaults.label(),
             "dompurify defaults"
+        );
+        assert_eq!(
+            verify_web_diagram_catalog_checks(),
+            [GeneratedArtifactCheck::WebDiagramCatalog]
+        );
+        assert_eq!(
+            GeneratedArtifactCheck::WebDiagramCatalog.label(),
+            "web diagram catalog"
         );
     }
 
@@ -1010,14 +1022,22 @@ mod tests {
     }
 
     #[test]
-    fn fixture_site_config_manifest_references_existing_fixtures() {
+    fn fixture_render_context_catalog_projects_site_config_for_every_entry() {
         let fixtures_root = workspace_root().join("fixtures");
-        for relative_name in fixture_site_config_overrides().keys() {
-            let path = fixtures_root.join(relative_name);
-            assert!(
-                path.exists(),
-                "fixture site config override references missing fixture {}",
-                path.display()
+        let contexts = fixture_render_context_catalog()
+            .contexts()
+            .collect::<Vec<_>>();
+        assert!(!contexts.is_empty(), "expected committed render contexts");
+
+        for context in contexts {
+            let path = fixtures_root.join(context.fixture());
+            let config = fixture_site_config_for_path(&path)
+                .unwrap_or_else(|| panic!("missing render context for {}", path.display()));
+            assert_eq!(
+                config.get_str("securityLevel"),
+                Some(context.security_level().as_str()),
+                "site config for {}",
+                context.fixture()
             );
         }
     }

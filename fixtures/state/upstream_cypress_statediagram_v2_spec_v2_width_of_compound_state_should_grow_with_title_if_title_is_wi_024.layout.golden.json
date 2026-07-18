@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "NotShooting",
-          "x": 54.438,
+          "x": 54.44,
           "y": 123.0,
-          "width": 130.563,
+          "width": 130.56,
           "height": 230.0,
           "is_cluster": true
         },
         {
           "id": "a",
-          "x": 54.438,
+          "x": 54.44,
           "y": 65.5,
-          "width": 22.875,
+          "width": 22.88,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "b",
-          "x": 54.438,
+          "x": 54.44,
           "y": 180.5,
-          "width": 22.875,
+          "width": 22.88,
           "height": 40.0,
           "is_cluster": false
         }
@@ -37,15 +37,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 54.938,
+              "x": 54.94,
               "y": 86.0
             },
             {
-              "x": 54.438,
+              "x": 54.44,
               "y": 123.0
             },
             {
-              "x": 54.938,
+              "x": 54.94,
               "y": 161.0
             }
           ],
@@ -62,17 +62,17 @@
       "clusters": [
         {
           "id": "NotShooting",
-          "x": 54.438,
+          "x": 54.44,
           "y": 123.0,
-          "width": 130.563,
+          "width": 130.56,
           "height": 230.0,
           "diff": -8.0,
           "offset_y": 20.0,
           "title": "Long state name 2",
           "title_label": {
-            "x": 54.438,
+            "x": 54.44,
             "y": 21.0,
-            "width": 122.563,
+            "width": 122.56,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -83,9 +83,9 @@
         }
       ],
       "bounds": {
-        "min_x": -10.844,
+        "min_x": -10.84,
         "min_y": 8.0,
-        "max_x": 119.719,
+        "max_x": 119.72,
         "max_y": 238.0
       }
     }

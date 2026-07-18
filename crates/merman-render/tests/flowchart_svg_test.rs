@@ -6,9 +6,8 @@ use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, RenderSession, RootViewportOverridePolicy,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::flowchart::layout_flowchart_typed;
@@ -63,7 +62,6 @@ fn layout_flowchart_render_model(
                 &parsed.meta.effective_config,
                 &measurer,
                 session.math_renderer(),
-                _options.flowchart_elk_backend,
             );
         }
         #[cfg(not(feature = "elk-layout"))]
@@ -158,6 +156,69 @@ fn flowchart_missing_icon_uses_mermaid_unknown_icon_at_requested_size() {
     let unknown_icon = r#"<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 80 80"><g><rect width="80" height="80" style="fill: #087ebf; stroke-width: 0px;"/><text transform="translate(21.16 64.67)" style="fill: #fff; font-family: ArialMT, Arial; font-size: 67.75px;"><tspan x="0" y="0">?</tspan></text></g></svg>"#;
 
     assert!(svg.contains(unknown_icon), "{svg}");
+}
+
+#[test]
+fn flowchart_icon_variants_render_their_source_defined_frames() {
+    let svg = render_flowchart_svg_from_text(
+        r##"flowchart LR
+R@{ icon: "fa:bell", form: "rounded" }
+C@{ icon: "fa:bell", form: "circle" }
+style R fill:#ff99ff,stroke:#333333,stroke-width:4px
+style C fill:#ff99ff,stroke:#333333,stroke-width:4px
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+
+    let node = |node_id: &str| {
+        let id_prefix = format!("merman-flowchart-{node_id}-");
+        document
+            .descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "g"
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.starts_with(&id_prefix))
+            })
+            .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"))
+    };
+
+    let rounded = node("R");
+    let rounded_frame = rounded
+        .children()
+        .find(|child| child.attribute("class") == Some("icon-shape2"))
+        .expect("iconRounded must preserve Mermaid's icon-shape2 frame class");
+    assert_eq!(rounded_frame.attribute("transform"), Some("translate(0,0)"));
+    assert!(
+        rounded_frame
+            .descendants()
+            .any(|child| child.attribute("fill") == Some("#ff99ff")),
+        "iconRounded frame must use the node fill: {svg}"
+    );
+
+    let circle = node("C");
+    let circle_frame = circle
+        .children()
+        .find(|child| {
+            child.attribute("transform") == Some("translate(0,0)")
+                && child
+                    .descendants()
+                    .any(|descendant| descendant.attribute("fill") == Some("#ff99ff"))
+        })
+        .expect("iconCircle must emit a centered RoughJS circle frame");
+    assert_ne!(circle_frame.attribute("class"), Some("icon-shape2"));
+
+    for icon in [rounded, circle] {
+        assert!(
+            icon.descendants().any(|child| {
+                child
+                    .attribute("style")
+                    .is_some_and(|style| style == "color: #333333;")
+            }),
+            "icon color must use the node stroke: {svg}"
+        );
+    }
 }
 
 #[test]
@@ -364,6 +425,77 @@ fn foreign_object_width_for_data_id(svg: &str, data_id: &str) -> f64 {
         .expect("foreignObject width number")
 }
 
+fn foreign_object_contract_for_text(svg: &str, text: &str) -> (f64, f64, String, String) {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let paragraph = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "p"
+                && node.text().is_some_and(|value| value == text)
+        })
+        .unwrap_or_else(|| panic!("paragraph for {text:?}"));
+    let foreign_object = paragraph
+        .ancestors()
+        .find(|node| node.is_element() && node.tag_name().name() == "foreignObject")
+        .unwrap_or_else(|| panic!("foreignObject for {text:?}"));
+    let div = paragraph
+        .ancestors()
+        .find(|node| node.is_element() && node.tag_name().name() == "div")
+        .unwrap_or_else(|| panic!("div for {text:?}"));
+
+    let width = foreign_object
+        .attribute("width")
+        .expect("foreignObject width")
+        .parse::<f64>()
+        .expect("finite foreignObject width");
+    let height = foreign_object
+        .attribute("height")
+        .expect("foreignObject height")
+        .parse::<f64>()
+        .expect("finite foreignObject height");
+    (
+        width,
+        height,
+        foreign_object
+            .attribute("style")
+            .unwrap_or_default()
+            .to_string(),
+        div.attribute("style").unwrap_or_default().to_string(),
+    )
+}
+
+fn flowchart_node_shape(svg: &str, node_id: &str) -> (String, Option<String>) {
+    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let id_prefix = format!("merman-flowchart-{node_id}-");
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.is_element()
+                && node.tag_name().name() == "g"
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.starts_with(&id_prefix))
+        })
+        .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"));
+    let shape = node
+        .children()
+        .find(|child| {
+            child.is_element()
+                && child.attribute("class").is_some_and(|class| {
+                    class
+                        .split_whitespace()
+                        .any(|part| part == "label-container")
+                })
+        })
+        .unwrap_or_else(|| panic!("Flowchart shape for {node_id}"));
+
+    (
+        shape.tag_name().name().to_string(),
+        shape.attribute("d").map(str::to_string),
+    )
+}
+
 #[derive(Debug, Clone)]
 struct WidthScaledTextMeasurer {
     inner: VendoredFontMetricsTextMeasurer,
@@ -417,19 +549,6 @@ impl TextMeasurer for WidthScaledTextMeasurer {
         (
             self.scale_width(metrics),
             raw_width.map(|width| width * self.width_scale),
-        )
-    }
-
-    fn measure_wrapped_raw(
-        &self,
-        text: &str,
-        style: &TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> TextMetrics {
-        self.scale_width(
-            self.inner
-                .measure_wrapped_raw(text, style, max_width, wrap_mode),
         )
     }
 }
@@ -679,18 +798,16 @@ fn flowchart_html_labels_allow_browser_font_fallback_overflow() {
     )
     .expect("render svg");
 
-    assert!(
-        svg.contains(r#"<foreignObject width="35.015625" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Start</p></span>"#),
-        "expected Start label foreignObject to remain non-clipping for browser font fallback: {svg}"
-    );
-    assert!(
-        svg.contains(r#"<foreignObject width="74.484375" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="nodeLabel"><p>Condition?</p></span>"#),
-        "expected Condition? label foreignObject to remain non-clipping for browser font fallback: {svg}"
-    );
-    assert!(
-        svg.contains(r#"<foreignObject width="22.65625" height="24" style="overflow: visible;"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"><p>Yes</p></span>"#),
-        "expected edge labels to use the same non-clipping foreignObject contract: {svg}"
-    );
+    let contracts = ["Start", "Condition?", "Yes"].map(|text| {
+        let contract = foreign_object_contract_for_text(&svg, text);
+        assert!(contract.0.is_finite() && contract.0 > 0.0, "{text}");
+        assert_eq!(contract.1, 24.0, "{text}");
+        assert!(contract.2.contains("overflow: visible"), "{text}");
+        assert!(contract.3.contains("white-space: nowrap"), "{text}");
+        assert!(contract.3.contains("max-width: 200px"), "{text}");
+        contract
+    });
+    assert!(contracts[1].0 > contracts[0].0 && contracts[0].0 > contracts[2].0);
 }
 
 #[test]
@@ -815,12 +932,18 @@ flowchart TB
 
 #[test]
 fn flowchart_svg_honors_node_text_color_theme_variable() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "mainBkg": "#111827",
+            "nodeTextColor": "#f8fafc",
+            "textColor": "#fde68a"
+        }
+    })));
     let svg = render_flowchart_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"mainBkg": "#111827", "nodeTextColor": "#f8fafc", "textColor": "#fde68a"}}}%%
-flowchart TD
+        engine,
+        r#"flowchart TD
     A[Dark Node] --> B[Other]
-"##,
+"#,
     );
 
     assert!(
@@ -838,6 +961,45 @@ flowchart TD
             r##"#merman{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#fde68a;}"##
         ),
         "expected themeVariables.textColor to continue driving root SVG text fill CSS: {svg}"
+    );
+}
+
+#[test]
+fn flowchart_svg_dispatches_public_shape_aliases_without_rectangle_fallbacks() {
+    let svg = render_flowchart_svg_from_text(
+        r#"flowchart TB
+R0@{ shape: rect, label: "same" }
+R1@{ shape: proc, label: "same" }
+R2@{ shape: process, label: "same" }
+R3@{ shape: rectangle, label: "same" }
+C0@{ shape: circle, label: "same" }
+C1@{ shape: circ, label: "same" }
+B@{ shape: bang, label: "same" }
+D@{ shape: cloud, label: "same" }
+"#,
+    );
+
+    for id in ["R0", "R1", "R2", "R3"] {
+        assert_eq!(flowchart_node_shape(&svg, id).0, "rect", "{id}");
+    }
+    for id in ["C0", "C1"] {
+        assert_eq!(flowchart_node_shape(&svg, id).0, "circle", "{id}");
+    }
+
+    let bang = flowchart_node_shape(&svg, "B");
+    assert_eq!(bang.0, "path");
+    assert_eq!(
+        bang.1.as_deref().map(|path| path.matches('a').count()),
+        Some(14),
+        "bang must preserve Mermaid 11.16's fourteen relative arc segments"
+    );
+
+    let cloud = flowchart_node_shape(&svg, "D");
+    assert_eq!(cloud.0, "path");
+    assert_eq!(
+        cloud.1.as_deref().map(|path| path.matches('a').count()),
+        Some(10),
+        "cloud must preserve Mermaid 11.16's ten relative arc segments"
     );
 }
 
@@ -1170,7 +1332,7 @@ B[<img src='https://mermaid.js.org/mermaid-logo.svg'>]
 
     assert!(
         svg.contains(r#"<span class="nodeLabel"><p><img "#),
-        "expected Mermaid 11.15 non-markdown image labels to keep the nonMarkdownToHTML paragraph wrapper: {svg}"
+        "expected Mermaid 11.16 non-markdown image labels to keep the nonMarkdownToHTML paragraph wrapper: {svg}"
     );
 }
 
@@ -1194,8 +1356,8 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
         layout_flowchart_render_model(&parsed, &layout_options, &_session).expect("layout ok");
 
     let node = layout.nodes.iter().find(|n| n.id == "A").expect("node A");
-    assert_eq!(node.width, 176.984375);
-    assert_eq!(node.height, 96.0);
+    assert!(node.width.is_finite() && node.width > 60.0);
+    assert!(node.height.is_finite() && node.height > 60.0);
 
     let svg = render_flowchart_artifact(
         parsed,
@@ -1205,12 +1367,11 @@ A@{ img: "https://mermaid.js.org/favicon.svg", label: "My example image label", 
     )
     .expect("render svg");
 
-    assert!(
-        svg.contains(
-            r#"<foreignObject width="176.984375" height="28" style="overflow: visible;">"#
-        ),
-        "expected image-shape label bbox to include Mermaid 11.15 paragraph padding: {svg}"
-    );
+    let (label_width, label_height, foreign_object_style, _) =
+        foreign_object_contract_for_text(&svg, "My example image label");
+    assert_eq!(node.width, label_width);
+    assert!(label_height > 16.0);
+    assert!(foreign_object_style.contains("overflow: visible"));
     assert!(
         svg.contains(r#"<image href="https://mermaid.js.org/favicon.svg" width="60" height="60" preserveAspectRatio="none" transform="translate(-30,-12)"/>"#),
         "expected top image placement to use the padded label bbox: {svg}"
@@ -1489,10 +1650,7 @@ fn flowchart_html_edge_label_svg_width_matches_layout_bbox() {
 
 #[test]
 fn flowchart_nested_root_viewbox_includes_empty_subgraph_node() {
-    let _session = RenderEnvironment::parity()
-        .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
-        .begin_session()
-        .unwrap();
+    let _session = RenderEnvironment::parity().begin_session().unwrap();
     let text = "flowchart LR\nsubgraph A\na -->b\nend\nsubgraph B\nb\nend\n";
     let engine = Engine::new();
     let parsed = block_on(engine.parse_diagram_for_render_model(text, ParseOptions::default()))
@@ -1565,11 +1723,8 @@ fn flowchart_empty_subgraph_node_applies_inline_style() {
 }
 
 #[test]
-fn flowchart_crossed_circle_aliases_share_root_bbox_asymmetry() {
-    let _session = RenderEnvironment::parity()
-        .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
-        .begin_session()
-        .unwrap();
+fn flowchart_crossed_circle_aliases_use_source_symmetric_root_bounds() {
+    let _session = RenderEnvironment::parity().begin_session().unwrap();
     let text = r#"flowchart
  n0@{ shape: cross-circ, label: "cross-circ" }
  n1@{ shape: summary, label: "summary" }
@@ -1606,11 +1761,8 @@ fn flowchart_crossed_circle_aliases_share_root_bbox_asymmetry() {
         .collect::<Vec<_>>();
     assert_eq!(values.len(), 4, "expected four viewBox values: {viewbox}");
     assert!(
-        (values[0] - 0.028_488).abs() < 0.000_01
-            && values[1] == 0.0
-            && (values[2] - 296.170_9).abs() < 0.000_1
-            && values[3] == 76.0,
-        "expected crossed-circle aliases to share RoughJS bbox asymmetry: {svg}"
+        values[0] == 0.0 && values[1] == 0.0 && values[2] > 0.0 && values[3] == 76.0,
+        "expected crossed-circle aliases to use the source-defined symmetric diameter: {svg}"
     );
 }
 

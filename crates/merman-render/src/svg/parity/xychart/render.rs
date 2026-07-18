@@ -135,12 +135,8 @@ pub(crate) fn render_xychart_diagram_svg(
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "xychart");
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::XyChart,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::XyChart, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     out.push_str("<style>");
     push_xychart_css(&mut out, diagram_id);

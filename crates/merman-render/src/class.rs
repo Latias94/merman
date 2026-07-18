@@ -2,10 +2,14 @@
 use crate::config::{config_bool, config_string};
 use crate::entities::decode_entities_minimal;
 use crate::model::{
-    Bounds, ClassDiagramLayout, ClassNodeRowMetrics, LayoutCluster, LayoutEdge, LayoutLabel,
-    LayoutNode, LayoutPoint,
+    Bounds, ClassDiagramLayout, ClassNodeRowMetrics, ClassRenderItem, ClassRenderRoot,
+    ClassRenderRootId, ClassRenderTree, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode,
+    LayoutPoint,
 };
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownAnalysis, TextMeasurer, TextStyle,
+    WrapMode, analyze_mermaid_markdown, measure_mermaid_text_dimensions,
+};
 use crate::{Error, Result};
 use dugong::graphlib::{Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
@@ -23,6 +27,16 @@ use merman_layout_elk as elk;
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
 type ClassNode = merman_core::models::class_diagram::ClassNode;
 type ClassNote = merman_core::models::class_diagram::ClassNote;
+
+pub(crate) fn class_member_create_text_input(
+    member: &merman_core::models::class_diagram::ClassMember,
+) -> String {
+    member
+        .display_text
+        .trim()
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ClassLayoutEngine {
@@ -101,10 +115,18 @@ fn class_namespace_child_pairs(model: &ClassDiagramModel) -> HashSet<(&str, &str
 
 type Rect = merman_core::geom::Box2;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PreparedGraphId(usize);
+
 struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    extracted: BTreeMap<String, PreparedGraph>,
+    extracted: BTreeMap<String, PreparedGraphId>,
     injected_cluster_root_id: Option<String>,
+}
+
+struct PreparedGraphArena {
+    graphs: Vec<PreparedGraph>,
+    top: PreparedGraphId,
 }
 
 fn extract_descendants(
@@ -169,62 +191,7 @@ fn is_descendant(descendants: &HashMap<String, HashSet<String>>, id: &str, ances
         .is_some_and(|set| set.contains(id))
 }
 
-fn graph_parent_depths<N, E, G>(graph: &Graph<N, E, G>, ids: &[String]) -> HashMap<String, usize>
-where
-    N: Default + 'static,
-    E: Default + 'static,
-    G: Default,
-{
-    let mut depths: HashMap<String, usize> = HashMap::new();
-
-    for id in ids {
-        if depths.contains_key(id) {
-            continue;
-        }
-
-        let mut current = id.clone();
-        let mut chain: Vec<String> = Vec::new();
-        let mut seen: HashSet<String> = HashSet::new();
-        let mut base_depth = 0usize;
-
-        loop {
-            if let Some(depth) = depths.get(&current).copied() {
-                base_depth = depth;
-                break;
-            }
-            if !seen.insert(current.clone()) {
-                break;
-            }
-            let Some(parent) = graph.parent(&current).map(|s| s.to_string()) else {
-                break;
-            };
-            chain.push(current);
-            current = parent;
-        }
-
-        for node in chain.into_iter().rev() {
-            base_depth += 1;
-            depths.insert(node, base_depth);
-        }
-
-        depths.entry(id.clone()).or_insert(base_depth);
-    }
-
-    depths
-}
-
-fn prepare_graph(
-    mut graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    depth: usize,
-) -> Result<PreparedGraph> {
-    if depth > 10 {
-        return Ok(PreparedGraph {
-            graph,
-            extracted: BTreeMap::new(),
-            injected_cluster_root_id: None,
-        });
-    }
-
+fn prepare_graph(graph: Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Result<PreparedGraphArena> {
     // Mermaid's default Class renderer uses the shared Dagre rendering-util path. Its
     // graphlib pre-pass extracts clusters *without* external connections into their own subgraphs,
     // toggles their rankdir (TB <-> LR), and renders them recursively to obtain concrete cluster
@@ -238,96 +205,145 @@ fn prepare_graph(
     // - recursive render copies `nodesep` and sets child `ranksep = parent.ranksep + 25`
     // - margins are fixed at 8
 
-    let cluster_ids: Vec<String> = graph
-        .node_ids()
-        .into_iter()
-        .filter(|id| !graph.children(id).is_empty())
-        .collect();
-    let parent_depths = graph_parent_depths(&graph, &cluster_ids);
-    if depth + parent_depths.values().copied().max().unwrap_or_default() > 10 {
-        return Ok(PreparedGraph {
+    struct PendingCluster {
+        id: String,
+        moved_ids: HashSet<String>,
+    }
+
+    struct PrepareFrame {
+        graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        candidates: Vec<String>,
+        next_candidate: usize,
+        extracted: BTreeMap<String, PreparedGraphId>,
+        injected_cluster_root_id: Option<String>,
+        pending: Option<PendingCluster>,
+    }
+
+    fn candidates_for(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<String> {
+        let cluster_ids = graph
+            .node_ids()
+            .into_iter()
+            .filter(|id| !graph.children(id).is_empty())
+            .collect::<Vec<_>>();
+        let mut descendants: HashMap<String, HashSet<String>> = HashMap::new();
+        for id in &cluster_ids {
+            let mut nodes = Vec::new();
+            extract_descendants(graph, id, &mut nodes);
+            descendants.insert(id.clone(), nodes.into_iter().collect());
+        }
+
+        cluster_ids
+            .into_iter()
+            .filter(|id| {
+                for edge in graph.edge_keys() {
+                    // Mermaid's `edgeInCluster` treats edges incident on the cluster node itself
+                    // as non-descendant edges.
+                    if edge.v == *id || edge.w == *id {
+                        continue;
+                    }
+                    let from_inside = is_descendant(&descendants, &edge.v, id);
+                    let to_inside = is_descendant(&descendants, &edge.w, id);
+                    if from_inside ^ to_inside {
+                        return false;
+                    }
+                }
+                true
+            })
+            .collect()
+    }
+
+    fn frame_for(
+        graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
+        injected_cluster_root_id: Option<String>,
+    ) -> PrepareFrame {
+        let candidates = candidates_for(&graph);
+        PrepareFrame {
             graph,
+            candidates,
+            next_candidate: 0,
             extracted: BTreeMap::new(),
-            injected_cluster_root_id: None,
-        });
+            injected_cluster_root_id,
+            pending: None,
+        }
     }
 
-    let mut descendants: HashMap<String, HashSet<String>> = HashMap::new();
-    for id in &cluster_ids {
-        let mut vec: Vec<String> = Vec::new();
-        extract_descendants(&graph, id, &mut vec);
-        descendants.insert(id.clone(), vec.into_iter().collect());
-    }
+    let mut graphs = Vec::new();
+    let mut stack = vec![frame_for(graph, None)];
+    let mut completed_child = None;
+    loop {
+        if let Some(child_id) = completed_child.take() {
+            let Some(parent) = stack.last_mut() else {
+                return Ok(PreparedGraphArena {
+                    graphs,
+                    top: child_id,
+                });
+            };
+            let Some(pending) = parent.pending.take() else {
+                return Err(Error::InvalidModel {
+                    message: format!(
+                        "prepared Class child graph {} has no parent extraction",
+                        child_id.0
+                    ),
+                });
+            };
+            for moved_id in pending.moved_ids {
+                if let Some(moved_child_id) = parent.extracted.remove(&moved_id) {
+                    graphs[child_id.0]
+                        .extracted
+                        .insert(moved_id, moved_child_id);
+                }
+            }
+            parent.extracted.insert(pending.id, child_id);
+        }
 
-    let mut external: HashMap<String, bool> =
-        cluster_ids.iter().map(|id| (id.clone(), false)).collect();
-    for id in &cluster_ids {
-        for e in graph.edge_keys() {
-            // Mermaid's `edgeInCluster` treats edges incident on the cluster node itself as
-            // non-descendant edges. Class diagrams do not normally connect edges to namespaces,
-            // but keep the guard to mirror upstream behavior.
-            if e.v == *id || e.w == *id {
+        let Some(frame) = stack.last_mut() else {
+            return Err(Error::InvalidModel {
+                message: "missing Class prepare frame".to_string(),
+            });
+        };
+        let mut child_frame = None;
+        while let Some(cluster_id) = frame.candidates.get(frame.next_candidate).cloned() {
+            frame.next_candidate += 1;
+            if frame.graph.children(&cluster_id).is_empty() {
                 continue;
             }
-            let d1 = is_descendant(&descendants, &e.v, id);
-            let d2 = is_descendant(&descendants, &e.w, id);
-            if d1 ^ d2 {
-                external.insert(id.clone(), true);
-                break;
-            }
+
+            let parent_dir = frame.graph.graph().rankdir;
+            let nodesep = frame.graph.graph().nodesep;
+            let ranksep = frame.graph.graph().ranksep;
+            let (mut subgraph, moved_ids) = extract_cluster_graph(&cluster_id, &mut frame.graph)?;
+            let child_label = subgraph.graph_mut();
+            child_label.rankdir = if parent_dir == RankDir::TB {
+                RankDir::LR
+            } else {
+                RankDir::TB
+            };
+            child_label.nodesep = nodesep;
+            child_label.ranksep = ranksep;
+            child_label.marginx = 8.0;
+            child_label.marginy = 8.0;
+            frame.pending = Some(PendingCluster {
+                id: cluster_id.clone(),
+                moved_ids,
+            });
+            child_frame = Some(frame_for(subgraph, Some(cluster_id)));
+            break;
         }
-    }
 
-    let mut extracted: BTreeMap<String, PreparedGraph> = BTreeMap::new();
-    let candidate_clusters: Vec<String> = graph
-        .node_ids()
-        .into_iter()
-        .filter(|id| {
-            if depth + parent_depths.get(id).copied().unwrap_or(0) > 10 {
-                return false;
-            }
-            let has_children = !graph.children(id).is_empty();
-            let is_external = external.get(id).copied().unwrap_or(false);
-            has_children && !is_external
-        })
-        .collect();
-
-    for cluster_id in candidate_clusters {
-        if graph.children(&cluster_id).is_empty() {
+        if let Some(child_frame) = child_frame {
+            stack.push(child_frame);
             continue;
         }
-        let parent_dir = graph.graph().rankdir;
-        let dir = if parent_dir == RankDir::TB {
-            RankDir::LR
-        } else {
-            RankDir::TB
-        };
 
-        let nodesep = graph.graph().nodesep;
-        let ranksep = graph.graph().ranksep;
-
-        let (mut subgraph, moved_set) = extract_cluster_graph(&cluster_id, &mut graph)?;
-        subgraph.graph_mut().rankdir = dir;
-        subgraph.graph_mut().nodesep = nodesep;
-        subgraph.graph_mut().ranksep = ranksep;
-        subgraph.graph_mut().marginx = 8.0;
-        subgraph.graph_mut().marginy = 8.0;
-
-        let mut prepared = prepare_graph(subgraph, depth + 1)?;
-        for moved_id in &moved_set {
-            if let Some(child_prepared) = extracted.remove(moved_id) {
-                prepared.extracted.insert(moved_id.clone(), child_prepared);
-            }
-        }
-        prepared.injected_cluster_root_id = Some(cluster_id.clone());
-        extracted.insert(cluster_id, prepared);
+        let frame = stack.pop().expect("checked Class prepare frame");
+        let graph_id = PreparedGraphId(graphs.len());
+        graphs.push(PreparedGraph {
+            graph: frame.graph,
+            extracted: frame.extracted,
+            injected_cluster_root_id: frame.injected_cluster_root_id,
+        });
+        completed_child = Some(graph_id);
     }
-
-    Ok(PreparedGraph {
-        graph,
-        extracted,
-        injected_cluster_root_id: None,
-    })
 }
 
 fn extract_cluster_graph(
@@ -431,6 +447,7 @@ fn edge_terminal_metrics_from_extras(e: &EdgeLabel) -> EdgeTerminalMetrics {
 struct LayoutFragments {
     nodes: IndexMap<String, LayoutNode>,
     edges: Vec<(LayoutEdge, Option<EdgeTerminalMetrics>)>,
+    render_root_id: ClassRenderRootId,
 }
 
 fn round_number(num: f64, precision: i32) -> f64 {
@@ -611,12 +628,145 @@ fn terminal_path_for_edge(
 }
 
 fn layout_prepared(
+    arena: &mut PreparedGraphArena,
+    node_label_metrics_by_id: &HashMap<String, (f64, f64)>,
+    render_roots: &mut Vec<ClassRenderRoot>,
+) -> Result<(LayoutFragments, Rect)> {
+    if arena.top.0 >= arena.graphs.len() {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "invalid prepared Class graph top {} for {} graphs",
+                arena.top.0,
+                arena.graphs.len()
+            ),
+        });
+    }
+
+    // Mermaid adds 25px rank separation at each recursive render boundary. Propagate those graph
+    // settings top-down before laying nodes out bottom-up.
+    let mut settings_stack = vec![arena.top];
+    while let Some(parent_id) = settings_stack.pop() {
+        let parent_ranksep = arena.graphs[parent_id.0].graph.graph().ranksep;
+        let parent_nodesep = arena.graphs[parent_id.0].graph.graph().nodesep;
+        let child_ids = arena.graphs[parent_id.0]
+            .extracted
+            .values()
+            .copied()
+            .collect::<Vec<_>>();
+        for child_id in child_ids.into_iter().rev() {
+            let Some(child) = arena.graphs.get_mut(child_id.0) else {
+                return Err(Error::InvalidModel {
+                    message: format!("missing prepared Class child graph {}", child_id.0),
+                });
+            };
+            child.graph.graph_mut().ranksep = parent_ranksep + 25.0;
+            child.graph.graph_mut().nodesep = parent_nodesep;
+            settings_stack.push(child_id);
+        }
+    }
+
+    enum PreparedFrame {
+        Enter(PreparedGraphId),
+        Exit(PreparedGraphId),
+    }
+    let mut graph_state = vec![0_u8; arena.graphs.len()];
+    let mut postorder = Vec::with_capacity(arena.graphs.len());
+    let mut stack = vec![PreparedFrame::Enter(arena.top)];
+    while let Some(frame) = stack.pop() {
+        match frame {
+            PreparedFrame::Enter(graph_id) => {
+                let Some(graph) = arena.graphs.get(graph_id.0) else {
+                    return Err(Error::InvalidModel {
+                        message: format!("missing prepared Class graph {}", graph_id.0),
+                    });
+                };
+                match graph_state[graph_id.0] {
+                    1 => {
+                        return Err(Error::InvalidModel {
+                            message: format!(
+                                "cycle in prepared Class graph arena at {}",
+                                graph_id.0
+                            ),
+                        });
+                    }
+                    2 => {
+                        return Err(Error::InvalidModel {
+                            message: format!(
+                                "prepared Class graph {} has multiple owners",
+                                graph_id.0
+                            ),
+                        });
+                    }
+                    _ => {}
+                }
+                graph_state[graph_id.0] = 1;
+                stack.push(PreparedFrame::Exit(graph_id));
+                for child_id in graph.extracted.values().rev() {
+                    stack.push(PreparedFrame::Enter(*child_id));
+                }
+            }
+            PreparedFrame::Exit(graph_id) => {
+                graph_state[graph_id.0] = 2;
+                postorder.push(graph_id);
+            }
+        }
+    }
+    if let Some(unattached) = graph_state.iter().position(|state| *state == 0) {
+        return Err(Error::InvalidModel {
+            message: format!("unattached prepared Class graph {unattached}"),
+        });
+    }
+
+    let mut results = (0..arena.graphs.len())
+        .map(|_| None)
+        .collect::<Vec<Option<(LayoutFragments, Rect)>>>();
+    for graph_id in postorder {
+        let child_links = arena.graphs[graph_id.0].extracted.clone();
+        let mut extracted_fragments = BTreeMap::new();
+        for (cluster_id, child_id) in child_links {
+            let Some(result) = results.get_mut(child_id.0).and_then(Option::take) else {
+                return Err(Error::InvalidModel {
+                    message: format!(
+                        "missing laid out Class child graph {} for {cluster_id}",
+                        child_id.0
+                    ),
+                });
+            };
+            extracted_fragments.insert(cluster_id, result);
+        }
+        let result = layout_prepared_node(
+            &mut arena.graphs[graph_id.0],
+            node_label_metrics_by_id,
+            render_roots,
+            extracted_fragments,
+        )?;
+        results[graph_id.0] = Some(result);
+    }
+
+    results
+        .get_mut(arena.top.0)
+        .and_then(Option::take)
+        .ok_or_else(|| Error::InvalidModel {
+            message: format!("missing laid out Class top graph {}", arena.top.0),
+        })
+}
+
+fn layout_prepared_node(
     prepared: &mut PreparedGraph,
     node_label_metrics_by_id: &HashMap<String, (f64, f64)>,
+    render_roots: &mut Vec<ClassRenderRoot>,
+    extracted_fragments: BTreeMap<String, (LayoutFragments, Rect)>,
 ) -> Result<(LayoutFragments, Rect)> {
+    let root_namespace_id = prepared.injected_cluster_root_id.clone();
+    let render_root_id = ClassRenderRootId(render_roots.len());
+    render_roots.push(ClassRenderRoot {
+        namespace_id: root_namespace_id,
+        ..Default::default()
+    });
     let mut fragments = LayoutFragments {
         nodes: IndexMap::new(),
         edges: Vec::new(),
+        render_root_id,
     };
 
     if let Some(root_id) = prepared.injected_cluster_root_id.clone() {
@@ -634,30 +784,6 @@ fn layout_prepared(
         for id in top_level_ids {
             prepared.graph.set_parent(id, root_id.clone());
         }
-    }
-
-    let extracted_ids: Vec<String> = prepared.extracted.keys().cloned().collect();
-    let mut extracted_fragments: BTreeMap<String, (LayoutFragments, Rect)> = BTreeMap::new();
-    for id in extracted_ids {
-        let Some(sub) = prepared.extracted.get_mut(&id) else {
-            return Err(Error::InvalidModel {
-                message: format!("missing extracted cluster graph: {id}"),
-            });
-        };
-        let parent_ranksep = prepared.graph.graph().ranksep;
-        let parent_nodesep = prepared.graph.graph().nodesep;
-        sub.graph.graph_mut().ranksep = parent_ranksep + 25.0;
-        sub.graph.graph_mut().nodesep = parent_nodesep;
-        let (sub_frag, sub_bounds) = layout_prepared(sub, node_label_metrics_by_id)?;
-
-        // Mermaid injects the extracted cluster root back into the recursive child graph before
-        // Dagre layout (`recursiveRender(..., parentCluster)`). In the 11.15 rendering-util
-        // renderer, that same recursive step also applies `ranksep: parent.ranksep + 25` while
-        // preserving `nodesep`. It then measures the rendered root `<g class="root">` bbox via
-        // `updateNodeBounds(...)`. Mirror that by injecting the extracted cluster root into the
-        // recursive layout graph up front, so the returned bounds already include the cluster
-        // padding/label geometry that Mermaid measures.
-        extracted_fragments.insert(id, (sub_frag, sub_bounds));
     }
 
     for (id, (_sub_frag, bounds)) in &extracted_fragments {
@@ -771,6 +897,53 @@ fn layout_prepared(
         fragments.edges.push((edge, terminal_meta));
     }
 
+    let mut child_roots = extracted_fragments
+        .iter()
+        .map(|(id, (fragments, _))| (id.clone(), fragments.render_root_id))
+        .collect::<BTreeMap<_, _>>();
+    let current_node_ids = prepared.graph.node_ids();
+    let edge_ids = fragments
+        .edges
+        .iter()
+        .map(|(edge, _)| edge.id.clone())
+        .collect();
+    let cluster_ids = current_node_ids
+        .iter()
+        .filter(|id| {
+            !dummy_nodes.contains(id.as_str())
+                && !prepared.graph.children(id).is_empty()
+                && !prepared.extracted.contains_key(id.as_str())
+        })
+        .cloned()
+        .collect();
+    let mut items = Vec::new();
+    for id in current_node_ids {
+        if dummy_nodes.contains(id.as_str()) {
+            continue;
+        }
+        if let Some(root_id) = child_roots.remove(id.as_str()) {
+            items.push(ClassRenderItem::Subgraph(root_id));
+        } else if prepared.graph.children(&id).is_empty() {
+            items.push(ClassRenderItem::Node(id));
+        }
+    }
+    if !child_roots.is_empty() {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "class layout did not attach extracted render roots: {}",
+                child_roots.keys().cloned().collect::<Vec<_>>().join(", ")
+            ),
+        });
+    }
+    let Some(render_root) = render_roots.get_mut(render_root_id.0) else {
+        return Err(Error::InvalidModel {
+            message: format!("missing class render root arena entry {}", render_root_id.0),
+        });
+    };
+    render_root.edge_ids = edge_ids;
+    render_root.cluster_ids = cluster_ids;
+    render_root.items = items;
+
     for (cluster_id, (mut sub_frag, sub_bounds)) in extracted_fragments {
         let Some(cluster_node) = fragments.nodes.get(&cluster_id).cloned() else {
             return Err(Error::InvalidModel {
@@ -868,63 +1041,16 @@ fn class_box_dimensions(
         style: &TextStyle,
         wrap_probe_font_size: f64,
     ) -> Option<f64> {
-        let wrap_probe_font_size = wrap_probe_font_size.max(1.0);
-        // Mermaid `calculateTextWidth(...)` is backed by `calculateTextDimensions(...)` which
-        // selects between `sans-serif` and the configured family (it does *not* always take the
-        // max width).
         let wrap_probe_style = TextStyle {
             font_family: style
                 .font_family
                 .clone()
                 .or_else(|| Some("Arial".to_string())),
-            font_size: wrap_probe_font_size,
+            font_size: wrap_probe_font_size.max(1.0),
             font_weight: None,
+            font_style: None,
         };
-        let sans_probe_style = TextStyle {
-            font_family: Some("sans-serif".to_string()),
-            font_size: wrap_probe_font_size,
-            font_weight: None,
-        };
-        // Mermaid class diagram SVG labels call:
-        // `createText(..., { width: calculateTextWidth(text, config) + 50 })`.
-        //
-        // `calculateTextWidth(...)` uses `config.fontSize` (top-level). The final rendered SVG
-        // text inherits the root `font-size` (typically from `themeVariables.fontSize`). If
-        // those differ, Mermaid can wrap unexpectedly (see upstream baseline:
-        // `fixtures/upstream-svgs/class/stress_class_svg_font_size_precedence_025.svg`).
-        #[derive(Clone, Copy)]
-        struct Dim {
-            width: f64,
-            height: f64,
-            line_height: f64,
-        }
-        fn dim_for(measurer: &dyn TextMeasurer, text: &str, style: &TextStyle) -> Dim {
-            let width = measurer
-                .measure_svg_simple_text_bbox_width_px(text, style)
-                .max(0.0)
-                .round();
-            let height = measurer
-                .measure_wrapped(text, style, None, WrapMode::SvgLike)
-                .height
-                .max(0.0)
-                .round();
-            Dim {
-                width,
-                height,
-                line_height: height,
-            }
-        }
-        let dims = [
-            dim_for(measurer, text, &sans_probe_style),
-            dim_for(measurer, text, &wrap_probe_style),
-        ];
-        let pick_sans = dims[1].height.is_nan()
-            || dims[1].width.is_nan()
-            || dims[1].line_height.is_nan()
-            || (dims[0].height > dims[1].height
-                && dims[0].width > dims[1].width
-                && dims[0].line_height > dims[1].line_height);
-        let w = dims[if pick_sans { 0 } else { 1 }].width + 50.0;
+        let w = class_html_create_text_width_px(text, measurer, &wrap_probe_style) as f64;
         if w.is_finite() && w > 0.0 {
             Some(w)
         } else {
@@ -944,21 +1070,6 @@ fn class_box_dimensions(
         else {
             return text.to_string();
         };
-        // Vendored font metrics do not line up with Chromium's SVG `getComputedTextLength()`
-        // exactly. Most default-font SVG labels need a small inflation, but Mermaid's Class path
-        // can also measure the wrap width with a smaller top-level `fontSize` while rendering the
-        // final SVG text with an explicit larger `themeVariables.fontSize` px value. That case
-        // needs slack so type suffixes stay on the same outer tspan row as upstream.
-        let computed_len_fudge = if bold {
-            1.0
-        } else if wrap_probe_font_size < style.font_size {
-            0.9
-        } else if style.font_size >= 20.0 {
-            1.0
-        } else {
-            1.02
-        };
-
         let mut lines: Vec<String> = Vec::new();
         for line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
             let mut tokens = std::collections::VecDeque::from(
@@ -977,12 +1088,12 @@ fn class_box_dimensions(
                         font_family: style.font_family.clone(),
                         font_size: style.font_size,
                         font_weight: Some("bolder".to_string()),
+                        font_style: None,
                     };
                     measurer.measure_svg_text_computed_length_px(candidate.trim_end(), &bold_style)
                 } else {
                     measurer.measure_svg_text_computed_length_px(candidate.trim_end(), style)
                 };
-                let candidate_w = candidate_w * computed_len_fudge;
                 if candidate_w <= wrap_width_px {
                     cur = candidate;
                     continue;
@@ -1009,12 +1120,12 @@ fn class_box_dimensions(
                             font_family: style.font_family.clone(),
                             font_size: style.font_size,
                             font_weight: Some("bolder".to_string()),
+                            font_style: None,
                         };
                         measurer.measure_svg_text_computed_length_px(head.as_str(), &bold_style)
                     } else {
                         measurer.measure_svg_text_computed_length_px(head.as_str(), style)
                     };
-                    let head_w = head_w * computed_len_fudge;
                     if head_w > wrap_width_px {
                         break;
                     }
@@ -1050,11 +1161,14 @@ fn class_box_dimensions(
         wrap_probe_font_size: f64,
         wrap_mode: WrapMode,
     ) -> crate::text::TextMetrics {
+        let effective_style = crate::class::class_effective_text_style(style, css_style);
+        let style = effective_style.as_ref();
         // Mermaid class diagram text uses `createText(..., { classes: 'markdown-node-label' })`,
         // which applies Markdown formatting for both SVG-label and HTML-label modes.
         //
-        // The common case is plain text; keep the fast path for labels that do not appear to use
-        // Markdown markers.
+        // The common case is plain text. Use Mermaid's parsed run semantics so literal marker
+        // characters do not disable SVG wrapping.
+        let markdown_analysis = analyze_class_svg_markdown(text);
         if matches!(wrap_mode, WrapMode::HtmlLike) {
             crate::class::class_html_measure_label_metrics(
                 measurer,
@@ -1063,81 +1177,23 @@ fn class_box_dimensions(
                 class_html_create_text_width_px(text, measurer, html_calc_text_style),
                 css_style,
             )
-        } else if text.contains('*') || text.contains('_') || text.contains('`') {
-            let mut metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
-                measurer, text, style, None, wrap_mode,
-            );
-            if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-                && style.font_size.round() as i64 == 16
-                && text.trim() == "+attribute *italic*"
-                && style
-                    .font_family
-                    .as_deref()
-                    .is_some_and(|f| f.to_ascii_lowercase().contains("trebuchet"))
-            {
-                // Upstream classDiagram SVG-label Markdown styling fixture
-                // `upstream_cypress_classdiagram_v3_spec_should_render_a_simple_class_diagram_with_markdown_styling_witho_050`
-                // lands exactly on `115.25px` for Chromium `getBBox().width`; our deterministic
-                // delta model can round up by 1/64px here, which cascades into node centering.
-                metrics.width = 115.25;
-            }
-            metrics
+        } else if markdown_analysis.has_styled_runs {
+            crate::text::measure_markdown_with_inline_styles(measurer, text, style, None, wrap_mode)
         } else {
             let wrapped = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
                 wrap_class_svg_text_like_mermaid(text, measurer, style, wrap_probe_font_size, false)
             } else {
                 text.to_string()
             };
-            let mut metrics = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-            {
+            if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
                 // Keep layout sizing aligned with the SVG renderer, which emits labels through
                 // Mermaid's Markdown-aware `createText(...)` path even for plain class text.
-                crate::text::measure_markdown_with_flowchart_bold_deltas(
+                crate::text::measure_markdown_with_inline_styles(
                     measurer, &wrapped, style, None, wrap_mode,
                 )
             } else {
                 measurer.measure_wrapped(&wrapped, style, None, wrap_mode)
-            };
-            if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
-                if style.font_size >= 20.0 && metrics.width.is_finite() && metrics.width > 0.0 {
-                    // Mermaid classDiagram `addText(...).bbox = text.getBBox()` sometimes reports a
-                    // slightly wider bbox for leading visibility markers (e.g. `+foo`) at larger
-                    // font sizes. This affects `shapeSvg.getBBox().width` in `textHelper(...)` and
-                    // cascades into Dagre node centering (strict XML probes at 3 decimals).
-                    //
-                    // Only apply the slack when the first wrapped line (which includes the
-                    // visibility marker) is the widest line.
-                    let first_line = crate::text::DeterministicTextMeasurer::normalized_text_lines(
-                        wrapped.as_str(),
-                    )
-                    .into_iter()
-                    .find(|l| !l.trim().is_empty());
-                    if let Some(line) = first_line {
-                        let ch0 = line.trim_start().chars().next();
-                        if matches!(ch0, Some('+' | '-' | '#' | '~')) {
-                            let line_w = measurer
-                                .measure_wrapped(line.as_str(), style, None, wrap_mode)
-                                .width;
-                            if line_w + 1e-6 >= metrics.width {
-                                metrics.width = (metrics.width + (1.0 / 64.0)).max(0.0);
-                            }
-                        }
-                    }
-                }
-                if style.font_size == 16.0
-                    && text.trim() == "+veryLongMethodNameToForceMeasurement()"
-                    && style
-                        .font_family
-                        .as_deref()
-                        .is_some_and(|f| f.to_ascii_lowercase().contains("trebuchet"))
-                {
-                    // Upstream class SVG baseline `stress_class_svg_font_size_precedence_025`:
-                    // Chromium `getBBox().width` for the wrapped first line is ~2px narrower than
-                    // our vendored font metrics model.
-                    metrics.width = 241.625;
-                }
             }
-            metrics
         }
     }
 
@@ -1176,16 +1232,19 @@ fn class_box_dimensions(
     }
 
     // Title label group (bold).
-    let mut title_text = decode_entities_minimal(&node.text);
+    let mut title_text = if use_html_labels {
+        node.text.trim().to_string()
+    } else {
+        decode_entities_minimal(&node.text)
+    };
     if !use_html_labels && title_text.starts_with('\\') {
         title_text = title_text.trim_start_matches('\\').to_string();
     }
-    // Mermaid renders class titles as bold (`font-weight: bolder`) and sizes boxes via SVG bbox.
-    // The vendored text measurer does not model bold glyph widths in SVG bbox mode. Upstream
-    // Mermaid uses `font-weight: bolder` on the SVG group, which empirically behaves closer to a
-    // *scaled* version of our "bold" (canvas-measured) deltas.
+    // Mermaid 11.16 renders class titles with `font-weight: bolder`; preserve that CSS value for
+    // the operation-owned SVG bbox measurement below.
+    let title_markdown_analysis = analyze_class_svg_markdown(&title_text);
     let wrapped_title_text = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
-        && !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`'))
+        && title_markdown_analysis.all_runs_normal()
     {
         wrap_class_svg_text_like_mermaid(
             &title_text,
@@ -1204,15 +1263,14 @@ fn class_box_dimensions(
             as f64
     });
 
-    let title_has_markdown =
-        title_text.contains('*') || title_text.contains('_') || title_text.contains('`');
-    let mut title_metrics = if matches!(wrap_mode, WrapMode::HtmlLike) || title_has_markdown {
+    let title_has_styled_runs = title_markdown_analysis.has_styled_runs;
+    let mut title_metrics = if matches!(wrap_mode, WrapMode::HtmlLike) || title_has_styled_runs {
         let title_md = title_lines
             .iter()
             .map(|l| format!("**{l}**"))
             .collect::<Vec<_>>()
             .join("\n");
-        crate::text::measure_markdown_with_flowchart_bold_deltas(
+        crate::text::measure_markdown_with_inline_styles(
             measurer,
             &title_md,
             text_style,
@@ -1220,98 +1278,28 @@ fn class_box_dimensions(
             wrap_mode,
         )
     } else {
-        fn round_to_1_1024_px_ties_to_even(v: f64) -> f64 {
-            if !(v.is_finite() && v >= 0.0) {
-                return 0.0;
-            }
-            let x = v * 1024.0;
-            let f = x.floor();
-            let frac = x - f;
-            let i = if frac < 0.5 {
-                f
-            } else if frac > 0.5 {
-                f + 1.0
-            } else {
-                let fi = f as i64;
-                if fi % 2 == 0 { f } else { f + 1.0 }
-            };
-            let out = i / 1024.0;
-            if out == -0.0 { 0.0 } else { out }
-        }
-
-        fn bolder_delta_scale_for_svg(font_size: f64) -> f64 {
-            // Mermaid uses `font-weight: bolder` for class titles. Chromium's effective glyph
-            // advances differ from our `canvas.measureText()`-derived bold deltas, and the gap
-            // grows with larger font sizes (observed in upstream SVG fixtures).
-            //
-            // Interpolate between the two known baselines:
-            // - ~1.0 at 16px (e.g. `Class10`)
-            // - ~0.6 at 24px (e.g. `Foo` under `themeVariables.fontSize="24px"`)
-            let fs = font_size.max(1.0);
-            if fs <= 16.0 {
-                1.0
-            } else if fs >= 24.0 {
-                0.6
-            } else {
-                1.0 - (fs - 16.0) * (0.4 / 8.0)
-            }
-        }
-
-        let mut m = measurer.measure_wrapped(&wrapped_title_text, text_style, None, wrap_mode);
         let bold_title_style = TextStyle {
             font_family: text_style.font_family.clone(),
             font_size: text_style.font_size,
             font_weight: Some("bolder".to_string()),
+            font_style: text_style.font_style.clone(),
         };
-        let delta_px = crate::text::mermaid_default_bold_width_delta_px(
-            &wrapped_title_text,
-            &bold_title_style,
-        );
-        let scale = bolder_delta_scale_for_svg(text_style.font_size);
-        if delta_px.is_finite() && delta_px > 0.0 && m.width.is_finite() && m.width > 0.0 {
-            m.width = round_to_1_1024_px_ties_to_even((m.width + delta_px * scale).max(0.0));
-        }
-        m
+        measurer.measure_wrapped(&wrapped_title_text, &bold_title_style, None, wrap_mode)
     };
 
-    if use_html_labels && title_text.chars().count() > 4 && title_metrics.width > 0.0 {
-        title_metrics.width =
-            crate::text::round_to_1_64_px((title_metrics.width - (1.0 / 64.0)).max(0.0));
-    }
-    if use_html_labels
-        && let Some(width) =
-            class_html_known_rendered_width_override_px(title_text.as_str(), text_style, true)
+    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) && !title_has_styled_runs
     {
-        title_metrics.width = width;
-    }
-    if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) && !title_has_markdown {
         let bold_title_style = TextStyle {
             font_family: text_style.font_family.clone(),
             font_size: text_style.font_size,
             font_weight: Some("bolder".to_string()),
+            font_style: None,
         };
-        if title_lines.len() == 1 && title_lines[0].chars().count() == 1 {
-            // Mermaid class SVG titles are emitted as left-anchored `<text>/<tspan>` runs inside a
-            // parent group with `font-weight: bolder`. Upstream `getBBox().width` for these single-
-            // glyph titles tracks the bold computed text length more closely than our generic
-            // SVG-bbox-based approximation.
-            title_metrics.width =
-                crate::text::ceil_to_1_64_px(measurer.measure_svg_text_computed_length_px(
-                    wrapped_title_text.as_str(),
-                    &bold_title_style,
-                ));
-        } else if title_lines.len() > 1 {
-            // Upstream class SVG titles are rendered as a bold `<text>` with one `<tspan>` per
-            // line. Pin the width to the bold computed-text-length maximum for stability.
-            let mut w = 0.0f64;
-            for line in &title_lines {
-                w = w.max(
-                    measurer.measure_svg_text_computed_length_px(line.as_str(), &bold_title_style),
-                );
-            }
-            if w.is_finite() && w > 0.0 {
-                title_metrics.width = crate::text::ceil_to_1_64_px(w);
-            }
+        let width = title_lines.iter().fold(0.0_f64, |width, line| {
+            width.max(measurer.measure_svg_tspan_text_bbox_width_px(line, &bold_title_style))
+        });
+        if width.is_finite() && width > 0.0 {
+            title_metrics.width = width;
         }
     }
     let title_rect = label_rect(title_metrics, 0.0);
@@ -1324,11 +1312,15 @@ fn class_box_dimensions(
     {
         let mut y_offset = 0.0;
         for m in &node.members {
-            let mut t = decode_entities_minimal(m.display_text.trim());
+            let mut t = if use_html_labels {
+                class_member_create_text_input(m)
+            } else {
+                decode_entities_minimal(m.display_text.trim())
+            };
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();
             }
-            let mut metrics = measure_label(
+            let metrics = measure_label(
                 measurer,
                 &t,
                 m.css_style.as_str(),
@@ -1337,16 +1329,6 @@ fn class_box_dimensions(
                 wrap_probe_font_size,
                 wrap_mode,
             );
-            if use_html_labels && metrics.width > 0.0 {
-                metrics.width =
-                    crate::text::round_to_1_64_px((metrics.width - (1.0 / 64.0)).max(0.0));
-            }
-            if use_html_labels
-                && let Some(width) =
-                    class_html_known_rendered_width_override_px(t.as_str(), text_style, false)
-            {
-                metrics.width = width;
-            }
             if let Some(out) = members_metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1373,11 +1355,15 @@ fn class_box_dimensions(
     {
         let mut y_offset = 0.0;
         for m in &node.methods {
-            let mut t = decode_entities_minimal(m.display_text.trim());
+            let mut t = if use_html_labels {
+                class_member_create_text_input(m)
+            } else {
+                decode_entities_minimal(m.display_text.trim())
+            };
             if !use_html_labels && t.starts_with('\\') {
                 t = t.trim_start_matches('\\').to_string();
             }
-            let mut metrics = measure_label(
+            let metrics = measure_label(
                 measurer,
                 &t,
                 m.css_style.as_str(),
@@ -1386,16 +1372,6 @@ fn class_box_dimensions(
                 wrap_probe_font_size,
                 wrap_mode,
             );
-            if use_html_labels && metrics.width > 0.0 {
-                metrics.width =
-                    crate::text::round_to_1_64_px((metrics.width - (1.0 / 64.0)).max(0.0));
-            }
-            if use_html_labels
-                && let Some(width) =
-                    class_html_known_rendered_width_override_px(t.as_str(), text_style, false)
-            {
-                metrics.width = width;
-            }
             if let Some(out) = methods_metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1501,41 +1477,7 @@ pub(crate) fn class_calculate_text_width_like_mermaid_px(
     measurer: &dyn TextMeasurer,
     calc_text_style: &TextStyle,
 ) -> i64 {
-    if text.is_empty() {
-        return 0;
-    }
-
-    let mut arial = calc_text_style.clone();
-    arial.font_family = Some("Arial".to_string());
-    arial.font_weight = None;
-
-    let mut fam = calc_text_style.clone();
-    fam.font_weight = None;
-
-    // Mermaid class HTML labels ultimately depend on browser text metrics. In Puppeteer baselines,
-    // the emitted `max-width` tends to land between the helper's built-in Arial fallback and the
-    // configured class font family. Averaging those two probes matches the browser breakpoints far
-    // better than our synthetic `sans-serif` fallback, which overestimates many repeat offenders.
-    let arial_width = measurer
-        .measure_svg_text_computed_length_px(text, &arial)
-        .max(0.0);
-    let fam_width = measurer
-        .measure_svg_text_computed_length_px(text, &fam)
-        .max(0.0);
-
-    let trimmed = text.trim();
-    let is_single_char = trimmed.chars().count() == 1;
-    let width = match (
-        arial_width.is_finite() && arial_width > 0.0,
-        fam_width.is_finite() && fam_width > 0.0,
-    ) {
-        (true, true) if is_single_char => arial_width.max(fam_width),
-        (true, true) => (arial_width + fam_width) / 2.0,
-        (true, false) => arial_width,
-        (false, true) => fam_width,
-        (false, false) => 0.0,
-    };
-    width.round().max(0.0) as i64
+    measure_mermaid_text_dimensions(measurer, text, calc_text_style).width
 }
 
 pub(crate) fn class_html_create_text_width_px(
@@ -1543,49 +1485,35 @@ pub(crate) fn class_html_create_text_width_px(
     measurer: &dyn TextMeasurer,
     calc_text_style: &TextStyle,
 ) -> i64 {
-    class_html_known_calc_text_width_override_px(text, calc_text_style).unwrap_or_else(|| {
-        class_calculate_text_width_like_mermaid_px(text, measurer, calc_text_style)
-    }) + 50
+    class_calculate_text_width_like_mermaid_px(text, measurer, calc_text_style) + 50
 }
 
-fn class_css_style_requests_italic(css_style: &str) -> bool {
-    css_style.split(';').any(|decl| {
-        let Some((key, value)) = decl.split_once(':') else {
-            return false;
+fn class_effective_text_style<'a>(
+    base: &'a TextStyle,
+    css_style: &str,
+) -> std::borrow::Cow<'a, TextStyle> {
+    let mut style = std::borrow::Cow::Borrowed(base);
+    for declaration in css_style.split(';') {
+        let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(declaration) else {
+            continue;
         };
-        if !key.trim().eq_ignore_ascii_case("font-style") {
-            return false;
+        match key {
+            "font-weight" => style.to_mut().font_weight = Some(value.trim().to_string()),
+            "font-style" => style.to_mut().font_style = Some(value.trim().to_string()),
+            "font-size" => {
+                if let Some(font_size) =
+                    crate::mermaid_style::parse_css_font_size_px(value, style.font_size)
+                {
+                    style.to_mut().font_size = font_size;
+                }
+            }
+            "font-family" => {
+                style.to_mut().font_family = Some(value.trim().to_string());
+            }
+            _ => {}
         }
-        let value = value
-            .trim()
-            .trim_end_matches(';')
-            .trim_end_matches("!important")
-            .trim()
-            .to_ascii_lowercase();
-        value.contains("italic") || value.contains("oblique")
-    })
-}
-
-fn class_css_style_requests_bold(css_style: &str) -> bool {
-    css_style.split(';').any(|decl| {
-        let Some((key, value)) = decl.split_once(':') else {
-            return false;
-        };
-        if !key.trim().eq_ignore_ascii_case("font-weight") {
-            return false;
-        }
-        let value = value
-            .trim()
-            .trim_end_matches(';')
-            .trim_end_matches("!important")
-            .trim()
-            .to_ascii_lowercase();
-        value.contains("bold")
-            || value == "600"
-            || value == "700"
-            || value == "800"
-            || value == "900"
-    })
+    }
+    style
 }
 
 pub(crate) fn class_html_measure_label_metrics(
@@ -1596,35 +1524,19 @@ pub(crate) fn class_html_measure_label_metrics(
     css_style: &str,
 ) -> crate::text::TextMetrics {
     let max_width = Some(max_width_px.max(1) as f64);
-    let uses_markdown = text.contains('*') || text.contains('_') || text.contains('`');
-    let italic = class_css_style_requests_italic(css_style);
-    let bold = class_css_style_requests_bold(css_style);
+    let effective_style = class_effective_text_style(style, css_style);
+    let style = effective_style.as_ref();
+    let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
+    let mut metrics = crate::text::measure_xhtml_label_fragment(
+        measurer,
+        &fragment,
+        style,
+        max_width,
+        WrapMode::HtmlLike,
+    );
 
-    let mut metrics = if uses_markdown || italic || bold {
-        let mut html = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-        if italic {
-            html = format!("<em>{html}</em>");
-        }
-        if bold {
-            html = format!("<strong>{html}</strong>");
-        }
-        crate::text::measure_html_with_flowchart_bold_deltas(
-            measurer,
-            &html,
-            style,
-            max_width,
-            WrapMode::HtmlLike,
-        )
-    } else {
-        measurer.measure_wrapped(text, style, max_width, WrapMode::HtmlLike)
-    };
-
-    let rendered_width =
-        class_html_known_rendered_width_override_px(text, style, false).unwrap_or(metrics.width);
-    metrics.width = rendered_width;
-    let has_explicit_line_break =
-        text.contains('\n') || text.contains("<br") || text.contains("<BR");
-    if !has_explicit_line_break
+    let rendered_width = metrics.width;
+    if metrics.line_count == 1
         && rendered_width > 0.0
         && rendered_width < max_width_px.max(1) as f64 - 0.01
     {
@@ -1654,22 +1566,6 @@ pub(crate) fn class_note_html_fragment(
     class_normalize_xhtml_br_tags(&note_html)
 }
 
-fn class_namespace_known_rendered_width_override_px(text: &str, style: &TextStyle) -> Option<f64> {
-    let font_size_px = style.font_size.round() as i64;
-    crate::generated::class_text_overrides_11_12_2::lookup_class_namespace_width_px(
-        font_size_px,
-        text,
-    )
-}
-
-fn class_note_known_rendered_width_override_px(note_src: &str, style: &TextStyle) -> Option<f64> {
-    let font_size_px = style.font_size.round() as i64;
-    crate::generated::class_text_overrides_11_12_2::lookup_class_note_width_px(
-        font_size_px,
-        note_src,
-    )
-}
-
 pub(crate) fn class_html_measure_note_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
@@ -1677,41 +1573,11 @@ pub(crate) fn class_html_measure_note_metrics(
     mermaid_config: &merman_core::MermaidConfig,
 ) -> crate::text::TextMetrics {
     let html = class_note_html_fragment(note_src, mermaid_config);
-    let mut metrics = crate::text::measure_html_with_flowchart_bold_deltas(
-        measurer,
-        &html,
-        style,
-        None,
-        WrapMode::HtmlLike,
-    );
-    if let Some(width) = class_note_known_rendered_width_override_px(note_src, style) {
-        metrics.width = width;
-    }
-    metrics
+    crate::text::measure_html_with_inline_styles(measurer, &html, style, None, WrapMode::HtmlLike)
 }
 
-pub(crate) fn class_html_known_calc_text_width_override_px(
-    text: &str,
-    calc_text_style: &TextStyle,
-) -> Option<i64> {
-    let font_size_px = calc_text_style.font_size.round() as i64;
-    crate::generated::class_text_overrides_11_12_2::lookup_class_calc_text_width_px(
-        font_size_px,
-        text,
-    )
-}
-
-pub(crate) fn class_html_known_rendered_width_override_px(
-    text: &str,
-    style: &TextStyle,
-    is_bold: bool,
-) -> Option<f64> {
-    let font_size_px = style.font_size.round() as i64;
-    crate::generated::class_text_overrides_11_12_2::lookup_class_rendered_width_px(
-        font_size_px,
-        is_bold,
-        text,
-    )
+pub(crate) fn analyze_class_svg_markdown(text: &str) -> MermaidMarkdownAnalysis {
+    analyze_mermaid_markdown(text, true)
 }
 
 pub(crate) fn class_svg_single_line_plain_label_width_px(
@@ -1720,23 +1586,13 @@ pub(crate) fn class_svg_single_line_plain_label_width_px(
     text_style: &TextStyle,
 ) -> Option<f64> {
     let trimmed = text.trim();
-    if trimmed.is_empty()
-        || trimmed.contains('\n')
-        || trimmed.contains('*')
-        || trimmed.contains('_')
-        || trimmed.contains('`')
-    {
+    let analysis = analyze_class_svg_markdown(trimmed);
+    if trimmed.is_empty() || analysis.line_count != 1 || !analysis.all_runs_normal() {
         return None;
     }
 
-    let width = crate::text::ceil_to_1_64_px(
-        measurer.measure_svg_text_computed_length_px(trimmed, text_style),
-    );
+    let width = measurer.measure_svg_tspan_text_bbox_width_px(trimmed, text_style);
     (width.is_finite() && width > 0.0).then_some(width)
-}
-
-pub(crate) fn class_svg_create_text_bbox_y_offset_px(text_style: &TextStyle) -> f64 {
-    crate::text::round_to_1_64_px(text_style.font_size.max(1.0) / 16.0)
 }
 
 fn note_dimensions(
@@ -1792,12 +1648,13 @@ fn edge_title_metrics(
 
     let label = decode_entities_minimal(text);
     if matches!(wrap_mode, WrapMode::HtmlLike) {
-        let mut metrics = class_html_measure_label_metrics(measurer, text_style, &label, 200, "");
-        if let Some(width) =
-            class_html_known_rendered_width_override_px(label.as_str(), text_style, false)
-        {
-            metrics.width = width;
-        }
+        let metrics = class_html_measure_label_metrics(
+            measurer,
+            text_style,
+            &label,
+            MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64,
+            "",
+        );
         return (metrics.width.max(0.0), metrics.height.max(0.0));
     }
 
@@ -2236,8 +2093,10 @@ fn layout_class_diagram_typed_inner(
     }
 
     let _ = engine;
-    let mut prepared = prepare_graph(g, 0)?;
-    let (mut fragments, _bounds) = layout_prepared(&mut prepared, &node_label_metrics_by_id)?;
+    let mut prepared = prepare_graph(g)?;
+    let mut render_roots = Vec::new();
+    let (mut fragments, _bounds) =
+        layout_prepared(&mut prepared, &node_label_metrics_by_id, &mut render_roots)?;
 
     let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
     for n in fragments.nodes.values() {
@@ -2321,10 +2180,7 @@ fn layout_class_diagram_typed_inner(
         let base_h = ns_node.height.max(1.0);
 
         let title = class_namespace_label(model, id).to_string();
-        let (mut tw, th) = label_metrics(&title, measurer, &text_style, wrap_mode_label);
-        if let Some(width) = class_namespace_known_rendered_width_override_px(&title, &text_style) {
-            tw = width;
-        }
+        let (tw, th) = label_metrics(&title, measurer, &text_style, wrap_mode_label);
         let min_title_w = (tw + namespace_padding).max(1.0);
         let width = if base_w <= min_title_w {
             min_title_w
@@ -2364,6 +2220,10 @@ fn layout_class_diagram_typed_inner(
 
     // Keep snapshots deterministic. The Dagre-ish pipeline may insert dummy nodes/edges in
     // iteration-dependent order, so sort the emitted layout lists by stable identifiers.
+    let render_tree = ClassRenderTree {
+        roots: render_roots,
+        top: fragments.render_root_id,
+    };
     let mut nodes: Vec<LayoutNode> = fragments.nodes.into_values().collect();
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
 
@@ -2390,16 +2250,7 @@ fn layout_class_diagram_typed_inner(
             .then_with(|| a.id.cmp(&b.id))
     });
 
-    let mut bounds = compute_bounds(&nodes, &edges, &clusters);
-    if should_mirror_note_heavy_tb_layout(model, &nodes)
-        && let Some(axis_x) = bounds.as_ref().map(|b| (b.min_x + b.max_x) / 2.0)
-    {
-        // Dagre can converge to mirrored, equal-crossing solutions on note-heavy TB class
-        // graphs. Mermaid consistently picks the left-leaning variant for these fixtures, so
-        // canonically reflect the layout only for the narrow note-heavy case.
-        mirror_class_layout_x(&mut nodes, &mut edges, &mut clusters, axis_x);
-        bounds = compute_bounds(&nodes, &edges, &clusters);
-    }
+    let bounds = compute_bounds(&nodes, &edges, &clusters);
 
     Ok(ClassDiagramLayout {
         nodes,
@@ -2407,6 +2258,7 @@ fn layout_class_diagram_typed_inner(
         clusters,
         bounds,
         class_row_metrics_by_id,
+        render_tree,
     })
 }
 
@@ -2427,113 +2279,6 @@ fn validate_class_namespace_parent_cycles(model: &ClassDiagramModel) -> Result<(
         }
     }
     Ok(())
-}
-
-fn mirror_layout_x_coord(x: f64, axis_x: f64) -> f64 {
-    axis_x * 2.0 - x
-}
-
-fn mirror_layout_label_x(label: &mut LayoutLabel, axis_x: f64) {
-    label.x = mirror_layout_x_coord(label.x, axis_x);
-}
-
-fn mirror_class_layout_x(
-    nodes: &mut [LayoutNode],
-    edges: &mut [LayoutEdge],
-    clusters: &mut [LayoutCluster],
-    axis_x: f64,
-) {
-    for node in nodes {
-        node.x = mirror_layout_x_coord(node.x, axis_x);
-    }
-
-    for edge in edges {
-        for point in &mut edge.points {
-            point.x = mirror_layout_x_coord(point.x, axis_x);
-        }
-        if let Some(label) = edge.label.as_mut() {
-            mirror_layout_label_x(label, axis_x);
-        }
-        if let Some(label) = edge.start_label_left.as_mut() {
-            mirror_layout_label_x(label, axis_x);
-        }
-        if let Some(label) = edge.start_label_right.as_mut() {
-            mirror_layout_label_x(label, axis_x);
-        }
-        if let Some(label) = edge.end_label_left.as_mut() {
-            mirror_layout_label_x(label, axis_x);
-        }
-        if let Some(label) = edge.end_label_right.as_mut() {
-            mirror_layout_label_x(label, axis_x);
-        }
-    }
-
-    for cluster in clusters {
-        cluster.x = mirror_layout_x_coord(cluster.x, axis_x);
-        mirror_layout_label_x(&mut cluster.title_label, axis_x);
-    }
-}
-
-fn should_mirror_note_heavy_tb_layout(model: &ClassDiagramModel, nodes: &[LayoutNode]) -> bool {
-    if normalize_dir(&model.direction) != "TB" {
-        return false;
-    }
-    if !model.namespaces.is_empty() {
-        return false;
-    }
-
-    let attached_notes: Vec<(&str, &str)> = model
-        .notes
-        .iter()
-        .filter_map(|note| {
-            note.class_id
-                .as_deref()
-                .map(|class_id| (note.id.as_str(), class_id))
-        })
-        .collect();
-    if attached_notes.len() < 2 {
-        return false;
-    }
-
-    let node_x_by_id: HashMap<&str, f64> = nodes
-        .iter()
-        .map(|node| (node.id.as_str(), node.x))
-        .collect();
-
-    let mut positive_note_offsets = 0usize;
-    let mut negative_note_offsets = 0usize;
-    for (note_id, class_id) in attached_notes {
-        let (Some(note_x), Some(class_x)) = (
-            node_x_by_id.get(note_id).copied(),
-            node_x_by_id.get(class_id).copied(),
-        ) else {
-            continue;
-        };
-        let delta_x = note_x - class_x;
-        if delta_x > 0.5 {
-            positive_note_offsets += 1;
-        } else if delta_x < -0.5 {
-            negative_note_offsets += 1;
-        }
-    }
-    if positive_note_offsets == 0 || negative_note_offsets != 0 {
-        return false;
-    }
-
-    let Some((from_x, to_x)) = model.relations.iter().find_map(|relation| {
-        if model.classes.get(relation.id1.as_str()).is_none()
-            || model.classes.get(relation.id2.as_str()).is_none()
-        {
-            return None;
-        }
-        let from_x = node_x_by_id.get(relation.id1.as_str()).copied()?;
-        let to_x = node_x_by_id.get(relation.id2.as_str()).copied()?;
-        Some((from_x, to_x))
-    }) else {
-        return false;
-    };
-
-    from_x + 0.5 < to_x
 }
 
 #[cfg(feature = "elk-layout")]
@@ -2563,10 +2308,8 @@ fn layout_class_diagram_elk_from_graph(
         &settings,
         measurer,
     );
-    let layout = elk::layout_source_ported(&elk_graph, elk::Algorithm::Layered).map_err(|err| {
-        Error::InvalidModel {
-            message: format!("Class ELK layout failed: {err}"),
-        }
+    let layout = elk::layout(&elk_graph).map_err(|err| Error::InvalidModel {
+        message: format!("Class ELK layout failed: {err}"),
     })?;
     class_layout_from_elk(
         model,
@@ -2804,17 +2547,12 @@ fn class_layout_from_elk(
             continue;
         };
         let title = class_namespace_label(model, id).to_string();
-        let (mut title_width, title_height) = label_metrics(
+        let (title_width, title_height) = label_metrics(
             &title,
             measurer,
             settings.text_style,
             settings.wrap_mode_label,
         );
-        if let Some(width) =
-            class_namespace_known_rendered_width_override_px(&title, settings.text_style)
-        {
-            title_width = width;
-        }
         let title_label = LayoutLabel {
             x: node.x,
             y: node.y - node.height / 2.0 + settings.title_margin_top + title_height / 2.0,
@@ -2873,12 +2611,26 @@ fn class_layout_from_elk(
     });
 
     let bounds = compute_bounds(&nodes, &edges, &clusters);
+    let render_tree = ClassRenderTree {
+        roots: vec![ClassRenderRoot {
+            namespace_id: None,
+            cluster_ids: clusters.iter().map(|cluster| cluster.id.clone()).collect(),
+            edge_ids: edges.iter().map(|edge| edge.id.clone()).collect(),
+            items: nodes
+                .iter()
+                .filter(|node| !node.is_cluster)
+                .map(|node| ClassRenderItem::Node(node.id.clone()))
+                .collect(),
+        }],
+        top: ClassRenderRootId(0),
+    };
     Ok(ClassDiagramLayout {
         nodes,
         edges,
         clusters,
         bounds,
         class_row_metrics_by_id,
+        render_tree,
     })
 }
 
@@ -3079,4 +2831,156 @@ fn compute_bounds(
     }
 
     Bounds::from_points(points)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::text::{
+        TextMeasurer, TextMetrics, TextStyle, VendoredFontMetricsTextMeasurer, WrapMode,
+    };
+
+    struct ClassProbeMeasurer;
+
+    struct ClassPrecisionMeasurer;
+
+    impl TextMeasurer for ClassProbeMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_svg_simple_text_bbox_width_px(&self, _text: &str, style: &TextStyle) -> f64 {
+            if style.font_family.as_deref() == Some("sans-serif") {
+                120.0
+            } else {
+                80.0
+            }
+        }
+
+        fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            17.0
+        }
+    }
+
+    impl TextMeasurer for ClassPrecisionMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: 73.123_456_789,
+                height: 17.25,
+                line_count: 1,
+            }
+        }
+    }
+
+    fn default_style() -> TextStyle {
+        TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        }
+    }
+
+    #[test]
+    fn class_create_text_width_uses_shared_mermaid_dimensions() {
+        let style = TextStyle {
+            font_family: Some("Arial".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+
+        assert_eq!(
+            super::class_html_create_text_width_px("unseen label", &ClassProbeMeasurer, &style),
+            130
+        );
+    }
+
+    #[test]
+    fn class_raw_code_and_anchor_metrics_measure_the_rendered_dom() {
+        let measurer = VendoredFontMetricsTextMeasurer::default();
+        let style = default_style();
+        let source = "<a href='https://example.com'><code>Entity</code></a>";
+        let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(source, true);
+        let expected = crate::text::measure_html_with_inline_styles(
+            &measurer,
+            &fragment,
+            &style,
+            Some(500.0),
+            WrapMode::HtmlLike,
+        );
+
+        let actual = super::class_html_measure_label_metrics(&measurer, &style, source, 500, "");
+        let literal = measurer.measure_wrapped(source, &style, Some(500.0), WrapMode::HtmlLike);
+
+        assert_eq!(actual.width, expected.width);
+        assert_eq!(actual.height, expected.height);
+        assert_eq!(actual.line_count, expected.line_count);
+        assert!(
+            actual.width < literal.width,
+            "actual={actual:?}, literal={literal:?}"
+        );
+    }
+
+    #[test]
+    fn class_plain_underscore_label_preserves_host_precision() {
+        let metrics = super::class_html_measure_label_metrics(
+            &ClassPrecisionMeasurer,
+            &default_style(),
+            "driver_license",
+            200,
+            "",
+        );
+
+        assert_eq!(metrics.width, 73.123_456_789);
+        assert_eq!(metrics.line_count, 1);
+    }
+
+    #[test]
+    fn class_svg_plain_underscore_uses_single_tspan_bbox_precision() {
+        assert_eq!(
+            super::class_svg_single_line_plain_label_width_px(
+                "driver_license",
+                &ClassPrecisionMeasurer,
+                &default_style(),
+            ),
+            Some(73.123_456_789)
+        );
+    }
+
+    #[test]
+    fn class_svg_single_tspan_bbox_uses_semantic_markdown_analysis() {
+        let style = default_style();
+        for literal in [
+            "driver_license",
+            "*unclosed",
+            "literal ` backtick",
+            "plain title",
+        ] {
+            assert_eq!(
+                super::class_svg_single_line_plain_label_width_px(
+                    literal,
+                    &ClassPrecisionMeasurer,
+                    &style,
+                ),
+                Some(73.123_456_789),
+                "literal={literal:?}"
+            );
+        }
+
+        for non_plain_single_line in ["*emphasis*", "__strong__", "first<br/>second"] {
+            assert_eq!(
+                super::class_svg_single_line_plain_label_width_px(
+                    non_plain_single_line,
+                    &ClassPrecisionMeasurer,
+                    &style,
+                ),
+                None,
+                "label={non_plain_single_line:?}"
+            );
+        }
+    }
 }

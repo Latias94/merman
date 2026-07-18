@@ -36,7 +36,7 @@ flowchart LR
 | Boundary | Trust level | Notes |
 | --- | --- | --- |
 | Mermaid source text | Untrusted | Includes labels, click URLs, class/style directives, frontmatter, and `%%{init}%%`. |
-| Diagram-level config | Untrusted by default | Default `secure` keys prevent diagrams from changing high-risk config such as `securityLevel`, `fontFamily`, `themeCSS`, and `themeVariables`. |
+| Diagram-level config | Untrusted by default | Generated Mermaid config shape rejects unknown, null, and prototype-pollution directive keys. Merman's typed hardened `secure` policy prevents diagrams from changing high-risk config such as `securityLevel`, `fontFamily`, `themeCSS`, and `themeVariables`. |
 | Site config | Trusted | Supplied by the embedding application. Use it for host policy, theme, and trusted CSS only. |
 | Host theme and custom SVG pipeline | Trusted | Custom postprocessors can inject or preserve arbitrary SVG/CSS. |
 | Icon registry | Trusted | `IconSvg` bodies are injected as SVG fragments after ID scoping. `resvg_safe` cleans active output content, but parity/custom pipelines can preserve arbitrary icon SVG. Do not register user-supplied SVG without a trusted output path or external sanitizer. |
@@ -47,7 +47,8 @@ flowchart LR
 
 | Threat | Mitigation | Coverage |
 | --- | --- | --- |
-| Diagram config downgrades `securityLevel` or injects CSS through config | Default secure keys filter diagram-level overrides before effective config is used. | Core parse metadata and public render API tests. |
+| Diagram config introduces unknown keys, prototype-pollution keys, or unsafe dictionary values | Init directives are checked against the generated Mermaid 11.16 key shape; dictionary-style values use narrow upstream validators. | Core sanitizer unit tests and the end-to-end directive config test. |
+| Diagram config downgrades `securityLevel` or injects CSS through config | The typed ten-key default site policy filters secure keys recursively before effective config is used. The pure upstream artifact remains six-key data. | Core config, parse metadata, and public render API tests. |
 | Script or data URLs in labels and links | Mermaid-compatible `format_url` and `sanitize_url` logic, strict by default. | Core URL tests plus SVG integration tests. |
 | HTML/script in labels | DOMPurify-inspired text sanitizer backed by generated allowlists when full sanitization is enabled. | Core sanitizer tests. |
 | `<foreignObject>`, active SVG content, and unsupported CSS in raster paths | `SvgPipeline::readable()` adds text fallbacks; `SvgPipeline::resvg_safe()` strips foreignObject, active SVG elements, event attributes, unsafe URL attributes, unsafe style/presentation URL values, and unsupported CSS patterns. | Pipeline tests and public API regression tests. |
@@ -104,6 +105,10 @@ without consumer demand and sanitizer validation.
 ## Security Regression Checklist
 
 - Diagram-level `%%{init}%%` cannot override default secure keys for effective rendering.
+- Init directives reject unknown, null, `__`, `proto`, and `constr` keys while retaining legal
+  function and explicit-`undefined` keys from the generated shape.
+- Dictionary-style `nodeColors`, `filenameIcons`, and `extensionIcons` preserve valid user keys but
+  reject suspicious keys and invalid values.
 - Strict-mode click URLs do not emit `javascript:` or other unsafe hrefs.
 - Loose HTML labels rendered through `resvg_safe` do not retain `<foreignObject>` or active HTML.
 - `resvg_safe` strips unsupported CSS patterns such as `@keyframes`, `:root`, and animation

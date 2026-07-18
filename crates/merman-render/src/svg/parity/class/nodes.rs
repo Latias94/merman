@@ -1,6 +1,6 @@
 use super::context::ClassRenderDetails;
 use super::groups::{
-    ClassClusterEdgeGroupsRenderContext, ClassClusterEdgeGroupsRenderState,
+    ClassSplitEdgeGroupsRenderContext, ClassSplitEdgeGroupsRenderState,
     render_class_split_edge_groups,
 };
 use super::interface::{
@@ -8,9 +8,8 @@ use super::interface::{
 };
 use super::label::class_apply_inline_styles;
 use super::namespace::{
-    ClassNamespaceSubgraphState, ClassNodeRenderOrder, build_class_node_render_order,
-    class_namespace_root_offset, class_render_parent_for_id, close_class_namespace_subgraph,
-    render_class_namespace_clusters_in_root, transition_class_namespace_subgraph,
+    ClassNamespaceClusterGroupContext, class_namespace_root_offset,
+    render_class_namespace_cluster_group, render_class_namespace_clusters_in_root,
 };
 use super::node::{
     ClassHtmlNodeBodyContext, ClassNodeBasicContainerContext, ClassNodeRenderPosition,
@@ -20,15 +19,14 @@ use super::node::{
 use super::note::{ClassNoteRenderContext, ClassNoteRenderState, render_class_note_node};
 use super::settings::ClassRenderSettings;
 use super::*;
-use super::{ClassSvgInterface, ClassSvgModel, ClassSvgNode, ClassSvgNote};
-use crate::model::{Bounds, ClassDiagramLayout, LayoutEdge};
+use super::{ClassSvgInterface, ClassSvgNode, ClassSvgNote};
+use crate::model::{Bounds, ClassDiagramLayout, ClassRenderItem, ClassRenderRootId, LayoutEdge};
+use crate::{Error, Result};
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Copy)]
 struct ClassNodeRootOffsets {
-    nodes_root_dx: f64,
-    nodes_root_dy: f64,
     namespace_root_dx: f64,
     namespace_root_dy: f64,
     in_namespace_root: bool,
@@ -44,7 +42,6 @@ pub(super) struct ClassNodesRenderState<'a> {
 
 pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) layout: &'a ClassDiagramLayout,
-    pub(super) model: &'a ClassSvgModel,
     pub(super) class_nodes_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNode>,
     pub(super) note_by_id: &'a FxHashMap<&'a str, &'a ClassSvgNote>,
     pub(super) iface_by_id: &'a FxHashMap<&'a str, &'a ClassSvgInterface>,
@@ -55,25 +52,13 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) timing_enabled: bool,
-    pub(super) wrap_nodes_root: bool,
-    pub(super) single_namespace_id: Option<&'a str>,
-    pub(super) render_namespaces_as_subgraphs: bool,
-    pub(super) nodes_root_dx: f64,
-    pub(super) nodes_root_dy: f64,
 }
 
-struct ClassNamespaceTreePlan<'a> {
-    namespace_order: Vec<&'a str>,
-    roots: Vec<&'a str>,
-    children_by_ns: HashMap<&'a str, Vec<&'a str>>,
-    direct_node_counts: HashMap<&'a str, usize>,
-    root_by_node_id: HashMap<&'a str, Option<&'a str>>,
-}
-
-pub(super) fn render_class_nodes(
+pub(super) fn render_class_render_tree(
     state: ClassNodesRenderState<'_>,
     ctx: &ClassNodesRenderContext<'_>,
-) {
+    edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+) -> Result<()> {
     let ClassNodesRenderState {
         out,
         content_bounds,
@@ -81,362 +66,392 @@ pub(super) fn render_class_nodes(
         sanitize_config,
         borrowed_sanitize_config,
     } = state;
-    let ClassNodeRenderOrder {
-        layout_nodes_by_id,
-        ordered_ids,
-        namespace_key_set,
-        clusters_by_id,
-    } = build_class_node_render_order(
-        ctx.layout,
-        ctx.model,
-        ctx.class_nodes_by_id,
-        ctx.note_by_id,
-        ctx.iface_by_id,
-        ctx.wrap_nodes_root,
-        ctx.single_namespace_id,
-        ctx.render_namespaces_as_subgraphs,
-    );
+    let layout_nodes_by_id = ctx
+        .layout
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect::<FxHashMap<_, _>>();
+    let clusters_by_id = ctx
+        .layout
+        .clusters
+        .iter()
+        .map(|cluster| (cluster.id.as_str(), cluster))
+        .collect::<HashMap<_, _>>();
+    let edges_by_id = ctx
+        .layout
+        .edges
+        .iter()
+        .map(|edge| (edge.id.as_str(), edge))
+        .collect::<HashMap<_, _>>();
+    validate_class_render_tree(ctx, &layout_nodes_by_id, &clusters_by_id, &edges_by_id)?;
 
-    let mut inner_nodes_group_open = ctx.wrap_nodes_root;
-    let mut namespace_subgraph_state = ClassNamespaceSubgraphState::default();
-    for id in ordered_ids {
-        if ctx.wrap_nodes_root && inner_nodes_group_open {
-            let parent = class_render_parent_for_id(
-                id,
-                ctx.class_nodes_by_id,
-                ctx.note_by_id,
-                ctx.iface_by_id,
-            );
-            let should_be_inner = ctx.single_namespace_id.is_some_and(|ns| parent == Some(ns));
-            if !should_be_inner {
-                // Close the nested wrapper, then continue emitting remaining nodes at the outer level.
-                out.push_str("</g>"); // inner nodes
-                out.push_str("</g>"); // inner root
-                inner_nodes_group_open = false;
+    enum RenderFrame<'a> {
+        Enter {
+            root_id: ClassRenderRootId,
+            parent_origin: (f64, f64),
+        },
+        Node {
+            id: &'a str,
+            origin: (f64, f64),
+            in_namespace_root: bool,
+        },
+        Close {
+            in_namespace_root: bool,
+        },
+    }
+
+    let mut stack = vec![RenderFrame::Enter {
+        root_id: ctx.layout.render_tree.top,
+        parent_origin: (0.0, 0.0),
+    }];
+    while let Some(frame) = stack.pop() {
+        match frame {
+            RenderFrame::Enter {
+                root_id,
+                parent_origin,
+            } => {
+                let root = ctx
+                    .layout
+                    .render_tree
+                    .roots
+                    .get(root_id.0)
+                    .expect("validated Class render root id");
+                let namespace_id = root.namespace_id.as_deref();
+                let origin = namespace_id
+                    .map(|id| {
+                        clusters_by_id
+                            .get(id)
+                            .copied()
+                            .expect("validated Class namespace root cluster")
+                    })
+                    .map(class_namespace_root_offset)
+                    .unwrap_or((0.0, 0.0));
+                let in_namespace_root = namespace_id.is_some();
+
+                if let Some(namespace_id) = namespace_id {
+                    let _ = write!(
+                        out,
+                        r#"<g class="root" transform="translate({}, {})">"#,
+                        fmt(origin.0 - parent_origin.0),
+                        fmt(origin.1 - parent_origin.1)
+                    );
+                    render_class_namespace_clusters_in_root(
+                        out,
+                        content_bounds,
+                        &clusters_by_id,
+                        &root
+                            .cluster_ids
+                            .iter()
+                            .map(String::as_str)
+                            .collect::<Vec<_>>(),
+                        ClassNamespaceClusterGroupContext {
+                            diagram_id: ctx.diagram_id,
+                            content_tx: ctx.content_tx,
+                            content_ty: ctx.content_ty,
+                            bounds_dx: 0.0,
+                            bounds_dy: 0.0,
+                            look: ctx.settings.look.as_str(),
+                            timing_enabled: ctx.timing_enabled,
+                        },
+                        namespace_id,
+                        origin.0,
+                        origin.1,
+                    );
+                } else {
+                    let clusters = root
+                        .cluster_ids
+                        .iter()
+                        .map(|id| {
+                            clusters_by_id
+                                .get(id.as_str())
+                                .copied()
+                                .expect("validated Class render cluster")
+                                .clone()
+                        })
+                        .collect::<Vec<_>>();
+                    detail.clusters += render_class_namespace_cluster_group(
+                        out,
+                        content_bounds,
+                        &clusters,
+                        ClassNamespaceClusterGroupContext {
+                            diagram_id: ctx.diagram_id,
+                            content_tx: ctx.content_tx,
+                            content_ty: ctx.content_ty,
+                            bounds_dx: 0.0,
+                            bounds_dy: 0.0,
+                            look: ctx.settings.look.as_str(),
+                            timing_enabled: ctx.timing_enabled,
+                        },
+                    );
+                }
+
+                let edges = root
+                    .edge_ids
+                    .iter()
+                    .map(|id| {
+                        edges_by_id
+                            .get(id.as_str())
+                            .copied()
+                            .expect("validated Class render edge")
+                            .clone()
+                    })
+                    .collect::<Vec<_>>();
+                let split = render_class_split_edges_for_namespace(
+                    content_bounds,
+                    detail,
+                    edge_ctx,
+                    &edges,
+                    origin.0,
+                    origin.1,
+                    in_namespace_root,
+                );
+                out.push_str(&split.edge_paths);
+                out.push_str(&split.edge_labels);
+                out.push_str(r#"<g class="nodes">"#);
+
+                stack.push(RenderFrame::Close { in_namespace_root });
+                for item in root.items.iter().rev() {
+                    match item {
+                        ClassRenderItem::Node(id) => stack.push(RenderFrame::Node {
+                            id,
+                            origin,
+                            in_namespace_root,
+                        }),
+                        ClassRenderItem::Subgraph(child) => stack.push(RenderFrame::Enter {
+                            root_id: *child,
+                            parent_origin: origin,
+                        }),
+                    }
+                }
             }
-        }
-
-        if ctx.render_namespaces_as_subgraphs {
-            let parent = class_render_parent_for_id(
+            RenderFrame::Node {
                 id,
-                ctx.class_nodes_by_id,
-                ctx.note_by_id,
-                ctx.iface_by_id,
-            );
-            let parent = parent.filter(|p| namespace_key_set.contains(p));
-            transition_class_namespace_subgraph(
-                out,
-                content_bounds,
-                &mut namespace_subgraph_state,
-                parent,
-                &clusters_by_id,
-                ctx.diagram_id,
-                ctx.settings.look.as_str(),
-            );
-        }
-
-        let (active_nodes_root_dx, active_nodes_root_dy) =
-            if ctx.wrap_nodes_root && inner_nodes_group_open {
-                (ctx.nodes_root_dx, ctx.nodes_root_dy)
-            } else {
-                (0.0, 0.0)
-            };
-        let (active_namespace_root_dx, active_namespace_root_dy) =
-            namespace_subgraph_state.root_offset.unwrap_or((0.0, 0.0));
-
-        let in_namespace_root = ctx.render_namespaces_as_subgraphs
-            && namespace_subgraph_state.active_subgraph.is_some();
-        render_class_node_id(
-            ClassNodesRenderState {
-                out,
-                content_bounds,
-                detail,
-                sanitize_config,
-                borrowed_sanitize_config,
-            },
-            ctx,
-            &layout_nodes_by_id,
-            id,
-            ClassNodeRootOffsets {
-                nodes_root_dx: active_nodes_root_dx,
-                nodes_root_dy: active_nodes_root_dy,
-                namespace_root_dx: active_namespace_root_dx,
-                namespace_root_dy: active_namespace_root_dy,
+                origin,
                 in_namespace_root,
-            },
-        );
-    }
-
-    if ctx.render_namespaces_as_subgraphs {
-        close_class_namespace_subgraph(out, &mut namespace_subgraph_state);
-    }
-
-    if inner_nodes_group_open {
-        out.push_str("</g>"); // inner nodes
-        out.push_str("</g>"); // inner root
-    }
-}
-
-pub(super) fn render_class_namespace_subgraph_body(
-    state: ClassNodesRenderState<'_>,
-    ctx: &ClassNodesRenderContext<'_>,
-    edge_ctx: &ClassClusterEdgeGroupsRenderContext<'_>,
-) {
-    let ClassNodesRenderState {
-        out,
-        content_bounds,
-        detail,
-        sanitize_config,
-        borrowed_sanitize_config,
-    } = state;
-
-    let ClassNodeRenderOrder {
-        layout_nodes_by_id,
-        ordered_ids,
-        namespace_key_set: _,
-        clusters_by_id,
-    } = build_class_node_render_order(
-        ctx.layout,
-        ctx.model,
-        ctx.class_nodes_by_id,
-        ctx.note_by_id,
-        ctx.iface_by_id,
-        false,
-        None,
-        true,
-    );
-
-    let plan = build_class_namespace_tree_plan(
-        ctx,
-        &ordered_ids,
-        ctx.class_nodes_by_id,
-        ctx.note_by_id,
-        ctx.iface_by_id,
-    );
-    let (outer_edges, edges_by_root) =
-        bucket_class_namespace_edges(edge_ctx.edges, edge_ctx, &plan);
-    let outer_has_edges = !outer_edges.is_empty();
-    let outer_split = render_class_split_edges_for_namespace(
-        out,
-        content_bounds,
-        detail,
-        edge_ctx,
-        &outer_edges,
-        0.0,
-        0.0,
-        false,
-    );
-    out.push_str(&outer_split.edge_labels);
-    if !outer_has_edges {
-        out.push_str(&outer_split.edge_paths);
-    }
-
-    out.push_str(r#"<g class="nodes">"#);
-    for ns_id in &plan.roots {
-        render_class_namespace_root(
-            out,
-            content_bounds,
-            detail,
-            sanitize_config,
-            borrowed_sanitize_config,
-            ctx,
-            edge_ctx,
-            &layout_nodes_by_id,
-            &ordered_ids,
-            &clusters_by_id,
-            &plan,
-            &edges_by_root,
-            ns_id,
-        );
-    }
-    for id in &ordered_ids {
-        if plan.root_by_node_id.get(id).copied().flatten().is_some() {
-            continue;
-        }
-        render_class_node_id(
-            ClassNodesRenderState {
-                out,
-                content_bounds,
-                detail,
-                sanitize_config,
-                borrowed_sanitize_config,
-            },
-            ctx,
-            &layout_nodes_by_id,
-            id,
-            ClassNodeRootOffsets {
-                nodes_root_dx: 0.0,
-                nodes_root_dy: 0.0,
-                namespace_root_dx: 0.0,
-                namespace_root_dy: 0.0,
-                in_namespace_root: false,
-            },
-        );
-    }
-    out.push_str("</g>");
-
-    if outer_has_edges {
-        out.push_str(&outer_split.edge_paths);
-    }
-}
-
-fn build_class_namespace_tree_plan<'a>(
-    ctx: &ClassNodesRenderContext<'a>,
-    ordered_ids: &[&'a str],
-    class_nodes_by_id: &FxHashMap<&'a str, &'a ClassSvgNode>,
-    note_by_id: &FxHashMap<&'a str, &'a ClassSvgNote>,
-    iface_by_id: &FxHashMap<&'a str, &'a ClassSvgInterface>,
-) -> ClassNamespaceTreePlan<'a> {
-    let namespace_order = crate::class::class_namespace_ids_in_decl_order(ctx.model);
-    let namespace_set = namespace_order.iter().copied().collect::<HashSet<_>>();
-    let mut roots = Vec::new();
-    let mut children_by_ns: HashMap<&str, Vec<&str>> = HashMap::new();
-    for ns_id in &namespace_order {
-        let parent = ctx
-            .model
-            .namespaces
-            .get(*ns_id)
-            .and_then(|ns| ns.parent.as_deref())
-            .filter(|parent| namespace_set.contains(parent));
-        if let Some(parent) = parent {
-            children_by_ns.entry(parent).or_default().push(*ns_id);
-        } else {
-            roots.push(*ns_id);
-        }
-    }
-
-    let mut direct_node_counts: HashMap<&str, usize> = HashMap::new();
-    for id in ordered_ids {
-        if let Some(parent) =
-            class_render_parent_for_id(id, class_nodes_by_id, note_by_id, iface_by_id)
-                .filter(|parent| namespace_set.contains(parent))
-        {
-            *direct_node_counts.entry(parent).or_insert(0) += 1;
-        }
-    }
-
-    let mut root_by_node_id = HashMap::new();
-    for id in ordered_ids {
-        let root = class_render_parent_for_id(id, class_nodes_by_id, note_by_id, iface_by_id)
-            .filter(|parent| namespace_set.contains(parent))
-            .and_then(|parent| {
-                class_namespace_flat_render_root(parent, ctx.model, &direct_node_counts)
-            });
-        root_by_node_id.insert(*id, root);
-    }
-
-    ClassNamespaceTreePlan {
-        namespace_order,
-        roots,
-        children_by_ns,
-        direct_node_counts,
-        root_by_node_id,
-    }
-}
-
-fn class_namespace_flat_render_root<'a>(
-    ns_id: &'a str,
-    model: &'a ClassSvgModel,
-    direct_node_counts: &HashMap<&'a str, usize>,
-) -> Option<&'a str> {
-    let mut cur = Some(ns_id);
-    let mut selected = None;
-    while let Some(id) = cur {
-        if direct_node_counts.get(id).copied().unwrap_or(0) > 0 {
-            selected = Some(id);
-        }
-        cur = model.namespaces.get(id).and_then(|ns| ns.parent.as_deref());
-    }
-    selected.or(Some(ns_id))
-}
-
-fn class_namespace_is_descendant_or_self(
-    ns_id: &str,
-    ancestor: &str,
-    model: &ClassSvgModel,
-) -> bool {
-    if ns_id == ancestor {
-        return true;
-    }
-    let mut cur = model
-        .namespaces
-        .get(ns_id)
-        .and_then(|ns| ns.parent.as_deref());
-    while let Some(parent) = cur {
-        if parent == ancestor {
-            return true;
-        }
-        cur = model
-            .namespaces
-            .get(parent)
-            .and_then(|ns| ns.parent.as_deref());
-    }
-    false
-}
-
-fn bucket_class_namespace_edges<'a>(
-    edges: &'a [LayoutEdge],
-    edge_ctx: &ClassClusterEdgeGroupsRenderContext<'a>,
-    plan: &ClassNamespaceTreePlan<'a>,
-) -> (Vec<LayoutEdge>, HashMap<&'a str, Vec<LayoutEdge>>) {
-    let mut outer_edges = Vec::new();
-    let mut edges_by_root: HashMap<&str, Vec<LayoutEdge>> = HashMap::new();
-
-    for edge in edges {
-        let mut from_root = plan
-            .root_by_node_id
-            .get(edge.from.as_str())
-            .copied()
-            .flatten();
-        let mut to_root = plan
-            .root_by_node_id
-            .get(edge.to.as_str())
-            .copied()
-            .flatten();
-        if (from_root.is_none() || to_root.is_none())
-            && let Some(rel) = edge_ctx.relations_by_id.get(edge.id.as_str()).copied()
-        {
-            from_root = from_root.or_else(|| {
-                plan.root_by_node_id
-                    .get(rel.id1.as_str())
-                    .copied()
-                    .flatten()
-            });
-            to_root = to_root.or_else(|| {
-                plan.root_by_node_id
-                    .get(rel.id2.as_str())
-                    .copied()
-                    .flatten()
-            });
-        }
-
-        match (from_root, to_root) {
-            (Some(from_root), Some(to_root)) if from_root == to_root => {
-                edges_by_root
-                    .entry(from_root)
-                    .or_default()
-                    .push(edge.clone());
+            } => render_class_node_id(
+                ClassNodesRenderState {
+                    out,
+                    content_bounds,
+                    detail,
+                    sanitize_config,
+                    borrowed_sanitize_config,
+                },
+                ctx,
+                &layout_nodes_by_id,
+                id,
+                ClassNodeRootOffsets {
+                    namespace_root_dx: origin.0,
+                    namespace_root_dy: origin.1,
+                    in_namespace_root,
+                },
+            ),
+            RenderFrame::Close { in_namespace_root } => {
+                out.push_str("</g>");
+                if in_namespace_root {
+                    out.push_str("</g>");
+                }
             }
-            _ => outer_edges.push(edge.clone()),
+        }
+    }
+    Ok(())
+}
+
+fn validate_class_render_tree(
+    ctx: &ClassNodesRenderContext<'_>,
+    layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
+    clusters_by_id: &HashMap<&str, &crate::model::LayoutCluster>,
+    edges_by_id: &HashMap<&str, &LayoutEdge>,
+) -> Result<()> {
+    let tree = &ctx.layout.render_tree;
+    if tree.roots.is_empty() || tree.top.0 >= tree.roots.len() {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "invalid Class render tree top {} for {} roots",
+                tree.top.0,
+                tree.roots.len()
+            ),
+        });
+    }
+    if layout_nodes_by_id.len() != ctx.layout.nodes.len()
+        || clusters_by_id.len() != ctx.layout.clusters.len()
+        || edges_by_id.len() != ctx.layout.edges.len()
+    {
+        return Err(Error::InvalidModel {
+            message: "duplicate identifiers in Class layout artifact".to_string(),
+        });
+    }
+
+    enum ValidationFrame {
+        Enter(ClassRenderRootId),
+        Exit(ClassRenderRootId),
+    }
+
+    let mut root_state = vec![0_u8; tree.roots.len()];
+    let mut owned_nodes = HashSet::new();
+    let mut owned_clusters = HashSet::new();
+    let mut owned_edges = HashSet::new();
+    let mut stack = vec![ValidationFrame::Enter(tree.top)];
+    while let Some(frame) = stack.pop() {
+        match frame {
+            ValidationFrame::Enter(root_id) => {
+                let Some(root) = tree.roots.get(root_id.0) else {
+                    return Err(Error::InvalidModel {
+                        message: format!("missing Class render root {}", root_id.0),
+                    });
+                };
+                match root_state[root_id.0] {
+                    1 => {
+                        return Err(Error::InvalidModel {
+                            message: format!("cycle in Class render tree at root {}", root_id.0),
+                        });
+                    }
+                    2 => {
+                        return Err(Error::InvalidModel {
+                            message: format!("Class render root {} has multiple owners", root_id.0),
+                        });
+                    }
+                    _ => {}
+                }
+                root_state[root_id.0] = 1;
+                stack.push(ValidationFrame::Exit(root_id));
+
+                if let Some(namespace_id) = root.namespace_id.as_deref()
+                    && !clusters_by_id.contains_key(namespace_id)
+                {
+                    return Err(Error::InvalidModel {
+                        message: format!(
+                            "Class render root {} references missing namespace cluster {namespace_id}",
+                            root_id.0
+                        ),
+                    });
+                }
+                for cluster_id in &root.cluster_ids {
+                    if !clusters_by_id.contains_key(cluster_id.as_str()) {
+                        return Err(Error::InvalidModel {
+                            message: format!(
+                                "Class render root {} references missing cluster {cluster_id}",
+                                root_id.0
+                            ),
+                        });
+                    }
+                    if !owned_clusters.insert(cluster_id.as_str()) {
+                        return Err(Error::InvalidModel {
+                            message: format!(
+                                "Class cluster {cluster_id} has multiple render owners"
+                            ),
+                        });
+                    }
+                }
+                for edge_id in &root.edge_ids {
+                    if !edges_by_id.contains_key(edge_id.as_str()) {
+                        return Err(Error::InvalidModel {
+                            message: format!(
+                                "Class render root {} references missing edge {edge_id}",
+                                root_id.0
+                            ),
+                        });
+                    }
+                    if !owned_edges.insert(edge_id.as_str()) {
+                        return Err(Error::InvalidModel {
+                            message: format!("Class edge {edge_id} has multiple render owners"),
+                        });
+                    }
+                }
+                for item in root.items.iter().rev() {
+                    match item {
+                        ClassRenderItem::Node(node_id) => {
+                            let Some(node) = layout_nodes_by_id.get(node_id.as_str()) else {
+                                return Err(Error::InvalidModel {
+                                    message: format!(
+                                        "Class render root {} references missing node {node_id}",
+                                        root_id.0
+                                    ),
+                                });
+                            };
+                            if node.is_cluster {
+                                return Err(Error::InvalidModel {
+                                    message: format!(
+                                        "Class render item {node_id} is a cluster, not a leaf node"
+                                    ),
+                                });
+                            }
+                            if !ctx.class_nodes_by_id.contains_key(node_id.as_str())
+                                && !ctx.note_by_id.contains_key(node_id.as_str())
+                                && !ctx.iface_by_id.contains_key(node_id.as_str())
+                            {
+                                return Err(Error::InvalidModel {
+                                    message: format!(
+                                        "Class render node {node_id} has no semantic node payload"
+                                    ),
+                                });
+                            }
+                            if !owned_nodes.insert(node_id.as_str()) {
+                                return Err(Error::InvalidModel {
+                                    message: format!(
+                                        "Class node {node_id} has multiple render owners"
+                                    ),
+                                });
+                            }
+                        }
+                        ClassRenderItem::Subgraph(child_id) => {
+                            if child_id.0 >= tree.roots.len() {
+                                return Err(Error::InvalidModel {
+                                    message: format!(
+                                        "Class render root {} references missing child root {}",
+                                        root_id.0, child_id.0
+                                    ),
+                                });
+                            }
+                            stack.push(ValidationFrame::Enter(*child_id));
+                        }
+                    }
+                }
+            }
+            ValidationFrame::Exit(root_id) => root_state[root_id.0] = 2,
         }
     }
 
-    (outer_edges, edges_by_root)
+    if let Some(unattached) = root_state.iter().position(|state| *state == 0) {
+        return Err(Error::InvalidModel {
+            message: format!("unattached Class render root {unattached}"),
+        });
+    }
+    for node in &ctx.layout.nodes {
+        if !node.is_cluster && !owned_nodes.contains(node.id.as_str()) {
+            return Err(Error::InvalidModel {
+                message: format!("Class node {} has no render owner", node.id),
+            });
+        }
+    }
+    for cluster in &ctx.layout.clusters {
+        if !owned_clusters.contains(cluster.id.as_str()) {
+            return Err(Error::InvalidModel {
+                message: format!("Class cluster {} has no render owner", cluster.id),
+            });
+        }
+    }
+    for edge in &ctx.layout.edges {
+        if !owned_edges.contains(edge.id.as_str()) {
+            return Err(Error::InvalidModel {
+                message: format!("Class edge {} has no render owner", edge.id),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
 fn render_class_split_edges_for_namespace(
-    out: &mut String,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    edge_ctx: &ClassClusterEdgeGroupsRenderContext<'_>,
+    edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     edges: &[LayoutEdge],
     root_dx: f64,
     root_dy: f64,
     in_namespace_root: bool,
 ) -> super::groups::ClassSplitEdgeGroups {
-    let local_ctx = ClassClusterEdgeGroupsRenderContext {
-        clusters: edge_ctx.clusters,
+    let local_ctx = ClassSplitEdgeGroupsRenderContext {
         edges,
         relations_by_id: edge_ctx.relations_by_id,
         relation_index_by_id: edge_ctx.relation_index_by_id,
@@ -460,8 +475,7 @@ fn render_class_split_edges_for_namespace(
         timing_enabled: edge_ctx.timing_enabled,
     };
     render_class_split_edge_groups(
-        ClassClusterEdgeGroupsRenderState {
-            out,
+        ClassSplitEdgeGroupsRenderState {
             content_bounds,
             detail,
         },
@@ -469,152 +483,6 @@ fn render_class_split_edges_for_namespace(
         if in_namespace_root { root_dx } else { 0.0 },
         if in_namespace_root { root_dy } else { 0.0 },
     )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn render_class_namespace_root(
-    out: &mut String,
-    content_bounds: &mut Option<Bounds>,
-    detail: &mut ClassRenderDetails,
-    sanitize_config: &mut Option<merman_core::MermaidConfig>,
-    borrowed_sanitize_config: Option<&merman_core::MermaidConfig>,
-    ctx: &ClassNodesRenderContext<'_>,
-    edge_ctx: &ClassClusterEdgeGroupsRenderContext<'_>,
-    layout_nodes_by_id: &FxHashMap<&str, &crate::model::LayoutNode>,
-    ordered_ids: &[&str],
-    clusters_by_id: &HashMap<&str, &crate::model::LayoutCluster>,
-    plan: &ClassNamespaceTreePlan<'_>,
-    edges_by_root: &HashMap<&str, Vec<LayoutEdge>>,
-    ns_id: &str,
-) {
-    enum NamespaceRootFrame<'a> {
-        Enter(&'a str),
-        Close { has_edges: bool, edge_paths: String },
-    }
-
-    let mut stack = vec![NamespaceRootFrame::Enter(ns_id)];
-    while let Some(frame) = stack.pop() {
-        match frame {
-            NamespaceRootFrame::Enter(ns_id) => {
-                let Some(root_cluster) = clusters_by_id.get(ns_id).copied() else {
-                    continue;
-                };
-                let (root_dx, root_dy) = class_namespace_root_offset(root_cluster);
-                let _ = write!(
-                    out,
-                    r#"<g class="root" transform="translate({}, {})">"#,
-                    fmt(root_dx),
-                    fmt(root_dy)
-                );
-
-                let flatten_descendants =
-                    plan.direct_node_counts.get(ns_id).copied().unwrap_or(0) > 0;
-                let cluster_ids = if flatten_descendants {
-                    plan.namespace_order
-                        .iter()
-                        .copied()
-                        .filter(|candidate| {
-                            class_namespace_is_descendant_or_self(candidate, ns_id, ctx.model)
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    vec![ns_id]
-                };
-                render_class_namespace_clusters_in_root(
-                    out,
-                    content_bounds,
-                    clusters_by_id,
-                    &cluster_ids,
-                    super::namespace::ClassNamespaceClusterGroupContext {
-                        diagram_id: ctx.diagram_id,
-                        content_tx: ctx.content_tx,
-                        content_ty: ctx.content_ty,
-                        bounds_dx: 0.0,
-                        bounds_dy: 0.0,
-                        look: ctx.settings.look.as_str(),
-                        timing_enabled: ctx.timing_enabled,
-                    },
-                    ns_id,
-                    root_dx,
-                    root_dy,
-                );
-
-                let edges = edges_by_root
-                    .get(ns_id)
-                    .map(|edges| edges.as_slice())
-                    .unwrap_or(&[]);
-                let has_edges = !edges.is_empty();
-                let split = render_class_split_edges_for_namespace(
-                    out,
-                    content_bounds,
-                    detail,
-                    edge_ctx,
-                    edges,
-                    root_dx,
-                    root_dy,
-                    true,
-                );
-                out.push_str(&split.edge_labels);
-                if !has_edges {
-                    out.push_str(&split.edge_paths);
-                }
-
-                out.push_str(r#"<g class="nodes">"#);
-                if flatten_descendants {
-                    for id in ordered_ids {
-                        if plan.root_by_node_id.get(id).copied().flatten() != Some(ns_id) {
-                            continue;
-                        }
-                        render_class_node_id(
-                            ClassNodesRenderState {
-                                out,
-                                content_bounds,
-                                detail,
-                                sanitize_config,
-                                borrowed_sanitize_config,
-                            },
-                            ctx,
-                            layout_nodes_by_id,
-                            id,
-                            ClassNodeRootOffsets {
-                                nodes_root_dx: 0.0,
-                                nodes_root_dy: 0.0,
-                                namespace_root_dx: root_dx,
-                                namespace_root_dy: root_dy,
-                                in_namespace_root: true,
-                            },
-                        );
-                    }
-                    out.push_str("</g>");
-                    if has_edges {
-                        out.push_str(&split.edge_paths);
-                    }
-                    out.push_str("</g>");
-                    continue;
-                }
-
-                stack.push(NamespaceRootFrame::Close {
-                    has_edges,
-                    edge_paths: split.edge_paths,
-                });
-                if let Some(children) = plan.children_by_ns.get(ns_id) {
-                    for child in children.iter().rev() {
-                        stack.push(NamespaceRootFrame::Enter(child));
-                    }
-                }
-            }
-            NamespaceRootFrame::Close {
-                has_edges,
-                edge_paths,
-            } => {
-                out.push_str("</g>");
-                if has_edges {
-                    out.push_str(&edge_paths);
-                }
-                out.push_str("</g>");
-            }
-        }
-    }
 }
 
 fn render_class_node_id(
@@ -633,9 +501,10 @@ fn render_class_node_id(
     } = state;
     let settings = ctx.settings;
 
-    let Some(n) = layout_nodes_by_id.get(id).copied() else {
-        return;
-    };
+    let n = layout_nodes_by_id
+        .get(id)
+        .copied()
+        .expect("validated Class render node id");
 
     let node_tx = if offsets.in_namespace_root {
         n.x - offsets.namespace_root_dx
@@ -647,8 +516,8 @@ fn render_class_node_id(
     } else {
         n.y + ctx.content_ty
     };
-    let node_bounds_tx = node_tx + offsets.namespace_root_dx + offsets.nodes_root_dx;
-    let node_bounds_ty = node_ty + offsets.namespace_root_dy + offsets.nodes_root_dy;
+    let node_bounds_tx = node_tx + offsets.namespace_root_dx;
+    let node_bounds_ty = node_ty + offsets.namespace_root_dy;
     let position = ClassNodeRenderPosition {
         node_tx,
         node_ty,
@@ -705,9 +574,11 @@ fn render_class_node_id(
         return;
     }
 
-    let Some(node) = ctx.class_nodes_by_id.get(n.id.as_str()).copied() else {
-        return;
-    };
+    let node = ctx
+        .class_nodes_by_id
+        .get(n.id.as_str())
+        .copied()
+        .expect("validated Class semantic node payload");
 
     let node_inline_styles = class_apply_inline_styles(node);
     let node_style_attr = node_inline_styles.style_attr.as_str();
@@ -797,7 +668,6 @@ fn render_class_node_id(
             &ClassSvgNodeBodyContext {
                 measurer: ctx.measurer,
                 text_style: &settings.text_style,
-                font_size: settings.font_size,
                 wrap_probe_font_size: settings.wrap_probe_font_size,
                 class_padding: settings.class_padding,
                 hide_empty_members_box: settings.hide_empty_members_box,

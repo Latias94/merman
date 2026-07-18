@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-#define MERMAN_ABI_VERSION 3
+#define MERMAN_ABI_VERSION 2
 
 enum {
     MERMAN_OK = 0,
@@ -36,8 +36,36 @@ enum {
     MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT = 0,
     MERMAN_TEXT_MEASUREMENT_PHASE_WRAP = 1,
     MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX = 2,
-    MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH = 3,
-    MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY = 4
+    MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH = 3
+};
+
+enum {
+    MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE = 0,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH = 1,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X = 2,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG = 3,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X = 4,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH = 5,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH = 6,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH = 7,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT = 8,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH = 9,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT = 10,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED = 11,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH = 12,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH = 13,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET = 14,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS = 15,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH = 16,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET = 17,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT = 18
+};
+
+enum {
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS = 0,
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH = 1,
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS = 2,
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH = 3
 };
 
 typedef struct MermanBuffer {
@@ -96,12 +124,19 @@ typedef struct MermanHostTextMeasureRequest {
     int32_t white_space;
     uint8_t has_max_width;
     int32_t phase;
+    int32_t operation;
 } MermanHostTextMeasureRequest;
 
 typedef struct MermanHostTextMeasureResult {
     uint8_t handled;
+    uint8_t has_raw_width;
+    int32_t result_kind;
     double width;
     double height;
+    double length;
+    double bbox_left;
+    double bbox_right;
+    double raw_width;
     size_t line_count;
 } MermanHostTextMeasureResult;
 
@@ -180,6 +215,11 @@ void merman_engine_free(MermanEngine* engine);
  * Request strings are UTF-8 byte slices valid only for the duration of the callback. The callback
  * must not store those pointers. If the same engine is used concurrently, the callback and
  * user_data must be thread-safe.
+ *
+ * The request operation selects the required result_kind. Metrics use width/height/line_count;
+ * scalar width or height operations use length; horizontal extents use bbox_left/bbox_right; and
+ * wrapped-with-raw-width uses metrics plus optional raw_width. A handled wrong-kind or invalid
+ * result falls back as invalid; it is never inferred from default-valued fields.
  *
  * The engine cannot be mutated while any call or host text-measure callback is active.
  * merman_engine_set_text_measure_callback returns MERMAN_INVALID_ARGUMENT in that state.
@@ -379,6 +419,7 @@ MermanResult merman_validate_json(
  */
 MermanResult merman_supported_diagrams_json(void);
 MermanResult merman_ascii_capabilities_json(void);
+/* Complete detector/parser/editor/header/config/render facts for each active diagram id. */
 MermanResult merman_diagram_family_capabilities_json(void);
 
 /*

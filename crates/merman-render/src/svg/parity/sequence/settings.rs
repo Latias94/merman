@@ -54,11 +54,13 @@ impl SequenceRenderSettings {
             font_family: config.root_string("fontFamily"),
             font_size: actor_label_font_size,
             font_weight: Some("400".to_string()),
+            font_style: None,
         };
         let note_text_style = TextStyle {
             font_family: loop_text_style.font_family.clone(),
             font_size: actor_label_font_size,
             font_weight: Some("400".to_string()),
+            font_style: None,
         };
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
         let rect_default_fill =

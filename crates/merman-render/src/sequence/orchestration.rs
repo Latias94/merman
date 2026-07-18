@@ -51,6 +51,8 @@ pub(super) struct SequenceLayoutGraph {
     pub(super) nodes: Vec<LayoutNode>,
     pub(super) edges: Vec<LayoutEdge>,
     pub(super) bottom_box_top_y: f64,
+    pub(super) bounds_start_x: f64,
+    pub(super) bounds_stop_x: f64,
 }
 
 struct SequenceLayoutLoopState<'a> {
@@ -59,6 +61,8 @@ struct SequenceLayoutLoopState<'a> {
     rect_stack: Vec<SequenceRectOpen>,
     activation_state: SequenceActivationState,
     actor_lifecycle: SequenceActorLifecycle<'a>,
+    bounds_start_x: f64,
+    bounds_stop_x: f64,
 }
 
 impl<'a> SequenceLayoutLoopState<'a> {
@@ -71,6 +75,14 @@ impl<'a> SequenceLayoutLoopState<'a> {
             destroyed_actors: &ctx.model.destroyed_actors,
             actor_height: ctx.actor_height,
         });
+        let (bounds_start_x, bounds_stop_x) = ctx
+            .actor_centers_x
+            .iter()
+            .copied()
+            .zip(ctx.actor_widths.iter().copied())
+            .map(|(center_x, width)| (center_x - width / 2.0, center_x + width / 2.0))
+            .reduce(|left, right| (left.0.min(right.0), left.1.max(right.1)))
+            .unwrap_or((0.0, ctx.sequence_default_width.max(1.0)));
 
         Self {
             cursor_y: ctx.actor_top_offset_y + ctx.max_actor_layout_height,
@@ -78,6 +90,8 @@ impl<'a> SequenceLayoutLoopState<'a> {
             rect_stack: Vec::new(),
             activation_state,
             actor_lifecycle,
+            bounds_start_x,
+            bounds_stop_x,
         }
     }
 
@@ -87,6 +101,12 @@ impl<'a> SequenceLayoutLoopState<'a> {
 
     fn include_inserted_bottom(&mut self, inserted_bottom_y: f64, box_margin: f64) {
         include_block_stopy(&mut self.block_stopy_stack, inserted_bottom_y, box_margin);
+    }
+
+    fn include_inserted_horizontal(&mut self, min_x: f64, max_x: f64, box_margin: f64) {
+        let nested_margin = self.block_stopy_stack.len() as f64 * box_margin;
+        self.bounds_start_x = self.bounds_start_x.min(min_x - nested_margin);
+        self.bounds_stop_x = self.bounds_stop_x.max(max_x + nested_margin);
     }
 
     fn close_block(&mut self, box_margin: f64) {
@@ -230,6 +250,11 @@ fn handle_sequence_note(
         note.rect_max_x,
         note.rect_max_y,
     );
+    state.include_inserted_horizontal(
+        note.node.x - note.node.width / 2.0,
+        note.node.x + note.node.width / 2.0,
+        ctx.box_margin,
+    );
     state.include_inserted_bottom(note.rect_max_y, ctx.box_margin);
 
     nodes.push(note.node);
@@ -285,6 +310,8 @@ fn handle_sequence_message(
         edge,
         from_x,
         to_x,
+        inserted_min_x,
+        inserted_max_x,
         line_y,
         inserted_bottom_y,
         cursor_step,
@@ -296,6 +323,7 @@ fn handle_sequence_message(
         from_x.max(to_x) + SEQUENCE_FRAME_SIDE_PAD_PX,
         inserted_bottom_y,
     );
+    state.include_inserted_horizontal(inserted_min_x, inserted_max_x, ctx.box_margin);
     state.cursor_y += cursor_step;
     let lifecycle_adjustment = state
         .actor_lifecycle
@@ -414,6 +442,8 @@ pub(super) fn build_sequence_layout_graph(
         nodes,
         edges,
         bottom_box_top_y,
+        bounds_start_x: state.bounds_start_x,
+        bounds_stop_x: state.bounds_stop_x,
     }
 }
 

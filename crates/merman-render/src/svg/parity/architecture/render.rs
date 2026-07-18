@@ -1,8 +1,5 @@
 use super::super::*;
-use crate::architecture_metrics::{
-    ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX, architecture_estimate_service_bounds,
-    architecture_top_level_service_root_bounds,
-};
+use crate::architecture_metrics::architecture_estimate_service_bounds;
 use crate::model::ArchitectureCytoscapeServiceBounds;
 
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
@@ -135,7 +132,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let half_icon = settings.half_icon;
     let padding_px = settings.padding_px;
     let arch_font_size_px = settings.arch_font_size_px;
-    let svg_font_size_px = settings.svg_font_size_px;
     let use_max_width = settings.use_max_width;
     let text_style = &settings.text_style;
     let compound_text_style = &settings.compound_text_style;
@@ -149,67 +145,13 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let a11y = architecture_a11y_nodes(diagram_id, model.acc_title(), model.acc_descr());
 
     // Mermaid Architecture uses `setupGraphViewbox()` which expands the viewBox based on the
-    // SVG's `getBBox()` plus `architecture.padding`. We approximate the effective `getBBox()` by
-    // computing a conservative bounds over the elements we emit.
+    // SVG's `getBBox()` plus `architecture.padding`. Reconstruct that effective bbox from the
+    // emitted geometry, cached Cytoscape bounds, and operation-owned text measurements.
     let mut content_bounds: Option<Bounds> = None;
 
-    // Mermaid `createText()` emits SVG `<text y="-10.1">` + `<tspan y="-0.1em" dy="1.1em">...`.
-    //
-    // In Chromium, `text.getBBox()` has:
-    // - per-line height ~= 19px at 16px font size
-    // - additional lines stacked by `dy="1.1em"` (i.e. 17.6px at 16px font size)
-    //
-    // Model this geometry in a scale-stable way so `setupGraphViewbox(svg.getBBox() + padding)`
-    // aligns in `parity-root` comparisons without browser-dependent measurement.
-    // Empirical bottom extension (beyond the icon bottom) of Mermaid `createText()` output for a
-    // single-line label at 16px in Chromium, as observed in upstream Architecture baselines.
-    //
-    // This is notably larger than just `fontSize`, due to `createText()` using `<text y="-10.1">`
-    // and wrapper attributes like `dy="1em"`; Chromium's `getBBox()` includes that geometry.
-    // Cytoscape compound bounds (`node.boundingBox()`) include labels but do *not* match
-    // Chromium's `text.getBBox()` exactly. In upstream Mermaid Architecture, group rectangles
-    // sized from Cytoscape compound bounds tend to extend below the icon by roughly
-    // `(fontSize + 1px)` for single-line service labels.
-    //
-    // If we reuse the larger root `getBBox()` extension for compounds, nested/group-heavy
-    // fixtures get a systematic viewBox height inflation (~7.1875px at 16px).
-
-    // Mermaid singleton top-level `iconText` services render 18px lower than the nominal
-    // layout origin; keep the emitted transform and root bbox estimate in sync.
-    let groups_len = model.groups_len();
-    let edges_len = model.edges_len();
-    let service_count = model.services().count();
-    let junction_count = model.junctions().count();
-    let singleton_icon_text_service_id =
-        if groups_len == 0 && service_count == 1 && junction_count == 0 && edges_len == 0 {
-            model.services().next().and_then(|service| {
-                if service.in_group.is_none()
-                    && service
-                        .icon_text
-                        .map(str::trim)
-                        .is_some_and(|text: &str| !text.is_empty())
-                {
-                    Some(service.id)
-                } else {
-                    None
-                }
-            })
-        } else {
-            None
-        };
-    let singleton_icon_text_offset_y = |service_id: &str| {
-        if singleton_icon_text_service_id == Some(service_id) {
-            ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX
-        } else {
-            0.0
-        }
-    };
-
-    let mut services_with_edges: rustc_hash::FxHashSet<&str> = rustc_hash::FxHashSet::default();
-    for edge in model.edges() {
-        services_with_edges.insert(edge.lhs_id);
-        services_with_edges.insert(edge.rhs_id);
-    }
+    // Service/root text bounds use the exact tspan-height and middle-baseline operations. Compound
+    // sizing stays on the separate Cytoscape child-bbox phases cached by layout; the two DOM
+    // consumers intentionally do not share a vertical extent.
 
     let mut cached_service_bounds_by_id: rustc_hash::FxHashMap<
         &str,
@@ -223,7 +165,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let mut service_bounds: rustc_hash::FxHashMap<&str, Bounds> = rustc_hash::FxHashMap::default();
     for svc in model.services() {
         let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
-        let y = y + singleton_icon_text_offset_y(svc.id);
         if svc.in_group.is_some()
             && let Some(cached) = architecture_cached_service_child_bounds(
                 &cached_service_bounds_by_id,
@@ -243,7 +184,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             y,
             icon_size_px,
             arch_font_size_px,
-            svg_font_size_px,
             svc.title,
             text_measurer,
             text_style,
@@ -268,17 +208,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         // viewport bounds when the service is not inside a group.
         service_bounds.insert(svc.id, b_full.clone());
         if svc.in_group.is_none() {
-            // Connected top-level services still use the SVG root `createText()` label model.
-            // Isolated top-level services in diagrams that also have groups behave like separate
-            // Cytoscape components for root extent purposes; using the larger SVG root label phase
-            // overcounts the disconnected-islands baseline while broadening the rule regresses
-            // singleton/iconText rows.
-            let root_bounds = architecture_top_level_service_root_bounds(
-                &estimate,
-                services_with_edges.contains(svc.id),
-                groups_len > 0,
-            );
-            extend_bounds(&mut content_bounds, root_bounds);
+            extend_bounds(&mut content_bounds, estimate.svg_root_bounds);
         } else {
             extend_bounds(&mut content_bounds, estimate.emitted_icon_bounds);
         }
@@ -357,8 +287,8 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
         }
     }
 
-    let is_empty = service_count == 0
-        && junction_count == 0
+    let is_empty = model.services().next().is_none()
+        && model.junctions().next().is_none()
         && model.groups_len() == 0
         && model.edges_len() == 0;
 
@@ -370,7 +300,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
     let root_viewport = root_svg::RootViewportContext::new(
         crate::family::RenderFamilyKind::Architecture,
         diagram_id,
-        options.root_viewport_override_policy(),
     );
     let root_document = begin_architecture_document(
         &mut out,
@@ -408,7 +337,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
             sanitize_config,
             icon_registry: options.icon_registry(),
             content_bounds: &mut content_bounds,
-            singleton_icon_text_service_id,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx);
         push_architecture_groups(&mut node_render_ctx, &group_rects);
@@ -418,7 +346,6 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     out = finalize_architecture_root_viewport(ArchitectureRootViewportContext {
         out,
-        model,
         root_viewport: &root_viewport,
         root_document,
         content_bounds,

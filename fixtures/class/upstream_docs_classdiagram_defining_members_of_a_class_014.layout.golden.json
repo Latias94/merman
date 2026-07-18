@@ -1,13 +1,13 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "BankAccount",
-          "x": 103.945,
+          "x": 102.682,
           "y": 96.0,
-          "width": 207.891,
+          "width": 205.363,
           "height": 192.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 207.891,
+        "max_x": 205.363,
         "max_y": 192.0
       }
     }

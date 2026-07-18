@@ -6,40 +6,43 @@ Accepted
 
 ## Context
 
-Mermaid's parsing, detection, and layout-ready outputs depend on a large set of configuration defaults.
-Hand-maintaining these defaults in Rust is error-prone and tends to drift from the pinned upstream tag.
+Mermaid's parsing, detection, and layout-ready outputs depend on a large configuration object.
+That object is not just the JSON Schema defaults: `defaultConfig.ts` replaces and extends selected
+objects, adds functions and explicit `undefined` values, and `config.ts` clones the result through
+`assignWithDepth`. Hand-maintaining the result in Rust is error-prone and drifts from the pinned
+upstream tag.
 
 At the same time, `merman-core` should not depend on executing Node/Vite tooling at runtime, and the
 defaults should be stable across environments and CI.
 
 ## Decision
 
-- Treat the pinned upstream schema (`repo-ref/mermaid/.../schemas/config.schema.yaml`) plus
-  Mermaid's `src/defaultConfig.ts` overlay behavior as the source of truth for configuration
-  defaults.
-- Add an `xtask` command to generate a JSON defaults artifact from the schema:
+- Model the pinned Mermaid configuration as three independent planes:
+  1. `default_config.json` is the pure JSON value projection of Mermaid's cloned runtime config.
+     It contains the upstream six-key `secure` array and excludes functions, `undefined`, schema
+     metadata, and separately generated theme variables.
+  2. `default_config_shape.json` contains Mermaid's flat `configKeys` set plus the paths contributed
+     by functions and explicit `undefined` values. Directive sanitization consumes this shape, so a
+     legal key is not mistaken for a missing value.
+  3. Merman's hardened ten-key `secure` policy is typed Rust policy. `default_site_config()` applies
+     it after loading the pure upstream artifact; it is not written into either upstream artifact.
+- Generate both artifacts directly from the installed Mermaid 11.16 runtime in
+  `crates/xtask/src/cmd/default_config.rs`:
   - `cargo run -p xtask -- gen-default-config`
-  - Output: `crates/merman-core/src/generated/default_config.json`
-- Apply the reviewed local override manifest after schema extraction:
-  - `crates/xtask/default_config_overrides.json`
-  - The manifest records JSON replacements for upstream non-JSON defaults, empirically required
-    parity overrides, and explicitly unsupported or not-admitted config families.
-- Add verification commands for CI/local checks:
-  - default config only: `cargo run -p xtask -- verify-default-config`
-  - umbrella generated-artifact check: `cargo run -p xtask -- verify-generated`
-- Commit the generated artifact to the repository and load it via `include_str!()` inside `merman-core`.
-- Keep the explicit override manifest small and reviewable. Use it only when Mermaid defaults are
-  known to differ from generated schema defaults, when upstream introduces non-JSON defaults, or
-  when local support scope intentionally excludes a newly introduced config family/key. Back
-  behavior-affecting overrides with parity tests.
-- Do not remove generated config defaults for diagrams admitted to the primary SVG matrix when the
-  pinned Mermaid schema exposes a matching root config key. `admission.rs` owns a regression test
-  that cross-checks the admission inventory against `default_config_overrides.json`.
+- Validate the declared package version, installed package version, and installed package-tree hash
+  before generation. The runtime projection is the single generation authority; do not replay
+  `defaultConfig.ts` in Rust and do not provide a general-purpose set/remove override mechanism.
+- Verify committed artifacts with:
+  - `cargo run -p xtask -- verify-default-config`
+  - `cargo run -p xtask -- verify-generated`
+- Commit both artifacts and load them with `include_str!()` in `merman-core`.
 
 ## Consequences
 
-- Default behavior is more likely to stay aligned with Mermaid across diagrams.
-- Diffs in default behavior become reviewable as changes to a single generated artifact.
-- The generator is intentionally simple and may not perfectly model all JSON-schema features or
-  Mermaid's JavaScript overlay defaults; when a mismatch is discovered, we either improve the
-  generator or add a small manifest override with a regression test.
+- Upstream values, legal directive keys, and local security policy can change independently without
+  being conflated in one JSON file.
+- Function and `undefined` keys remain legal to the sanitizer even though they have no JSON value.
+- Runtime drift fails the normal generated-artifact gate instead of being compared against a second
+  hand-maintained projection.
+- Artifact generation and verification require the pinned Node package installation. Building and
+  running `merman-core` only reads committed JSON and does not require Node.

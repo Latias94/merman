@@ -3,7 +3,7 @@ use crate::{DetectorRegistry, DiagramRegistry, MermaidConfig, RenderDiagramRegis
 use std::collections::BTreeSet;
 
 const PINNED_SEMANTIC_WITHOUT_EDITOR: &[&str] = &["error"];
-const PINNED_WITHOUT_SEMANTICS: &[&str] = &["wardley"];
+const PINNED_WITHOUT_SEMANTICS: &[&str] = &[];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CharacterizationProfile {
@@ -31,25 +31,12 @@ const COMBINED_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabiliti
     combined: true,
     typed: true,
 };
-const EDITOR_ONLY_RENDER_GAP_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
-    semantic: true,
-    editor: true,
-    combined: true,
-    typed: false,
-};
 const ERROR_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
     semantic: true,
     editor: false,
     combined: false,
     typed: true,
 };
-const UNSUPPORTED_CAPABILITIES: CharacterizedCapabilities = CharacterizedCapabilities {
-    semantic: false,
-    editor: false,
-    combined: false,
-    typed: false,
-};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MalformedContract {
     StrictAcceptsEditorAvailable,
@@ -115,7 +102,7 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         profile: CharacterizationProfile::All,
         representative_source: "swimlane-beta LR\nA-->B\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: EDITOR_ONLY_RENDER_GAP_CAPABILITIES,
+        capabilities: COMBINED_CAPABILITIES,
         malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
@@ -428,10 +415,10 @@ const FAMILY_CHARACTERIZATION_MATRIX: &[FamilyCharacterization] = &[
         variant_id: "wardley",
         logical_family: "wardley",
         profile: CharacterizationProfile::All,
-        representative_source: "wardley-beta\n",
+        representative_source: "wardley-beta\ncomponent API [0.6, 0.7]\n",
         malformed_source: MALFORMED_SOURCE,
-        capabilities: UNSUPPORTED_CAPABILITIES,
-        malformed_contract: MalformedContract::Unsupported,
+        capabilities: COMBINED_CAPABILITIES,
+        malformed_contract: MalformedContract::StrictRejectsEditorAvailable,
     },
     FamilyCharacterization {
         variant_id: "cynefin",
@@ -739,10 +726,12 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "class",
             "cynefin",
             "er",
+            "eventmodeling",
             "flowchart",
             "gantt",
             "gitgraph",
             "info",
+            "ishikawa",
             "journey",
             "kanban",
             "mindmap",
@@ -758,9 +747,12 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "sankey",
             "sequence",
             "state",
+            "swimlane",
             "timeline",
+            "treeView",
             "treemap",
             "venn",
+            "wardley",
             "xychart",
             "zenuml",
         ]
@@ -774,10 +766,12 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "class",
             "cynefin",
             "er",
+            "eventmodeling",
             "flowchart",
             "gantt",
             "gitgraph",
             "info",
+            "ishikawa",
             "journey",
             "kanban",
             "packet",
@@ -792,9 +786,12 @@ fn supported_diagram_metadata_is_backed_by_typed_render_projection() {
             "sankey",
             "sequence",
             "state",
+            "swimlane",
             "timeline",
+            "treeView",
             "treemap",
             "venn",
+            "wardley",
             "xychart",
             "zenuml",
         ]
@@ -829,7 +826,7 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     assert!(gitgraph.has_render_parser);
 
     let tree_view = family_capability(full, "treeView");
-    assert_eq!(tree_view.metadata_id, None);
+    assert_eq!(tree_view.metadata_id, Some("treeView"));
     assert!(tree_view.has_semantic_parser);
     assert!(tree_view.has_render_parser);
 
@@ -840,9 +837,10 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     assert!(error.has_render_parser);
 
     let swimlane = family_capability(full, "swimlane");
-    assert_eq!(swimlane.metadata_id, None);
+    assert_eq!(swimlane.metadata_id, Some("swimlane"));
+    assert_eq!(swimlane.render_model_kind, Some("flowchart"));
     assert!(swimlane.has_semantic_parser);
-    assert!(!swimlane.has_render_parser);
+    assert!(swimlane.has_render_parser);
 
     let railroad = family_capability(full, "railroad");
     assert_eq!(railroad.metadata_id, Some("railroad"));
@@ -866,9 +864,13 @@ fn diagram_family_capabilities_follow_detector_and_parser_fact_projection() {
     assert!(cynefin.has_render_parser);
 
     let wardley = family_capability(full, "wardley");
-    assert_eq!(wardley.metadata_id, None);
-    assert!(!wardley.has_semantic_parser);
-    assert!(!wardley.has_render_parser);
+    assert_eq!(wardley.metadata_id, Some("wardley"));
+    assert_eq!(wardley.render_model_kind, Some("wardley"));
+    assert!(wardley.has_semantic_parser);
+    assert!(wardley.has_editor_parser);
+    assert!(wardley.has_combined_parser);
+    assert!(wardley.has_render_parser);
+    assert_eq!(wardley.config_namespace, Some("wardley-beta"));
 
     assert!(!full.iter().any(|fact| fact.diagram_type == "---"));
     assert!(full.iter().any(|fact| fact.diagram_type == "mindmap"));
@@ -1224,9 +1226,9 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
     assert_eq!(swimlane.logical_family_kind, "swimlane");
     assert!(swimlane.has_detector && swimlane.has_semantic_parser && swimlane.has_editor_parser);
     assert!(swimlane.has_combined_parser);
-    assert!(!swimlane.has_render_parser);
-    assert_eq!(swimlane.render_model_kind, None);
-    assert_eq!(swimlane.metadata_id, None);
+    assert!(swimlane.has_render_parser);
+    assert_eq!(swimlane.render_model_kind, Some("flowchart"));
+    assert_eq!(swimlane.metadata_id, Some("swimlane"));
 
     let er_alias = family_capability(full, "erDiagram");
     assert_eq!(er_alias.logical_family_kind, "er");
@@ -1247,11 +1249,13 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
     let wardley = family_capability(full, "wardley");
     assert!(wardley.has_detector && wardley.has_header);
     assert!(
-        !wardley.has_semantic_parser
-            && !wardley.has_editor_parser
-            && !wardley.has_combined_parser
-            && !wardley.has_render_parser
+        wardley.has_semantic_parser
+            && wardley.has_editor_parser
+            && wardley.has_combined_parser
+            && wardley.has_render_parser
     );
+    assert_eq!(wardley.render_model_kind, Some("wardley"));
+    assert_eq!(wardley.metadata_id, Some("wardley"));
 
     let combined = full
         .iter()
@@ -1297,6 +1301,7 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
             "treeView",
             "treemap",
             "venn",
+            "wardley",
             "xychart",
             "zenuml",
         ])
@@ -1338,6 +1343,7 @@ fn langium_family_combined_parse_constructs_syntax_once() {
         ("packet", "packet-beta\n0-7: \"A\"\n"),
         ("cynefin", "cynefin-beta\n  complex\n"),
         ("radar", "radar-beta\naxis A,B,C\ncurve sample{1,2,3}\n"),
+        ("wardley", "wardley-beta\ncomponent API [0.6, 0.7]\n"),
     ] {
         crate::diagrams::langium_common::reset_family_syntax_construction_count(family);
 
@@ -2035,10 +2041,6 @@ fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
         );
 
         for fact in crate::family::semantic_parser_facts(profile) {
-            if permits_parser_only_semantic_fact(fact.id) {
-                continue;
-            }
-
             assert!(
                 render_ids.contains(fact.id),
                 "built-in semantic parser {} must not rely on JSON render fallback in {profile:?}",
@@ -2050,13 +2052,6 @@ fn pinned_non_error_semantic_parsers_are_backed_by_typed_render_parsers() {
 
 fn sorted_set(ids: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {
     ids.into_iter().collect()
-}
-
-fn permits_parser_only_semantic_fact(id: &str) -> bool {
-    matches!(
-        id,
-        "swimlane" | "cynefin" | "railroad" | "railroadEbnf" | "railroadAbnf" | "railroadPeg"
-    )
 }
 
 fn family_capability(

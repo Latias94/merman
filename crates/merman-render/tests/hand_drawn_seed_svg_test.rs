@@ -4,16 +4,13 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, RootViewportOverridePolicy};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::{Value, json};
 
 fn render_svg(diagram_id: &str, source: &str) -> String {
-    let session = RenderEnvironment::parity()
-        .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")

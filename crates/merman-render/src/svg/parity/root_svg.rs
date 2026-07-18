@@ -77,25 +77,6 @@ impl ViewBox {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct RootSvgOverrides {
-    pub(super) view_box: ViewBox,
-    pub(super) max_width: String,
-}
-
-impl RootSvgOverrides {
-    pub(super) fn from_attrs(viewbox_attr: &str, max_width: &str) -> Option<Self> {
-        let max_width_value = max_width.parse::<f64>().ok()?;
-        if !max_width_value.is_finite() || max_width_value <= 0.0 {
-            return None;
-        }
-        Some(Self {
-            view_box: parse_viewbox_attr(viewbox_attr)?,
-            max_width: max_width.to_string(),
-        })
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum RootBackground {
     None,
@@ -138,9 +119,17 @@ impl RootMaxWidth {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum RootSizing {
     Responsive,
-    Mermaid { use_max_width: bool },
-    MermaidOrIntrinsic { use_max_width: bool },
-    MermaidWithResponsiveHeight { use_max_width: bool, height: f64 },
+    Mermaid {
+        use_max_width: bool,
+    },
+    #[cfg(feature = "cytoscape-layout")]
+    MermaidOrIntrinsic {
+        use_max_width: bool,
+    },
+    MermaidWithResponsiveHeight {
+        use_max_width: bool,
+        height: f64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -180,6 +169,7 @@ impl RootViewportSpec {
         }
     }
 
+    #[cfg(feature = "cytoscape-layout")]
     pub(super) fn mermaid_or_intrinsic(bounds: DiagramBounds, use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
@@ -295,6 +285,7 @@ impl DeferredRootSpec {
         }
     }
 
+    #[cfg(feature = "cytoscape-layout")]
     pub(super) fn mermaid_or_intrinsic(use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
@@ -317,20 +308,11 @@ pub(super) struct RootDocument {
 pub(super) struct RootViewportContext<'a> {
     family: RenderFamilyKind,
     diagram_id: &'a str,
-    override_policy: RootViewportOverridePolicy,
 }
 
 impl<'a> RootViewportContext<'a> {
-    pub(super) fn new(
-        family: RenderFamilyKind,
-        diagram_id: &'a str,
-        override_policy: RootViewportOverridePolicy,
-    ) -> Self {
-        Self {
-            family,
-            diagram_id,
-            override_policy,
-        }
+    pub(super) fn new(family: RenderFamilyKind, diagram_id: &'a str) -> Self {
+        Self { family, diagram_id }
     }
 
     pub(super) fn begin_document(
@@ -348,10 +330,12 @@ impl<'a> RootViewportContext<'a> {
             RootSizing::Responsive
             | RootSizing::Mermaid {
                 use_max_width: true,
-            }
-            | RootSizing::MermaidOrIntrinsic {
+            } => true,
+            #[cfg(feature = "cytoscape-layout")]
+            RootSizing::MermaidOrIntrinsic {
                 use_max_width: true,
             } => true,
+            #[cfg(feature = "cytoscape-layout")]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: false,
             } => false,
@@ -551,35 +535,11 @@ impl<'a> RootViewportContext<'a> {
     }
 
     pub(super) fn plan(&self, spec: RootViewportSpec) -> Result<RootViewportPlan> {
-        let computed_view_box = spec.view_box.map(ViewBox::from_bounds);
-        let computed_max_width = spec.max_width.format(computed_view_box)?;
-        let generated_override = if self.override_policy.applies_generated() {
-            crate::generated::lookup_root_viewport_override(
-                self.family,
-                merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION,
-                self.diagram_id,
-            )
-            .map(|generated| {
-                RootSvgOverrides::from_attrs(generated.view_box, generated.max_width).ok_or_else(
-                    || Error::InvalidModel {
-                        message: format!(
-                            "invalid generated root viewport override for {} diagram '{}'",
-                            self.family, self.diagram_id
-                        ),
-                    },
-                )
-            })
-            .transpose()?
-        } else {
-            None
-        };
-        let override_applied = generated_override.is_some();
-        let (view_box, max_width) = generated_override
-            .map(|root_override| (Some(root_override.view_box), root_override.max_width))
-            .unwrap_or((computed_view_box, computed_max_width));
+        let view_box = spec.view_box.map(ViewBox::from_bounds);
+        let max_width = spec.max_width.format(view_box)?;
 
         let fixed_dimensions = || {
-            if !override_applied && let Some((width, height)) = spec.fixed_size {
+            if let Some((width, height)) = spec.fixed_size {
                 return Ok::<_, Error>((
                     fmt_string(viewport_dimension(width)),
                     fmt_string(viewport_dimension(height)),
@@ -597,8 +557,9 @@ impl<'a> RootViewportContext<'a> {
             RootSizing::Responsive => (true, Some("100%".to_string()), None),
             RootSizing::Mermaid {
                 use_max_width: true,
-            }
-            | RootSizing::MermaidOrIntrinsic {
+            } => (true, Some("100%".to_string()), None),
+            #[cfg(feature = "cytoscape-layout")]
+            RootSizing::MermaidOrIntrinsic {
                 use_max_width: true,
             } => (true, Some("100%".to_string()), None),
             RootSizing::MermaidWithResponsiveHeight {
@@ -622,6 +583,7 @@ impl<'a> RootViewportContext<'a> {
                 let (width, height) = fixed_dimensions()?;
                 (false, Some(width), Some(height))
             }
+            #[cfg(feature = "cytoscape-layout")]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: false,
             } => (false, None, None),
@@ -657,27 +619,6 @@ impl RootViewportPlan {
     pub(super) fn view_box(&self) -> Option<ViewBox> {
         self.view_box
     }
-}
-
-fn parse_viewbox_attr(viewbox_attr: &str) -> Option<ViewBox> {
-    let mut parts = viewbox_attr.split_whitespace();
-    let min_x = parts.next()?.parse::<f64>().ok()?;
-    let min_y = parts.next()?.parse::<f64>().ok()?;
-    let width = parts.next()?.parse::<f64>().ok()?;
-    let height = parts.next()?.parse::<f64>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    if !min_x.is_finite()
-        || !min_y.is_finite()
-        || !width.is_finite()
-        || !height.is_finite()
-        || width <= 0.0
-        || height <= 0.0
-    {
-        return None;
-    }
-    Some(ViewBox::new(min_x, min_y, width, height))
 }
 
 fn root_style(max_width: Option<&str>, background: RootBackground) -> Option<String> {
@@ -916,12 +857,6 @@ fn push_svg_root_open(out: &mut String, attrs: SvgRootAttrs<'_>) {
             }
         }
     }
-    if let Some(h) = deferred_height_after_class.take() {
-        out.push_str(r#" height=""#);
-        escape_attr_into(out, h);
-        out.push('"');
-    }
-
     if responsive_height_placement == RootResponsiveHeightPlacement::BeforeExtraAttrs
         && let Some(height_attr) = responsive_height_attr
     {
@@ -1014,34 +949,7 @@ mod tests {
     use super::*;
 
     fn computed_context(family: RenderFamilyKind, diagram_id: &str) -> RootViewportContext<'_> {
-        RootViewportContext::new(family, diagram_id, RootViewportOverridePolicy::ComputedOnly)
-    }
-
-    #[test]
-    fn generated_override_is_typed_and_policy_controlled() {
-        let diagram_id = "upstream_pkgtests_c4person_spec_004";
-        let spec = RootViewportSpec::responsive(DiagramBounds::from_view_box(0.0, 0.0, 10.0, 10.0));
-        let generated = RootViewportContext::new(
-            RenderFamilyKind::C4,
-            diagram_id,
-            RootViewportOverridePolicy::ApplyGenerated,
-        )
-        .plan(spec)
-        .unwrap();
-        let computed = computed_context(RenderFamilyKind::C4, diagram_id)
-            .plan(spec)
-            .unwrap();
-
-        assert_eq!(
-            generated.view_box(),
-            Some(ViewBox::new(0.0, -10.0, 653.0, 393.0))
-        );
-        assert_eq!(generated.max_width, "653");
-        assert_eq!(
-            computed.view_box(),
-            Some(ViewBox::new(0.0, 0.0, 10.0, 10.0))
-        );
-        assert_eq!(computed.max_width, "10");
+        RootViewportContext::new(family, diagram_id)
     }
 
     #[test]
@@ -1136,13 +1044,9 @@ mod tests {
     }
 
     #[test]
-    fn deferred_document_finalizes_generated_root_without_leaking_markers() {
+    fn deferred_document_finalizes_computed_root_without_leaking_markers() {
         let diagram_id = "stress_state_accdescr_block_and_markdown_labels_049";
-        let context = RootViewportContext::new(
-            RenderFamilyKind::State,
-            diagram_id,
-            RootViewportOverridePolicy::ApplyGenerated,
-        );
+        let context = RootViewportContext::new(RenderFamilyKind::State, diagram_id);
         let mut chrome = RootChrome::new(diagram_id, "stateDiagram");
         chrome.dom.trailing_newline = false;
         let mut out = String::new();
@@ -1159,12 +1063,9 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(
-            plan.view_box(),
-            Some(ViewBox::new(0.0, 0.0, 658.6762084960938, 81.0))
-        );
-        assert!(out.contains(r#"viewBox="0 0 658.6762084960938 81""#));
-        assert!(out.contains("max-width: 658.676px"));
+        assert_eq!(plan.view_box(), Some(ViewBox::new(0.0, 0.0, 10.0, 10.0)));
+        assert!(out.contains(r#"viewBox="0 0 10 10""#));
+        assert!(out.contains("max-width: 10px"));
         assert!(!out.contains("__MERMAN_ROOT_"));
     }
 
@@ -1192,14 +1093,6 @@ mod tests {
                 .contains("mutated before viewport finalize")
         );
     }
-
-    #[test]
-    fn invalid_override_values_fail_closed() {
-        assert!(RootSvgOverrides::from_attrs("0 0 NaN 10", "10").is_none());
-        assert!(RootSvgOverrides::from_attrs("0 0 10 0", "10").is_none());
-        assert!(RootSvgOverrides::from_attrs("0 0 10 10", "NaN").is_none());
-    }
-
     #[test]
     fn css_max_width_uses_mermaid_six_significant_digit_format() {
         assert_eq!(format_css_max_width(1184.88), "1184.88");
@@ -1213,6 +1106,27 @@ mod tests {
         assert_eq!(
             bounds,
             DiagramBounds::from_view_box(-1_000_008.0, -28.0, 1_000_066.0, 116.0)
+        );
+    }
+
+    #[test]
+    fn root_plan_preserves_f64_get_bbox_extents_and_padding() {
+        let (min_x, min_y) = (1.123_456_789, 2.123_456_789);
+        let (max_x, max_y) = (111.987_654_321, 222.987_654_321);
+        let padding = 40.0;
+        let bounds = DiagramBounds::from_extents(min_x, min_y, max_x, max_y, padding);
+        let plan = computed_context(RenderFamilyKind::Architecture, "architecture")
+            .plan(RootViewportSpec::responsive(bounds))
+            .unwrap();
+
+        assert_eq!(
+            plan.view_box(),
+            Some(ViewBox::new(
+                min_x - padding,
+                min_y - padding,
+                max_x - min_x + 2.0 * padding,
+                max_y - min_y + 2.0 * padding,
+            ))
         );
     }
 }

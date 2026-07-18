@@ -1,7 +1,7 @@
 # Binding Options JSON
 
 Status: experimental shared binding contract.
-Last updated: 2026-07-02
+Last updated: 2026-07-16
 
 All public binding surfaces accept an optional `options_json` string. Passing null, `None`, `nil`,
 or an empty string uses defaults. The same JSON contract is shared by the C ABI, Android JNI, Apple
@@ -70,14 +70,12 @@ unsupported enum values, or non-finite numeric values return binding errors inst
     }
   },
   "layout": {
-    "viewport_width": 1024,
-    "viewport_height": 768,
-    "flowchart_elk_backend": "source-ported"
+    "container_width": 1024,
+    "container_height": 768
   },
   "environment": {
     "text_measurement": "vendored",
-    "math_renderer": "none",
-    "root_viewport_overrides": "apply-generated"
+    "math_renderer": "none"
   },
   "resources": {
     "profile": "interactive",
@@ -128,8 +126,8 @@ Every field is optional.
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
-| `layout` | object | defaults | Per-request layout dimensions and backend selection. |
-| `environment` | object | defaults | Operation-owned text, math, and root viewport policy. |
+| `layout` | object | defaults | Per-request layout container dimensions. |
+| `environment` | object | defaults | Public selection of operation-owned text measurement and optional math rendering. |
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
@@ -323,12 +321,12 @@ that need to classify why a dense Class/ER relation layout used a summary.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `layout.viewport_width` | positive finite number | renderer default | Overrides layout viewport width. |
-| `layout.viewport_height` | positive finite number | renderer default | Overrides layout viewport height. |
-| `layout.flowchart_elk_backend` | string | `source-ported` | `source-ported`, `source_ported`, `source`, or `compat`. Selects the Flowchart ELK backend. |
+| `layout.container_width` | positive finite number | renderer default | Available width of the host layout container in CSS pixels. |
+| `layout.container_height` | positive finite number | renderer default | Available height of the host layout container in CSS pixels. |
 
-`flowchart_elk_backend=compat` is an alpha fallback for the older lightweight Flowchart ELK backend;
-the default source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port.
+Container dimensions describe the element that owns diagram layout, not the browser page viewport
+or the final SVG viewBox. The removed `layout.viewport_width` and `layout.viewport_height` names
+are rejected; update requests rather than relying on an alias.
 
 ## Render Environment Options
 
@@ -336,10 +334,16 @@ the default source-ported backend follows the pinned Mermaid adapter and Eclipse
 | --- | --- | --- | --- |
 | `environment.text_measurement` | string | `vendored` | `vendored`, `parity`, or `deterministic`. |
 | `environment.math_renderer` | string | `none` | `none` or `ratex`. `ratex` requires the `ratex-math` feature. |
-| `environment.root_viewport_overrides` | string | `apply-generated` | `apply-generated`/`generated` or `computed-only`/`disabled`. |
 
 This is a breaking schema change: `layout.text_measurer` and `layout.math_renderer` are rejected.
 Move them to `environment.text_measurement` and `environment.math_renderer`, respectively.
+
+Root Viewport is an operation-owned rendering protocol, not a binding option. Diagram families
+provide source-backed content bounds and family-specific root semantics; the shared protocol
+normalizes dimensions, computes sizing and `viewBox`, emits root attributes and accessibility
+chrome, and finalizes deferred roots. The public `environment` object configures only text
+measurement and optional math rendering. Container dimensions belong under `layout.*`; SVG identity
+and host-owned output postprocessing belong under `svg.*`. Unknown `environment` fields are rejected.
 
 ## Resource Options
 
@@ -472,8 +476,8 @@ Deterministic layout for tests:
     "text_measurement": "deterministic"
   },
   "layout": {
-    "viewport_width": 1024,
-    "viewport_height": 768
+    "container_width": 1024,
+    "container_height": 768
   }
 }
 ```

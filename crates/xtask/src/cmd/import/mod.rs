@@ -18,9 +18,9 @@ pub(crate) use baseline::{
     candidate_svg_compare_failure, candidate_upstream_svg_failure,
     defer_imported_fixture_transaction, load_existing_imported_fixtures,
     reject_imported_fixture_transaction, rollback_imported_fixture_snapshots,
-    validate_exact_import_candidate_filter,
+    should_revalidate_deferred_fixture, validate_exact_import_candidate_filter,
 };
-pub(crate) use cypress::import_upstream_cypress;
+pub(crate) use cypress::{cypress_corpus_source_alignment_failures, import_upstream_cypress};
 pub(crate) use docs::import_upstream_docs;
 pub(crate) use examples::import_upstream_examples;
 pub(crate) use fixture_files::{

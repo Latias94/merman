@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn render_svg_accepts_options_json() {
         let options = br#"{
-            "layout": { "viewport_width": 640, "viewport_height": 480 },
+            "layout": { "container_width": 640, "container_height": 480 },
             "environment": { "text_measurement": "deterministic" },
             "svg": { "diagram_id": "bindings core diagram", "pipeline": "readable" }
         }"#;
@@ -774,12 +774,12 @@ Missing ref: id2,after missing,1d
     fn invalid_option_value_returns_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA",
-            br#"{ "layout": { "viewport_width": -1 } }"#,
+            br#"{ "layout": { "container_width": -1 } }"#,
         )
         .unwrap_err();
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("layout.viewport_width"));
+        assert!(err.message().contains("layout.container_width"));
     }
 
     #[test]
@@ -839,36 +839,6 @@ Missing ref: id2,after missing,1d
         assert!(err.message().contains("resources.max_svg_bytes"), "{err:?}");
     }
 
-    #[cfg(feature = "elk-layout")]
-    #[test]
-    fn render_svg_accepts_explicit_flowchart_elk_backend_option() {
-        let svg = String::from_utf8(
-            render_svg(
-                b"flowchart-elk TD\nA[Hello] --> B[World]",
-                br#"{ "layout": { "flowchart_elk_backend": "compat" } }"#,
-            )
-            .unwrap(),
-        )
-        .unwrap();
-
-        assert!(svg.contains("<svg"));
-        assert!(svg.contains("Hello"));
-        assert!(svg.contains("World"));
-        assert!(!svg.contains("NaN"));
-    }
-
-    #[test]
-    fn invalid_flowchart_elk_backend_returns_invalid_argument() {
-        let err = render_svg(
-            b"flowchart-elk TD\nA --> B",
-            br#"{ "layout": { "flowchart_elk_backend": "dagre" } }"#,
-        )
-        .unwrap_err();
-
-        assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("layout.flowchart_elk_backend"));
-    }
-
     #[test]
     fn invalid_text_measurement_profile_returns_invalid_argument() {
         let err = render_svg(
@@ -883,7 +853,7 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
-    fn legacy_layout_service_fields_are_rejected() {
+    fn removed_layout_fields_are_rejected_with_their_migration_target() {
         for (legacy_field, replacement) in [
             (
                 r#"{ "layout": { "text_measurer": "deterministic" } }"#,
@@ -892,6 +862,14 @@ Missing ref: id2,after missing,1d
             (
                 r#"{ "layout": { "math_renderer": "ratex" } }"#,
                 "environment.math_renderer",
+            ),
+            (
+                r#"{ "layout": { "viewport_width": 640 } }"#,
+                "layout.container_width",
+            ),
+            (
+                r#"{ "layout": { "viewport_height": 480 } }"#,
+                "layout.container_height",
             ),
         ] {
             let err = render_svg(b"flowchart TD\nA[Hello]", legacy_field.as_bytes()).unwrap_err();

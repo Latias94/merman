@@ -2,8 +2,7 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[cfg(test)]
-const DEFAULT_SECURE_KEYS: &[&str] = &[
+pub(crate) const HARDENED_SECURE_KEYS: &[&str] = &[
     "secure",
     "securityLevel",
     "startOnLoad",
@@ -15,6 +14,18 @@ const DEFAULT_SECURE_KEYS: &[&str] = &[
     "themeCSS",
     "themeVariables",
 ];
+
+pub(crate) fn apply_hardened_site_policy(config: &mut MermaidConfig) {
+    config.set_value(
+        "secure",
+        Value::Array(
+            HARDENED_SECURE_KEYS
+                .iter()
+                .map(|key| Value::String((*key).to_string()))
+                .collect(),
+        ),
+    );
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MermaidConfig(Arc<Value>);
@@ -386,18 +397,43 @@ mod tests {
     }
 
     #[test]
-    fn default_secure_key_list_matches_generated_config() {
+    fn upstream_secure_key_list_matches_mermaid_runtime() {
+        let upstream = crate::generated::upstream_default_config();
+        let secure = upstream
+            .as_value()
+            .get("secure")
+            .and_then(Value::as_array)
+            .expect("upstream secure array")
+            .iter()
+            .map(|value| value.as_str().expect("secure key string"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            secure,
+            [
+                "secure",
+                "securityLevel",
+                "startOnLoad",
+                "maxTextSize",
+                "suppressErrorRendering",
+                "maxEdges"
+            ]
+        );
+    }
+
+    #[test]
+    fn default_site_config_applies_hardened_secure_policy() {
         let default = crate::generated::default_site_config();
         let secure = default
             .as_value()
             .get("secure")
             .and_then(Value::as_array)
-            .expect("default secure array")
+            .expect("hardened secure array")
             .iter()
             .map(|value| value.as_str().expect("secure key string"))
             .collect::<Vec<_>>();
 
-        assert_eq!(secure, DEFAULT_SECURE_KEYS);
+        assert_eq!(secure, HARDENED_SECURE_KEYS);
     }
 
     #[test]

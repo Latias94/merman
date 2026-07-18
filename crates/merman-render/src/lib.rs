@@ -50,6 +50,7 @@ pub mod sankey;
 pub mod sequence;
 pub mod state;
 pub mod svg;
+pub mod swimlane;
 pub mod text;
 mod theme;
 pub mod timeline;
@@ -57,6 +58,7 @@ pub mod tree_view;
 pub mod treemap;
 mod trig_tables;
 pub mod venn;
+pub mod wardley;
 pub mod xychart;
 
 pub(crate) use host_time::{Duration, Instant};
@@ -103,34 +105,25 @@ impl Error {
     }
 }
 
+/// Host-provided geometry available to family layout algorithms.
+///
+/// This models the element that owns diagram layout, not a browser page viewport and not the
+/// final SVG viewport emitted after layout.
 #[derive(Debug, Clone)]
 pub struct LayoutOptions {
-    pub viewport_width: f64,
-    pub viewport_height: f64,
-    /// Enable experimental layout engines (e.g. Cytoscape COSE/FCoSE ports) for diagrams that
-    /// currently use placeholder layouts in merman.
-    pub use_manatee_layout: bool,
-    /// Selects the Flowchart ELK backend.
+    /// Width of the host layout container in CSS pixels.
     ///
-    /// `SourcePorted` executes the Rust source port of ELK layered layout. `Compat` keeps the
-    /// previous lightweight backend available as an explicit alpha fallback.
-    pub flowchart_elk_backend: FlowchartElkBackend,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FlowchartElkBackend {
-    Compat,
-    #[default]
-    SourcePorted,
+    /// Families whose Mermaid renderer reads DOM-available width use this value.
+    pub container_width: f64,
+    /// Height of the host layout container in CSS pixels.
+    pub container_height: f64,
 }
 
 impl Default for LayoutOptions {
     fn default() -> Self {
         Self {
-            viewport_width: 800.0,
-            viewport_height: 600.0,
-            use_manatee_layout: false,
-            flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
+            container_width: 800.0,
+            container_height: 600.0,
         }
     }
 }
@@ -138,12 +131,7 @@ impl Default for LayoutOptions {
 impl LayoutOptions {
     /// Returns geometry defaults suitable for headless SVG rendering.
     pub fn headless_svg_defaults() -> Self {
-        Self {
-            // Mermaid parity fixtures for diagrams like mindmap/architecture rely on the COSE
-            // layout port (manatee). Make the headless defaults "just work" for UI integrations.
-            use_manatee_layout: true,
-            ..Default::default()
-        }
+        Self::default()
     }
 }
 
@@ -174,6 +162,7 @@ impl<'a> LayoutExecution<'a> {
         self.session.resource_limits()
     }
 
+    #[cfg(feature = "cytoscape-layout")]
     pub(crate) const fn ambient_seed(&self) -> u64 {
         self.session.seed().seed().get()
     }
@@ -281,7 +270,6 @@ fn layout_flowchart_elk_typed_by_feature(
         effective_config,
         options.text_measurer(),
         options.math_renderer(),
-        options.flowchart_elk_backend,
     )
 }
 
@@ -463,7 +451,7 @@ Animal <|-- Duck
             .unwrap()
             .unwrap();
 
-        assert_eq!(parsed.meta.diagram_type, "classDiagram");
+        assert_eq!(parsed.meta.diagram_type, "class");
         let layout = class_layout(&parsed, &LayoutOptions::default(), &session);
         let animal = layout
             .nodes
@@ -662,10 +650,7 @@ config:
 flowchart LR
 A{A} --> B & C
 "#,
-            &LayoutOptions {
-                flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
-                ..Default::default()
-            },
+            &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions {
                 diagram_id: Some("elk-layout-smoke".to_string()),
                 ..Default::default()
@@ -731,10 +716,7 @@ config:
 flowchart-elk LR
 id1(Start)-->id2(Stop)
 "#,
-            &LayoutOptions {
-                flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
-                ..Default::default()
-            },
+            &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions::default(),
         );
 
@@ -759,10 +741,7 @@ id1(Start)-->id2(Stop)
     fn canonical_svg_keeps_source_ported_elk_self_loop_edges() {
         let svg = render_source(
             "flowchart-elk TD\nA --> A",
-            &LayoutOptions {
-                flowchart_elk_backend: FlowchartElkBackend::SourcePorted,
-                ..Default::default()
-            },
+            &LayoutOptions::default(),
             &crate::svg::SvgRenderOptions::default(),
         );
 
@@ -836,7 +815,7 @@ Animal <|-- Duck
         };
         assert!(matches!(
             err,
-            Error::UnsupportedDiagram { diagram_type } if diagram_type == "classDiagram"
+            Error::UnsupportedDiagram { diagram_type } if diagram_type == "class"
         ));
     }
 

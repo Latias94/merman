@@ -47,7 +47,7 @@ crate.
 | `merman` | `ascii` | Enables terminal-oriented ASCII/Unicode rendering through `merman-ascii`. |
 | `merman` | `raster` | Enables PNG/JPG/PDF conversion support. |
 | `merman` | `ratex-math` | Enables the pure-Rust RaTeX math backend for supported labels. |
-| `merman` | `cytoscape-layout` | Enables the Cytoscape-style Architecture and Mindmap layout seam through `merman-render`. Enabled by `core-full`. |
+| `merman` | `cytoscape-layout` | Enables Architecture FCoSE and non-`tidy-tree` Mindmap COSE-Bilkent layout through `merman-render`; those families are unsupported without it. Enabled by `core-full`. |
 | `merman` | `elk-layout` | Enables the optional ELK layout engine integration through `merman-layout-elk`; not implied by `render`. |
 | `merman` | `core-full` | Forwards to `merman-core/full`; enabled by default. |
 | `merman` | `core-host` | Forwards to `merman-core/host`; enabled by default. |
@@ -72,7 +72,7 @@ crate.
 | `merman-wasm` | `ascii` | Browser wasm-bindgen ASCII/Unicode surface for `@mermanjs/web`; pair with `core-full`/`core-host` only when the artifact needs those core profiles. |
 | `merman-wasm` | `core-full` | Browser package full core profile; enabled by default. |
 | `merman-wasm` | `core-host` | Browser package host capability profile; enabled by default. |
-| `merman-wasm` | `cytoscape-layout` | Browser opt-in for Architecture and Mindmap Cytoscape-style layout when building non-full presets. Enabled by `core-full`. |
+| `merman-wasm` | `cytoscape-layout` | Browser opt-in for Architecture FCoSE and non-`tidy-tree` Mindmap COSE-Bilkent layout when building non-full presets. Enabled by `core-full`. |
 | `merman-wasm` | `elk-layout` | Browser opt-in for ELK-backed layouts; enabled by default for the published full artifact. |
 | `merman-wasm` | `editor-language` | Browser editor-language APIs; implies `analysis` and adds `merman-editor-core`. |
 | `merman-wasm` | `ratex-math` | Browser package RaTeX math rendering support; implies `render`. |
@@ -80,7 +80,7 @@ crate.
 | `merman-typst-plugin` | `analysis` | Typst validation surface; enabled by default so the package `validate-mermaid` API keeps existing behavior. |
 | `merman-typst-plugin` | `core-full` | Typst no-host artifact with full config and sanitization support. |
 | `merman-typst-plugin` | `core-host` | Opt-in host capability profile; do not enable for Typst package builds. |
-| `merman-typst-plugin` | `cytoscape-layout` | Typst opt-in for Architecture and Mindmap Cytoscape-style layout. Enabled by `core-full`. |
+| `merman-typst-plugin` | `cytoscape-layout` | Typst opt-in for Architecture FCoSE and non-`tidy-tree` Mindmap COSE-Bilkent layout. Enabled by `core-full`. |
 | `merman-typst-plugin` | `elk-layout` | Typst opt-in for ELK-backed layouts; enabled by default for the package artifact. |
 | `merman-typst-plugin` | `ratex-math` | Typst plugin artifact plus RaTeX math rendering support; implies `render`. |
 

@@ -10,7 +10,7 @@ fn workspace_root() -> PathBuf {
         .join("..")
 }
 
-fn layout_er_with_dagre(text: &str) -> ErDiagramLayout {
+fn layout_er(text: &str) -> ErDiagramLayout {
     let parsed: ParsedDiagramRender = Engine::new()
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -21,7 +21,7 @@ fn layout_er_with_dagre(text: &str) -> ErDiagramLayout {
     let session = RenderEnvironment::parity().begin_session().unwrap();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
     layout_er_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-        .expect("Dagre ER layout")
+        .expect("ER layout")
 }
 
 #[test]
@@ -32,7 +32,7 @@ fn er_layout_produces_positions_and_routes() {
         .join("basic.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let layout = layout_er_with_dagre(&text);
+    let layout = layout_er(&text);
 
     assert!(layout.nodes.len() >= 3);
     assert!(layout.edges.len() >= 2);
@@ -63,7 +63,7 @@ fn er_layout_emits_markers_and_dashes_from_rel_spec() {
         .join("upstream_relationship_aliases.mmd");
     let text = std::fs::read_to_string(&path).expect("fixture");
 
-    let layout = layout_er_with_dagre(&text);
+    let layout = layout_er(&text);
 
     let mut has_marker = false;
     let mut has_dashed = false;
@@ -81,4 +81,72 @@ fn er_layout_emits_markers_and_dashes_from_rel_spec() {
         has_dashed,
         "expected at least one NON_IDENTIFYING relationship to be dashed"
     );
+}
+
+#[test]
+fn er_dagre_recursive_relationship_keeps_original_node_before_helper_ranks() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("er")
+        .join(
+            "upstream_cypress_erdiagram_spec_should_render_an_er_diagram_with_a_recursive_relationship_002.mmd",
+        );
+    let text = std::fs::read_to_string(&path).expect("fixture");
+
+    let layout = layout_er(&text);
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("missing ER layout node {id}"))
+    };
+    let customer = node("entity-CUSTOMER-0");
+    let helper_1 = node("entity-CUSTOMER-0---entity-CUSTOMER-0---1");
+    let helper_2 = node("entity-CUSTOMER-0---entity-CUSTOMER-0---2");
+    let order = node("entity-ORDER-1");
+    let line_item = node("entity-LINE-ITEM-2");
+
+    assert!(customer.y < helper_1.y && helper_1.y < helper_2.y);
+    assert!((helper_1.y - order.y).abs() < 1e-9);
+    assert!((helper_2.y - line_item.y).abs() < 1e-9);
+}
+
+#[cfg(feature = "elk-layout")]
+#[test]
+fn er_layout_config_selects_source_ported_elk_geometry() {
+    let elk_source = r#"---
+config:
+  layout: elk
+---
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE-ITEM : contains
+  CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
+"#;
+    let dagre_source = r#"erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE-ITEM : contains
+  CUSTOMER }|..|{ DELIVERY-ADDRESS : uses
+"#;
+
+    let elk = layout_er(elk_source);
+    let dagre = layout_er(dagre_source);
+
+    let elk_positions = elk
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node.x, node.y))
+        .collect::<Vec<_>>();
+    let dagre_positions = dagre
+        .nodes
+        .iter()
+        .map(|node| (node.id.as_str(), node.x, node.y))
+        .collect::<Vec<_>>();
+    assert_ne!(elk_positions, dagre_positions);
+    assert!(elk.edges.iter().all(|edge| {
+        edge.points.windows(2).all(|segment| {
+            (segment[0].x - segment[1].x).abs() < 1e-9 || (segment[0].y - segment[1].y).abs() < 1e-9
+        })
+    }));
 }

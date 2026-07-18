@@ -10,10 +10,8 @@ use std::collections::{HashMap, hash_map::Entry};
 
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
-// Mermaid's gantt renderer derives the width from the parent element's `offsetWidth`.
-// In Mermaid CLI (and typical browser defaults), the body margin results in an effective
-// width of 1184px for a 1200px viewport, which matches our upstream SVG baselines.
-const DEFAULT_WIDTH: f64 = 1184.0;
+// Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
+const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
 const MS_PER_DAY: i64 = 86_400_000;
 
 fn dt_utc_to_local_fixed(dt_utc: chrono::DateTime<chrono::Utc>) -> chrono::DateTime<FixedOffset> {
@@ -978,6 +976,7 @@ pub fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
     config: &serde_json::Value,
     text_measurer: &dyn TextMeasurer,
+    container_width: f64,
 ) -> Result<GanttDiagramLayout> {
     let mut m = model.clone();
 
@@ -1004,10 +1003,15 @@ pub fn layout_gantt_diagram_typed(
         .and_then(|v| v.as_str())
         .unwrap_or("%Y-%m-%d");
 
+    let container_width = if container_width.is_finite() && container_width > 0.0 {
+        container_width
+    } else {
+        DEFAULT_CONTAINER_WIDTH
+    };
     let width = gantt_cfg
         .get("useWidth")
         .and_then(|v| v.as_f64())
-        .unwrap_or(DEFAULT_WIDTH);
+        .unwrap_or(container_width);
     let gap = bar_height + bar_gap;
 
     let row_task_count = m.tasks.iter().filter(|task| !task.vert).count();
@@ -1177,6 +1181,7 @@ pub fn layout_gantt_diagram_typed(
         font_family: Some(task_font_family.clone()),
         font_size,
         font_weight: None,
+        font_style: None,
     };
 
     let mut tasks: Vec<GanttTaskLayout> = Vec::new();
@@ -1259,7 +1264,9 @@ pub fn layout_gantt_diagram_typed(
 
         // Mermaid measures `textWidth` via `this.getBBox().width`, which does not include trailing
         // whitespace. Preserve the original task text for rendering, but trim it for measurement.
-        let text_width = text_measurer.measure(t.task.trim_end(), &text_style).width;
+        let text_width = text_measurer
+            .measure_svg_raw_text_bbox_width_px(t.task.trim_end(), &text_style)
+            .max(0.0);
 
         // Mermaid uses `renderEndTime` for the X-position calculation but `endTime` for the class
         // overflow check. Mirror this quirk for DOM parity.

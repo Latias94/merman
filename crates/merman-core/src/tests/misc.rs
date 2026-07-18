@@ -41,7 +41,7 @@ fn parse_indented_headers_across_common_diagrams() {
         ),
         (
             "     classDiagram\n     class C1[\"Class 1 with text label\"]\n",
-            "classDiagram",
+            "class",
         ),
         ("     erDiagram\n     PERSON ||--o{ ORDER : places\n", "er"),
         (
@@ -371,7 +371,7 @@ fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
         ),
         ("flowchart-elk", "flowchart-elk TD\nA-->B\n", "flowchart"),
     ] {
-        let input = format!("%%{{init: {{\"config\": {{\"enabled\": true}}}}}}%%\n{source}");
+        let input = format!("%%{{init: {{\"config\": {{\"useMaxWidth\": false}}}}}}%%\n{source}");
 
         let meta = engine
             .parse_metadata_with_type_sync(diagram_type, &input, ParseOptions::strict())
@@ -381,8 +381,8 @@ fn parse_metadata_with_type_sync_moves_init_config_through_diagram_aliases() {
         assert_eq!(
             meta.config
                 .as_value()
-                .pointer(&format!("/{config_key}/enabled")),
-            Some(&json!(true)),
+                .pointer(&format!("/{config_key}/useMaxWidth")),
+            Some(&json!(false)),
             "config key for {diagram_type}"
         );
         if diagram_type != config_key {
@@ -655,7 +655,7 @@ fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
             "railroad.{theme_derived_key} should derive from active themeVariables"
         );
     }
-    assert_eq!(railroad["showMarkers"], json!(true));
+    assert!(railroad.get("showMarkers").is_none());
 
     let swimlane = &config["swimlane"];
     assert_eq!(swimlane["lineHops"], json!("arc"));
@@ -664,7 +664,7 @@ fn parse_metadata_exposes_admitted_11_16_family_config_defaults() {
 
     assert!(
         config.get("wardley-beta").is_none(),
-        "wardley-beta should stay outside generated defaults until admitted"
+        "Mermaid 11.16 keeps Wardley defaults in its renderer rather than defaultConfig"
     );
 }
 
@@ -778,6 +778,67 @@ flowchart TD
     assert_eq!(
         meta.effective_config.get_str("themeVariables.fontFamily"),
         Some("\"trebuchet ms\", verdana, arial, sans-serif")
+    );
+}
+
+#[test]
+fn directive_sanitization_uses_generated_config_shape_end_to_end() {
+    let source = r##"%%{init: {
+        "notAConfigKey": "removed",
+        "theme": null,
+        "prototype": "removed",
+        "constructor": "removed",
+        "deterministicIDSeed": "accepted undefined key",
+        "sequence": {"messageFont": "accepted function key"},
+        "secure": ["theme"],
+        "flowchart": {
+            "secure": ["htmlLabels"],
+            "securityLevel": "loose",
+            "htmlLabels": false
+        },
+        "sankey": {
+            "nodeColors": {
+                "valid": "#abc",
+                "invalid": "url(javascript:alert(1))",
+                "constructor": "red"
+            }
+        }
+    }}%%
+flowchart TD
+    A --> B
+"##;
+
+    let metadata = Engine::new()
+        .parse_metadata_sync(source, ParseOptions::strict())
+        .expect("parse succeeds")
+        .expect("diagram detected");
+    let retained = metadata.config.as_value();
+
+    assert!(retained.get("notAConfigKey").is_none());
+    assert!(retained.get("theme").is_none());
+    assert!(retained.get("prototype").is_none());
+    assert!(retained.get("constructor").is_none());
+    assert!(retained.get("secure").is_none());
+    assert!(retained["flowchart"].get("secure").is_none());
+    assert_eq!(retained["deterministicIDSeed"], "accepted undefined key");
+    assert_eq!(retained["sequence"]["messageFont"], "accepted function key");
+    assert_eq!(retained["flowchart"]["htmlLabels"], false);
+    assert_eq!(retained["sankey"]["nodeColors"], json!({ "valid": "#abc" }));
+
+    assert_eq!(
+        metadata.config.get_str("flowchart.securityLevel"),
+        Some("loose")
+    );
+    assert!(
+        metadata
+            .effective_config
+            .get_str("flowchart.securityLevel")
+            .is_none(),
+        "the hardened site policy must remove secure keys recursively"
+    );
+    assert_eq!(
+        metadata.effective_config.get_str("securityLevel"),
+        Some("strict")
     );
 }
 
@@ -935,7 +996,8 @@ fn init_directive_config_sanitizes_deep_values_with_small_stack() {
                 .expect("diagram detected");
 
             assert_eq!(
-                deep_config_leaf(meta.config.as_value(), "sequence", DEPTH).and_then(Value::as_str),
+                deep_repeated_config_leaf(meta.config.as_value(), "sequence", DEPTH)
+                    .and_then(Value::as_str),
                 Some("")
             );
         })
@@ -1090,7 +1152,7 @@ fn parse_returns_malformed_frontmatter_error_for_unclosed_frontmatter() {
 }
 
 #[test]
-fn parse_rejects_mismatched_indented_frontmatter_like_upstream() {
+fn parse_matches_public_api_for_mismatched_indented_frontmatter() {
     let engine = Engine::new();
     let err = block_on(engine.parse_metadata(
         "---\ntitle: mismatched YAML front-matter\n   ---\nsequenceDiagram\nAlice->Bob: Hi\n",
@@ -1099,12 +1161,15 @@ fn parse_rejects_mismatched_indented_frontmatter_like_upstream() {
     .unwrap_err();
     assert!(err.to_string().contains("Malformed YAML front-matter"));
 
-    let err = block_on(engine.parse_metadata(
+    let res = block_on(engine.parse_metadata(
         "   ---\ntitle: mismatched YAML front-matter\n---\nsequenceDiagram\nAlice->Bob: Hi\n",
-        ParseOptions::default(),
+        ParseOptions::strict(),
     ))
-    .unwrap_err();
-    assert!(err.to_string().contains("Malformed YAML front-matter"));
+    .expect("the public Mermaid parse pipeline exposes this frontmatter on its second preprocess")
+    .expect("diagram detected");
+    assert_eq!(res.diagram_type, "sequence");
+    assert_eq!(res.title, None);
+    assert_eq!(res.config.as_value(), &json!({}));
 }
 
 #[test]
@@ -1407,12 +1472,18 @@ fn combined_parse_keeps_generic_custom_semantics_and_reports_editor_unavailable(
 }
 
 #[test]
-fn combined_parse_suppresses_missing_semantic_parsers_after_successful_detection() {
-    assert_combined_missing_semantic_contract(
-        &Engine::new(),
-        "wardley",
-        "wardley-beta\ntitle Example",
-    );
+fn combined_parse_uses_wardley_semantics_and_suppresses_only_missing_custom_parsers() {
+    let wardley = Engine::new()
+        .parse_diagram_with_editor_facts_sync("wardley-beta\ntitle Example", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(wardley.diagram.meta.diagram_type, "wardley");
+    assert_eq!(wardley.diagram.model["type"], json!("wardley"));
+    assert_eq!(wardley.diagram.model["title"], json!("Example"));
+    assert!(matches!(
+        wardley.editor_facts,
+        crate::ParsedEditorFacts::Available(_)
+    ));
 
     let mut custom = Engine::new();
     custom
@@ -1626,10 +1697,22 @@ fn deep_config_leaf<'a>(mut value: &'a Value, root_key: &str, depth: usize) -> O
     Some(value)
 }
 
+fn deep_repeated_config_leaf<'a>(
+    mut value: &'a Value,
+    key: &str,
+    depth: usize,
+) -> Option<&'a Value> {
+    value = value.as_object()?.get(key)?;
+    for _ in 0..depth {
+        value = value.as_object()?.get(key)?;
+    }
+    Some(value)
+}
+
 fn deep_init_directive_source(root_key: &str, depth: usize, leaf: &str) -> String {
     let mut source = format!(r#"%%{{init: {{"{root_key}": "#);
-    for idx in 0..depth {
-        write!(&mut source, r#"{{"k{idx}":"#).expect("write init config");
+    for _ in 0..depth {
+        write!(&mut source, r#"{{"{root_key}":"#).expect("write init config");
     }
     write!(&mut source, "{leaf:?}").expect("write init leaf");
     for _ in 0..depth {
@@ -2689,7 +2772,7 @@ fn parse_sankey_exposes_config_defaults_and_overrides() {
     assert_eq!(sankey["nodeWidth"], json!(10));
     assert_eq!(sankey["nodePadding"], json!(12));
     assert_eq!(sankey["labelStyle"], json!("legacy"));
-    assert_eq!(sankey["nodeColors"], json!({}));
+    assert!(sankey.get("nodeColors").is_none());
     assert_eq!(sankey["useMaxWidth"], json!(true));
 
     let configured = block_on(engine.parse_metadata(

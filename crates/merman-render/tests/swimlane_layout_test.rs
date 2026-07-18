@@ -1,0 +1,425 @@
+use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_render::model::{SwimlaneDirection, SwimlaneLayout};
+use merman_render::swimlane::layout_swimlane_typed;
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use std::path::PathBuf;
+
+const EPSILON: f64 = 1.0e-6;
+
+struct FixedTextMeasurer;
+
+impl TextMeasurer for FixedTextMeasurer {
+    fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+        TextMetrics {
+            width: text.chars().count() as f64 * 8.0,
+            height: 20.0,
+            line_count: 1,
+        }
+    }
+}
+
+fn try_layout_swimlane(source: &str) -> Result<SwimlaneLayout, String> {
+    let parsed = futures::executor::block_on(
+        Engine::new().parse_diagram_for_render_model(source, ParseOptions::strict()),
+    )
+    .map_err(|error| format!("parse failed: {error}"))?
+    .ok_or_else(|| "no diagram detected".to_string())?;
+    let RenderSemanticModel::Flowchart(model) = &parsed.model else {
+        return Err("expected Flowchart render model".to_string());
+    };
+    layout_swimlane_typed(
+        model,
+        &parsed.meta.effective_config,
+        &FixedTextMeasurer,
+        None,
+    )
+    .map_err(|error| format!("swimlane layout failed: {error}"))
+}
+
+fn layout_swimlane(source: &str) -> SwimlaneLayout {
+    try_layout_swimlane(source).expect("swimlane layout")
+}
+
+fn assert_orthogonal(points: &[merman_render::model::LayoutPoint]) {
+    assert!(points.len() >= 2, "an edge needs at least two route points");
+    for segment in points.windows(2) {
+        let horizontal = (segment[0].y - segment[1].y).abs() <= EPSILON;
+        let vertical = (segment[0].x - segment[1].x).abs() <= EPSILON;
+        assert!(
+            horizontal || vertical,
+            "non-orthogonal segment: {:?} -> {:?}",
+            segment[0],
+            segment[1]
+        );
+    }
+}
+
+fn contains_node(
+    lane: &merman_render::model::SwimlaneLaneLayout,
+    node: &merman_render::model::SwimlaneNodeLayout,
+) -> bool {
+    node.x - node.width / 2.0 >= lane.x - lane.width / 2.0 - EPSILON
+        && node.x + node.width / 2.0 <= lane.x + lane.width / 2.0 + EPSILON
+        && node.y - node.height / 2.0 >= lane.y - lane.height / 2.0 - EPSILON
+        && node.y + node.height / 2.0 <= lane.y + lane.height / 2.0 + EPSILON
+}
+
+fn point_on_polyline(point: (f64, f64), points: &[merman_render::model::LayoutPoint]) -> bool {
+    points.windows(2).any(|segment| {
+        let min_x = segment[0].x.min(segment[1].x) - EPSILON;
+        let max_x = segment[0].x.max(segment[1].x) + EPSILON;
+        let min_y = segment[0].y.min(segment[1].y) - EPSILON;
+        let max_y = segment[0].y.max(segment[1].y) + EPSILON;
+        let collinear = if (segment[0].x - segment[1].x).abs() <= EPSILON {
+            (point.0 - segment[0].x).abs() <= EPSILON
+        } else {
+            (point.1 - segment[0].y).abs() <= EPSILON
+        };
+        collinear && point.0 >= min_x && point.0 <= max_x && point.1 >= min_y && point.1 <= max_y
+    })
+}
+
+fn node_by_id<'a>(
+    layout: &'a SwimlaneLayout,
+    id: &str,
+) -> &'a merman_render::model::SwimlaneNodeLayout {
+    layout
+        .nodes
+        .iter()
+        .find(|node| node.id == id)
+        .unwrap_or_else(|| panic!("node {id}"))
+}
+
+#[test]
+fn basic_lr_uses_lane_owned_sugiyama_and_orthogonal_routes() {
+    let layout = layout_swimlane(
+        r#"flowchart LR
+subgraph Customer
+  request[Request service]
+  receive[Receive update]
+end
+subgraph Support
+  triage[Triage request]
+  answer[Send answer]
+end
+subgraph Engineering
+  investigate[Investigate issue]
+  fix[Prepare fix]
+end
+request --> triage
+triage -->|Known issue| answer
+triage -->|Needs code change| investigate
+investigate --> fix --> answer
+answer --> receive
+"#,
+    );
+
+    assert_eq!(layout.direction, SwimlaneDirection::Lr);
+    assert_eq!(
+        layout
+            .lanes
+            .iter()
+            .filter(|lane| lane.parent_id.is_none())
+            .count(),
+        3
+    );
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+    assert_eq!(node("request").top_lane_id.as_deref(), Some("Customer"));
+    assert_eq!(node("triage").top_lane_id.as_deref(), Some("Support"));
+    assert_eq!(
+        node("investigate").top_lane_id.as_deref(),
+        Some("Engineering")
+    );
+    assert!(node("request").x < node("receive").x);
+    assert!(node("triage").x < node("answer").x);
+    assert!(node("investigate").x < node("fix").x);
+
+    assert_eq!(layout.edges.len(), 6);
+    for edge in &layout.edges {
+        assert_orthogonal(&edge.points);
+    }
+}
+
+#[test]
+fn loose_nodes_are_owned_by_the_synthetic_default_lane() {
+    let layout = layout_swimlane(
+        r#"flowchart TB
+A[Start] --> B[Finish]
+"#,
+    );
+
+    assert_eq!(layout.direction, SwimlaneDirection::Tb);
+    assert_eq!(layout.lanes.len(), 1);
+    let lane = &layout.lanes[0];
+    assert_eq!(lane.id, "__swimlane_default__");
+    assert!(lane.parent_id.is_none());
+    let title_rect = lane.title_rect.as_ref().expect("default lane title band");
+    assert!((title_rect.bottom - title_rect.top - 21.0).abs() <= EPSILON);
+
+    let a = layout.nodes.iter().find(|node| node.id == "A").expect("A");
+    let b = layout.nodes.iter().find(|node| node.id == "B").expect("B");
+    for node in [a, b] {
+        assert_eq!(node.parent_id.as_deref(), Some("__swimlane_default__"));
+        assert_eq!(node.top_lane_id.as_deref(), Some("__swimlane_default__"));
+        assert!(contains_node(lane, node));
+    }
+    assert!(a.y < b.y);
+    assert_orthogonal(&layout.edges[0].points);
+}
+
+#[test]
+fn edge_labels_are_layout_waypoints_and_anchor_to_the_original_edge() {
+    let layout = layout_swimlane(
+        r#"flowchart TB
+subgraph Team
+  A[Draft]
+  B[Ship]
+end
+A -->|approval| B
+"#,
+    );
+
+    let a = layout.nodes.iter().find(|node| node.id == "A").expect("A");
+    let b = layout.nodes.iter().find(|node| node.id == "B").expect("B");
+    let label = layout
+        .nodes
+        .iter()
+        .find(|node| node.is_edge_label)
+        .expect("edge label node");
+    assert_eq!(label.label, "approval");
+    assert_eq!(label.shape, "labelRect");
+    assert!((label.width - 64.0).abs() <= EPSILON);
+    assert!((label.height - 20.0).abs() <= EPSILON);
+    assert!((label.label_width - 64.0).abs() <= EPSILON);
+    assert!(a.layer < label.layer && label.layer < b.layer);
+
+    assert_eq!(layout.edges.len(), 1, "virtual edges must not render");
+    let edge = &layout.edges[0];
+    assert_eq!(edge.label_node_id.as_deref(), Some(label.id.as_str()));
+    assert!(point_on_polyline((label.x, label.y), &edge.points));
+    assert_orthogonal(&edge.points);
+}
+
+#[test]
+fn cycles_reverse_only_the_layout_constraint_not_the_rendered_edge() {
+    let layout = layout_swimlane(
+        r#"flowchart TB
+subgraph Lane
+  A --> B
+  B --> C
+  C --> A
+end
+"#,
+    );
+
+    assert_eq!(layout.edges.len(), 3);
+    assert_eq!(
+        layout
+            .edges
+            .iter()
+            .filter(|edge| edge.reversed_for_layout)
+            .count(),
+        1
+    );
+    let endpoints: std::collections::HashSet<_> = layout
+        .edges
+        .iter()
+        .map(|edge| (edge.from.as_str(), edge.to.as_str()))
+        .collect();
+    assert!(endpoints.contains(&("A", "B")));
+    assert!(endpoints.contains(&("B", "C")));
+    assert!(endpoints.contains(&("C", "A")));
+    for edge in &layout.edges {
+        assert_orthogonal(&edge.points);
+    }
+}
+
+#[test]
+fn all_four_directions_are_mirrored_and_deterministic() {
+    const BODY: &str = r#"
+subgraph Customer
+  request[Request service]
+  receive[Receive update]
+end
+subgraph Support
+  triage[Triage request]
+  answer[Send answer]
+end
+subgraph Engineering
+  investigate[Investigate issue]
+  fix[Prepare fix]
+end
+request --> triage
+triage -->|Known issue| answer
+triage -->|Needs code change| investigate
+investigate --> fix --> answer
+answer --> receive
+"#;
+
+    for (header, expected_direction) in [
+        ("TB", SwimlaneDirection::Tb),
+        ("BT", SwimlaneDirection::Bt),
+        ("LR", SwimlaneDirection::Lr),
+        ("RL", SwimlaneDirection::Rl),
+    ] {
+        let source = format!("swimlane-beta {header}{BODY}");
+        let layout = layout_swimlane(&source);
+        assert_eq!(layout.direction, expected_direction);
+
+        let investigate = node_by_id(&layout, "investigate");
+        let fix = node_by_id(&layout, "fix");
+        match expected_direction {
+            SwimlaneDirection::Tb => assert!(investigate.y < fix.y),
+            SwimlaneDirection::Bt => assert!(investigate.y > fix.y),
+            SwimlaneDirection::Lr => assert!(investigate.x < fix.x),
+            SwimlaneDirection::Rl => assert!(investigate.x > fix.x),
+        }
+        for edge in &layout.edges {
+            assert_orthogonal(&edge.points);
+        }
+
+        let expected = serde_json::to_value(&layout).expect("serialize Swimlane layout");
+        for _ in 0..8 {
+            let repeated = serde_json::to_value(layout_swimlane(&source))
+                .expect("serialize repeated Swimlane layout");
+            assert_eq!(repeated, expected, "{header} layout must be deterministic");
+        }
+    }
+}
+
+#[test]
+fn upstream_swimlane_ddlt_corpus_has_finite_orthogonal_layouts() {
+    let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("fixtures/swimlane/_upstream_ddlt");
+    let mut fixtures: Vec<_> = std::fs::read_dir(&corpus)
+        .expect("read Swimlane DDLT corpus")
+        .map(|entry| entry.expect("read corpus entry").path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "mmd"))
+        .collect();
+    fixtures.sort();
+    assert_eq!(
+        fixtures.len(),
+        30,
+        "the Mermaid 11.16 DDLT sweep has 30 files"
+    );
+
+    let mut failures = Vec::new();
+    for fixture in fixtures {
+        let source = match std::fs::read_to_string(&fixture) {
+            Ok(source) => source,
+            Err(error) => {
+                failures.push(format!("{}: read failed: {error}", fixture.display()));
+                continue;
+            }
+        };
+        let layout = match std::panic::catch_unwind(|| try_layout_swimlane(&source)) {
+            Ok(Ok(layout)) => layout,
+            Ok(Err(error)) => {
+                failures.push(format!("{}: {error}", fixture.display()));
+                continue;
+            }
+            Err(_) => {
+                failures.push(format!("{}: layout panicked", fixture.display()));
+                continue;
+            }
+        };
+
+        if layout.nodes.is_empty() {
+            failures.push(format!("{}: layout has no nodes", fixture.display()));
+        }
+        if layout.lanes.is_empty() {
+            failures.push(format!("{}: layout has no lanes", fixture.display()));
+        }
+
+        let finite = |values: &[f64]| values.iter().all(|value| value.is_finite());
+        for node in &layout.nodes {
+            if !finite(&[
+                node.x,
+                node.y,
+                node.width,
+                node.height,
+                node.label_width,
+                node.label_height,
+            ]) || node.width <= 0.0
+                || node.height <= 0.0
+            {
+                failures.push(format!(
+                    "{}: node {} has invalid geometry",
+                    fixture.display(),
+                    node.id
+                ));
+            }
+        }
+        for lane in &layout.lanes {
+            if !finite(&[
+                lane.x,
+                lane.y,
+                lane.width,
+                lane.height,
+                lane.padding,
+                lane.title_label_width,
+                lane.title_label_height,
+            ]) || lane.width <= 0.0
+                || lane.height <= 0.0
+            {
+                failures.push(format!(
+                    "{}: lane {} has invalid geometry",
+                    fixture.display(),
+                    lane.id
+                ));
+            }
+        }
+        for edge in &layout.edges {
+            if edge
+                .points
+                .iter()
+                .any(|point| !point.x.is_finite() || !point.y.is_finite())
+            {
+                failures.push(format!(
+                    "{}: edge {} has a non-finite point",
+                    fixture.display(),
+                    edge.id
+                ));
+                continue;
+            }
+            if edge.points.len() < 2
+                || edge.points.windows(2).any(|segment| {
+                    (segment[0].x - segment[1].x).abs() > EPSILON
+                        && (segment[0].y - segment[1].y).abs() > EPSILON
+                })
+            {
+                failures.push(format!(
+                    "{}: edge {} is not orthogonal",
+                    fixture.display(),
+                    edge.id
+                ));
+            }
+        }
+
+        let Some(bounds) = &layout.bounds else {
+            failures.push(format!("{}: layout has no bounds", fixture.display()));
+            continue;
+        };
+        if !finite(&[bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y])
+            || bounds.max_x <= bounds.min_x
+            || bounds.max_y <= bounds.min_y
+        {
+            failures.push(format!("{}: layout has invalid bounds", fixture.display()));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "Swimlane DDLT corpus failures:\n{}",
+        failures.join("\n")
+    );
+}

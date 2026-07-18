@@ -7,7 +7,7 @@
           "id": "State1",
           "x": 81.68,
           "y": 104.5,
-          "width": 147.359,
+          "width": 147.36,
           "height": 65.0,
           "is_cluster": false
         },
@@ -15,7 +15,7 @@
           "id": "root_end",
           "x": 81.68,
           "y": 194.0,
-          "width": 14.013,
+          "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
@@ -92,7 +92,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 155.359,
+        "max_x": 155.36,
         "max_y": 201.0
       }
     }

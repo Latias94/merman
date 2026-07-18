@@ -717,3 +717,16 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
 
     b
 }
+
+/// Returns the rendered centerline length for an SVG path.
+///
+/// Mermaid derives Neo edge masking from `SVGPathElement.getTotalLength()`. Kurbo parses the same
+/// SVG path grammar, including arcs, and evaluates Bezier arc length without flattening the path
+/// into a local polyline approximation.
+pub(super) fn svg_path_length_from_d(d: &str) -> Option<f64> {
+    use kurbo::Shape;
+
+    let path = kurbo::BezPath::from_svg(d).ok()?;
+    let length = path.perimeter(1.0e-6);
+    length.is_finite().then_some(length)
+}

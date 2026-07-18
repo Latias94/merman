@@ -1,11 +1,9 @@
 //! Per-diagram SVG compare commands.
 use crate::XtaskError;
-#[cfg(test)]
-use crate::cmd::compare::VerificationRenderPath;
 use crate::cmd::compare::{
-    CompareRequest, DiagnosticsPolicy, DiagramIdPolicy, DiagramVerificationFact,
-    FixtureComparePolicy, FixtureReportPolicy, FixtureSkipPolicy, ParsePolicy, RenderProfile,
-    SpecialistHook, run_canonical_svg_compare,
+    CompareRequest, CompareRunFailure, CompareRunResult, DiagnosticsPolicy, DiagramIdPolicy,
+    DiagramVerificationFact, FixtureComparePolicy, FixtureReportPolicy, FixtureSkipPolicy,
+    ParsePolicy, RenderProfile, SpecialistHook, run_canonical_svg_compare,
 };
 
 mod er;
@@ -15,10 +13,11 @@ mod gantt;
 use er::{compare_er_args, compare_er_request};
 use flowchart::{compare_flowchart_args, compare_flowchart_request};
 use gantt::{compare_gantt_args, compare_gantt_request};
-
-pub(crate) use flowchart::{
-    audit_flowchart_elk_source_backed_coverage, check_flowchart_elk_source_backed_probes,
+pub(crate) use gantt::{
+    gantt_baseline_local_offset_minutes, gantt_calibrated_time_snapshot, gantt_compare_environment,
 };
+
+pub(crate) use flowchart::{audit_flowchart_elk_parity_coverage, check_flowchart_elk_parity};
 macro_rules! verification_fact {
     (
         $diagram:literal, $command:literal, $title:literal, $mode:literal, $source:literal,
@@ -103,7 +102,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Dom,
         Summary,
         RootDelta,
-        ClassV2Role
+        None
     ),
     verification_fact!(
         "sequence",
@@ -127,6 +126,21 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "parity",
         "info\n",
         Default,
+        Standard,
+        SanitizedStem,
+        None,
+        Dom,
+        Summary,
+        None,
+        None
+    ),
+    verification_fact!(
+        "error",
+        "compare-error-svgs",
+        "Error",
+        "parity",
+        "error\n",
+        SuppressErrors,
         Standard,
         SanitizedStem,
         None,
@@ -451,11 +465,41 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         None
     ),
     verification_fact!(
+        "swimlane",
+        "compare-swimlane-svgs",
+        "Swimlane",
+        "parity",
+        "swimlane-beta LR\nsubgraph Team\nA[Start] --> B[Done]\nend\n",
+        Default,
+        Standard,
+        SanitizedStem,
+        UpstreamCompare,
+        Dom,
+        Summary,
+        RootDelta,
+        None
+    ),
+    verification_fact!(
         "cynefin",
         "compare-cynefin-svgs",
         "Cynefin",
         "parity",
         "cynefin-beta\n  complex\n",
+        SuppressErrors,
+        Standard,
+        SanitizedStem,
+        None,
+        Dom,
+        Summary,
+        None,
+        None
+    ),
+    verification_fact!(
+        "wardley",
+        "compare-wardley-svgs",
+        "Wardley",
+        "parity",
+        "wardley-beta\ncomponent A [0.8, 0.2]\n",
         SuppressErrors,
         Standard,
         SanitizedStem,
@@ -535,28 +579,27 @@ pub(crate) fn compare_diagram_command(
         SpecialistHook::FlowchartAdapter => compare_flowchart_args(fact, args),
         SpecialistHook::ErAdapter => compare_er_args(fact, args),
         SpecialistHook::GanttAdapter => compare_gantt_args(fact, args),
-        SpecialistHook::None | SpecialistHook::ClassV2Role | SpecialistHook::SequenceMath => {
+        SpecialistHook::None | SpecialistHook::SequenceMath => {
             let request = CompareRequest::parse_for_fact(args, fact)?;
             run_canonical_svg_compare(fact, request)
+                .map(|_| ())
+                .map_err(CompareRunFailure::into_error)
         }
     }
 }
 
-pub(crate) fn compare_diagram_request(
-    diagram: &str,
-    request: CompareRequest,
-) -> Result<(), XtaskError> {
+pub(crate) fn compare_diagram_request(diagram: &str, request: CompareRequest) -> CompareRunResult {
     let Some(fact) = diagram_verification_fact(diagram) else {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "unexpected diagram: {diagram}"
-        )));
+        return Err(CompareRunFailure::without_evidence(
+            XtaskError::SvgCompareFailed(format!("unexpected diagram: {diagram}")),
+        ));
     };
 
     match fact.specialist {
         SpecialistHook::FlowchartAdapter => compare_flowchart_request(*fact, request),
         SpecialistHook::ErAdapter => compare_er_request(*fact, request),
         SpecialistHook::GanttAdapter => compare_gantt_request(*fact, request),
-        SpecialistHook::None | SpecialistHook::ClassV2Role | SpecialistHook::SequenceMath => {
+        SpecialistHook::None | SpecialistHook::SequenceMath => {
             run_canonical_svg_compare(*fact, request)
         }
     }
@@ -671,7 +714,6 @@ mod tests {
             let request = CompareRequest {
                 out_path: Some(report_path.clone()),
                 filter: Some(stem.to_string()),
-                apply_root_overrides: false,
                 ..CompareRequest::default()
             };
 
@@ -685,18 +727,50 @@ mod tests {
                 "{diagram} report did not consume RenderOperationReport:\n{report}"
             );
             assert!(
-                report.contains("- Root override policy: `ComputedOnly` (observed)"),
-                "{diagram} report did not expose observed root policy:\n{report}"
-            );
-            assert!(
-                report.contains("- Text measurement routes: `5` (observed)"),
+                report.contains("- Text measurement routes: `4` (observed)"),
                 "{diagram} report did not expose observed measurement routes:\n{report}"
             );
         }
     }
 
     #[test]
-    fn gantt_today_policy_uses_each_prepared_operation_once() {
+    fn filtered_canonical_compare_rejects_an_all_skipped_selection() {
+        let report_path = crate::cmd::target_root()
+            .join("compare")
+            .join("evidence-gate-tests")
+            .join(std::process::id().to_string())
+            .join("sequence.md");
+        let request = CompareRequest {
+            out_path: Some(report_path.clone()),
+            filter: Some("stress_end_keyword_016".to_string()),
+            check_dom: true,
+            ..CompareRequest::default()
+        };
+
+        let failure = compare_diagram_request("sequence", request)
+            .expect_err("a filtered run with only an upstream skip has no comparison evidence");
+        let message = failure.to_string();
+        assert!(
+            message.contains("no canonical typed render evidence for sequence"),
+            "{message}"
+        );
+        assert!(
+            message.contains(
+                "--check-dom produced no DOM or raw SVG comparison evidence for sequence"
+            ),
+            "{message}"
+        );
+
+        let report = std::fs::read_to_string(&report_path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", report_path.display()));
+        assert!(report.contains("- Render operation: `not-observed`"));
+        assert!(report.contains(
+            "Evidence counts: selected=`1` rendered=`0` skipped=`1` DOM-comparisons=`0` raw-SVG-comparisons=`0`"
+        ));
+    }
+
+    #[test]
+    fn gantt_today_policy_calibrates_an_operation_environment_before_final_render() {
         let compare_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare");
 
         for relative_path in ["diagrams/gantt.rs", "xml.rs"] {
@@ -706,42 +780,17 @@ mod tests {
                 .split("\n#[cfg(test)]\nmod tests")
                 .next()
                 .unwrap_or(&source);
-            assert_eq!(
-                production.matches(".prepare_semantic_sync(").count(),
-                1,
-                "{relative_path} must prepare semantics exactly once"
-            );
-            assert_eq!(
-                production.matches(".continue_layout()").count(),
-                1,
-                "{relative_path} must continue layout exactly once"
+            assert!(
+                production.contains("gantt_calibrated_time_snapshot"),
+                "{relative_path} must derive the pinned baseline instant explicitly"
             );
             assert!(
-                !production.contains(".prepare_render_sync("),
-                "{relative_path} must not rebuild parse/layout after deriving Gantt today"
+                production.contains("with_time_snapshot(snapshot)"),
+                "{relative_path} must freeze the calibrated instant before the final operation"
             );
             assert!(
-                production.contains("current_time_unix_ms"),
-                "{relative_path} must pass derived Gantt today as SVG request policy"
-            );
-        }
-    }
-
-    #[test]
-    fn specialist_adapters_use_the_shared_compare_render_environment() {
-        let adapters_dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/cmd/compare/diagrams");
-
-        for adapter in ["er.rs", "flowchart.rs", "gantt.rs"] {
-            let path = adapters_dir.join(adapter);
-            let source = std::fs::read_to_string(&path).expect("compare adapter source");
-            assert!(
-                source.contains("compare_render_environment"),
-                "{adapter} must inject the shared root override policy"
-            );
-            assert!(
-                !source.contains("RenderEnvironment::parity()"),
-                "{adapter} must not construct an unscoped render environment"
+                !production.contains("current_time_unix_ms"),
+                "{relative_path} must not bypass the operation-owned render clock"
             );
         }
     }
@@ -773,7 +822,7 @@ mod tests {
             );
             assert_eq!(
                 fact.render_path(),
-                VerificationRenderPath::HeadlessOperationTyped,
+                merman::render::RenderExecutionPath::HeadlessOperationTyped,
                 "{} must verify the canonical typed operation",
                 fact.diagram
             );
@@ -845,9 +894,19 @@ mod tests {
     }
 
     #[test]
+    fn error_adapter_is_available_for_typed_renderer_admission() {
+        assert!(diagram_verification_fact("error").is_some());
+        assert!(
+            crate::cmd::primary_svg_matrix_diagrams().any(|diagram| diagram == "error"),
+            "error already has typed semantic, layout, and SVG rendering and must not remain parse-only"
+        );
+    }
+
+    #[test]
     fn mermaid_11_16_new_family_adapters_are_available_for_admission() {
         for diagram in [
             "cynefin",
+            "wardley",
             "railroad",
             "railroadEbnf",
             "railroadAbnf",

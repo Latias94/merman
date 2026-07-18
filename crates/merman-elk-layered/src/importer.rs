@@ -17,6 +17,9 @@ use crate::options::{
     SpacingOptions,
 };
 
+// `org.eclipse.elk.edge.thickness` defaults to 1 in the pinned elkjs 0.9.3 CoreOptions.
+const ELK_DEFAULT_EDGE_THICKNESS: f64 = 1.0;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ElkInputGraph {
     pub id: String,
@@ -263,7 +266,7 @@ fn transform_inside_self_loop(
             priority_direction: edge.priority_direction,
             priority_shortness: edge.priority_shortness,
             priority_straightness: edge.priority_straightness,
-            thickness: 0.0,
+            thickness: ELK_DEFAULT_EDGE_THICKNESS,
             original_opposite_port: None,
             compound_segment: None,
         })
@@ -562,7 +565,13 @@ fn inside_node_label_cell(placement: NodeLabelPlacement) -> Option<(usize, usize
         | NodeLabelPlacement::OutsideTopRight
         | NodeLabelPlacement::OutsideBottomLeft
         | NodeLabelPlacement::OutsideBottomCenter
-        | NodeLabelPlacement::OutsideBottomRight => None,
+        | NodeLabelPlacement::OutsideBottomRight
+        | NodeLabelPlacement::OutsideLeftTop
+        | NodeLabelPlacement::OutsideLeftCenter
+        | NodeLabelPlacement::OutsideLeftBottom
+        | NodeLabelPlacement::OutsideRightTop
+        | NodeLabelPlacement::OutsideRightCenter
+        | NodeLabelPlacement::OutsideRightBottom => None,
     }
 }
 
@@ -654,7 +663,7 @@ fn transform_edge_between(
             priority_direction: edge.priority_direction,
             priority_shortness: edge.priority_shortness,
             priority_straightness: edge.priority_straightness,
-            thickness: 0.0,
+            thickness: ELK_DEFAULT_EDGE_THICKNESS,
             original_opposite_port: None,
             compound_segment,
         })
@@ -1099,6 +1108,7 @@ mod tests {
         assert_eq!(lgraph.layerless_nodes[0].labels[0].text, "Alpha");
         assert_eq!(lgraph.edges.len(), 1);
         assert_eq!(lgraph.edges[0].model_order, Some(0));
+        assert_eq!(lgraph.edges[0].thickness, 1.0);
         assert_eq!(
             lgraph.edges[0].labels[0].placement,
             EdgeLabelPlacement::Center

@@ -5,14 +5,14 @@
       "bounds": {
         "min_x": 50.0,
         "min_y": 10.0,
-        "max_x": 816.0,
-        "max_y": 1142.0
+        "max_x": 779.0,
+        "max_y": 1138.0
       },
-      "width": 866.0,
-      "height": 1152.0,
+      "width": 829.0,
+      "height": 1148.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Dynamic",
       "title": "Dynamic diagram for Internet Banking System - API Application",
       "boundaries": [
@@ -21,8 +21,8 @@
           "parent_boundary": "",
           "x": 100.0,
           "y": 66.0,
-          "width": 666.0,
-          "height": 1026.0,
+          "width": 629.0,
+          "height": 1022.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -48,9 +48,9 @@
           "alias": "b",
           "parent_boundary": "global",
           "x": 150.0,
-          "y": 582.0,
-          "width": 549.0,
-          "height": 460.0,
+          "y": 580.0,
+          "width": 516.0,
+          "height": 458.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -59,15 +59,15 @@
           "label": {
             "text": "API Application",
             "y": 8.0,
-            "width": 119.0,
-            "height": 17.0,
+            "width": 100.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[CONTAINER]",
-            "y": 30.0,
-            "width": 89.0,
-            "height": 16.0,
+            "y": 31.0,
+            "width": 81.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -80,8 +80,8 @@
           "type_c4_shape": "container_db",
           "x": 150.0,
           "y": 166.0,
-          "width": 566.0,
-          "height": 105.0,
+          "width": 529.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -98,23 +98,23 @@
           "label": {
             "text": "Database",
             "y": 38.0,
-            "width": 71.0,
-            "height": 17.0,
+            "width": 58.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Relational Database Schema]",
-            "y": 60.0,
+            "y": 61.0,
             "width": 145.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
             "y": 94.0,
-            "width": 546.0,
-            "height": 16.0,
+            "width": 509.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -123,9 +123,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "container",
           "x": 150.0,
-          "y": 371.0,
-          "width": 537.0,
-          "height": 105.0,
+          "y": 370.0,
+          "width": 519.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -142,23 +142,23 @@
           "label": {
             "text": "Single-Page Application",
             "y": 38.0,
-            "width": 183.0,
-            "height": 17.0,
+            "width": 151.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[JavaScript and Angular]",
-            "y": 60.0,
+            "y": 61.0,
             "width": 122.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Provides all of the Internet banking functionality to customers via their web browser.",
             "y": 94.0,
-            "width": 517.0,
-            "height": 16.0,
+            "width": 499.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -167,9 +167,9 @@
           "parent_boundary": "b",
           "type_c4_shape": "component",
           "x": 200.0,
-          "y": 682.0,
-          "width": 449.0,
-          "height": 105.0,
+          "y": 680.0,
+          "width": 416.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -186,23 +186,23 @@
           "label": {
             "text": "Security Component",
             "y": 38.0,
-            "width": 157.0,
-            "height": 17.0,
+            "width": 133.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Spring Bean]",
-            "y": 60.0,
+            "y": 61.0,
             "width": 66.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Provides functionality Related to signing in, changing passwords, etc.",
             "y": 94.0,
-            "width": 429.0,
-            "height": 16.0,
+            "width": 396.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         },
@@ -211,9 +211,9 @@
           "parent_boundary": "b",
           "type_c4_shape": "component",
           "x": 200.0,
-          "y": 887.0,
-          "width": 359.0,
-          "height": 105.0,
+          "y": 884.0,
+          "width": 344.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 0.0,
@@ -230,23 +230,23 @@
           "label": {
             "text": "Sign In Controller",
             "y": 38.0,
-            "width": 135.0,
-            "height": 17.0,
+            "width": 117.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
           "techn": {
             "text": "[Spring MVC Rest Controller]",
-            "y": 60.0,
+            "y": 61.0,
             "width": 145.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": {
             "text": "Allows users to sign in to the Internet Banking System.",
             "y": 94.0,
-            "width": 339.0,
-            "height": 16.0,
+            "width": 324.0,
+            "height": 15.0,
             "line_count": 1.0
           }
         }
@@ -257,27 +257,27 @@
           "to": "c2",
           "rel_type": "rel",
           "start_point": {
-            "x": 439.694,
-            "y": 476.0
+            "x": 429.896,
+            "y": 474.0
           },
           "end_point": {
-            "x": 404.249,
-            "y": 887.0
+            "x": 395.58,
+            "y": 884.0
           },
           "offset_x": null,
           "offset_y": -40.0,
           "label": {
             "text": "1: Submits credentials to",
             "y": 0.0,
-            "width": 132.0,
-            "height": 14.0,
+            "width": 126.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "JSON/HTTPS",
             "y": 0.0,
             "width": 69.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null
@@ -287,20 +287,20 @@
           "to": "c3",
           "rel_type": "rel",
           "start_point": {
-            "x": 456.787,
-            "y": 887.0
+            "x": 443.158,
+            "y": 884.0
           },
           "end_point": {
-            "x": 461.097,
-            "y": 787.0
+            "x": 442.938,
+            "y": 784.0
           },
           "offset_x": 60.0,
           "offset_y": null,
           "label": {
             "text": "2: Calls isAuthenticated() on",
             "y": 0.0,
-            "width": 150.0,
-            "height": 14.0,
+            "width": 140.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,
@@ -311,27 +311,27 @@
           "to": "c4",
           "rel_type": "rel",
           "start_point": {
-            "x": 450.892,
-            "y": 682.0
+            "x": 432.143,
+            "y": 680.0
           },
           "end_point": {
-            "x": 458.35,
-            "y": 271.0
+            "x": 438.203,
+            "y": 270.0
           },
           "offset_x": 10.0,
           "offset_y": -40.0,
           "label": {
             "text": "3: select * from users where username = ?",
             "y": 0.0,
-            "width": 226.0,
-            "height": 14.0,
+            "width": 215.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": {
             "text": "JDBC",
             "y": 0.0,
             "width": 29.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "descr": null

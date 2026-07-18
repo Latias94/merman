@@ -39,8 +39,9 @@ The native library name is `merman_ffi`, so Android packages should include ABI-
 - `MermanEngine.packageVersion`
 - `MermanException`
 
-The wrapper checks `nativeAbiVersion()` against `MermanEngine.ABI_VERSION` during object
-initialization. `MermanReusableEngine` exposes repeated render/parse/layout/analysis/validation
+The wrapper targets C ABI 2 and checks `nativeAbiVersion()` against
+`MermanEngine.ABI_VERSION` during object initialization. `MermanReusableEngine` exposes repeated
+render/parse/layout/analysis/validation
 calls, including `MermanReusableEngine.analyzeJson(source)`,
 `MermanReusableEngine.analyzeDocumentJson(source, uri)`, and
 `MermanReusableEngine.analyzeDocumentFactsJson(source, uri)`. The document analysis APIs use the
@@ -50,6 +51,13 @@ the host needs editor facts for Mermaid fences in Markdown-like documents.
 
 `MermanReusableEngine` also exposes a `MermanTextMeasurer` callback for hosts that need font-aware
 text measurement.
+ABI 2 exposes 19 text-measurement operation codes, contiguously numbered 0 through 18.
+`MERMAID_CALCULATE_TEXT_DIMENSIONS` requires metrics,
+`CANVAS_MEASURE_TEXT_WIDTH` requires a length, and `CREATE_TEXT_BBOX_Y_OFFSET` plus
+`CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET` preserve signed lengths. The middle operation measures
+Architecture createText under inherited `dominant-baseline="middle"`; it cannot reuse the ordinary
+createText y-offset. `RAW_BBOX_HEIGHT` measures the non-negative height from a direct raw SVG
+`<text>.getBBox()` probe. The complete mapping is documented in `HOST_TEXT_MEASUREMENT.md`.
 Reusable engine calls are serialized around the native handle. Text-measurement callbacks should not
 re-enter the same `MermanReusableEngine`; `close()` is allowed from a callback and defers release
 until the current native call finishes. If the Kotlin callback throws, the JNI bridge clears the
@@ -77,7 +85,9 @@ overestimated and make the diagram wider than the final Android/WebView surface.
 ## Example
 
 `platforms/android/examples/MermanSmoke.kt` shows the smallest smoke sequence for SVG, ASCII,
-semantic JSON, layout JSON, validation JSON, and metadata from Android/Kotlin.
+semantic JSON, layout JSON, validation JSON, and metadata from Android/Kotlin. It also asserts ABI
+2, the contiguous 0 through 18 operation range, and distinct signed results for the ordinary and
+middle-baseline createText y-offset operations.
 
 ## Verification
 

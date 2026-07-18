@@ -1,0 +1,120 @@
+{
+  "diagramType": "railroadEbnf",
+  "model": {
+    "type": "railroadEbnf",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "expression",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "nonterminal",
+              "name": "term"
+            },
+            {
+              "type": "repetition",
+              "element": {
+                "type": "choice",
+                "alternatives": [
+                  {
+                    "type": "sequence",
+                    "elements": [
+                      {
+                        "type": "terminal",
+                        "value": "+"
+                      },
+                      {
+                        "type": "nonterminal",
+                        "name": "term"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "sequence",
+                    "elements": [
+                      {
+                        "type": "terminal",
+                        "value": "-"
+                      },
+                      {
+                        "type": "nonterminal",
+                        "name": "term"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "min": 0,
+              "max": null
+            }
+          ]
+        }
+      },
+      {
+        "name": "term",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "nonterminal",
+              "name": "number"
+            },
+            {
+              "type": "sequence",
+              "elements": [
+                {
+                  "type": "terminal",
+                  "value": "("
+                },
+                {
+                  "type": "nonterminal",
+                  "name": "expression"
+                },
+                {
+                  "type": "terminal",
+                  "value": ")"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "number",
+        "definition": {
+          "type": "repetition",
+          "element": {
+            "type": "nonterminal",
+            "name": "digit"
+          },
+          "min": 1,
+          "max": null
+        }
+      },
+      {
+        "name": "digit",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "0"
+            },
+            {
+              "type": "terminal",
+              "value": "1"
+            },
+            {
+              "type": "terminal",
+              "value": "2"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

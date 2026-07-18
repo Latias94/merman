@@ -5,7 +5,7 @@
       "bounds": {
         "min_x": -8.0,
         "min_y": 22.0,
-        "max_x": 1034.297,
+        "max_x": 1034.32,
         "max_y": 88.0
       },
       "direction": "BT",
@@ -20,70 +20,70 @@
           "name": "main",
           "index": 0.0,
           "pos": 0.0,
-          "bbox_width": 30.719,
+          "bbox_width": 30.72,
           "bbox_height": 17.6
         },
         {
           "name": "branch1",
           "index": 1.0,
-          "pos": 105.359,
-          "bbox_width": 50.234,
+          "pos": 105.36,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         },
         {
           "name": "branch2",
           "index": 2.0,
-          "pos": 220.477,
-          "bbox_width": 50.234,
+          "pos": 220.48,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         },
         {
           "name": "branch3",
           "index": 3.0,
-          "pos": 335.594,
-          "bbox_width": 50.234,
+          "pos": 335.6,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         },
         {
           "name": "branch4",
           "index": 4.0,
-          "pos": 450.711,
-          "bbox_width": 50.234,
+          "pos": 450.72,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         },
         {
           "name": "branch5",
           "index": 5.0,
-          "pos": 565.828,
-          "bbox_width": 50.234,
+          "pos": 565.84,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         },
         {
           "name": "branch6",
           "index": 6.0,
-          "pos": 680.945,
-          "bbox_width": 50.234,
+          "pos": 680.96,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         },
         {
           "name": "branch7",
           "index": 7.0,
-          "pos": 796.063,
-          "bbox_width": 50.234,
+          "pos": 796.08,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         },
         {
           "name": "branch8",
           "index": 8.0,
-          "pos": 911.18,
-          "bbox_width": 50.234,
+          "pos": 911.2,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         },
         {
           "name": "branch9",
           "index": 9.0,
-          "pos": 1026.297,
-          "bbox_width": 50.234,
+          "pos": 1026.32,
+          "bbox_width": 50.24,
           "bbox_height": 17.6
         }
       ],
@@ -100,7 +100,7 @@
           "branch": "branch1",
           "pos": 30.0,
           "pos_with_offset": 40.0,
-          "x": 105.359,
+          "x": 105.36,
           "y": 40.0
         }
       ],

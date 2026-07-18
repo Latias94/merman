@@ -1,7 +1,7 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "model": {
-    "type": "classDiagram",
+    "type": "class",
     "direction": "TB",
     "accTitle": "My Title",
     "accDescr": "My Description",

@@ -34,9 +34,24 @@ model so downstream renderers (SVG/Canvas/UI wrappers) can match Mermaid behavio
 - Apply sanitization/formatting at the semantic-model boundary:
   - Flowchart: node labels, edge labels, tooltips, and click link URLs
   - State: layout `nodes[].label`, `edges[].label`, and note text in layout nodes
+- Sanitize `%%{init}%%` configuration before merging it:
+  - use the generated Mermaid 11.16 `configKeys` shape from ADR-0019;
+  - remove unknown keys, null values, and keys containing `__`, `proto`, or `constr` pollution
+    patterns at every ordinary object level;
+  - preserve dictionary-style user keys only for `nodeColors`, `filenameIcons`, and
+    `extensionIcons`, validating their values with the upstream patterns;
+  - extract the directive-only `config` wrapper before shape validation, sanitize its contents, and
+    then map it into the detected diagram namespace;
+  - remove attempts to set `secure`, then recursively filter the effective diagram config with the
+    site's secure list.
+- Keep upstream data and local policy distinct: Mermaid's value artifact contains six secure keys,
+  while Merman's default site policy adds `fontFamily`, `altFontFamily`, `themeCSS`, and
+  `themeVariables` for a ten-key hardened default.
 
 ## Consequences
 
 - The headless model aligns better with Mermaid defaults and security behavior.
+- Directive validation recognizes function and explicit-`undefined` keys from the shape artifact,
+  rather than accepting only keys that happen to have JSON defaults.
 - The current sanitizer is a targeted implementation driven by upstream test cases and common
   patterns; full DOMPurify parity (and `dompurifyConfig`) remains an explicit follow-up item.

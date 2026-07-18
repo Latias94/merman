@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 /// C ABI version expected by this Dart binding.
-const int mermanAbiVersion = 3;
+const int mermanAbiVersion = 2;
 
 /// Result status codes returned by the native `merman-ffi` ABI.
 enum MermanStatus {
@@ -156,6 +156,9 @@ final class NativeMermanHostTextMeasureRequest extends Struct {
 
   @Int32()
   external int phase;
+
+  @Int32()
+  external int operation;
 }
 
 /// Native layout of `MermanHostTextMeasureResult`.
@@ -163,11 +166,29 @@ final class NativeMermanHostTextMeasureResult extends Struct {
   @Uint8()
   external int handled;
 
+  @Uint8()
+  external int hasRawWidth;
+
+  @Int32()
+  external int resultKind;
+
   @Double()
   external double width;
 
   @Double()
   external double height;
+
+  @Double()
+  external double length;
+
+  @Double()
+  external double bboxLeft;
+
+  @Double()
+  external double bboxRight;
+
+  @Double()
+  external double rawWidth;
 
   @UintPtr()
   external int lineCount;
@@ -259,8 +280,7 @@ enum MermanTextMeasurementPhase {
   layout(0),
   wrap(1),
   svgBBox(2),
-  computedLength(3),
-  visibility(4);
+  computedLength(3);
 
   const MermanTextMeasurementPhase(this.code);
 
@@ -274,6 +294,54 @@ enum MermanTextMeasurementPhase {
     }
     return null;
   }
+}
+
+/// Exact text-measurement primitive requested by the native renderer.
+enum MermanTextMeasurementOperation {
+  measure(0),
+  computedLength(1),
+  bboxX(2),
+  bboxXWithAsciiOverhang(3),
+  titleBBoxX(4),
+  simpleBBoxWidth(5),
+  rawBBoxWidth(6),
+  tspanBBoxWidth(7),
+  tspanBBoxHeight(8),
+  wrapProbeBBoxWidth(9),
+  simpleBBoxHeight(10),
+  wrapped(11),
+  wrappedWithRawWidth(12),
+  boundingClientRectWidth(13),
+  createTextBBoxYOffset(14),
+  mermaidCalculateTextDimensions(15),
+  canvasMeasureTextWidth(16),
+  createTextMiddleBBoxYOffset(17),
+  rawBBoxHeight(18);
+
+  const MermanTextMeasurementOperation(this.code);
+
+  final int code;
+
+  static MermanTextMeasurementOperation? fromCode(int code) {
+    for (final value in values) {
+      if (value.code == code) {
+        return value;
+      }
+    }
+    return null;
+  }
+}
+
+/// Shape of a handled host text-measurement result.
+enum MermanTextMeasurementResultKind {
+  metrics(0),
+  length(1),
+  horizontalExtents(2),
+  wrappedWithRawWidth(3);
+
+  const MermanTextMeasurementResultKind(this.code);
+
+  final int code;
 }
 
 /// Dart representation of a native host text-measurement request.
@@ -291,7 +359,8 @@ class MermanTextMeasureRequest {
         wrapMode = MermanTextWrapMode.fromCode(native.wrapMode),
         direction = MermanTextDirection.fromCode(native.direction),
         whiteSpace = MermanTextWhiteSpace.fromCode(native.whiteSpace),
-        phase = MermanTextMeasurementPhase.fromCode(native.phase);
+        phase = MermanTextMeasurementPhase.fromCode(native.phase),
+        operation = MermanTextMeasurementOperation.fromCode(native.operation);
 
   /// UTF-8 text to measure.
   final String text;
@@ -331,16 +400,27 @@ class MermanTextMeasureRequest {
 
   /// Render phase requesting this measurement.
   final MermanTextMeasurementPhase? phase;
+
+  /// Exact browser or platform measurement primitive requested by the renderer.
+  final MermanTextMeasurementOperation? operation;
 }
 
 /// Dart result for a handled text-measurement request.
 class MermanTextMeasureResult {
   /// Creates a handled text-measurement result.
   const MermanTextMeasureResult({
-    required this.width,
-    required this.height,
-    required this.lineCount,
+    required this.resultKind,
+    this.width = 0,
+    this.height = 0,
+    this.length = 0,
+    this.lineCount = 0,
+    this.bboxLeft,
+    this.bboxRight,
+    this.rawWidth,
   });
+
+  /// Tagged shape carried by this result.
+  final MermanTextMeasurementResultKind resultKind;
 
   /// Measured width in CSS pixels.
   final double width;
@@ -348,8 +428,20 @@ class MermanTextMeasureResult {
   /// Measured height in CSS pixels.
   final double height;
 
+  /// Scalar value for width-like and height-like operations.
+  final double length;
+
   /// Number of laid-out lines.
   final int lineCount;
+
+  /// Distance from the text anchor to the left SVG bbox edge.
+  final double? bboxLeft;
+
+  /// Distance from the text anchor to the right SVG bbox edge.
+  final double? bboxRight;
+
+  /// Unwrapped width returned with a wrapped measurement, when available.
+  final double? rawWidth;
 }
 
 /// Host text-measurement callback.
@@ -810,33 +902,75 @@ class MermanDiagramFamilyCapability {
   /// Creates a diagram family capability record.
   const MermanDiagramFamilyCapability({
     required this.diagramType,
+    required this.logicalFamilyKind,
     required this.metadataId,
+    required this.renderModelKind,
+    required this.hasDetector,
     required this.hasSemanticParser,
+    required this.hasEditorParser,
+    required this.hasCombinedParser,
     required this.hasRenderParser,
+    required this.hasHeader,
+    required this.configNamespace,
   });
 
   /// Mermaid parser/detector id, including aliases such as `flowchart-v2`.
   final String diagramType;
 
+  /// Stable logical family identity, independent of render-model reuse.
+  final String logicalFamilyKind;
+
   /// Public supported-diagram metadata id, when this family contributes one.
   final String? metadataId;
+
+  /// Typed render-model identity, when this family owns a render projection.
+  final String? renderModelKind;
+
+  /// Whether automatic diagram detection is registered for [diagramType].
+  final bool hasDetector;
 
   /// Whether semantic JSON parsing is registered for [diagramType].
   final bool hasSemanticParser;
 
+  /// Whether parser-backed editor facts are registered for [diagramType].
+  final bool hasEditorParser;
+
+  /// Whether JSON and editor facts share one semantic construction.
+  final bool hasCombinedParser;
+
   /// Whether typed render-model parsing is registered for [diagramType].
   final bool hasRenderParser;
+
+  /// Whether authoring completion exposes a header for [diagramType].
+  final bool hasHeader;
+
+  /// Mermaid configuration namespace associated with this family.
+  final String? configNamespace;
 
   /// Decodes a capability object produced by the native ABI.
   factory MermanDiagramFamilyCapability.fromJson(Map<String, Object?> json) {
     final diagramType = json['diagram_type'];
+    final logicalFamilyKind = json['logical_family_kind'];
     final metadataId = json['metadata_id'];
+    final renderModelKind = json['render_model_kind'];
+    final hasDetector = json['has_detector'];
     final hasSemanticParser = json['has_semantic_parser'];
+    final hasEditorParser = json['has_editor_parser'];
+    final hasCombinedParser = json['has_combined_parser'];
     final hasRenderParser = json['has_render_parser'];
+    final hasHeader = json['has_header'];
+    final configNamespace = json['config_namespace'];
     if (diagramType is! String ||
+        logicalFamilyKind is! String ||
         (metadataId != null && metadataId is! String) ||
+        (renderModelKind != null && renderModelKind is! String) ||
+        hasDetector is! bool ||
         hasSemanticParser is! bool ||
-        hasRenderParser is! bool) {
+        hasEditorParser is! bool ||
+        hasCombinedParser is! bool ||
+        hasRenderParser is! bool ||
+        hasHeader is! bool ||
+        (configNamespace != null && configNamespace is! String)) {
       throw const MermanException(
         code: -1,
         codeName: 'DART_JSON_TYPE_ERROR',
@@ -845,9 +979,16 @@ class MermanDiagramFamilyCapability {
     }
     return MermanDiagramFamilyCapability(
       diagramType: diagramType,
+      logicalFamilyKind: logicalFamilyKind,
       metadataId: metadataId is String ? metadataId : null,
+      renderModelKind: renderModelKind is String ? renderModelKind : null,
+      hasDetector: hasDetector,
       hasSemanticParser: hasSemanticParser,
+      hasEditorParser: hasEditorParser,
+      hasCombinedParser: hasCombinedParser,
       hasRenderParser: hasRenderParser,
+      hasHeader: hasHeader,
+      configNamespace: configNamespace is String ? configNamespace : null,
     );
   }
 }
@@ -983,9 +1124,11 @@ class MermanReusableEngine {
   final _MermanBindings _bindings;
   final MermanTextMeasureCallbackRegistration<
           NativeCallable<_HostTextMeasureCallbackC>> _textMeasureCallbacks =
-      MermanTextMeasureCallbackRegistration(closeCallback: (callback) {
-    callback.close();
-  });
+      MermanTextMeasureCallbackRegistration(
+    closeCallback: (callback) {
+      callback.close();
+    },
+  );
   late final MermanReusableEngineLifecycle<Pointer<NativeMermanEngine>>
       _lifecycle;
 
@@ -999,11 +1142,13 @@ class MermanReusableEngine {
     final engine = _lifecycle.openHandle;
 
     if (measurer == null) {
-      _textMeasureCallbacks.clear(clearNative: () {
-        _bindings.checkResult(
-          _bindings.engineSetTextMeasureCallback(engine, nullptr, nullptr),
-        );
-      });
+      _textMeasureCallbacks.clear(
+        clearNative: () {
+          _bindings.checkResult(
+            _bindings.engineSetTextMeasureCallback(engine, nullptr, nullptr),
+          );
+        },
+      );
       return;
     }
 
@@ -1099,8 +1244,10 @@ class MermanReusableEngine {
   }
 
   /// Analyzes Markdown or MDX [source] and returns the document diagnostics JSON object.
-  Map<String, Object?> analyzeDocumentJson(String source,
-      {required String uri}) {
+  Map<String, Object?> analyzeDocumentJson(
+    String source, {
+    required String uri,
+  }) {
     return Merman._decodeJsonMap(analyzeDocumentJsonRaw(source, uri: uri));
   }
 
@@ -1119,11 +1266,11 @@ class MermanReusableEngine {
   }
 
   /// Analyzes Markdown or MDX [source] and returns the document syntax facts JSON object.
-  Map<String, Object?> analyzeDocumentFactsJson(String source,
-      {required String uri}) {
-    return Merman._decodeJsonMap(
-      analyzeDocumentFactsJsonRaw(source, uri: uri),
-    );
+  Map<String, Object?> analyzeDocumentFactsJson(
+    String source, {
+    required String uri,
+  }) {
+    return Merman._decodeJsonMap(analyzeDocumentFactsJsonRaw(source, uri: uri));
   }
 
   /// Validates Mermaid [source] and returns raw validation JSON text.
@@ -1163,19 +1310,20 @@ class MermanReusableEngine {
     } catch (_) {
       return nativeResult;
     }
-    if (result == null ||
-        !result.width.isFinite ||
-        !result.height.isFinite ||
-        result.width < 0 ||
-        result.height < 0 ||
-        result.lineCount <= 0) {
+    if (result == null) {
       return nativeResult;
     }
 
     nativeResult.handled = 1;
+    nativeResult.hasRawWidth = result.rawWidth == null ? 0 : 1;
+    nativeResult.resultKind = result.resultKind.code;
     nativeResult.width = result.width;
     nativeResult.height = result.height;
-    nativeResult.lineCount = result.lineCount;
+    nativeResult.length = result.length;
+    nativeResult.bboxLeft = result.bboxLeft ?? 0;
+    nativeResult.bboxRight = result.bboxRight ?? 0;
+    nativeResult.rawWidth = result.rawWidth ?? 0;
+    nativeResult.lineCount = result.lineCount < 0 ? 0 : result.lineCount;
     return nativeResult;
   }
 
@@ -1292,11 +1440,7 @@ class Merman {
     String? optionsJson,
   }) {
     return _decodeJsonMap(
-      analyzeDocumentJsonRaw(
-        source,
-        uri: uri,
-        optionsJson: optionsJson,
-      ),
+      analyzeDocumentJsonRaw(source, uri: uri, optionsJson: optionsJson),
     );
   }
 
@@ -1323,11 +1467,7 @@ class Merman {
     String? optionsJson,
   }) {
     return _decodeJsonMap(
-      analyzeDocumentFactsJsonRaw(
-        source,
-        uri: uri,
-        optionsJson: optionsJson,
-      ),
+      analyzeDocumentFactsJsonRaw(source, uri: uri, optionsJson: optionsJson),
     );
   }
 
@@ -1452,9 +1592,7 @@ class Merman {
     );
   }
 
-  static List<MermanLintRuleCatalogEntry> _decodeJsonRuleCatalog(
-    String text,
-  ) {
+  static List<MermanLintRuleCatalogEntry> _decodeJsonRuleCatalog(String text) {
     final decoded = jsonDecode(text);
     if (decoded is Map<String, Object?>) {
       final rules = decoded['rules'];
@@ -1559,8 +1697,10 @@ class _MermanBindings {
             library.lookupFunction<_EngineCallC, _EngineCallDart>(
           'merman_engine_analyze_json',
         ),
-        engineAnalyzeDocumentJson = library.lookupFunction<_EngineDocumentCallC,
-            _EngineDocumentCallDart>('merman_engine_analyze_document_json'),
+        engineAnalyzeDocumentJson = library
+            .lookupFunction<_EngineDocumentCallC, _EngineDocumentCallDart>(
+          'merman_engine_analyze_document_json',
+        ),
         engineAnalyzeDocumentFactsJson = library
             .lookupFunction<_EngineDocumentCallC, _EngineDocumentCallDart>(
           'merman_engine_analyze_document_facts_json',
@@ -1584,10 +1724,14 @@ class _MermanBindings {
         analyzeJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_analyze_json',
         ),
-        analyzeDocumentJson = library.lookupFunction<_MermanDocumentCallC,
-            _MermanDocumentCallDart>('merman_analyze_document_json'),
-        analyzeDocumentFactsJson = library.lookupFunction<_MermanDocumentCallC,
-            _MermanDocumentCallDart>('merman_analyze_document_facts_json'),
+        analyzeDocumentJson = library
+            .lookupFunction<_MermanDocumentCallC, _MermanDocumentCallDart>(
+          'merman_analyze_document_json',
+        ),
+        analyzeDocumentFactsJson = library
+            .lookupFunction<_MermanDocumentCallC, _MermanDocumentCallDart>(
+          'merman_analyze_document_facts_json',
+        ),
         validateJson = library.lookupFunction<_MermanCallC, _MermanCallDart>(
           'merman_validate_json',
         ),

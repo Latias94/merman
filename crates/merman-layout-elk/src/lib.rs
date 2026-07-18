@@ -4,61 +4,48 @@
 //!
 //! Source-port policy:
 //! - Mermaid's adapter layer is
-//!   https://github.com/mermaid-js/mermaid/blob/41646dfd43ac83f001b03c70605feb036afae46d/packages/mermaid-layout-elk/src/render.ts.
+//!   https://github.com/mermaid-js/mermaid/blob/7c0cafcf42e76bfaf79d0cbbd12edb986612f014/packages/mermaid-layout-elk/src/render.ts.
 //! - Mermaid pins `elkjs@0.9.3`; the corresponding source checkout is
 //!   https://github.com/kieler/elkjs/tree/a8304cf79fde75bc2ab1a89d28320f53f8637436.
 //! - `elkjs` is generated from Eclipse ELK Java sources. The current source baseline is
 //!   https://github.com/eclipse-elk/elk/tree/62d5909f96fad541bc101ad52dabaece6b7eab7e,
 //!   which is the 0.9.x ELK release tag available for the `elkjs@0.9.3` release window.
 //!
-//! The source-backed layered implementation is the default Flowchart ELK path in `merman-render`.
-//! The older compatibility backend remains available for explicit alpha fallback. New ELK layout
-//! behavior must land in `source_port` with a source file reference; do not tune `compat` from
-//! fixture output.
+//! The crate exposes one Mermaid adapter and one source-backed layered implementation. New layout
+//! behavior must carry a pinned Mermaid or Eclipse ELK source reference.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-mod compat;
+mod model;
 pub use merman_elk_layered as source_port;
+pub use model::*;
 
 use source_port::{
     ElkDirection, ElkInputEdge, ElkInputGraph, ElkInputLabel, ElkInputNode, LGraph, LNodeKind,
     LPoint, LayeredOptions as SourceLayeredOptions, NodeLabelPlacement, PortRef,
 };
 
-pub use compat::{
-    Algorithm, CycleBreakingStrategy, Direction, Edge, EdgeLabelLayout, EdgeLayout, EdgeRouting,
-    Error, Graph, HierarchyHandling, Label, LayerConstraint, LayeredOptions, LayoutOptions,
-    LayoutResult, ModelOrderStrategy, Node, NodeKind, NodeLayout, NodePlacementAlignment,
-    NodePlacementStrategy, Point, Result, SelfLoopDistributionStrategy, SelfLoopOrderingStrategy,
-    Spacing,
-};
-
-pub fn layout(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
-    compat::layout(graph, algorithm)
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error(transparent)]
+    SourceImport(#[from] merman_elk_layered::ImportError),
+    #[error(transparent)]
+    SourcePipeline(#[from] merman_elk_layered::PipelineError),
 }
 
-/// Opt-in source-backed layered layout adapter.
-///
-/// This follows Mermaid's ELK adapter construction and executes the Rust port of Eclipse ELK's
-/// layered pipeline. The lower-level `layout` API intentionally remains on the compatibility
-/// backend for callers that explicitly need the pre-port behavior.
-pub fn layout_source_ported(graph: &Graph, algorithm: Algorithm) -> Result<LayoutResult> {
-    match algorithm {
-        Algorithm::Layered => layout_layered_source_ported(graph),
-    }
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Execute Mermaid's ELK adapter over the source-backed Eclipse ELK layered pipeline.
+pub fn layout(graph: &Graph) -> Result<LayoutResult> {
+    Ok(layout_layered_recursive(graph, None, None)?.layout)
 }
 
-/// Build the source-backed layered input graph used by `layout_source_ported`.
+/// Build the source-backed layered input graph used by [`layout`].
 ///
 /// This is intentionally narrow and primarily exists for parity diagnostics that need to inspect
 /// Eclipse ELK processor phases without duplicating Mermaid adapter semantics.
 pub fn source_input_from_graph(graph: &Graph) -> source_port::ElkInputGraph {
     graph_to_source_input(graph)
-}
-
-fn layout_layered_source_ported(graph: &Graph) -> Result<LayoutResult> {
-    Ok(layout_layered_source_ported_recursive(graph, None, None)?.layout)
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +58,7 @@ struct RecursiveSourceLayout {
 ///
 /// Source:
 /// https://github.com/eclipse-elk/elk/blob/62d5909f96fad541bc101ad52dabaece6b7eab7e/plugins/org.eclipse.elk.core/src/org/eclipse/elk/core/RecursiveGraphLayoutEngine.java
-fn layout_layered_source_ported_recursive(
+fn layout_layered_recursive(
     graph: &Graph,
     root_spacing_base: Option<f64>,
     root_label: Option<Label>,
@@ -113,6 +100,11 @@ fn graph_to_source_input_with_root_context(
     if let Some(label) = root_label {
         apply_root_inside_top_center_label_padding(&mut options, label);
     }
+    let node_ids_with_direct_children = graph
+        .nodes
+        .iter()
+        .filter_map(|node| node.parent.as_deref())
+        .collect::<HashSet<_>>();
 
     ElkInputGraph {
         id: graph.id.clone(),
@@ -145,9 +137,17 @@ fn graph_to_source_input_with_root_context(
                     NodeKind::Group => Some(30.0),
                     NodeKind::Leaf => None,
                 },
-                label: node
-                    .label
-                    .map(|label| ElkInputLabel::center("", label.width, label.height)),
+                // Mermaid only exposes a subgraph label to ELK when `childrenById` contains the
+                // subgraph. Empty subgraphs retain their label data for SVG rendering, but their
+                // titles must not create ELK label margins.
+                label: if node.kind == NodeKind::Leaf
+                    || node_ids_with_direct_children.contains(node.id.as_str())
+                {
+                    node.label
+                        .map(|label| ElkInputLabel::center("", label.width, label.height))
+                } else {
+                    None
+                },
             })
             .collect(),
         edges: graph
@@ -206,8 +206,7 @@ fn prelayout_separate_children_under(
         if parent_separates_children || child_stops_hierarchy {
             let child_graph =
                 graph_for_recursive_child(graph, &child, child_handling, child_direction);
-            let child_layout =
-                layout_layered_source_ported_recursive(&child_graph, Some(30.0), child.label)?;
+            let child_layout = layout_layered_recursive(&child_graph, Some(30.0), child.label)?;
             if let Some(node) = graph.nodes.iter_mut().find(|node| node.id == child.id) {
                 node.width = node.width.max(child_layout.size.width);
                 node.height = node.height.max(child_layout.size.height);
@@ -240,13 +239,17 @@ fn direct_child_group_ids_with_children(graph: &Graph, parent: Option<&str>) -> 
         .filter(|node| {
             node.kind == NodeKind::Group
                 && node.parent.as_deref() == parent
-                && graph
-                    .nodes
-                    .iter()
-                    .any(|candidate| candidate.parent.as_deref() == Some(node.id.as_str()))
+                && node_has_direct_children(graph, &node.id)
         })
         .map(|node| node.id.clone())
         .collect()
+}
+
+fn node_has_direct_children(graph: &Graph, node_id: &str) -> bool {
+    graph
+        .nodes
+        .iter()
+        .any(|candidate| candidate.parent.as_deref() == Some(node_id))
 }
 
 fn graph_for_recursive_child(
@@ -963,10 +966,150 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_places_connected_nodes_in_direction_order() {
+    fn source_backed_layout_uses_default_median_layer_for_cross_hierarchy_center_label() {
+        let group = |id: &str, parent: Option<&str>, label: Label| Node {
+            id: id.to_string(),
+            kind: NodeKind::Group,
+            width: 0.0,
+            height: 0.0,
+            parent: parent.map(str::to_string),
+            direction: None,
+            hierarchy_handling: Some(HierarchyHandling::IncludeChildren),
+            layer_constraint: None,
+            label: Some(label),
+        };
+        let child = |id: &str, parent: &str, width: f64| Node {
+            parent: Some(parent.to_string()),
+            width,
+            height: 54.0,
+            ..leaf(id)
+        };
+        let labelled_edge = |id: &str, source: &str, target: &str, width: f64| Edge {
+            label: Some(Label {
+                width,
+                height: 24.0,
+            }),
+            ..edge(id, source, target)
+        };
+        let graph = flat_graph(
+            vec![
+                group(
+                    "container_Alpha",
+                    None,
+                    Label {
+                        width: 116.859375,
+                        height: 22.0,
+                    },
+                ),
+                group(
+                    "container_Beta",
+                    Some("container_Alpha"),
+                    Label {
+                        width: 109.171875,
+                        height: 22.0,
+                    },
+                ),
+                child("process_C", "container_Beta", 131.28125),
+                child("Process_D", "container_Beta", 130.78125),
+                child("process_A", "container_Alpha", 131.15625),
+                child("process_B", "container_Alpha", 130.765625),
+            ],
+            vec![
+                edge("C-D", "process_C", "Process_D"),
+                edge("A-B", "process_A", "process_B"),
+                labelled_edge("B-Beta", "process_B", "container_Beta", 99.03125),
+                labelled_edge("A-C", "process_A", "process_C", 66.609375),
+            ],
+        );
+
+        let result = layout(&graph).unwrap();
+
+        let alpha = result
+            .nodes
+            .iter()
+            .find(|node| node.id == "container_Alpha")
+            .expect("outer compound node");
+        let cross_hierarchy_label = result
+            .edges
+            .iter()
+            .find(|edge| edge.id == "A-C")
+            .and_then(|edge| edge.labels.first())
+            .expect("cross-hierarchy center label");
+        let sibling_label = result
+            .edges
+            .iter()
+            .find(|edge| edge.id == "B-Beta")
+            .and_then(|edge| edge.labels.first())
+            .expect("sibling center label");
+
+        assert_eq!(alpha.width, 251.375);
+        assert_eq!(cross_hierarchy_label.x, 24.0);
+        assert_eq!(cross_hierarchy_label.y, 150.0);
+        assert_eq!(cross_hierarchy_label.width, 66.609375);
+        assert_eq!(sibling_label.x, 135.9921875);
+        assert_eq!(sibling_label.y, 219.0);
+    }
+
+    #[test]
+    fn source_backed_layout_accounts_for_inline_label_edge_thickness() {
+        let mut a1 = leaf("a1");
+        a1.parent = Some("one".to_string());
+        a1.width = 76.796875;
+        a1.height = 54.0;
+        let mut a2 = leaf("a2");
+        a2.parent = Some("one".to_string());
+        a2.width = 76.796875;
+        a2.height = 54.0;
+        let mut first = edge("e1", "a1", "a2");
+        first.label = Some(Label {
+            width: 13.109375,
+            height: 24.0,
+        });
+        let mut second = edge("e2", "a1", "a2");
+        second.label = first.label;
+        let mut graph = flat_graph(
+            vec![
+                Node {
+                    id: "one".to_string(),
+                    kind: NodeKind::Group,
+                    width: 0.0,
+                    height: 0.0,
+                    parent: None,
+                    direction: None,
+                    hierarchy_handling: None,
+                    layer_constraint: None,
+                    label: Some(Label {
+                        width: 26.046875,
+                        height: 22.0,
+                    }),
+                },
+                a1,
+                a2,
+            ],
+            vec![first, second],
+        );
+        graph.direction = Direction::Left;
+
+        let result = layout(&graph).unwrap();
+        let group = result.nodes.iter().find(|node| node.id == "one").unwrap();
+        let first = result.edges.iter().find(|edge| edge.id == "e1").unwrap();
+        let second = result.edges.iter().find(|edge| edge.id == "e2").unwrap();
+
+        assert_eq!(group.width, 250.703125);
+        assert_eq!(group.height, 121.5);
+        assert_eq!(first.labels[0].x, 130.796875);
+        assert_eq!(first.labels[0].y, 96.5);
+        assert_eq!(first.points[2].y, 109.0);
+        assert_eq!(second.labels[0].x, 130.796875);
+        assert_eq!(second.labels[0].y, 56.5);
+        assert!(second.points.iter().all(|point| point.y == 69.0));
+    }
+
+    #[test]
+    fn source_backed_layout_places_connected_nodes_in_direction_order() {
         let graph = flat_graph(vec![leaf("A"), leaf("B")], vec![edge("A-B", "A", "B")]);
 
-        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let result = layout(&graph).unwrap();
 
         let a = result.nodes.iter().find(|node| node.id == "A").unwrap();
         let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
@@ -978,11 +1121,11 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_honors_left_right_direction() {
+    fn source_backed_layout_honors_left_right_direction() {
         let mut graph = flat_graph(vec![leaf("A"), leaf("B")], vec![edge("A-B", "A", "B")]);
         graph.direction = Direction::Right;
 
-        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let result = layout(&graph).unwrap();
 
         let a = result.nodes.iter().find(|node| node.id == "A").unwrap();
         let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
@@ -990,7 +1133,38 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_routes_long_edge_after_joiner() {
+    fn source_backed_layout_excludes_empty_group_labels_from_elk_geometry() {
+        let empty_group = Node {
+            id: "B".to_string(),
+            kind: NodeKind::Group,
+            width: 0.0,
+            height: 0.0,
+            parent: None,
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            label: Some(Label {
+                width: 9.0625,
+                height: 22.0,
+            }),
+        };
+        let mut laid_out_group = leaf("A");
+        laid_out_group.width = 191.328125;
+        laid_out_group.height = 105.0;
+        let mut graph = flat_graph(vec![empty_group, laid_out_group], vec![]);
+        graph.direction = Direction::Right;
+
+        let result = layout(&graph).unwrap();
+        let empty_group = result.nodes.iter().find(|node| node.id == "B").unwrap();
+        let laid_out_group = result.nodes.iter().find(|node| node.id == "A").unwrap();
+
+        assert_eq!(empty_group.width, 0.0);
+        assert_eq!(empty_group.height, 0.0);
+        assert_eq!(laid_out_group.y - laid_out_group.height / 2.0, 52.0);
+    }
+
+    #[test]
+    fn source_backed_layout_routes_long_edge_after_joiner() {
         let graph = flat_graph(
             vec![leaf("A"), leaf("B"), leaf("C")],
             vec![
@@ -1000,7 +1174,7 @@ mod tests {
             ],
         );
 
-        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let result = layout(&graph).unwrap();
 
         let long = result.edges.iter().find(|edge| edge.id == "A-C").unwrap();
         assert_eq!(
@@ -1011,7 +1185,7 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_exports_edge_label_layouts() {
+    fn source_backed_layout_exports_edge_label_layouts() {
         let mut labelled = edge("A-C", "A", "C");
         labelled.label = Some(Label {
             width: 48.0,
@@ -1022,7 +1196,7 @@ mod tests {
             vec![edge("A-B", "A", "B"), edge("B-C", "B", "C"), labelled],
         );
 
-        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let result = layout(&graph).unwrap();
 
         let edge = result.edges.iter().find(|edge| edge.id == "A-C").unwrap();
         let label = edge
@@ -1339,7 +1513,7 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_exports_nested_compound_nodes_with_parent_offset() {
+    fn source_backed_layout_exports_nested_compound_nodes_with_parent_offset() {
         let mut child = leaf("A");
         child.parent = Some("cluster".to_string());
         let mut second_child = leaf("B");
@@ -1364,7 +1538,7 @@ mod tests {
         );
         graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
-        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let result = layout(&graph).unwrap();
 
         let cluster = result
             .nodes
@@ -1385,7 +1559,7 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_routes_cross_hierarchy_edge() {
+    fn source_backed_layout_routes_cross_hierarchy_edge() {
         let mut child = leaf("A");
         child.parent = Some("cluster".to_string());
         let mut graph = flat_graph(
@@ -1407,7 +1581,7 @@ mod tests {
         );
         graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
-        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let result = layout(&graph).unwrap();
 
         let cluster = result
             .nodes
@@ -1430,7 +1604,7 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_exports_edge_from_nested_child_to_outer_node() {
+    fn source_backed_layout_exports_edge_from_nested_child_to_outer_node() {
         let mut child = leaf("A");
         child.parent = Some("cluster".to_string());
         let mut graph = flat_graph(
@@ -1453,7 +1627,7 @@ mod tests {
         );
         graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
-        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let result = layout(&graph).unwrap();
         let b = result.nodes.iter().find(|node| node.id == "B").unwrap();
         let edge = result
             .edges
@@ -1470,7 +1644,7 @@ mod tests {
     }
 
     #[test]
-    fn source_ported_layout_recursively_lays_out_separate_children() {
+    fn source_backed_layout_recursively_lays_out_separate_children() {
         let mut child = leaf("A");
         child.parent = Some("cluster".to_string());
         let mut second_child = leaf("B");
@@ -1503,7 +1677,7 @@ mod tests {
         graph.direction = Direction::Down;
         graph.options.layered.hierarchy_handling = HierarchyHandling::IncludeChildren;
 
-        let result = layout_source_ported(&graph, Algorithm::Layered).unwrap();
+        let result = layout(&graph).unwrap();
 
         let cluster = result
             .nodes

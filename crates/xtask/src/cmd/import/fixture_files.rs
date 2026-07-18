@@ -1,11 +1,14 @@
 use crate::XtaskError;
+use merman_fixture_render_context::{
+    FixtureRenderContext, MANIFEST_RELATIVE_PATH, RenderContextCatalog,
+};
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-static SITE_CONFIG_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static RENDER_CONTEXT_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn fixtures_root() -> PathBuf {
     crate::cmd::fixtures_root()
@@ -64,12 +67,12 @@ fn layout_golden_json_path(diagram_dir: &str, stem: &str) -> PathBuf {
     layout_golden_json_path_in(&fixtures_root(), diagram_dir, stem)
 }
 
-fn site_config_overrides_path_in(root: &Path) -> PathBuf {
-    root.join("_config").join("site_config_overrides.json")
+fn render_contexts_path_in(root: &Path) -> PathBuf {
+    root.join(MANIFEST_RELATIVE_PATH)
 }
 
-fn site_config_overrides_path() -> PathBuf {
-    site_config_overrides_path_in(&fixtures_root())
+fn render_contexts_path() -> PathBuf {
+    render_contexts_path_in(&fixtures_root())
 }
 
 fn fixture_relative_path(diagram_dir: &str, stem: &str) -> String {
@@ -277,10 +280,10 @@ pub(crate) struct ImportedFixtureSnapshot {
     active_files: Vec<ImportedFileSnapshot>,
     deferred_files: Vec<ImportedFileSnapshot>,
     upstream_family: ImportedDirectorySnapshot,
-    site_config_file: ImportedFileSnapshot,
-    site_config_overrides: serde_json::Map<String, serde_json::Value>,
-    site_config_relative_path: String,
-    site_config_value: Option<serde_json::Value>,
+    render_context_file: ImportedFileSnapshot,
+    render_context_catalog: RenderContextCatalog,
+    render_context_relative_path: String,
+    render_context_value: Option<FixtureRenderContext>,
 }
 
 impl ImportedFixtureSnapshot {
@@ -316,22 +319,24 @@ impl ImportedFixtureSnapshot {
         let upstream_family =
             ImportedDirectorySnapshot::capture(root.join("upstream-svgs").join(diagram_dir))?;
 
-        let site_config_path = site_config_overrides_path_in(root);
-        let site_config_file = ImportedFileSnapshot::capture(site_config_path.clone())?;
-        let site_config_relative_path = fixture_relative_path(diagram_dir, stem);
-        let site_config_overrides = read_site_config_overrides_from(&site_config_path)?;
-        let site_config_value = site_config_overrides
-            .get(&site_config_relative_path)
+        let render_context_path = render_contexts_path_in(root);
+        let render_context_file = ImportedFileSnapshot::capture(render_context_path)?;
+        let render_context_relative_path = fixture_relative_path(diagram_dir, stem);
+        let render_context_catalog =
+            RenderContextCatalog::load_for_update(root).map_err(render_context_catalog_error)?;
+        let render_context_value = render_context_catalog
+            .context_for_relative_fixture(&render_context_relative_path)
+            .map_err(render_context_catalog_error)?
             .cloned();
 
         Ok(Self {
             active_files,
             deferred_files,
             upstream_family,
-            site_config_file,
-            site_config_overrides,
-            site_config_relative_path,
-            site_config_value,
+            render_context_file,
+            render_context_catalog,
+            render_context_relative_path,
+            render_context_value,
         })
     }
 
@@ -357,123 +362,84 @@ impl ImportedFixtureSnapshot {
                     .filter_map(|snapshot| snapshot.rollback().err()),
             );
         }
-        if let Err(err) = self.rollback_site_config_override() {
+        if let Err(err) = self.rollback_render_context() {
             errors.push(err);
         }
         errors
     }
 
-    fn rollback_site_config_override(&self) -> Result<(), String> {
-        let mut overrides = match read_site_config_overrides_from(&self.site_config_file.path) {
-            Ok(overrides) => overrides,
-            Err(_) => return self.site_config_file.rollback(),
+    fn rollback_render_context(&self) -> Result<(), String> {
+        let fixtures_root = self
+            .render_context_file
+            .path
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| {
+                format!(
+                    "fixture render context manifest has no fixtures root: {}",
+                    self.render_context_file.path.display()
+                )
+            })?;
+        let mut catalog = match RenderContextCatalog::load_for_fixture_update(
+            fixtures_root,
+            &self.render_context_relative_path,
+        ) {
+            Ok(catalog) => catalog,
+            Err(_) => return self.render_context_file.rollback(),
         };
-        let candidate_changed =
-            overrides.get(&self.site_config_relative_path) != self.site_config_value.as_ref();
+        let current_value = catalog
+            .context_for_relative_fixture(&self.render_context_relative_path)
+            .map_err(|error| error.to_string())?
+            .cloned();
+        let candidate_changed = current_value != self.render_context_value;
         if candidate_changed {
-            match &self.site_config_value {
-                Some(value) => {
-                    overrides.insert(self.site_config_relative_path.clone(), value.clone());
+            match &self.render_context_value {
+                Some(_) => {
+                    let source_path = fixtures_root.join(&self.render_context_relative_path);
+                    let source = fs::read(&source_path).map_err(|error| {
+                        format!(
+                            "failed to read restored fixture {} during render context rollback: {error}",
+                            source_path.display()
+                        )
+                    })?;
+                    catalog
+                        .upsert_from_source(&self.render_context_relative_path, &source)
+                        .map_err(|error| error.to_string())?;
                 }
                 None => {
-                    overrides.remove(&self.site_config_relative_path);
+                    catalog
+                        .remove(&self.render_context_relative_path)
+                        .map_err(|error| error.to_string())?;
                 }
             }
         }
 
-        if json_object_semantically_equal(&overrides, &self.site_config_overrides) {
-            return self.site_config_file.rollback();
+        let current_semantics = catalog.to_json().map_err(|error| error.to_string())?;
+        let snapshot_semantics = self
+            .render_context_catalog
+            .to_json()
+            .map_err(|error| error.to_string())?;
+        if current_semantics == snapshot_semantics {
+            return self.render_context_file.rollback();
         }
         if !candidate_changed {
             return Ok(());
         }
 
-        if self.site_config_file.contents.is_none() && overrides.is_empty() {
-            return match fs::remove_file(&self.site_config_file.path) {
+        if self.render_context_file.contents.is_none() && catalog.contexts().next().is_none() {
+            return match fs::remove_file(&self.render_context_file.path) {
                 Ok(()) => Ok(()),
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
                 Err(err) => Err(format!(
-                    "failed to remove fixture site config manifest {} during rollback: {err}",
-                    self.site_config_file.path.display()
+                    "failed to remove fixture render context manifest {} during rollback: {err}",
+                    self.render_context_file.path.display()
                 )),
             };
         }
 
-        write_site_config_overrides_to(&self.site_config_file.path, overrides)
-            .map_err(|err| err.to_string())
+        write_render_contexts_to(&self.render_context_file.path, &catalog)
+            .map_err(|error| error.to_string())
     }
-}
-
-fn json_object_semantically_equal(
-    left: &serde_json::Map<String, serde_json::Value>,
-    right: &serde_json::Map<String, serde_json::Value>,
-) -> bool {
-    left.len() == right.len()
-        && left.iter().all(|(key, left_value)| {
-            right
-                .get(key)
-                .is_some_and(|right_value| json_value_semantically_equal(left_value, right_value))
-        })
-}
-
-fn json_value_semantically_equal(left: &serde_json::Value, right: &serde_json::Value) -> bool {
-    match (left, right) {
-        (serde_json::Value::Array(left), serde_json::Value::Array(right)) => {
-            left.len() == right.len()
-                && left
-                    .iter()
-                    .zip(right)
-                    .all(|(left, right)| json_value_semantically_equal(left, right))
-        }
-        (serde_json::Value::Object(left), serde_json::Value::Object(right)) => {
-            json_object_semantically_equal(left, right)
-        }
-        _ => left == right,
-    }
-}
-
-fn normalize_security_level(value: &str) -> Option<&'static str> {
-    match value.trim() {
-        "loose" => Some("loose"),
-        "sandbox" => Some("sandbox"),
-        _ => None,
-    }
-}
-
-fn security_level_from_json(value: &serde_json::Value) -> Option<&'static str> {
-    if let Some(level) = value
-        .get("securityLevel")
-        .and_then(serde_json::Value::as_str)
-        .and_then(normalize_security_level)
-    {
-        return Some(level);
-    }
-
-    value
-        .get("config")
-        .and_then(|config| config.get("securityLevel"))
-        .and_then(serde_json::Value::as_str)
-        .and_then(normalize_security_level)
-}
-
-fn security_level_from_yaml(value: &serde_json::Value) -> Option<&'static str> {
-    let mapping = value.as_object()?;
-    let direct = "securityLevel";
-    if let Some(level) = mapping
-        .get(direct)
-        .and_then(serde_json::Value::as_str)
-        .and_then(normalize_security_level)
-    {
-        return Some(level);
-    }
-
-    let config_key = "config";
-    mapping
-        .get(config_key)
-        .and_then(serde_json::Value::as_object)
-        .and_then(|config| config.get(direct))
-        .and_then(serde_json::Value::as_str)
-        .and_then(normalize_security_level)
 }
 
 fn config_look_from_yaml(value: &serde_json::Value) -> Option<&str> {
@@ -511,108 +477,35 @@ fn split_yaml_frontmatter(input: &str) -> Option<(&str, &str)> {
     None
 }
 
-fn security_level_from_frontmatter(body: &str) -> Option<&'static str> {
-    let (yaml, _) = split_yaml_frontmatter(body)?;
-    let parsed = serde_saphyr::from_str::<serde_json::Value>(yaml).ok()?;
-    security_level_from_yaml(&parsed)
-}
-
 pub(crate) fn imported_fixture_config_look(body: &str) -> Option<String> {
     let (yaml, _) = split_yaml_frontmatter(body)?;
     let parsed = serde_saphyr::from_str::<serde_json::Value>(yaml).ok()?;
     config_look_from_yaml(&parsed).map(str::to_string)
 }
 
-fn security_level_from_directives(body: &str) -> Option<&'static str> {
-    let mut start = 0usize;
-    while let Some(rel_start) = body[start..].find("%%{") {
-        let content_start = start + rel_start + 3;
-        let Some(rel_end) = body[content_start..].find("}%%") else {
-            break;
-        };
-        let content_end = content_start + rel_end;
-        let raw = body[content_start..content_end].trim();
-        start = content_end + 3;
-
-        let Some((directive, args)) = raw.split_once(':') else {
-            continue;
-        };
-        let directive = directive.trim();
-        if directive != "init" && directive != "initialize" {
-            continue;
-        }
-
-        let args = args.trim().replace('\'', "\"");
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&args) else {
-            continue;
-        };
-        if let Some(level) = security_level_from_json(&value) {
-            return Some(level);
-        }
-    }
-    None
+fn render_context_catalog_error(error: merman_fixture_render_context::CatalogError) -> XtaskError {
+    XtaskError::SnapshotUpdateFailed(error.to_string())
 }
 
-fn imported_fixture_site_config(body: &str) -> Option<serde_json::Value> {
-    let security_level =
-        security_level_from_frontmatter(body).or_else(|| security_level_from_directives(body))?;
-
-    Some(serde_json::json!({
-        "securityLevel": security_level
-    }))
+fn write_render_contexts(catalog: &RenderContextCatalog) -> Result<(), XtaskError> {
+    write_render_contexts_to(&render_contexts_path(), catalog)
 }
 
-fn read_site_config_overrides() -> Result<serde_json::Map<String, serde_json::Value>, XtaskError> {
-    let path = site_config_overrides_path();
-    read_site_config_overrides_from(&path)
-}
-
-fn read_site_config_overrides_from(
-    path: &Path,
-) -> Result<serde_json::Map<String, serde_json::Value>, XtaskError> {
-    if !path.exists() {
-        return Ok(serde_json::Map::new());
-    }
-
-    let text = fs::read_to_string(path).map_err(|source| XtaskError::ReadFile {
-        path: path.display().to_string(),
-        source,
-    })?;
-    let value: serde_json::Value = serde_json::from_str(&text)
-        .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string()))?;
-    match value {
-        serde_json::Value::Object(map) => Ok(map),
-        other => Err(XtaskError::SnapshotUpdateFailed(format!(
-            "fixture site config override manifest must be a JSON object, got {other:?}"
-        ))),
-    }
-}
-
-fn write_site_config_overrides(
-    overrides: serde_json::Map<String, serde_json::Value>,
-) -> Result<(), XtaskError> {
-    let path = site_config_overrides_path();
-    write_site_config_overrides_to(&path, overrides)
-}
-
-fn write_site_config_overrides_to(
-    path: &Path,
-    overrides: serde_json::Map<String, serde_json::Value>,
-) -> Result<(), XtaskError> {
-    write_site_config_overrides_to_with_backup_remover(path, overrides, |backup_path| {
+fn write_render_contexts_to(path: &Path, catalog: &RenderContextCatalog) -> Result<(), XtaskError> {
+    write_render_contexts_to_with_backup_remover(path, catalog, |backup_path| {
         fs::remove_file(backup_path)
     })
 }
 
-fn write_site_config_overrides_to_with_backup_remover<R>(
+fn write_render_contexts_to_with_backup_remover<R>(
     path: &Path,
-    overrides: serde_json::Map<String, serde_json::Value>,
+    catalog: &RenderContextCatalog,
     remove_backup: R,
 ) -> Result<(), XtaskError>
 where
     R: FnOnce(&Path) -> std::io::Result<()>,
 {
-    let pretty = render_site_config_overrides(&overrides)?;
+    let pretty = catalog.to_json().map_err(render_context_catalog_error)?;
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
@@ -621,11 +514,11 @@ where
         })?;
     }
 
-    let sequence = SITE_CONFIG_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let sequence = RENDER_CONTEXT_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("site_config_overrides.json");
+        .unwrap_or("render_contexts.json");
     let transaction_suffix = format!("{}-{sequence}", std::process::id());
     let temp_path = path.with_file_name(format!(".{file_name}.{transaction_suffix}.tmp"));
     let backup_path = path.with_file_name(format!(".{file_name}.{transaction_suffix}.backup"));
@@ -652,7 +545,7 @@ where
             let _ = fs::remove_file(&temp_path);
             return Err(XtaskError::WriteFile {
                 path: path.display().to_string(),
-                source: std::io::Error::other("site config manifest path is not a file"),
+                source: std::io::Error::other("render context manifest path is not a file"),
             });
         }
         Err(source) if source.kind() == std::io::ErrorKind::NotFound => false,
@@ -685,7 +578,7 @@ where
             Some(rollback_error) => Err(XtaskError::WriteFile {
                 path: path.display().to_string(),
                 source: std::io::Error::other(format!(
-                    "failed to install site config manifest: {source}; failed to restore backup: {rollback_error}"
+                    "failed to install render context manifest: {source}; failed to restore backup: {rollback_error}"
                 )),
             }),
             None => Err(XtaskError::WriteFile {
@@ -697,110 +590,44 @@ where
 
     if had_original && let Err(err) = remove_backup(&backup_path) {
         eprintln!(
-            "warning: failed to remove committed fixture site config backup {}: {err}",
+            "warning: failed to remove committed fixture render context backup {}: {err}",
             backup_path.display()
         );
     }
     Ok(())
 }
 
-fn render_site_config_overrides(
-    overrides: &serde_json::Map<String, serde_json::Value>,
-) -> Result<String, XtaskError> {
-    let mut out = String::from("{\n");
-    for (idx, (key, value)) in overrides.iter().enumerate() {
-        if idx > 0 {
-            out.push_str(",\n");
-        }
-        let key = serde_json::to_string(key)
-            .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string()))?;
-        let value = render_json_inline(value)?;
-        out.push_str("  ");
-        out.push_str(&key);
-        out.push_str(": ");
-        out.push_str(&value);
-    }
-    out.push_str("\n}\n");
-    Ok(out)
-}
-
-fn render_json_inline(value: &serde_json::Value) -> Result<String, XtaskError> {
-    match value {
-        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
-            serde_json::to_string(value)
-                .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string()))
-        }
-        serde_json::Value::String(value) => serde_json::to_string(value)
-            .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string())),
-        serde_json::Value::Array(items) => {
-            let rendered = items
-                .iter()
-                .map(render_json_inline)
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(format!("[{}]", rendered.join(", ")))
-        }
-        serde_json::Value::Object(map) => {
-            if map.is_empty() {
-                return Ok("{}".to_string());
-            }
-            let mut rendered = Vec::with_capacity(map.len());
-            for (key, value) in map {
-                let key = serde_json::to_string(key)
-                    .map_err(|err| XtaskError::SnapshotUpdateFailed(err.to_string()))?;
-                rendered.push(format!("{key}: {}", render_json_inline(value)?));
-            }
-            Ok(format!("{{ {} }}", rendered.join(", ")))
-        }
-    }
-}
-
-fn apply_site_config_override(
-    overrides: &mut serde_json::Map<String, serde_json::Value>,
-    relative_path: String,
-    body: &str,
-) -> bool {
-    match imported_fixture_site_config(body) {
-        Some(site_config) => {
-            if overrides.get(&relative_path) == Some(&site_config) {
-                false
-            } else {
-                overrides.insert(relative_path, site_config);
-                true
-            }
-        }
-        None => overrides.remove(&relative_path).is_some(),
-    }
-}
-
-fn update_site_config_override(
-    diagram_dir: &str,
-    stem: &str,
-    body: &str,
-) -> Result<(), XtaskError> {
+fn update_render_context(diagram_dir: &str, stem: &str, body: &str) -> Result<(), XtaskError> {
     let relative_path = fixture_relative_path(diagram_dir, stem);
-    let mut overrides = read_site_config_overrides()?;
-    if apply_site_config_override(&mut overrides, relative_path, body) {
-        write_site_config_overrides(overrides)?;
+    let root = fixtures_root();
+    let mut catalog = RenderContextCatalog::load_for_fixture_update(&root, &relative_path)
+        .map_err(render_context_catalog_error)?;
+    if catalog
+        .upsert_from_source(&relative_path, body.as_bytes())
+        .map_err(render_context_catalog_error)?
+    {
+        write_render_contexts(&catalog)?;
     }
     Ok(())
 }
 
-fn remove_site_config_override(diagram_dir: &str, stem: &str) -> Result<(), XtaskError> {
-    let path = site_config_overrides_path();
-    remove_site_config_override_from(&path, diagram_dir, stem)
+fn remove_render_context(diagram_dir: &str, stem: &str) -> Result<(), XtaskError> {
+    remove_render_context_from(&fixtures_root(), diagram_dir, stem)
 }
 
-fn remove_site_config_override_from(
-    path: &Path,
+fn remove_render_context_from(
+    root: &Path,
     diagram_dir: &str,
     stem: &str,
 ) -> Result<(), XtaskError> {
-    let mut overrides = read_site_config_overrides_from(path)?;
-    if overrides
-        .remove(&fixture_relative_path(diagram_dir, stem))
-        .is_some()
+    let relative_path = fixture_relative_path(diagram_dir, stem);
+    let mut catalog = RenderContextCatalog::load_for_fixture_update(root, &relative_path)
+        .map_err(render_context_catalog_error)?;
+    if catalog
+        .remove(&relative_path)
+        .map_err(render_context_catalog_error)?
     {
-        write_site_config_overrides_to(path, overrides)?;
+        write_render_contexts_to(&render_contexts_path_in(root), &catalog)?;
     }
     Ok(())
 }
@@ -866,7 +693,7 @@ pub(crate) fn cleanup_fixture_files(
         remove_file_if_present(&upstream_svg_path(diagram_dir, stem))?;
         remove_file_if_present(&golden_json_path(diagram_dir, stem))?;
         remove_file_if_present(&layout_golden_json_path(diagram_dir, stem))?;
-        remove_site_config_override(diagram_dir, stem)
+        remove_render_context(diagram_dir, stem)
     })();
     result.map_err(|error| rollback_failed_file_operation(error, &snapshot))
 }
@@ -896,7 +723,7 @@ pub(crate) fn write_imported_fixture(
         path: path.display().to_string(),
         source,
     })?;
-    update_site_config_override(diagram_dir, stem, body)
+    update_render_context(diagram_dir, stem, body)
 }
 
 pub(crate) fn defer_fixture_files_with_replace_existing(
@@ -951,7 +778,7 @@ fn defer_fixture_files_with_replace_existing_in(
 
         remove_file_if_present(&golden_json_path_in(root, diagram_dir, stem))?;
         remove_file_if_present(&layout_golden_json_path_in(root, diagram_dir, stem))?;
-        remove_site_config_override_from(&site_config_overrides_path_in(root), diagram_dir, stem)
+        remove_render_context_from(root, diagram_dir, stem)
     })();
     result
         .map(|()| deferred_path)
@@ -961,14 +788,13 @@ fn defer_fixture_files_with_replace_existing_in(
 #[cfg(test)]
 mod tests {
     use super::{
-        ImportedFixtureSnapshot, apply_site_config_override,
-        defer_fixture_files_with_replace_existing_in, deferred_fixture_path_in,
-        deferred_upstream_svg_path_in, golden_json_path_in, imported_fixture_config_look,
-        imported_fixture_site_config, layout_golden_json_path_in, read_site_config_overrides_from,
-        render_site_config_overrides, site_config_overrides_path_in, upstream_svg_path_in,
-        write_site_config_overrides_to, write_site_config_overrides_to_with_backup_remover,
+        ImportedFixtureSnapshot, defer_fixture_files_with_replace_existing_in,
+        deferred_fixture_path_in, deferred_upstream_svg_path_in, golden_json_path_in,
+        imported_fixture_config_look, layout_golden_json_path_in, render_contexts_path_in,
+        upstream_svg_path_in, write_render_contexts_to,
+        write_render_contexts_to_with_backup_remover,
     };
-    use serde_json::json;
+    use merman_fixture_render_context::{RenderContextCatalog, SecurityLevel};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1008,74 +834,43 @@ mod tests {
         fs::write(path, contents).expect("write test fixture file");
     }
 
-    #[test]
-    fn imported_fixture_site_config_detects_loose_json_directive() {
-        let site_config = imported_fixture_site_config(
-            r#"%%{init: {"securityLevel":"loose","theme":"dark"}}%%
-flowchart TD
-  A-->B
-"#,
-        )
-        .expect("loose security level should become site config");
+    const LOOSE_SOURCE: &str = "%%{init: {\"securityLevel\":\"loose\"}}%%\nflowchart TD\n  A-->B\n";
+    const SANDBOX_SOURCE: &str =
+        "%%{init: {\"securityLevel\":\"sandbox\"}}%%\nflowchart TD\n  A-->B\n";
 
-        assert_eq!(site_config["securityLevel"], "loose");
+    fn catalog_from_sources(root: &Path, sources: &[(&str, &str)]) -> RenderContextCatalog {
+        let mut catalog =
+            RenderContextCatalog::rebuild(root).expect("create render context catalog");
+        for (relative, source) in sources {
+            write_test_file(&root.join(relative), source);
+            catalog
+                .upsert_from_source(relative, source.as_bytes())
+                .expect("derive fixture render context");
+        }
+        catalog
     }
 
-    #[test]
-    fn imported_fixture_site_config_detects_single_quote_directive() {
-        let site_config = imported_fixture_site_config(
-            r#"%%{init: {'securityLevel':'sandbox'}}%%
-flowchart TD
-  A-->B
-"#,
-        )
-        .expect("single-quoted directive should become site config");
-
-        assert_eq!(site_config["securityLevel"], "sandbox");
+    fn commit_catalog(root: &Path, catalog: &RenderContextCatalog) {
+        write_render_contexts_to(&render_contexts_path_in(root), catalog)
+            .expect("commit render context catalog");
     }
 
-    #[test]
-    fn imported_fixture_site_config_detects_nested_config_directive() {
-        let site_config = imported_fixture_site_config(
-            r#"%%{init: {"config": {"securityLevel": "loose"}}}%%
-flowchart TD
-  A-->B
-"#,
-        )
-        .expect("nested config directive should become site config");
-
-        assert_eq!(site_config["securityLevel"], "loose");
+    fn replace_context(root: &Path, relative: &str, source: &str) {
+        write_test_file(&root.join(relative), source);
+        let mut catalog = RenderContextCatalog::load_for_fixture_update(root, relative)
+            .expect("load catalog for fixture update");
+        catalog
+            .upsert_from_source(relative, source.as_bytes())
+            .expect("upsert fixture render context");
+        commit_catalog(root, &catalog);
     }
 
-    #[test]
-    fn imported_fixture_site_config_detects_sandbox_yaml_frontmatter() {
-        let site_config = imported_fixture_site_config(
-            r#"---
-config:
-  securityLevel: sandbox
----
-flowchart TD
-  A-->B
-"#,
-        )
-        .expect("sandbox security level should become site config");
-
-        assert_eq!(site_config["securityLevel"], "sandbox");
-    }
-
-    #[test]
-    fn imported_fixture_site_config_detects_root_yaml_frontmatter() {
-        let site_config = imported_fixture_site_config(
-            r#"---
-securityLevel: loose
----
-flowchart TD
-  A-->B
-"#,
-        )
-        .expect("root frontmatter security level should become site config");
-
-        assert_eq!(site_config["securityLevel"], "loose");
+    fn context_level(root: &Path, relative: &str) -> Option<SecurityLevel> {
+        RenderContextCatalog::load(root)
+            .expect("load render contexts")
+            .context_for_relative_fixture(relative)
+            .expect("look up relative fixture")
+            .map(|context| context.security_level())
     }
 
     #[test]
@@ -1108,127 +903,16 @@ flowchart TD
     }
 
     #[test]
-    fn render_site_config_overrides_keeps_compact_entry_lines() {
-        let mut overrides = serde_json::Map::new();
-        overrides.insert(
-            "flowchart/a.mmd".to_string(),
-            json!({ "securityLevel": "loose" }),
-        );
-        overrides.insert(
-            "flowchart/b.mmd".to_string(),
-            json!({ "securityLevel": "sandbox" }),
-        );
-
-        let rendered = render_site_config_overrides(&overrides).expect("render overrides");
-
-        assert_eq!(
-            rendered,
-            "{\n  \"flowchart/a.mmd\": { \"securityLevel\": \"loose\" },\n  \"flowchart/b.mmd\": { \"securityLevel\": \"sandbox\" }\n}\n"
-        );
-    }
-
-    #[test]
-    fn imported_fixture_site_config_ignores_strict_default() {
-        assert!(
-            imported_fixture_site_config(
-                r#"%%{init: {"securityLevel":"strict"}}%%
-flowchart TD
-  A-->B
-"#
-            )
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn imported_fixture_site_config_ignores_label_text() {
-        assert!(
-            imported_fixture_site_config(
-                r#"flowchart TD
-  A["securityLevel: loose"]
-"#
-            )
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn apply_site_config_override_adds_detected_security_level() {
-        let mut overrides = serde_json::Map::new();
-
-        let changed = apply_site_config_override(
-            &mut overrides,
-            "flowchart/example.mmd".to_string(),
-            r#"%%{init: {"securityLevel":"loose"}}%%
-flowchart TD
-  A-->B
-"#,
-        );
-
-        assert!(changed);
-        assert_eq!(overrides["flowchart/example.mmd"]["securityLevel"], "loose");
-    }
-
-    #[test]
-    fn apply_site_config_override_removes_stale_entry_for_default_fixture() {
-        let mut overrides = serde_json::Map::new();
-        overrides.insert(
-            "flowchart/example.mmd".to_string(),
-            json!({ "securityLevel": "loose" }),
-        );
-
-        let changed = apply_site_config_override(
-            &mut overrides,
-            "flowchart/example.mmd".to_string(),
-            "flowchart TD\n  A-->B\n",
-        );
-
-        assert!(changed);
-        assert!(overrides.get("flowchart/example.mmd").is_none());
-    }
-
-    #[test]
-    fn apply_site_config_override_skips_unchanged_manifest() {
-        let mut overrides = serde_json::Map::new();
-        overrides.insert(
-            "flowchart/example.mmd".to_string(),
-            json!({ "securityLevel": "sandbox" }),
-        );
-
-        let changed = apply_site_config_override(
-            &mut overrides,
-            "flowchart/example.mmd".to_string(),
-            r#"%%{init: {"securityLevel":"sandbox"}}%%
-flowchart TD
-  A-->B
-"#,
-        );
-
-        assert!(!changed);
-        assert_eq!(
-            overrides["flowchart/example.mmd"]["securityLevel"],
-            "sandbox"
-        );
-    }
-
-    #[test]
-    fn committed_site_config_survives_backup_cleanup_failure() {
+    fn committed_render_context_survives_backup_cleanup_failure() {
         let root = TestFixtureRoot::new();
-        let path = site_config_overrides_path_in(root.path());
-        write_site_config_overrides_to(
-            &path,
-            serde_json::Map::from_iter([(
-                "flowchart/original.mmd".to_string(),
-                json!({ "securityLevel": "loose" }),
-            )]),
-        )
-        .expect("write original site config");
+        let path = render_contexts_path_in(root.path());
+        let original =
+            catalog_from_sources(root.path(), &[("flowchart/original.mmd", LOOSE_SOURCE)]);
+        write_render_contexts_to(&path, &original).expect("write original render context");
 
-        let updated = serde_json::Map::from_iter([(
-            "sequence/updated.mmd".to_string(),
-            json!({ "securityLevel": "sandbox" }),
-        )]);
-        write_site_config_overrides_to_with_backup_remover(&path, updated.clone(), |_| {
+        let updated =
+            catalog_from_sources(root.path(), &[("sequence/updated.mmd", SANDBOX_SOURCE)]);
+        write_render_contexts_to_with_backup_remover(&path, &updated, |_| {
             Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 "injected backup cleanup failure",
@@ -1236,12 +920,18 @@ flowchart TD
         })
         .expect("backup cleanup is post-commit and must not fail the write");
 
+        let committed = RenderContextCatalog::load(root.path()).expect("read committed contexts");
+        assert_eq!(committed.contexts().count(), 1);
         assert_eq!(
-            read_site_config_overrides_from(&path).expect("read committed site config"),
-            updated
+            committed
+                .context_for_relative_fixture("sequence/updated.mmd")
+                .expect("look up updated context")
+                .expect("updated context")
+                .security_level(),
+            SecurityLevel::Sandbox
         );
-        let backup_count = fs::read_dir(path.parent().expect("site config parent"))
-            .expect("read site config directory")
+        let backup_count = fs::read_dir(path.parent().expect("render context parent"))
+            .expect("read render context directory")
             .filter_map(Result::ok)
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".backup"))
             .count();
@@ -1249,11 +939,13 @@ flowchart TD
     }
 
     #[test]
-    fn imported_fixture_snapshot_restores_all_managed_candidate_state() {
+    fn imported_fixture_snapshot_restores_candidate_and_preserves_sibling_context() {
         let root = TestFixtureRoot::new();
         let diagram_dir = "flowchart";
         let stem = "candidate";
-        let fixture_path = root.path().join(diagram_dir).join(format!("{stem}.mmd"));
+        let candidate_relative = "flowchart/candidate.mmd";
+        let sibling_relative = "flowchart/sibling.mmd";
+        let fixture_path = root.path().join(candidate_relative);
         let golden_path = golden_json_path_in(root.path(), diagram_dir, stem);
         let layout_path = layout_golden_json_path_in(root.path(), diagram_dir, stem);
         let deferred_path = deferred_fixture_path_in(root.path(), diagram_dir, stem);
@@ -1261,104 +953,69 @@ flowchart TD
         let upstream_path = upstream_svg_path_in(root.path(), diagram_dir, stem);
         let upstream_family = upstream_path.parent().expect("upstream family directory");
         let sibling_svg_path = upstream_family.join("sibling.svg");
-        let manifest_path = upstream_family.join("_baseline-manifest.json");
+        let baseline_manifest = upstream_family.join("_baseline-manifest.json");
         let failures_path = upstream_family.join("_failures.txt");
-        let site_config_path = site_config_overrides_path_in(root.path());
 
-        write_test_file(&fixture_path, b"old fixture");
+        let original_catalog = catalog_from_sources(
+            root.path(),
+            &[
+                (candidate_relative, LOOSE_SOURCE),
+                (sibling_relative, SANDBOX_SOURCE),
+            ],
+        );
+        commit_catalog(root.path(), &original_catalog);
         write_test_file(&golden_path, b"old golden");
         write_test_file(&layout_path, b"old layout");
         write_test_file(&deferred_path, b"old deferred fixture");
         write_test_file(&deferred_svg_path, b"old deferred svg");
         write_test_file(&upstream_path, b"old upstream svg");
         write_test_file(&sibling_svg_path, b"old sibling svg");
-        write_test_file(&manifest_path, b"old manifest");
+        write_test_file(&baseline_manifest, b"old manifest");
         write_test_file(&failures_path, b"old failures");
-        write_site_config_overrides_to(
-            &site_config_path,
-            serde_json::Map::from_iter([
-                (
-                    "flowchart/candidate.mmd".to_string(),
-                    json!({ "securityLevel": "loose" }),
-                ),
-                (
-                    "flowchart/sibling.mmd".to_string(),
-                    json!({ "securityLevel": "sandbox" }),
-                ),
-            ]),
-        )
-        .expect("write original site config overrides");
 
         let snapshot =
             ImportedFixtureSnapshot::capture_in(root.path(), diagram_dir, stem, &fixture_path)
                 .expect("capture complete imported fixture state");
 
-        write_test_file(&fixture_path, b"new fixture");
         write_test_file(&golden_path, b"new golden");
         write_test_file(&layout_path, b"new layout");
         write_test_file(&deferred_path, b"new deferred fixture");
         write_test_file(&deferred_svg_path, b"new deferred svg");
         write_test_file(&upstream_path, b"new upstream svg");
         write_test_file(&sibling_svg_path, b"new sibling svg");
-        write_test_file(&manifest_path, b"new manifest");
+        write_test_file(&baseline_manifest, b"new manifest");
         write_test_file(&failures_path, b"new failures");
         let added_svg_path = upstream_family.join("added.svg");
         write_test_file(&added_svg_path, b"added svg");
-        write_site_config_overrides_to(
-            &site_config_path,
-            serde_json::Map::from_iter([
-                (
-                    "flowchart/candidate.mmd".to_string(),
-                    json!({ "securityLevel": "sandbox" }),
-                ),
-                (
-                    "flowchart/sibling.mmd".to_string(),
-                    json!({ "securityLevel": "loose" }),
-                ),
-            ]),
-        )
-        .expect("write replacement site config overrides");
+        let replacement_catalog = catalog_from_sources(
+            root.path(),
+            &[
+                (candidate_relative, SANDBOX_SOURCE),
+                (sibling_relative, LOOSE_SOURCE),
+            ],
+        );
+        commit_catalog(root.path(), &replacement_catalog);
 
         assert!(snapshot.rollback().is_empty());
-        assert_eq!(
-            fs::read(&fixture_path).expect("read fixture"),
-            b"old fixture"
-        );
-        assert_eq!(fs::read(&golden_path).expect("read golden"), b"old golden");
-        assert_eq!(fs::read(&layout_path).expect("read layout"), b"old layout");
-        assert_eq!(
-            fs::read(&deferred_path).expect("read deferred fixture"),
-            b"old deferred fixture"
-        );
-        assert_eq!(
-            fs::read(&deferred_svg_path).expect("read deferred svg"),
-            b"old deferred svg"
-        );
-        assert_eq!(
-            fs::read(&upstream_path).expect("read upstream svg"),
-            b"old upstream svg"
-        );
-        assert_eq!(
-            fs::read(&sibling_svg_path).expect("read sibling svg"),
-            b"old sibling svg"
-        );
-        assert_eq!(
-            fs::read(&manifest_path).expect("read manifest"),
-            b"old manifest"
-        );
-        assert_eq!(
-            fs::read(&failures_path).expect("read failures"),
-            b"old failures"
-        );
+        assert_eq!(fs::read_to_string(&fixture_path).unwrap(), LOOSE_SOURCE);
+        assert_eq!(fs::read(&golden_path).unwrap(), b"old golden");
+        assert_eq!(fs::read(&layout_path).unwrap(), b"old layout");
+        assert_eq!(fs::read(&deferred_path).unwrap(), b"old deferred fixture");
+        assert_eq!(fs::read(&deferred_svg_path).unwrap(), b"old deferred svg");
+        assert_eq!(fs::read(&upstream_path).unwrap(), b"old upstream svg");
+        assert_eq!(fs::read(&sibling_svg_path).unwrap(), b"old sibling svg");
+        assert_eq!(fs::read(&baseline_manifest).unwrap(), b"old manifest");
+        assert_eq!(fs::read(&failures_path).unwrap(), b"old failures");
         assert!(!added_svg_path.exists());
-
-        let overrides =
-            read_site_config_overrides_from(&site_config_path).expect("read restored site config");
         assert_eq!(
-            overrides["flowchart/candidate.mmd"]["securityLevel"],
-            "loose"
+            context_level(root.path(), candidate_relative),
+            Some(SecurityLevel::Loose)
         );
-        assert_eq!(overrides["flowchart/sibling.mmd"]["securityLevel"], "loose");
+        assert_eq!(
+            context_level(root.path(), sibling_relative),
+            Some(SecurityLevel::Loose),
+            "rollback must preserve the sibling's later committed context"
+        );
     }
 
     #[test]
@@ -1366,73 +1023,41 @@ flowchart TD
         let root = TestFixtureRoot::new();
         let diagram_dir = "sequence";
         let stem = "candidate";
-        let fixture_path = root.path().join(diagram_dir).join(format!("{stem}.mmd"));
+        let relative = "sequence/candidate.mmd";
+        let fixture_path = root.path().join(relative);
         let deferred_path = deferred_fixture_path_in(root.path(), diagram_dir, stem);
         let deferred_svg_path = deferred_upstream_svg_path_in(root.path(), diagram_dir, stem);
         let upstream_path = upstream_svg_path_in(root.path(), diagram_dir, stem);
-        let manifest_path = upstream_path
+        let baseline_manifest = upstream_path
             .parent()
             .expect("upstream family directory")
             .join("_baseline-manifest.json");
-        let site_config_path = site_config_overrides_path_in(root.path());
-
-        write_test_file(&fixture_path, b"old active fixture");
+        let original = catalog_from_sources(root.path(), &[(relative, LOOSE_SOURCE)]);
+        commit_catalog(root.path(), &original);
         write_test_file(&deferred_path, b"old deferred fixture");
         write_test_file(&deferred_svg_path, b"old deferred svg");
         write_test_file(&upstream_path, b"old upstream svg");
-        write_test_file(&manifest_path, b"old manifest");
-        write_site_config_overrides_to(
-            &site_config_path,
-            serde_json::Map::from_iter([(
-                "sequence/candidate.mmd".to_string(),
-                json!({ "securityLevel": "loose" }),
-            )]),
-        )
-        .expect("write original site config overrides");
+        write_test_file(&baseline_manifest, b"old manifest");
 
         let snapshot =
             ImportedFixtureSnapshot::capture_in(root.path(), diagram_dir, stem, &fixture_path)
                 .expect("capture imported fixture state");
+        replace_context(root.path(), relative, SANDBOX_SOURCE);
         fs::remove_file(&fixture_path).expect("remove active fixture during simulated defer");
         write_test_file(&deferred_path, b"new deferred fixture");
         write_test_file(&deferred_svg_path, b"new deferred svg");
         write_test_file(&upstream_path, b"new upstream svg");
-        write_test_file(&manifest_path, b"new manifest");
-        write_site_config_overrides_to(
-            &site_config_path,
-            serde_json::Map::from_iter([(
-                "sequence/candidate.mmd".to_string(),
-                json!({ "securityLevel": "sandbox" }),
-            )]),
-        )
-        .expect("write replacement site config overrides");
+        write_test_file(&baseline_manifest, b"new manifest");
 
         assert!(snapshot.rollback_preserving_deferred().is_empty());
+        assert_eq!(fs::read_to_string(&fixture_path).unwrap(), LOOSE_SOURCE);
+        assert_eq!(fs::read(&deferred_path).unwrap(), b"new deferred fixture");
+        assert_eq!(fs::read(&deferred_svg_path).unwrap(), b"new deferred svg");
+        assert_eq!(fs::read(&upstream_path).unwrap(), b"old upstream svg");
+        assert_eq!(fs::read(&baseline_manifest).unwrap(), b"old manifest");
         assert_eq!(
-            fs::read(&fixture_path).expect("read active fixture"),
-            b"old active fixture"
-        );
-        assert_eq!(
-            fs::read(&deferred_path).expect("read deferred fixture"),
-            b"new deferred fixture"
-        );
-        assert_eq!(
-            fs::read(&deferred_svg_path).expect("read deferred svg"),
-            b"new deferred svg"
-        );
-        assert_eq!(
-            fs::read(&upstream_path).expect("read upstream svg"),
-            b"old upstream svg"
-        );
-        assert_eq!(
-            fs::read(&manifest_path).expect("read manifest"),
-            b"old manifest"
-        );
-        let overrides =
-            read_site_config_overrides_from(&site_config_path).expect("read restored site config");
-        assert_eq!(
-            overrides["sequence/candidate.mmd"]["securityLevel"],
-            "loose"
+            context_level(root.path(), relative),
+            Some(SecurityLevel::Loose)
         );
     }
 
@@ -1442,34 +1067,21 @@ flowchart TD
         let diagram_dir = "flowchart";
         let accepted_stem = "accepted";
         let candidate_stem = "candidate";
-        let accepted_fixture = root
-            .path()
-            .join(diagram_dir)
-            .join(format!("{accepted_stem}.mmd"));
-        let candidate_fixture = root
-            .path()
-            .join(diagram_dir)
-            .join(format!("{candidate_stem}.mmd"));
+        let accepted_relative = "flowchart/accepted.mmd";
+        let candidate_relative = "flowchart/candidate.mmd";
+        let accepted_fixture = root.path().join(accepted_relative);
+        let candidate_fixture = root.path().join(candidate_relative);
         let accepted_svg = upstream_svg_path_in(root.path(), diagram_dir, accepted_stem);
         let candidate_svg = upstream_svg_path_in(root.path(), diagram_dir, candidate_stem);
-        let manifest_path = accepted_svg
+        let baseline_manifest = accepted_svg
             .parent()
             .expect("upstream family directory")
             .join("_baseline-manifest.json");
-        let site_config_path = site_config_overrides_path_in(root.path());
 
-        write_test_file(&accepted_fixture, b"accepted fixture");
+        let accepted = catalog_from_sources(root.path(), &[(accepted_relative, LOOSE_SOURCE)]);
+        commit_catalog(root.path(), &accepted);
         write_test_file(&accepted_svg, b"accepted svg");
-        write_test_file(&manifest_path, b"accepted manifest");
-        write_site_config_overrides_to(
-            &site_config_path,
-            serde_json::Map::from_iter([(
-                "flowchart/accepted.mmd".to_string(),
-                json!({ "securityLevel": "loose" }),
-            )]),
-        )
-        .expect("write accepted site config state");
-
+        write_test_file(&baseline_manifest, b"accepted manifest");
         let candidate_snapshot = ImportedFixtureSnapshot::capture_in(
             root.path(),
             diagram_dir,
@@ -1478,119 +1090,75 @@ flowchart TD
         )
         .expect("capture state after the earlier candidate committed");
 
-        write_test_file(&candidate_fixture, b"candidate fixture");
+        replace_context(root.path(), candidate_relative, SANDBOX_SOURCE);
         write_test_file(&accepted_svg, b"regenerated accepted svg");
         write_test_file(&candidate_svg, b"candidate svg");
-        write_test_file(&manifest_path, b"candidate manifest");
-        write_site_config_overrides_to(
-            &site_config_path,
-            serde_json::Map::from_iter([
-                (
-                    "flowchart/accepted.mmd".to_string(),
-                    json!({ "securityLevel": "loose" }),
-                ),
-                (
-                    "flowchart/candidate.mmd".to_string(),
-                    json!({ "securityLevel": "sandbox" }),
-                ),
-            ]),
-        )
-        .expect("write candidate site config state");
+        write_test_file(&baseline_manifest, b"candidate manifest");
 
         assert!(candidate_snapshot.rollback().is_empty());
-        assert_eq!(
-            fs::read(&accepted_fixture).expect("read accepted fixture"),
-            b"accepted fixture"
-        );
-        assert_eq!(
-            fs::read(&accepted_svg).expect("read accepted svg"),
-            b"accepted svg"
-        );
-        assert_eq!(
-            fs::read(&manifest_path).expect("read accepted manifest"),
-            b"accepted manifest"
-        );
+        assert_eq!(fs::read_to_string(&accepted_fixture).unwrap(), LOOSE_SOURCE);
+        assert_eq!(fs::read(&accepted_svg).unwrap(), b"accepted svg");
+        assert_eq!(fs::read(&baseline_manifest).unwrap(), b"accepted manifest");
         assert!(!candidate_fixture.exists());
         assert!(!candidate_svg.exists());
-        let overrides =
-            read_site_config_overrides_from(&site_config_path).expect("read accepted site config");
         assert_eq!(
-            overrides["flowchart/accepted.mmd"]["securityLevel"],
-            "loose"
+            context_level(root.path(), accepted_relative),
+            Some(SecurityLevel::Loose)
         );
-        assert!(overrides.get("flowchart/candidate.mmd").is_none());
+        assert_eq!(context_level(root.path(), candidate_relative), None);
     }
 
     #[test]
-    fn site_config_rollback_restores_original_bytes_when_semantics_match_snapshot() {
+    fn render_context_rollback_restores_original_bytes_when_semantics_match() {
         let root = TestFixtureRoot::new();
         let diagram_dir = "flowchart";
         let stem = "candidate";
-        let fixture_path = root.path().join(diagram_dir).join(format!("{stem}.mmd"));
-        let site_config_path = site_config_overrides_path_in(root.path());
-        write_test_file(&fixture_path, b"fixture");
-        let original = br#"{
-    "flowchart/sibling.mmd": {
-        "securityLevel": "sandbox"
-    },
-    "flowchart/candidate.mmd" : { "securityLevel" : "loose" }
-}
-"#;
-        write_test_file(&site_config_path, original);
+        let candidate_relative = "flowchart/candidate.mmd";
+        let sibling_relative = "flowchart/sibling.mmd";
+        let fixture_path = root.path().join(candidate_relative);
+        let manifest_path = render_contexts_path_in(root.path());
+        let catalog = catalog_from_sources(
+            root.path(),
+            &[
+                (candidate_relative, LOOSE_SOURCE),
+                (sibling_relative, SANDBOX_SOURCE),
+            ],
+        );
+        let canonical = catalog.to_json().expect("render catalog");
+        let value: serde_json::Value = serde_json::from_str(&canonical).expect("parse catalog");
+        let original = format!(
+            "{}\n",
+            serde_json::to_string(&value).expect("compact catalog")
+        );
+        write_test_file(&manifest_path, original.as_bytes());
         let snapshot =
             ImportedFixtureSnapshot::capture_in(root.path(), diagram_dir, stem, &fixture_path)
-                .expect("capture non-canonical site config state");
+                .expect("capture non-canonical render context state");
 
-        write_site_config_overrides_to(
-            &site_config_path,
-            serde_json::Map::from_iter([
-                (
-                    "flowchart/candidate.mmd".to_string(),
-                    json!({ "securityLevel": "sandbox" }),
-                ),
-                (
-                    "flowchart/sibling.mmd".to_string(),
-                    json!({ "securityLevel": "sandbox" }),
-                ),
-            ]),
-        )
-        .expect("write canonical replacement site config state");
-
+        replace_context(root.path(), candidate_relative, SANDBOX_SOURCE);
         assert!(snapshot.rollback().is_empty());
-        assert_eq!(
-            fs::read(&site_config_path).expect("read byte-exact restored site config"),
-            original
-        );
+        assert_eq!(fs::read_to_string(&manifest_path).unwrap(), original);
     }
 
     #[test]
-    fn site_config_rollback_recovers_from_invalid_current_json() {
+    fn render_context_rollback_recovers_from_invalid_current_json() {
         let root = TestFixtureRoot::new();
         let diagram_dir = "flowchart";
         let stem = "candidate";
-        let fixture_path = root.path().join(diagram_dir).join(format!("{stem}.mmd"));
-        let site_config_path = site_config_overrides_path_in(root.path());
-        write_test_file(&fixture_path, b"fixture");
-        write_site_config_overrides_to(
-            &site_config_path,
-            serde_json::Map::from_iter([(
-                "flowchart/candidate.mmd".to_string(),
-                json!({ "securityLevel": "loose" }),
-            )]),
-        )
-        .expect("write original site config state");
-        let original = fs::read(&site_config_path).expect("read original site config bytes");
+        let relative = "flowchart/candidate.mmd";
+        let fixture_path = root.path().join(relative);
+        let manifest_path = render_contexts_path_in(root.path());
+        let catalog = catalog_from_sources(root.path(), &[(relative, LOOSE_SOURCE)]);
+        commit_catalog(root.path(), &catalog);
+        let original = fs::read(&manifest_path).expect("read original render contexts");
         let snapshot =
             ImportedFixtureSnapshot::capture_in(root.path(), diagram_dir, stem, &fixture_path)
                 .expect("capture imported fixture state");
 
-        write_test_file(&site_config_path, b"{ truncated");
+        write_test_file(&manifest_path, b"{ truncated");
 
         assert!(snapshot.rollback().is_empty());
-        assert_eq!(
-            fs::read(&site_config_path).expect("read restored site config bytes"),
-            original
-        );
+        assert_eq!(fs::read(&manifest_path).unwrap(), original);
     }
 
     #[test]

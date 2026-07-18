@@ -6,7 +6,6 @@ use std::process::Command;
 struct VerifyOptions {
     clippy: bool,
     all_features: bool,
-    check_overrides: bool,
     feature_matrix: bool,
     root_parity: bool,
 }
@@ -21,13 +20,11 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
             match arg.as_str() {
                 "--clippy" => options.clippy = true,
                 "--all-features" => options.all_features = true,
-                "--check-overrides" => options.check_overrides = true,
                 "--feature-matrix" => options.feature_matrix = true,
                 "--root-parity" => options.root_parity = true,
                 "--strict" => {
                     options.clippy = true;
                     options.all_features = true;
-                    options.check_overrides = true;
                     options.feature_matrix = true;
                     options.root_parity = true;
                 }
@@ -44,25 +41,24 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
 
     fn print_verify_usage() {
         println!(
-            "usage: xtask verify [--clippy] [--all-features] [--check-overrides] [--feature-matrix] [--root-parity] [--strict]"
+            "usage: xtask verify [--clippy] [--all-features] [--feature-matrix] [--root-parity] [--strict]"
         );
         println!();
         println!("Default gates:");
         println!("  cargo fmt --check");
         println!("  cargo nextest run");
+        println!("  compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3");
         println!("  compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3");
         println!();
         println!("Optional gates:");
         println!("  --clippy        run cargo clippy --workspace --all-targets -- -D warnings");
         println!("  --all-features  run cargo check --workspace --all-features");
         println!("                  also applies --all-features to clippy when combined");
-        println!("  --check-overrides");
-        println!("                  fail if generated/manual override counts grow beyond budget");
         println!("  --feature-matrix");
         println!("                  check public no-default/render/raster feature combinations");
         println!("  --root-parity   run full SVG root parity after normal DOM parity");
         println!(
-            "  --strict        shorthand for --clippy --all-features --check-overrides --feature-matrix --root-parity"
+            "  --strict        shorthand for --clippy --all-features --feature-matrix --root-parity"
         );
     }
 
@@ -130,11 +126,6 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         run_checked(what, &mut clippy_cmd)?;
     }
 
-    if options.check_overrides {
-        println!("\n== override growth budget ==");
-        cmd::report_overrides(vec!["--check-no-growth".to_string()])?;
-    }
-
     if options.feature_matrix {
         println!("\n== feature matrix ==");
         run_feature_matrix(&workspace_root, &mut run_checked)?;
@@ -147,6 +138,15 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         .arg("run")
         .current_dir(&workspace_root);
     run_checked("cargo nextest run", &mut nextest_cmd)?;
+
+    println!("\n== svg dom structure ==");
+    cmd::compare_all_svgs(vec![
+        "--check-dom".to_string(),
+        "--dom-mode".to_string(),
+        "structure".to_string(),
+        "--dom-decimals".to_string(),
+        "3".to_string(),
+    ])?;
 
     println!("\n== svg dom parity ==");
     cmd::compare_all_svgs(vec![

@@ -669,7 +669,11 @@ pub(super) fn state_div_style_prefix(decls: &[StateInlineDecl<'_>]) -> String {
     out
 }
 
-pub(super) fn state_node_label_html_with_style(raw: &str, span_style: Option<&str>) -> String {
+pub(super) fn state_node_label_html_with_style(
+    raw: &str,
+    span_style: Option<&str>,
+    font_size: f64,
+) -> String {
     let style_attr = span_style
         .filter(|s| !s.is_empty())
         .map(|s| format!(r#" style="{}""#, escape_xml_display(s)))
@@ -677,7 +681,7 @@ pub(super) fn state_node_label_html_with_style(raw: &str, span_style: Option<&st
     format!(
         r#"<span{} class="nodeLabel markdown-node-label">{}</span>"#,
         style_attr,
-        html_paragraph_with_br(raw)
+        crate::state::state_node_label_xhtml(raw, font_size)
     )
 }
 
@@ -796,10 +800,10 @@ fn html_paragraph_with_br(raw: &str) -> String {
     state_html_with_br(raw, true)
 }
 
-pub(super) fn state_node_label_html(raw: &str) -> String {
+pub(super) fn state_node_label_html(raw: &str, font_size: f64) -> String {
     format!(
         r#"<span class="nodeLabel markdown-node-label">{}</span>"#,
-        html_paragraph_with_br(raw)
+        crate::state::state_node_label_xhtml(raw, font_size)
     )
 }
 
@@ -811,11 +815,7 @@ pub(super) fn state_node_label_plain_html(raw: &str) -> String {
 }
 
 pub(super) fn state_edge_label_html(raw: &str) -> String {
-    // Mermaid runs edge labels through its `markdownToHTML()` pipeline when `htmlLabels=true`.
-    // Keep the XHTML fragment XML-safe while preserving inline HTML like `<br/>` and Mermaid's
-    // minimal emphasis/strong subset.
-    let decoded = crate::svg::parity::util::decode_mermaid_entities_for_render_text(raw);
-    crate::text::mermaid_markdown_to_xhtml_label_fragment(decoded.as_ref(), true)
+    crate::state::state_edge_label_xhtml(raw)
 }
 
 pub(super) fn state_svg_text_label(

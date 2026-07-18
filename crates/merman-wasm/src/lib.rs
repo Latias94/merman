@@ -23,11 +23,11 @@ pub use editor_language::{
 };
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
-use merman_bindings_core::{TextMetrics, TextStyle, WrapMode};
+use merman_bindings_core::{TextStyle, WrapMode};
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 use serde::Deserialize;
 
-const WASM_ABI_VERSION: u32 = 3;
+const WASM_ABI_VERSION: u32 = 2;
 
 #[derive(Debug, Serialize)]
 struct WasmErrorPayload<'a> {
@@ -276,12 +276,13 @@ thread_local! {
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
 #[derive(Debug, Serialize)]
 struct WasmHostTextMeasureRequest<'a> {
+    operation: &'static str,
     phase: &'static str,
     text: &'a str,
     font_family: Option<&'a str>,
     font_size: f64,
     font_weight: Option<&'a str>,
-    font_style: &'static str,
+    font_style: &'a str,
     max_width: Option<f64>,
     has_max_width: bool,
     line_height: f64,
@@ -296,9 +297,14 @@ struct WasmHostTextMeasureRequest<'a> {
 #[derive(Debug, Deserialize)]
 struct WasmHostTextMeasureResult {
     handled: Option<bool>,
-    width: f64,
-    height: f64,
+    kind: Option<String>,
+    width: Option<f64>,
+    height: Option<f64>,
+    length: Option<f64>,
     line_count: Option<usize>,
+    bbox_left: Option<f64>,
+    bbox_right: Option<f64>,
+    raw_width: Option<f64>,
 }
 
 #[cfg(all(feature = "render", target_arch = "wasm32"))]
@@ -308,38 +314,37 @@ struct WasmHostTextMeasurer;
 impl WasmHostTextMeasurer {
     fn call_host(
         &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> merman_bindings_core::HostMeasurementResult<TextMetrics> {
-        let request = WasmHostTextMeasureRequest {
-            phase: wasm_measurement_phase(phase),
-            text,
-            font_family: style.font_family.as_deref(),
-            font_size: style.font_size,
-            font_weight: style.font_weight.as_deref(),
-            font_style: "normal",
-            max_width,
-            has_max_width: max_width.is_some(),
-            line_height: wasm_line_height(style, wrap_mode),
+        request: merman_bindings_core::HostTextMeasurementRequest<'_>,
+    ) -> merman_bindings_core::HostMeasurementResult {
+        let external_request = WasmHostTextMeasureRequest {
+            operation: request.operation.external_name(),
+            phase: wasm_measurement_phase(request.phase),
+            text: request.text,
+            font_family: request.style.font_family.as_deref(),
+            font_size: request.style.font_size,
+            font_weight: request.style.font_weight.as_deref(),
+            font_style: request.style.font_style.as_deref().unwrap_or("normal"),
+            max_width: request.max_width,
+            has_max_width: request.max_width.is_some(),
+            line_height: wasm_line_height(request.style, request.wrap_mode),
             letter_spacing: 0.0,
             word_spacing: 0.0,
-            wrap_mode: wasm_wrap_mode(wrap_mode),
+            wrap_mode: wasm_wrap_mode(request.wrap_mode),
             direction: "auto",
-            white_space: wasm_white_space(max_width, wrap_mode),
+            white_space: wasm_white_space(request.max_width, request.wrap_mode),
         };
-        let request = serde_wasm_bindgen::to_value(&request)
+        let external_request = serde_wasm_bindgen::to_value(&external_request)
             .map_err(|err| merman_bindings_core::HostTextMeasurementError::new(err.to_string()))?;
 
         HOST_TEXT_MEASURE_CALLBACK.with(|slot| {
             let Some(callback) = slot.borrow().clone() else {
                 return Ok(None);
             };
-            let value = callback.call1(&JsValue::NULL, &request).map_err(|err| {
-                merman_bindings_core::HostTextMeasurementError::new(js_error_message(&err))
-            })?;
+            let value = callback
+                .call1(&JsValue::NULL, &external_request)
+                .map_err(|err| {
+                    merman_bindings_core::HostTextMeasurementError::new(js_error_message(&err))
+                })?;
             if value.is_null() || value.is_undefined() {
                 return Ok(None);
             }
@@ -351,28 +356,23 @@ impl WasmHostTextMeasurer {
             if result.handled == Some(false) {
                 return Ok(None);
             }
-            if !result.width.is_finite()
-                || !result.height.is_finite()
-                || result.width < 0.0
-                || result.height < 0.0
-            {
-                return Err(merman_bindings_core::HostTextMeasurementError::new(
-                    "host text measurer returned invalid metrics",
-                ));
-            }
 
-            let line_count = result.line_count.unwrap_or(1);
-            if line_count == 0 {
-                return Err(merman_bindings_core::HostTextMeasurementError::new(
-                    "host text measurer returned zero line_count",
-                ));
-            }
-
-            Ok(Some(TextMetrics {
-                width: result.width,
-                height: result.height,
-                line_count,
-            }))
+            Ok(Some(
+                merman_bindings_core::host_text_measurement_from_values(
+                    result.kind.as_deref().and_then(
+                        merman_bindings_core::HostTextMeasurementResultKind::from_external_name,
+                    ),
+                    merman_bindings_core::HostTextMeasurementValues {
+                        width: result.width.unwrap_or(f64::NAN),
+                        height: result.height.unwrap_or(f64::NAN),
+                        line_count: result.line_count.unwrap_or(0),
+                        length: result.length.unwrap_or(f64::NAN),
+                        bbox_left: result.bbox_left.unwrap_or(f64::NAN),
+                        bbox_right: result.bbox_right.unwrap_or(f64::NAN),
+                        raw_width: result.raw_width,
+                    },
+                ),
+            ))
         })
     }
 }
@@ -381,52 +381,9 @@ impl WasmHostTextMeasurer {
 impl merman_bindings_core::HostTextMeasurer for WasmHostTextMeasurer {
     fn measure(
         &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> merman_bindings_core::HostMeasurementResult<TextMetrics> {
-        self.call_host(phase, text, style, None, WrapMode::SvgLike)
-    }
-
-    fn measure_wrapped(
-        &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> merman_bindings_core::HostMeasurementResult<TextMetrics> {
-        self.call_host(phase, text, style, max_width, wrap_mode)
-    }
-
-    fn measure_wrapped_with_raw_width(
-        &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> merman_bindings_core::HostMeasurementResult<(TextMetrics, Option<f64>)> {
-        if let Some(metrics) = self.call_host(phase, text, style, max_width, wrap_mode)? {
-            let raw_width = max_width
-                .map(|_| self.call_host(phase, text, style, None, wrap_mode))
-                .transpose()?
-                .flatten()
-                .map(|raw| raw.width);
-            return Ok(Some((metrics, raw_width)));
-        }
-        Ok(None)
-    }
-
-    fn measure_wrapped_raw(
-        &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> merman_bindings_core::HostMeasurementResult<TextMetrics> {
-        self.call_host(phase, text, style, max_width, wrap_mode)
+        request: merman_bindings_core::HostTextMeasurementRequest<'_>,
+    ) -> merman_bindings_core::HostMeasurementResult {
+        self.call_host(request)
     }
 }
 
@@ -464,7 +421,6 @@ fn wasm_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> 
         merman_bindings_core::TextMeasurementPhase::Wrap => "wrap",
         merman_bindings_core::TextMeasurementPhase::SvgBBox => "svg-bbox",
         merman_bindings_core::TextMeasurementPhase::ComputedLength => "computed-length",
-        merman_bindings_core::TextMeasurementPhase::Visibility => "visibility",
     }
 }
 
@@ -504,6 +460,43 @@ mod tests {
     #[test]
     fn package_version_matches_crate_version() {
         assert_eq!(package_version(), env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn abi_version_matches_the_host_measurement_protocol() {
+        assert_eq!(abi_version(), 2);
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn host_measurement_operations_match_the_exact_wasm_protocol() {
+        let operations = merman_bindings_core::TextMeasurementOperation::ALL
+            .map(|operation| (operation.external_code(), operation.external_name()));
+
+        assert_eq!(
+            operations,
+            [
+                (0, "measure"),
+                (1, "computed-length"),
+                (2, "bbox-x"),
+                (3, "bbox-x-with-ascii-overhang"),
+                (4, "title-bbox-x"),
+                (5, "simple-bbox-width"),
+                (6, "raw-bbox-width"),
+                (7, "tspan-bbox-width"),
+                (8, "tspan-bbox-height"),
+                (9, "wrap-probe-bbox-width"),
+                (10, "simple-bbox-height"),
+                (11, "wrapped"),
+                (12, "wrapped-with-raw-width"),
+                (13, "bounding-client-rect-width"),
+                (14, "create-text-bbox-y-offset"),
+                (15, "mermaid-calculate-text-dimensions"),
+                (16, "canvas-measure-text-width"),
+                (17, "create-text-middle-bbox-y-offset"),
+                (18, "raw-bbox-height"),
+            ]
+        );
     }
 
     #[test]
@@ -794,13 +787,19 @@ mod tests {
         assert_eq!(selected_registry_profile(), expected_profile);
 
         let capabilities = merman_bindings_core::diagram_family_capabilities();
-        assert!(
-            capabilities
-                .iter()
-                .any(|capability| capability.diagram_type == "flowchart"
-                    && capability.has_semantic_parser
-                    && capability.has_render_parser)
-        );
+        assert!(capabilities.iter().any(|capability| {
+            capability.diagram_type == "flowchart"
+                && capability.logical_family_kind == "flowchart"
+                && capability.metadata_id == Some("flowchart")
+                && capability.render_model_kind == Some("flowchart")
+                && capability.has_detector
+                && capability.has_semantic_parser
+                && capability.has_editor_parser
+                && capability.has_combined_parser
+                && capability.has_render_parser
+                && !capability.has_header
+                && capability.config_namespace == Some("flowchart")
+        }));
         assert_eq!(
             capabilities
                 .iter()

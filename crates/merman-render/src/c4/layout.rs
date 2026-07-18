@@ -360,6 +360,7 @@ fn layout_c4_shape_array(
                 font_family: Some("Arial".to_string()),
                 font_size: 12.0,
                 font_weight: None,
+                font_style: None,
             };
             let m = measure_c4_text(
                 ctx.measurer,
@@ -739,8 +740,8 @@ pub fn layout_c4_diagram_typed(
     model: &C4DiagramRenderModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
-    viewport_width: f64,
-    viewport_height: f64,
+    container_width: f64,
+    container_height: f64,
 ) -> Result<C4DiagramLayout> {
     let c4_cfg = C4ConfigView::new(effective_config);
     let conf = c4_cfg.layout_settings();
@@ -777,7 +778,7 @@ pub fn layout_c4_diagram_typed(
         conf.diagram_margin_y,
         conf.diagram_margin_y,
     );
-    screen_bounds.data.width_limit = viewport_width;
+    screen_bounds.data.width_limit = container_width;
 
     let root_boundaries = boundary_children.get("").cloned().unwrap_or_default();
     if root_boundaries.is_empty() {
@@ -943,8 +944,8 @@ pub fn layout_c4_diagram_typed(
         bounds,
         width,
         height,
-        viewport_width,
-        viewport_height,
+        container_width,
+        container_height,
         c4_type: model.c4_type.clone(),
         title: model.title.clone(),
         use_max_width: conf.use_max_width,
@@ -952,45 +953,4 @@ pub fn layout_c4_diagram_typed(
         shapes: shapes_out,
         rels: rels_out,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::c4::{c4_svg_bbox_line_height_px, c4_text_width_override_px};
-    use crate::text::TextStyle;
-
-    #[test]
-    fn c4_svg_bbox_line_height_uses_owner_rules() {
-        fn style(font_size: f64) -> TextStyle {
-            TextStyle {
-                font_size,
-                ..Default::default()
-            }
-        }
-
-        assert_eq!(c4_svg_bbox_line_height_px(&style(12.0)), 14.0);
-
-        assert_eq!(c4_svg_bbox_line_height_px(&style(14.0)), 16.0);
-
-        assert_eq!(c4_svg_bbox_line_height_px(&style(16.0)), 17.0);
-
-        assert_eq!(c4_svg_bbox_line_height_px(&style(15.0)), 17.0);
-    }
-
-    #[test]
-    fn c4_text_width_override_uses_headless_shell_metric() {
-        let style = TextStyle {
-            font_family: Some(r#""Open Sans", sans-serif"#.to_string()),
-            font_size: 14.0,
-            font_weight: None,
-        };
-
-        assert_eq!(
-            c4_text_width_override_px(
-                &style,
-                "Allows customers to view information about their bank accounts, and make payments."
-            ),
-            Some(532.484375)
-        );
-    }
 }

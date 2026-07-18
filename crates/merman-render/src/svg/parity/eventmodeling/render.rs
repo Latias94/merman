@@ -21,12 +21,8 @@ pub(crate) fn render_eventmodeling_diagram_svg(
         .with_max_width(root_svg::RootMaxWidth::SvgNumber(layout.total_width));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "eventmodeling");
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::EventModeling,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::EventModeling, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = eventmodeling_css(&theme);
     let marker_id = format!("em-arrowhead-{diagram_id}");

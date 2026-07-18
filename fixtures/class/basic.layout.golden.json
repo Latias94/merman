@@ -1,21 +1,21 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Animal",
-          "x": 70.73,
+          "x": 66.799,
           "y": 72.0,
-          "width": 141.461,
+          "width": 133.598,
           "height": 144.0,
           "is_cluster": false
         },
         {
           "id": "Dog",
-          "x": 70.73,
+          "x": 66.799,
           "y": 257.0,
-          "width": 83.336,
+          "width": 82.88,
           "height": 126.0,
           "is_cluster": false
         }
@@ -29,15 +29,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 70.73,
+              "x": 66.799,
               "y": 144.0
             },
             {
-              "x": 70.73,
+              "x": 66.799,
               "y": 169.0
             },
             {
-              "x": 70.73,
+              "x": 66.799,
               "y": 194.0
             }
           ],
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 141.461,
+        "max_x": 133.598,
         "max_y": 320.0
       }
     }

@@ -1,21 +1,21 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Bar",
-          "x": 266.352,
+          "x": 255.6,
           "y": 72.0,
-          "width": 170.063,
+          "width": 165.44,
           "height": 126.0,
           "is_cluster": false
         },
         {
           "id": "Foo",
-          "x": 65.66,
+          "x": 61.44,
           "y": 72.0,
-          "width": 131.32,
+          "width": 122.88,
           "height": 144.0,
           "is_cluster": false
         }
@@ -29,15 +29,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 131.32,
+              "x": 122.88,
               "y": 72.0
             },
             {
-              "x": 156.32,
+              "x": 147.88,
               "y": 72.0
             },
             {
-              "x": 181.32,
+              "x": 172.88,
               "y": 72.0
             }
           ],
@@ -55,7 +55,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 351.383,
+        "max_x": 338.319,
         "max_y": 144.0
       }
     }

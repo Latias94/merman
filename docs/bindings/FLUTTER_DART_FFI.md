@@ -5,6 +5,7 @@ Status: experimental publishable Flutter package.
 `platforms/flutter` provides the `merman` Dart/Flutter package over the canonical `merman-ffi`
 C ABI. The Dart wrapper uses the byte-buffer ABI and exposes SVG, ASCII text, semantic JSON,
 layout JSON, validation, and metadata as Dart strings/maps/lists.
+The current package targets C ABI 2.
 
 Merman itself is a browserless Rust engine for Mermaid diagrams. Start from the
 [project README](https://github.com/Latias94/merman) for product scope, the
@@ -42,6 +43,15 @@ for current Mermaid parity.
   diagnostics where Flutter platform packaging is not running.
 - Exposes `MermanReusableEngine` and `MermanTextMeasurer` for repeated calls and host text
   measurement through the C reusable-engine API.
+
+ABI 2 exposes all 19 text-measurement operations, with contiguous codes 0 through 18, in
+`MermanTextMeasurementOperation`. `mermaidCalculateTextDimensions` requires metrics,
+`canvasMeasureTextWidth` requires a length, and
+`createTextBBoxYOffset` plus `createTextMiddleBBoxYOffset` preserve signed lengths. The middle
+operation measures Architecture createText under inherited `dominant-baseline="middle"`; it cannot
+reuse the ordinary createText y-offset. `rawBBoxHeight` measures the non-negative height from a
+direct raw SVG `<text>.getBBox()` probe. The complete mapping is documented in
+`HOST_TEXT_MEASUREMENT.md`.
 
 `Merman.lintRuleCatalog()` returns typed rule metadata with `id`, `description`,
 `evidence`, `defaultSeverity`, `category`, `defaultEnabled`, `defaultProfile`, `origin`,
@@ -128,6 +138,9 @@ flutter pub get
 flutter analyze
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
+
+The Dart smoke checks ABI 2, all 19 operation codes, and distinct signed results for
+`createTextBBoxYOffset` and `createTextMiddleBBoxYOffset`.
 
 Use `../../target/debug/libmerman_ffi.so` on Linux and `../../target/debug/merman_ffi.dll` on
 Windows.

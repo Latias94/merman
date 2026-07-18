@@ -2,6 +2,190 @@ use super::*;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 
+fn normalize_diagram_dir(detected: &str) -> Option<String> {
+    match detected {
+        "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
+        "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
+            Some("state".to_string())
+        }
+        "class" | "classDiagram" => Some("class".to_string()),
+        "gitGraph" => Some("gitgraph".to_string()),
+        "quadrantChart" => Some("quadrantchart".to_string()),
+        "er" => Some("er".to_string()),
+        "journey" => Some("journey".to_string()),
+        "xychart" => Some("xychart".to_string()),
+        "requirement" => Some("requirement".to_string()),
+        "architecture-beta" => Some("architecture".to_string()),
+        "railroad" | "railroadEbnf" | "railroadAbnf" | "railroadPeg" => Some(detected.to_string()),
+        "architecture" | "block" | "c4" | "cynefin" | "gantt" | "info" | "kanban" | "mindmap"
+        | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap"
+        | "treeView" | "ishikawa" | "eventmodeling" => Some(detected.to_string()),
+        _ => None,
+    }
+}
+
+fn push_utf8_source_char(bytes: &[u8], index: &mut usize, out: &mut String) -> Option<()> {
+    let first = *bytes.get(*index)?;
+    let width = match first {
+        0x00..=0x7f => 1,
+        0xc2..=0xdf => 2,
+        0xe0..=0xef => 3,
+        0xf0..=0xf4 => 4,
+        _ => return None,
+    };
+    let end = index.checked_add(width)?;
+    let encoded = std::str::from_utf8(bytes.get(*index..end)?).ok()?;
+    out.push(encoded.chars().next()?);
+    *index = end;
+    Some(())
+}
+
+fn parse_js_quoted_string(bytes: &[u8], mut index: usize, quote: u8) -> Option<(String, usize)> {
+    let mut out = String::new();
+    let mut escaped = false;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if escaped {
+            match byte {
+                b'n' => {
+                    out.push('\n');
+                    index += 1;
+                }
+                b'r' => {
+                    out.push('\r');
+                    index += 1;
+                }
+                b't' => {
+                    out.push('\t');
+                    index += 1;
+                }
+                b'\\' => {
+                    out.push('\\');
+                    index += 1;
+                }
+                b'\'' => {
+                    out.push('\'');
+                    index += 1;
+                }
+                b'"' => {
+                    out.push('"');
+                    index += 1;
+                }
+                _ => push_utf8_source_char(bytes, &mut index, &mut out)?,
+            }
+            escaped = false;
+            continue;
+        }
+        if byte == b'\\' {
+            escaped = true;
+            index += 1;
+            continue;
+        }
+        if byte == quote {
+            return Some((out, index + 1));
+        }
+        push_utf8_source_char(bytes, &mut index, &mut out)?;
+    }
+    None
+}
+
+fn extract_first_template_literal_with_vars(
+    source: &str,
+    start: usize,
+    const_strings: Option<&HashMap<String, String>>,
+) -> Option<(String, usize)> {
+    fn is_template_ident_byte(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$'
+    }
+
+    let bytes = source.as_bytes();
+    let mut index = start;
+    while index < bytes.len() && bytes[index] != b'`' {
+        index += 1;
+    }
+    if index >= bytes.len() {
+        return None;
+    }
+    index += 1;
+
+    let mut out = String::new();
+    let mut escaped = false;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if escaped {
+            match byte {
+                b'n' => {
+                    out.push('\n');
+                    index += 1;
+                }
+                b'r' => {
+                    out.push('\r');
+                    index += 1;
+                }
+                b't' => {
+                    out.push('\t');
+                    index += 1;
+                }
+                b'\\' => {
+                    out.push('\\');
+                    index += 1;
+                }
+                b'`' => {
+                    out.push('`');
+                    index += 1;
+                }
+                _ => push_utf8_source_char(bytes, &mut index, &mut out)?,
+            }
+            escaped = false;
+            continue;
+        }
+        if byte == b'\\' {
+            escaped = true;
+            index += 1;
+            continue;
+        }
+        if byte == b'`' {
+            return Some((out, index + 1));
+        }
+        if byte == b'$' && index + 1 < bytes.len() && bytes[index + 1] == b'{' {
+            let vars = const_strings?;
+            let mut expression_end = index + 2;
+            while expression_end < bytes.len() && bytes[expression_end] != b'}' {
+                if bytes[expression_end] == b'`' {
+                    return None;
+                }
+                expression_end += 1;
+            }
+            if expression_end >= bytes.len() {
+                return None;
+            }
+            let expression = source[index + 2..expression_end].trim();
+            if expression.is_empty()
+                || !expression
+                    .as_bytes()
+                    .iter()
+                    .copied()
+                    .all(is_template_ident_byte)
+            {
+                return None;
+            }
+            out.push_str(vars.get(expression)?);
+            index = expression_end + 1;
+            continue;
+        }
+        push_utf8_source_char(bytes, &mut index, &mut out)?;
+    }
+    None
+}
+
+fn should_apply_cypress_options(options: &Value) -> bool {
+    match options {
+        Value::Null => false,
+        Value::Object(map) => !map.is_empty(),
+        _ => true,
+    }
+}
+
 pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskError> {
     let mut diagram: String = "all".to_string();
     let mut filter: Option<String> = None;
@@ -11,7 +195,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     let mut overwrite: bool = false;
     let mut with_baselines: bool = false;
     let mut install: bool = false;
-    let mut flowchart_elk_source_backed_probes: bool = false;
+    let mut flowchart_elk_parity_fixtures: bool = false;
+    let mut check_corpus_manifest_source: bool = false;
     let mut spec_root: Option<PathBuf> = None;
 
     let mut i = 0;
@@ -39,7 +224,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             "--overwrite" => overwrite = true,
             "--with-baselines" => with_baselines = true,
             "--install" => install = true,
-            "--flowchart-elk-source-backed-probes" => flowchart_elk_source_backed_probes = true,
+            "--flowchart-elk-parity-fixtures" => flowchart_elk_parity_fixtures = true,
+            "--check-11-16-corpus-manifest-source" => check_corpus_manifest_source = true,
             "--spec-root" => {
                 i += 1;
                 let raw = args.get(i).ok_or(XtaskError::Usage)?;
@@ -74,6 +260,18 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             spec_root.display()
         )));
     }
+    let corpus_manifest = if check_corpus_manifest_source {
+        let failures = crate::cmd::committed_cypress_corpus_alignment_failures(&workspace_root);
+        if !failures.is_empty() {
+            return Err(XtaskError::AlignmentCheckFailed(failures.join("\n")));
+        }
+        Some(
+            crate::cmd::load_committed_cypress_corpus_manifest(&workspace_root)
+                .map_err(XtaskError::AlignmentCheckFailed)?,
+        )
+    } else {
+        None
+    };
 
     fn slugify(s: &str) -> String {
         let mut out = String::with_capacity(s.len());
@@ -368,76 +566,6 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         Ok(())
     }
 
-    fn extract_first_template_literal_with_vars(
-        s: &str,
-        start: usize,
-        const_strings: Option<&HashMap<String, String>>,
-    ) -> Option<(String, usize)> {
-        fn is_template_ident_byte(b: u8) -> bool {
-            b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
-        }
-
-        let bytes = s.as_bytes();
-        let mut i = start;
-        while i < bytes.len() && bytes[i] != b'`' {
-            i += 1;
-        }
-        if i >= bytes.len() {
-            return None;
-        }
-        // i points at opening backtick
-        i += 1;
-        let mut out = String::new();
-        let mut escaped = false;
-        while i < bytes.len() {
-            let b = bytes[i];
-            if escaped {
-                match b {
-                    b'n' => out.push('\n'),
-                    b'r' => out.push('\r'),
-                    b't' => out.push('\t'),
-                    b'\\' => out.push('\\'),
-                    b'`' => out.push('`'),
-                    _ => out.push(b as char),
-                }
-                escaped = false;
-                i += 1;
-                continue;
-            }
-            if b == b'\\' {
-                escaped = true;
-                i += 1;
-                continue;
-            }
-            if b == b'`' {
-                return Some((out, i + 1));
-            }
-            if b == b'$' && i + 1 < bytes.len() && bytes[i + 1] == b'{' {
-                let vars = const_strings?;
-                let mut j = i + 2;
-                while j < bytes.len() && bytes[j] != b'}' {
-                    if bytes[j] == b'`' {
-                        return None;
-                    }
-                    j += 1;
-                }
-                if j >= bytes.len() {
-                    return None;
-                }
-                let expr = s[i + 2..j].trim();
-                if expr.is_empty() || !expr.as_bytes().iter().copied().all(is_template_ident_byte) {
-                    return None;
-                }
-                out.push_str(vars.get(expr)?);
-                i = j + 1;
-                continue;
-            }
-            out.push(b as char);
-            i += 1;
-        }
-        None
-    }
-
     fn extract_first_template_literal(s: &str, start: usize) -> Option<(String, usize)> {
         extract_first_template_literal_with_vars(s, start, None)
     }
@@ -460,27 +588,6 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
     fn is_ws_or_newline_byte(b: u8) -> bool {
         matches!(b, b' ' | b'\t' | b'\n' | b'\r')
-    }
-
-    fn normalize_diagram_dir(detected: &str) -> Option<String> {
-        match detected {
-            "flowchart" | "flowchart-v2" | "flowchart-elk" => Some("flowchart".to_string()),
-            "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
-                Some("state".to_string())
-            }
-            "class" | "classDiagram" => Some("class".to_string()),
-            "gitGraph" => Some("gitgraph".to_string()),
-            "quadrantChart" => Some("quadrantchart".to_string()),
-            "er" => Some("er".to_string()),
-            "journey" => Some("journey".to_string()),
-            "xychart" => Some("xychart".to_string()),
-            "requirement" => Some("requirement".to_string()),
-            "architecture-beta" => Some("architecture".to_string()),
-            "architecture" | "block" | "c4" | "gantt" | "info" | "kanban" | "mindmap"
-            | "packet" | "pie" | "radar" | "sankey" | "sequence" | "timeline" | "treemap"
-            | "treeView" | "ishikawa" | "eventmodeling" => Some(detected.to_string()),
-            _ => None,
-        }
     }
 
     fn complexity_score(body: &str, diagram_dir: &str) -> i64 {
@@ -573,37 +680,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             matches!(b, b' ' | b'\t' | b'\n' | b'\r')
         }
 
-        fn parse_string_lit(bytes: &[u8], mut i: usize, quote: u8) -> Option<(String, usize)> {
-            let mut out = String::new();
-            let mut escaped = false;
-            while i < bytes.len() {
-                let b = bytes[i];
-                if escaped {
-                    match b {
-                        b'n' => out.push('\n'),
-                        b'r' => out.push('\r'),
-                        b't' => out.push('\t'),
-                        b'\\' => out.push('\\'),
-                        b'\'' => out.push('\''),
-                        b'"' => out.push('"'),
-                        _ => out.push(b as char),
-                    }
-                    escaped = false;
-                    i += 1;
-                    continue;
-                }
-                if b == b'\\' {
-                    escaped = true;
-                    i += 1;
-                    continue;
-                }
-                if b == quote {
-                    return Some((out, i + 1));
-                }
-                out.push(b as char);
-                i += 1;
-            }
-            None
+        fn parse_string_lit(bytes: &[u8], i: usize, quote: u8) -> Option<(String, usize)> {
+            parse_js_quoted_string(bytes, i, quote)
         }
 
         fn parse_ident(bytes: &[u8], mut i: usize) -> (String, usize) {
@@ -614,19 +692,22 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             (String::from_utf8_lossy(&bytes[start..i]).to_string(), i)
         }
 
-        fn find_matching_paren_close(text: &str, open_paren: usize) -> Option<usize> {
-            // Best-effort JS scanning to find the matching `)` for a call starting at `open_paren`.
-            //
-            // This intentionally ignores nested template literal `${...}` parsing; for our fixture
-            // sources this is sufficient and prevents accidentally capturing backticks from later
-            // tests when the call argument is not a template literal (e.g. `imgSnapshotTest(diagramCode, ...)`).
+        fn scan_balanced_js_delimiter(
+            text: &str,
+            open_index: usize,
+            open: u8,
+            close: u8,
+        ) -> Option<usize> {
+            // This scanner deliberately treats template literals as opaque strings. The pinned
+            // fixture calls do not require `${...}` nesting, and preserving that boundary keeps
+            // this import-only parser from consuming a later test after a non-literal argument.
             let bytes = text.as_bytes();
-            if bytes.get(open_paren) != Some(&b'(') {
+            if bytes.get(open_index) != Some(&open) {
                 return None;
             }
 
             #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-            enum Mode {
+            enum JsLexicalMode {
                 Normal,
                 SingleQuote,
                 DoubleQuote,
@@ -635,56 +716,54 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 BlockComment,
             }
 
-            let mut mode = Mode::Normal;
+            let mut mode = JsLexicalMode::Normal;
             let mut depth: i32 = 1;
             let mut escaped = false;
 
-            let mut i = open_paren + 1;
+            let mut i = open_index + 1;
             while i < bytes.len() {
                 let b = bytes[i];
                 match mode {
-                    Mode::Normal => {
+                    JsLexicalMode::Normal => {
                         if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
-                            mode = Mode::LineComment;
+                            mode = JsLexicalMode::LineComment;
                             i += 2;
                             continue;
                         }
                         if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
-                            mode = Mode::BlockComment;
+                            mode = JsLexicalMode::BlockComment;
                             i += 2;
                             continue;
                         }
                         if b == b'\'' {
-                            mode = Mode::SingleQuote;
+                            mode = JsLexicalMode::SingleQuote;
                             escaped = false;
                             i += 1;
                             continue;
                         }
                         if b == b'"' {
-                            mode = Mode::DoubleQuote;
+                            mode = JsLexicalMode::DoubleQuote;
                             escaped = false;
                             i += 1;
                             continue;
                         }
                         if b == b'`' {
-                            mode = Mode::Template;
+                            mode = JsLexicalMode::Template;
                             escaped = false;
                             i += 1;
                             continue;
                         }
-
-                        if b == b'(' {
+                        if b == open {
                             depth += 1;
-                        } else if b == b')' {
+                        } else if b == close {
                             depth -= 1;
                             if depth == 0 {
                                 return Some(i);
                             }
                         }
-
                         i += 1;
                     }
-                    Mode::SingleQuote => {
+                    JsLexicalMode::SingleQuote => {
                         if escaped {
                             escaped = false;
                             i += 1;
@@ -696,11 +775,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                             continue;
                         }
                         if b == b'\'' {
-                            mode = Mode::Normal;
+                            mode = JsLexicalMode::Normal;
                         }
                         i += 1;
                     }
-                    Mode::DoubleQuote => {
+                    JsLexicalMode::DoubleQuote => {
                         if escaped {
                             escaped = false;
                             i += 1;
@@ -712,11 +791,11 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                             continue;
                         }
                         if b == b'"' {
-                            mode = Mode::Normal;
+                            mode = JsLexicalMode::Normal;
                         }
                         i += 1;
                     }
-                    Mode::Template => {
+                    JsLexicalMode::Template => {
                         if escaped {
                             escaped = false;
                             i += 1;
@@ -728,149 +807,19 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                             continue;
                         }
                         if b == b'`' {
-                            mode = Mode::Normal;
+                            mode = JsLexicalMode::Normal;
                         }
                         i += 1;
                     }
-                    Mode::LineComment => {
+                    JsLexicalMode::LineComment => {
                         if b == b'\n' {
-                            mode = Mode::Normal;
+                            mode = JsLexicalMode::Normal;
                         }
                         i += 1;
                     }
-                    Mode::BlockComment => {
+                    JsLexicalMode::BlockComment => {
                         if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
-                            mode = Mode::Normal;
-                            i += 2;
-                            continue;
-                        }
-                        i += 1;
-                    }
-                }
-            }
-            None
-        }
-
-        fn find_matching_brace_close(text: &str, open_brace: usize) -> Option<usize> {
-            let bytes = text.as_bytes();
-            if bytes.get(open_brace) != Some(&b'{') {
-                return None;
-            }
-
-            #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-            enum Mode {
-                Normal,
-                SingleQuote,
-                DoubleQuote,
-                Template,
-                LineComment,
-                BlockComment,
-            }
-
-            let mut mode = Mode::Normal;
-            let mut depth: i32 = 1;
-            let mut escaped = false;
-
-            let mut i = open_brace + 1;
-            while i < bytes.len() {
-                let b = bytes[i];
-                match mode {
-                    Mode::Normal => {
-                        if b == b'/' && bytes.get(i + 1) == Some(&b'/') {
-                            mode = Mode::LineComment;
-                            i += 2;
-                            continue;
-                        }
-                        if b == b'/' && bytes.get(i + 1) == Some(&b'*') {
-                            mode = Mode::BlockComment;
-                            i += 2;
-                            continue;
-                        }
-                        if b == b'\'' {
-                            mode = Mode::SingleQuote;
-                            escaped = false;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'"' {
-                            mode = Mode::DoubleQuote;
-                            escaped = false;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'`' {
-                            mode = Mode::Template;
-                            escaped = false;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'{' {
-                            depth += 1;
-                        } else if b == b'}' {
-                            depth -= 1;
-                            if depth == 0 {
-                                return Some(i + 1);
-                            }
-                        }
-                        i += 1;
-                    }
-                    Mode::SingleQuote => {
-                        if escaped {
-                            escaped = false;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'\\' {
-                            escaped = true;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'\'' {
-                            mode = Mode::Normal;
-                        }
-                        i += 1;
-                    }
-                    Mode::DoubleQuote => {
-                        if escaped {
-                            escaped = false;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'\\' {
-                            escaped = true;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'"' {
-                            mode = Mode::Normal;
-                        }
-                        i += 1;
-                    }
-                    Mode::Template => {
-                        if escaped {
-                            escaped = false;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'\\' {
-                            escaped = true;
-                            i += 1;
-                            continue;
-                        }
-                        if b == b'`' {
-                            mode = Mode::Normal;
-                        }
-                        i += 1;
-                    }
-                    Mode::LineComment => {
-                        if b == b'\n' {
-                            mode = Mode::Normal;
-                        }
-                        i += 1;
-                    }
-                    Mode::BlockComment => {
-                        if b == b'*' && bytes.get(i + 1) == Some(&b'/') {
-                            mode = Mode::Normal;
+                            mode = JsLexicalMode::Normal;
                             i += 2;
                             continue;
                         }
@@ -902,7 +851,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             if bytes.get(i) != Some(&b'{') {
                 return None;
             }
-            let end = find_matching_brace_close(args_slice, i)?;
+            let end = scan_balanced_js_delimiter(args_slice, i, b'{', b'}')?.checked_add(1)?;
             Some(args_slice[i..end].to_string())
         }
 
@@ -1414,37 +1363,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 BlockComment,
             }
 
-            fn parse_string(bytes: &[u8], mut i: usize, quote: u8) -> Option<(String, usize)> {
-                let mut out = String::new();
-                let mut escaped = false;
-                while i < bytes.len() {
-                    let b = bytes[i];
-                    if escaped {
-                        match b {
-                            b'n' => out.push('\n'),
-                            b'r' => out.push('\r'),
-                            b't' => out.push('\t'),
-                            b'\\' => out.push('\\'),
-                            b'\'' => out.push('\''),
-                            b'"' => out.push('"'),
-                            _ => out.push(b as char),
-                        }
-                        escaped = false;
-                        i += 1;
-                        continue;
-                    }
-                    if b == b'\\' {
-                        escaped = true;
-                        i += 1;
-                        continue;
-                    }
-                    if b == quote {
-                        return Some((out, i + 1));
-                    }
-                    out.push(b as char);
-                    i += 1;
-                }
-                None
+            fn parse_string(bytes: &[u8], i: usize, quote: u8) -> Option<(String, usize)> {
+                parse_js_quoted_string(bytes, i, quote)
             }
 
             let mut out: Vec<ItPos> = Vec::new();
@@ -2008,7 +1928,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     search_from = after_call;
                     continue;
                 }
-                let Some(close_paren) = find_matching_paren_close(text, open_paren) else {
+                let Some(close_paren) = scan_balanced_js_delimiter(text, open_paren, b'(', b')')
+                else {
                     search_from = open_paren + 1;
                     continue;
                 };
@@ -2055,7 +1976,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     search_from = after_call;
                     continue;
                 }
-                let Some(close_paren) = find_matching_paren_close(text, open_paren) else {
+                let Some(close_paren) = scan_balanced_js_delimiter(text, open_paren, b'(', b')')
+                else {
                     search_from = open_paren + 1;
                     continue;
                 };
@@ -2124,7 +2046,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 }
                 let start = open_paren + 1;
 
-                let Some(close_paren) = find_matching_paren_close(&text, open_paren) else {
+                let Some(close_paren) = scan_balanced_js_delimiter(&text, open_paren, b'(', b')')
+                else {
                     search_from = start;
                     continue;
                 };
@@ -2277,37 +2200,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             i
         }
 
-        fn parse_string(bytes: &[u8], mut i: usize, quote: u8) -> Option<(String, usize)> {
-            let mut out = String::new();
-            let mut escaped = false;
-            while i < bytes.len() {
-                let b = bytes[i];
-                if escaped {
-                    match b {
-                        b'n' => out.push('\n'),
-                        b'r' => out.push('\r'),
-                        b't' => out.push('\t'),
-                        b'\\' => out.push('\\'),
-                        b'\'' => out.push('\''),
-                        b'"' => out.push('"'),
-                        _ => out.push(b as char),
-                    }
-                    escaped = false;
-                    i += 1;
-                    continue;
-                }
-                if b == b'\\' {
-                    escaped = true;
-                    i += 1;
-                    continue;
-                }
-                if b == quote {
-                    return Some((out, i + 1));
-                }
-                out.push(b as char);
-                i += 1;
-            }
-            None
+        fn parse_string(bytes: &[u8], i: usize, quote: u8) -> Option<(String, usize)> {
+            parse_js_quoted_string(bytes, i, quote)
         }
 
         fn parse_ident(bytes: &[u8], mut i: usize) -> (String, usize) {
@@ -2551,7 +2445,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         let Some(options) = js_object_literal_to_yaml_config_map(options_obj) else {
             return fixture_text.to_string();
         };
-        if options.is_null() {
+        if !should_apply_cypress_options(&options) {
             return fixture_text.to_string();
         }
 
@@ -2639,9 +2533,23 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     }
 
     let reg = merman::detect::DetectorRegistry::pinned_mermaid_baseline_full();
-    let mut spec_files: Vec<PathBuf> = Vec::new();
-    collect_spec_files_recursively(&spec_root, &mut spec_files)?;
-    spec_files.sort();
+    let spec_files: Vec<PathBuf> = if let Some(manifest) = corpus_manifest.as_ref() {
+        let mermaid_root = crate::cmd::mermaid_repo_root();
+        manifest
+            .scope
+            .source_specs
+            .iter()
+            .map(|source| {
+                crate::cmd::resolve_cypress_source_spec_path(&mermaid_root, &source.path)
+                    .map_err(XtaskError::AlignmentCheckFailed)
+            })
+            .collect::<Result<_, _>>()?
+    } else {
+        let mut files = Vec::new();
+        collect_spec_files_recursively(&spec_root, &mut files)?;
+        files.sort();
+        files
+    };
 
     let mut candidates: Vec<Candidate> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
@@ -2768,9 +2676,9 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 idx = b.idx_in_file + 1
             );
 
-            if flowchart_elk_source_backed_probes
+            if flowchart_elk_parity_fixtures
                 && (diagram_dir != "flowchart"
-                    || !crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(&stem))
+                    || !crate::cmd::flowchart_elk_svg_parity_admitted(&stem))
             {
                 continue;
             }
@@ -2785,6 +2693,39 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 score,
             });
         }
+    }
+
+    if let Some(manifest) = corpus_manifest.as_ref() {
+        let mermaid_root = crate::cmd::mermaid_repo_root();
+        let mut observations = Vec::with_capacity(candidates.len());
+        for candidate in &candidates {
+            let source_spec = candidate
+                .block
+                .source_spec
+                .strip_prefix(&mermaid_root)
+                .map_err(|_| {
+                    XtaskError::AlignmentCheckFailed(format!(
+                        "Cypress corpus source is outside pinned Mermaid checkout: {}",
+                        candidate.block.source_spec.display()
+                    ))
+                })?
+                .to_string_lossy()
+                .replace('\\', "/");
+            observations.push(crate::cmd::CypressSourceObservation {
+                source_spec,
+                call_ordinal: candidate.block.idx_in_file + 1,
+                call: candidate.block.call.clone(),
+                test_name: candidate.block.test_name.clone().unwrap_or_default(),
+                family: candidate.diagram_dir.clone(),
+                mmd_sha256: crate::cmd::cypress_corpus_mmd_sha256(candidate.body.as_bytes()),
+            });
+        }
+        let failures = crate::cmd::validate_cypress_source_observations(manifest, &observations);
+        return if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(XtaskError::AlignmentCheckFailed(failures.join("\n")))
+        };
     }
 
     if prefer_complex {
@@ -2856,12 +2797,12 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
         diagram_dir: &str,
         fixture_stem: &str,
         fixture_text: &str,
-        flowchart_elk_source_backed_probes: bool,
+        flowchart_elk_parity_fixtures: bool,
     ) -> Option<&'static str> {
         match diagram_dir {
             "flowchart" => {
-                if flowchart_elk_source_backed_probes
-                    && super::super::upstream_svg_policy::flowchart_elk_svg_source_backed_probe_admitted(
+                if flowchart_elk_parity_fixtures
+                    && super::super::upstream_svg_policy::flowchart_elk_svg_parity_admitted(
                         fixture_stem,
                     )
                 {
@@ -2982,14 +2923,14 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 }
             }
             "flowchart" => {
-                let admitted_flowchart_elk_source_probe =
-                    crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(stem);
+                let admitted_flowchart_elk_parity =
+                    crate::cmd::flowchart_elk_svg_parity_admitted(stem);
                 // Flowchart ELK has a lightweight renderer path, but full SVG parity is tracked in
                 // a dedicated layout lane. Keep unadmitted upstream SVG baselines traceable under
                 // `_deferred`.
                 if (fixture_text.contains("\n  layout: elk")
                     || fixture_text.contains("\nlayout: elk"))
-                    && !admitted_flowchart_elk_source_probe
+                    && !admitted_flowchart_elk_parity
                     && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
                 {
                     return Some(reason);
@@ -3008,7 +2949,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 if fixture_text
                     .lines()
                     .any(|l| l.trim_start().starts_with("flowchart-elk"))
-                    && !admitted_flowchart_elk_source_probe
+                    && !admitted_flowchart_elk_parity
                     && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(stem)
                 {
                     return Some(reason);
@@ -3017,7 +2958,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                 // Mermaid supports flowchart nodes with an `@{ icon: ... }` modifier. merman does
                 // not implement icon rendering yet, so keep the upstream SVG for traceability but
                 // move the fixture under `_deferred` to keep `verify` green.
-                if !admitted_flowchart_elk_source_probe
+                if !admitted_flowchart_elk_parity
                     && fixture_text.contains("@{")
                     && fixture_text.contains("icon:")
                 {
@@ -3026,7 +2967,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
 
                 // Mermaid also supports icon shorthands inside node labels, e.g.
                 // `A(\"fab:fa-twitter Twitter\")` / `B(\"fa:fa-coffee Coffee\")`.
-                if !admitted_flowchart_elk_source_probe
+                if !admitted_flowchart_elk_parity
                     && (fixture_text.contains("fa:fa-")
                     || fixture_text.contains("fab:fa-")
                     || fixture_text.contains("far:fa-")
@@ -3110,19 +3051,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     canonical_fixture_text,
                 )
             });
-        let allow_duplicate_body = flowchart_elk_source_backed_probes
+        let allow_duplicate_body = flowchart_elk_parity_fixtures
             && c.diagram_dir == "flowchart"
-            && crate::cmd::flowchart_elk_svg_source_backed_probe_admitted(&c.stem);
-        if let Some(existing_path) = existing.get(&c.body)
-            && !allow_duplicate_body
-        {
-            skipped.push(format!(
-                "skip (duplicate content): {} -> {}",
-                c.block.source_spec.display(),
-                existing_path.display()
-            ));
-            continue;
-        }
+            && crate::cmd::flowchart_elk_svg_parity_admitted(&c.stem);
+        let existing_path = existing.get(&c.body).cloned();
 
         let stem = if allow_duplicate_body {
             c.stem.clone()
@@ -3146,6 +3078,22 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             .join("_deferred")
             .join(&c.diagram_dir)
             .join(format!("{stem}.mmd"));
+        if !allow_duplicate_body
+            && let Some(existing_path) = existing_path.as_deref()
+            && !should_revalidate_deferred_fixture(
+                existing_path,
+                &deferred_out_path,
+                with_baselines,
+                overwrite,
+            )
+        {
+            skipped.push(format!(
+                "skip (duplicate content): {} -> {}",
+                c.block.source_spec.display(),
+                existing_path.display()
+            ));
+            continue;
+        }
         if deferred_out_path.exists() && !overwrite {
             skipped.push(format!(
                 "skip (already deferred): {}",
@@ -3239,7 +3187,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             &f.diagram_dir,
             &f.stem,
             &fixture_text,
-            flowchart_elk_source_backed_probes,
+            flowchart_elk_parity_fixtures,
         ) {
             report_lines.push(format!(
                 "DEFERRED_NO_BASELINES\t{}\t{}\t{}\tblock_idx={}\tcall={}\ttest={}\treason={reason}",
@@ -3301,7 +3249,7 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
                     &f.diagram_dir,
                     &f.stem,
                     &fixture_text,
-                    flowchart_elk_source_backed_probes,
+                    flowchart_elk_parity_fixtures,
                 );
                 let is_half_arrow_parse_error = f.diagram_dir == "sequence"
                     && msg.contains("Parse error")
@@ -3470,9 +3418,8 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             continue;
         }
 
-        // Parity gate (matches `xtask verify` by default). The dedicated Flowchart ELK
-        // source-backed lane opts into the source-ported backend so admitted probes are checked
-        // against the same renderer used by `check-flowchart-elk-source-backed-probes`.
+        // Parity gate (matches `xtask verify` by default). Flowchart ELK parity fixtures use the
+        // canonical ELK renderer and the same measurement profile as `check-flowchart-elk-parity`.
         let mut compare_args = vec![
             "--check-dom".to_string(),
             "--dom-mode".to_string(),
@@ -3484,13 +3431,10 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
             "--filter".to_string(),
             f.stem.clone(),
         ];
-        if flowchart_elk_source_backed_probes && f.diagram_dir == "flowchart" {
+        if flowchart_elk_parity_fixtures && f.diagram_dir == "flowchart" {
             compare_args.extend([
                 "--flowchart-text-measurer".to_string(),
                 "vendored".to_string(),
-                "--flowchart-elk-backend".to_string(),
-                "source-ported".to_string(),
-                "--include-elk-probes".to_string(),
             ]);
         }
         if let Err(error) = super::super::compare_all_svgs_with_transaction_locks(
@@ -3647,4 +3591,75 @@ pub(crate) fn import_upstream_cypress(args: Vec<String>) -> Result<(), XtaskErro
     }
 
     Ok(())
+}
+
+pub(crate) fn cypress_corpus_source_alignment_failures() -> Vec<String> {
+    match import_upstream_cypress(vec!["--check-11-16-corpus-manifest-source".to_string()]) {
+        Ok(()) => Vec::new(),
+        Err(error) => vec![error.to_string()],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        extract_first_template_literal_with_vars, normalize_diagram_dir, parse_js_quoted_string,
+        should_apply_cypress_options,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn cypress_javascript_literal_scanners_preserve_utf8() {
+        let template = "prefix `treeView-beta\nBut  _  _ton💓.tsx\n🚀 rocket-app/` suffix";
+        let (extracted, end) = extract_first_template_literal_with_vars(template, 0, None).unwrap();
+        assert_eq!(
+            extracted,
+            "treeView-beta\nBut  _  _ton💓.tsx\n🚀 rocket-app/"
+        );
+        assert_eq!(&template[end..], " suffix");
+
+        let quoted = "\"Cynefin 策略 🚀\"";
+        let (extracted, end) = parse_js_quoted_string(quoted.as_bytes(), 1, b'"').unwrap();
+        assert_eq!(extracted, "Cynefin 策略 🚀");
+        assert_eq!(end, quoted.len());
+    }
+
+    #[test]
+    fn cypress_empty_options_do_not_create_frontmatter() {
+        assert!(!should_apply_cypress_options(&json!(null)));
+        assert!(!should_apply_cypress_options(&json!({})));
+        assert!(should_apply_cypress_options(&json!({ "theme": "dark" })));
+    }
+
+    #[test]
+    fn cypress_cynefin_detector_id_maps_to_its_fixture_directory() {
+        assert_eq!(normalize_diagram_dir("cynefin").as_deref(), Some("cynefin"));
+    }
+
+    #[test]
+    fn cypress_railroad_detector_ids_map_to_their_fixture_directories() {
+        let actual =
+            ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"].map(normalize_diagram_dir);
+
+        assert_eq!(
+            actual,
+            [
+                Some("railroad".to_string()),
+                Some("railroadEbnf".to_string()),
+                Some("railroadAbnf".to_string()),
+                Some("railroadPeg".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn pinned_new_family_cypress_sources_match_the_committed_manifest_when_available() {
+        if !crate::cmd::mermaid_repo_root().is_dir() {
+            return;
+        }
+
+        let failures = super::cypress_corpus_source_alignment_failures();
+
+        assert!(failures.is_empty(), "{failures:#?}");
+    }
 }

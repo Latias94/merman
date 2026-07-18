@@ -58,11 +58,8 @@ pub(crate) fn parse_options(parse: &ParseCliArgs) -> ParseOptions {
 
 pub(crate) fn layout_options(render: &RenderCliArgs) -> LayoutOptions {
     LayoutOptions {
-        viewport_width: render.width.unwrap_or(800.0),
-        viewport_height: render.height.unwrap_or(600.0),
-        // Mermaid parity for some diagrams relies on manatee-backed layout engines.
-        use_manatee_layout: true,
-        flowchart_elk_backend: render.flowchart_elk_backend.into(),
+        container_width: render.container_width.unwrap_or(800.0),
+        container_height: render.container_height.unwrap_or(600.0),
     }
 }
 
@@ -159,7 +156,6 @@ fn apply_render_time_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::FlowchartElkBackend;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct AdvancingClock(AtomicUsize);
@@ -169,30 +165,6 @@ mod tests {
             let tick = self.0.fetch_add(1, Ordering::Relaxed) as i64;
             (tick * 86_400_000, -60)
         }
-    }
-
-    #[test]
-    fn layout_options_default_to_source_ported_flowchart_elk_backend() {
-        let layout = layout_options(&RenderCliArgs::default());
-
-        assert_eq!(
-            layout.flowchart_elk_backend,
-            merman::render::FlowchartElkBackend::SourcePorted
-        );
-    }
-
-    #[test]
-    fn layout_options_preserve_explicit_compat_flowchart_elk_backend() {
-        let render = RenderCliArgs {
-            flowchart_elk_backend: FlowchartElkBackend::Compat,
-            ..Default::default()
-        };
-        let layout = layout_options(&render);
-
-        assert_eq!(
-            layout.flowchart_elk_backend,
-            merman::render::FlowchartElkBackend::Compat
-        );
     }
 
     #[test]

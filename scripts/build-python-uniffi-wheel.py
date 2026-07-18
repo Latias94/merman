@@ -18,21 +18,155 @@ WHEEL_SMOKE = """
 import merman
 
 
+EXPECTED_TEXT_MEASUREMENT_OPERATIONS = {
+    "MEASURE",
+    "COMPUTED_LENGTH",
+    "B_BOX_X",
+    "B_BOX_X_WITH_ASCII_OVERHANG",
+    "TITLE_B_BOX_X",
+    "SIMPLE_B_BOX_WIDTH",
+    "RAW_B_BOX_WIDTH",
+    "TSPAN_B_BOX_WIDTH",
+    "TSPAN_B_BOX_HEIGHT",
+    "WRAP_PROBE_B_BOX_WIDTH",
+    "SIMPLE_B_BOX_HEIGHT",
+    "WRAPPED",
+    "WRAPPED_WITH_RAW_WIDTH",
+    "BOUNDING_CLIENT_RECT_WIDTH",
+    "CREATE_TEXT_B_BOX_Y_OFFSET",
+    "MERMAID_CALCULATE_TEXT_DIMENSIONS",
+    "CANVAS_MEASURE_TEXT_WIDTH",
+    "CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET",
+    "RAW_B_BOX_HEIGHT",
+}
+
+
+def measurement_result(operation, width, height):
+    operation_type = merman.MermanTextMeasurementOperation
+    values = dict(
+        result_kind=merman.MermanTextMeasurementResultKind.METRICS,
+        width=0.0,
+        height=0.0,
+        length=0.0,
+        line_count=0,
+        bbox_left=None,
+        bbox_right=None,
+        raw_width=None,
+    )
+    if operation in {
+        operation_type.MEASURE,
+        operation_type.WRAPPED,
+        operation_type.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+    }:
+        values.update(width=width, height=height, line_count=1)
+    elif operation in {
+        operation_type.COMPUTED_LENGTH,
+        operation_type.SIMPLE_B_BOX_WIDTH,
+        operation_type.RAW_B_BOX_WIDTH,
+        operation_type.BOUNDING_CLIENT_RECT_WIDTH,
+        operation_type.TSPAN_B_BOX_WIDTH,
+        operation_type.WRAP_PROBE_B_BOX_WIDTH,
+        operation_type.CANVAS_MEASURE_TEXT_WIDTH,
+    }:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+            length=width,
+        )
+    elif operation in {
+        operation_type.TSPAN_B_BOX_HEIGHT,
+        operation_type.SIMPLE_B_BOX_HEIGHT,
+        operation_type.RAW_B_BOX_HEIGHT,
+    }:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+            length=height,
+        )
+    elif operation in {
+        operation_type.CREATE_TEXT_B_BOX_Y_OFFSET,
+        operation_type.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
+    }:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+            length=(
+                -2.0
+                if operation == operation_type.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET
+                else -1.0
+            ),
+        )
+    elif operation in {
+        operation_type.B_BOX_X,
+        operation_type.B_BOX_X_WITH_ASCII_OVERHANG,
+        operation_type.TITLE_B_BOX_X,
+    }:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.HORIZONTAL_EXTENTS,
+            bbox_left=width / 2.0,
+            bbox_right=width / 2.0,
+        )
+    elif operation == operation_type.WRAPPED_WITH_RAW_WIDTH:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.WRAPPED_WITH_RAW_WIDTH,
+            width=width,
+            height=height,
+            line_count=1,
+            raw_width=width,
+        )
+    else:
+        return None
+    return merman.MermanTextMeasureResult(**values)
+
+
 class Measurer(merman.MermanTextMeasurer):
     def __init__(self):
         self.calls = 0
 
     def measure(self, request):
         self.calls += 1
-        return merman.MermanTextMeasureResult(
-            width=max(len(request.text) * 8.0, 1.0),
-            height=max(request.line_height, 1.0),
-            line_count=1,
+        return measurement_result(
+            request.operation,
+            max(len(request.text) * 8.0, 1.0),
+            max(request.line_height, 1.0),
         )
 
 
+operation_type = merman.MermanTextMeasurementOperation
+assert set(operation_type.__members__) == EXPECTED_TEXT_MEASUREMENT_OPERATIONS
+assert {operation.value for operation in operation_type} == set(range(19))
+dimensions = measurement_result(
+    merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+    42.0,
+    24.0,
+)
+assert dimensions.result_kind == merman.MermanTextMeasurementResultKind.METRICS
+canvas_width = measurement_result(
+    merman.MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH,
+    42.0,
+    24.0,
+)
+assert canvas_width.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
+raw_bbox_height = measurement_result(
+    merman.MermanTextMeasurementOperation.RAW_B_BOX_HEIGHT,
+    42.0,
+    24.0,
+)
+assert raw_bbox_height.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
+assert raw_bbox_height.length == 24.0
+y_offset = measurement_result(
+    merman.MermanTextMeasurementOperation.CREATE_TEXT_B_BOX_Y_OFFSET,
+    42.0,
+    24.0,
+)
+assert y_offset.length < 0.0
+middle_y_offset = measurement_result(
+    merman.MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
+    42.0,
+    24.0,
+)
+assert middle_y_offset.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
+assert middle_y_offset.length < 0.0
+
 engine = merman.MermanEngine()
-assert engine.abi_version() == 3
+assert engine.abi_version() == 2
 assert engine.package_version()
 source = "flowchart TD\\nA[Hello] --> B[World]"
 assert "Hello" in engine.render_svg(source, None)
@@ -176,6 +310,12 @@ def remove_stale_wheels(wheel_dir: Path) -> None:
         wheel.unlink()
 
 
+def remove_stale_package_build(package_dir: Path) -> None:
+    build_dir = package_dir / "build"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+
+
 def require_platform_wheel(wheel: Path) -> None:
     if wheel.name.endswith("-py3-none-any.whl"):
         raise RuntimeError(
@@ -237,6 +377,7 @@ def main() -> int:
         ]
     )
 
+    remove_stale_package_build(package_dir)
     wheel_dir.mkdir(parents=True, exist_ok=True)
     remove_stale_wheels(wheel_dir)
     run(

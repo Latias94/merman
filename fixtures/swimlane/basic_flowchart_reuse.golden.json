@@ -1,16 +1,14 @@
 {
   "diagramType": "swimlane",
   "model": {
-    "type": "swimlane",
     "keyword": "swimlane-beta",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": "LR",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
     "vertexCalls": [
       "A",
@@ -21,8 +19,8 @@
         "id": "A",
         "label": "Start",
         "labelType": "text",
-        "shape": "square",
         "layoutShape": "squareRect",
+        "shape": "square",
         "icon": null,
         "form": null,
         "pos": null,
@@ -30,8 +28,8 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [],
+        "styles": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -40,8 +38,8 @@
         "id": "B",
         "label": "Done",
         "labelType": "text",
-        "shape": "square",
         "layoutShape": "squareRect",
+        "shape": "square",
         "icon": null,
         "form": null,
         "pos": null,
@@ -49,8 +47,8 @@
         "constraint": null,
         "assetWidth": null,
         "assetHeight": null,
-        "styles": [],
         "classes": [],
+        "styles": [],
         "link": null,
         "linkTarget": null,
         "haveCallback": false
@@ -58,23 +56,25 @@
     ],
     "edges": [
       {
+        "id": "L_A_B_0",
         "from": "A",
         "to": "B",
-        "id": "L_A_B_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
         "label": null,
         "labelType": "text",
-        "style": [],
-        "classes": [],
+        "type": "arrow_point",
+        "arrow": "-->",
+        "isUserDefinedId": false,
+        "stroke": "normal",
         "interpolate": null,
+        "classes": [],
+        "style": [],
         "animate": null,
-        "animation": null
+        "animation": null,
+        "length": 1
       }
     ],
-    "subgraphs": []
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "swimlane"
   }
 }

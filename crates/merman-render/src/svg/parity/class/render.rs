@@ -1,13 +1,6 @@
 use super::super::timing::{RenderTimings, TimingGuard};
-use super::groups::{
-    ClassClusterEdgeGroupsRenderContext, ClassClusterEdgeGroupsRenderState,
-    render_class_cluster_edge_groups,
-};
-use super::namespace::{ClassNamespaceRenderMode, class_namespace_render_mode};
-use super::nodes::{
-    ClassNodesRenderContext, ClassNodesRenderState, render_class_namespace_subgraph_body,
-    render_class_nodes,
-};
+use super::groups::ClassSplitEdgeGroupsRenderContext;
+use super::nodes::{ClassNodesRenderContext, ClassNodesRenderState, render_class_render_tree};
 use super::root::{CLASS_GRAPH_MARGIN_PX, begin_class_svg_document};
 use super::settings::ClassRenderSettings;
 use super::viewbox::{ClassViewBoxContext, class_viewbox};
@@ -48,7 +41,7 @@ fn render_class_diagram_svg_model_inner(
     let mut detail = ClassRenderDetails::default();
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
-    let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("class");
+    let aria_roledescription = model.diagram_type.as_str();
     let mut sanitize_config: Option<merman_core::MermaidConfig> = None;
 
     let build_ctx_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.build_ctx));
@@ -75,11 +68,8 @@ fn render_class_diagram_svg_model_inner(
         + model.notes.len().saturating_mul(256)
         + model.namespaces.len().saturating_mul(128);
     let mut out = String::with_capacity(estimated_svg_bytes);
-    let root_context = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Class,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    );
+    let root_context =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Class, diagram_id);
     let document = begin_class_svg_document(
         &mut out,
         model,
@@ -118,22 +108,6 @@ fn render_class_diagram_svg_model_inner(
 
     out.push_str(r#"<g class="root">"#);
 
-    // Mermaid sometimes emits a nested dagre-d3 `root` wrapper (translated by -8px on the x-axis).
-    // In that mode, the outer `clusters/edgePaths/edgeLabels` groups are empty placeholders, and
-    // all cluster + edge rendering happens inside the nested wrapper under `<g class="nodes">`.
-    //
-    // This affects DOM parity for namespace-heavy diagrams. See upstream fixtures:
-    // - `upstream_cypress_classdiagram_handdrawn_v3_spec_hd_should_add_classes_namespaces_039`
-    // - `upstream_docs_classdiagram_define_namespace_035`
-    // - `upstream_cypress_classdiagram_v2_spec_renders_a_class_diagram_with_nested_namespaces_and_relationships_035`
-    let ClassNamespaceRenderMode {
-        single_namespace_id,
-        wrap_nodes_root,
-        nodes_root_dx,
-        nodes_root_dy,
-        render_namespaces_as_subgraphs,
-    } = class_namespace_render_mode(model, &class_nodes_by_id, CLASS_GRAPH_MARGIN_PX);
-
     drop(build_ctx_guard);
 
     let marker_url_prefix = {
@@ -149,9 +123,9 @@ fn render_class_diagram_svg_model_inner(
         font_family: settings.text_style.font_family.clone(),
         font_size: 11.0,
         font_weight: None,
+        font_style: None,
     };
-    let group_ctx = ClassClusterEdgeGroupsRenderContext {
-        clusters: &layout.clusters,
+    let group_ctx = ClassSplitEdgeGroupsRenderContext {
         edges: &layout.edges,
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
@@ -167,52 +141,13 @@ fn render_class_diagram_svg_model_inner(
         timing_enabled,
     };
 
-    if wrap_nodes_root {
-        out.push_str(r#"<g class="clusters"/><g class="edgePaths"/><g class="edgeLabels"/>"#);
-    } else if render_namespaces_as_subgraphs {
-        out.push_str(r#"<g class="clusters"/>"#);
-    } else {
-        render_class_cluster_edge_groups(
-            ClassClusterEdgeGroupsRenderState {
-                out: &mut out,
-                content_bounds: &mut content_bounds,
-                detail: &mut detail,
-            },
-            &group_ctx,
-            0.0,
-            0.0,
-            true,
-        );
-    }
-
-    // Nodes.
+    // The layout-owned render tree preserves the exact recursive Dagre graph that produced these
+    // coordinates. Rendering consumes that tree directly instead of inferring namespace extraction
+    // and edge ownership a second time from flattened compatibility data.
     let nodes_start = timing_enabled.then(web_time::Instant::now);
-
-    if wrap_nodes_root {
-        out.push_str(r#"<g class="nodes">"#);
-        let _ = write!(
-            &mut out,
-            r#"<g class="root" transform="translate({}, {})">"#,
-            fmt(nodes_root_dx),
-            fmt(nodes_root_dy)
-        );
-        render_class_cluster_edge_groups(
-            ClassClusterEdgeGroupsRenderState {
-                out: &mut out,
-                content_bounds: &mut content_bounds,
-                detail: &mut detail,
-            },
-            &group_ctx,
-            nodes_root_dx,
-            nodes_root_dy,
-            true,
-        );
-        out.push_str(r#"<g class="nodes">"#);
-    }
 
     let nodes_ctx = ClassNodesRenderContext {
         layout,
-        model,
         class_nodes_by_id: &class_nodes_by_id,
         note_by_id: &note_by_id,
         iface_by_id: &iface_by_id,
@@ -223,40 +158,18 @@ fn render_class_diagram_svg_model_inner(
         content_tx,
         content_ty,
         timing_enabled,
-        wrap_nodes_root,
-        single_namespace_id,
-        render_namespaces_as_subgraphs,
-        nodes_root_dx,
-        nodes_root_dy,
     };
-    if render_namespaces_as_subgraphs {
-        render_class_namespace_subgraph_body(
-            ClassNodesRenderState {
-                out: &mut out,
-                content_bounds: &mut content_bounds,
-                detail: &mut detail,
-                sanitize_config: &mut sanitize_config,
-                borrowed_sanitize_config,
-            },
-            &nodes_ctx,
-            &group_ctx,
-        );
-    } else {
-        if !wrap_nodes_root {
-            out.push_str(r#"<g class="nodes">"#);
-        }
-        render_class_nodes(
-            ClassNodesRenderState {
-                out: &mut out,
-                content_bounds: &mut content_bounds,
-                detail: &mut detail,
-                sanitize_config: &mut sanitize_config,
-                borrowed_sanitize_config,
-            },
-            &nodes_ctx,
-        );
-        out.push_str("</g>"); // outer nodes
-    }
+    render_class_render_tree(
+        ClassNodesRenderState {
+            out: &mut out,
+            content_bounds: &mut content_bounds,
+            detail: &mut detail,
+            sanitize_config: &mut sanitize_config,
+            borrowed_sanitize_config,
+        },
+        &nodes_ctx,
+        &group_ctx,
+    )?;
     out.push_str("</g>"); // root
     out.push_str("</g>"); // wrapper
     if let Some(s) = nodes_start {
@@ -273,12 +186,24 @@ fn render_class_diagram_svg_model_inner(
     let viewbox_guard = timing_enabled.then(|| TimingGuard::new(&mut timings.viewbox));
 
     let view_box = class_viewbox(ClassViewBoxContext {
-        model,
         content_bounds,
         viewport_padding: settings.viewport_padding,
         diagram_title,
-        has_acc_title: document.has_acc_title,
-        has_acc_descr: document.has_acc_descr,
+        diagram_title_bbox_x: diagram_title
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(|title| {
+                let title_style = TextStyle {
+                    font_family: settings.text_style.font_family.clone(),
+                    // Mermaid emits `classDiagramTitleText`, while the Class stylesheet's 18px
+                    // rule targets `classTitleText`; the diagram title therefore inherits the
+                    // root SVG font size.
+                    font_size: settings.text_style.font_size,
+                    font_weight: None,
+                    font_style: None,
+                };
+                measurer.measure_svg_title_bbox_x(title, &title_style)
+            }),
     });
 
     // Mermaid renders the diagram title as a direct child of `<svg>` (outside the wrapper `<g>`),

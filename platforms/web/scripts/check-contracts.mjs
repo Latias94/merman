@@ -117,6 +117,32 @@ const requiredTypeStringLiterals = new Map([
     ],
   ],
 ]);
+const exactTypeStringLiterals = new Map([
+  [
+    "HostTextMeasurementOperation",
+    [
+      "measure",
+      "computed-length",
+      "bbox-x",
+      "bbox-x-with-ascii-overhang",
+      "title-bbox-x",
+      "simple-bbox-width",
+      "raw-bbox-width",
+      "tspan-bbox-width",
+      "tspan-bbox-height",
+      "wrap-probe-bbox-width",
+      "simple-bbox-height",
+      "wrapped",
+      "wrapped-with-raw-width",
+      "bounding-client-rect-width",
+      "create-text-bbox-y-offset",
+      "mermaid-calculate-text-dimensions",
+      "canvas-measure-text-width",
+      "create-text-middle-bbox-y-offset",
+      "raw-bbox-height",
+    ],
+  ],
+]);
 const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
   ["AnalysisFactsResult", "version", "1"],
@@ -165,6 +191,19 @@ for (const [typeName, requiredLiterals] of requiredTypeStringLiterals) {
   failed ||= reportMissing(
     `check-contracts: ${typeName} is missing required string members`,
     requiredLiterals.filter((literal) => !literals.has(literal)),
+  );
+}
+
+for (const [typeName, expectedLiterals] of exactTypeStringLiterals) {
+  const actual = extractTypeStringLiterals(publicApi, typeName);
+  const expected = new Set(expectedLiterals);
+  failed ||= reportMissing(
+    `check-contracts: ${typeName} is missing required string members`,
+    expectedLiterals.filter((literal) => !actual.has(literal)),
+  );
+  failed ||= reportUnexpected(
+    `check-contracts: ${typeName} retains unsupported string members`,
+    [...actual].filter((literal) => !expected.has(literal)),
   );
 }
 

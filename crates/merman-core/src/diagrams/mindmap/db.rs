@@ -57,7 +57,6 @@ pub(super) struct MindmapNode {
     pub(super) node_id: String,
     pub(super) level: i32,
     pub(super) descr: String,
-    pub(super) is_markdown: bool,
     pub(super) ty: i32,
     pub(super) children: Vec<i32>,
     pub(super) width: i64,
@@ -94,11 +93,9 @@ fn mindmap_render_node(
         id: node.id.to_string(),
         dom_id: format!("node_{}", node.id),
         label: node.descr.clone(),
-        label_type: if node.is_markdown {
-            "markdown".to_string()
-        } else {
-            String::new()
-        },
+        // Mermaid's `flattenNodes()` marks every layout node as Markdown. The parser's quoted
+        // description flag only controls sanitization while the node enters this DB.
+        label_type: "markdown".to_string(),
         is_group: false,
         shape: shape_from_type(node.ty, default_shape).to_string(),
         width: node.width as f64,
@@ -214,7 +211,6 @@ impl MindmapDb {
             } else {
                 sanitize_text(input.descr_raw, config)
             },
-            is_markdown: input.descr_is_markdown,
             ty: input.ty,
             children: Vec::new(),
             width,

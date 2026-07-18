@@ -1,7 +1,10 @@
 # Headless Parity Deepening - TODO
 
-Status: Active
+Status: Superseded on 2026-07-15
 Last updated: 2026-06-04
+
+> Historical Mermaid 11.15 backlog. Fixture/root/text/SVG override mechanisms mentioned below were
+> removed under ADR-0062 and are not current implementation options.
 
 ## M0 - Lane Freeze And Prioritization
 

@@ -4,26 +4,15 @@ use crate::XtaskError;
 use crate::svgdom;
 use std::fmt::Write as _;
 use std::fs;
+use std::ops::AddAssign;
 use std::path::{Path, PathBuf};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum VerificationRenderPath {
-    HeadlessOperationTyped,
-}
-
-impl VerificationRenderPath {
-    pub(crate) const fn label(self) -> &'static str {
-        match self {
-            Self::HeadlessOperationTyped => "headless-operation-typed",
-        }
-    }
-}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AcceptedResidualPolicy {
     #[default]
     None,
     QuadrantStructureRenderability,
+    ExactFixtureDomEvidence,
     RootParityExact,
 }
 
@@ -34,6 +23,7 @@ impl AcceptedResidualPolicy {
             Self::QuadrantStructureRenderability => {
                 "compare-all source-backed QuadrantChart renderability correction registry"
             }
+            Self::ExactFixtureDomEvidence => "exact family-scoped fixture DOM evidence catalog",
             Self::RootParityExact => "compare-all exact fail-closed root residual registry",
         }
     }
@@ -105,7 +95,6 @@ pub(crate) enum DiagnosticsPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SpecialistHook {
     None,
-    ClassV2Role,
     SequenceMath,
     FlowchartAdapter,
     ErAdapter,
@@ -131,8 +120,8 @@ pub(crate) struct DiagramVerificationFact {
 }
 
 impl DiagramVerificationFact {
-    pub(crate) const fn render_path(self) -> VerificationRenderPath {
-        VerificationRenderPath::HeadlessOperationTyped
+    pub(crate) const fn render_path(self) -> merman::render::RenderExecutionPath {
+        merman::render::RenderExecutionPath::HeadlessOperationTyped
     }
 
     pub(crate) const fn supports_root_report(self) -> bool {
@@ -149,10 +138,7 @@ pub(crate) struct CompareRequest {
     pub(crate) dom_decimals: Option<u32>,
     pub(crate) report_root: bool,
     pub(crate) root_report_limit: Option<super::RootDeltaReportLimit>,
-    pub(crate) apply_root_overrides: bool,
     pub(crate) flowchart_text_measurer: Option<String>,
-    pub(crate) flowchart_elk_backend: Option<merman_render::FlowchartElkBackend>,
-    pub(crate) include_elk_probes: bool,
     pub(crate) accepted_residual_policy: AcceptedResidualPolicy,
 }
 
@@ -166,10 +152,7 @@ impl Default for CompareRequest {
             dom_decimals: None,
             report_root: false,
             root_report_limit: None,
-            apply_root_overrides: true,
             flowchart_text_measurer: None,
-            flowchart_elk_backend: None,
-            include_elk_probes: false,
             accepted_residual_policy: AcceptedResidualPolicy::None,
         }
     }
@@ -181,6 +164,9 @@ impl CompareRequest {
         fact: DiagramVerificationFact,
     ) -> Result<Self, XtaskError> {
         let mut request = Self::default();
+        if matches!(fact.diagram, "ishikawa" | "venn") {
+            request.accepted_residual_policy = AcceptedResidualPolicy::ExactFixtureDomEvidence;
+        }
         let mut i = 0;
         while i < args.len() {
             match args[i].as_str() {
@@ -221,7 +207,6 @@ impl CompareRequest {
                         args.get(i).map(String::as_str),
                     )?);
                 }
-                "--no-root-overrides" => request.apply_root_overrides = false,
                 "--help" | "-h" => return Err(XtaskError::Usage),
                 _ => return Err(XtaskError::Usage),
             }
@@ -231,23 +216,10 @@ impl CompareRequest {
     }
 }
 
-pub(crate) fn compare_render_environment(
-    request: &CompareRequest,
-) -> merman::render::RenderEnvironment {
-    merman::render::RenderEnvironment::parity().with_root_viewport_override_policy(
-        if request.apply_root_overrides {
-            merman::render::RootViewportOverridePolicy::ApplyGenerated
-        } else {
-            merman::render::RootViewportOverridePolicy::ComputedOnly
-        },
-    )
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RenderOperationContract {
-    render_path: VerificationRenderPath,
-    root_policy: merman::render::RootViewportOverridePolicy,
-    measurement_routes: [merman::render::TextMeasurementRoute; 5],
+    render_path: merman::render::RenderExecutionPath,
+    measurement_routes: [merman::render::TextMeasurementRoute; 4],
 }
 
 impl RenderOperationContract {
@@ -259,13 +231,15 @@ impl RenderOperationContract {
                 "failed to freeze compare render operation contract: {error}"
             ))
         })?;
-        Ok(Self::from_report(&session.report()))
+        Ok(Self {
+            render_path: merman::render::RenderExecutionPath::HeadlessOperationTyped,
+            measurement_routes: session.report().measurement_routes().clone(),
+        })
     }
 
     fn from_report(report: &merman::render::RenderOperationReport) -> Self {
         Self {
-            render_path: VerificationRenderPath::HeadlessOperationTyped,
-            root_policy: report.root_viewport_override_policy(),
+            render_path: report.execution_path(),
             measurement_routes: report.measurement_routes().clone(),
         }
     }
@@ -275,6 +249,19 @@ impl RenderOperationContract {
 pub(crate) struct ObservedRenderOperations {
     expected: RenderOperationContract,
     observed: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct ObservedRenderEvidence {
+    _private: (),
+}
+
+impl ObservedRenderEvidence {
+    const fn render_count(self) -> usize {
+        match self {
+            Self { _private: () } => 1,
+        }
+    }
 }
 
 impl ObservedRenderOperations {
@@ -291,9 +278,9 @@ impl ObservedRenderOperations {
         &mut self,
         fixture: &str,
         report: &merman::render::RenderOperationReport,
-    ) -> Result<(), String> {
-        validate_measurement_provenance(fixture, report)?;
+    ) -> Result<ObservedRenderEvidence, String> {
         let observed = RenderOperationContract::from_report(report);
+        validate_measurement_provenance(fixture, report)?;
         if observed != self.expected {
             return Err(format!(
                 "render operation contract diverged for {fixture}: expected {:?}, observed {observed:?}",
@@ -301,7 +288,7 @@ impl ObservedRenderOperations {
             ));
         }
         self.observed = true;
-        Ok(())
+        Ok(ObservedRenderEvidence { _private: () })
     }
 
     pub(crate) fn write_report(&self, report: &mut String) {
@@ -314,12 +301,7 @@ impl ObservedRenderOperations {
         let _ = writeln!(
             report,
             "- Render operation: `{}` (observed)",
-            operation.render_path.label()
-        );
-        let _ = writeln!(
-            report,
-            "- Root override policy: `{:?}` (observed)",
-            operation.root_policy
+            operation.render_path.as_str()
         );
         let _ = writeln!(
             report,
@@ -340,6 +322,10 @@ impl ObservedRenderOperations {
                 format_measurement_identity(&route.primary),
             );
         }
+    }
+
+    pub(crate) const fn has_observation(&self) -> bool {
+        self.observed
     }
 }
 
@@ -398,6 +384,103 @@ pub(crate) struct CompareRunOptions<'a> {
     pub(crate) dom_decimals: u32,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompareEvidence {
+    selected_fixtures: usize,
+    rendered_fixtures: usize,
+    skipped_fixtures: usize,
+    dom_comparisons: usize,
+    raw_svg_comparisons: usize,
+}
+
+impl CompareEvidence {
+    pub(crate) const fn comparisons(self) -> usize {
+        self.dom_comparisons + self.raw_svg_comparisons
+    }
+
+    pub(crate) fn gate_failures(self, subject: &str, check_dom: bool) -> Vec<String> {
+        let mut failures = Vec::new();
+        if self.rendered_fixtures == 0 {
+            failures.push(format!(
+                "no canonical typed render evidence for {subject}: selected={} skipped={}",
+                self.selected_fixtures, self.skipped_fixtures
+            ));
+        }
+        if check_dom && self.comparisons() == 0 {
+            failures.push(format!(
+                "--check-dom produced no DOM or raw SVG comparison evidence for {subject}: rendered={} skipped={}",
+                self.rendered_fixtures, self.skipped_fixtures
+            ));
+        }
+        failures
+    }
+
+    fn write_report(self, report: &mut String) {
+        let _ = writeln!(
+            report,
+            "- Evidence counts: selected=`{}` rendered=`{}` skipped=`{}` DOM-comparisons=`{}` raw-SVG-comparisons=`{}`",
+            self.selected_fixtures,
+            self.rendered_fixtures,
+            self.skipped_fixtures,
+            self.dom_comparisons,
+            self.raw_svg_comparisons,
+        );
+    }
+
+    fn record_comparison(&mut self, comparison: FixtureComparison) {
+        match comparison {
+            FixtureComparison::None => {}
+            FixtureComparison::Dom => self.dom_comparisons += 1,
+            FixtureComparison::RawSvg => self.raw_svg_comparisons += 1,
+        }
+    }
+}
+
+impl AddAssign for CompareEvidence {
+    fn add_assign(&mut self, rhs: Self) {
+        self.selected_fixtures += rhs.selected_fixtures;
+        self.rendered_fixtures += rhs.rendered_fixtures;
+        self.skipped_fixtures += rhs.skipped_fixtures;
+        self.dom_comparisons += rhs.dom_comparisons;
+        self.raw_svg_comparisons += rhs.raw_svg_comparisons;
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct CompareRunFailure {
+    evidence: CompareEvidence,
+    error: Box<XtaskError>,
+}
+
+impl CompareRunFailure {
+    fn with_evidence(evidence: CompareEvidence, error: XtaskError) -> Self {
+        Self {
+            evidence,
+            error: Box::new(error),
+        }
+    }
+
+    pub(crate) fn without_evidence(error: XtaskError) -> Self {
+        Self::with_evidence(CompareEvidence::default(), error)
+    }
+
+    pub(crate) const fn evidence(&self) -> CompareEvidence {
+        self.evidence
+    }
+
+    pub(crate) fn into_error(self) -> XtaskError {
+        *self.error
+    }
+}
+
+impl std::fmt::Display for CompareRunFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.as_ref().fmt(formatter)
+    }
+}
+
+pub(crate) type CompareRunResult = Result<CompareEvidence, CompareRunFailure>;
+
 #[derive(Debug, Clone)]
 pub(crate) struct CompareHarnessOptions<'a> {
     pub(crate) run: CompareRunOptions<'a>,
@@ -426,18 +509,20 @@ pub(crate) struct CompareFixtureInput<'a> {
     pub(crate) check_dom: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) enum CompareFixtureResult {
     Skipped {
         reason: String,
     },
     Rendered {
+        render_evidence: ObservedRenderEvidence,
         local_svg: String,
         compare_dom: bool,
         issues: Vec<String>,
         notes: Vec<String>,
     },
     RenderedWithPolicy {
+        render_evidence: ObservedRenderEvidence,
         local_svg: String,
         compare_dom: bool,
         compare_svg_when_dom_disabled: bool,
@@ -468,10 +553,10 @@ fn is_pinned_upstream_dir(diagram: &str, upstream_dir: &Path) -> bool {
 pub(crate) fn run_canonical_svg_compare(
     fact: DiagramVerificationFact,
     request: CompareRequest,
-) -> Result<(), XtaskError> {
+) -> CompareRunResult {
     debug_assert_eq!(
         fact.render_path(),
-        VerificationRenderPath::HeadlessOperationTyped
+        merman::render::RenderExecutionPath::HeadlessOperationTyped
     );
 
     let engine = match fact.render_profile {
@@ -483,10 +568,12 @@ pub(crate) fn run_canonical_svg_compare(
             serde_json::json!({ "gitGraph": { "seed": 1 } }),
         ),
         RenderProfile::Specialist => {
-            return Err(XtaskError::SvgCompareFailed(format!(
-                "specialist diagram {} cannot use the canonical fact runner",
-                fact.diagram
-            )));
+            return Err(CompareRunFailure::without_evidence(
+                XtaskError::SvgCompareFailed(format!(
+                    "specialist diagram {} cannot use the canonical fact runner",
+                    fact.diagram
+                )),
+            ));
         }
     };
 
@@ -494,9 +581,10 @@ pub(crate) fn run_canonical_svg_compare(
     // toolchain -> family lock order used by the existing Sequence adapter.
     let tools_root = crate::cmd::mermaid_cli_root();
     let toolchain_read_guard = if fact.specialist == SpecialistHook::SequenceMath {
-        Some(crate::cmd::acquire_upstream_svg_toolchain_read_guard(
-            &tools_root,
-        )?)
+        Some(
+            crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)
+                .map_err(CompareRunFailure::without_evidence)?,
+        )
     } else {
         None
     };
@@ -505,11 +593,12 @@ pub(crate) fn run_canonical_svg_compare(
         .and_then(|guard| guard.node_katex_math_renderer());
 
     let layout_options = super::svg_compare_layout_opts();
-    let mut environment = compare_render_environment(&request);
+    let mut environment = merman::render::RenderEnvironment::parity();
     if let Some(renderer) = sequence_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
-    let observed_operations = ObservedRenderOperations::from_environment(&environment)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment)
+        .map_err(CompareRunFailure::without_evidence)?;
     let renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options())
@@ -605,27 +694,13 @@ pub(crate) fn run_canonical_svg_compare(
                     ));
                 }
             };
-            let mut svg_options = merman_render::svg::SvgRenderOptions {
+            let svg_options = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(diagram_id),
                 ..Default::default()
             };
 
             match fact.specialist {
                 SpecialistHook::None => {}
-                SpecialistHook::ClassV2Role => {
-                    let is_classdiagram_v2_header =
-                        merman::preprocess_diagram(input.text, engine.registry())
-                            .ok()
-                            .map(|preprocessed| {
-                                preprocessed
-                                    .code
-                                    .trim_start()
-                                    .starts_with("classDiagram-v2")
-                            })
-                            .unwrap_or(false);
-                    svg_options.aria_roledescription =
-                        is_classdiagram_v2_header.then(|| "classDiagram".to_string());
-                }
                 SpecialistHook::SequenceMath => {}
                 SpecialistHook::FlowchartAdapter
                 | SpecialistHook::ErAdapter
@@ -643,7 +718,7 @@ pub(crate) fn run_canonical_svg_compare(
                     input.fixture_path.display()
                 )
             })?;
-            state
+            let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
@@ -675,6 +750,7 @@ pub(crate) fn run_canonical_svg_compare(
             let compare_dom = !skip_dom_compare_for_math;
             Ok(match fact.compare_policy {
                 FixtureComparePolicy::Dom => CompareFixtureResult::Rendered {
+                    render_evidence,
                     local_svg,
                     compare_dom,
                     issues,
@@ -682,6 +758,7 @@ pub(crate) fn run_canonical_svg_compare(
                 },
                 FixtureComparePolicy::DomAndRawSvgFallback => {
                     CompareFixtureResult::RenderedWithPolicy {
+                        render_evidence,
                         local_svg,
                         compare_dom,
                         compare_svg_when_dom_disabled: true,
@@ -786,7 +863,7 @@ pub(crate) fn run_svg_compare<S, Header, Skip, Render, FixtureReport, Report>(
     mut render_fixture: Render,
     mut write_fixture_report: FixtureReport,
     mut write_report: Report,
-) -> Result<(), XtaskError>
+) -> CompareRunResult
 where
     Header: FnMut(&mut S, &mut String, &CompareRunPaths, &CompareRunOptions<'_>),
     Skip: FnMut(&mut S, &str, &CompareRunPaths) -> Option<String>,
@@ -813,34 +890,41 @@ where
     let _upstream_family_lock = super::acquire_upstream_svg_family_lock_for_compare(
         &upstream_dir,
         validate_pinned_upstream,
-    )?;
-    let root_attrs_snapshot_path =
-        std::env::var_os(super::ROOT_ATTRS_SNAPSHOT_PATH_ENV).map(PathBuf::from);
-    let mut root_attrs_snapshot = root_attrs_snapshot_path
-        .as_ref()
-        .map(|_| super::RootAttrsSnapshot::default());
+    )
+    .map_err(CompareRunFailure::without_evidence)?;
     let mmd_files = crate::cmd::list_mmd_fixtures_in_dir(&fixtures_dir, run.filter, true);
     if mmd_files.is_empty() {
-        return Err(XtaskError::SvgCompareFailed(format!(
-            "no .mmd fixtures matched under {}",
-            fixtures_dir.display()
-        )));
+        return Err(CompareRunFailure::without_evidence(
+            XtaskError::SvgCompareFailed(format!(
+                "no .mmd fixtures matched under {}",
+                fixtures_dir.display()
+            )),
+        ));
     }
+    let mut evidence = CompareEvidence {
+        selected_fixtures: mmd_files.len(),
+        ..CompareEvidence::default()
+    };
     let provenance = if validate_pinned_upstream {
-        Some(crate::cmd::load_upstream_svg_provenance(
-            run.diagram,
-            &fixtures_dir,
-            &upstream_dir,
-            run.filter.is_none(),
-        )?)
+        Some(
+            crate::cmd::load_upstream_svg_provenance(
+                run.diagram,
+                &fixtures_dir,
+                &upstream_dir,
+                run.filter.is_none(),
+            )
+            .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?,
+        )
     } else {
         None
     };
 
-    fs::create_dir_all(&out_svg_dir).map_err(|source| XtaskError::WriteFile {
-        path: out_svg_dir.display().to_string(),
-        source,
-    })?;
+    fs::create_dir_all(&out_svg_dir)
+        .map_err(|source| XtaskError::WriteFile {
+            path: out_svg_dir.display().to_string(),
+            source,
+        })
+        .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
 
     let mode = svgdom::DomMode::parse(run.dom_mode);
     let mut report = String::new();
@@ -856,6 +940,7 @@ where
         };
 
         if let Some(reason) = skip_fixture(state, stem, &compare_paths) {
+            evidence.skipped_fixtures += 1;
             notes.push(format!("skipped {stem}: {reason}"));
             continue;
         }
@@ -906,19 +991,19 @@ where
         let failure_start = failures.len();
         match outcome {
             CompareFixtureResult::Skipped { reason } => {
+                evidence.skipped_fixtures += 1;
                 notes.push(format!("skipped {stem}: {reason}"));
                 continue;
             }
             CompareFixtureResult::Rendered {
+                render_evidence,
                 local_svg,
                 compare_dom,
                 issues,
                 notes: fixture_notes,
             } => {
-                if let Some(snapshot) = &mut root_attrs_snapshot {
-                    snapshot.capture(stem, &upstream_svg, &local_svg);
-                }
-                write_rendered_fixture(
+                evidence.rendered_fixtures += render_evidence.render_count();
+                let comparison = write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
                     &mut failures,
@@ -928,24 +1013,26 @@ where
                     false,
                     run.check_dom,
                     compare_dom,
+                    run.diagram,
                     stem,
                     &upstream_svg,
                     &upstream_path,
                     mode,
                     run.dom_decimals,
-                )?;
+                )
+                .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
+                evidence.record_comparison(comparison);
             }
             CompareFixtureResult::RenderedWithPolicy {
+                render_evidence,
                 local_svg,
                 compare_dom,
                 compare_svg_when_dom_disabled,
                 issues,
                 notes: fixture_notes,
             } => {
-                if let Some(snapshot) = &mut root_attrs_snapshot {
-                    snapshot.capture(stem, &upstream_svg, &local_svg);
-                }
-                write_rendered_fixture(
+                evidence.rendered_fixtures += render_evidence.render_count();
+                let comparison = write_rendered_fixture(
                     &local_out_path,
                     &local_svg,
                     &mut failures,
@@ -955,12 +1042,15 @@ where
                     compare_svg_when_dom_disabled,
                     run.check_dom,
                     compare_dom,
+                    run.diagram,
                     stem,
                     &upstream_svg,
                     &upstream_path,
                     mode,
                     run.dom_decimals,
-                )?;
+                )
+                .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
+                evidence.record_comparison(comparison);
             }
         }
 
@@ -977,29 +1067,39 @@ where
         );
     }
 
+    failures.extend(evidence.gate_failures(run.diagram, run.check_dom));
+    evidence.write_report(&mut report);
     write_report(state, &mut report, &compare_paths, &run, &failures, &notes);
 
     if let Some(parent) = compare_paths.out_path.parent() {
-        fs::create_dir_all(parent).map_err(|source| XtaskError::WriteFile {
-            path: parent.display().to_string(),
+        fs::create_dir_all(parent)
+            .map_err(|source| XtaskError::WriteFile {
+                path: parent.display().to_string(),
+                source,
+            })
+            .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
+    }
+    fs::write(&compare_paths.out_path, report)
+        .map_err(|source| XtaskError::WriteFile {
+            path: compare_paths.out_path.display().to_string(),
             source,
-        })?;
-    }
-    fs::write(&compare_paths.out_path, report).map_err(|source| XtaskError::WriteFile {
-        path: compare_paths.out_path.display().to_string(),
-        source,
-    })?;
-    // The family lock guard remains in scope through this write, so the parent audit never needs
-    // to reread canonical or local SVG files after the compare process releases the lock.
-    if let (Some(path), Some(snapshot)) = (&root_attrs_snapshot_path, &root_attrs_snapshot) {
-        snapshot.write(path)?;
-    }
-
+        })
+        .map_err(|error| CompareRunFailure::with_evidence(evidence, error))?;
     if failures.is_empty() {
-        Ok(())
+        Ok(evidence)
     } else {
-        Err(XtaskError::SvgCompareFailed(failures.join("\n")))
+        Err(CompareRunFailure::with_evidence(
+            evidence,
+            XtaskError::SvgCompareFailed(failures.join("\n")),
+        ))
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FixtureComparison {
+    None,
+    Dom,
+    RawSvg,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1013,36 +1113,78 @@ fn write_rendered_fixture(
     compare_svg_when_dom_disabled: bool,
     check_dom: bool,
     compare_dom: bool,
+    diagram: &str,
     stem: &str,
     upstream_svg: &str,
     upstream_path: &Path,
     mode: svgdom::DomMode,
     dom_decimals: u32,
-) -> Result<(), XtaskError> {
+) -> Result<FixtureComparison, XtaskError> {
     fs::write(local_out_path, local_svg).map_err(|source| XtaskError::WriteFile {
         path: local_out_path.display().to_string(),
         source,
     })?;
 
     if check_dom && compare_dom {
+        let (profile, residual_note) = fixture_dom_profile(diagram, stem, mode);
+        if let Some(reason) = residual_note {
+            notes.push(format!(
+                "DOM evidence for {diagram}/{stem}: requested parity attributes are bounded to structure ({reason})"
+            ));
+        }
         if let Err(err) = compare_dom_signatures(
             stem,
             upstream_svg,
             local_svg,
             upstream_path,
             local_out_path,
-            mode,
+            profile,
             dom_decimals,
         ) {
             failures.push(err);
         }
+        failures.extend(issues);
+        notes.extend(fixture_notes);
+        return Ok(FixtureComparison::Dom);
     } else if !check_dom && compare_svg_when_dom_disabled && upstream_svg != local_svg {
         failures.push(format!("svg mismatch for {stem}"));
     }
 
     failures.extend(issues);
     notes.extend(fixture_notes);
-    Ok(())
+    Ok(if !check_dom && compare_svg_when_dom_disabled {
+        FixtureComparison::RawSvg
+    } else {
+        FixtureComparison::None
+    })
+}
+
+pub(crate) fn fixture_dom_profile(
+    diagram: &str,
+    stem: &str,
+    requested: svgdom::DomMode,
+) -> (svgdom::DomComparisonProfile, Option<&'static str>) {
+    match merman_fixture_render_context::fixture_dom_evidence(diagram, stem) {
+        Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly)
+            if matches!(
+                requested,
+                svgdom::DomMode::Strict | svgdom::DomMode::Parity | svgdom::DomMode::ParityRoot
+            ) =>
+        {
+            let profile = if requested == svgdom::DomMode::ParityRoot {
+                svgdom::DomComparisonProfile::with_root_viewport(svgdom::DomMode::Structure)
+            } else {
+                svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::Structure)
+            };
+            (
+                profile,
+                Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly.reason()),
+            )
+        }
+        Some(merman_fixture_render_context::FixtureDomEvidence::StructureOnly) | None => {
+            (svgdom::DomComparisonProfile::from_mode(requested), None)
+        }
+    }
 }
 
 pub(crate) fn sanitize_svg_id(raw: &str) -> String {
@@ -1067,21 +1209,22 @@ fn compare_dom_signatures(
     local_svg: &str,
     upstream_path: &Path,
     local_out_path: &Path,
-    mode: svgdom::DomMode,
+    profile: svgdom::DomComparisonProfile,
     dom_decimals: u32,
 ) -> Result<(), String> {
-    let upstream = svgdom::dom_signature(upstream_svg, mode, dom_decimals)
+    let upstream = svgdom::dom_signature_for_comparison(upstream_svg, profile, dom_decimals)
         .map_err(|err| format!("upstream dom parse failed for {stem}: {err}"))?;
-    let local = svgdom::dom_signature(local_svg, mode, dom_decimals)
+    let local = svgdom::dom_signature_for_comparison(local_svg, profile, dom_decimals)
         .map_err(|err| format!("local dom parse failed for {stem}: {err}"))?;
 
     if upstream != local {
-        let detail = if mode == svgdom::DomMode::ParityRoot {
-            let mismatch = svgdom::diagnose_parity_root_mismatch(
+        let detail = if profile.compares_root_viewport() {
+            let mismatch = svgdom::diagnose_root_viewport_mismatch(
                 upstream_svg,
                 local_svg,
                 &upstream,
                 &local,
+                profile,
                 dom_decimals,
             )
             .map_err(|err| format!("parity-root diagnosis failed for {stem}: {err}"))?
@@ -1146,74 +1289,50 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn every_admitted_render_family_observes_both_root_policies() {
+    fn every_admitted_render_family_emits_a_computed_root_viewport() {
         for fact in super::super::DIAGRAM_VERIFICATION_FACTS {
-            for (apply_root_overrides, expected_policy) in [
-                (
-                    true,
-                    merman::render::RootViewportOverridePolicy::ApplyGenerated,
-                ),
-                (
-                    false,
-                    merman::render::RootViewportOverridePolicy::ComputedOnly,
-                ),
-            ] {
-                let request = CompareRequest {
-                    apply_root_overrides,
-                    ..CompareRequest::default()
-                };
-                let environment = compare_render_environment(&request);
-                let mut observed = ObservedRenderOperations::from_environment(&environment)
-                    .expect("representative operation contract");
-                let diagram_id = format!("root-policy-{}", fact.diagram);
-                let rendered = merman::render::HeadlessRenderer::new()
-                    .with_engine(super::super::svg_compare_engine())
-                    .with_parse_options(fact.parse_policy.options())
-                    .with_layout_options(super::super::svg_compare_layout_opts())
-                    .with_environment(environment)
-                    .with_diagram_id(&diagram_id)
-                    .render_svg_report_sync(fact.representative_source)
-                    .unwrap_or_else(|error| {
-                        panic!(
-                            "{} representative render failed under {expected_policy:?}: {error}",
-                            fact.diagram
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        panic!("{} representative source was not detected", fact.diagram)
-                    });
-                observed
-                    .observe(fact.diagram, rendered.report())
-                    .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram));
-
-                assert_eq!(
-                    rendered.report().root_viewport_override_policy(),
-                    expected_policy,
-                    "{} ignored the operation root policy",
-                    fact.diagram
-                );
-                let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
-                    panic!("{} emitted invalid root SVG: {error}", fact.diagram)
+            let environment = merman::render::RenderEnvironment::parity();
+            let mut observed = ObservedRenderOperations::from_environment(&environment)
+                .expect("representative operation contract");
+            let diagram_id = format!("computed-root-{}", fact.diagram);
+            let rendered = merman::render::HeadlessRenderer::new()
+                .with_engine(super::super::svg_compare_engine())
+                .with_parse_options(fact.parse_policy.options())
+                .with_layout_options(super::super::svg_compare_layout_opts())
+                .with_environment(environment)
+                .with_diagram_id(&diagram_id)
+                .render_svg_report_sync(fact.representative_source)
+                .unwrap_or_else(|error| {
+                    panic!("{} representative render failed: {error}", fact.diagram)
+                })
+                .unwrap_or_else(|| {
+                    panic!("{} representative source was not detected", fact.diagram)
                 });
-                let root = document.root_element();
-                assert!(root.has_tag_name("svg"), "{} root is not svg", fact.diagram);
-                assert_eq!(
-                    root.attribute("id"),
-                    Some(diagram_id.as_str()),
-                    "{} bypassed the shared root diagram id",
-                    fact.diagram
-                );
-                let has_viewport = root.attribute("viewBox").is_some()
-                    || root.attribute("width").is_some()
-                    || root
-                        .attribute("style")
-                        .is_some_and(|style| style.contains("max-width:"));
-                assert!(
-                    has_viewport,
-                    "{} emitted a root without a viewport",
-                    fact.diagram
-                );
-            }
+            observed
+                .observe(fact.diagram, rendered.report())
+                .unwrap_or_else(|error| panic!("{}: {error}", fact.diagram));
+
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap_or_else(|error| {
+                panic!("{} emitted invalid root SVG: {error}", fact.diagram)
+            });
+            let root = document.root_element();
+            assert!(root.has_tag_name("svg"), "{} root is not svg", fact.diagram);
+            assert_eq!(
+                root.attribute("id"),
+                Some(diagram_id.as_str()),
+                "{} bypassed the shared root diagram id",
+                fact.diagram
+            );
+            let has_viewport = root.attribute("viewBox").is_some()
+                || root.attribute("width").is_some()
+                || root
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("max-width:"));
+            assert!(
+                has_viewport,
+                "{} emitted a root without a viewport",
+                fact.diagram
+            );
         }
     }
 
@@ -1246,6 +1365,11 @@ mod tests {
                 AcceptedResidualPolicy::QuadrantStructureRenderability,
                 "source-backed QuadrantChart renderability correction registry",
             ),
+            (
+                "ishikawa",
+                AcceptedResidualPolicy::ExactFixtureDomEvidence,
+                "exact family-scoped fixture DOM evidence catalog",
+            ),
             ("info", AcceptedResidualPolicy::None, "policy: `none`"),
         ];
 
@@ -1267,6 +1391,33 @@ mod tests {
                 "diagram={diagram}; report={report}"
             );
         }
+    }
+
+    #[test]
+    fn rough_fixture_dom_profile_keeps_root_coverage_and_narrows_descendants() {
+        let (profile, note) = fixture_dom_profile(
+            "ishikawa",
+            "upstream_cypress_ishikawa_spec_6_should_render_with_handdrawn_look_006",
+            svgdom::DomMode::Parity,
+        );
+        assert_eq!(profile.descendants(), svgdom::DomMode::Structure);
+        assert!(!profile.compares_root_viewport());
+        assert!(note.expect("rough residual note").contains("RoughJS"));
+
+        let (profile, note) =
+            fixture_dom_profile("ishikawa", "new_handdrawn_fixture", svgdom::DomMode::Parity);
+        assert_eq!(profile.descendants(), svgdom::DomMode::Parity);
+        assert!(!profile.compares_root_viewport());
+        assert_eq!(note, None);
+
+        let (profile, note) = fixture_dom_profile(
+            "ishikawa",
+            "upstream_cypress_ishikawa_spec_6_should_render_with_handdrawn_look_006",
+            svgdom::DomMode::ParityRoot,
+        );
+        assert_eq!(profile.descendants(), svgdom::DomMode::Structure);
+        assert!(profile.compares_root_viewport());
+        assert!(note.expect("rough residual note").contains("RoughJS"));
     }
 
     #[test]
@@ -1299,7 +1450,7 @@ mod tests {
             local,
             Path::new("upstream.svg"),
             Path::new("local.svg"),
-            svgdom::DomMode::ParityRoot,
+            svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::ParityRoot),
             3,
         )
         .expect_err("root viewport mismatch should fail");
@@ -1322,7 +1473,7 @@ mod tests {
             local,
             Path::new("upstream.svg"),
             Path::new("local.svg"),
-            svgdom::DomMode::ParityRoot,
+            svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::ParityRoot),
             3,
         )
         .expect_err("parity-visible subtree mismatch should fail");
@@ -1345,7 +1496,7 @@ mod tests {
             local,
             Path::new("upstream.svg"),
             Path::new("local.svg"),
-            svgdom::DomMode::Strict,
+            svgdom::DomComparisonProfile::from_mode(svgdom::DomMode::Strict),
             3,
         )
         .expect_err("three same-fixture differences should fail");
@@ -1366,6 +1517,16 @@ mod tests {
             .join("compare")
             .join("xtask-harness-tests")
             .join(format!("{name}-{}-{nonce}", std::process::id()))
+    }
+
+    fn render_info_for_evidence(stem: &str) -> merman::render::RenderedSvg {
+        merman::render::HeadlessRenderer::new()
+            .with_engine(super::super::svg_compare_engine())
+            .with_layout_options(super::super::svg_compare_layout_opts())
+            .with_diagram_id(stem)
+            .render_svg_report_sync("info")
+            .expect("Info render should succeed")
+            .expect("Info should be detected")
     }
 
     #[test]
@@ -1395,7 +1556,7 @@ mod tests {
 
         let out_path = root.join("report.md");
         let mut seen = Vec::new();
-        run_svg_compare(
+        let evidence = run_svg_compare(
             CompareHarnessOptions {
                 run: CompareRunOptions {
                     diagram: "harness_probe",
@@ -1421,6 +1582,7 @@ mod tests {
                     });
                 }
                 Ok(CompareFixtureResult::Rendered {
+                    render_evidence: ObservedRenderEvidence { _private: () },
                     local_svg: input.upstream_svg.to_string(),
                     compare_dom: true,
                     issues: Vec::new(),
@@ -1441,8 +1603,21 @@ mod tests {
         .expect("custom-root harness run should succeed");
 
         assert_eq!(seen, ["rendered", "skipped"]);
+        assert_eq!(
+            evidence,
+            CompareEvidence {
+                selected_fixtures: 2,
+                rendered_fixtures: 1,
+                skipped_fixtures: 1,
+                dom_comparisons: 1,
+                raw_svg_comparisons: 0,
+            }
+        );
         let report = fs::read_to_string(&out_path).expect("report should be written");
         assert!(report.contains("All fixtures matched."));
+        assert!(report.contains(
+            "Evidence counts: selected=`2` rendered=`1` skipped=`1` DOM-comparisons=`1` raw-SVG-comparisons=`0`"
+        ));
         assert!(report.contains("skipped skipped: parse-time admission policy"));
         let out_svg_dir = out_path
             .parent()
@@ -1450,6 +1625,139 @@ mod tests {
             .join("harness_probe");
         assert!(out_svg_dir.join("rendered.svg").is_file());
         assert!(!out_svg_dir.join("skipped.svg").is_file());
+    }
+
+    #[test]
+    fn svg_output_failure_retains_the_completed_render_evidence() {
+        let root = unique_test_root("svg-write-evidence");
+        let fixtures_root = root.join("fixtures");
+        let upstream_root = root.join("upstream");
+        let fixture_dir = fixtures_root.join("harness_probe");
+        let upstream_dir = upstream_root.join("harness_probe");
+        fs::create_dir_all(&fixture_dir).expect("fixture dir should be created");
+        fs::create_dir_all(&upstream_dir).expect("upstream dir should be created");
+        fs::write(fixture_dir.join("rendered.mmd"), "info").expect("fixture should be written");
+        fs::write(
+            upstream_dir.join("rendered.svg"),
+            render_info_for_evidence("rendered").svg(),
+        )
+        .expect("upstream SVG should be written");
+
+        let out_path = root.join("report.md");
+        fs::create_dir_all(root.join("harness_probe").join("rendered.svg"))
+            .expect("conflicting local SVG directory should be created");
+        let environment = merman::render::RenderEnvironment::parity();
+        let mut observed = ObservedRenderOperations::from_environment(&environment)
+            .expect("render operation contract");
+        let failure = run_svg_compare(
+            CompareHarnessOptions {
+                run: CompareRunOptions {
+                    diagram: "harness_probe",
+                    out_path: Some(out_path),
+                    filter: None,
+                    check_dom: true,
+                    dom_mode: "parity",
+                    dom_decimals: 3,
+                },
+                fixtures_root: Some(fixtures_root),
+                upstream_root: Some(upstream_root),
+            },
+            &mut observed,
+            |_, _, _, _| {},
+            |_, _, _| None,
+            |observed, input| {
+                let rendered = render_info_for_evidence(input.stem);
+                let render_evidence = observed.observe(input.stem, rendered.report())?;
+                Ok(CompareFixtureResult::Rendered {
+                    render_evidence,
+                    local_svg: rendered.into_svg(),
+                    compare_dom: true,
+                    issues: Vec::new(),
+                    notes: Vec::new(),
+                })
+            },
+            |_, _, _| {},
+            |_, _, _, _, _, _| {},
+        )
+        .expect_err("a directory at the local SVG path should fail the write");
+
+        assert_eq!(
+            failure.evidence(),
+            CompareEvidence {
+                selected_fixtures: 1,
+                rendered_fixtures: 1,
+                skipped_fixtures: 0,
+                dom_comparisons: 0,
+                raw_svg_comparisons: 0,
+            }
+        );
+        assert!(matches!(failure.into_error(), XtaskError::WriteFile { .. }));
+    }
+
+    #[test]
+    fn report_output_failure_retains_completed_dom_evidence() {
+        let root = unique_test_root("report-write-evidence");
+        let fixtures_root = root.join("fixtures");
+        let upstream_root = root.join("upstream");
+        let fixture_dir = fixtures_root.join("harness_probe");
+        let upstream_dir = upstream_root.join("harness_probe");
+        fs::create_dir_all(&fixture_dir).expect("fixture dir should be created");
+        fs::create_dir_all(&upstream_dir).expect("upstream dir should be created");
+        fs::write(fixture_dir.join("rendered.mmd"), "info").expect("fixture should be written");
+        fs::write(
+            upstream_dir.join("rendered.svg"),
+            render_info_for_evidence("rendered").svg(),
+        )
+        .expect("upstream SVG should be written");
+
+        let out_path = root.join("report.md");
+        fs::create_dir_all(&out_path).expect("conflicting report directory should be created");
+        let environment = merman::render::RenderEnvironment::parity();
+        let mut observed = ObservedRenderOperations::from_environment(&environment)
+            .expect("render operation contract");
+        let failure = run_svg_compare(
+            CompareHarnessOptions {
+                run: CompareRunOptions {
+                    diagram: "harness_probe",
+                    out_path: Some(out_path),
+                    filter: None,
+                    check_dom: true,
+                    dom_mode: "parity",
+                    dom_decimals: 3,
+                },
+                fixtures_root: Some(fixtures_root),
+                upstream_root: Some(upstream_root),
+            },
+            &mut observed,
+            |_, _, _, _| {},
+            |_, _, _| None,
+            |observed, input| {
+                let rendered = render_info_for_evidence(input.stem);
+                let render_evidence = observed.observe(input.stem, rendered.report())?;
+                Ok(CompareFixtureResult::Rendered {
+                    render_evidence,
+                    local_svg: rendered.into_svg(),
+                    compare_dom: true,
+                    issues: Vec::new(),
+                    notes: Vec::new(),
+                })
+            },
+            |_, _, _| {},
+            |_, _, _, _, _, _| {},
+        )
+        .expect_err("a directory at the report path should fail the write");
+
+        assert_eq!(
+            failure.evidence(),
+            CompareEvidence {
+                selected_fixtures: 1,
+                rendered_fixtures: 1,
+                skipped_fixtures: 0,
+                dom_comparisons: 1,
+                raw_svg_comparisons: 0,
+            }
+        );
+        assert!(matches!(failure.into_error(), XtaskError::WriteFile { .. }));
     }
 
     #[test]

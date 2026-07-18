@@ -315,22 +315,18 @@ pub(crate) fn render_journey_diagram_svg_model(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Journey,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        &mut out,
-        root_svg::RootViewportSpec::mermaid(
-            root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
-            layout.use_max_width,
-        )
-        .with_mermaid_responsive_height(layout.use_max_width, svg_height)
-        .with_fixed_size(layout.width, svg_height)
-        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
-        root_chrome,
-    )?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Journey, diagram_id)
+        .write_open(
+            &mut out,
+            root_svg::RootViewportSpec::mermaid(
+                root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
+                layout.use_max_width,
+            )
+            .with_mermaid_responsive_height(layout.use_max_width, svg_height)
+            .with_fixed_size(layout.width, svg_height)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
+            root_chrome,
+        )?;
 
     if let Some(title) = model.acc_title.as_deref() {
         let _ = write!(

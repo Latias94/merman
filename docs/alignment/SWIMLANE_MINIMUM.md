@@ -1,6 +1,6 @@
 # Swimlane Minimum (Mermaid@11.16.0)
 
-This document tracks the staged local support slice for Mermaid `swimlane-beta`.
+This document records the admitted local support for Mermaid `swimlane-beta`.
 
 Upstream references at pinned Mermaid 11.16.0:
 
@@ -30,20 +30,43 @@ Upstream references at pinned Mermaid 11.16.0:
 - LSP/editor facts:
   - reuses Flowchart editor facts, preserving node/source-span semantics for completions and
     navigation
+- Typed rendering:
+  - constructs one Flowchart semantic model and selects a dedicated `Swimlane` render artifact
+    when the effective layout is `swimlane`
+  - preserves explicit `dagre` and `elk` overrides by selecting the corresponding Flowchart
+    artifact
+- Layout:
+  - ports the Mermaid 11.16 preparation, Sugiyama layering, lane bounds, orthogonal routing, and
+    direction-aware post-processing pipeline
+  - materializes edge-label nodes, synthetic default lanes, lane title bands, terminal stubs, and
+    crossing-aware routes without a browser DOM
+- SVG:
+  - emits Mermaid-compatible swimlane cluster structure, vertical lane titles, markers, edge
+    labels, and accessibility metadata
+  - applies `arc`, `gap`, and disabled line-hop modes after edge construction while preserving
+    canonical edge data points
 - Fixtures:
-  - semantic fixture coverage exists under `fixtures/swimlane/`
+  - normalized semantic and layout evidence exists under `fixtures/swimlane/`
+  - all 30 Mermaid 11.16 DDLT swimlane inputs pass finite orthogonal layout and valid-SVG gates
+  - three normalized fixtures have attested Mermaid 11.16 upstream SVG baselines
 
 ## Admission State
 
-`swimlane` is recorded as `ParseOnly` in the admission inventory:
+`swimlane` is admitted to the primary SVG matrix:
 
 - semantic JSON fixtures are normalized under `fixtures/swimlane/`
-- layout goldens are not admitted
-- local SVG rendering is intentionally not admitted
-- upstream SVG baselines and a family-local compare command are deferred until a source-backed
-  swimlane layout port exists
+- typed layout and SVG rendering run through the canonical render operation
+- upstream baselines are provenance-locked to Mermaid CLI 11.16.0 and Headless Chrome 131
+- `xtask compare-swimlane-svgs` is registered through the shared verification-fact catalog
+- the default DOM comparison mode is `parity`; no family-specific comparator normalization is used
 
-## Why Rendering Is Staged
+The admission gate is:
+
+```sh
+cargo run -p xtask -- compare-swimlane-svgs --check-dom --dom-mode parity
+```
+
+## Architecture
 
 Upstream Swimlane is not plain Flowchart rendering with a different header. It is a layout-variant
 diagram that reuses Flowchart parsing and rendering, but swaps in a dedicated swimlane layout
@@ -57,15 +80,13 @@ backend. That backend includes:
 - line-hop post-processing
 - swimlane cluster shape metadata and lane content alignment
 
-Rendering `swimlane-beta` through the ordinary local Flowchart/Dagre path would produce an SVG, but
-it would not represent Mermaid 11.16 swimlane semantics. The current staged state is deliberate.
+The local implementation therefore reuses Flowchart parsing but does not treat the Swimlane header
+as a cosmetic alias. Artifact selection follows the effective layout, and the dedicated layout
+pipeline owns lane geometry and routing before the shared Flowchart SVG emitter renders it.
 
-## Known Gaps
+## Residual Boundary
 
-- No typed render parser for `swimlane` yet.
-- No local port of `rendering-util/layout-algorithms/swimlanes/` yet.
-- No swimlane-specific layout goldens or upstream SVG baselines yet.
-- No dedicated `xtask compare-swimlane-svgs` command yet.
-- Mermaid issue https://github.com/mermaid-js/mermaid/issues/7954 tracks a separate upstream
-  11.16.0 Flowchart subgraph-arrow regression. Do not use that regression as a reason to broaden
-  local Flowchart/Swimlane comparator normalization.
+Browser font rasterization, `getBBox()` floats, and pixel snapshots remain bounded headless
+residuals under the repository-wide parity policy. They are not normalized away by the Swimlane
+comparator. Any future DOM or geometry mismatch must be resolved from Mermaid source behavior or
+documented as a browser-dependent residual.

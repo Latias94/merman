@@ -2,7 +2,7 @@
 
 use merman::MermaidConfig;
 use merman::render::HeadlessRenderer;
-use serde_json::{Map, Value};
+use merman_fixture_render_context::RenderContextCatalog;
 use std::collections::BTreeSet;
 #[cfg(feature = "raster")]
 use std::io::Cursor;
@@ -61,30 +61,28 @@ fn fixture_paths_for_dirs(family_dirs: &[&str]) -> Vec<PathBuf> {
     out
 }
 
-fn fixture_site_config_overrides() -> &'static Map<String, Value> {
-    static OVERRIDES: OnceLock<Map<String, Value>> = OnceLock::new();
-    OVERRIDES.get_or_init(|| {
-        let value: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/_config/site_config_overrides.json"
-        ))
-        .expect("valid fixture site config override manifest");
-        match value {
-            Value::Object(map) => map,
-            other => {
-                panic!("fixture site config override manifest must be a JSON object, got {other:?}")
-            }
-        }
+fn fixture_render_contexts() -> &'static RenderContextCatalog {
+    static CATALOG: OnceLock<RenderContextCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        RenderContextCatalog::load(workspace_root().join("fixtures"))
+            .expect("valid fixture render context catalog")
     })
 }
 
 fn fixture_site_config_for_relative_name(relative_name: &str) -> Option<merman::MermaidConfig> {
-    let key = relative_name
+    let relative = relative_name
         .strip_prefix("fixtures/")
         .unwrap_or(relative_name);
-    fixture_site_config_overrides()
-        .get(key)
-        .cloned()
-        .map(merman::MermaidConfig::from_value)
+    let path = workspace_root().join("fixtures").join(relative);
+    fixture_render_contexts()
+        .context_for_fixture(&path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "invalid fixture render context lookup for {}: {error}",
+                path.display()
+            )
+        })
+        .map(|context| merman::MermaidConfig::from_value(context.site_config_value()))
 }
 
 fn fixture_sample_paths() -> Vec<PathBuf> {
@@ -275,7 +273,19 @@ fn is_docs_placeholder_fixture(source: &str) -> bool {
 }
 
 fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
-    if relative_name.contains("parser_only_spec") {
+    let path = Path::new(relative_name);
+    let diagram = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str());
+    let stem = path.file_stem().and_then(|name| name.to_str());
+    if diagram
+        .zip(stem)
+        .and_then(|(diagram, stem)| {
+            merman_fixture_render_context::parser_only_fixture_reason(diagram, stem)
+        })
+        .is_some()
+    {
         return true;
     }
 
@@ -291,7 +301,6 @@ fn is_known_unrenderable_fixture(relative_name: &str, source: &str) -> bool {
             // Strict public rendering should reject them; the all-supported renderability audit
             // skips them so it can keep testing contentful Treemap fixtures.
             | "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.mmd"
-            | "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db_parser_only_.mmd"
     )
 }
 
@@ -928,10 +937,13 @@ fn known_error_golden_fixtures_are_skipped_by_manual_audit() {
         "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db.mmd",
         "treemap\nclassDef c fill:#ff0000, stroke:rgb(1\\,2\\,3), color;\n"
     ));
-    assert!(is_known_unrenderable_fixture(
-        "fixtures/treemap/upstream_treemap_classdef_and_css_compiled_styles_db_parser_only_.mmd",
-        "treemap\nclassDef c fill:#ff0000, stroke:rgb(1\\,2\\,3), color;\n"
-    ));
+    assert!(
+        !is_known_unrenderable_fixture(
+            "fixtures/flowchart/new_parser_only_spec.mmd",
+            "flowchart TD\nA-->B\n"
+        ),
+        "a parser-only-looking filename must not grant a renderability exemption"
+    );
 }
 
 #[test]

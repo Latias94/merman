@@ -279,16 +279,19 @@ pub(crate) fn render_requirement_diagram_svg_model(
         font_family: Some(render_settings.calculation_font_family),
         font_size: render_settings.calculation_font_size,
         font_weight: None,
+        font_style: None,
     };
     let html_style_regular = TextStyle {
         font_family: font_family.clone(),
         font_size,
         font_weight: None,
+        font_style: None,
     };
     let html_style_bold = TextStyle {
         font_family,
         font_size,
         font_weight: Some("bold".to_string()),
+        font_style: None,
     };
 
     #[derive(Clone, Debug)]
@@ -418,23 +421,19 @@ pub(crate) fn render_requirement_diagram_svg_model(
         fixed_style_placement: root_svg::RootStylePlacement::Tail,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Requirement,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        &mut out,
-        root_svg::RootViewportSpec::mermaid(
-            root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
-            render_settings.use_max_width,
-        )
-        .with_max_width(root_svg::RootMaxWidth::Precision {
-            value: vb_w,
-            significant_digits: 6,
-        }),
-        root_chrome,
-    )?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Requirement, diagram_id)
+        .write_open(
+            &mut out,
+            root_svg::RootViewportSpec::mermaid(
+                root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+                render_settings.use_max_width,
+            )
+            .with_max_width(root_svg::RootMaxWidth::Precision {
+                value: vb_w,
+                significant_digits: 6,
+            }),
+            root_chrome,
+        )?;
 
     out.push_str(&a11y_nodes);
 
@@ -1263,6 +1262,11 @@ mod tests {
     #[test]
     fn requirement_html_labels_use_xhtml_and_source_wrap_styles() {
         let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let config = serde_json::json!({
+            "fontFamily": "trebuchet ms, verdana, arial, sans-serif",
+            "fontSize": 10,
+            "themeVariables": {"fontSize": "24px"}
+        });
         let model = RequirementDiagramRenderModel {
             requirements: vec![RequirementRenderNode {
                 name: "req_font_size".to_string(),
@@ -1300,24 +1304,25 @@ mod tests {
             ..SvgRenderOptions::default()
         };
 
-        let svg = render_requirement_for_test(
-            &layout,
-            &model,
-            &serde_json::json!({
-                "fontFamily": "trebuchet ms, verdana, arial, sans-serif",
-                "fontSize": 10,
-                "themeVariables": {"fontSize": "24px"}
-            }),
-            None,
+        let svg = render_requirement_for_test(&layout, &model, &config, None, &measurer, &options)
+            .unwrap();
+        let settings = crate::requirement::RequirementConfigView::new(&config).render_settings();
+        let calculation_style = crate::text::TextStyle {
+            font_family: Some(settings.calculation_font_family),
+            font_size: settings.calculation_font_size,
+            ..crate::text::TextStyle::default()
+        };
+        let expected_max_width = crate::requirement::calculate_text_width_like_mermaid_px(
             &measurer,
-            &options,
-        )
-        .unwrap();
+            &calculation_style,
+            "Text: font size precedence should be deterministic",
+        ) + 50;
 
         assert!(svg.contains(r#"<div xmlns="http://www.w3.org/1999/xhtml""#));
         assert!(svg.contains("display: table; white-space: break-spaces;"));
         assert!(svg.contains("display: table-cell; white-space: nowrap;"));
-        assert!(svg.contains("width: 279px;"));
+        assert!(svg.contains(&format!("max-width: {expected_max_width}px;")));
+        assert!(svg.contains(&format!("width: {expected_max_width}px;")));
         assert!(svg.contains(r#"class="nodeLabel markdown-node-label""#));
         assert!(svg.contains("<p>Risk: `Low`</p>"), "{svg}");
     }

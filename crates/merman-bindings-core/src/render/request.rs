@@ -5,10 +5,10 @@ use crate::common::{
     normalize_option,
 };
 use merman::render::{
-    FlowchartElkBackend, HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset,
-    HostThemePreset, HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions,
-    MeasurementProfileId, RenderEnvironment, RenderTimeSnapshot, RootViewportOverridePolicy,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    HeadlessRenderer, HostThemeAppearance, HostThemePipelinePreset, HostThemePreset,
+    HostThemeProfile, HostThemeRoles, HostThemeRootBackground, LayoutOptions, MeasurementProfileId,
+    RenderEnvironment, RenderTimeSnapshot, TextMeasurementPhase, TextMeasurementPolicy,
+    TextMeasurementProfileIdentity,
 };
 use std::sync::Arc;
 
@@ -194,23 +194,6 @@ fn build_renderer(
                     }
                 });
         }
-        if let Some(raw_policy) = environment_json.root_viewport_overrides.as_deref() {
-            let policy = match normalize_option(raw_policy).as_str() {
-                "apply-generated" | "apply_generated" | "generated" => {
-                    RootViewportOverridePolicy::ApplyGenerated
-                }
-                "computed-only" | "computed_only" | "computed" | "disabled" => {
-                    RootViewportOverridePolicy::ComputedOnly
-                }
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported environment.root_viewport_overrides: {other}"),
-                    ));
-                }
-            };
-            environment = environment.with_root_viewport_override_policy(policy);
-        }
         if let Some(math_renderer) = environment_json.math_renderer.as_deref() {
             match normalize_option(math_renderer).as_str() {
                 "none" => {}
@@ -264,23 +247,11 @@ fn build_renderer(
 
     let mut layout = LayoutOptions::headless_svg_defaults();
     if let Some(layout_json) = options.layout.as_ref() {
-        if let Some(width) = layout_json.viewport_width {
-            layout.viewport_width = finite_positive(width, "layout.viewport_width")?;
+        if let Some(width) = layout_json.container_width {
+            layout.container_width = finite_positive(width, "layout.container_width")?;
         }
-        if let Some(height) = layout_json.viewport_height {
-            layout.viewport_height = finite_positive(height, "layout.viewport_height")?;
-        }
-        if let Some(backend) = layout_json.flowchart_elk_backend.as_deref() {
-            layout.flowchart_elk_backend = match normalize_option(backend).as_str() {
-                "source-ported" | "source_ported" | "source" => FlowchartElkBackend::SourcePorted,
-                "compat" => FlowchartElkBackend::Compat,
-                other => {
-                    return Err(BindingError::new(
-                        BindingStatus::InvalidArgument,
-                        format!("unsupported layout.flowchart_elk_backend: {other}"),
-                    ));
-                }
-            };
+        if let Some(height) = layout_json.container_height {
+            layout.container_height = finite_positive(height, "layout.container_height")?;
         }
     }
     renderer = renderer.with_layout_options(layout);

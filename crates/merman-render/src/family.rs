@@ -2,6 +2,7 @@ use crate::environment::RenderSession;
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, Result};
 use merman_core::diagrams;
 use merman_core::models::class_diagram::ClassDiagram;
@@ -17,10 +18,12 @@ pub enum RenderFamilyKind {
     State,
     Sequence,
     Flowchart,
+    Swimlane,
     Architecture,
     Class,
     C4,
     Cynefin,
+    Wardley,
     Railroad,
     Kanban,
     Gantt,
@@ -52,10 +55,12 @@ impl RenderFamilyKind {
             Self::State => "state",
             Self::Sequence => "sequence",
             Self::Flowchart => "flowchart",
+            Self::Swimlane => "swimlane",
             Self::Architecture => "architecture",
             Self::Class => "class",
             Self::C4 => "c4",
             Self::Cynefin => "cynefin",
+            Self::Wardley => "wardley",
             Self::Railroad => "railroad",
             Self::Kanban => "kanban",
             Self::Gantt => "gantt",
@@ -119,12 +124,15 @@ impl<S: BuiltinRenderSemantic, L> FamilyPair<S, L> {
 #[derive(Debug)]
 pub(crate) enum BuiltinFamilyArtifact {
     Error(Box<FamilyPair<diagrams::error_diagram::ErrorDiagramRenderModel, ErrorDiagramLayout>>),
+    #[cfg(feature = "cytoscape-layout")]
     Mindmap(Box<FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>>),
     State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
     Sequence(
         Box<FamilyPair<diagrams::sequence::SequenceDiagramRenderModel, SequenceDiagramLayout>>,
     ),
     Flowchart(Box<FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>>),
+    Swimlane(Box<FamilyPair<diagrams::flowchart::FlowchartModel, SwimlaneLayout>>),
+    #[cfg(feature = "cytoscape-layout")]
     Architecture(
         Box<
             FamilyPair<
@@ -136,6 +144,7 @@ pub(crate) enum BuiltinFamilyArtifact {
     Class(Box<FamilyPair<ClassDiagram, ClassDiagramLayout>>),
     C4(Box<FamilyPair<diagrams::c4::C4DiagramRenderModel, C4DiagramLayout>>),
     Cynefin(Box<FamilyPair<diagrams::cynefin::CynefinDiagramRenderModel, CynefinDiagramLayout>>),
+    Wardley(Box<FamilyPair<diagrams::wardley::WardleyDiagramRenderModel, WardleyDiagramLayout>>),
     Railroad(
         Box<FamilyPair<diagrams::railroad::RailroadDiagramRenderModel, RailroadDiagramLayout>>,
     ),
@@ -192,7 +201,9 @@ pub(crate) enum BuiltinFamilyArtifact {
 enum LayoutProjection<'a> {
     BlockDiagram(&'a BlockDiagramLayout),
     RequirementDiagram(&'a RequirementDiagramLayout),
+    #[cfg(feature = "cytoscape-layout")]
     ArchitectureDiagram(&'a ArchitectureDiagramLayout),
+    #[cfg(feature = "cytoscape-layout")]
     MindmapDiagram(&'a MindmapDiagramLayout),
     SankeyDiagram(&'a SankeyDiagramLayout),
     RadarDiagram(&'a RadarDiagramLayout),
@@ -202,6 +213,7 @@ enum LayoutProjection<'a> {
     QuadrantChartDiagram(&'a QuadrantChartDiagramLayout),
     #[serde(rename = "FlowchartV2")]
     Flowchart(&'a FlowchartLayout),
+    SwimlaneDiagram(&'a SwimlaneLayout),
     #[serde(rename = "StateDiagramV2")]
     StateDiagram(&'a StateDiagramLayout),
     #[serde(rename = "ClassDiagramV2")]
@@ -219,6 +231,7 @@ enum LayoutProjection<'a> {
     IshikawaDiagram(&'a IshikawaDiagramLayout),
     EventModelingDiagram(&'a EventModelingDiagramLayout),
     CynefinDiagram(&'a CynefinDiagramLayout),
+    WardleyDiagram(&'a WardleyDiagramLayout),
     RailroadDiagram(&'a RailroadDiagramLayout),
     GanttDiagram(&'a GanttDiagramLayout),
     C4Diagram(&'a C4DiagramLayout),
@@ -244,14 +257,18 @@ impl BuiltinFamilyArtifact {
     pub fn kind(&self) -> RenderFamilyKind {
         match self {
             Self::Error(_) => RenderFamilyKind::Error,
+            #[cfg(feature = "cytoscape-layout")]
             Self::Mindmap(_) => RenderFamilyKind::Mindmap,
             Self::State(_) => RenderFamilyKind::State,
             Self::Sequence(_) => RenderFamilyKind::Sequence,
             Self::Flowchart(_) => RenderFamilyKind::Flowchart,
+            Self::Swimlane(_) => RenderFamilyKind::Swimlane,
+            #[cfg(feature = "cytoscape-layout")]
             Self::Architecture(_) => RenderFamilyKind::Architecture,
             Self::Class(_) => RenderFamilyKind::Class,
             Self::C4(_) => RenderFamilyKind::C4,
             Self::Cynefin(_) => RenderFamilyKind::Cynefin,
+            Self::Wardley(_) => RenderFamilyKind::Wardley,
             Self::Railroad(_) => RenderFamilyKind::Railroad,
             Self::Kanban(_) => RenderFamilyKind::Kanban,
             Self::Gantt(_) => RenderFamilyKind::Gantt,
@@ -282,14 +299,18 @@ impl BuiltinFamilyArtifact {
     ) -> merman_core::Result<serde_json::Value> {
         match self {
             Self::Error(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "cytoscape-layout")]
             Self::Mindmap(pair) => pair.compatibility_json(metadata),
             Self::State(pair) => pair.compatibility_json(metadata),
             Self::Sequence(pair) => pair.compatibility_json(metadata),
             Self::Flowchart(pair) => pair.compatibility_json(metadata),
+            Self::Swimlane(pair) => pair.compatibility_json(metadata),
+            #[cfg(feature = "cytoscape-layout")]
             Self::Architecture(pair) => pair.compatibility_json(metadata),
             Self::Class(pair) => pair.compatibility_json(metadata),
             Self::C4(pair) => pair.compatibility_json(metadata),
             Self::Cynefin(pair) => pair.compatibility_json(metadata),
+            Self::Wardley(pair) => pair.compatibility_json(metadata),
             Self::Railroad(pair) => pair.compatibility_json(metadata),
             Self::Kanban(pair) => pair.compatibility_json(metadata),
             Self::Gantt(pair) => pair.compatibility_json(metadata),
@@ -317,14 +338,18 @@ impl BuiltinFamilyArtifact {
     fn layout_projection(&self) -> LayoutProjection<'_> {
         match self {
             Self::Error(pair) => LayoutProjection::ErrorDiagram(pair.layout()),
+            #[cfg(feature = "cytoscape-layout")]
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
             Self::Flowchart(pair) => LayoutProjection::Flowchart(pair.layout()),
+            Self::Swimlane(pair) => LayoutProjection::SwimlaneDiagram(pair.layout()),
+            #[cfg(feature = "cytoscape-layout")]
             Self::Architecture(pair) => LayoutProjection::ArchitectureDiagram(pair.layout()),
             Self::Class(pair) => LayoutProjection::ClassDiagram(pair.layout()),
             Self::C4(pair) => LayoutProjection::C4Diagram(pair.layout()),
             Self::Cynefin(pair) => LayoutProjection::CynefinDiagram(pair.layout()),
+            Self::Wardley(pair) => LayoutProjection::WardleyDiagram(pair.layout()),
             Self::Railroad(pair) => LayoutProjection::RailroadDiagram(pair.layout()),
             Self::Kanban(pair) => LayoutProjection::KanbanDiagram(pair.layout()),
             Self::Gantt(pair) => LayoutProjection::GanttDiagram(pair.layout()),
@@ -610,7 +635,6 @@ pub fn prepare(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.use_manatee_layout,
                 )
             })?)
         }
@@ -640,6 +664,18 @@ pub fn prepare(
                 )
             })?)
         }
+        RenderSemanticModel::Flowchart(model)
+            if meta.effective_config.get_str("layout") == Some("swimlane") =>
+        {
+            BuiltinFamilyArtifact::Swimlane(prepare_pair(model, |model| {
+                crate::swimlane::layout_swimlane_typed(
+                    model,
+                    &meta.effective_config,
+                    execution.text_measurer(),
+                    execution.math_renderer(),
+                )
+            })?)
+        }
         RenderSemanticModel::Flowchart(model) => {
             BuiltinFamilyArtifact::Flowchart(prepare_pair(model, |model| {
                 crate::layout_flowchart_typed_by_engine(
@@ -657,7 +693,6 @@ pub fn prepare(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.use_manatee_layout,
                     execution.ambient_seed(),
                 )
             })?)
@@ -684,8 +719,8 @@ pub fn prepare(
                     model,
                     effective_config,
                     execution.text_measurer(),
-                    execution.viewport_width,
-                    execution.viewport_height,
+                    execution.container_width,
+                    execution.container_height,
                 )
             })?)
         }
@@ -693,6 +728,16 @@ pub fn prepare(
             BuiltinFamilyArtifact::Cynefin(prepare_pair(model, |model| {
                 crate::cynefin::layout_cynefin_diagram_typed(
                     model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
+            })?)
+        }
+        RenderSemanticModel::Wardley(model) => {
+            BuiltinFamilyArtifact::Wardley(prepare_pair(model, |model| {
+                crate::wardley::layout_wardley_diagram_typed(
+                    model,
+                    title,
                     effective_config,
                     execution.text_measurer(),
                 )
@@ -723,6 +768,7 @@ pub fn prepare(
                     model,
                     effective_config,
                     execution.text_measurer(),
+                    execution.container_width,
                 )
             })?)
         }

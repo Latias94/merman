@@ -57,6 +57,7 @@ typedef struct MermanMeasureProbe {
     size_t html_like;
     size_t break_spaces;
     size_t reset_calls;
+    size_t operations[MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT + 1];
 } MermanMeasureProbe;
 
 static MermanHostTextMeasureResult smoke_measure_text(
@@ -64,12 +65,18 @@ static MermanHostTextMeasureResult smoke_measure_text(
     void* user_data
 ) {
     if (user_data == NULL) {
-        MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
+        MermanHostTextMeasureResult fallback = {0};
         return fallback;
     }
 
     MermanMeasureProbe* probe = (MermanMeasureProbe*)user_data;
     probe->calls += 1;
+    if (
+        request.operation >= MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE &&
+        request.operation <= MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT
+    ) {
+        probe->operations[request.operation] += 1;
+    }
     if (request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE) {
         probe->html_like += 1;
     }
@@ -83,16 +90,65 @@ static MermanHostTextMeasureResult smoke_measure_text(
         if (request.has_max_width && request.max_width > 0.0 && natural_width > request.max_width) {
             width = request.max_width;
         }
-        MermanHostTextMeasureResult measured = {
-            1,
-            width,
-            request.line_height > 0.0 ? request.line_height : request.font_size,
-            1
-        };
+        MermanHostTextMeasureResult measured = {0};
+        measured.handled = 1;
+        double height = request.line_height > 0.0 ? request.line_height : request.font_size;
+        switch (request.operation) {
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS:
+                measured.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
+                measured.width = width;
+                measured.height = height;
+                measured.line_count = 1;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH:
+                measured.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                measured.length = width;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT:
+                measured.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                measured.length = height;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET:
+                measured.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                measured.length = request.operation ==
+                    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET
+                    ? -2.0
+                    : -1.0;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG:
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X:
+                measured.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS;
+                measured.bbox_left = natural_width / 2.0;
+                measured.bbox_right = natural_width / 2.0;
+                break;
+            case MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH:
+                measured.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH;
+                measured.width = width;
+                measured.height = height;
+                measured.raw_width = natural_width;
+                measured.line_count = 1;
+                measured.has_raw_width = 1;
+                break;
+            default:
+                measured.handled = 0;
+                break;
+        }
         return measured;
     }
 
-    MermanHostTextMeasureResult fallback = {0, 0.0, 0.0, 0};
+    MermanHostTextMeasureResult fallback = {0};
     return fallback;
 }
 
@@ -228,6 +284,70 @@ int merman_c_consumer_smoke(MermanApi api) {
     }
     if (api.host_text_measure_result_struct_size() != sizeof(MermanHostTextMeasureResult)) {
         return 8;
+    }
+
+    static const int text_measurement_operations[] = {
+        MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET,
+        MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT,
+    };
+    const size_t text_measurement_operation_count =
+        sizeof(text_measurement_operations) / sizeof(text_measurement_operations[0]);
+    if (text_measurement_operation_count != 19) {
+        return 9;
+    }
+    for (size_t operation = 0; operation < text_measurement_operation_count; operation += 1) {
+        if (text_measurement_operations[operation] != (int)operation) {
+            return 9;
+        }
+    }
+
+    MermanMeasureProbe operation_probe = {0};
+    MermanHostTextMeasureRequest operation_request = {0};
+    operation_request.text = source;
+    operation_request.text_len = sizeof(source) - 1;
+    operation_request.font_size = 16.0;
+    operation_request.line_height = 18.0;
+    operation_request.operation =
+        MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET;
+    MermanHostTextMeasureResult operation_result =
+        smoke_measure_text(operation_request, &operation_probe);
+    if (
+        !operation_result.handled ||
+        operation_result.result_kind != MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH ||
+        operation_result.length >= 0.0 ||
+        operation_probe.operations[
+            MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET
+        ] != 1
+    ) {
+        return 10;
+    }
+
+    operation_request.operation = MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT;
+    operation_result = smoke_measure_text(operation_request, &operation_probe);
+    if (
+        !operation_result.handled ||
+        operation_result.result_kind != MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH ||
+        operation_result.length != 18.0 ||
+        operation_probe.operations[MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT] != 1
+    ) {
+        return 11;
     }
 
     rc = api.render_enabled
@@ -495,7 +615,7 @@ int merman_c_consumer_smoke(MermanApi api) {
     }
 
     if (api.render_enabled) {
-        MermanMeasureProbe probe = {0, 0, 0, 0, 0};
+        MermanMeasureProbe probe = {0};
         rc = expect_empty_ok(
             api.engine_set_text_measure_callback(engine.engine, smoke_measure_text, &probe),
             api.buffer_free
@@ -514,7 +634,12 @@ int merman_c_consumer_smoke(MermanApi api) {
             api.engine_free(engine.engine);
             return rc;
         }
-        if (probe.calls == 0 || probe.handled == 0 || probe.html_like == 0) {
+        if (
+            probe.calls == 0 ||
+            probe.handled == 0 ||
+            probe.html_like == 0 ||
+            probe.operations[MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED] == 0
+        ) {
             api.engine_free(engine.engine);
             return 80;
         }

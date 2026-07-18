@@ -2,12 +2,54 @@
 
 use crate::XtaskError;
 use crate::cmd::compare::{
-    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
-    DiagramVerificationFact, ObservedRenderOperations, compare_render_environment, run_svg_compare,
-    sanitize_svg_id, write_compare_result_section, write_notes_section,
+    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
+    CompareRunOptions, CompareRunResult, DiagramVerificationFact, ObservedRenderOperations,
+    run_svg_compare, sanitize_svg_id, write_compare_result_section, write_notes_section,
     write_verification_policy_metadata,
 };
 use std::fmt::Write as _;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GanttBaselineRenderer {
+    MermaidCli,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PageViewportWidthPx(f64);
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ContainerWidthPx(f64);
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct GanttBaselineContainerProfile {
+    renderer: GanttBaselineRenderer,
+    page_viewport_width: PageViewportWidthPx,
+    body_margin_inline_start_px: f64,
+    body_margin_inline_end_px: f64,
+}
+
+impl GanttBaselineContainerProfile {
+    const MERMAID_CLI: Self = Self {
+        renderer: GanttBaselineRenderer::MermaidCli,
+        page_viewport_width: PageViewportWidthPx(1_200.0),
+        body_margin_inline_start_px: 8.0,
+        body_margin_inline_end_px: 8.0,
+    };
+
+    fn resolved_container_width(self) -> ContainerWidthPx {
+        ContainerWidthPx(
+            self.page_viewport_width.0
+                - self.body_margin_inline_start_px
+                - self.body_margin_inline_end_px,
+        )
+    }
+
+    fn layout_options(self) -> merman::render::LayoutOptions {
+        let mut options = crate::cmd::svg_compare_layout_opts();
+        options.container_width = self.resolved_container_width().0;
+        options
+    }
+}
 
 pub(super) fn compare_gantt_args(
     fact: DiagramVerificationFact,
@@ -15,12 +57,14 @@ pub(super) fn compare_gantt_args(
 ) -> Result<(), XtaskError> {
     let request = CompareRequest::parse_for_fact(args, fact)?;
     compare_gantt_request(fact, request)
+        .map(|_| ())
+        .map_err(CompareRunFailure::into_error)
 }
 
 pub(super) fn compare_gantt_request(
     fact: DiagramVerificationFact,
     request: CompareRequest,
-) -> Result<(), XtaskError> {
+) -> CompareRunResult {
     let dom_mode = request.dom_mode.as_deref().unwrap_or(fact.default_dom_mode);
     let dom_decimals = request.dom_decimals.unwrap_or(3);
 
@@ -31,20 +75,17 @@ pub(super) fn compare_gantt_request(
     //
     // Override via `MERMAN_GANTT_BASELINE_LOCAL_OFFSET_MINUTES` if the baseline corpus is ever
     // regenerated under a different timezone.
-    let baseline_local_offset_minutes: i32 =
-        std::env::var("MERMAN_GANTT_BASELINE_LOCAL_OFFSET_MINUTES")
-            .ok()
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(480);
+    let baseline_local_offset_minutes = gantt_baseline_local_offset_minutes();
 
     let engine = crate::cmd::svg_compare_engine()
         .with_fixed_local_offset_minutes(Some(baseline_local_offset_minutes));
-    let layout_opts = crate::cmd::svg_compare_layout_opts();
-    let environment =
-        gantt_compare_environment(&request, baseline_local_offset_minutes).map_err(|err| {
-            XtaskError::SvgCompareFailed(format!("invalid Gantt baseline time: {err}"))
-        })?;
-    let mut observed_operations = ObservedRenderOperations::from_environment(&environment)?;
+    let baseline_container = GanttBaselineContainerProfile::MERMAID_CLI;
+    let layout_opts = baseline_container.layout_options();
+    let environment = gantt_compare_environment(baseline_local_offset_minutes)
+        .map_err(|err| XtaskError::SvgCompareFailed(format!("invalid Gantt baseline time: {err}")))
+        .map_err(CompareRunFailure::without_evidence)?;
+    let mut observed_operations = ObservedRenderOperations::from_environment(&environment)
+        .map_err(CompareRunFailure::without_evidence)?;
     let probe_renderer = merman::render::HeadlessRenderer::new()
         .with_engine(engine.clone())
         .with_parse_options(fact.parse_policy.options())
@@ -64,8 +105,14 @@ pub(super) fn compare_gantt_request(
             |_, report, _paths, options| {
                 let _ = writeln!(
                     report,
-                    "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n",
-                    fact.report_title, fact.command, options.dom_mode, options.dom_decimals,
+                    "# {} SVG Comparison\n\n- Upstream: `fixtures/upstream-svgs/gantt/*.svg` (pinned Mermaid baseline)\n- Baseline renderer: `{:?}` (page viewport: `{}`px; resolved container: `{}`px)\n- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n",
+                    fact.report_title,
+                    baseline_container.renderer,
+                    baseline_container.page_viewport_width.0,
+                    baseline_container.resolved_container_width().0,
+                    fact.command,
+                    options.dom_mode,
+                    options.dom_decimals,
                 );
                 write_verification_policy_metadata(report, &request, fact, options.dom_mode, false);
                 report.push('\n');
@@ -108,23 +155,56 @@ pub(super) fn compare_gantt_request(
                         prepared.family_kind()
                     ));
                 }
-                let now_ms = gantt_upstream_today_x(input.upstream_svg).and_then(|today_x| {
+                let prepared = if let Some(snapshot) = gantt_calibrated_time_snapshot(
+                    &prepared,
+                    input.upstream_svg,
+                    baseline_local_offset_minutes,
+                )
+                .map_err(|err| format!("invalid calibrated Gantt baseline time: {err}"))?
+                {
+                    let renderer = merman::render::HeadlessRenderer::new()
+                        .with_engine(engine.clone())
+                        .with_parse_options(fact.parse_policy.options())
+                        .with_layout_options(layout_opts.clone())
+                        .with_environment(
+                            merman::render::RenderEnvironment::parity()
+                                .with_time_snapshot(snapshot),
+                        );
+                    let semantic = renderer
+                        .prepare_semantic_sync(input.text)
+                        .map_err(|err| {
+                            format!(
+                                "calibrated parse failed for {}: {err}",
+                                input.fixture_path.display()
+                            )
+                        })?
+                        .ok_or_else(|| {
+                            format!(
+                                "calibrated parse detected no diagram in {}",
+                                input.fixture_path.display()
+                            )
+                        })?;
+                    semantic.continue_layout().map_err(|err| {
+                        format!(
+                            "calibrated layout failed for {}: {err}",
+                            input.fixture_path.display()
+                        )
+                    })?
+                } else {
                     prepared
-                        .gantt_time_axis_diagnostics()
-                        .and_then(|diagnostics| diagnostics.unix_millis_at_rendered_x(today_x))
-                });
+                };
                 let svg_options = merman::render::SvgRenderOptions {
                     diagram_id: Some(sanitize_svg_id(input.stem)),
-                    current_time_unix_ms: now_ms,
                     ..Default::default()
                 };
                 let rendered = prepared.render_svg_report(&svg_options).map_err(|err| {
                     format!("render failed for {}: {err}", input.fixture_path.display())
                 })?;
-                state.observe(input.stem, rendered.report())?;
+                let render_evidence = state.observe(input.stem, rendered.report())?;
                 let local_svg = rendered.into_svg();
 
                 Ok(CompareFixtureResult::Rendered {
+                    render_evidence,
                     local_svg,
                     compare_dom: true,
                     issues: Vec::new(),
@@ -146,18 +226,47 @@ pub(super) fn compare_gantt_request(
     })
 }
 
-fn gantt_compare_environment(
-    request: &CompareRequest,
+pub(crate) fn gantt_baseline_local_offset_minutes() -> i32 {
+    std::env::var("MERMAN_GANTT_BASELINE_LOCAL_OFFSET_MINUTES")
+        .ok()
+        .and_then(|value| value.parse::<i32>().ok())
+        .unwrap_or(480)
+}
+
+pub(crate) fn gantt_compare_environment(
     baseline_local_offset_minutes: i32,
 ) -> Result<merman::render::RenderEnvironment, merman::render::RenderTimeError> {
+    let snapshot = gantt_baseline_time_snapshot(baseline_local_offset_minutes)?;
+    Ok(merman::render::RenderEnvironment::parity().with_time_snapshot(snapshot))
+}
+
+fn gantt_baseline_time_snapshot(
+    baseline_local_offset_minutes: i32,
+) -> Result<merman::render::RenderTimeSnapshot, merman::render::RenderTimeError> {
     const BASELINE_LOCAL_MIDNIGHT_UTC_MS: i64 = 1_771_113_600_000;
     let unix_ms =
         BASELINE_LOCAL_MIDNIGHT_UTC_MS - i64::from(baseline_local_offset_minutes) * 60_000;
-    let snapshot = merman::render::RenderTimeSnapshot::from_unix_millis(
-        unix_ms,
-        baseline_local_offset_minutes,
-    )?;
-    Ok(compare_render_environment(request).with_time_snapshot(snapshot))
+    merman::render::RenderTimeSnapshot::from_unix_millis(unix_ms, baseline_local_offset_minutes)
+}
+
+pub(crate) fn gantt_calibrated_time_snapshot(
+    prepared: &merman::render::PreparedRender,
+    upstream_svg: &str,
+    baseline_local_offset_minutes: i32,
+) -> Result<Option<merman::render::RenderTimeSnapshot>, merman::render::RenderTimeError> {
+    let now_ms = gantt_upstream_today_x(upstream_svg).and_then(|today_x| {
+        prepared
+            .gantt_time_axis_diagnostics()
+            .and_then(|diagnostics| diagnostics.unix_millis_at_rendered_x(today_x))
+    });
+    now_ms
+        .map(|unix_ms| {
+            merman::render::RenderTimeSnapshot::from_unix_millis(
+                unix_ms,
+                baseline_local_offset_minutes,
+            )
+        })
+        .transpose()
 }
 
 fn gantt_upstream_today_x(upstream_svg: &str) -> Option<f64> {
@@ -181,14 +290,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compare_environment_preserves_gantt_baseline_offset_and_root_policy() {
-        let fact = super::super::diagram_verification_fact("gantt")
-            .copied()
-            .expect("Gantt verification fact");
-        let request = CompareRequest::parse_for_fact(vec!["--no-root-overrides".to_string()], fact)
-            .expect("computed root policy");
+    fn mmdc_baseline_resolves_1200_page_viewport_to_1184_container() {
+        let profile = GanttBaselineContainerProfile::MERMAID_CLI;
 
-        let session = gantt_compare_environment(&request, 480)
+        assert_eq!(profile.page_viewport_width, PageViewportWidthPx(1_200.0));
+        assert_eq!(
+            profile.resolved_container_width(),
+            ContainerWidthPx(1_184.0)
+        );
+        assert_eq!(profile.layout_options().container_width, 1_184.0);
+    }
+
+    #[test]
+    fn compare_environment_preserves_gantt_baseline_offset() {
+        let session = gantt_compare_environment(480)
             .expect("valid Gantt baseline environment")
             .begin_session()
             .expect("begin Gantt baseline session");
@@ -197,10 +312,6 @@ mod tests {
         assert_eq!(
             session.time().local_date(),
             chrono::NaiveDate::from_ymd_opt(2026, 2, 15).unwrap()
-        );
-        assert_eq!(
-            session.root_viewport_override_policy(),
-            merman::render::RootViewportOverridePolicy::ComputedOnly
         );
     }
 

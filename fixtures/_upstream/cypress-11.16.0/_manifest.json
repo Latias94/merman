@@ -1,0 +1,384 @@
+{
+  "schema_version": 1,
+  "mermaid_version": "11.16.0",
+  "mermaid_source_commit": "7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+  "scope": {
+    "description": "Mermaid 11.16 new-family Cypress render calls",
+    "source_specs": [
+      {
+        "path": "cypress/integration/rendering/treeView/treeView.spec.ts",
+        "expected_calls": 15
+      },
+      {
+        "path": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+        "expected_calls": 12
+      },
+      {
+        "path": "cypress/integration/rendering/railroad/railroad.spec.ts",
+        "expected_calls": 9
+      }
+    ]
+  },
+  "entries": [
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "test_name": "should render a simple treeView diagram with quoted labels",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001.mmd",
+      "mmd_sha256": "e3eca43634d7f863673982fd132e036c4c4526001c08ebe28b184d81af660050"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 2,
+      "call": "imgSnapshotTest",
+      "test_name": "should render a complex treeView diagram with quoted labels",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002.mmd",
+      "mmd_sha256": "a38d3ba62d10c850189fd241cc4f4bffda35b7c32d0492e587ea25a8813c64e3"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 3,
+      "call": "imgSnapshotTest",
+      "test_name": "should render with multiple roots and quoted labels",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003.mmd",
+      "mmd_sha256": "cb74cbb3fd4d5f2213389c88ad8ee48798d06fb69684df5ab31decb1aebadb17"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 4,
+      "call": "imgSnapshotTest",
+      "test_name": "should render with custom config and quoted labels",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004.mmd",
+      "mmd_sha256": "1b2f98d6f3eba98efcab26cfb69539758bd01659fbb9d75edc15d84ce5fa0f54"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 5,
+      "call": "imgSnapshotTest",
+      "test_name": "should render bare (unquoted) labels with icons",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_bare_unquoted_labels_with_icons_005.mmd",
+      "mmd_sha256": "6c0ed7d5cc652777211483a3f8631f74746d24e1fddb77b3a1a5d58d23792431"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 6,
+      "call": "imgSnapshotTest",
+      "test_name": "should render :::class annotations for highlighting",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_class_annotations_for_highlighting_006.mmd",
+      "mmd_sha256": "aea6bc9be34757d2a7ac7f6be05168d9ebfae47b68739c9e8ae9cfac1a472fb4"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 7,
+      "call": "imgSnapshotTest",
+      "test_name": "should render ## descriptions",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_descriptions_007.mmd",
+      "mmd_sha256": "3287ef263fcaecfc50b70ae5431d215f052e7b957834adf9ae6c2e5ac7118050"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 8,
+      "call": "imgSnapshotTest",
+      "test_name": "should render icon() overrides from registered iconify packs",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_icon_overrides_from_registered_iconify_packs_008.mmd",
+      "mmd_sha256": "3071e575e774b951b32647d6f708b2149ed36914c86ac95c2e4300488285fdd2"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 9,
+      "call": "imgSnapshotTest",
+      "test_name": "should pick file icons from the filenameIcons and extensionIcons config maps",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_pick_file_icons_from_the_filenameicons_and_extensionicons_009.mmd",
+      "mmd_sha256": "8126215acbea049f0c0d09f8ca821a25043c15bb7d4be017a40d8830bc8f2d03"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 10,
+      "call": "imgSnapshotTest",
+      "test_name": "should resolve unprefixed icon() overrides via defaultIconPack",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_resolve_unprefixed_icon_overrides_via_defaulticonpack_010.mmd",
+      "mmd_sha256": "9e1705a988b70426a4503da50e492b4d5d7921c705eb0cb67dbdefa1924a5de9"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 11,
+      "call": "imgSnapshotTest",
+      "test_name": "should render the unknown-icon fallback for unregistered icons",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_the_unknown_icon_fallback_for_unregistered_icons_011.mmd",
+      "mmd_sha256": "4fc6b35bd70a5779781c16b1a255c09b847478060eafb0a6fc5253ab08dd28fc"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 12,
+      "call": "imgSnapshotTest",
+      "test_name": "should hide default icons with icon(none) and icon()",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_hide_default_icons_with_icon_none_and_icon_012.mmd",
+      "mmd_sha256": "d16cb9703ab60054411f8fc7df2c39168d77d0638814361e928b5b19c3e19d38"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 13,
+      "call": "imgSnapshotTest",
+      "test_name": "should preserve consecutive spaces and unicode in labels",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_preserve_consecutive_spaces_and_unicode_in_labels_013.mmd",
+      "mmd_sha256": "2133e74ef78c33317db543c81e1f741c9ff3f408130ba74cbb323fd9b4f925dc"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 14,
+      "call": "imgSnapshotTest",
+      "test_name": "should render emoji as icons with the default icons hidden",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_emoji_as_icons_with_the_default_icons_hidden_014.mmd",
+      "mmd_sha256": "d9baaefe1f24b96b0a7da40ad420826b820e65a15f75236f0e16b7582f05d02f"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/treeView/treeView.spec.ts",
+      "call_ordinal": 15,
+      "call": "imgSnapshotTest",
+      "test_name": "should render combined annotations",
+      "family": "treeView",
+      "route": "active",
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_combined_annotations_015.mmd",
+      "mmd_sha256": "98f26f192904142c48d95da0f88c48a41b275f77d36b72104fc1c2737d3a8b9e"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "test_name": "should render a simple cynefin diagram with all five domains",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_a_simple_cynefin_diagram_with_all_five_domains_001.mmd",
+      "mmd_sha256": "f852451974b9d7025570b33b097f890b65e942ef22a7828c21cbbb178d4cefc0"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 2,
+      "call": "imgSnapshotTest",
+      "test_name": "should render a cynefin diagram with transitions",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_a_cynefin_diagram_with_transitions_002.mmd",
+      "mmd_sha256": "0a47698534945e3f559fdfab51082c1c16df493cef0b19bbc6b3a532b5095b94"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 3,
+      "call": "imgSnapshotTest",
+      "test_name": "should render an empty cynefin framework",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_an_empty_cynefin_framework_003.mmd",
+      "mmd_sha256": "ddf6d8c645a3e4c47385972e85e7f7d9227565c31ba0ec7f72919363c8cddb06"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 4,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin with many items per domain",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_with_many_items_per_domain_004.mmd",
+      "mmd_sha256": "c54deb58b120a90e04c013f3d3eb4098f4a7e4afd9de9dd6fff4ec387bf44ddd"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 5,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin with config override",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_with_config_override_005.mmd",
+      "mmd_sha256": "fb4a5744a0284c975950a821832b9772f962827f8b2506cf2503c42304b4fb5b"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 6,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin without domain descriptions",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_without_domain_descriptions_006.mmd",
+      "mmd_sha256": "fe496a41b972da9de67afdc962bc5f42fc874f6340990815ff034a0e05773a0b"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 7,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin with theme override",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_with_theme_override_007.mmd",
+      "mmd_sha256": "d151983627107c9a74cddb845bf186b8ae6503faafa45da646c84177aded6bf8"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 8,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin with straight boundaries when amplitude is zero",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_with_straight_boundaries_when_amplitude_is_008.mmd",
+      "mmd_sha256": "0cd8a81a21c16857bcb99d739dd9e6465452eed4f7e2d618756029de824bd8e8"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 9,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin with confusion domain items without overflow",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_with_confusion_domain_items_without_overfl_009.mmd",
+      "mmd_sha256": "e882baf77e7368f3d5d8b9e1ad52a2f18f8def4d4da7397902f3c075c4373df7"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 10,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin with self-loop transitions silently dropped",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_with_self_loop_transitions_silently_droppe_010.mmd",
+      "mmd_sha256": "597acbdcb50f080fa6412672745c6d63db0216d819e2dedbe5ce472dc9682234"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 11,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin with accessibility directives",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_with_accessibility_directives_011.mmd",
+      "mmd_sha256": "adb943a62a736bb4f4eea2b26103804d7c4b90baf12970077e50a1323620a62f"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/cynefin/cynefin.spec.js",
+      "call_ordinal": 12,
+      "call": "imgSnapshotTest",
+      "test_name": "should render cynefin deterministically with an explicit seed override",
+      "family": "cynefin",
+      "route": "active",
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_cynefin_deterministically_with_an_explicit_seed_ov_012.mmd",
+      "mmd_sha256": "7fd8fc1553c2fc1d0f8aa0711ef7c195593ec39cf5508008dbf0cb473fd46700"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 1,
+      "call": "imgSnapshotTest",
+      "test_name": "renders a simple rule",
+      "family": "railroad",
+      "route": "active",
+      "fixture": "fixtures/railroad/upstream_cypress_railroad_spec_renders_a_simple_rule_001.mmd",
+      "mmd_sha256": "12d244ce3dae4a34af166429b28dadbe93c71ab7eb3ac6892dd8af401594706d"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 2,
+      "call": "imgSnapshotTest",
+      "test_name": "renders sequences and choices",
+      "family": "railroad",
+      "route": "active",
+      "fixture": "fixtures/railroad/upstream_cypress_railroad_spec_renders_sequences_and_choices_002.mmd",
+      "mmd_sha256": "64f8ee52ccdb712eef550d4a52717464a1e7e32d211ad6264f6bae2cc6d6dc89"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 3,
+      "call": "imgSnapshotTest",
+      "test_name": "renders optional and repetition operators",
+      "family": "railroad",
+      "route": "active",
+      "fixture": "fixtures/railroad/upstream_cypress_railroad_spec_renders_optional_and_repetition_operators_003.mmd",
+      "mmd_sha256": "8ca3b06bf302f72f0bb99ff943df7b758dc25e7bf1a267fcaf55b99791fcf820"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 4,
+      "call": "imgSnapshotTest",
+      "test_name": "renders multiple rules in one diagram",
+      "family": "railroad",
+      "route": "active",
+      "fixture": "fixtures/railroad/upstream_cypress_railroad_spec_renders_multiple_rules_in_one_diagram_004.mmd",
+      "mmd_sha256": "ba16459943fd5be3f4b3fe40a9cb926ace49b97c9bb990a722d8d2ad1c98775a"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 5,
+      "call": "imgSnapshotTest",
+      "test_name": "adapts to dark theme colors",
+      "family": "railroad",
+      "route": "active",
+      "fixture": "fixtures/railroad/upstream_cypress_railroad_spec_adapts_to_dark_theme_colors_005.mmd",
+      "mmd_sha256": "00d2bdb000c021e8067e139fcf908095850df89012990c99be623d65e1e38502"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 6,
+      "call": "imgSnapshotTest",
+      "test_name": "renders sequences and choices",
+      "family": "railroadEbnf",
+      "route": "active",
+      "fixture": "fixtures/railroadEbnf/upstream_cypress_railroad_spec_renders_sequences_and_choices_006.mmd",
+      "mmd_sha256": "cdfdac8a7017a41f22c8b7e6cbf30304f7a67fa82535b4958e98cde471b30f2f"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 7,
+      "call": "imgSnapshotTest",
+      "test_name": "renders ISO 14977 notation",
+      "family": "railroadEbnf",
+      "route": "active",
+      "fixture": "fixtures/railroadEbnf/upstream_cypress_railroad_spec_renders_iso_14977_notation_007.mmd",
+      "mmd_sha256": "9d05d2aa15b4aeedf35cb938bb71d4afaaa678bfb092804f32193d5051678e7f"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 8,
+      "call": "imgSnapshotTest",
+      "test_name": "renders alternation and repetition",
+      "family": "railroadAbnf",
+      "route": "active",
+      "fixture": "fixtures/railroadAbnf/upstream_cypress_railroad_spec_renders_alternation_and_repetition_008.mmd",
+      "mmd_sha256": "114ca9dc31ac865d35748c0098a0c5226826036d1edba1eda17ffc3cc8b24359"
+    },
+    {
+      "source_spec": "cypress/integration/rendering/railroad/railroad.spec.ts",
+      "call_ordinal": 9,
+      "call": "imgSnapshotTest",
+      "test_name": "renders ordered choice and suffixes",
+      "family": "railroadPeg",
+      "route": "active",
+      "fixture": "fixtures/railroadPeg/upstream_cypress_railroad_spec_renders_ordered_choice_and_suffixes_009.mmd",
+      "mmd_sha256": "c35baff65d9d519cc69bad54f7100cac550dc9a3317533edbadd18275dbf4ef6"
+    }
+  ]
+}

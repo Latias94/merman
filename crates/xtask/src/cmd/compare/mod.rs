@@ -9,6 +9,7 @@ mod layout;
 mod paths;
 mod root;
 mod root_parity;
+mod root_residual_catalog;
 mod xml;
 
 pub(crate) use all::*;
@@ -20,4 +21,5 @@ pub(crate) use layout::*;
 pub(crate) use paths::*;
 pub(crate) use root::*;
 pub(crate) use root_parity::*;
+pub(crate) use root_residual_catalog::*;
 pub(crate) use xml::*;

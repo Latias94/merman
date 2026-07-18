@@ -12,9 +12,9 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
-    source_ported_elk_rendering: bool,
+    uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
-    if source_ported_elk_rendering {
+    if uses_elk_adapter_dom {
         return FlowchartRenderInputs {
             render_edges: model.edges.iter().map(Cow::Borrowed).collect(),
             extra_nodes: Vec::new(),

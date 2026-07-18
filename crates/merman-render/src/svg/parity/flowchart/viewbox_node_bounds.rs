@@ -64,11 +64,6 @@ fn measure_flowchart_layout_node_label(
         &flow_node.classes,
         &flow_node.styles,
     );
-    let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-        ctx.class_defs,
-        &flow_node.classes,
-        &flow_node.styles,
-    );
     Some(crate::flowchart::flowchart_label_metrics_for_layout(
         crate::flowchart::FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
@@ -79,8 +74,6 @@ fn measure_flowchart_layout_node_label(
             wrap_mode: ctx.node_wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-            whole_label_font_style: node_font_style.as_deref(),
         },
     ))
 }
@@ -155,6 +148,19 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                     .get(n.id.as_str())
                     .and_then(|node| node.layout_shape.as_deref())
             {
+                if matches!(shape, "bang" | "cloud") {
+                    let (label_width, label_height) = layout_node_label_size_or_zero(ctx, n);
+                    let geometry = if shape == "bang" {
+                        crate::flowchart::bang_geometry(label_width, label_height, node_padding)
+                    } else {
+                        crate::flowchart::cloud_geometry(label_width, label_height, node_padding)
+                    };
+                    left_hw = (-geometry.rendered_min_x()).max(0.0);
+                    right_hw = geometry.rendered_max_x().max(0.0);
+                    top_hh = (-geometry.rendered_min_y()).max(0.0);
+                    bottom_hh = geometry.rendered_max_y().max(0.0);
+                }
+
                 // Mermaid's flowchart-v2 rhombus node renderer offsets the polygon by
                 // `(-width/2 + 0.5, height/2)` so the diamond outline stays on the same
                 // pixel lattice as other nodes. This makes the DOM bbox slightly asymmetric
@@ -162,29 +168,6 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
                 if shape == "diamond" || shape == "diam" || shape == "rhombus" {
                     left_hw = (left_hw - 0.5).max(0.0);
                     right_hw += 0.5;
-                }
-
-                // Mermaid `stateEnd.ts` renders the framed-circle using a RoughJS ellipse
-                // path with a slightly asymmetric bbox in Chromium.
-                if matches!(shape, "fr-circ" | "framed-circle" | "stop") {
-                    left_hw = 7.0;
-                    right_hw = (n.width - 7.0).max(0.0);
-                }
-
-                // Mermaid `filledCircle.ts` uses a RoughJS circle path (roughness=0) whose
-                // bbox is slightly asymmetric.
-                if matches!(shape, "f-circ") {
-                    left_hw = 7.0;
-                    right_hw = (n.width - 7.0).max(0.0);
-                }
-
-                // Mermaid `crossedCircle.ts` uses a RoughJS circle path with radius=30; its
-                // bbox is slightly asymmetric in Chromium.
-                if matches!(shape, "cross-circ" | "summary" | "crossed-circle") {
-                    left_hw = 30.0;
-                    right_hw = (n.width - 30.0).max(0.0);
-                    top_hh = 30.0;
-                    bottom_hh = 30.0;
                 }
 
                 // Mermaid `curvedTrapezoid.ts` draws its rough path from the

@@ -1,6 +1,125 @@
 import 'package:merman/merman.dart';
 
+MermanTextMeasureResult? _smokeTextMeasurementResult(
+  MermanTextMeasurementOperation? operation, {
+  required double width,
+  required double height,
+}) {
+  return switch (operation) {
+    MermanTextMeasurementOperation.measure ||
+    MermanTextMeasurementOperation.wrapped ||
+    MermanTextMeasurementOperation.mermaidCalculateTextDimensions =>
+      MermanTextMeasureResult(
+        resultKind: MermanTextMeasurementResultKind.metrics,
+        width: width,
+        height: height,
+        lineCount: 1,
+      ),
+    MermanTextMeasurementOperation.computedLength ||
+    MermanTextMeasurementOperation.simpleBBoxWidth ||
+    MermanTextMeasurementOperation.rawBBoxWidth ||
+    MermanTextMeasurementOperation.boundingClientRectWidth ||
+    MermanTextMeasurementOperation.tspanBBoxWidth ||
+    MermanTextMeasurementOperation.wrapProbeBBoxWidth ||
+    MermanTextMeasurementOperation.canvasMeasureTextWidth =>
+      MermanTextMeasureResult(
+        resultKind: MermanTextMeasurementResultKind.length,
+        length: width,
+      ),
+    MermanTextMeasurementOperation.tspanBBoxHeight ||
+    MermanTextMeasurementOperation.simpleBBoxHeight ||
+    MermanTextMeasurementOperation.rawBBoxHeight =>
+      MermanTextMeasureResult(
+        resultKind: MermanTextMeasurementResultKind.length,
+        length: height,
+      ),
+    MermanTextMeasurementOperation.createTextBBoxYOffset ||
+    MermanTextMeasurementOperation.createTextMiddleBBoxYOffset =>
+      const MermanTextMeasureResult(
+        resultKind: MermanTextMeasurementResultKind.length,
+        length: -1,
+      ),
+    MermanTextMeasurementOperation.bboxX ||
+    MermanTextMeasurementOperation.bboxXWithAsciiOverhang ||
+    MermanTextMeasurementOperation.titleBBoxX =>
+      MermanTextMeasureResult(
+        resultKind: MermanTextMeasurementResultKind.horizontalExtents,
+        bboxLeft: width / 2,
+        bboxRight: width / 2,
+      ),
+    MermanTextMeasurementOperation.wrappedWithRawWidth =>
+      MermanTextMeasureResult(
+        resultKind: MermanTextMeasurementResultKind.wrappedWithRawWidth,
+        width: width,
+        height: height,
+        lineCount: 1,
+        rawWidth: width,
+      ),
+    null => null,
+  };
+}
+
+void _assertTextMeasurementContract() {
+  final operationCodes = MermanTextMeasurementOperation.values
+      .map((operation) => operation.code)
+      .toList(growable: false);
+  if (operationCodes.length != 19 ||
+      operationCodes.asMap().entries.any((entry) => entry.key != entry.value)) {
+    throw StateError(
+      'text measurement operation codes are not the contiguous ABI range 0..18',
+    );
+  }
+
+  final dimensions = _smokeTextMeasurementResult(
+    MermanTextMeasurementOperation.mermaidCalculateTextDimensions,
+    width: 42,
+    height: 24,
+  );
+  if (dimensions?.resultKind != MermanTextMeasurementResultKind.metrics) {
+    throw StateError('MermaidCalculateTextDimensions must return metrics');
+  }
+
+  final canvasWidth = _smokeTextMeasurementResult(
+    MermanTextMeasurementOperation.canvasMeasureTextWidth,
+    width: 42,
+    height: 24,
+  );
+  if (canvasWidth?.resultKind != MermanTextMeasurementResultKind.length) {
+    throw StateError('CanvasMeasureTextWidth must return length');
+  }
+
+  final rawBBoxHeight = _smokeTextMeasurementResult(
+    MermanTextMeasurementOperation.rawBBoxHeight,
+    width: 42,
+    height: 24,
+  );
+  if (rawBBoxHeight?.resultKind != MermanTextMeasurementResultKind.length ||
+      rawBBoxHeight?.length != 24) {
+    throw StateError('RawBBoxHeight must return the raw bbox height as length');
+  }
+
+  final yOffset = _smokeTextMeasurementResult(
+    MermanTextMeasurementOperation.createTextBBoxYOffset,
+    width: 42,
+    height: 24,
+  );
+  if (yOffset == null || yOffset.length >= 0) {
+    throw StateError('CreateTextBBoxYOffset must preserve signed lengths');
+  }
+  final middleYOffset = _smokeTextMeasurementResult(
+    MermanTextMeasurementOperation.createTextMiddleBBoxYOffset,
+    width: 42,
+    height: 24,
+  );
+  if (middleYOffset == null || middleYOffset.length >= 0) {
+    throw StateError(
+        'CreateTextMiddleBBoxYOffset must preserve signed lengths');
+  }
+}
+
 void main(List<String> args) {
+  _assertTextMeasurementContract();
+
   final merman = args.isEmpty ? Merman.open() : Merman.openPath(args.single);
   final source = 'flowchart TD\nA[Hello] --> B[World]';
 
@@ -66,16 +185,25 @@ void main(List<String> args) {
   final flowchartCapability = merman.diagramFamilyCapabilities().any(
         (capability) =>
             capability.diagramType == 'flowchart' &&
+            capability.logicalFamilyKind == 'flowchart' &&
             capability.metadataId == 'flowchart' &&
+            capability.renderModelKind == 'flowchart' &&
+            capability.hasDetector &&
             capability.hasSemanticParser &&
-            capability.hasRenderParser,
+            capability.hasEditorParser &&
+            capability.hasCombinedParser &&
+            capability.hasRenderParser &&
+            !capability.hasHeader &&
+            capability.configNamespace == 'flowchart',
       );
   if (!flowchartCapability) {
     throw StateError('diagramFamilyCapabilities smoke failed');
   }
-  if (!merman.lintRuleCatalog().any((rule) =>
-      rule.id == 'merman.authoring.flowchart.explicit_direction' &&
-      rule.evidence.contains('docs/adr/0072-lint-rule-governance.md'))) {
+  if (!merman.lintRuleCatalog().any(
+        (rule) =>
+            rule.id == 'merman.authoring.flowchart.explicit_direction' &&
+            rule.evidence.contains('docs/adr/0072-lint-rule-governance.md'),
+      )) {
     throw StateError('lintRuleCatalog smoke failed');
   }
   if (!merman.supportedThemes().contains('default')) {
@@ -88,16 +216,20 @@ void main(List<String> args) {
   final engine = merman.reusableEngine();
   try {
     final measurementPhases = <MermanTextMeasurementPhase>{};
+    final measurementOperations = <MermanTextMeasurementOperation>{};
     engine.setTextMeasurer((request) {
       if (request.phase != null) {
         measurementPhases.add(request.phase!);
       }
+      if (request.operation != null) {
+        measurementOperations.add(request.operation!);
+      }
       if (request.text == 'Hello' &&
           request.wrapMode == MermanTextWrapMode.htmlLike) {
-        return const MermanTextMeasureResult(
+        return _smokeTextMeasurementResult(
+          request.operation,
           width: 42,
           height: 24,
-          lineCount: 1,
         );
       }
       return null;
@@ -106,8 +238,17 @@ void main(List<String> args) {
     if (!measuredSvg.contains('<svg') || !measuredSvg.contains('Hello')) {
       throw StateError('reusable engine SVG smoke failed');
     }
-    if (measurementPhases.length < 2) {
-      throw StateError('text measurement phases were not observable: $measurementPhases');
+    if (!measurementPhases.contains(MermanTextMeasurementPhase.wrap)) {
+      throw StateError(
+        'text measurement wrap phase was not observable: $measurementPhases',
+      );
+    }
+    if (!measurementOperations
+        .contains(MermanTextMeasurementOperation.wrapped)) {
+      throw StateError(
+        'wrapped text measurement operation was not observable: '
+        '$measurementOperations',
+      );
     }
     final reusableDocument = engine.analyzeDocumentJson(
       documentSource,

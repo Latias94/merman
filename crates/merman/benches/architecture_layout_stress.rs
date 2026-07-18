@@ -1,7 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman::render::{
-    LayoutOptions, RenderEnvironment, TextMeasurementPhase, headless_layout_options,
-};
+use merman::render::{RenderEnvironment, TextMeasurementPhase};
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::architecture::layout_architecture_diagram_typed;
 use std::hint::black_box;
@@ -12,7 +10,6 @@ const ARCH_REASONABLE_HEIGHT: &str =
 fn bench_architecture_layout_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let layout: LayoutOptions = headless_layout_options();
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("render session");
@@ -40,7 +37,6 @@ fn bench_architecture_layout_stress(c: &mut Criterion) {
                     black_box(model),
                     parsed.meta.effective_config.as_value(),
                     &measurer,
-                    layout.use_manatee_layout,
                     ambient_seed,
                 )
                 .expect("layout");

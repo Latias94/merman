@@ -36,8 +36,8 @@ fn c4_public_layout_handles_deep_boundary_chain() {
         model,
         parsed.meta.effective_config.as_value(),
         &measurer,
-        options.viewport_width,
-        options.viewport_height,
+        options.container_width,
+        options.container_height,
     )
     .expect("layout should not depend on recursive boundary traversal");
 

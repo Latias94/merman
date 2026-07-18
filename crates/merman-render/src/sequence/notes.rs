@@ -1,7 +1,8 @@
 use super::constants::SEQUENCE_FRAME_GEOM_PAD_PX;
 use super::metrics::{
-    SequenceMathHeightMode, measure_drawn_svg_like_with_html_br, measure_sequence_label_for_layout,
-    measure_svg_like_with_html_br, wrap_sequence_label_like_mermaid_lines,
+    SequenceDrawnTextNode, SequenceMathHeightMode, measure_drawn_svg_like_with_html_br,
+    measure_sequence_label_for_layout, measure_svg_like_with_html_br,
+    wrap_sequence_label_like_mermaid_lines,
 };
 use crate::math::MathRenderer;
 use crate::model::LayoutNode;
@@ -244,6 +245,7 @@ pub(super) fn layout_sequence_note(
             ctx.measurer,
             &horizontal.effective_text,
             ctx.note_text_style,
+            SequenceDrawnTextNode::Tspan,
         )
     };
     let note_x = horizontal.start_x;

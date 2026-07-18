@@ -85,6 +85,7 @@ impl<'a> SequenceConfigView<'a> {
             font_family,
             font_size,
             font_weight,
+            font_style: None,
         }
     }
 }

@@ -1,15 +1,14 @@
 use super::pipeline::{ScopedCssPostprocessor, SvgPipeline, SvgPostprocessMetadata};
-use crate::environment::{
-    RenderSession, RootViewportOverridePolicy, RoutedTextMeasurer, TextMeasurementPhase,
-};
+use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
+#[cfg(feature = "cytoscape-layout")]
+use crate::model::{ArchitectureDiagramLayout, MindmapDiagramLayout};
 use crate::model::{
-    ArchitectureDiagramLayout, BlockDiagramLayout, Bounds, ClassDiagramLayout,
-    CynefinDiagramLayout, ErDiagramLayout, ErrorDiagramLayout, EventModelingDiagramLayout,
-    FlowchartLayout, InfoDiagramLayout, IshikawaDiagramLayout, LayoutCluster, LayoutNode,
-    MindmapDiagramLayout, PacketDiagramLayout, PieDiagramLayout, QuadrantChartDiagramLayout,
-    RadarDiagramLayout, RailroadDiagramLayout, RequirementDiagramLayout, SankeyDiagramLayout,
-    SequenceDiagramLayout, StateDiagramLayout, TimelineDiagramLayout, TreeViewDiagramLayout,
-    VennDiagramLayout, XyChartDiagramLayout,
+    BlockDiagramLayout, Bounds, ClassDiagramLayout, CynefinDiagramLayout, ErDiagramLayout,
+    ErrorDiagramLayout, EventModelingDiagramLayout, FlowchartLayout, InfoDiagramLayout,
+    IshikawaDiagramLayout, LayoutCluster, LayoutNode, PacketDiagramLayout, PieDiagramLayout,
+    QuadrantChartDiagramLayout, RadarDiagramLayout, RailroadDiagramLayout,
+    RequirementDiagramLayout, SankeyDiagramLayout, SequenceDiagramLayout, StateDiagramLayout,
+    TimelineDiagramLayout, TreeViewDiagramLayout, VennDiagramLayout, XyChartDiagramLayout,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
@@ -60,12 +59,13 @@ mod tree_view;
 mod treemap;
 mod util;
 mod venn;
+mod wardley;
 mod xychart;
 use css::{
     er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_theme_font_size_only,
     info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
 };
-use path_bounds::svg_path_bounds_from_d;
+use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 #[cfg(feature = "cytoscape-layout")]
 pub(crate) fn mindmap_cloud_rendered_bbox_size_px(w: f64, h: f64) -> Option<(f64, f64)> {
     mindmap::mindmap_cloud_rendered_bbox_size_px(w, h)
@@ -87,9 +87,9 @@ use util::{
     theme_color,
 };
 
-const MERMAID_SEQUENCE_BASE_DEFS_11_12_2: &str = include_str!(concat!(
+const PINNED_MERMAID_SEQUENCE_BASE_DEFS: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/assets/sequence_base_defs_11_12_2.svgfrag"
+    "/assets/sequence_base_defs_11_16_0.svgfrag"
 ));
 
 #[derive(Debug, Clone)]
@@ -98,14 +98,6 @@ pub struct SvgRenderOptions {
     pub viewbox_padding: f64,
     /// Optional diagram id used for Mermaid-like marker ids.
     pub diagram_id: Option<String>,
-    /// Optional override for the root SVG `aria-roledescription` attribute.
-    ///
-    /// This is primarily used to reproduce Mermaid's per-header accessibility metadata quirks
-    /// (e.g. `classDiagram-v2` differs from `classDiagram` at Mermaid 11.12.2).
-    pub aria_roledescription: Option<String>,
-    /// Optional request-scoped current time used by SVG-only presentation such as Gantt's today
-    /// marker. This does not change the operation's parse/layout time or environment report.
-    pub current_time_unix_ms: Option<i64>,
 }
 
 impl Default for SvgRenderOptions {
@@ -113,8 +105,6 @@ impl Default for SvgRenderOptions {
         Self {
             viewbox_padding: 8.0,
             diagram_id: None,
-            aria_roledescription: None,
-            current_time_unix_ms: None,
         }
     }
 }
@@ -185,17 +175,11 @@ impl<'a> SvgExecution<'a> {
     }
 
     pub(crate) fn unix_ms(&self) -> i64 {
-        self.request
-            .current_time_unix_ms
-            .unwrap_or_else(|| self.session.time().unix_ms())
+        self.session.time().unix_ms()
     }
 
     pub(crate) const fn seed(&self) -> u64 {
         self.session.seed().seed().get()
-    }
-
-    pub(crate) const fn root_viewport_override_policy(&self) -> RootViewportOverridePolicy {
-        self.session.root_viewport_override_policy()
     }
 
     fn effective_config_value<'b>(
@@ -260,25 +244,21 @@ pub(crate) fn render_builtin_family_artifact(
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
 ) -> Result<String> {
-    let mut scoped_options;
-    let options = if options.aria_roledescription.is_none()
-        && matches!(family, crate::family::BuiltinFamilyArtifact::Flowchart(_))
-    {
-        scoped_options = options.clone();
-        scoped_options.aria_roledescription = Some(diagram_type.to_string());
-        &scoped_options
-    } else {
-        options
-    };
-
     let execution = SvgExecution::new(options, debug, session);
-    let svg = render_builtin_family_artifact_raw(family, effective_config, title, &execution)?;
+    let svg = render_builtin_family_artifact_raw(
+        family,
+        effective_config,
+        diagram_type,
+        title,
+        &execution,
+    )?;
     apply_theme_css(svg, effective_config.as_value(), session)
 }
 
 fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
     effective_config: &merman_core::MermaidConfig,
+    diagram_type: &str,
     title: Option<&str>,
     options: &SvgExecution<'_>,
 ) -> Result<String> {
@@ -305,21 +285,32 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        #[cfg(not(feature = "cytoscape-layout"))]
-        BuiltinFamilyArtifact::Architecture(_) => Err(Error::UnsupportedDiagram {
-            diagram_type: "architecture".to_string(),
-        }),
         BuiltinFamilyArtifact::Flowchart(pair) => {
             flowchart::render_flowchart_svg_model_with_config(
                 pair.layout(),
                 pair.semantic(),
                 effective_config,
+                diagram_type,
                 title,
-                measurer,
                 options,
             )
         }
+        BuiltinFamilyArtifact::Swimlane(pair) => flowchart::render_swimlane_svg_model_with_config(
+            pair.layout(),
+            pair.semantic(),
+            effective_config,
+            diagram_type,
+            title,
+            options,
+        ),
         BuiltinFamilyArtifact::Cynefin(pair) => cynefin::render_cynefin_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            options,
+        ),
+        BuiltinFamilyArtifact::Wardley(pair) => wardley::render_wardley_diagram_svg_model(
             pair.layout(),
             pair.semantic(),
             effective_config_value,
@@ -342,10 +333,6 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
-        #[cfg(not(feature = "cytoscape-layout"))]
-        BuiltinFamilyArtifact::Mindmap(_) => Err(Error::UnsupportedDiagram {
-            diagram_type: "mindmap".to_string(),
-        }),
         BuiltinFamilyArtifact::State(pair) => state::render_state_diagram_svg_model(
             pair.layout(),
             pair.semantic(),
@@ -539,4 +526,24 @@ fn compute_layout_bounds(
     edges: &[crate::model::LayoutEdge],
 ) -> Option<Bounds> {
     layout_debug::compute_layout_bounds(clusters, nodes, edges)
+}
+
+#[cfg(test)]
+mod operation_time_tests {
+    use super::*;
+
+    #[test]
+    fn svg_execution_uses_the_operation_session_time() {
+        let snapshot = crate::environment::RenderTimeSnapshot::from_unix_millis(1_000, 0)
+            .expect("valid operation time");
+        let session = crate::environment::RenderEnvironment::parity()
+            .with_time_snapshot(snapshot)
+            .begin_session()
+            .expect("begin render session");
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::new(&request, &debug, &session);
+
+        assert_eq!(execution.unix_ms(), session.time().unix_ms());
+    }
 }

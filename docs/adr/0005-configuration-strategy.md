@@ -14,17 +14,22 @@ However, fully hand-maintaining a large config schema in Rust is expensive.
 
 - Use a layered configuration approach:
   - A typed layer for fields that affect parsing/detection behavior and compatibility.
-  - A raw map layer to preserve unknown/forward-compatible fields.
-- The baseline source of truth for defaults is the upstream config schema
-  (`packages/mermaid/src/schemas/config.schema.yaml` at the pinned baseline tag).
-- `Engine::default()` loads a generated defaults artifact derived from the pinned upstream schema
-  (see ADR-0019), and then deep-merges user overrides on top.
+  - A raw map layer for trusted site config and retained semantic config.
+- The baseline source of truth is Mermaid's complete default-config construction: the pinned
+  schema, `defaultConfig.ts`, and the `config.ts` clone semantics (see ADR-0019).
+- `Engine::default()` loads the pure upstream JSON value projection, applies Merman's typed hardened
+  site policy, and then applies theme defaults.
 - `Engine::with_site_config(...)` deep-merges user overrides onto the engine's default config
-  to avoid accidentally dropping Mermaid defaults that affect detection (e.g.
-  `class.defaultRenderer`, `flowchart.defaultRenderer`).
-- Do not bake runtime-specific config behavior into `merman-core`.
+  to avoid dropping Mermaid defaults that affect detection, such as `layout` and
+  `flowchart.defaultRenderer`.
+- Sanitize untrusted init directives against Mermaid's generated flat key shape. Unknown, null, and
+  prototype-pollution keys are removed; trusted site config remains forward-compatible.
+- Keep Merman security policy separate from upstream data. The upstream artifact retains Mermaid's
+  six secure keys; the default Engine uses the local ten-key hardened policy.
 
 ## Consequences
 
 - Defaults remain aligned with Mermaid.
 - We can incrementally “type” more config fields as needed without breaking consumers.
+- JSON value parity no longer loses legal function or `undefined` keys, because directive shape is
+  generated and verified separately.

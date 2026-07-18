@@ -1,0 +1,56 @@
+{
+  "diagramType": "railroad",
+  "layout": {
+    "RailroadDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 146.04,
+        "max_y": 86.8
+      },
+      "diagram_type": "railroad",
+      "width": 146.04,
+      "height": 86.8,
+      "use_max_width": true,
+      "rules": [
+        {
+          "name": "digit",
+          "x": 0.0,
+          "y": 10.0,
+          "width": 126.04,
+          "height": 58.8,
+          "baseline_y": 20.0,
+          "name_width": 62.08,
+          "definition_x": 82.08,
+          "start_marker_x": 62.08,
+          "end_marker_x": 121.04,
+          "marker_radius": 5.0,
+          "elements": [
+            {
+              "kind": "terminal",
+              "label": "0",
+              "x": 82.08,
+              "y": 1.2,
+              "width": 28.96,
+              "height": 37.6,
+              "text_x": 14.48,
+              "text_y": 18.8
+            }
+          ],
+          "paths": [
+            {
+              "x": 0.0,
+              "y": 0.0,
+              "d": "M 67.08 20 L 82.08 20"
+            },
+            {
+              "x": 0.0,
+              "y": 0.0,
+              "d": "M 111.04 20 L 116.04 20"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

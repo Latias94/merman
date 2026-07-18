@@ -147,6 +147,9 @@ const PYTHON_PACKAGE_INIT: &str = concat!(
     "        MermanTextDirection,\n",
     "        MermanTextMeasureRequest,\n",
     "        MermanTextMeasureResult,\n",
+    "        MermanTextMeasurementOperation,\n",
+    "        MermanTextMeasurementPhase,\n",
+    "        MermanTextMeasurementResultKind,\n",
     "        MermanTextMeasurer,\n",
     "        MermanTextWhiteSpace,\n",
     "        MermanTextWrapMode,\n",
@@ -172,6 +175,9 @@ const PYTHON_PACKAGE_INIT: &str = concat!(
     "    \"MermanTextDirection\",\n",
     "    \"MermanTextMeasureRequest\",\n",
     "    \"MermanTextMeasureResult\",\n",
+    "    \"MermanTextMeasurementOperation\",\n",
+    "    \"MermanTextMeasurementPhase\",\n",
+    "    \"MermanTextMeasurementResultKind\",\n",
     "    \"MermanTextMeasurer\",\n",
     "    \"MermanTextWhiteSpace\",\n",
     "    \"MermanTextWrapMode\",\n",
@@ -258,6 +264,23 @@ fn print_usage() {
 mod tests {
     use super::*;
 
+    fn assert_text_measurement_protocol_exports(init: &str) {
+        for name in [
+            "MermanTextMeasurementOperation",
+            "MermanTextMeasurementPhase",
+            "MermanTextMeasurementResultKind",
+        ] {
+            assert!(
+                init.contains(&format!("        {name},\n")),
+                "generated package shim must import {name}"
+            );
+            assert!(
+                init.contains(&format!("    \"{name}\",\n")),
+                "generated package shim must include {name} in __all__"
+            );
+        }
+    }
+
     #[test]
     fn ensure_init_file_creates_missing_managed_shim() {
         let temp = tempfile::tempdir().expect("create tempdir");
@@ -270,6 +293,7 @@ mod tests {
         assert!(init.contains(PYTHON_PACKAGE_INIT_MARKER));
         assert!(init.contains("MermanTextMeasurer"));
         assert!(init.contains("MermanLintRuleCatalogEntry"));
+        assert_text_measurement_protocol_exports(&init);
     }
 
     #[test]
@@ -297,6 +321,7 @@ mod tests {
         assert_eq!(init, PYTHON_PACKAGE_INIT);
         assert!(init.contains("MermanTextMeasureRequest"));
         assert!(init.contains("MermanTextMeasureResult"));
+        assert_text_measurement_protocol_exports(&init);
     }
 
     #[test]

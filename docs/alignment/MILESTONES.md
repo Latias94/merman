@@ -56,19 +56,18 @@ Exit criteria:
   - an algorithmic/layout/measurement improvement, or
   - an ADR that documents an unavoidable upstream ambiguity (rare).
 
-### M3: Reduce fixture-scoped root viewport overrides
+### M3: Eliminate fixture-scoped root viewport overrides
 
 Goal:
 
-- Replace fixture-id keyed viewport overrides with deterministic, topology/semantics-driven logic
-  where feasible.
+- Compute every viewport through deterministic family or emitted-content bounds and shared root
+  algorithms.
 
 Exit criteria:
 
-- Override count decreases while M0 gates remain green.
-- Each override removal is backed by either:
-  - a reusable algorithmic change, or
-  - an ADR explaining why the override remains necessary.
+- No runtime root table or fixture-id lookup remains while M0 gates stay green.
+- Browser-dependent residuals are explicit verification evidence under ADR-0062, never production
+  output policy.
 
 ### M4: “Beyond parity-root” strict SVG XML parity (selective)
 

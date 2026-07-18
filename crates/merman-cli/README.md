@@ -254,9 +254,6 @@ recommendations, and the default `core` profile does not enable Merman authoring
   are treated as normal pipeline termination and do not print a generic I/O diagnostic.
 - `--text-measurer deterministic|vendored` controls text measurement.
 - `--math-renderer none|ratex` controls math label rendering.
-- `--flowchart-elk-backend source-ported|compat` selects the Flowchart ELK backend. The default
-  source-ported backend follows the pinned Mermaid adapter and Eclipse ELK layered port; `compat`
-  keeps the older lightweight alpha fallback available for diagnostics.
 - `--svg-pipeline parity|readable|resvg-safe` selects the SVG output contract for SVG files.
   Raster/PDF formats keep the built-in `resvg-safe` export path.
 - `--suppress-errors` emits an error diagram instead of failing on parse errors.

@@ -48,7 +48,7 @@ The package re-exports the generated UniFFI API:
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 3
+assert engine.abi_version() == 2
 print(engine.package_version())
 
 svg = engine.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
@@ -76,10 +76,33 @@ lint_rules = engine.lint_rule_catalog()
 class Measurer(merman.MermanTextMeasurer):
     def measure(self, request):
         print(request.phase)
+        width = max(len(request.text) * 8.0, 1.0)
+        if request.operation == merman.MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH:
+            return merman.MermanTextMeasureResult(
+                result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+                width=0.0,
+                height=0.0,
+                length=width,
+                line_count=0,
+                bbox_left=None,
+                bbox_right=None,
+                raw_width=None,
+            )
+        if request.operation not in {
+            merman.MermanTextMeasurementOperation.MEASURE,
+            merman.MermanTextMeasurementOperation.WRAPPED,
+            merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+        }:
+            return None
         return merman.MermanTextMeasureResult(
-            width=max(len(request.text) * 8.0, 1.0),
+            result_kind=merman.MermanTextMeasurementResultKind.METRICS,
+            width=width,
             height=max(request.line_height, 1.0),
+            length=0.0,
             line_count=1,
+            bbox_left=None,
+            bbox_right=None,
+            raw_width=None,
         )
 
 reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
@@ -112,11 +135,19 @@ Python GUI or WebView hosts that need label geometry to match their own font sta
 `MermanEngine.reusable_engine_with_text_measurer` when constructing a reusable engine, or call
 `MermanReusableEngine.set_text_measurer` on an existing reusable engine. Use
 `MermanReusableEngine.clear_text_measurer` to restore the engine's original built-in measurer.
-Inspect `request.phase` to distinguish layout, wrap, SVG bbox, computed-length, and visibility
-work. `None`, invalid metrics, and callback exceptions use the operation's vendored fallback for
-that request instead of failing the reusable render/layout call. Follow
+Inspect `request.phase` for the routing stage and `request.operation` for the exact platform
+primitive. Return a record tagged with the matching `MermanTextMeasurementResultKind`: metrics,
+length, horizontal extents, or wrapped metrics with raw width. `None`, wrong-kind or invalid
+results, and callback exceptions use the operation's vendored fallback for that request instead of
+failing the reusable render/layout call. Follow
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
 shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
+ABI 2 exposes 19 text-measurement operations with contiguous codes 0 through 18.
+`CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` returns the signed `length` for Architecture's
+`createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
+`CREATE_TEXT_B_BOX_Y_OFFSET` remains the ordinary createText probe; the two operations are not
+interchangeable and both may return a finite negative value. `RAW_B_BOX_HEIGHT` returns the
+non-negative height from a direct raw SVG `<text>.getBBox()` probe.
 
 ## Verification
 
@@ -136,7 +167,9 @@ it, imports `merman` with Python, then calls `MermanEngine.render_svg`,
 `MermanReusableEngine.analyze_document_json`,
 `MermanReusableEngine.analyze_document_facts_json`, `MermanReusableEngine.set_text_measurer`,
 `MermanReusableEngine.clear_text_measurer`, `MermanEngine.abi_version`, `MermanEngine.package_version`,
-and checks `MermanError.Binding` fields for invalid options JSON.
+and checks `MermanError.Binding` fields for invalid options JSON. The generated-package smoke also
+asserts ABI 2, all 19 operation variants, a distinct signed
+`CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` callback result, and the `RAW_B_BOX_HEIGHT` variant.
 
 ## Build A Local Wheel
 

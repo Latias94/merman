@@ -166,6 +166,7 @@ pub fn foreign_object_label_fallback_svg_text(
                         font_family: Some(font_family.clone()),
                         font_size,
                         font_weight: font_weight.clone(),
+                        font_style: None,
                     };
                     let wrap_width = foreign_object_html_soft_wrap_width(tag, inner);
                     let lines = wrap_html_lines_to_width(

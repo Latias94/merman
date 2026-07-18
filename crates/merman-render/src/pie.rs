@@ -379,11 +379,13 @@ pub fn layout_pie_diagram_typed(
         font_family: None,
         font_size: 17.0,
         font_weight: None,
+        font_style: None,
     };
     let title_style = TextStyle {
         font_family: None,
         font_size: 25.0,
         font_weight: None,
+        font_style: None,
     };
     let mut max_legend_width: f64 = 0.0;
     for sec in &model.sections {
@@ -394,15 +396,11 @@ pub fn layout_pie_diagram_typed(
         };
         let trimmed = label.trim_end();
         // Mermaid 11.16 measures pie legend text via a single SVG `<text>` node's
-        // `getBoundingClientRect().width`. In headless mode we cannot reproduce that browser value
-        // exactly, but the single-run/simple-text SVG width path is closer than the generic
-        // multi-run bbox approximation used by Mermaid's wrapped `<tspan>` labels.
+        // `getBoundingClientRect().width`.
         let w = if trimmed.is_empty() {
             0.0
         } else {
-            crate::text::round_to_1_64_px(
-                measurer.measure_svg_simple_text_bbox_width_px(trimmed, &legend_style),
-            )
+            measurer.measure_svg_text_bounding_client_rect_width_px(trimmed, &legend_style)
         };
         max_legend_width = max_legend_width.max(w);
     }
@@ -412,11 +410,7 @@ pub fn layout_pie_diagram_typed(
         .as_deref()
         .map(str::trim_end)
         .filter(|title| !title.is_empty())
-        .map(|title| {
-            crate::text::round_to_1_64_px(
-                measurer.measure_svg_simple_text_bbox_width_px(title, &title_style),
-            )
-        })
+        .map(|title| measurer.measure_svg_text_bounding_client_rect_width_px(title, &title_style))
         .unwrap_or(0.0);
 
     let base_w: f64 = center * 2.0;
@@ -480,9 +474,74 @@ pub fn layout_pie_diagram_typed(
 
 #[cfg(test)]
 mod tests {
+    use crate::text::{TextMeasurer, TextMetrics, TextStyle};
+    use merman_core::diagrams::pie::{PieDiagramRenderModel, PieRenderSection};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingBoundingClientRectMeasurer {
+        calls: Mutex<Vec<String>>,
+    }
+
+    impl TextMeasurer for RecordingBoundingClientRectMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("pie legend and title must use the source-backed browser primitive")
+        }
+
+        fn measure_svg_simple_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            panic!("getBBox must not stand in for getBoundingClientRect")
+        }
+
+        fn measure_svg_text_bounding_client_rect_width_px(
+            &self,
+            text: &str,
+            _style: &TextStyle,
+        ) -> f64 {
+            self.calls
+                .lock()
+                .expect("measurement calls")
+                .push(text.to_string());
+            match text {
+                "Legend" => 123.456_789,
+                "Title" => 1_000.123_456,
+                other => panic!("unexpected measurement: {other}"),
+            }
+        }
+    }
+
     #[test]
     fn pie_legend_geometry_constants_match_mermaid() {
         assert_eq!(super::PIE_LEGEND_RECT_SIZE_PX, 18.0);
         assert_eq!(super::PIE_LEGEND_SPACING_PX, 4.0);
+    }
+
+    #[test]
+    fn pie_legend_and_title_use_exact_bounding_client_rect_results() {
+        let measurer = RecordingBoundingClientRectMeasurer::default();
+        let mut legend_model = PieDiagramRenderModel::default();
+        legend_model.sections = vec![PieRenderSection {
+            label: "Legend".to_string(),
+            value: 1.0,
+        }];
+        let legend_layout =
+            super::layout_pie_diagram_typed(&legend_model, &serde_json::json!({}), &measurer)
+                .expect("legend layout");
+        let legend_max_x = legend_layout.bounds.expect("legend bounds").max_x;
+        assert!((legend_max_x - (512.0 + 123.456_789)).abs() < 1e-12);
+
+        let mut title_model = PieDiagramRenderModel::default();
+        title_model.title = Some("Title".to_string());
+        let title_layout = super::layout_pie_diagram_typed(
+            &title_model,
+            &serde_json::json!({"pie": {"legendPosition": "top"}}),
+            &measurer,
+        )
+        .expect("title layout");
+        let title_max_x = title_layout.bounds.expect("title bounds").max_x;
+        assert!((title_max_x - (225.0 + 1_000.123_456 / 2.0)).abs() < 1e-12);
+        assert_eq!(
+            *measurer.calls.lock().expect("measurement calls"),
+            ["Legend".to_string(), "Title".to_string()]
+        );
     }
 }

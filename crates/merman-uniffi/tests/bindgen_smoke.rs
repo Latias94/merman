@@ -79,6 +79,22 @@ fn generates_python_binding_from_cdylib_metadata() {
         "generated binding should expose MermanTextMeasurementPhase"
     );
     assert!(
+        generated.contains("class MermanTextMeasurementOperation"),
+        "generated binding should expose MermanTextMeasurementOperation"
+    );
+    assert!(
+        generated.contains("CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET"),
+        "generated binding should expose operation 17"
+    );
+    assert!(
+        generated.contains("RAW_B_BOX_HEIGHT"),
+        "generated binding should expose operation 18"
+    );
+    assert!(
+        generated.contains("class MermanTextMeasurementResultKind"),
+        "generated binding should expose MermanTextMeasurementResultKind"
+    );
+    assert!(
         generated.contains("class MermanTextWrapMode"),
         "generated binding should expose MermanTextWrapMode"
     );
@@ -217,7 +233,9 @@ from .merman_uniffi import (
     MermanTextDirection,
     MermanTextMeasureRequest,
     MermanTextMeasureResult,
+    MermanTextMeasurementOperation,
     MermanTextMeasurementPhase,
+    MermanTextMeasurementResultKind,
     MermanTextMeasurer,
     MermanTextWhiteSpace,
     MermanTextWrapMode,
@@ -235,7 +253,9 @@ __all__ = [
     "MermanTextDirection",
     "MermanTextMeasureRequest",
     "MermanTextMeasureResult",
+    "MermanTextMeasurementOperation",
     "MermanTextMeasurementPhase",
+    "MermanTextMeasurementResultKind",
     "MermanTextMeasurer",
     "MermanTextWhiteSpace",
     "MermanTextWrapMode",
@@ -249,8 +269,42 @@ from dataclasses import dataclass
 
 import merman
 
+EXPECTED_TEXT_MEASUREMENT_OPERATIONS = {
+    "MEASURE",
+    "COMPUTED_LENGTH",
+    "B_BOX_X",
+    "B_BOX_X_WITH_ASCII_OVERHANG",
+    "TITLE_B_BOX_X",
+    "SIMPLE_B_BOX_WIDTH",
+    "RAW_B_BOX_WIDTH",
+    "TSPAN_B_BOX_WIDTH",
+    "TSPAN_B_BOX_HEIGHT",
+    "WRAP_PROBE_B_BOX_WIDTH",
+    "SIMPLE_B_BOX_HEIGHT",
+    "WRAPPED",
+    "WRAPPED_WITH_RAW_WIDTH",
+    "BOUNDING_CLIENT_RECT_WIDTH",
+    "CREATE_TEXT_B_BOX_Y_OFFSET",
+    "MERMAID_CALCULATE_TEXT_DIMENSIONS",
+    "CANVAS_MEASURE_TEXT_WIDTH",
+    "CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET",
+    "RAW_B_BOX_HEIGHT",
+}
+
+for exported_name in (
+    "MermanTextMeasurementOperation",
+    "MermanTextMeasurementPhase",
+    "MermanTextMeasurementResultKind",
+):
+    assert hasattr(merman, exported_name), exported_name
+    assert exported_name in merman.__all__, exported_name
+
+operation_type = merman.MermanTextMeasurementOperation
+assert set(operation_type.__members__) == EXPECTED_TEXT_MEASUREMENT_OPERATIONS
+assert {operation.value for operation in operation_type} == set(range(19))
+
 engine = merman.MermanEngine()
-assert engine.abi_version() == 3
+assert engine.abi_version() == 2
 assert engine.package_version()
 source = "---\ntitle: Host measurement phases\n---\nflowchart TD\nA[Hello] --> B[World]"
 
@@ -335,18 +389,119 @@ assert all(rule.configurable for rule in engine.configurable_lint_rule_catalog()
 class Measurer(merman.MermanTextMeasurer):
     calls: int = 0
     phases: set = None
+    operations: set = None
 
     def __post_init__(self):
         self.phases = set()
+        self.operations = set()
 
     def measure(self, request):
         self.calls += 1
         self.phases.add(request.phase)
-        return merman.MermanTextMeasureResult(
-            width=max(len(request.text) * 8.0, 1.0),
-            height=max(request.line_height, 1.0),
-            line_count=1,
+        self.operations.add(request.operation)
+        operation = request.operation.name
+        width = max(len(request.text) * 8.0, 1.0)
+        height = max(request.line_height, 1.0)
+        values = dict(
+            result_kind=merman.MermanTextMeasurementResultKind.METRICS,
+            width=0.0,
+            height=0.0,
+            length=0.0,
+            line_count=0,
+            bbox_left=None,
+            bbox_right=None,
+            raw_width=None,
         )
+        if operation in {"MEASURE", "WRAPPED", "MERMAID_CALCULATE_TEXT_DIMENSIONS"}:
+            values.update(width=width, height=height, line_count=1)
+        elif operation in {
+            "COMPUTED_LENGTH",
+            "SIMPLE_B_BOX_WIDTH",
+            "RAW_B_BOX_WIDTH",
+            "BOUNDING_CLIENT_RECT_WIDTH",
+            "TSPAN_B_BOX_WIDTH",
+            "WRAP_PROBE_B_BOX_WIDTH",
+            "CANVAS_MEASURE_TEXT_WIDTH",
+        }:
+            values.update(
+                result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+                length=width,
+            )
+        elif operation in {
+            "TSPAN_B_BOX_HEIGHT",
+            "SIMPLE_B_BOX_HEIGHT",
+            "RAW_B_BOX_HEIGHT",
+        }:
+            values.update(
+                result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+                length=height,
+            )
+        elif operation in {
+            "CREATE_TEXT_B_BOX_Y_OFFSET",
+            "CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET",
+        }:
+            values.update(
+                result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+                length=(
+                    -2.0
+                    if operation == "CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET"
+                    else -1.0
+                ),
+            )
+        elif operation in {
+            "B_BOX_X",
+            "B_BOX_X_WITH_ASCII_OVERHANG",
+            "TITLE_B_BOX_X",
+        }:
+            values.update(
+                result_kind=merman.MermanTextMeasurementResultKind.HORIZONTAL_EXTENTS,
+                bbox_left=width / 2.0,
+                bbox_right=width / 2.0,
+            )
+        elif operation == "WRAPPED_WITH_RAW_WIDTH":
+            values.update(
+                result_kind=merman.MermanTextMeasurementResultKind.WRAPPED_WITH_RAW_WIDTH,
+                width=width,
+                height=height,
+                line_count=1,
+                raw_width=width,
+            )
+        else:
+            return None
+        return merman.MermanTextMeasureResult(
+            **values,
+        )
+
+
+middle_y_offset = Measurer().measure(
+    type(
+        "MiddleYOffsetRequest",
+        (),
+        {
+            "operation": operation_type.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
+            "phase": merman.MermanTextMeasurementPhase.SVG_B_BOX,
+            "text": "middle",
+            "line_height": 16.0,
+        },
+    )()
+)
+assert middle_y_offset.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
+assert middle_y_offset.length < 0.0
+
+raw_bbox_height = Measurer().measure(
+    type(
+        "RawBBoxHeightRequest",
+        (),
+        {
+            "operation": operation_type.RAW_B_BOX_HEIGHT,
+            "phase": merman.MermanTextMeasurementPhase.SVG_B_BOX,
+            "text": "raw-height",
+            "line_height": 18.0,
+        },
+    )()
+)
+assert raw_bbox_height.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
+assert raw_bbox_height.length == 18.0
 
 
 measurer = Measurer()
@@ -355,6 +510,8 @@ assert "Hello" in reusable.render_svg(source)
 assert measurer.calls > 0
 phase_names = {phase.name for phase in measurer.phases}
 assert {"WRAP", "SVG_B_BOX"}.issubset(phase_names), phase_names
+operation_names = {operation.name for operation in measurer.operations}
+assert "WRAPPED" in operation_names, operation_names
 
 setter_measurer = Measurer()
 reusable = engine.reusable_engine(None)

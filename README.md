@@ -292,8 +292,8 @@ use merman::render::{HeadlessRenderer, RenderEnvironment};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = "flowchart TD; A-->B;";
     let renderer = HeadlessRenderer::new()
-        // The parity environment freezes vendored measurement, time, seed, resource, and root
-        // policy once for each operation.
+        // The parity environment freezes vendored measurement, time, seed, and resource policy
+        // once for each operation.
         .with_environment(RenderEnvironment::parity())
         .with_strict_parsing()
         .with_diagram_id("example-diagram");
@@ -414,6 +414,14 @@ FFI surface supports SVG rendering, ASCII text rendering, semantic JSON, layout 
 JSON, diagnostics-first analysis JSON, document analysis JSON, analysis facts JSON, lint rule
 catalog JSON, binding metadata, host text-measurement callbacks for reusable engines, and explicit
 Rust-owned buffer release.
+
+The current C, UniFFI, and browser WASM text-measurement contract remains prerelease ABI 2 and
+defines 19 exact operation codes from 0 through 18. Operation 17,
+`create-text-middle-bbox-y-offset`, is a signed-length probe for Architecture
+`createFormattedText(...)` under inherited `dominant-baseline="middle"`; it cannot be answered with
+operation 14's ordinary createText bbox y. Operation 18, `raw-bbox-height`, measures the height of
+the emitted raw SVG `<text>` element. Native and generated bindings must match the loaded library's
+ABI and operation contract before rendering.
 
 Validation JSON is a compatibility projection. ADR 0070 defines diagnostics-first analysis JSON as
 the canonical alpha wire payload for lint, CI, and binding integrations; new serialized integrations
@@ -799,8 +807,8 @@ cargo run -p xtask -- verify --strict
 ```
 
 `--strict` adds all-features compilation, the public feature matrix
-(`merman` no-default/render/raster and `merman-core` no-default), workspace clippy, override
-no-growth, nextest, SVG DOM parity, and full SVG root parity.
+(`merman` no-default/render/raster and `merman-core` no-default), workspace clippy, architecture
+guards, nextest, SVG DOM parity, and full SVG root parity.
 
 For a quick “does raster output look sane?” sweep across fixtures (dev-only):
 
@@ -903,11 +911,12 @@ sanitization.
   the canonical typed headless operation. The old public `layout_parsed*`, `render_layouted_svg`,
   raw model/layout SVG helpers, and pass-through family wrappers have been removed.
 - `RenderEnvironment` selects text-measurement phases, math and icon services, time, randomness,
-  resource limits, and generated root-override policy once per operation. `SvgRenderOptions`
-  contains request values; `SvgDebugOptions` contains diagnostics.
+  and resource limits once per operation. `SvgRenderOptions` contains request values;
+  `SvgDebugOptions` contains diagnostics.
 - Every built-in SVG root is planned and emitted by the Root Viewport module. Families own content
-  bounds and source-specific algorithms, while shared policy owns sizing, override resolution,
-  accessibility chrome, escaping, and root attribute order.
+  bounds and source-specific algorithms, while shared policy owns sizing, accessibility chrome,
+  escaping, and root attribute order. Production root bounds are always computed; fixture-id pins
+  are not a render capability.
 - Parity commands render through the same typed operation and keep compatibility JSON checks as
   explicit projection tests, not as a second SVG path.
 - `merman-editor-core` owns protocol-neutral language intelligence for editor surfaces: document

@@ -37,6 +37,14 @@ bindings can label `full`, `partial`, and summary-only ASCII support before rend
 
 The C ABI in `merman-ffi` remains the canonical low-level protocol. UniFFI is a convenience layer for
 Swift, Kotlin, Python, and Ruby package lanes.
+The current generated surface tracks ABI 2 and exposes all 19 text-measurement operations with
+contiguous codes 0 through 18. In particular, `MermaidCalculateTextDimensions` requires a metrics
+result,
+`CanvasMeasureTextWidth` requires a length result, and `CreateTextBBoxYOffset` and
+`CreateTextMiddleBBoxYOffset` preserve finite signed lengths. The middle variant is Architecture's
+`createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`; it cannot be
+answered with the ordinary createText operation. `RawBBoxHeight` returns the height from a direct
+raw SVG `<text>.getBBox()` probe. All other length operations remain non-negative.
 The optional `options_json` argument uses the shared contract documented in
 `docs/bindings/OPTIONS_JSON.md`.
 That contract includes the shared `lint` section for profiles, explicit rule enable/disable, and
@@ -65,9 +73,12 @@ WebView, Core Text, Android, Flutter, or another platform font stack can use
 `MermanReusableEngine` with `MermanTextMeasurer`, either at construction time through
 `MermanEngine::reusable_engine_with_text_measurer` or later through
 `MermanReusableEngine::set_text_measurer`. `MermanReusableEngine::clear_text_measurer` restores the
-engine's original built-in measurer. The callback receives a named measurement phase and should
-return `None` for unsupported or uncached requests. Missing, invalid, and `Err` results all use the
-operation's vendored fallback for that request; the render/layout operation remains usable.
+engine's original built-in measurer. The callback receives both a routing phase and an exact
+`MermanTextMeasurementOperation`. A handled record must set the matching
+`MermanTextMeasurementResultKind` and populate that kind's fields; wrong-kind records are invalid
+and fall back without being coerced. Return `None` for unsupported or uncached requests. Missing,
+invalid, and `Err` results all use the operation's vendored fallback for that request; the
+render/layout operation remains usable.
 
 ## Bindgen Smoke
 
@@ -88,6 +99,8 @@ the package with Python, and calls `MermanEngine.abi_version`, `MermanEngine.pac
 `MermanReusableEngine.analyze_document_json`,
 `MermanReusableEngine.analyze_document_facts_json`, `MermanReusableEngine.set_text_measurer`,
 `MermanReusableEngine.clear_text_measurer`, plus a `MermanError.Binding` error-path check.
+It also verifies ABI 2, all 19 generated operation variants, result kinds, the operation 17
+signed-length callback path, and operation 18 (`RawBBoxHeight`).
 
 Generated Swift, Kotlin, Python, or Ruby files are not committed by this lane. Platform-specific
 package layouts should be split into follow-on lanes.

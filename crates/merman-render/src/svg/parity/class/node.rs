@@ -8,10 +8,8 @@ use web_time::Duration;
 use super::super::{escape_attr_display, escape_xml_into, fmt, fmt_into};
 use super::bounds::{include_path_d, include_xywh};
 use super::label::{
-    bolder_delta_scale_for_svg, class_html_div_style, class_html_label_max_width_px,
-    class_html_label_metrics, class_html_title_metrics, class_svg_label_rect,
-    render_class_html_label, round_to_1_1024_px_ties_to_even, wrap_class_svg_text_like_mermaid,
-    write_class_svg_text_markdown,
+    class_html_div_style, class_html_label_metrics, class_html_title_metrics, class_svg_label_rect,
+    render_class_html_label, wrap_class_svg_text_like_mermaid, write_class_svg_text_markdown,
 };
 use super::rough::{
     class_rough_hachure_rect_paths, class_rough_hand_drawn_line_path,
@@ -130,7 +128,6 @@ pub(super) struct ClassHtmlNodeBodyContext<'a> {
 pub(super) struct ClassSvgNodeBodyContext<'a> {
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
-    pub font_size: f64,
     pub wrap_probe_font_size: f64,
     pub class_padding: f64,
     pub hide_empty_members_box: bool,
@@ -438,45 +435,14 @@ pub(super) fn render_class_html_node_body(
         content_top + padding
     };
 
-    let title_text = decode_entities_minimal_cow(node.text.trim());
-    let mut title_max_width_px = crate::class::class_html_create_text_width_px(
-        title_text.as_ref(),
+    let title_text = node.text.trim();
+    let title_max_width_px = crate::class::class_html_create_text_width_px(
+        title_text,
         ctx.measurer,
         ctx.html_calc_text_style,
     );
-    let title_calc_max_width_px = title_max_width_px;
-    let mut title_metrics = class_html_title_metrics(
-        ctx.measurer,
-        ctx.text_style,
-        title_text.as_ref(),
-        title_max_width_px,
-    );
-    if title_text.chars().count() > 4 && title_metrics.width > 0.0 {
-        title_metrics.width =
-            crate::text::round_to_1_64_px((title_metrics.width - (1.0 / 64.0)).max(0.0));
-    }
-    if let Some(width) = crate::class::class_html_known_rendered_width_override_px(
-        title_text.as_ref(),
-        ctx.text_style,
-        true,
-    ) {
-        title_metrics.width = width;
-    }
-    if title_text.chars().count() == 1
-        && !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`'))
-    {
-        let rendered_title_max_width_px = class_html_label_max_width_px(title_metrics.width, true);
-        title_max_width_px = if crate::class::class_html_known_calc_text_width_override_px(
-            title_text.as_ref(),
-            ctx.html_calc_text_style,
-        )
-        .is_some()
-        {
-            title_calc_max_width_px.min(rendered_title_max_width_px)
-        } else {
-            rendered_title_max_width_px
-        };
-    }
+    let title_metrics =
+        class_html_title_metrics(ctx.measurer, ctx.text_style, title_text, title_max_width_px);
     let title_width = title_metrics.width.max(1.0);
     let title_height = title_metrics.height.max(ctx.line_height).max(1.0);
     let title_x = -title_width / 2.0;
@@ -627,7 +593,7 @@ pub(super) fn render_class_html_node_body(
             width: title_width,
             height: title_height,
             div_style: title_div_style.as_str(),
-            text: title_text.as_ref(),
+            text: title_text,
             include_p: true,
             extra_span_class: Some("markdown-node-label"),
             span_style: Some(ctx.node_style_attr),
@@ -697,29 +663,28 @@ pub(super) fn render_class_svg_node_body(
     if title_text.starts_with('\\') {
         title_text = title_text.trim_start_matches('\\').to_string();
     }
-    let wrapped_title_text =
-        if !(title_text.contains('*') || title_text.contains('_') || title_text.contains('`')) {
-            wrap_class_svg_text_like_mermaid(
-                &title_text,
-                ctx.measurer,
-                ctx.text_style,
-                ctx.wrap_probe_font_size,
-                false,
-            )
-        } else {
-            title_text.clone()
-        };
+    let title_markdown_analysis = crate::class::analyze_class_svg_markdown(&title_text);
+    let wrapped_title_text = if title_markdown_analysis.all_runs_normal() {
+        wrap_class_svg_text_like_mermaid(
+            &title_text,
+            ctx.measurer,
+            ctx.text_style,
+            ctx.wrap_probe_font_size,
+            false,
+        )
+    } else {
+        title_text.clone()
+    };
     let title_lines =
         crate::text::DeterministicTextMeasurer::normalized_text_lines(&wrapped_title_text);
-    let title_has_markdown =
-        title_text.contains('*') || title_text.contains('_') || title_text.contains('`');
-    let mut title_metrics = if title_has_markdown {
+    let title_has_styled_runs = title_markdown_analysis.has_styled_runs;
+    let mut title_metrics = if title_has_styled_runs {
         let title_md = title_lines
             .iter()
             .map(|l| format!("**{l}**"))
             .collect::<Vec<_>>()
             .join("\n");
-        crate::text::measure_markdown_with_flowchart_bold_deltas(
+        crate::text::measure_markdown_with_inline_styles(
             ctx.measurer,
             &title_md,
             ctx.text_style,
@@ -727,50 +692,34 @@ pub(super) fn render_class_svg_node_body(
             WrapMode::SvgLike,
         )
     } else {
-        let mut m = ctx.measurer.measure_wrapped(
+        let bold_title_style = TextStyle {
+            font_family: ctx.text_style.font_family.clone(),
+            font_size: ctx.text_style.font_size,
+            font_weight: Some("bolder".to_string()),
+            font_style: ctx.text_style.font_style.clone(),
+        };
+        ctx.measurer.measure_wrapped(
             &wrapped_title_text,
-            ctx.text_style,
+            &bold_title_style,
             None,
             WrapMode::SvgLike,
-        );
-        let bold_title_style = TextStyle {
-            font_family: ctx.text_style.font_family.clone(),
-            font_size: ctx.text_style.font_size,
-            font_weight: Some("bolder".to_string()),
-        };
-        let delta_px = crate::text::mermaid_default_bold_width_delta_px(
-            wrapped_title_text.as_str(),
-            &bold_title_style,
-        );
-        let scale = bolder_delta_scale_for_svg(ctx.text_style.font_size);
-        if delta_px.is_finite() && delta_px > 0.0 && m.width.is_finite() && m.width > 0.0 {
-            m.width = round_to_1_1024_px_ties_to_even((m.width + delta_px * scale).max(0.0));
-        }
-        m
+        )
     };
-    if !title_has_markdown {
+    if !title_has_styled_runs {
         let bold_title_style = TextStyle {
             font_family: ctx.text_style.font_family.clone(),
             font_size: ctx.text_style.font_size,
             font_weight: Some("bolder".to_string()),
+            font_style: None,
         };
-        if title_lines.len() == 1 && title_lines[0].chars().count() == 1 {
-            title_metrics.width =
-                crate::text::ceil_to_1_64_px(ctx.measurer.measure_svg_text_computed_length_px(
-                    wrapped_title_text.as_str(),
-                    &bold_title_style,
-                ));
-        } else if title_lines.len() > 1 {
-            let mut w = 0.0f64;
-            for line in &title_lines {
-                w = w.max(
-                    ctx.measurer
-                        .measure_svg_text_computed_length_px(line.as_str(), &bold_title_style),
-                );
-            }
-            if w.is_finite() && w > 0.0 {
-                title_metrics.width = crate::text::ceil_to_1_64_px(w);
-            }
+        let width = title_lines.iter().fold(0.0_f64, |width, line| {
+            width.max(
+                ctx.measurer
+                    .measure_svg_tspan_text_bbox_width_px(line, &bold_title_style),
+            )
+        });
+        if width.is_finite() && width > 0.0 {
+            title_metrics.width = width;
         }
     }
     // Annotation group: Mermaid only renders the first annotation.
@@ -781,7 +730,7 @@ pub(super) fn render_class_svg_node_body(
     if let Some(a) = node.annotations.first() {
         let decoded = decode_entities_minimal(a.trim());
         let mut text = format!("\u{00AB}{decoded}\u{00BB}");
-        if !(text.contains('*') || text.contains('_') || text.contains('`')) {
+        if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
             text = wrap_class_svg_text_like_mermaid(
                 &text,
                 ctx.measurer,
@@ -790,7 +739,7 @@ pub(super) fn render_class_svg_node_body(
                 false,
             );
         }
-        let metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+        let metrics = crate::text::measure_markdown_with_inline_styles(
             ctx.measurer,
             &text,
             ctx.text_style,
@@ -823,7 +772,7 @@ pub(super) fn render_class_svg_node_body(
             if text.starts_with('\\') {
                 text = text.trim_start_matches('\\').to_string();
             }
-            if !(text.contains('*') || text.contains('_') || text.contains('`')) {
+            if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
                 text = wrap_class_svg_text_like_mermaid(
                     &text,
                     ctx.measurer,
@@ -832,14 +781,13 @@ pub(super) fn render_class_svg_node_body(
                     false,
                 );
             }
-            let mut metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+            let metrics = crate::text::measure_markdown_with_inline_styles(
                 ctx.measurer,
                 &text,
                 ctx.text_style,
                 None,
                 WrapMode::SvgLike,
             );
-            widen_visibility_prefixed_svg_row(ctx, &text, &mut metrics);
             if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
                 if let Some(cur) = members_rect.as_mut() {
                     cur.union(r);
@@ -868,12 +816,11 @@ pub(super) fn render_class_svg_node_body(
         let mut y_offset = 0.0;
         for m in &node.methods {
             let raw = decode_entities_minimal(m.display_text.trim());
-            let raw_trimmed = raw.trim().to_string();
             let mut text = raw;
             if text.starts_with('\\') {
                 text = text.trim_start_matches('\\').to_string();
             }
-            if !(text.contains('*') || text.contains('_') || text.contains('`')) {
+            if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
                 text = wrap_class_svg_text_like_mermaid(
                     &text,
                     ctx.measurer,
@@ -882,27 +829,13 @@ pub(super) fn render_class_svg_node_body(
                     false,
                 );
             }
-            let mut metrics = crate::text::measure_markdown_with_flowchart_bold_deltas(
+            let metrics = crate::text::measure_markdown_with_inline_styles(
                 ctx.measurer,
                 &text,
                 ctx.text_style,
                 None,
                 WrapMode::SvgLike,
             );
-            widen_visibility_prefixed_svg_row(ctx, &text, &mut metrics);
-            if ctx.font_size == 16.0
-                && raw_trimmed == "+veryLongMethodNameToForceMeasurement()"
-                && ctx
-                    .text_style
-                    .font_family
-                    .as_deref()
-                    .is_some_and(|f| f.to_ascii_lowercase().contains("trebuchet"))
-            {
-                // Upstream class SVG baseline `stress_class_svg_font_size_precedence_025`:
-                // Chromium `getBBox().width` for the wrapped first line is ~2px narrower than
-                // the vendored font metrics model.
-                metrics.width = 241.625;
-            }
             if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
                 if let Some(cur) = methods_rect.as_mut() {
                     cur.union(r);
@@ -970,13 +903,7 @@ pub(super) fn render_class_svg_node_body(
         });
     }
     let bbox = bbox_opt.unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
-    let mut bbox_w = bbox.width().max(0.0);
-    if ctx.font_size >= 20.0 {
-        // Upstream classDiagram SVG-label `shapeSvg.getBBox().width` at larger font sizes can
-        // land one 1/64px step wider than the deterministic bbox union, affecting strict XML
-        // comparisons for members/methods group translations.
-        bbox_w = (bbox_w + (1.0 / 64.0)).max(0.0);
-    }
+    let bbox_w = bbox.width().max(0.0);
     let mut bbox_h = bbox.height().max(0.0);
     let members_rows = node.members.len();
     let methods_rows = node.methods.len();
@@ -1090,37 +1017,6 @@ pub(super) fn render_class_svg_node_body(
     }
 }
 
-fn widen_visibility_prefixed_svg_row(
-    ctx: &ClassSvgNodeBodyContext<'_>,
-    text: &str,
-    metrics: &mut crate::text::TextMetrics,
-) {
-    if ctx.font_size < 20.0 || !metrics.width.is_finite() || metrics.width <= 0.0 {
-        return;
-    }
-    let first_line = crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
-        .into_iter()
-        .find(|l| !l.trim().is_empty());
-    let Some(line) = first_line else {
-        return;
-    };
-    let ch0 = line.trim_start().chars().next();
-    if !matches!(ch0, Some('+' | '-' | '#' | '~')) {
-        return;
-    }
-    let line_w = crate::text::measure_markdown_with_flowchart_bold_deltas(
-        ctx.measurer,
-        line.as_str(),
-        ctx.text_style,
-        None,
-        WrapMode::SvgLike,
-    )
-    .width;
-    if line_w + 1e-6 >= metrics.width {
-        metrics.width = (metrics.width + (1.0 / 64.0)).max(0.0);
-    }
-}
-
 pub(super) fn measure_class_html_node_rows(
     members: &[ClassMember],
     row_metrics: Option<&[crate::text::TextMetrics]>,
@@ -1129,8 +1025,8 @@ pub(super) fn measure_class_html_node_rows(
     let mut raw_height = 0.0;
     let mut rows = Vec::with_capacity(members.len());
     for (idx, member) in members.iter().enumerate() {
-        let text = decode_entities_minimal_cow(member.display_text.trim()).into_owned();
-        let mut max_width_px = crate::class::class_html_create_text_width_px(
+        let text = crate::class::class_member_create_text_input(member);
+        let max_width_px = crate::class::class_html_create_text_width_px(
             text.as_str(),
             ctx.measurer,
             ctx.html_calc_text_style,
@@ -1146,18 +1042,6 @@ pub(super) fn measure_class_html_node_rows(
                     member.css_style.as_str(),
                 )
             });
-        if metrics.width > 0.0
-            && metrics.width < 60.0
-            && !(text.contains('*') || text.contains('_') || text.contains('`'))
-        {
-            max_width_px = class_html_label_max_width_px(metrics.width, false);
-        }
-        if let Some(width) = crate::class::class_html_known_calc_text_width_override_px(
-            text.as_str(),
-            ctx.html_calc_text_style,
-        ) {
-            max_width_px = width + 50;
-        }
         let row_height = metrics.height.max(ctx.line_height).max(1.0);
         let y = raw_height - row_height / 2.0;
         raw_height += row_height;

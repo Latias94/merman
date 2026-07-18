@@ -180,9 +180,8 @@ pub(crate) struct AsciiThemeOptionsJson {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LayoutOptionsJson {
-    pub(crate) viewport_width: Option<f64>,
-    pub(crate) viewport_height: Option<f64>,
-    pub(crate) flowchart_elk_backend: Option<String>,
+    pub(crate) container_width: Option<f64>,
+    pub(crate) container_height: Option<f64>,
 }
 
 #[cfg(feature = "render")]
@@ -191,7 +190,6 @@ pub(crate) struct LayoutOptionsJson {
 pub(crate) struct RenderEnvironmentOptionsJson {
     pub(crate) text_measurement: Option<String>,
     pub(crate) math_renderer: Option<String>,
-    pub(crate) root_viewport_overrides: Option<String>,
 }
 
 #[cfg(feature = "render")]
@@ -366,7 +364,7 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
         )
     })?;
     #[cfg(feature = "render")]
-    reject_legacy_render_environment_fields(&value)?;
+    reject_removed_layout_fields(&value)?;
     let mut options: BindingOptions = serde_json::from_value(value.clone()).map_err(|err| {
         BindingError::new(
             BindingStatus::OptionsJsonError,
@@ -378,13 +376,15 @@ pub(crate) fn parse_options(bytes: &[u8]) -> Result<BindingOptions, BindingError
 }
 
 #[cfg(feature = "render")]
-fn reject_legacy_render_environment_fields(value: &Value) -> Result<(), BindingError> {
+fn reject_removed_layout_fields(value: &Value) -> Result<(), BindingError> {
     let Some(layout) = value.get("layout").and_then(Value::as_object) else {
         return Ok(());
     };
     for (legacy, replacement) in [
         ("text_measurer", "environment.text_measurement"),
         ("math_renderer", "environment.math_renderer"),
+        ("viewport_width", "layout.container_width"),
+        ("viewport_height", "layout.container_height"),
     ] {
         if layout.contains_key(legacy) {
             return Err(BindingError::new(

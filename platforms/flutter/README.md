@@ -16,7 +16,7 @@ not pass a dynamic library path.
 
 ## Compatibility And Release Notes
 
-This package tracks C ABI version 3. The Dart wrapper checks ABI and struct sizes before it opens
+This package tracks C ABI version 2. The Dart wrapper checks ABI and struct sizes before it opens
 the native library, so stale generated code or mismatched native artifacts fail fast at startup.
 
 For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md) and the shared
@@ -122,6 +122,15 @@ fallbacks for labels, and `resvg-safe` for stricter SVG consumers or raster/PDF 
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
 vendored metrics for that request.
+Handled results must set `MermanTextMeasurementResultKind` to the shape required by
+`request.operation`; scalar width/height primitives use the unified `length` field. A wrong kind is
+invalid and falls back instead of being inferred from whichever fields happen to be non-zero.
+ABI 2 exposes 19 exact operations with contiguous codes `0..18`. `rawBBoxHeight` (18) measures the
+height from a direct SVG `<text>.getBBox()` probe and returns a non-negative length.
+`createTextMiddleBBoxYOffset` (17) returns a signed length for Architecture's
+`createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
+`createTextBBoxYOffset` remains the ordinary createText probe; it cannot substitute for the
+middle-baseline operation, and both y-offset operations may return a finite negative value.
 The document-analysis APIs are available both on `Merman` and `MermanReusableEngine` as raw JSON
 and decoded map helpers. Pass the full Markdown/MDX-like document source and a document URI; the URI
 selects the same document parsing behavior used by the C ABI and the other platform wrappers.
@@ -151,6 +160,9 @@ cd platforms/flutter
 dart pub get
 dart run example/smoke.dart ../../target/debug/libmerman_ffi.dylib
 ```
+
+The smoke asserts ABI 2, all 19 operation codes, the `rawBBoxHeight` result, and the distinct signed
+`createTextMiddleBBoxYOffset` result.
 
 Use `../../target/debug/libmerman_ffi.so` on Linux and `../../target/debug/merman_ffi.dll` on
 Windows. In Flutter applications, use `Merman.open()` without a path.

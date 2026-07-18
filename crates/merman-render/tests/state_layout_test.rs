@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+use merman_core::{Engine, MermaidConfig, ParseOptions, RenderSemanticModel};
 use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
 use merman_render::model::StateDiagramLayout;
 use merman_render::state::layout_state_diagram_typed;
@@ -45,6 +45,21 @@ fn deep_state_composite_chain(depth: usize) -> String {
 
 fn layout_state_from_text(text: &str) -> StateDiagramLayout {
     layout_state_from_text_with_options(text, ParseOptions::default())
+}
+
+fn layout_state_from_text_with_engine(engine: Engine, text: &str) -> StateDiagramLayout {
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(text, ParseOptions::default())
+        .expect("parse ok")
+        .expect("diagram detected");
+    let RenderSemanticModel::State(model) = parsed.model else {
+        panic!("expected State render model");
+    };
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+
+    layout_state_diagram_typed(&model, parsed.meta.effective_config.as_value(), &measurer)
+        .expect("typed State layout")
 }
 
 fn layout_state_from_text_with_options(
@@ -121,7 +136,7 @@ fn state_layout_produces_positions_and_routes() {
 }
 
 #[test]
-fn state_start_and_end_have_fixed_size() {
+fn state_start_and_end_use_source_defined_nominal_diameter() {
     let text = "stateDiagram-v2\n[*] --> A\nA --> [*]\n";
     let layout = layout_state_from_text(text);
 
@@ -133,19 +148,18 @@ fn state_start_and_end_have_fixed_size() {
     let (sw, sh) = by_id["root_start"];
     let (ew, eh) = by_id["root_end"];
 
-    // Mermaid@11.12.2:
-    // - `[*]` (start) is treated as a nominal 14x14 circle.
-    // - `[*]` (end) is rendered as a path-based circle whose measured `getBBox().width`
-    //   ends up slightly larger than 14px, and Mermaid feeds that into Dagre.
-    const STATE_START_DIAMETER_PX: f64 = 14.0;
-    const STATE_END_DAGRE_WIDTH_PX_11_12_2: f64 = 14.013_293_266_296_387;
+    // Mermaid 11.16 `stateStart.ts` and `stateEnd.ts` both normalize their source geometry to a
+    // 14px diameter. Browser-specific RoughJS path `getBBox()` floats are a bounded SVG residual,
+    // not a stable layout constant.
+    const STATE_MARKER_DIAMETER_PX: f64 = 14.0;
 
     assert!(
-        (sw - STATE_START_DIAMETER_PX).abs() < 1e-6 && (sh - STATE_START_DIAMETER_PX).abs() < 1e-6
+        (sw - STATE_MARKER_DIAMETER_PX).abs() < 1e-6
+            && (sh - STATE_MARKER_DIAMETER_PX).abs() < 1e-6
     );
     assert!(
-        (ew - STATE_END_DAGRE_WIDTH_PX_11_12_2).abs() < 1e-6
-            && (eh - STATE_START_DIAMETER_PX).abs() < 1e-6
+        (ew - STATE_MARKER_DIAMETER_PX).abs() < 1e-6
+            && (eh - STATE_MARKER_DIAMETER_PX).abs() < 1e-6
     );
 }
 
@@ -179,6 +193,100 @@ A --> B: owns
         false_label.width > true_label.width
             && (false_label.height - true_label.height).abs() > 1e-6,
         "root htmlLabels=false should select SVG-like label metrics over deprecated flowchart=true: false={false_label:?}, true={true_label:?}"
+    );
+}
+
+#[test]
+fn state_layout_preserves_html_min_content_width_for_long_labels() {
+    let layout = layout_state_from_text(
+        r#"stateDiagram-v2
+direction RL
+[*] --> ThisIsAReallyLongStateIdentifierWithNumbers123
+ThisIsAReallyLongStateIdentifierWithNumbers123 --> Done : another-long-label-with-a-veryveryverylongwordthatforceswrapping
+Done --> [*]
+"#,
+    );
+
+    let long_node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "ThisIsAReallyLongStateIdentifierWithNumbers123")
+        .expect("long state node");
+    let long_edge = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "ThisIsAReallyLongStateIdentifierWithNumbers123")
+        .and_then(|edge| edge.label.as_ref())
+        .expect("long transition label");
+
+    assert!(
+        long_node.width > 300.0,
+        "an unbreakable HTML label must expand beyond max-width: {long_node:?}"
+    );
+    assert!(
+        long_edge.width > 250.0,
+        "an unbreakable transition segment must expand the HTML table: {long_edge:?}"
+    );
+}
+
+#[test]
+fn state_layout_reflows_at_the_expanded_html_min_content_width() {
+    let path = workspace_root()
+        .join("fixtures")
+        .join("state")
+        .join("stress_state_font_size_precedence_071.mmd");
+    let text = std::fs::read_to_string(path).expect("font-size precedence fixture");
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "secure": [
+            "secure",
+            "securityLevel",
+            "startOnLoad",
+            "maxTextSize",
+            "suppressErrorRendering",
+            "maxEdges"
+        ]
+    })));
+    let layout = layout_state_from_text_with_engine(engine, &text);
+    let node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "A")
+        .expect("state A");
+
+    assert!(
+        node.width > 160.0,
+        "min-content must be allowed to widen the configured 120px table: {node:?}"
+    );
+    assert_eq!(
+        node.height, 232.0,
+        "the widened table must be reflowed at its actual min-content width"
+    );
+}
+
+#[test]
+fn state_layout_measures_note_markup_as_rendered_html() {
+    let layout = layout_state_from_text(
+        r#"stateDiagram-v2
+A
+note right of A
+  <a href='https://mermaid.js.org/' target='_blank'><code>note about mermaid</code></a><br/>
+  <img src=x onerror=alert(1)>
+end note
+"#,
+    );
+    let note = layout
+        .nodes
+        .iter()
+        .find(|node| node.id.contains("----note-"))
+        .expect("rendered note");
+
+    assert!(
+        (190.0..=220.0).contains(&note.width),
+        "markup must contribute rendered content, not literal tag text: {note:?}"
+    );
+    assert!(
+        note.height <= 120.0,
+        "HTML tags must not be counted as wrapped text lines: {note:?}"
     );
 }
 

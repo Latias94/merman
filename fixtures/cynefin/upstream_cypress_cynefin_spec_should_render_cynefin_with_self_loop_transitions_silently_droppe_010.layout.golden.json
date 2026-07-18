@@ -1,0 +1,105 @@
+{
+  "diagramType": "cynefin",
+  "layout": {
+    "CynefinDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 880.0,
+        "max_y": 680.0
+      },
+      "width": 800.0,
+      "height": 600.0,
+      "padding": 40.0,
+      "total_width": 880.0,
+      "total_height": 680.0,
+      "use_max_width": true,
+      "show_domain_descriptions": true,
+      "boundary_amplitude": 8.0,
+      "domain_layouts": [
+        {
+          "name": "complex",
+          "cx": 200.0,
+          "cy": 150.0,
+          "x": 0.0,
+          "y": 0.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "complicated",
+          "cx": 600.0,
+          "cy": 150.0,
+          "x": 400.0,
+          "y": 0.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "chaotic",
+          "cx": 200.0,
+          "cy": 450.0,
+          "x": 0.0,
+          "y": 300.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "clear",
+          "cx": 600.0,
+          "cy": 450.0,
+          "x": 400.0,
+          "y": 300.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "confusion",
+          "cx": 400.0,
+          "cy": 300.0,
+          "x": 280.0,
+          "y": 210.0,
+          "width": 240.0,
+          "height": 180.0
+        }
+      ],
+      "items": [
+        {
+          "domain": "complex",
+          "label": "Emergent work",
+          "x": 151.12,
+          "y": 175.0,
+          "width": 97.76,
+          "height": 26.0,
+          "text_x": 48.88,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "complicated",
+          "label": "Expert work",
+          "x": 558.38,
+          "y": 175.0,
+          "width": 83.24,
+          "height": 26.0,
+          "text_x": 41.62,
+          "text_y": 13.0,
+          "overflow": false
+        }
+      ],
+      "transitions": [
+        {
+          "from": "complex",
+          "to": "complicated",
+          "label": "Pattern found",
+          "x1": 200.0,
+          "y1": 150.0,
+          "x2": 600.0,
+          "y2": 150.0,
+          "cpx": 400.0,
+          "cpy": 210.0
+        }
+      ]
+    }
+  }
+}

@@ -1,5 +1,6 @@
 use chrono::NaiveDate;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
+use merman_fixture_render_context::RenderContextCatalog;
 use regex::Regex;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
@@ -22,38 +23,67 @@ fn fixtures_root() -> PathBuf {
     workspace_root().join("fixtures")
 }
 
-fn fixture_site_config_overrides() -> &'static Map<String, Value> {
-    static OVERRIDES: OnceLock<Map<String, Value>> = OnceLock::new();
-    OVERRIDES.get_or_init(|| {
-        let value: Value = serde_json::from_str(include_str!(
-            "../../../fixtures/_config/site_config_overrides.json"
-        ))
-        .expect("valid fixture site config override manifest");
-        match value {
-            Value::Object(map) => map,
-            other => {
-                panic!("fixture site config override manifest must be a JSON object, got {other:?}")
-            }
-        }
+fn fixture_render_contexts() -> &'static RenderContextCatalog {
+    static CATALOG: OnceLock<RenderContextCatalog> = OnceLock::new();
+    CATALOG.get_or_init(|| {
+        RenderContextCatalog::load(fixtures_root()).expect("valid fixture render context catalog")
     })
 }
 
 fn fixture_site_config_for_path(path: &Path) -> Option<MermaidConfig> {
-    let relative_name = path
-        .strip_prefix(fixtures_root())
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/");
-    fixture_site_config_overrides()
-        .get(&relative_name)
-        .cloned()
-        .map(MermaidConfig::from_value)
+    fixture_render_contexts()
+        .context_for_fixture(path)
+        .unwrap_or_else(|error| {
+            panic!(
+                "invalid fixture render context lookup for {}: {error}",
+                path.display()
+            )
+        })
+        .map(|context| MermaidConfig::from_value(context.site_config_value()))
 }
 
 fn engine_for_fixture(base: &Engine, path: &Path) -> Engine {
     match fixture_site_config_for_path(path) {
         Some(site_config) => base.clone().with_site_config(site_config),
         None => base.clone(),
+    }
+}
+
+#[test]
+fn newly_cataloged_host_options_change_effective_security_policy() {
+    const FIXTURES: &[&str] = &[
+        "flowchart/local_flowchart_elk_hardening_cluster_boundary_styles_004.mmd",
+        "flowchart/local_flowchart_elk_hardening_compound_parent_child_edges_001.mmd",
+        "flowchart/upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_2_017.mmd",
+        "flowchart/upstream_cypress_flowchart_elk_spec_57_elk_handle_nested_subgraphs_with_outgoing_links_4_016.mmd",
+        "flowchart/upstream_cypress_flowchart_handdrawn_spec_fdh37_should_render_non_escaped_with_html_labels_037.mmd",
+    ];
+
+    let base = Engine::new();
+    for relative in FIXTURES {
+        let path = fixtures_root().join(relative);
+        let source = std::fs::read_to_string(&path).expect("read fixture host-option source");
+        let default_metadata = base
+            .parse_metadata_sync(&source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse {relative} without context: {error}"))
+            .unwrap_or_else(|| panic!("detect {relative} without context"));
+        assert_eq!(
+            default_metadata.effective_config.get_str("securityLevel"),
+            Some("strict"),
+            "diagram config alone must not change the secure host policy for {relative}"
+        );
+
+        let contextual_metadata = engine_for_fixture(&base, &path)
+            .parse_metadata_sync(&source, ParseOptions::strict())
+            .unwrap_or_else(|error| panic!("parse {relative} with render context: {error}"))
+            .unwrap_or_else(|| panic!("detect {relative} with render context"));
+        assert_eq!(
+            contextual_metadata
+                .effective_config
+                .get_str("securityLevel"),
+            Some("loose"),
+            "cataloged upstream host option must reach effective config for {relative}"
+        );
     }
 }
 

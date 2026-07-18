@@ -534,9 +534,7 @@ impl<'input> Lexer<'input> {
             }
             raw_title = self.input[title_start..self.pos].to_string();
             let trimmed = raw_title.trim();
-            if (trimmed.starts_with('"') && trimmed.ends_with('"'))
-                || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
-            {
+            if trimmed.starts_with('"') && trimmed.ends_with('"') {
                 title_kind = TitleKind::String;
             }
             if self.pos < self.input.len() && self.input.as_bytes()[self.pos] == b']' {

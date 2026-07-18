@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 mod activation;
 mod actors;
-mod block_bounds;
 mod block_steps;
 pub(crate) mod config;
 mod constants;
@@ -33,7 +32,6 @@ pub(crate) use metrics::{
 pub(crate) use notes::sequence_note_final_wrapped_lines;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
-use block_bounds::sequence_block_bounds;
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
 use config::SequenceLayoutSettings;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
@@ -161,6 +159,8 @@ pub fn layout_sequence_diagram_typed_with_title(
         mut nodes,
         edges,
         bottom_box_top_y,
+        bounds_start_x,
+        bounds_stop_x,
     } = build_sequence_layout_graph(SequenceLayoutGraphContext {
         model,
         actor_index: &actor_index,
@@ -189,12 +189,6 @@ pub fn layout_sequence_diagram_typed_with_title(
         math_renderer,
     });
 
-    // Mermaid's SVG `viewBox` is derived from `svg.getBBox()` plus diagram margins. Block frames
-    // (`alt`, `par`, `loop`, `opt`, `break`, `critical`) can extend beyond the node/edge graph we
-    // model in headless layout. Capture their extents so we can expand bounds before emitting the
-    // final `viewBox`.
-    let block_bounds = sequence_block_bounds(model, &nodes, &edges);
-
     let rect_x_bounds = sequence_rect_stack_x_bounds(
         model,
         &actor_index,
@@ -222,7 +216,8 @@ pub fn layout_sequence_diagram_typed_with_title(
         diagram_title,
         nodes: &nodes,
         edges: &edges,
-        block_bounds,
+        bounds_start_x,
+        bounds_stop_x,
         actor_index: &actor_index,
         actor_centers_x: &actor_centers_x,
         actor_left_x: &actor_left_x,

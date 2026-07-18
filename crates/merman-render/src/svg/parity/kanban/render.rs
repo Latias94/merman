@@ -1,8 +1,5 @@
 use super::super::*;
-use crate::kanban::{
-    KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
-    KANBAN_SECTION_PADDING_PX,
-};
+use crate::kanban::{KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, KANBAN_SECTION_PADDING_PX};
 
 fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String {
     let id = escape_xml(diagram_id);
@@ -86,59 +83,6 @@ fn kanban_css(diagram_id: &str, effective_config: &serde_json::Value) -> String 
     out
 }
 
-fn calibrated_kanban_root_height(
-    layout: &crate::model::KanbanDiagramLayout,
-    raw_height: f64,
-) -> f64 {
-    fn near(a: f64, b: f64) -> bool {
-        (a - b).abs() < 1e-6
-    }
-
-    let has_item_metadata = layout.items.iter().any(|item| {
-        item.ticket.is_some()
-            || item.assigned.is_some()
-            || item.priority.is_some()
-            || item.icon.is_some()
-    });
-    let max_item_height = layout
-        .items
-        .iter()
-        .map(|item| item.height)
-        .fold(0.0, f64::max);
-
-    // Profile-derived root height calibration for Mermaid@11.12.3 Kanban output. These branches
-    // replace fixture-id root viewport pins with layout-shape checks, mirroring Chromium getBBox()
-    // root sizing for compact/default labels and the two current font-size stress profiles.
-    if !has_item_metadata {
-        if near(
-            layout.max_label_height,
-            KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX,
-        ) {
-            if layout.sections.len() == 1
-                && (1..=3).contains(&layout.items.len())
-                && near(max_item_height, 116.0)
-            {
-                return raw_height + KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX;
-            }
-            if layout.sections.len() == 2 && layout.items.len() == 1 && near(max_item_height, 68.0)
-            {
-                return raw_height + KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX;
-            }
-        }
-
-        if layout.sections.len() == 2 && layout.items.len() == 2 {
-            if near(layout.max_label_height, 31.25) && near(max_item_height, 205.0) {
-                return raw_height - 65.0;
-            }
-            if near(layout.max_label_height, 37.5) && near(max_item_height, 246.0) {
-                return raw_height - 1.5;
-            }
-        }
-    }
-
-    raw_height
-}
-
 fn kanban_dom_id(diagram_id: &str, raw_id: &str) -> String {
     if diagram_id.is_empty() {
         raw_id.to_string()
@@ -164,7 +108,7 @@ pub(crate) fn render_kanban_diagram_svg(
     let vb_min_x = bounds.min_x;
     let vb_min_y = bounds.min_y;
     let vb_w = (bounds.max_x - bounds.min_x).max(1.0);
-    let vb_h = calibrated_kanban_root_height(layout, (bounds.max_y - bounds.min_y).max(1.0));
+    let vb_h = (bounds.max_y - bounds.min_y).max(1.0);
 
     let mut out = String::new();
     let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
@@ -175,17 +119,13 @@ pub(crate) fn render_kanban_diagram_svg(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Kanban,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        &mut out,
-        root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
-            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
-        root_chrome,
-    )?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Kanban, diagram_id)
+        .write_open(
+            &mut out,
+            root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+            root_chrome,
+        )?;
 
     let css = kanban_css(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
@@ -488,43 +428,29 @@ pub(crate) fn render_kanban_diagram_svg(
 mod tests {
     use super::*;
     use crate::environment::{
-        HostMeasurementResult, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
-        TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
-        TextMeasurementSource,
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementSource,
     };
+    use crate::kanban::KANBAN_SECTION_LABEL_HEIGHT_BASELINE_PX;
     use crate::model::{Bounds, KanbanDiagramLayout, KanbanItemLayout, KanbanSectionLayout};
-    use crate::text::{TextMetrics, TextStyle, WrapMode};
+    use crate::text::TextMetrics;
     use std::sync::Arc;
 
     struct WideHost;
 
     impl HostTextMeasurer for WideHost {
-        fn measure(
-            &self,
-            _phase: TextMeasurementPhase,
-            _text: &str,
-            _style: &TextStyle,
-        ) -> HostMeasurementResult<TextMetrics> {
-            Ok(Some(TextMetrics {
-                width: 400.0,
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            let width = match request.operation {
+                TextMeasurementOperation::Wrapped => request.max_width.unwrap_or(400.0),
+                TextMeasurementOperation::Measure => 400.0,
+                _ => return Ok(None),
+            };
+            Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                width,
                 height: 40.0,
                 line_count: 2,
-            }))
-        }
-
-        fn measure_wrapped(
-            &self,
-            _phase: TextMeasurementPhase,
-            _text: &str,
-            _style: &TextStyle,
-            max_width: Option<f64>,
-            _wrap_mode: WrapMode,
-        ) -> HostMeasurementResult<TextMetrics> {
-            Ok(Some(TextMetrics {
-                width: max_width.unwrap_or(400.0),
-                height: 40.0,
-                line_count: 2,
-            }))
+            })))
         }
     }
 
@@ -537,6 +463,22 @@ mod tests {
         with_test_svg_execution(options, |options| {
             render_kanban_diagram_svg(layout, effective_config, &measurer, options)
         })
+    }
+
+    fn attr_f64(tag: &str, name: &str) -> f64 {
+        let prefix = format!(r#"{name}=""#);
+        let start = tag.find(&prefix).expect("attribute") + prefix.len();
+        let end = start + tag[start..].find('"').expect("attribute end");
+        tag[start..end].parse().expect("numeric attribute")
+    }
+
+    fn foreign_object_before_text<'a>(svg: &'a str, text: &str) -> &'a str {
+        let text_end = svg.find(text).expect("label text");
+        let start = svg[..text_end]
+            .rfind("<foreignObject ")
+            .expect("foreignObject before label");
+        let end = start + svg[start..].find('>').expect("foreignObject tag end") + 1;
+        &svg[start..end]
     }
 
     #[test]
@@ -720,12 +662,25 @@ mod tests {
 
         let svg = render_test_kanban(&layout, &serde_json::json!({}), &options).unwrap();
         let root_open = svg.split_once('>').expect("root svg open tag").0;
+        let view_box = root_open
+            .split_once(r#"viewBox=""#)
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(value, _)| {
+                value
+                    .split_whitespace()
+                    .map(|part| part.parse::<f64>().expect("viewBox number"))
+                    .collect::<Vec<_>>()
+            })
+            .expect("root viewBox");
+        let bounds = layout.bounds.as_ref().expect("layout bounds");
+        let expected_width = bounds.max_x - bounds.min_x;
+        let expected_height = bounds.max_y - bounds.min_y;
 
-        assert!(root_open.contains(r#"width="220""#), "{root_open}");
-        assert!(root_open.contains(r#"height="380""#), "{root_open}");
-        assert!(
-            root_open.contains(r#"viewBox="0 -300 220 380""#),
-            "{root_open}"
+        assert_eq!(attr_f64(root_open, "width"), expected_width);
+        assert_eq!(attr_f64(root_open, "height"), expected_height);
+        assert_eq!(
+            view_box,
+            vec![bounds.min_x, bounds.min_y, expected_width, expected_height]
         );
         assert!(
             root_open.contains(r#"style="background-color: white;""#),
@@ -785,18 +740,15 @@ mod tests {
 
         let svg = render_test_kanban(&layout, &serde_json::json!({}), &options).unwrap();
 
-        let title_end = svg
-            .find("<p>Implement renderer</p></span>")
-            .expect("expected kanban item title in SVG");
-        let title_prefix = &svg[..title_end];
-        let fo_start = title_prefix
-            .rfind("<foreignObject ")
-            .expect("expected title foreignObject before item title");
-        let title_fo = &title_prefix[fo_start..];
-
+        let title_fo = foreign_object_before_text(&svg, "<p>Implement renderer</p>");
+        let item = &layout.items[0];
+        assert_eq!(
+            attr_f64(title_fo, "width"),
+            item.width - KANBAN_SECTION_PADDING_PX
+        );
         assert!(
-            title_fo.starts_with(r#"<foreignObject width="175" height="24">"#),
-            "expected title foreignObject to use the 175px card content width, got: {title_fo}"
+            attr_f64(title_fo, "height") >= KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX,
+            "title foreignObject must accommodate at least one label row: {title_fo}"
         );
     }
 
@@ -852,10 +804,12 @@ mod tests {
         let svg = render_kanban_diagram_svg(&layout, &serde_json::json!({}), &measurer, &options)
             .unwrap();
 
-        assert!(
-            svg.contains(r#"<foreignObject width="175" height="40">"#),
-            "{svg}"
+        let title_fo = foreign_object_before_text(&svg, "<p>Implement renderer</p>");
+        assert_eq!(
+            attr_f64(title_fo, "width"),
+            layout.items[0].width - KANBAN_SECTION_PADDING_PX
         );
+        assert_eq!(attr_f64(title_fo, "height"), 40.0);
         assert!(
             session
                 .text_measurement_report()

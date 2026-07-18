@@ -15,18 +15,7 @@ pub(crate) fn find_matching_brace(text: &str, open: usize) -> Option<usize> {
     None
 }
 
-pub(crate) fn find_tag_end(svg: &str, start: usize) -> Option<usize> {
-    let mut quote = None;
-    for (offset, ch) in svg[start..].char_indices() {
-        match ch {
-            '"' | '\'' if quote == Some(ch) => quote = None,
-            '"' | '\'' if quote.is_none() => quote = Some(ch),
-            '>' if quote.is_none() => return Some(start + offset),
-            _ => {}
-        }
-    }
-    None
-}
+pub(crate) use crate::svg::scanner::find_tag_end;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SvgTag<'a> {

@@ -2,20 +2,24 @@
 
 Status: Active
 Baseline: Mermaid `@11.16.0`
-Last updated: 2026-06-26
+Last updated: 2026-07-17
 
 The structured admission inventory lives in `crates/xtask/src/cmd/admission.rs`.
 
-It records, per diagram family:
+The executable inventory has two family-level states:
 
-- admission state: primary SVG matrix, compatibility-only, parse-only, not admitted, or not in the
-  pinned baseline;
-- fixture corpus state: normalized fixtures, normalized plus deferred fixtures, or no admitted
-  fixtures;
+- `PrimarySvgMatrix`: 35 families with semantic/layout goldens, typed rendering, pinned upstream
+  SVGs, and executable compare facts;
+- `CompatibilityOnly`: `zenuml`, whose browser-only upstream engine is represented by a documented
+  Sequence-model compatibility adapter rather than an SVG parity claim.
+
+Every inventory record owns:
+
+- a normalized fixture corpus, optionally with a deferred investigation corpus;
 - semantic, layout, SVG baseline, and root viewport coverage;
 - compare command ownership;
 - owning alignment document;
-- explicit defer reason for non-primary or root-deferred families.
+- an explicit reason for any deferred coverage dimension.
 
 Parser and typed-render capability evidence is projected from `merman-core` diagram family facts.
 The inventory still owns fixture corpus state, coverage status, compare-command ownership, owner
@@ -24,24 +28,24 @@ facts.
 
 Current consumers:
 
-- `xtask compare-all-svgs` reads the primary SVG matrix projection and the root-viewport-deferred
-  projection from the inventory.
+- `xtask compare-all-svgs` reads the 35-family primary SVG matrix projection from the inventory;
+  every current primary record has covered root-viewport evidence.
 - Per-diagram `xtask compare-*` commands keep their CLI adapters, but shared fixture discovery,
   upstream/local SVG loading, DOM checks, local SVG output writing, and result sections live in the
   compare harness. Diagram adapters own only render-specific policy such as marker checks,
   root/label delta rows, ELK admission, or family-specific skip decisions.
 - `xtask check-alignment` verifies inventory paths, owner docs, semantic/layout fixture evidence,
-  upstream SVG directories, compare-command presence for primary diagrams, and defer reasons for
-  non-admitted families.
+  upstream SVG directories, compare-command presence for primary diagrams, and reasons for
+  deferred coverage.
 - `xtask check-alignment` also checks that semantic/layout/SVG-covered records are backed by the
-  corresponding `merman-core` family capability facts, and that families marked outside the pinned
-  baseline are absent from those facts.
-- Admission unit tests also cross-check `crates/xtask/default_config_overrides.json` so primary
-  SVG matrix diagrams with matching pinned-schema config keys are not removed from generated
-  defaults.
+  corresponding `merman-core` family capability facts.
+- Default-config parity is orthogonal to diagram admission. `xtask verify-default-config`
+  regenerates the upstream value and key-shape artifacts from the content-pinned Mermaid 11.16
+  runtime. No admission-specific override manifest can remove a family or key.
 - `docs/alignment/CONFIG_FRONTMATTER_SUPPORT.md` uses this inventory as the admission boundary for
   rendered config claims: accepted/merged config can be broader than primary SVG support, but
   rendered support should point at an admitted family test, golden, or an explicit residual.
 
-This inventory does not move fixtures or admit unsupported families by itself. Promotion still
-requires the gates in `docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`.
+This inventory does not move fixtures or weaken evidence by itself. The completed Mermaid 11.16
+admission process and the rules for future baseline additions are recorded in
+`docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`.

@@ -1,0 +1,5 @@
+railroad-ebnf-beta
+expression = term ( "+" term | "-" term )* ;
+term = number | "(" expression ")" ;
+number = digit+ ;
+digit = "0" | "1" | "2" ;

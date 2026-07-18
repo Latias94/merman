@@ -1,7 +1,8 @@
+use crate::preprocess::preprocess_mermaid_public_parse_pipeline;
 use crate::{
     EditorSemanticFacts, EditorSpanCoordinateSpace, Engine, Error, MermaidConfig, ParseMetadata,
-    ParseOptions, Result, SourceSpan, common_db, diagram, diagrams::error_diagram, family,
-    preprocess_diagram, preprocess_diagram_with_known_type, runtime, sanitize, theme,
+    ParseOptions, Result, SourceSpan, common_db, diagram, diagrams::error_diagram, family, runtime,
+    sanitize, theme,
 };
 use diagram::{
     CustomJsonRenderModel, DiagramWarningFact, ParsedDiagram, ParsedDiagramRender,
@@ -1276,7 +1277,7 @@ impl<'a> ParsePipeline<'a> {
     }
 
     fn preprocess_and_detect(&self) -> Result<Option<(String, ParseMetadata)>> {
-        let pre = preprocess_diagram(self.text, &self.engine.registry)?;
+        let pre = preprocess_mermaid_public_parse_pipeline(self.text, &self.engine.registry, None)?;
         if pre.code.trim_start().starts_with("---") {
             return Err(Error::MalformedFrontMatter);
         }
@@ -1331,7 +1332,7 @@ impl<'a> ParsePipeline<'a> {
         &self,
         diagram_type: &str,
     ) -> Result<Option<(String, ParseMetadata)>> {
-        let pre = preprocess_diagram_with_known_type(
+        let pre = preprocess_mermaid_public_parse_pipeline(
             self.text,
             &self.engine.registry,
             Some(diagram_type),

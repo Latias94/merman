@@ -58,7 +58,7 @@ use lexer::Lexer;
 use link::{destruct_end_link, destruct_start_link};
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};
 use shape_data::{
-    apply_shape_data_to_node, parse_shape_data, public_shape_names_11_12_2, value_to_bool,
+    apply_shape_data_to_node, parse_shape_data, public_pinned_shape_names, value_to_bool,
     value_to_string,
 };
 use subgraph::SubgraphBuilder;
@@ -148,7 +148,7 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 pub fn flowchart_public_shape_names() -> impl Iterator<Item = &'static str> {
-    public_shape_names_11_12_2()
+    public_pinned_shape_names()
 }
 
 pub fn parse_flowchart_editor_facts(

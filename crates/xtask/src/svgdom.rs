@@ -21,6 +21,43 @@ pub(crate) enum DomMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DomComparisonProfile {
+    descendants: DomMode,
+    root_viewport: bool,
+}
+
+impl DomComparisonProfile {
+    pub(crate) const fn from_mode(mode: DomMode) -> Self {
+        match mode {
+            DomMode::ParityRoot => Self {
+                descendants: DomMode::Parity,
+                root_viewport: true,
+            },
+            descendants => Self {
+                descendants,
+                root_viewport: false,
+            },
+        }
+    }
+
+    pub(crate) const fn with_root_viewport(descendants: DomMode) -> Self {
+        debug_assert!(!matches!(descendants, DomMode::ParityRoot));
+        Self {
+            descendants,
+            root_viewport: true,
+        }
+    }
+
+    pub(crate) const fn descendants(self) -> DomMode {
+        self.descendants
+    }
+
+    pub(crate) const fn compares_root_viewport(self) -> bool {
+        self.root_viewport
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SignaturePolicy {
     Standard,
     QuadrantInvalidUpstream,
@@ -148,71 +185,22 @@ fn normalize_style_font_size_for_parity(style: &str, decimals: u32) -> Option<St
 }
 
 fn normalize_svg_root_style_parity_root(style: &str, decimals: u32) -> String {
-    // Root `style` includes `max-width: <n>px`, which is sensitive to tiny FP drift across
-    // targets/platforms (e.g. 1/64px). To keep CI parity stable while still tracking meaningful
-    // regressions, snap `max-width` to a small pixel lattice.
-    let step = 1.0 / 4.0; // 0.25px: collapses common subpixel drift across platforms.
-    let eps = 1e-9; // Avoid float edge cases at exact step boundaries.
-    // Biased snapping: use a threshold slightly above the midpoint between lattice steps so
-    // values that drift just above the midpoint (common on some platforms) still normalize to the
-    // lower step. This is more robust than pure `round` (midpoint splits) and less lossy than
-    // always flooring (boundary splits around exact step values).
-    //
-    // Threshold interpretation:
-    // - `0.5` would be true "round to nearest".
-    // - `> 0.5` biases toward the lower step.
-    // With `step=0.125`, `0.62` corresponds to ~0.015px above the midpoint, matching typical
-    // 1/64px drift seen in CI for Mermaid root viewport values.
-    let frac_threshold = 0.62;
-
     let re = {
         static ONCE: OnceLock<Regex> = OnceLock::new();
-        ONCE.get_or_init(|| Regex::new(r#"max-width:\s*([0-9.]+)px"#).unwrap())
+        ONCE.get_or_init(|| {
+            Regex::new(r#"max-width:\s*(-?(?:\d+\.\d+|\d+\.|\.\d+|\d+)(?:[eE][+-]?\d+)?)px"#)
+                .unwrap()
+        })
     };
 
     re.replace_all(style, |caps: &regex::Captures<'_>| {
         let raw = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
-        let Ok(v) = raw.parse::<f64>() else {
-            return caps
-                .get(0)
-                .map(|m| m.as_str())
-                .unwrap_or_default()
-                .to_string();
-        };
-        // Snap to the lattice with a slight bias toward the lower bucket to avoid platform
-        // drift flipping the signature across the midpoint.
-        let q = (v / step) + eps;
-        let base = q.floor();
-        let frac = q - base;
-        let snapped = if frac >= frac_threshold {
-            (base + 1.0) * step
-        } else {
-            base * step
-        };
-        let snapped = round_f64(snapped, decimals);
-        let snapped = if snapped == 0.0 { 0.0 } else { snapped };
-        let mut out = format!("{snapped}");
-        if out.contains('.') {
-            while out.ends_with('0') {
-                out.pop();
-            }
-            if out.ends_with('.') {
-                out.pop();
-            }
-        }
-        format!("max-width: {out}px")
+        format!("max-width: {}px", normalize_numeric_tokens(raw, decimals))
     })
     .to_string()
 }
 
 fn normalize_svg_root_viewbox_parity_root(view_box: &str, decimals: u32) -> String {
-    // Root `viewBox` is affected by label measurements and can drift by tiny fractions across
-    // platforms (commonly 1/64px). Snap to a small lattice to keep CI parity stable while still
-    // tracking meaningful viewport changes.
-    let step = 1.0 / 4.0; // 0.25px: collapses common subpixel drift across platforms.
-    let eps = 1e-9;
-    let frac_threshold = 0.62;
-
     let parts: Vec<&str> = view_box
         .split(|c: char| c.is_whitespace() || c == ',')
         .filter(|t| !t.is_empty())
@@ -221,43 +209,12 @@ fn normalize_svg_root_viewbox_parity_root(view_box: &str, decimals: u32) -> Stri
         return normalize_numeric_tokens(view_box, decimals);
     }
 
-    let mut out_parts: Vec<String> = Vec::with_capacity(4);
-    for (idx, p) in parts.into_iter().enumerate() {
-        let Ok(v) = p.parse::<f64>() else {
+    let mut out_parts = Vec::with_capacity(4);
+    for part in parts {
+        if part.parse::<f64>().is_err() {
             return normalize_numeric_tokens(view_box, decimals);
-        };
-
-        // In parity-root comparisons we mainly care about the viewport size (w/h). The origin
-        // (x/y) is frequently affected by transform-list rounding and platform-specific `getBBox`
-        // behavior, and tends to create noisy diffs that don't correlate with meaningful
-        // regressions. Mask x/y to keep CI stable while still tracking size changes.
-        if idx == 0 || idx == 1 {
-            out_parts.push("<n>".to_string());
-            continue;
         }
-
-        // Snap w/h with the same biased lattice as `max-width`.
-        let q = (v / step) + eps;
-        let base = q.floor();
-        let frac = q - base;
-        let snapped = if frac >= frac_threshold {
-            (base + 1.0) * step
-        } else {
-            base * step
-        };
-
-        let snapped = round_f64(snapped, decimals);
-        let snapped = if snapped == 0.0 { 0.0 } else { snapped };
-        let mut s = format!("{snapped}");
-        if s.contains('.') {
-            while s.ends_with('0') {
-                s.pop();
-            }
-            if s.ends_with('.') {
-                s.pop();
-            }
-        }
-        out_parts.push(s);
+        out_parts.push(normalize_numeric_tokens(part, decimals));
     }
 
     out_parts.join(" ")
@@ -1381,6 +1338,27 @@ pub(crate) fn dom_signature(svg: &str, mode: DomMode, decimals: u32) -> Result<S
     dom_signature_with_policy(svg, mode, decimals, SignaturePolicy::Standard).map(|(node, _)| node)
 }
 
+pub(crate) fn dom_signature_for_comparison(
+    svg: &str,
+    profile: DomComparisonProfile,
+    decimals: u32,
+) -> Result<SvgDomNode, String> {
+    let mut signature = dom_signature(svg, profile.descendants(), decimals)?;
+    if !profile.compares_root_viewport() {
+        return Ok(signature);
+    }
+
+    let root_signature = dom_signature(svg, DomMode::ParityRoot, decimals)?;
+    for key in ["style", "viewBox", "width", "height"] {
+        if let Some(value) = root_signature.attrs.get(key) {
+            signature.attrs.insert(key.to_string(), value.clone());
+        } else {
+            signature.attrs.remove(key);
+        }
+    }
+    Ok(signature)
+}
+
 fn dom_signature_with_policy(
     svg: &str,
     mode: DomMode,
@@ -1632,34 +1610,56 @@ pub(crate) fn format_dom_diffs(differences: &[String]) -> Option<String> {
     ))
 }
 
+#[cfg(test)]
 pub(crate) const PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER: &str =
     "scope=parity-normalized-descendants-match";
+#[cfg(test)]
 pub(crate) const PARITY_NORMALIZED_DESCENDANTS_DIFFER_MARKER: &str =
     "scope=parity-normalized-descendants-differ";
+#[cfg(test)]
+pub(crate) const STRUCTURE_NORMALIZED_DESCENDANTS_MATCH_MARKER: &str =
+    "scope=structure-normalized-descendants-match";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ParityRootMismatch {
     NormalizedDescendantsMatch {
+        descendants: DomMode,
         detail: String,
     },
     NormalizedDescendantsDiffer {
+        descendants: DomMode,
         detail: String,
         root_viewport_also_differs: bool,
     },
 }
 
+fn descendant_scope(mode: DomMode, matches: bool) -> String {
+    let mode = match mode {
+        DomMode::Strict => "strict",
+        DomMode::Structure => "structure",
+        DomMode::Parity | DomMode::ParityRoot => "parity",
+    };
+    let outcome = if matches { "match" } else { "differ" };
+    format!("scope={mode}-normalized-descendants-{outcome}")
+}
+
 impl fmt::Display for ParityRootMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NormalizedDescendantsMatch { detail } => {
-                write!(f, "{PARITY_NORMALIZED_DESCENDANTS_MATCH_MARKER}; {detail}")
+            Self::NormalizedDescendantsMatch {
+                descendants,
+                detail,
+            } => {
+                write!(f, "{}; {detail}", descendant_scope(*descendants, true))
             }
             Self::NormalizedDescendantsDiffer {
+                descendants,
                 detail,
                 root_viewport_also_differs,
             } => write!(
                 f,
-                "{PARITY_NORMALIZED_DESCENDANTS_DIFFER_MARKER}; root-viewport-also-differs={root_viewport_also_differs}; {detail}"
+                "{}; root-viewport-also-differs={root_viewport_also_differs}; {detail}",
+                descendant_scope(*descendants, false)
             ),
         }
     }
@@ -1678,11 +1678,12 @@ fn root_viewport_attrs_differ(upstream: &SvgDomNode, local: &SvgDomNode) -> bool
 /// `Parity` mode therefore reveals whether a root mismatch was hiding a parity-visible DOM
 /// regression while leaving both modes' tolerances unchanged. A descendant match here is only a
 /// match after `Parity` normalization; it does not claim that raw descendant geometry is equal.
-pub(crate) fn diagnose_parity_root_mismatch(
+pub(crate) fn diagnose_root_viewport_mismatch(
     upstream_svg: &str,
     local_svg: &str,
     upstream: &SvgDomNode,
     local: &SvgDomNode,
+    profile: DomComparisonProfile,
     decimals: u32,
 ) -> Result<Option<ParityRootMismatch>, String> {
     if upstream == local {
@@ -1691,13 +1692,16 @@ pub(crate) fn diagnose_parity_root_mismatch(
 
     let primary_detail = format_dom_diffs(&dom_diffs(upstream, local))
         .ok_or_else(|| "parity-root signatures differ without a diagnostic".to_string())?;
-    let upstream_without_root = dom_signature(upstream_svg, DomMode::Parity, decimals)
-        .map_err(|err| format!("upstream parity fallback parse failed: {err}"))?;
-    let local_without_root = dom_signature(local_svg, DomMode::Parity, decimals)
-        .map_err(|err| format!("local parity fallback parse failed: {err}"))?;
+    let descendant_profile = DomComparisonProfile::from_mode(profile.descendants());
+    let upstream_without_root =
+        dom_signature_for_comparison(upstream_svg, descendant_profile, decimals)
+            .map_err(|err| format!("upstream descendant fallback parse failed: {err}"))?;
+    let local_without_root = dom_signature_for_comparison(local_svg, descendant_profile, decimals)
+        .map_err(|err| format!("local descendant fallback parse failed: {err}"))?;
 
     if upstream_without_root == local_without_root {
         return Ok(Some(ParityRootMismatch::NormalizedDescendantsMatch {
+            descendants: profile.descendants(),
             detail: primary_detail,
         }));
     }
@@ -1705,6 +1709,7 @@ pub(crate) fn diagnose_parity_root_mismatch(
     let detail = format_dom_diffs(&dom_diffs(&upstream_without_root, &local_without_root))
         .ok_or_else(|| "parity signatures differ without a diagnostic".to_string())?;
     Ok(Some(ParityRootMismatch::NormalizedDescendantsDiffer {
+        descendants: profile.descendants(),
         detail,
         root_viewport_also_differs: root_viewport_attrs_differ(upstream, local),
     }))
@@ -1796,7 +1801,7 @@ mod tests {
         assert_eq!(dom.attrs.get("width").map(|s| s.as_str()), Some("100%"));
         assert_eq!(
             dom.attrs.get("viewBox").map(|s| s.as_str()),
-            Some("<n> <n> 600 406")
+            Some("0 -5.976 600 405.976")
         );
         assert_eq!(
             dom.attrs.get("style").map(|s| s.as_str()),
@@ -1805,44 +1810,53 @@ mod tests {
     }
 
     #[test]
-    fn parity_root_snaps_svg_root_style_max_width() {
+    fn parity_root_keeps_distinct_svg_root_style_max_widths() {
         let a = r#"<svg width="100%" viewBox="0 0 560.391 10" style="max-width: 560.391px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let b = r#"<svg width="100%" viewBox="0 0 560.375 10" style="max-width: 560.375px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
         let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
-        assert_eq!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
+        assert_ne!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
         assert_eq!(
             dom_a.attrs.get("style").map(|s| s.as_str()),
-            Some("max-width: 560.25px; background-color: white;")
+            Some("max-width: 560.391px; background-color: white;")
+        );
+        assert_eq!(
+            dom_b.attrs.get("style").map(|s| s.as_str()),
+            Some("max-width: 560.375px; background-color: white;")
         );
     }
 
     #[test]
-    fn parity_root_snaps_svg_root_style_max_width_is_midpoint_stable() {
-        // Values that straddle the midpoint between steps should still normalize to the same
-        // signature to avoid platform-specific CI failures.
+    fn parity_root_does_not_hide_midpoint_straddling_widths() {
         let a = r#"<svg width="100%" viewBox="0 0 502.172 10" style="max-width: 502.172px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let b = r#"<svg width="100%" viewBox="0 0 502.188 10" style="max-width: 502.188px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
         let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
-        assert_eq!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
-        assert_eq!(
-            dom_a.attrs.get("style").map(|s| s.as_str()),
-            Some("max-width: 502.25px; background-color: white;")
-        );
+        assert_ne!(dom_a.attrs.get("style"), dom_b.attrs.get("style"));
     }
 
     #[test]
-    fn parity_root_snaps_svg_root_viewbox_numbers() {
+    fn parity_root_keeps_distinct_svg_root_viewbox_numbers() {
         let a = r#"<svg width="100%" viewBox="0 0 560.391 10.016" style="max-width: 560.391px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let b = r#"<svg width="100%" viewBox="0 0 560.375 10" style="max-width: 560.375px; background-color: white;"><path d="M 10 20 L 30 40"/></svg>"#;
         let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
         let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
-        assert_eq!(dom_a.attrs.get("viewBox"), dom_b.attrs.get("viewBox"));
+        assert_ne!(dom_a.attrs.get("viewBox"), dom_b.attrs.get("viewBox"));
         assert_eq!(
             dom_a.attrs.get("viewBox").map(|s| s.as_str()),
-            Some("<n> <n> 560.25 10")
+            Some("0 0 560.391 10.016")
         );
+    }
+
+    #[test]
+    fn parity_root_keeps_distinct_svg_root_viewbox_origins() {
+        let a = r#"<svg viewBox="-1.25 -2.5 100 100"/>"#;
+        let b = r#"<svg viewBox="-1 -2.5 100 100"/>"#;
+
+        let dom_a = dom_signature(a, DomMode::ParityRoot, 3).unwrap();
+        let dom_b = dom_signature(b, DomMode::ParityRoot, 3).unwrap();
+
+        assert_ne!(dom_a.attrs.get("viewBox"), dom_b.attrs.get("viewBox"));
     }
 
     #[test]
@@ -1852,10 +1866,16 @@ mod tests {
         let upstream_root = dom_signature(upstream, DomMode::ParityRoot, 3).unwrap();
         let local_root = dom_signature(local, DomMode::ParityRoot, 3).unwrap();
 
-        let mismatch =
-            diagnose_parity_root_mismatch(upstream, local, &upstream_root, &local_root, 3)
-                .unwrap()
-                .expect("root viewport should differ");
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_root,
+            &local_root,
+            DomComparisonProfile::from_mode(DomMode::ParityRoot),
+            3,
+        )
+        .unwrap()
+        .expect("root viewport should differ");
 
         assert!(matches!(
             &mismatch,
@@ -1873,10 +1893,16 @@ mod tests {
         let upstream_root = dom_signature(upstream, DomMode::ParityRoot, 3).unwrap();
         let local_root = dom_signature(local, DomMode::ParityRoot, 3).unwrap();
 
-        let mismatch =
-            diagnose_parity_root_mismatch(upstream, local, &upstream_root, &local_root, 3)
-                .unwrap()
-                .expect("root viewport should differ");
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_root,
+            &local_root,
+            DomComparisonProfile::from_mode(DomMode::ParityRoot),
+            3,
+        )
+        .unwrap()
+        .expect("root viewport should differ");
 
         assert!(matches!(
             mismatch,
@@ -1891,10 +1917,16 @@ mod tests {
         let upstream_root = dom_signature(upstream, DomMode::ParityRoot, 3).unwrap();
         let local_root = dom_signature(local, DomMode::ParityRoot, 3).unwrap();
 
-        let mismatch =
-            diagnose_parity_root_mismatch(upstream, local, &upstream_root, &local_root, 3)
-                .unwrap()
-                .expect("root and subtree should differ");
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_root,
+            &local_root,
+            DomComparisonProfile::from_mode(DomMode::ParityRoot),
+            3,
+        )
+        .unwrap()
+        .expect("root and subtree should differ");
 
         assert!(matches!(
             &mismatch,
@@ -1908,6 +1940,39 @@ mod tests {
         assert!(rendered.contains("root-viewport-also-differs=true"));
         assert!(rendered.contains("svg/g[0]: attr `transform` mismatch"));
         assert!(!rendered.contains("max-width: 100px"));
+    }
+
+    #[test]
+    fn structure_root_diagnosis_reports_its_effective_descendant_scope() {
+        let upstream = r#"<svg viewBox="0 0 100 100"><path d="M 0 0 L 10 10"/></svg>"#;
+        let local = r#"<svg viewBox="0 0 120 100"><path d="M 5 5 L 20 20"/></svg>"#;
+        let profile = DomComparisonProfile::with_root_viewport(DomMode::Structure);
+        let upstream_root = dom_signature_for_comparison(upstream, profile, 3).unwrap();
+        let local_root = dom_signature_for_comparison(local, profile, 3).unwrap();
+
+        let mismatch = diagnose_root_viewport_mismatch(
+            upstream,
+            local,
+            &upstream_root,
+            &local_root,
+            profile,
+            3,
+        )
+        .unwrap()
+        .expect("root viewport should differ");
+
+        assert!(matches!(
+            &mismatch,
+            ParityRootMismatch::NormalizedDescendantsMatch {
+                descendants: DomMode::Structure,
+                ..
+            }
+        ));
+        assert!(
+            mismatch
+                .to_string()
+                .contains(STRUCTURE_NORMALIZED_DESCENDANTS_MATCH_MARKER)
+        );
     }
 
     #[test]

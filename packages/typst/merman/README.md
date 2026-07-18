@@ -111,7 +111,7 @@ For normal documents, start with `width`, `theme-name`, `theme`, `background`, `
 Precedence is:
 
 1. `options`
-2. direct parameters such as `host-theme`, `layout`, `viewport-width`, and `pipeline`
+2. direct parameters such as `host-theme`, `layout`, `container-width`, and `pipeline`
 3. direct `typography`
 4. profile values
 5. context-derived font, size, and width
@@ -192,7 +192,7 @@ Advanced renderer parameters:
 - `site-config`: full Mermaid site config object.
 - `host-theme`: merman host theme profile object.
 - `layout`: full binding layout object. This overrides layout shorthands.
-- `viewport-width`, `viewport-height`, `text-measurer`, `math-renderer`: layout shorthands for deterministic exports and fixtures.
+- `container-width`, `container-height`, `text-measurer`, `math-renderer`: layout shorthands for deterministic exports and fixtures.
 - `scoped-css`, `css-override-policy`, `drop-native-duplicate-fallbacks`: SVG post-processing shorthands.
 - `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
 - `options`: escape hatch; when present, it is passed through directly to the Rust binding options and overrides shorthand parameters.
@@ -213,7 +213,7 @@ Figure layout parameters are forwarded to Typst's native `figure`: `placement`, 
 
 Returns the rendered SVG as a string instead of embedding it as an image.
 
-This value-returning API does not enter Typst `context`; pass `typography`, `host-theme`, `layout`, or `viewport-width` explicitly when exporting SVG text.
+This value-returning API does not enter Typst `context`; pass `typography`, `host-theme`, `layout`, or `container-width` explicitly when exporting SVG text.
 
 ### `mermaid-result(source, ..)`
 

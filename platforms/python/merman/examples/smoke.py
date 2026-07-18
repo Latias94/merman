@@ -2,10 +2,167 @@ from dataclasses import dataclass
 
 import merman
 
+EXPECTED_TEXT_MEASUREMENT_OPERATIONS = {
+    "MEASURE",
+    "COMPUTED_LENGTH",
+    "B_BOX_X",
+    "B_BOX_X_WITH_ASCII_OVERHANG",
+    "TITLE_B_BOX_X",
+    "SIMPLE_B_BOX_WIDTH",
+    "RAW_B_BOX_WIDTH",
+    "TSPAN_B_BOX_WIDTH",
+    "TSPAN_B_BOX_HEIGHT",
+    "WRAP_PROBE_B_BOX_WIDTH",
+    "SIMPLE_B_BOX_HEIGHT",
+    "WRAPPED",
+    "WRAPPED_WITH_RAW_WIDTH",
+    "BOUNDING_CLIENT_RECT_WIDTH",
+    "CREATE_TEXT_B_BOX_Y_OFFSET",
+    "MERMAID_CALCULATE_TEXT_DIMENSIONS",
+    "CANVAS_MEASURE_TEXT_WIDTH",
+    "CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET",
+    "RAW_B_BOX_HEIGHT",
+}
+
+
+def text_measurement_result(operation, width: float, height: float):
+    operation_type = merman.MermanTextMeasurementOperation
+    values = dict(
+        result_kind=merman.MermanTextMeasurementResultKind.METRICS,
+        width=0.0,
+        height=0.0,
+        length=0.0,
+        line_count=0,
+        bbox_left=None,
+        bbox_right=None,
+        raw_width=None,
+    )
+    if operation in {
+        operation_type.MEASURE,
+        operation_type.WRAPPED,
+        operation_type.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+    }:
+        values.update(width=width, height=height, line_count=1)
+    elif operation in {
+        operation_type.COMPUTED_LENGTH,
+        operation_type.SIMPLE_B_BOX_WIDTH,
+        operation_type.RAW_B_BOX_WIDTH,
+        operation_type.BOUNDING_CLIENT_RECT_WIDTH,
+        operation_type.TSPAN_B_BOX_WIDTH,
+        operation_type.WRAP_PROBE_B_BOX_WIDTH,
+        operation_type.CANVAS_MEASURE_TEXT_WIDTH,
+    }:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+            length=width,
+        )
+    elif operation in {
+        operation_type.TSPAN_B_BOX_HEIGHT,
+        operation_type.SIMPLE_B_BOX_HEIGHT,
+        operation_type.RAW_B_BOX_HEIGHT,
+    }:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+            length=height,
+        )
+    elif operation in {
+        operation_type.CREATE_TEXT_B_BOX_Y_OFFSET,
+        operation_type.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
+    }:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+            length=(
+                -2.0
+                if operation == operation_type.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET
+                else -1.0
+            ),
+        )
+    elif operation in {
+        operation_type.B_BOX_X,
+        operation_type.B_BOX_X_WITH_ASCII_OVERHANG,
+        operation_type.TITLE_B_BOX_X,
+    }:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.HORIZONTAL_EXTENTS,
+            bbox_left=width / 2.0,
+            bbox_right=width / 2.0,
+        )
+    elif operation == operation_type.WRAPPED_WITH_RAW_WIDTH:
+        values.update(
+            result_kind=merman.MermanTextMeasurementResultKind.WRAPPED_WITH_RAW_WIDTH,
+            width=width,
+            height=height,
+            line_count=1,
+            raw_width=width,
+        )
+    else:
+        return None
+    return merman.MermanTextMeasureResult(**values)
+
+
+def assert_text_measurement_contract() -> None:
+    operation_type = merman.MermanTextMeasurementOperation
+    operation_names = set(operation_type.__members__)
+    if operation_names != EXPECTED_TEXT_MEASUREMENT_OPERATIONS:
+        raise RuntimeError(f"unexpected text measurement operations: {operation_names}")
+    operation_codes = {operation.value for operation in operation_type}
+    if operation_codes != set(range(19)):
+        raise RuntimeError(f"unexpected text measurement operation codes: {operation_codes}")
+
+    dimensions = text_measurement_result(
+        merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+        42.0,
+        24.0,
+    )
+    if dimensions.result_kind != merman.MermanTextMeasurementResultKind.METRICS:
+        raise RuntimeError("MermaidCalculateTextDimensions must return metrics")
+
+    canvas_width = text_measurement_result(
+        merman.MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH,
+        42.0,
+        24.0,
+    )
+    if canvas_width.result_kind != merman.MermanTextMeasurementResultKind.LENGTH:
+        raise RuntimeError("CanvasMeasureTextWidth must return length")
+
+    raw_bbox_height = text_measurement_result(
+        merman.MermanTextMeasurementOperation.RAW_B_BOX_HEIGHT,
+        42.0,
+        24.0,
+    )
+    if (
+        raw_bbox_height.result_kind
+        != merman.MermanTextMeasurementResultKind.LENGTH
+        or raw_bbox_height.length != 24.0
+    ):
+        raise RuntimeError("RawBBoxHeight must return the raw bbox height as length")
+
+    y_offset = text_measurement_result(
+        merman.MermanTextMeasurementOperation.CREATE_TEXT_B_BOX_Y_OFFSET,
+        42.0,
+        24.0,
+    )
+    if y_offset.length >= 0.0:
+        raise RuntimeError("CreateTextBBoxYOffset must preserve signed lengths")
+
+    middle_y_offset = text_measurement_result(
+        merman.MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
+        42.0,
+        24.0,
+    )
+    if (
+        middle_y_offset.result_kind
+        != merman.MermanTextMeasurementResultKind.LENGTH
+        or middle_y_offset.length >= 0.0
+    ):
+        raise RuntimeError("CreateTextMiddleBBoxYOffset must preserve signed lengths")
+
 
 def main() -> None:
+    assert_text_measurement_contract()
+
     engine = merman.MermanEngine()
-    if engine.abi_version() != 3:
+    if engine.abi_version() != 2:
         raise RuntimeError(f"unexpected ABI version: {engine.abi_version()}")
     if not engine.package_version():
         raise RuntimeError("empty package version")
@@ -62,7 +219,20 @@ def main() -> None:
         raise RuntimeError("themes smoke failed")
     if "one-dark" not in engine.supported_host_theme_presets():
         raise RuntimeError("host theme presets smoke failed")
-    if not any(item.diagram_type == "flowchart" for item in engine.diagram_family_capabilities()):
+    if not any(
+        item.diagram_type == "flowchart"
+        and item.logical_family_kind == "flowchart"
+        and item.metadata_id == "flowchart"
+        and item.render_model_kind == "flowchart"
+        and item.has_detector
+        and item.has_semantic_parser
+        and item.has_editor_parser
+        and item.has_combined_parser
+        and item.has_render_parser
+        and not item.has_header
+        and item.config_namespace == "flowchart"
+        for item in engine.diagram_family_capabilities()
+    ):
         raise RuntimeError("diagram family capabilities smoke failed")
     if not hasattr(merman, "MermanLintRuleCatalogEntry"):
         raise RuntimeError("lint rule catalog entry export smoke failed")
@@ -95,18 +265,19 @@ def main() -> None:
     class Measurer(merman.MermanTextMeasurer):
         calls: int = 0
         phases: set = None
+        operations: set = None
 
         def __post_init__(self):
             self.phases = set()
+            self.operations = set()
 
         def measure(self, request):
             self.calls += 1
             self.phases.add(request.phase)
-            return merman.MermanTextMeasureResult(
-                width=max(len(request.text) * 8.0, 1.0),
-                height=max(request.line_height, 1.0),
-                line_count=1,
-            )
+            self.operations.add(request.operation)
+            width = max(len(request.text) * 8.0, 1.0)
+            height = max(request.line_height, 1.0)
+            return text_measurement_result(request.operation, width, height)
 
     measurer = Measurer()
     reusable = engine.reusable_engine_with_text_measurer(None, measurer)
@@ -117,6 +288,9 @@ def main() -> None:
     phase_names = {phase.name for phase in measurer.phases}
     if not {"WRAP", "SVG_B_BOX"}.issubset(phase_names):
         raise RuntimeError(f"expected named measurement phases, got {phase_names}")
+    operation_names = {operation.name for operation in measurer.operations}
+    if "WRAPPED" not in operation_names:
+        raise RuntimeError(f"expected concrete measurement operations, got {operation_names}")
 
     setter_measurer = Measurer()
     reusable = engine.reusable_engine(None)

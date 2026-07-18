@@ -1780,6 +1780,16 @@ fn newer_family_documents_keep_parser_facts_when_recovered() {
             FenceSemanticRole::Entity,
         ),
         (
+            "wardley",
+            concat!(
+                "wardley-beta\n",
+                "component API [0.6, 0.7]\n",
+                "component Broken [\n",
+            ),
+            "API",
+            FenceSemanticRole::Entity,
+        ),
+        (
             "zenuml",
             concat!(
                 "zenuml\n",

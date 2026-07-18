@@ -6,13 +6,13 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 782.0,
-        "max_y": 1181.0
+        "max_y": 1186.0
       },
       "width": 832.0,
-      "height": 1191.0,
+      "height": 1196.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Context",
       "title": "Relationship direction variants",
       "boundaries": [
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 632.0,
-          "height": 1065.0,
+          "height": 1070.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -53,7 +53,7 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -70,8 +70,8 @@
           "label": {
             "text": "A",
             "y": 86.0,
-            "width": 13.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -85,7 +85,7 @@
           "x": 466.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -102,8 +102,8 @@
           "label": {
             "text": "B",
             "y": 86.0,
-            "width": 12.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -115,9 +115,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
-          "y": 369.0,
+          "y": 370.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -134,8 +134,8 @@
           "label": {
             "text": "C",
             "y": 86.0,
-            "width": 12.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -147,9 +147,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 466.0,
-          "y": 369.0,
+          "y": 370.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -166,8 +166,8 @@
           "label": {
             "text": "D",
             "y": 86.0,
-            "width": 12.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -179,9 +179,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
-          "y": 572.0,
+          "y": 574.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -198,8 +198,8 @@
           "label": {
             "text": "E",
             "y": 86.0,
-            "width": 11.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -211,9 +211,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 466.0,
-          "y": 572.0,
+          "y": 574.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -231,7 +231,7 @@
             "text": "F",
             "y": 86.0,
             "width": 10.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -243,9 +243,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
-          "y": 775.0,
+          "y": 778.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -262,8 +262,8 @@
           "label": {
             "text": "G",
             "y": 86.0,
-            "width": 12.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -275,9 +275,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 466.0,
-          "y": 775.0,
+          "y": 778.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -294,8 +294,8 @@
           "label": {
             "text": "H",
             "y": 86.0,
-            "width": 12.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -307,9 +307,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 150.0,
-          "y": 978.0,
+          "y": 982.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -326,8 +326,8 @@
           "label": {
             "text": "I",
             "y": 86.0,
-            "width": 4.0,
-            "height": 17.0,
+            "width": 5.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -339,9 +339,9 @@
           "parent_boundary": "global",
           "type_c4_shape": "person",
           "x": 466.0,
-          "y": 978.0,
+          "y": 982.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -358,8 +358,8 @@
           "label": {
             "text": "J",
             "y": 86.0,
-            "width": 9.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -374,19 +374,19 @@
           "rel_type": "rel_u",
           "start_point": {
             "x": 366.0,
-            "y": 230.618
+            "y": 231.245
           },
           "end_point": {
             "x": 466.0,
-            "y": 244.24
+            "y": 245.0
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "up",
             "y": 0.0,
-            "width": 14.0,
-            "height": 14.0,
+            "width": 10.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,
@@ -398,19 +398,19 @@
           "rel_type": "rel_d",
           "start_point": {
             "x": 366.0,
-            "y": 433.618
+            "y": 435.245
           },
           "end_point": {
             "x": 466.0,
-            "y": 447.24
+            "y": 449.0
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "down",
             "y": 0.0,
-            "width": 29.0,
-            "height": 14.0,
+            "width": 25.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,
@@ -422,19 +422,19 @@
           "rel_type": "rel_l",
           "start_point": {
             "x": 366.0,
-            "y": 636.618
+            "y": 639.245
           },
           "end_point": {
             "x": 466.0,
-            "y": 650.24
+            "y": 653.0
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "left",
             "y": 0.0,
-            "width": 17.0,
-            "height": 14.0,
+            "width": 19.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,
@@ -446,11 +446,11 @@
           "rel_type": "rel_r",
           "start_point": {
             "x": 366.0,
-            "y": 839.618
+            "y": 843.245
           },
           "end_point": {
             "x": 466.0,
-            "y": 853.24
+            "y": 857.0
           },
           "offset_x": null,
           "offset_y": null,
@@ -458,7 +458,7 @@
             "text": "right",
             "y": 0.0,
             "width": 24.0,
-            "height": 14.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,
@@ -470,19 +470,19 @@
           "rel_type": "rel_b",
           "start_point": {
             "x": 366.0,
-            "y": 1042.618
+            "y": 1047.245
           },
           "end_point": {
             "x": 466.0,
-            "y": 1056.24
+            "y": 1061.0
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "back",
             "y": 0.0,
-            "width": 26.0,
-            "height": 14.0,
+            "width": 22.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,

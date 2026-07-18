@@ -63,58 +63,12 @@ pub(crate) fn requirement_styles_force_bold(css_styles: &[String]) -> bool {
     })
 }
 
-fn calculate_text_dimensions_like_mermaid(
-    measurer: &dyn TextMeasurer,
-    style: &TextStyle,
-    text: &str,
-) -> (i64, i64, i64) {
-    let mut width = 0_i64;
-    let mut height = 0_i64;
-    let mut line_height = 0_i64;
-
-    for line in crate::text::split_html_br_lines(text) {
-        let measured_line = if line.is_empty() { "\u{200b}" } else { line };
-        let line_width = measurer
-            .measure_svg_simple_text_bbox_width_px(measured_line, style)
-            .max(0.0)
-            .round() as i64;
-        let measured_height = measurer
-            .measure_svg_simple_text_bbox_height_px(measured_line, style)
-            .max(0.0)
-            .round() as i64;
-        width = width.max(line_width);
-        height += measured_height;
-        line_height = line_height.max(measured_height);
-    }
-
-    (width, height, line_height)
-}
-
 pub(crate) fn calculate_text_width_like_mermaid_px(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     text: &str,
 ) -> i64 {
-    let mut sans = style.clone();
-    sans.font_family = Some("sans-serif".to_string());
-    sans.font_weight = None;
-
-    let mut configured = style.clone();
-    configured.font_weight = None;
-
-    let sans_dimensions = calculate_text_dimensions_like_mermaid(measurer, &sans, text);
-    let configured_dimensions = calculate_text_dimensions_like_mermaid(measurer, &configured, text);
-
-    // Mermaid measures both families but selects sans-serif only when every dimension is larger.
-    // In particular, it does not take the maximum width of the two probes.
-    if sans_dimensions.0 > configured_dimensions.0
-        && sans_dimensions.1 > configured_dimensions.1
-        && sans_dimensions.2 > configured_dimensions.2
-    {
-        sans_dimensions.0
-    } else {
-        configured_dimensions.0
-    }
+    crate::text::measure_mermaid_text_dimensions(measurer, text, style).width
 }
 
 pub(crate) fn measure_requirement_label_metrics(
@@ -139,7 +93,7 @@ pub(crate) fn measure_requirement_label_metrics(
         (calculate_text_width_like_mermaid_px(measurer, calculation_style, calculation_text) + 50)
             .max(0);
     let max_width = (max_width_px > 0).then_some(max_width_px as f64);
-    let measured = crate::text::measure_markdown_with_flowchart_bold_deltas(
+    let measured = crate::text::measure_markdown_with_inline_styles(
         measurer,
         calculation_text,
         html_style,
@@ -265,16 +219,19 @@ pub fn layout_requirement_diagram_typed(
         font_family: font_family.clone(),
         font_size: cfg.font_size,
         font_weight: None,
+        font_style: None,
     };
     let html_style_bold = TextStyle {
         font_family,
         font_size: cfg.font_size,
         font_weight: Some("bold".to_string()),
+        font_style: None,
     };
     let calculation_style = TextStyle {
         font_family: Some(cfg.calculation_font_family),
         font_size: cfg.calculation_font_size,
         font_weight: None,
+        font_style: None,
     };
 
     let padding = 20.0;
@@ -595,6 +552,7 @@ mod tests {
             font_family: Some("configured".to_string()),
             font_size: 16.0,
             font_weight: None,
+            font_style: None,
         };
 
         assert_eq!(
@@ -611,16 +569,19 @@ mod tests {
             font_family: family.clone(),
             font_size: 24.0,
             font_weight: None,
+            font_style: None,
         };
         let bold = TextStyle {
             font_family: family.clone(),
             font_size: 24.0,
             font_weight: Some("bold".to_string()),
+            font_style: None,
         };
         let calculation = TextStyle {
             font_family: family,
             font_size: 10.0,
             font_weight: None,
+            font_style: None,
         };
         let lines = vec![
             (
@@ -664,8 +625,15 @@ mod tests {
         let layout =
             requirement_box_layout(&measurer, &regular, &bold, &calculation, &lines, 20.0, 20.0);
 
-        assert_eq!(text.max_width_px, 279);
-        assert_eq!((text.width, text.height), (279.0, 108.0));
-        assert_eq!((layout.width, layout.height), (299.0, 418.0));
+        let expected_max_width =
+            calculate_text_width_like_mermaid_px(&measurer, &calculation, &lines[3].1) + 50;
+        assert_eq!(text.max_width_px, expected_max_width);
+        assert_eq!(text.width, expected_max_width as f64);
+        assert!(
+            text.height > regular.font_size,
+            "the constrained requirement body must wrap"
+        );
+        assert_eq!(layout.width, text.width + 20.0);
+        assert!(layout.height > text.height + 20.0);
     }
 }

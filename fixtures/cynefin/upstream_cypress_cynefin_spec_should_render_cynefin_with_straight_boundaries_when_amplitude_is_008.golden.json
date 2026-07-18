@@ -1,0 +1,44 @@
+{
+  "diagramType": "cynefin",
+  "model": {
+    "type": "cynefin",
+    "title": "Straight Boundaries",
+    "accTitle": null,
+    "accDescr": null,
+    "domains": [
+      {
+        "name": "complex",
+        "items": [
+          {
+            "label": "Item A"
+          }
+        ]
+      },
+      {
+        "name": "complicated",
+        "items": [
+          {
+            "label": "Item B"
+          }
+        ]
+      },
+      {
+        "name": "clear",
+        "items": [
+          {
+            "label": "Item C"
+          }
+        ]
+      },
+      {
+        "name": "chaotic",
+        "items": [
+          {
+            "label": "Item D"
+          }
+        ]
+      }
+    ],
+    "transitions": []
+  }
+}

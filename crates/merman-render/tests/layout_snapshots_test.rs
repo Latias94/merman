@@ -102,6 +102,20 @@ fn normalize_dynamic_fields(diagram_type: &str, v: &mut JsonValue) {
     }
 }
 
+fn is_parser_only_fixture(path: &Path) -> bool {
+    let diagram = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str());
+    let stem = path.file_stem().and_then(|name| name.to_str());
+    diagram
+        .zip(stem)
+        .and_then(|(diagram, stem)| {
+            merman_fixture_render_context::parser_only_fixture_reason(diagram, stem)
+        })
+        .is_some()
+}
+
 fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -133,11 +147,7 @@ fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
                 continue;
             }
             if path.extension().is_some_and(|e| e == "mmd") {
-                if path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains("_parser_only_") || n.contains("_parser_only_spec"))
-                {
+                if is_parser_only_fixture(&path) {
                     continue;
                 }
                 out.push(path);
@@ -146,6 +156,19 @@ fn collect_mmd_files(root: &Path) -> Vec<PathBuf> {
     }
     out.sort();
     out
+}
+
+#[test]
+fn parser_only_layout_exclusions_use_exact_family_facts() {
+    assert!(is_parser_only_fixture(Path::new(
+        "fixtures/xychart/upstream_xychart_header_only_jison_spec_parser_only_.mmd"
+    )));
+    assert!(!is_parser_only_fixture(Path::new(
+        "fixtures/xychart/new_parser_only_spec.mmd"
+    )));
+    assert!(!is_parser_only_fixture(Path::new(
+        "fixtures/sequence/upstream_xychart_header_only_jison_spec_parser_only_.mmd"
+    )));
 }
 
 #[test]

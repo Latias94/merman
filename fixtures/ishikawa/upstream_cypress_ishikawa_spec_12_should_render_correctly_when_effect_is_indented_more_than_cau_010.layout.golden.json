@@ -3,14 +3,14 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -237.799,
+        "min_x": -237.806,
         "min_y": -40.569,
         "max_x": 92.0,
         "max_y": 539.566
       },
-      "total_width": 329.799,
+      "total_width": 329.806,
       "total_height": 580.134,
-      "viewbox_x": -237.799,
+      "viewbox_x": -237.806,
       "viewbox_y": -40.569,
       "padding": 20.0,
       "use_max_width": true,
@@ -41,7 +41,7 @@
         }
       },
       "spine": {
-        "x1": -197.799,
+        "x1": -197.806,
         "y1": 333.333,
         "x2": 0.0,
         "y2": 333.333,
@@ -107,7 +107,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -147.057,
+                    "min_x": -147.064,
                     "min_y": 212.491,
                     "max_x": -65.464,
                     "max_y": 231.491
@@ -135,7 +135,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -162.521,
+                    "min_x": -162.527,
                     "min_y": 102.461,
                     "max_x": -80.927,
                     "max_y": 121.461
@@ -201,7 +201,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -143.192,
+                    "min_x": -143.198,
                     "min_y": 405.043,
                     "max_x": -61.598,
                     "max_y": 424.043
@@ -214,16 +214,16 @@
         {
           "upper": {
             "line": {
-              "x1": -162.521,
+              "x1": -162.527,
               "y1": 333.333,
-              "x2": -171.799,
+              "x2": -171.806,
               "y2": 267.315,
               "class_name": "ishikawa-branch",
               "marker_start": true
             },
             "label_group": {
               "label_box": {
-                "x": -217.799,
+                "x": -217.806,
                 "y": 243.503,
                 "width": 92.0,
                 "height": 23.0
@@ -234,15 +234,15 @@
                   "Cause C"
                 ],
                 "class_name": "ishikawa-label cause",
-                "x": -171.799,
+                "x": -171.806,
                 "y": 256.315,
                 "anchor": "middle",
                 "line_height": 16.8,
                 "font_size": 16.0,
                 "bbox": {
-                  "min_x": -197.799,
+                  "min_x": -197.806,
                   "min_y": 245.503,
-                  "max_x": -145.799,
+                  "max_x": -145.806,
                   "max_y": 264.503
                 }
               }

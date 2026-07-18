@@ -111,6 +111,7 @@ impl<'a> ClassConfigView<'a> {
             font_family: self.text_font_family(),
             font_size: self.font_size_for_wrap_mode(wrap_mode),
             font_weight: None,
+            font_style: None,
         }
     }
 
@@ -122,6 +123,7 @@ impl<'a> ClassConfigView<'a> {
                 .unwrap_or(16.0)
                 .max(1.0),
             font_weight: None,
+            font_style: None,
         }
     }
 
@@ -163,6 +165,7 @@ impl<'a> ClassConfigView<'a> {
             font_family: self.text_font_family(),
             font_size,
             font_weight: None,
+            font_style: None,
         }
     }
 

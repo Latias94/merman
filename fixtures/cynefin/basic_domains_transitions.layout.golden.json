@@ -67,22 +67,22 @@
         {
           "domain": "complex",
           "label": "Retrospective",
-          "x": 144.5,
+          "x": 156.34,
           "y": 175.0,
-          "width": 111.0,
+          "width": 87.32,
           "height": 26.0,
-          "text_x": 55.5,
+          "text_x": 43.66,
           "text_y": 13.0,
           "overflow": false
         },
         {
           "domain": "clear",
           "label": "Runbook",
-          "x": 565.5,
+          "x": 570.2,
           "y": 475.0,
-          "width": 69.0,
+          "width": 59.6,
           "height": 26.0,
-          "text_x": 34.5,
+          "text_x": 29.8,
           "text_y": 13.0,
           "overflow": false
         }

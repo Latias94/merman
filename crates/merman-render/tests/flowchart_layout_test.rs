@@ -5,7 +5,7 @@ use merman_render::LayoutOptions;
 use merman_render::environment::{RenderSession, TextMeasurementPhase};
 use merman_render::flowchart::layout_flowchart_typed;
 use merman_render::model::FlowchartLayout;
-use merman_render::text::{TextMeasurer, WrapMode};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use std::path::PathBuf;
 
 fn flowchart_model(parsed: &ParsedDiagramRender) -> &FlowchartModel {
@@ -36,7 +36,6 @@ fn layout_flowchart_render_model(
                 &parsed.meta.effective_config,
                 &measurer,
                 session.math_renderer(),
-                _options.flowchart_elk_backend,
             );
         }
         #[cfg(not(feature = "elk-layout"))]
@@ -69,6 +68,32 @@ fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-6
 }
 
+const NON_LATTICE_COMPUTED_LENGTH_PX: f64 = 73.123_456_789;
+
+struct NonLatticeComputedLengthMeasurer;
+
+impl TextMeasurer for NonLatticeComputedLengthMeasurer {
+    fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+        TextMetrics {
+            width: 40.0,
+            height: 18.0,
+            line_count: 1,
+        }
+    }
+
+    fn measure_svg_text_computed_length_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+        NON_LATTICE_COMPUTED_LENGTH_PX
+    }
+}
+
+fn parse_flowchart_render_model(text: &str) -> ParsedDiagramRender {
+    futures::executor::block_on(
+        Engine::new().parse_diagram_for_render_model(text, ParseOptions::default()),
+    )
+    .expect("parse ok")
+    .expect("diagram detected")
+}
+
 fn layout_flowchart(text: &str) -> FlowchartLayout {
     let _session = merman_render::environment::RenderEnvironment::parity()
         .begin_session()
@@ -80,6 +105,76 @@ fn layout_flowchart(text: &str) -> FlowchartLayout {
     .expect("parse ok")
     .expect("diagram detected");
     layout_flowchart_render_model(&parsed, &LayoutOptions::default(), &_session).expect("layout ok")
+}
+
+#[test]
+fn flowchart_icon_variant_layout_uses_source_defined_frame_geometry() {
+    let layout = layout_flowchart(
+        r#"flowchart LR
+R@{ icon: "fa:bell", form: "rounded" }
+C@{ icon: "fa:bell", form: "circle" }
+"#,
+    );
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+
+    let rounded = node("R");
+    assert!(approx_eq(rounded.width, 63.0), "{rounded:?}");
+    assert!(approx_eq(rounded.height, 63.0), "{rounded:?}");
+
+    let circle = node("C");
+    let circle_diameter = 48.0 * std::f64::consts::SQRT_2 + 40.0;
+    assert!(approx_eq(circle.width, circle_diameter), "{circle:?}");
+    assert!(approx_eq(circle.height, circle_diameter), "{circle:?}");
+}
+
+#[test]
+fn flowchart_dagre_preserves_operation_computed_length_precision() {
+    let parsed = parse_flowchart_render_model(
+        "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+    );
+    let layout = layout_flowchart_typed(
+        flowchart_model(&parsed),
+        &parsed.meta.effective_config,
+        &NonLatticeComputedLengthMeasurer,
+        None,
+    )
+    .expect("layout ok");
+    let node = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "A")
+        .expect("node A");
+
+    assert_eq!(node.label_width, Some(NON_LATTICE_COMPUTED_LENGTH_PX));
+}
+
+#[cfg(feature = "elk-layout")]
+#[test]
+fn flowchart_elk_preserves_operation_computed_length_precision() {
+    let parsed = parse_flowchart_render_model(
+        "%%{init: {\"htmlLabels\": false, \"flowchart\": {\"htmlLabels\": false}}}%%\nflowchart TB\nA[alpha]\n",
+    );
+    let graph = merman_render::flowchart::elk::build_flowchart_elk_graph(
+        flowchart_model(&parsed),
+        &parsed.meta.effective_config,
+        &NonLatticeComputedLengthMeasurer,
+        None,
+    )
+    .expect("ELK graph");
+    let label = graph
+        .nodes
+        .iter()
+        .find(|node| node.id == "A")
+        .and_then(|node| node.label)
+        .expect("node A label");
+
+    assert_eq!(label.width, NON_LATTICE_COMPUTED_LENGTH_PX);
 }
 
 fn flowchart_node_center(layout: &FlowchartLayout, id: &str) -> (f64, f64) {
@@ -1753,8 +1848,104 @@ fn flowchart_anchor_shape_ignores_label_for_layout() {
         .iter()
         .find(|n| n.id == "A")
         .expect("anchor node");
-    assert!((node.width - 2.001_899_003_982_544).abs() <= 1e-9);
+    assert!((node.width - 2.0).abs() <= 1e-9);
     assert!((node.height - 2.0).abs() <= 1e-9);
+}
+
+#[test]
+fn flowchart_fixed_radius_circles_use_source_defined_nominal_diameters() {
+    let layout = layout_flowchart(
+        "flowchart TB\nA@{ shape: stop }\nB@{ shape: filled-circle }\nC@{ shape: crossed-circle }\n",
+    );
+
+    for (id, diameter) in [("A", 14.0), ("B", 14.0), ("C", 60.0)] {
+        let node = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"));
+        assert!(
+            approx_eq(node.width, diameter) && approx_eq(node.height, diameter),
+            "Mermaid 11.16 defines {id} as a nominal {diameter}px circle: {node:?}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_public_shape_aliases_use_their_source_geometry() {
+    let layout = layout_flowchart(
+        r#"flowchart TB
+R0@{ shape: rect, label: "same" }
+R1@{ shape: proc, label: "same" }
+R2@{ shape: process, label: "same" }
+R3@{ shape: rectangle, label: "same" }
+C0@{ shape: circle, label: "same" }
+C1@{ shape: circ, label: "same" }
+B@{ shape: bang, label: "same" }
+D@{ shape: cloud, label: "same" }
+"#,
+    );
+    let dimensions = |id: &str| {
+        let node = layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"));
+        (node.width, node.height)
+    };
+
+    let process = dimensions("R0");
+    for alias in ["R1", "R2", "R3"] {
+        let actual = dimensions(alias);
+        assert!(
+            approx_eq(actual.0, process.0) && approx_eq(actual.1, process.1),
+            "{alias} must resolve to Mermaid's process rectangle: {actual:?} != {process:?}"
+        );
+    }
+
+    let circle = dimensions("C0");
+    let circ = dimensions("C1");
+    assert!(approx_eq(circle.0, circle.1));
+    assert!(approx_eq(circ.0, circle.0) && approx_eq(circ.1, circle.1));
+
+    let bang = dimensions("B");
+    assert!(
+        bang.0 > process.0 && bang.1 > process.1,
+        "Mermaid's bang arc path has a larger bbox than a process rectangle: {bang:?}"
+    );
+
+    let cloud = dimensions("D");
+    assert!(
+        cloud.0 < process.0 && cloud.1 > process.1,
+        "Mermaid's cloud arc path must use its own rendered bbox: {cloud:?}"
+    );
+}
+
+#[test]
+fn flowchart_layout_rejects_unknown_shape_instead_of_using_a_rectangle() {
+    let parsed = parse_flowchart_render_model("flowchart TB\nA[known]\n");
+    let mut model = flowchart_model(&parsed).clone();
+    model.nodes[0].layout_shape = Some("definitely-unknown".to_string());
+    let session = merman_render::environment::RenderEnvironment::parity()
+        .begin_session()
+        .expect("render session");
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+
+    let error = layout_flowchart_typed(
+        &model,
+        &parsed.meta.effective_config,
+        &measurer,
+        session.math_renderer(),
+    )
+    .expect_err("unknown Flowchart shapes must not silently become rectangles");
+
+    let Error::InvalidModel { message } = error else {
+        panic!("expected InvalidModel for unknown Flowchart shape");
+    };
+    assert_eq!(
+        message,
+        "No such shape: definitely-unknown. Please check your syntax."
+    );
 }
 
 #[test]
@@ -1876,6 +2067,7 @@ fn flowchart_svglike_long_word_is_wrapped_into_multiple_lines() {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
         font_weight: None,
+        font_style: None,
     };
     let single = measurer.measure_wrapped(
         "Supercalifragilisticexpialidocious",
@@ -1987,8 +2179,9 @@ fn flowchart_subgraph_title_uses_wrapping_placeholder_metrics() {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
         font_weight: None,
+        font_style: None,
     };
-    let expected = merman_render::text::measure_markdown_with_flowchart_bold_deltas(
+    let expected = merman_render::text::measure_markdown_with_inline_styles(
         &measurer,
         title,
         &style,
@@ -2035,6 +2228,7 @@ fn flowchart_subgraph_title_wraps_long_word_in_svglike_mode() {
         font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
         font_size: 16.0,
         font_weight: None,
+        font_style: None,
     };
     let single = measurer.measure_wrapped(title, &style, None, WrapMode::SvgLike);
     let wrapped = measurer.measure_wrapped(title, &style, Some(200.0), WrapMode::SvgLike);
@@ -2089,6 +2283,80 @@ classDef small font-size:50%;
         "expected font-size:50% to reduce label-driven node height: small={}, normal={}",
         small.height,
         normal.height
+    );
+}
+
+#[test]
+fn flowchart_html_class_box_styles_follow_span_block_layout() {
+    let layout = layout_flowchart(
+        r#"flowchart LR
+Plain[same]
+Background[same]:::background
+Border[same]:::border
+InlineBlock[same]:::inlineBlock
+ZeroBorder[same]:::zeroBorder
+classDef background background:#bbb;
+classDef border border:1px solid red;
+classDef inlineBlock border:1px solid red,display:inline-block;
+classDef zeroBorder border:0 solid red;
+"#,
+    );
+
+    let node = |id: &str| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("node {id}"))
+    };
+    let plain = node("Plain");
+    let background = node("Background");
+    let border = node("Border");
+    let inline_block = node("InlineBlock");
+    let zero_border = node("ZeroBorder");
+
+    assert!(approx_eq(background.height, plain.height));
+    assert!(approx_eq(background.width, plain.width));
+    assert!(approx_eq(zero_border.height, plain.height));
+    assert!(approx_eq(zero_border.width, plain.width));
+
+    assert!(
+        approx_eq(border.height, plain.height + 48.0),
+        "an inline span around Mermaid's <p> label contributes two extra 24px line boxes: plain={plain:?}, border={border:?}"
+    );
+    assert!(approx_eq(border.width, plain.width));
+
+    assert!(
+        approx_eq(inline_block.height, plain.height + 2.0),
+        "inline-block uses its border box instead of fragmented inline boxes: plain={plain:?}, inline_block={inline_block:?}"
+    );
+    assert!(approx_eq(inline_block.width, plain.width + 2.0));
+
+    let svg_class_css = layout_flowchart(
+        r#"---
+config:
+  flowchart:
+    htmlLabels: false
+---
+flowchart LR
+Plain[same]
+Border[same]:::border
+classDef border border:1px solid red;
+"#,
+    );
+    let plain = svg_class_css
+        .nodes
+        .iter()
+        .find(|node| node.id == "Plain")
+        .expect("plain node");
+    let border = svg_class_css
+        .nodes
+        .iter()
+        .find(|node| node.id == "Border")
+        .expect("border node");
+    assert!(
+        approx_eq(border.height, plain.height),
+        "flowchart.htmlLabels=false emits class selectors for SVG shapes, so the border declaration must not affect the foreignObject span: plain={plain:?}, border={border:?}"
     );
 }
 

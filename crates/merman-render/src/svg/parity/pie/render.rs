@@ -148,9 +148,8 @@ fn empty_pie_root_viewport_fallback(
         return None;
     }
 
-    // Empty pie roots used to inherit upstream's invalid `-Infinity` viewport when no sections
-    // were drawn. Keep a finite fallback for that legacy path, but do not clobber valid title-
-    // widened roots that now come from layout bounds directly.
+    // Mermaid can produce an invalid `-Infinity` viewport when no sections are drawn. Root
+    // Viewport requires finite bounds, but valid title-widened layout bounds remain authoritative.
     Some((
         root_svg::DiagramBounds::from_view_box(0.0, 0.0, EMPTY_PIE_WIDTH, EMPTY_PIE_HEIGHT),
         root_svg::RootMaxWidth::SvgNumber(EMPTY_PIE_WIDTH),
@@ -199,27 +198,23 @@ pub(crate) fn render_pie_diagram_svg_model(
         .acc_descr
         .as_deref()
         .map(|_| format!("chart-desc-{diagram_id}"));
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Pie,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        &mut out,
-        root_spec,
-        root_svg::RootChrome {
-            aria_labelledby: aria_labelledby.as_deref(),
-            aria_describedby: aria_describedby.as_deref(),
-            dom: root_svg::RootDomProfile {
-                style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                trailing_newline: false,
-                ..Default::default()
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Pie, diagram_id)
+        .write_open(
+            &mut out,
+            root_spec,
+            root_svg::RootChrome {
+                aria_labelledby: aria_labelledby.as_deref(),
+                aria_describedby: aria_describedby.as_deref(),
+                dom: root_svg::RootDomProfile {
+                    style_viewbox_order: root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle,
+                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                    trailing_newline: false,
+                    ..Default::default()
+                },
+                ..root_svg::RootChrome::new(diagram_id, "pie")
             },
-            ..root_svg::RootChrome::new(diagram_id, "pie")
-        },
-    )?;
+        )?;
 
     if let Some(t) = model.acc_title.as_deref() {
         let _ = write!(
@@ -481,9 +476,6 @@ mod tests {
             ..SvgRenderOptions::default()
         };
         let session = crate::environment::RenderEnvironment::parity()
-            .with_root_viewport_override_policy(
-                crate::environment::RootViewportOverridePolicy::ComputedOnly,
-            )
             .begin_session()
             .expect("render session");
         let debug = SvgDebugOptions::default();

@@ -47,7 +47,29 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> bool {
-    // Port of Mermaid `iconSquare.ts` (`icon-shape default`).
+    try_render_icon_rect_frame(out, ctx, common, label, details, 0.1, None)
+}
+
+pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_rounded(
+    out: &mut String,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
+) -> bool {
+    try_render_icon_rect_frame(out, ctx, common, label, details, 5.0, Some("icon-shape2"))
+}
+
+fn try_render_icon_rect_frame(
+    out: &mut String,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    label: &super::super::FlowchartNodeLabelState<'_>,
+    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
+    corner_radius: f64,
+    frame_class: Option<&str>,
+) -> bool {
+    // Port of Mermaid `iconSquare.ts` and `iconRounded.ts` (`icon-shape default`).
     if let Some(icon_name) = common.node_icon.filter(|s| !s.trim().is_empty()) {
         // Mermaid `labelHelper(...)` uses the flowchart `nodePadding` (15px) and returns `halfPadding`.
         let half_padding = (ctx.node_padding / 2.0).max(0.0);
@@ -65,12 +87,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
         let width = icon_size + half_padding * 2.0;
         let x = -width / 2.0;
         let y = -height / 2.0;
-
-        let node_font_style = crate::flowchart::flowchart_effective_font_style_for_node_classes(
-            ctx.class_defs,
-            common.node_classes,
-            common.node_styles,
-        );
         let mut metrics = crate::flowchart::flowchart_label_metrics_for_layout(
             crate::flowchart::FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
@@ -85,8 +101,6 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
                 wrap_mode: ctx.node_wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
-                preserve_string_whitespace_height: ctx.node_html_labels && ctx.edge_html_labels,
-                whole_label_font_style: node_font_style.as_deref(),
             },
         );
         if !has_label {
@@ -107,7 +121,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
             -label_bbox_h / 2.0 - label_padding / 2.0
         };
 
-        let rounded_rect = rounded_rect_path_d(x, y, width, height, 0.1);
+        let rounded_rect = rounded_rect_path_d(x, y, width, height, corner_radius);
         let (fill_d, stroke_d) =
             match super::super::helpers::timed_node_roughjs(common.timing_enabled, details, || {
                 super::super::roughjs::roughjs_paths_for_svg_path_single_set(
@@ -125,7 +139,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
 
         // Icon border/background (RoughJS `rc.path(...)`) — emitted before labels and outer bbox.
         // Mermaid uses `translate(0,18)` without a space after the comma.
-        let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
+        if let Some(frame_class) = frame_class {
+            let _ = write!(
+                out,
+                r#"<g class="{}" transform="translate(0,{})">"#,
+                escape_attr(frame_class),
+                fmt(icon_dy)
+            );
+        } else {
+            let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(icon_dy));
+        }
         let _ = write!(
             out,
             r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
@@ -158,9 +181,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_icon_square(
                 flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
             });
         let label_y = if top_label {
-            -outer_h / 2.0 + half_padding
+            -outer_h / 2.0
         } else {
-            outer_h / 2.0 - label_bbox_h - half_padding
+            outer_h / 2.0 - label_bbox_h
         };
         let _ = write!(
             out,

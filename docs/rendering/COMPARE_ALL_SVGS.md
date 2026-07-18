@@ -52,7 +52,8 @@ Example:
 - `--dom-decimals 6` is a useful stress test for root viewport parity (`viewBox` + `max-width`),
   but it is expected to surface small residual numeric drift as we continue to tighten the
   headless bbox + viewport pipeline.
-  - Some of this drift is inherent to browser float/serialization behavior. For known upstream
-    fixture deltas, we keep exact `parity-root` by applying fixture-derived root viewport overrides
-    keyed by `diagram_id` (fixture stem) under `crates/merman-render/src/generated/*_root_overrides_11_12_2.rs`.
-  - To review the current override footprint, run `cargo run -p xtask -- report-overrides`.
+  - Some drift is inherent to browser font and float behavior. Production output is never adjusted
+    by fixture id; bounded browser-only residuals stay visible in parity reports and accepted
+    residual policy.
+  - New or changed residuals still fail the gate. Fix source-backed semantics, layout, emitted
+    geometry, or measurement rather than adding a root pin.

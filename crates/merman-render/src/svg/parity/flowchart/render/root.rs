@@ -1,18 +1,19 @@
 //! Flowchart root renderer.
 
 use super::super::*;
+use super::edge_label::render_swimlane_edge_label_node;
 
 pub(in crate::svg::parity::flowchart) fn flowchart_elk_renders_empty_subgraph_as_cluster(
     ctx: &FlowchartRenderCtx<'_>,
 ) -> bool {
-    ctx.source_ported_elk_rendering
+    ctx.uses_elk_adapter_dom
 }
 
 pub(in crate::svg::parity::flowchart) struct FlowchartRootRenderSession<'details, 'cache> {
     pub(in crate::svg::parity::flowchart) timing_enabled: bool,
     pub(in crate::svg::parity::flowchart) details: &'details mut FlowchartRenderDetails,
     pub(in crate::svg::parity::flowchart) edge_cache:
-        Option<&'cache FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>>,
+        &'cache FxHashMap<&'cache str, FlowchartEdgePathCacheEntry>,
 }
 
 struct FlowchartRootFrame<'a> {
@@ -57,7 +58,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
     parent_origin_x: f64,
     parent_origin_y: f64,
     session: &mut FlowchartRootRenderSession<'_, '_>,
-) {
+) -> crate::Result<()> {
     let mut stack = vec![FlowchartRootFrame::new(
         cluster_id,
         parent_origin_x,
@@ -86,6 +87,21 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 frame.next_dom_index += 1;
                 id
             };
+
+            if let Some(edge) = ctx.swimlane_edge_label_edges_by_node_id.get(id).copied() {
+                let Some(current) = frame.as_ref() else {
+                    break;
+                };
+                render_swimlane_edge_label_node(
+                    out,
+                    ctx,
+                    id,
+                    edge,
+                    current.origin_x,
+                    current.content_origin_y,
+                );
+                continue;
+            }
 
             if ctx
                 .subgraphs_by_id
@@ -124,7 +140,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
                 current.content_origin_y,
                 session.timing_enabled,
                 &mut *session.details,
-            );
+            )?;
             if let Some(s) = node_start {
                 session.details.nodes += s.elapsed();
             }
@@ -141,6 +157,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_root(
             }
         }
     }
+    Ok(())
 }
 
 fn flowchart_elk_edges<'a>(ctx: &'a FlowchartRenderCtx<'a>) -> Vec<&'a crate::flowchart::FlowEdge> {
@@ -165,11 +182,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
     session: &mut FlowchartRootRenderSession<'_, '_>,
-) {
+) -> crate::Result<()> {
     session.details.root_calls += 1;
 
     render_flowchart_elk_subgraphs(out, ctx, session);
-    render_flowchart_elk_nodes(out, ctx, session);
+    render_flowchart_elk_nodes(out, ctx, session)?;
 
     let _g_edges_select = detail_guard(session.timing_enabled, &mut session.details.edges_select);
     let edges = flowchart_elk_edges(ctx);
@@ -177,6 +194,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_elk_root_groups(
 
     render_flowchart_elk_edge_paths(out, ctx, session, &edges);
     render_flowchart_elk_edge_labels(out, ctx, session, &edges);
+    Ok(())
 }
 
 fn render_flowchart_elk_subgraphs(
@@ -248,7 +266,7 @@ fn render_flowchart_elk_nodes(
     out: &mut String,
     ctx: &FlowchartRenderCtx<'_>,
     session: &mut FlowchartRootRenderSession<'_, '_>,
-) {
+) -> crate::Result<()> {
     out.push_str(r#"<g class="nodes">"#);
 
     let _g_dom_order = detail_guard(session.timing_enabled, &mut session.details.dom_order);
@@ -278,13 +296,14 @@ fn render_flowchart_elk_nodes(
             0.0,
             session.timing_enabled,
             &mut *session.details,
-        );
+        )?;
         if let Some(s) = node_start {
             session.details.nodes += s.elapsed();
         }
     }
 
     out.push_str("</g>");
+    Ok(())
 }
 
 fn render_flowchart_elk_edge_paths(
@@ -406,6 +425,16 @@ fn initialize_flowchart_root_frame<'a>(
             clusters_to_draw.push(cluster);
         }
     }
+    for lane in ctx.swimlane_lanes_by_id.values() {
+        if ctx.subgraphs_by_id.contains_key(lane.id.as_str())
+            || lane.parent_id.as_deref() != frame.cluster_id
+        {
+            continue;
+        }
+        if let Some(cluster) = ctx.layout_clusters_by_id.get(lane.id.as_str()) {
+            clusters_to_draw.push(cluster);
+        }
+    }
     if clusters_to_draw.is_empty() {
         out.push_str(r#"<g class="clusters"/>"#);
     } else {
@@ -476,10 +505,15 @@ fn initialize_flowchart_root_frame<'a>(
     drop(_g_edges_select);
 
     let _g_edge_paths = detail_guard(session.timing_enabled, &mut session.details.edge_paths);
-    if edges.is_empty() {
-        out.push_str(r#"<g class="edgePaths"/>"#);
+    let edge_group_class = if ctx.swimlane_direction.is_some() {
+        "edges edgePath"
     } else {
-        out.push_str(r#"<g class="edgePaths">"#);
+        "edgePaths"
+    };
+    if edges.is_empty() {
+        let _ = write!(out, r#"<g class="{}"/>"#, edge_group_class);
+    } else {
+        let _ = write!(out, r#"<g class="{}">"#, edge_group_class);
         let mut scratch = FlowchartEdgeDataPointsScratch::default();
         for e in &edges {
             render_flowchart_edge_path(
@@ -497,7 +531,7 @@ fn initialize_flowchart_root_frame<'a>(
     drop(_g_edge_paths);
 
     let _g_edge_labels = detail_guard(session.timing_enabled, &mut session.details.edge_labels);
-    if edges.is_empty() {
+    if ctx.swimlane_direction.is_some() || edges.is_empty() {
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
         out.push_str(r#"<g class="edgeLabels">"#);
@@ -576,8 +610,8 @@ fn initialize_flowchart_root_frame<'a>(
     }
 
     if dom_order.is_empty() {
-        // Fallback for v1 layouts: approximate by appending extracted cluster roots after
-        // regular nodes.
+        // Layout backends without an explicit registration order still use the same effective
+        // hierarchy: regular nodes precede extracted cluster roots.
         dom_order = flowchart_root_children_nodes(ctx, frame.cluster_id);
         dom_order.extend(flowchart_root_children_clusters(ctx, frame.cluster_id));
     }

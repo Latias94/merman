@@ -16,22 +16,13 @@ export interface ParseOptions {
 }
 
 export interface LayoutOptions {
-  viewport_width?: number;
-  viewport_height?: number;
-  flowchart_elk_backend?: "source-ported" | "source_ported" | "source" | "compat";
+  container_width?: number;
+  container_height?: number;
 }
 
 export interface RenderEnvironmentOptions {
   text_measurement?: "vendored" | "parity" | "deterministic";
   math_renderer?: "none" | "ratex";
-  root_viewport_overrides?:
-    | "apply-generated"
-    | "apply_generated"
-    | "generated"
-    | "computed-only"
-    | "computed_only"
-    | "computed"
-    | "disabled";
 }
 
 export interface ResourceOptions {
@@ -214,8 +205,30 @@ export type HostTextWhiteSpace =
   | "break-spaces"
   | "pre-wrap";
 
+export type HostTextMeasurementOperation =
+  | "measure"
+  | "computed-length"
+  | "bbox-x"
+  | "bbox-x-with-ascii-overhang"
+  | "title-bbox-x"
+  | "simple-bbox-width"
+  | "raw-bbox-width"
+  | "tspan-bbox-width"
+  | "tspan-bbox-height"
+  | "wrap-probe-bbox-width"
+  | "simple-bbox-height"
+  | "wrapped"
+  | "wrapped-with-raw-width"
+  | "bounding-client-rect-width"
+  | "create-text-bbox-y-offset"
+  | "mermaid-calculate-text-dimensions"
+  | "canvas-measure-text-width"
+  | "create-text-middle-bbox-y-offset"
+  | "raw-bbox-height";
+
 export interface HostTextMeasureRequest {
-  phase: "layout" | "wrap" | "svg-bbox" | "computed-length" | "visibility";
+  operation: HostTextMeasurementOperation;
+  phase: "layout" | "wrap" | "svg-bbox" | "computed-length";
   text: string;
   font_family?: string | null;
   font_size: number;
@@ -231,12 +244,46 @@ export interface HostTextMeasureRequest {
   white_space: HostTextWhiteSpace;
 }
 
-export interface HostTextMeasureResult {
-  handled?: boolean;
+export interface HostTextMetricsResult {
+  handled?: true;
+  kind: "metrics";
   width: number;
   height: number;
-  line_count?: number;
+  line_count: number;
 }
+
+export interface HostTextLengthResult {
+  handled?: true;
+  kind: "length";
+  length: number;
+}
+
+export interface HostTextHorizontalExtentsResult {
+  handled?: true;
+  kind: "horizontal-extents";
+  bbox_left: number;
+  bbox_right: number;
+}
+
+export interface HostTextWrappedWithRawWidthResult {
+  handled?: true;
+  kind: "wrapped-with-raw-width";
+  width: number;
+  height: number;
+  line_count: number;
+  raw_width?: number | null;
+}
+
+export interface HostTextUnhandledResult {
+  handled: false;
+}
+
+export type HostTextMeasureResult =
+  | HostTextMetricsResult
+  | HostTextLengthResult
+  | HostTextHorizontalExtentsResult
+  | HostTextWrappedWithRawWidthResult
+  | HostTextUnhandledResult;
 
 export type HostTextMeasurer = (
   request: HostTextMeasureRequest

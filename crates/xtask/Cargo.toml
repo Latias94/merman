@@ -19,8 +19,9 @@ futures.workspace = true
 dugong = { path = "../dugong" }
 merman = { path = "../merman", features = ["render"] }
 merman-core = { path = "../merman-core" }
-merman-layout-elk = { workspace = true, features = ["layered"] }
-merman-render = { path = "../merman-render", features = ["elk-layout"] }
+merman-fixture-render-context = { path = "../merman-fixture-render-context" }
+merman-layout-elk.workspace = true
+merman-render = { path = "../merman-render", features = ["elk-layout", "font-metrics-generation"] }
 regex.workspace = true
 roxmltree.workspace = true
 serde.workspace = true
@@ -29,6 +30,7 @@ serde-saphyr.workspace = true
 sha2.workspace = true
 syn.workspace = true
 thiserror.workspace = true
+tempfile = "3.27.0"
 toml.workspace = true
 wasmi.workspace = true
 

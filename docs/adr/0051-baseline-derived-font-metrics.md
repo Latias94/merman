@@ -2,6 +2,12 @@
 
 Date: 2026-01-21
 
+## Status
+
+Superseded by ADR-0057 and ADR-0062 on 2026-07-15. Fixture corpora now validate independently;
+they do not train or publish complete-text answers. The current deterministic profile contains
+only generalized glyph, kerning, trigram, fallback-font, and endpoint-overhang facts.
+
 ## Context
 
 Mermaid `@11.12.3` derives most label dimensions (and therefore layout and the final SVG viewport)
@@ -67,4 +73,3 @@ without bundling proprietary font files and without requiring a browser at runti
 - Decide when to make the baseline-derived measurer the default (after regenerating internal golden
   snapshots if needed).
 - Extend extraction beyond Flowchart if other diagrams are blocked by the same metric drift.
-

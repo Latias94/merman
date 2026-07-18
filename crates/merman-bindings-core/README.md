@@ -45,7 +45,8 @@ raster helpers.
 
 `binding_capabilities()` reports compiled output and host profiles. `selected_registry_profile()`
 reports the active Mermaid registry profile (`"full"` or `"tiny"`), and
-`diagram_family_capabilities()` exposes the diagram parser/render facts selected by that profile.
+`diagram_family_capabilities()` exposes the complete detector, semantic/editor parser, typed render,
+authoring-header, and config-namespace facts selected by that profile.
 Use this diagnostic surface when a host needs to reason about slim WASM/native artifacts without
 assuming capabilities from a package name.
 The `analysis` capability bit is independent from `render` and `ascii`; slim artifacts can expose
@@ -54,6 +55,11 @@ ASCII or render output without compiling diagnostics and lint catalog support.
 Diagnostics payloads and rich parser-only document facts are independent schema v1 contracts. The
 TextScan-capable alpha facts implementation is removed without a decoder or parallel binding path.
 Transport and platform ABI versions are independent from these JSON schema versions.
+
+With `render` enabled, this crate centralizes the host text-measurement result-shape contract. The
+current alpha transports expose 19 exact operations with contiguous codes `0..18`; operation 18 is
+`raw-bbox-height` and requires a length result. C, UniFFI, and WASM transports report ABI 2 while the
+alpha contract evolves.
 
 For product scope, diagram coverage, and compatibility policy, see the
 [project README](https://github.com/Latias94/merman#readme) and

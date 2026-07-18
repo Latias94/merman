@@ -56,7 +56,6 @@ Notes:
 
 Per-diagram details:
 
-- Architecture: `docs/alignment/ARCHITECTURE_SVG_PARITY_GAPS.md`
 - Flowchart: `docs/alignment/FLOWCHART_SVG_PARITY_GAPS.md`
 - Mindmap: `docs/alignment/MINDMAP_SVG_PARITY_GAPS.md`
 - State root viewport: `docs/alignment/STATE_ROOT_VIEWBOX_PARITY_GAPS.md`
@@ -84,9 +83,11 @@ Legend:
      for SVG labels under the pinned CLI baseline.
    - Risk: H (can change line breaks, bboxes, viewBox/max-width).
 
-3. **Reduce fixture-id keyed root viewport overrides**
-   - Target: replace fixture-id keys with reusable semantic/topology profiles or deterministic
-     algorithms wherever possible.
+3. **Keep root viewport ownership fixture-free**
+   - Target: preserve computed family or emitted-content bounds and source-backed root algorithms;
+     reject any reintroduction of fixture-id keys.
+   - Current status: complete in the family-owned architecture migration; browser-only drift is
+     represented only by narrow verification residual policy.
    - Risk: M (viewport is a global gate and sensitive to tiny drift).
 
 ### P1: Coverage confidence (expand and stabilize)

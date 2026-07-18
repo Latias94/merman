@@ -1,7 +1,7 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -132,13 +132,16 @@ fn block_svg_keeps_blank_placeholder_label_paragraph() {
 
 #[test]
 fn block_svg_honors_configured_node_text_color() {
-    let engine = legacy_init_theme_compat_engine();
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "nodeTextColor": "#123456"
+        }
+    })));
     let svg = render_block_svg_from_text_with_engine(
         &engine,
-        r##"%%{init: {"themeVariables": {"nodeTextColor": "#123456"}}}%%
-block
+        r#"block
   A["Alpha"]
-"##,
+"#,
     );
 
     assert!(

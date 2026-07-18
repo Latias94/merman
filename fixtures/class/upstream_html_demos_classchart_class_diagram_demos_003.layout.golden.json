@@ -1,21 +1,21 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Class01",
-          "x": 118.777,
+          "x": 116.679,
           "y": 96.0,
-          "width": 237.555,
+          "width": 233.359,
           "height": 192.0,
           "is_cluster": false
         },
         {
           "id": "Class10",
-          "x": 341.609,
+          "x": 336.077,
           "y": 96.0,
-          "width": 108.109,
+          "width": 105.438,
           "height": 168.0,
           "is_cluster": false
         }
@@ -25,7 +25,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 395.664,
+        "max_x": 388.796,
         "max_y": 192.0
       }
     }

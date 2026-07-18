@@ -31,12 +31,8 @@ fn render_error_diagram_svg_inner(
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "error");
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Error,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Error, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
     let css = info_css_with_config(diagram_id, effective_config);
     let _ = write!(
         &mut out,

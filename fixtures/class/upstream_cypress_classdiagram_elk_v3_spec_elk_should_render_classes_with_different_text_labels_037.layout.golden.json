@@ -1,101 +1,101 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "C1",
-          "x": 42.594,
+          "x": 40.797,
           "y": 42.0,
-          "width": 85.188,
+          "width": 81.594,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C10",
-          "x": 1444.633,
+          "x": 1404.477,
           "y": 42.0,
-          "width": 148.016,
+          "width": 140.484,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C11",
-          "x": 1647.938,
+          "x": 1600.797,
           "y": 42.0,
-          "width": 158.594,
+          "width": 152.156,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C12",
-          "x": 1875.477,
+          "x": 1822.234,
           "y": 42.0,
-          "width": 196.484,
+          "width": 190.719,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C13",
-          "x": 2135.508,
+          "x": 2076.156,
           "y": 42.0,
-          "width": 223.578,
+          "width": 217.125,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C2",
-          "x": 193.742,
+          "x": 188.555,
           "y": 42.0,
-          "width": 117.109,
+          "width": 113.922,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C3",
-          "x": 370.227,
+          "x": 361.195,
           "y": 42.0,
-          "width": 135.859,
+          "width": 131.359,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C4",
-          "x": 556.641,
+          "x": 542.555,
           "y": 42.0,
-          "width": 136.969,
+          "width": 131.359,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C5",
-          "x": 744.117,
+          "x": 723.914,
           "y": 42.0,
-          "width": 137.984,
+          "width": 131.359,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C7",
-          "x": 927.125,
+          "x": 900.711,
           "y": 42.0,
-          "width": 128.031,
+          "width": 122.234,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C8",
-          "x": 1104.734,
+          "x": 1073.43,
           "y": 42.0,
-          "width": 127.188,
+          "width": 123.203,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "C9",
-          "x": 1269.477,
+          "x": 1234.633,
           "y": 42.0,
-          "width": 102.297,
+          "width": 99.203,
           "height": 84.0,
           "is_cluster": false
         }
@@ -105,7 +105,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 2247.297,
+        "max_x": 2184.719,
         "max_y": 84.0
       }
     }

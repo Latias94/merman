@@ -1,8 +1,23 @@
+use super::super::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
 use super::super::*;
 use crate::model::{
-    IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaLineLayout,
-    IshikawaSubGroupLayout, IshikawaTextLayout,
+    IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaLabelBoxLayout,
+    IshikawaLineLayout, IshikawaSubGroupLayout, IshikawaTextLayout,
 };
+
+struct RoughContext {
+    seed: u64,
+    line_color: String,
+    fill_color: String,
+}
+
+#[derive(Clone, Copy)]
+struct RoughPaint<'a> {
+    fill_color: &'a str,
+    stroke_color: &'a str,
+    stroke_width: f32,
+    fill_weight: f32,
+}
 
 pub(crate) fn render_ishikawa_diagram_svg(
     layout: &IshikawaDiagramLayout,
@@ -20,51 +35,87 @@ pub(crate) fn render_ishikawa_diagram_svg(
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "ishikawa");
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Ishikawa,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Ishikawa, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     let css = ishikawa_css(layout, effective_config);
-    let marker_id = format!("ishikawa-arrow-{diagram_id}");
     let _ = write!(&mut out, "<style>{css}</style>");
-    out.push_str("<g/>");
-    let _ = write!(&mut out, r#"<g class="ishikawa"><defs><marker id=""#);
-    escape_xml_into(&mut out, &marker_id);
+    out.push_str(r#"<g/><g class="ishikawa">"#);
+    if crate::config::config_diagram_look(effective_config).as_str() == "handDrawn" {
+        let theme = PresentationTheme::new(effective_config).ishikawa();
+        let rough = RoughContext {
+            seed: effective_config
+                .get("handDrawnSeed")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0),
+            line_color: theme.line_color,
+            fill_color: theme.main_bkg,
+        };
+        push_hand_drawn_diagram(&mut out, layout, &rough);
+    } else {
+        let marker_id = format!("ishikawa-arrow-{diagram_id}");
+        push_classic_diagram(&mut out, layout, &marker_id);
+    }
+
+    out.push_str("</g></svg>\n");
+    Ok(out)
+}
+
+fn push_classic_diagram(out: &mut String, layout: &IshikawaDiagramLayout, marker_id: &str) {
+    let _ = write!(out, r#"<defs><marker id=""#);
+    escape_xml_into(out, marker_id);
     out.push_str(
         r#"" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 10 0 L 0 5 L 10 10 Z" class="ishikawa-arrow"></path></marker></defs>"#,
     );
 
     if let Some(spine) = &layout.spine {
-        push_line(&mut out, spine, &marker_id);
+        push_line(out, spine, marker_id);
     }
-
     if let Some(head) = &layout.head {
         let _ = write!(
-            &mut out,
+            out,
             r#"<g class="ishikawa-head-group" transform="translate({}, {})"><path class="ishikawa-head" d=""#,
             fmt(head.x),
             fmt(head.y)
         );
-        escape_attr_into(&mut out, &head.path_d);
+        escape_attr_into(out, &head.path_d);
         out.push_str(r#""></path>"#);
-        push_ishikawa_head_text(&mut out, &head.label, -head.x, -head.y);
+        push_ishikawa_head_text(out, &head.label, -head.x, -head.y);
         out.push_str("</g>");
     }
-
     for pair in &layout.pairs {
         out.push_str(r#"<g class="ishikawa-pair">"#);
-        push_branch(&mut out, &pair.upper, &marker_id);
+        push_branch(out, &pair.upper, marker_id);
         if let Some(lower) = &pair.lower {
-            push_branch(&mut out, lower, &marker_id);
+            push_branch(out, lower, marker_id);
         }
         out.push_str("</g>");
     }
+}
 
-    out.push_str("</g></svg>\n");
-    Ok(out)
+fn push_hand_drawn_diagram(out: &mut String, layout: &IshikawaDiagramLayout, rough: &RoughContext) {
+    if let Some(head) = &layout.head {
+        let _ = write!(
+            out,
+            r#"<g class="ishikawa-head-group" transform="translate({}, {})">"#,
+            fmt(head.x),
+            fmt(head.y)
+        );
+        push_rough_hachure_path(out, "ishikawa-head", &head.path_d, rough);
+        push_ishikawa_head_text(out, &head.label, -head.x, -head.y);
+        out.push_str("</g>");
+    }
+    for pair in &layout.pairs {
+        out.push_str(r#"<g class="ishikawa-pair">"#);
+        push_hand_drawn_branch(out, &pair.upper, rough);
+        if let Some(lower) = &pair.lower {
+            push_hand_drawn_branch(out, lower, rough);
+        }
+        out.push_str("</g>");
+    }
+    if let Some(spine) = &layout.spine {
+        push_rough_line(out, spine, rough);
+    }
 }
 
 fn push_branch(out: &mut String, branch: &IshikawaBranchLayout, marker_id: &str) {
@@ -97,6 +148,39 @@ fn push_sub_group(out: &mut String, group: &IshikawaSubGroupLayout, marker_id: &
     out.push_str("</g>");
 }
 
+fn push_hand_drawn_branch(out: &mut String, branch: &IshikawaBranchLayout, rough: &RoughContext) {
+    push_rough_line(out, &branch.line, rough);
+    push_rough_arrow_marker(out, &branch.line, rough);
+    push_hand_drawn_cause_label_group(out, &branch.label_group, rough);
+    for sub_group in &branch.sub_groups {
+        push_hand_drawn_sub_group(out, sub_group, rough);
+    }
+}
+
+fn push_hand_drawn_cause_label_group(
+    out: &mut String,
+    group: &IshikawaCauseLabelGroupLayout,
+    rough: &RoughContext,
+) {
+    out.push_str(r#"<g class="ishikawa-label-group">"#);
+    let label_box = &group.label_box;
+    push_rough_hachure_rect(out, "ishikawa-label-box", label_box, rough);
+    push_text_with_offset(out, &group.label, 0.0, 0.0);
+    out.push_str("</g>");
+}
+
+fn push_hand_drawn_sub_group(
+    out: &mut String,
+    group: &IshikawaSubGroupLayout,
+    rough: &RoughContext,
+) {
+    out.push_str(r#"<g class="ishikawa-sub-group">"#);
+    push_rough_line(out, &group.line, rough);
+    push_rough_arrow_marker(out, &group.line, rough);
+    push_text_with_offset(out, &group.label, 0.0, 0.0);
+    out.push_str("</g>");
+}
+
 fn push_line(out: &mut String, line: &IshikawaLineLayout, marker_id: &str) {
     let _ = write!(
         out,
@@ -115,6 +199,174 @@ fn push_line(out: &mut String, line: &IshikawaLineLayout, marker_id: &str) {
         );
     }
     out.push_str("></line>");
+}
+
+fn push_rough_line(out: &mut String, line: &IshikawaLineLayout, rough: &RoughContext) {
+    let options = roughr::core::OptionsBuilder::default()
+        .seed(rough.seed)
+        .roughness(1.5)
+        .stroke(rough_color(&rough.line_color))
+        .stroke_width(2.0)
+        .build()
+        .expect("static Ishikawa rough line options must be valid");
+    let drawable = roughr::generator::Generator::default().line::<f64>(
+        line.x1,
+        line.y1,
+        line.x2,
+        line.y2,
+        &Some(options),
+    );
+    push_rough_group(
+        out,
+        Some(&line.class_name),
+        drawable.sets,
+        RoughPaint {
+            fill_color: &rough.line_color,
+            stroke_color: &rough.line_color,
+            stroke_width: 2.0,
+            fill_weight: 0.0,
+        },
+    );
+}
+
+fn push_rough_hachure_path(out: &mut String, class_name: &str, path_d: &str, rough: &RoughContext) {
+    let drawable = roughr::generator::Generator::default()
+        .path::<f64>(path_d.to_string(), &Some(rough_hachure_options(rough)));
+    push_rough_group(
+        out,
+        Some(class_name),
+        drawable.sets,
+        RoughPaint {
+            fill_color: &rough.fill_color,
+            stroke_color: &rough.line_color,
+            stroke_width: 2.0,
+            fill_weight: 2.5,
+        },
+    );
+}
+
+fn push_rough_hachure_rect(
+    out: &mut String,
+    class_name: &str,
+    label_box: &IshikawaLabelBoxLayout,
+    rough: &RoughContext,
+) {
+    let drawable = roughr::generator::Generator::default().rectangle::<f64>(
+        label_box.x,
+        label_box.y,
+        label_box.width,
+        label_box.height,
+        &Some(rough_hachure_options(rough)),
+    );
+    push_rough_group(
+        out,
+        Some(class_name),
+        drawable.sets,
+        RoughPaint {
+            fill_color: &rough.fill_color,
+            stroke_color: &rough.line_color,
+            stroke_width: 2.0,
+            fill_weight: 2.5,
+        },
+    );
+}
+
+fn push_rough_arrow_marker(out: &mut String, line: &IshikawaLineLayout, rough: &RoughContext) {
+    if !line.marker_start {
+        return;
+    }
+    let dx = line.x1 - line.x2;
+    let dy = line.y1 - line.y2;
+    let len = dx.hypot(dy);
+    if len == 0.0 {
+        return;
+    }
+
+    let ux = dx / len;
+    let uy = dy / len;
+    let size = 6.0;
+    let px = -uy * size;
+    let py = ux * size;
+    let left_x = line.x1 - ux * size * 2.0 + px;
+    let left_y = line.y1 - uy * size * 2.0 + py;
+    let right_x = line.x1 - ux * size * 2.0 - px;
+    let right_y = line.y1 - uy * size * 2.0 - py;
+    let path_d = format!(
+        "M {} {} L {} {} L {} {} Z",
+        line.x1, line.y1, left_x, left_y, right_x, right_y
+    );
+
+    let color = rough_color(&rough.line_color);
+    let options = roughr::core::OptionsBuilder::default()
+        .seed(rough.seed)
+        .roughness(1.0)
+        .fill(color)
+        .fill_style(roughr::core::FillStyle::Solid)
+        .stroke(color)
+        .stroke_width(1.0)
+        .build()
+        .expect("static Ishikawa rough arrow options must be valid");
+    let drawable = roughr::generator::Generator::default().path::<f64>(path_d, &Some(options));
+    push_rough_group(
+        out,
+        None,
+        drawable.sets,
+        RoughPaint {
+            fill_color: &rough.line_color,
+            stroke_color: &rough.line_color,
+            stroke_width: 1.0,
+            fill_weight: 0.0,
+        },
+    );
+}
+
+fn rough_hachure_options(rough: &RoughContext) -> roughr::core::Options {
+    roughr::core::OptionsBuilder::default()
+        .seed(rough.seed)
+        .roughness(1.5)
+        .fill(rough_color(&rough.fill_color))
+        .fill_style(roughr::core::FillStyle::Hachure)
+        .fill_weight(2.5)
+        .hachure_gap(5.0)
+        .stroke(rough_color(&rough.line_color))
+        .stroke_width(2.0)
+        .build()
+        .expect("static Ishikawa rough hachure options must be valid")
+}
+
+fn rough_color(css: &str) -> roughr::Srgba {
+    parse_hex_color_to_srgba(css).unwrap_or_else(|| roughr::Srgba::new(0.0, 0.0, 0.0, 1.0))
+}
+
+fn push_rough_group(
+    out: &mut String,
+    class_name: Option<&str>,
+    sets: Vec<roughr::core::OpSet<f64>>,
+    paint: RoughPaint<'_>,
+) {
+    out.push_str("<g");
+    if let Some(class_name) = class_name {
+        out.push_str(r#" class=""#);
+        escape_attr_into(out, class_name);
+        out.push('"');
+    }
+    out.push('>');
+    for set in sets {
+        let d = ops_to_svg_path_d(&set);
+        let (stroke, stroke_width, fill) = match set.op_set_type {
+            roughr::core::OpSetType::FillSketch => (paint.fill_color, paint.fill_weight, "none"),
+            roughr::core::OpSetType::FillPath => ("none", 0.0, paint.fill_color),
+            roughr::core::OpSetType::Path => (paint.stroke_color, paint.stroke_width, "none"),
+        };
+        out.push_str(r#"<path d=""#);
+        escape_attr_into(out, &d);
+        out.push_str(r#"" stroke=""#);
+        escape_attr_into(out, stroke);
+        let _ = write!(out, r#"" stroke-width="{stroke_width}" fill=""#);
+        escape_attr_into(out, fill);
+        out.push_str(r#""></path>"#);
+    }
+    out.push_str("</g>");
 }
 
 fn push_ishikawa_head_text(out: &mut String, text: &IshikawaTextLayout, dx: f64, dy: f64) {

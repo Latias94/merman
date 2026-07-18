@@ -3,7 +3,6 @@ use super::*;
 pub(super) struct ClassRenderSettings {
     pub(super) diagram_use_html_labels: bool,
     pub(super) edge_use_html_labels: bool,
-    pub(super) font_size: f64,
     pub(super) font_size_css: String,
     pub(super) wrap_probe_font_size: f64,
     pub(super) html_calc_text_style: TextStyle,
@@ -49,7 +48,6 @@ impl ClassRenderSettings {
         Self {
             diagram_use_html_labels,
             edge_use_html_labels,
-            font_size,
             font_size_css,
             wrap_probe_font_size,
             html_calc_text_style,

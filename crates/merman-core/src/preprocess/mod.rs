@@ -35,6 +35,30 @@ pub fn preprocess_diagram_with_known_type(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
+    preprocess_single_pass(input, registry, diagram_type).map(prepare_parser_code)
+}
+
+pub(crate) fn preprocess_mermaid_public_parse_pipeline(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+) -> Result<PreprocessResult> {
+    let outer = preprocess_single_pass(input, registry, diagram_type)?;
+    // Mermaid `parse()` calls `preprocessDiagram()` in `processAndSetConfigs()` and again in
+    // `getDiagramFromText()`. Only `Diagram.fromText()` prepares entities for the family parser.
+    let inner = preprocess_single_pass(&outer.code, registry, diagram_type)?;
+    Ok(PreprocessResult {
+        code: prepare_parser_text(inner.code),
+        title: outer.title,
+        config: outer.config,
+    })
+}
+
+fn preprocess_single_pass(
+    input: &str,
+    registry: &DetectorRegistry,
+    diagram_type: Option<&str>,
+) -> Result<PreprocessResult> {
     let cleaned = cleanup_text(input);
     let (without_frontmatter, title, mut frontmatter_config) =
         process_frontmatter(cleaned.as_ref())?;
@@ -51,21 +75,25 @@ pub fn preprocess_diagram_with_known_type(
     })
 }
 
+fn prepare_parser_code(mut preprocessed: PreprocessResult) -> PreprocessResult {
+    preprocessed.code = prepare_parser_text(preprocessed.code);
+    preprocessed
+}
+
+fn prepare_parser_text(code: String) -> String {
+    if code.contains('#') {
+        encode_mermaid_entities_like_upstream(&code)
+    } else {
+        code
+    }
+}
+
 fn cleanup_text(input: &str) -> Cow<'_, str> {
     let mut s: Cow<'_, str> = if input.contains('\r') {
         Cow::Owned(normalize_crlf(input))
     } else {
         Cow::Borrowed(input)
     };
-
-    // Mermaid encodes `#quot;`-style sequences before parsing (`encodeEntities(...)`).
-    // This is required because `#` and `;` are significant in several grammars (comments and
-    // statement separators), and the encoded placeholders are later decoded by the renderer.
-    //
-    // Source of truth: `packages/mermaid/src/utils.ts::encodeEntities` at Mermaid@11.12.2.
-    if s.contains('#') {
-        s = Cow::Owned(encode_mermaid_entities_like_upstream(s.as_ref()));
-    }
 
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
     if s.contains('<') && s.contains("=\"") {
@@ -534,14 +562,15 @@ fn detect_init(
             Some(v) => crate::config::clone_value_nonrecursive(v),
             None => Value::Object(Default::default()),
         };
+        let mut diagram_specific = args
+            .as_object_mut()
+            .and_then(|object| object.remove("config"));
 
         sanitize_directive(&mut args);
 
         // Mermaid moves a top-level `config` directive field into the diagram-type-specific config.
-        if let Some(diagram_specific) = args
-            .get("config")
-            .map(crate::config::clone_value_nonrecursive)
-        {
+        if let Some(mut diagram_specific_value) = diagram_specific.take() {
+            sanitize_directive(&mut diagram_specific_value);
             let detected = diagram_type.map(|t| t.to_string()).or_else(|| {
                 registry
                     .detect_type(input, &mut config_for_detect)
@@ -551,14 +580,13 @@ fn detect_init(
 
             if let Some(ty) = detected {
                 let key = diagram_config_key_for_type(&ty).to_string();
-                if let Value::Object(obj) = &mut args {
-                    if let Some(old) = obj.insert(key, diagram_specific) {
-                        crate::config::drop_value_nonrecursive(old);
-                    }
-                    if let Some(old) = obj.remove("config") {
-                        crate::config::drop_value_nonrecursive(old);
-                    }
+                if let Value::Object(obj) = &mut args
+                    && let Some(old) = obj.insert(key, diagram_specific_value)
+                {
+                    crate::config::drop_value_nonrecursive(old);
                 }
+            } else {
+                crate::config::drop_value_nonrecursive(diagram_specific_value);
             }
         }
         crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
@@ -633,8 +661,13 @@ fn sanitize_directive(value: &mut Value) {
                 }
 
                 let blocked_keys = map
-                    .keys()
-                    .filter(|key| key.starts_with("__"))
+                    .iter()
+                    .filter(|(key, value)| {
+                        is_suspicious_directive_key(key)
+                            || !crate::generated::is_default_config_key(key)
+                            || value.is_null()
+                    })
+                    .map(|(key, _)| key)
                     .cloned()
                     .collect::<Vec<_>>();
                 for key in blocked_keys {
@@ -687,6 +720,10 @@ fn directive_path_is_css(path: &[DirectiveValuePathSegment]) -> bool {
                 .iter()
                 .any(|css_key| key.contains(css_key))
     )
+}
+
+fn is_suspicious_directive_key(key: &str) -> bool {
+    key.starts_with("__") || key.contains("proto") || key.contains("constr")
 }
 
 fn css_braces_are_balanced(css: &str) -> bool {
@@ -750,7 +787,7 @@ fn sanitize_directive_dictionary(value: &mut Value, kind: DirectiveDictionaryKin
 }
 
 fn is_suspicious_dictionary_key(key: &str) -> bool {
-    key.starts_with("__") || key.contains("proto") || key.contains("constr")
+    is_suspicious_directive_key(key)
 }
 
 fn is_valid_icon_reference(value: &str) -> bool {
@@ -1100,7 +1137,7 @@ mod tests {
     fn sanitize_directive_replaces_unbalanced_css_like_mermaid() {
         let mut value = json!({
             "themeCSS": "} * { background: red }",
-            "nested": {
+            "flowchart": {
                 "fontFamily": "valid { nested: value; }",
                 "altFontFamily": "missing { close"
             }
@@ -1112,10 +1149,42 @@ mod tests {
             value["themeCSS"],
             Value::String("{ /* ERROR: Unbalanced CSS */ }".to_string())
         );
-        assert_eq!(value["nested"]["fontFamily"], "valid { nested: value; }");
+        assert_eq!(value["flowchart"]["fontFamily"], "valid { nested: value; }");
+        assert!(value["flowchart"].get("altFontFamily").is_none());
+    }
+
+    #[test]
+    fn sanitize_directive_uses_generated_config_shape_for_all_value_kinds() {
+        let mut value = json!({
+            "notAConfigKey": "removed",
+            "theme": null,
+            "prototype": "removed",
+            "constructor": "removed",
+            "deterministicIDSeed": "accepted undefined key",
+            "sequence": {
+                "messageFont": "accepted function key",
+                "unknownNestedKey": true
+            },
+            "secure": ["theme"],
+            "flowchart": {
+                "secure": ["htmlLabels"],
+                "htmlLabels": false
+            }
+        });
+
+        sanitize_directive(&mut value);
+
         assert_eq!(
-            value["nested"]["altFontFamily"],
-            Value::String("{ /* ERROR: Unbalanced CSS */ }".to_string())
+            value,
+            json!({
+                "deterministicIDSeed": "accepted undefined key",
+                "sequence": {
+                    "messageFont": "accepted function key"
+                },
+                "flowchart": {
+                    "htmlLabels": false
+                }
+            })
         );
     }
 
@@ -1259,17 +1328,17 @@ mod tests {
 
     fn deep_directive_value(depth: usize, leaf: Value) -> Value {
         let mut value = leaf;
-        for idx in (0..depth).rev() {
+        for _ in 0..depth {
             let mut map = Map::new();
-            map.insert(format!("k{idx}"), value);
+            map.insert("flowchart".to_string(), value);
             value = Value::Object(map);
         }
         value
     }
 
     fn deep_directive_leaf(mut value: &Value, depth: usize) -> Option<&Value> {
-        for idx in 0..depth {
-            value = value.as_object()?.get(&format!("k{idx}"))?;
+        for _ in 0..depth {
+            value = value.as_object()?.get("flowchart")?;
         }
         Some(value)
     }

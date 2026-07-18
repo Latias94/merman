@@ -109,7 +109,16 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
     ) -> Result<Cow<'a, str>> {
-        let mut current = preset::apply_preset(self.preset, svg, session);
+        self.process_cow_with_metadata(Cow::Borrowed(svg), metadata, session)
+    }
+
+    fn process_cow_with_metadata<'a>(
+        &self,
+        svg: Cow<'a, str>,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+    ) -> Result<Cow<'a, str>> {
+        let mut current = preset::apply_preset_cow(self.preset, svg, session);
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
             let ctx = SvgPostprocessContext::new(
@@ -131,6 +140,11 @@ impl SvgPipeline {
         Ok(self.process(svg, session)?.into_owned())
     }
 
+    pub fn process_owned_to_string(&self, svg: String, session: &RenderSession) -> Result<String> {
+        let metadata = SvgPostprocessMetadata::from_svg(&svg);
+        self.process_owned_to_string_with_metadata(svg, &metadata, session)
+    }
+
     pub fn process_to_string_with_metadata(
         &self,
         svg: &str,
@@ -139,6 +153,17 @@ impl SvgPipeline {
     ) -> Result<String> {
         Ok(self
             .process_with_metadata(svg, metadata, session)?
+            .into_owned())
+    }
+
+    pub fn process_owned_to_string_with_metadata(
+        &self,
+        svg: String,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+    ) -> Result<String> {
+        Ok(self
+            .process_cow_with_metadata(Cow::Owned(svg), metadata, session)?
             .into_owned())
     }
 }
@@ -160,6 +185,19 @@ mod tests {
         let out = SvgPipeline::parity().process(svg, &session).unwrap();
         assert!(matches!(out, Cow::Borrowed(_)));
         assert_eq!(out, svg);
+    }
+
+    #[test]
+    fn parity_pipeline_returns_owned_svg_without_reallocating() {
+        let svg = String::from(r#"<svg><rect width="10"/></svg>"#);
+        let allocation = svg.as_ptr();
+        let session = render_session();
+
+        let out = SvgPipeline::parity()
+            .process_owned_to_string(svg, &session)
+            .unwrap();
+
+        assert_eq!(out.as_ptr(), allocation);
     }
 
     #[test]

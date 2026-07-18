@@ -1,0 +1,159 @@
+{
+  "diagramType": "cynefin",
+  "layout": {
+    "CynefinDiagram": {
+      "bounds": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 880.0,
+        "max_y": 680.0
+      },
+      "width": 800.0,
+      "height": 600.0,
+      "padding": 40.0,
+      "total_width": 880.0,
+      "total_height": 680.0,
+      "use_max_width": true,
+      "show_domain_descriptions": true,
+      "boundary_amplitude": 8.0,
+      "domain_layouts": [
+        {
+          "name": "complex",
+          "cx": 200.0,
+          "cy": 150.0,
+          "x": 0.0,
+          "y": 0.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "complicated",
+          "cx": 600.0,
+          "cy": 150.0,
+          "x": 400.0,
+          "y": 0.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "chaotic",
+          "cx": 200.0,
+          "cy": 450.0,
+          "x": 0.0,
+          "y": 300.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "clear",
+          "cx": 600.0,
+          "cy": 450.0,
+          "x": 400.0,
+          "y": 300.0,
+          "width": 400.0,
+          "height": 300.0
+        },
+        {
+          "name": "confusion",
+          "cx": 400.0,
+          "cy": 300.0,
+          "x": 280.0,
+          "y": 210.0,
+          "width": 240.0,
+          "height": 180.0
+        }
+      ],
+      "items": [
+        {
+          "domain": "complex",
+          "label": "Investigate root cause",
+          "x": 136.12,
+          "y": 175.0,
+          "width": 127.76,
+          "height": 26.0,
+          "text_x": 63.88,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "complex",
+          "label": "Run chaos experiment",
+          "x": 137.38,
+          "y": 205.0,
+          "width": 125.24,
+          "height": 26.0,
+          "text_x": 62.62,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "complicated",
+          "label": "Analyze performance data",
+          "x": 526.34,
+          "y": 175.0,
+          "width": 147.32,
+          "height": 26.0,
+          "text_x": 73.66,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "complicated",
+          "label": "Expert review needed",
+          "x": 537.38,
+          "y": 205.0,
+          "width": 125.24,
+          "height": 26.0,
+          "text_x": 62.62,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "chaotic",
+          "label": "Page on-call immediately",
+          "x": 128.44,
+          "y": 475.0,
+          "width": 143.12,
+          "height": 26.0,
+          "text_x": 71.56,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "clear",
+          "label": "Restart service",
+          "x": 551.78,
+          "y": 475.0,
+          "width": 96.44,
+          "height": 26.0,
+          "text_x": 48.22,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "clear",
+          "label": "Apply known fix",
+          "x": 549.74,
+          "y": 505.0,
+          "width": 100.52,
+          "height": 26.0,
+          "text_x": 50.26,
+          "text_y": 13.0,
+          "overflow": false
+        },
+        {
+          "domain": "confusion",
+          "label": "Unknown failure mode",
+          "x": 335.46,
+          "y": 322.0,
+          "width": 129.08,
+          "height": 26.0,
+          "text_x": 64.54,
+          "text_y": 13.0,
+          "overflow": false
+        }
+      ],
+      "transitions": []
+    }
+  }
+}

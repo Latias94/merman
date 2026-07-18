@@ -16,7 +16,17 @@ fn file_name_contains(path: &Path, needle: &str) -> bool {
 }
 
 pub(crate) fn is_parser_only_fixture(path: &Path) -> bool {
-    file_name_contains(path, "_parser_only_") || file_name_contains(path, "_parser_only_spec")
+    let Some(diagram) = path
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+    else {
+        return false;
+    };
+    let Some(stem) = path.file_stem().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    crate::cmd::parser_only_fixture_reason(diagram, stem).is_some()
 }
 
 #[derive(Clone, Copy, Debug, Default)]

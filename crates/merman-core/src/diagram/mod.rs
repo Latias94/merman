@@ -301,6 +301,7 @@ pub enum RenderSemanticModel {
     Ishikawa(crate::diagrams::ishikawa::IshikawaDiagramRenderModel),
     EventModeling(crate::diagrams::eventmodeling::EventModelingDiagramRenderModel),
     Venn(crate::diagrams::venn::VennDiagramRenderModel),
+    Wardley(crate::diagrams::wardley::WardleyDiagramRenderModel),
 }
 
 mod builtin_render_semantic_private {
@@ -447,6 +448,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::venn::VennDiagramRenderModel,
     crate::diagrams::venn::render_model_to_compat_json
 );
+impl_builtin_render_semantic!(
+    crate::diagrams::wardley::WardleyDiagramRenderModel,
+    crate::diagrams::wardley::render_model_to_compat_json
+);
 
 impl RenderSemanticModel {
     /// Applies Mermaid common DB sanitization to family-owned typed fields.
@@ -485,6 +490,7 @@ impl RenderSemanticModel {
             Self::Ishikawa(v) => v.sanitize_common_db_fields(config),
             Self::EventModeling(v) => v.sanitize_common_db_fields(config),
             Self::Venn(v) => v.sanitize_common_db_fields(config),
+            Self::Wardley(v) => v.sanitize_common_db_fields(config),
         }
     }
 
@@ -563,6 +569,7 @@ impl RenderSemanticModel {
             Self::Ishikawa(_) => "ishikawa",
             Self::EventModeling(_) => "eventmodeling",
             Self::Venn(_) => "venn",
+            Self::Wardley(_) => "wardley",
         }
     }
 
@@ -603,6 +610,7 @@ impl RenderSemanticModel {
             Self::Ishikawa(model) => model.compatibility_json(meta),
             Self::EventModeling(model) => model.compatibility_json(meta),
             Self::Venn(model) => model.compatibility_json(meta),
+            Self::Wardley(model) => model.compatibility_json(meta),
         }
     }
 

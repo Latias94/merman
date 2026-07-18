@@ -1,13 +1,36 @@
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, RenderTimeSnapshot, TextMeasurementPhase};
+use merman_render::environment::{
+    MeasurementProfileId, RenderEnvironment, RenderTimeSnapshot, TextMeasurementOperation,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::gantt::layout_gantt_diagram_typed;
 use merman_render::model::GanttDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn layout_gantt_from_text(text: &str) -> GanttDiagramLayout {
+    layout_gantt_from_text_at_container_width(text, LayoutOptions::default().container_width)
+}
+
+fn layout_gantt_from_text_at_container_width(
+    text: &str,
+    container_width: f64,
+) -> GanttDiagramLayout {
     let session = RenderEnvironment::parity().begin_session().unwrap();
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    layout_gantt_from_text_with_measurer(text, container_width, &measurer)
+}
+
+fn layout_gantt_from_text_with_measurer(
+    text: &str,
+    container_width: f64,
+    measurer: &dyn TextMeasurer,
+) -> GanttDiagramLayout {
     let engine = Engine::new();
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
@@ -17,10 +40,113 @@ fn layout_gantt_from_text(text: &str) -> GanttDiagramLayout {
     let RenderSemanticModel::Gantt(model) = &parsed.model else {
         panic!("expected Gantt render model");
     };
-    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
-    layout_gantt_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
-        .expect("layout ok")
+    layout_gantt_diagram_typed(
+        model,
+        parsed.meta.effective_config.as_value(),
+        measurer,
+        container_width,
+    )
+    .expect("layout ok")
+}
+
+#[test]
+fn gantt_layout_uses_the_operation_container_width_unless_config_overrides_it() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: 2024-01-01, 1d";
+    let narrow = layout_gantt_from_text_at_container_width(source, 640.0);
+    let wide = layout_gantt_from_text_at_container_width(source, 960.0);
+
+    assert_eq!(narrow.width, 640.0);
+    assert_eq!(wide.width, 960.0);
+
+    let configured = layout_gantt_from_text_at_container_width(
+        "---\nconfig:\n  gantt:\n    useWidth: 420\n---\ngantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: 2024-01-01, 1d",
+        960.0,
+    );
+    assert_eq!(configured.width, 420.0);
+}
+
+struct RawBBoxProbeMeasurer {
+    calls: Arc<AtomicUsize>,
+    width: f64,
+}
+
+impl TextMeasurer for RawBBoxProbeMeasurer {
+    fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+        panic!("Gantt task labels must use the raw SVG text bbox operation")
+    }
+
+    fn measure_svg_raw_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        self.width
+    }
+}
+
+#[test]
+fn gantt_task_labels_route_through_raw_svg_bbox_measurement() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.gantt-raw-bbox").unwrap(),
+            "v1",
+        )
+        .unwrap(),
+        Arc::new(RawBBoxProbeMeasurer {
+            calls: Arc::clone(&calls),
+            width: 200.0,
+        }),
+    );
+    let session = RenderEnvironment::parity()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+        .begin_session()
+        .expect("render session");
+    let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+    let layout = layout_gantt_from_text_with_measurer(
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nTask: task, 2024-01-01, 1d",
+        1_184.0,
+        &measurer,
+    );
+
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+    assert_eq!(layout.tasks[0].label.width, 200.0);
+    let report = session.text_measurement_report();
+    assert_eq!(report.entries().len(), 1);
+    assert_eq!(
+        report.entries()[0].provenance().operation,
+        TextMeasurementOperation::RawBBoxWidth
+    );
+    assert_eq!(
+        report.entries()[0].provenance().phase,
+        TextMeasurementPhase::SvgBBox
+    );
+}
+
+#[test]
+fn gantt_label_placement_uses_the_resolved_container_edges() {
+    let measurer = RawBBoxProbeMeasurer {
+        calls: Arc::new(AtomicUsize::new(0)),
+        width: 200.0,
+    };
+    let layout = layout_gantt_from_text_with_measurer(
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery\nFull range: full, 2024-01-01, 10d\nStart label: start, 2024-01-01, 1d\nEnd label: end, 2024-01-10, 1d",
+        1_184.0,
+        &measurer,
+    );
+    let start = layout
+        .tasks
+        .iter()
+        .find(|task| task.id == "start")
+        .expect("start task");
+    let end = layout
+        .tasks
+        .iter()
+        .find(|task| task.id == "end")
+        .expect("end task");
+
+    assert!(start.label.class.contains("taskTextOutsideRight"));
+    assert!(start.label.x > start.bar.x + start.bar.width);
+    assert!(end.label.class.contains("taskTextOutsideLeft"));
+    assert_eq!(end.label.x, end.bar.x - 5.0);
 }
 
 fn render_gantt_svg_from_text(text: &str) -> String {

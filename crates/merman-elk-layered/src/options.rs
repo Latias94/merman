@@ -245,6 +245,12 @@ pub enum NodeLabelPlacement {
     OutsideBottomLeft,
     OutsideBottomCenter,
     OutsideBottomRight,
+    OutsideLeftTop,
+    OutsideLeftCenter,
+    OutsideLeftBottom,
+    OutsideRightTop,
+    OutsideRightCenter,
+    OutsideRightBottom,
 }
 
 #[derive(Debug, Clone, PartialEq)]

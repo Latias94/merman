@@ -1,7 +1,11 @@
 # Mermaid 11.15 Root Viewport Residuals
 
-Status: Active
+Status: Superseded on 2026-07-15
 Last updated: 2026-06-03
+
+> Historical design for the former Mermaid 11.15 root-pin system. Production root/text/SVG
+> overrides, disable switches, budgets, and generator/audit commands were removed under ADR-0062;
+> none of the override workflow below is a current capability.
 
 ## Why This Lane Exists
 

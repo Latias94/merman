@@ -1,0 +1,28 @@
+{
+  "diagramType": "cynefin",
+  "model": {
+    "type": "cynefin",
+    "title": "Empty Framework",
+    "accTitle": null,
+    "accDescr": null,
+    "domains": [
+      {
+        "name": "complex",
+        "items": []
+      },
+      {
+        "name": "complicated",
+        "items": []
+      },
+      {
+        "name": "clear",
+        "items": []
+      },
+      {
+        "name": "chaotic",
+        "items": []
+      }
+    ],
+    "transitions": []
+  }
+}

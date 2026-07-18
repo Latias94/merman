@@ -81,20 +81,20 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
     origin_y: f64,
     timing_enabled: bool,
     details: &mut FlowchartRenderDetails,
-) {
+) -> crate::Result<()> {
     let Some(layout_node) = ctx.layout_nodes_by_id.get(node_id) else {
-        return;
+        return Ok(());
     };
 
     let x = layout_node.x + ctx.tx - origin_x;
     let y = layout_node.y + ctx.ty - origin_y;
 
     if helpers::try_render_self_loop_label_placeholder(out, node_id, x, y) {
-        return;
+        return Ok(());
     }
 
     let Some(resolved) = helpers::resolve_node_render_info(ctx, node_id) else {
-        return;
+        return Ok(());
     };
 
     let tooltip = ctx.tooltips.get(node_id).map(|s| s.as_str()).unwrap_or("");
@@ -223,12 +223,13 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         if common.wrapped_in_a {
             out.push_str("</a>");
         }
-        return;
+        return Ok(());
     }
 
-    if shapes::render_flowchart_shape(out, ctx, &common, &mut label, details) {
-        return;
+    if shapes::render_flowchart_shape(out, ctx, &common, &mut label, details)? {
+        return Ok(());
     }
 
     label::render_flowchart_node_label(out, ctx, &common, &label, &compiled_styles, details);
+    Ok(())
 }

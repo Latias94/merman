@@ -1,5 +1,4 @@
 use super::*;
-use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 
 pub(super) fn render_state_node_svg(
     out: &mut String,
@@ -352,20 +351,16 @@ pub(super) fn render_state_node_svg(
             } else {
                 WrapMode::SvgLike
             };
-            let mut metrics = ctx.measurer.measure_wrapped(
+            let measurement = crate::state::measure_state_markdown_label(
                 &label,
+                ctx.measurer,
                 &ctx.text_style,
                 Some(ctx.html_label_wrapping_width),
                 wrap_mode,
             );
+            let metrics = &measurement.metrics;
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
-            }
-            if let Some(w) = state_text_overrides::lookup_state_note_label_width_px(
-                ctx.text_style.font_size,
-                label.trim(),
-            ) {
-                metrics.width = w;
             }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
@@ -398,7 +393,7 @@ pub(super) fn render_state_node_svg(
             }
             let label_html_start = timing_enabled.then(web_time::Instant::now);
             let label_dom = if ctx.html_labels {
-                state_node_label_html(&label)
+                state_node_label_html(&label, ctx.text_style.font_size)
             } else {
                 state_svg_text_label(&label, false, None)
             };
@@ -407,9 +402,21 @@ pub(super) fn render_state_node_svg(
             }
             let _g_emit = detail_guard(timing_enabled, &mut details.leaf_nodes_emit);
             if ctx.html_labels {
+                let div_style = if measurement.uses_html_wrapping_table {
+                    format!(
+                        "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
+                        fmt(ctx.html_label_wrapping_width),
+                        fmt(ctx.html_label_wrapping_width),
+                    )
+                } else {
+                    format!(
+                        "display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;",
+                        fmt(ctx.html_label_wrapping_width),
+                    )
+                };
                 let _ = write!(
                     out,
-                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: {}px; text-align: center;">{}</div></foreignObject></g></g>"##,
+                    r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"><g class="basic label-container outer-path"><path d="{}" stroke="none" stroke-width="0" fill="{}"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g><g class="label noteLabel" style="" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                     escape_xml_display(&node_class),
                     escape_xml_display(&node_dom_id),
                     escape_xml_display(data_look),
@@ -423,7 +430,7 @@ pub(super) fn render_state_node_svg(
                     fmt_display(-lh / 2.0),
                     fmt_display(lw),
                     fmt_display(lh),
-                    fmt_display(ctx.html_label_wrapping_width),
+                    div_style,
                     label_dom
                 );
             } else {
@@ -468,20 +475,14 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_measure += s.elapsed();
             }
 
-            let padding = ctx.state_padding;
-            let half_pad = (padding / 2.0).max(0.0);
-            let top_pad = state_text_overrides::state_rect_with_title_top_pad_px(padding);
-            let gap = state_text_overrides::state_rect_with_title_gap_px(padding);
-
             let title_w = title_metrics.width.max(0.0);
             let title_h = title_metrics.height.max(0.0);
             let desc_w = desc_metrics.width.max(0.0);
             let desc_h = desc_metrics.height.max(0.0);
-            let inner_w = (w - padding).max(0.0);
-            let title_x = ((inner_w - title_w) / 2.0).max(0.0);
-            let desc_x = ((inner_w - desc_w) / 2.0).max(0.0);
-            let desc_y = title_h + gap;
-            let divider_y = -h / 2.0 + top_pad + title_h + 1.0;
+            let padding = node.padding.unwrap_or(ctx.state_padding).max(0.0);
+            let geometry = crate::state::RectWithTitleGeometry::from_metrics(
+                title_w, title_h, desc_w, desc_h, padding,
+            );
             let label_html_start = timing_enabled.then(web_time::Instant::now);
             let (title_dom, desc_dom) = if ctx.html_labels {
                 (
@@ -513,18 +514,18 @@ pub(super) fn render_state_node_svg(
                     fmt_display(h),
                     fmt_display(-w / 2.0),
                     fmt_display(w / 2.0),
-                    fmt_display(divider_y),
-                    fmt_display(divider_y),
-                    fmt_display(-w / 2.0 + half_pad),
-                    fmt_display(-h / 2.0 + top_pad),
+                    fmt_display(geometry.divider_y),
+                    fmt_display(geometry.divider_y),
+                    fmt_display(geometry.label_x),
+                    fmt_display(geometry.label_y),
                     fmt_display(title_w),
                     fmt_display(title_h),
-                    fmt_display(title_x),
+                    fmt_display(geometry.title_x),
                     title_dom,
                     fmt_display(desc_w),
                     fmt_display(desc_h),
-                    fmt_display(desc_x),
-                    fmt_display(desc_y),
+                    fmt_display(geometry.description_x),
+                    fmt_display(geometry.description_y),
                     desc_dom
                 );
             } else {
@@ -542,14 +543,14 @@ pub(super) fn render_state_node_svg(
                     fmt_display(h),
                     fmt_display(-w / 2.0),
                     fmt_display(w / 2.0),
-                    fmt_display(divider_y),
-                    fmt_display(divider_y),
-                    fmt_display(-w / 2.0 + half_pad),
-                    fmt_display(-h / 2.0 + top_pad),
-                    fmt_display(title_x),
+                    fmt_display(geometry.divider_y),
+                    fmt_display(geometry.divider_y),
+                    fmt_display(geometry.label_x),
+                    fmt_display(geometry.label_y),
+                    fmt_display(geometry.title_x),
                     title_dom,
-                    fmt_display(desc_x),
-                    fmt_display(desc_y),
+                    fmt_display(geometry.description_x),
+                    fmt_display(geometry.description_y),
                     desc_dom
                 );
             }
@@ -567,8 +568,6 @@ pub(super) fn render_state_node_svg(
             }
 
             let mut measure_style = ctx.text_style.clone();
-            let mut has_metrics_style: bool = false;
-            let mut italic: bool = false;
 
             for d in &text_decls {
                 let k = d.key.trim().to_ascii_lowercase();
@@ -577,14 +576,9 @@ pub(super) fn render_state_node_svg(
                 match k.as_str() {
                     "font-weight" if !v_no_imp.is_empty() => {
                         measure_style.font_weight = Some(v_no_imp.to_string());
-                        has_metrics_style = true;
                     }
-                    "font-style" => {
-                        let lower = v_no_imp.to_ascii_lowercase();
-                        if lower.contains("italic") || lower.contains("oblique") {
-                            italic = true;
-                            has_metrics_style = true;
-                        }
+                    "font-style" if !v_no_imp.is_empty() => {
+                        measure_style.font_style = Some(v_no_imp.to_string());
                     }
                     "font-size" => {
                         if let Some(px) = parse_css_px_f64(v_no_imp)
@@ -592,12 +586,10 @@ pub(super) fn render_state_node_svg(
                             && px > 0.0
                         {
                             measure_style.font_size = px;
-                            has_metrics_style = true;
                         }
                     }
                     "font-family" if !v_no_imp.is_empty() => {
                         measure_style.font_family = Some(v_no_imp.to_string());
-                        has_metrics_style = true;
                     }
                     _ => {}
                 }
@@ -609,73 +601,18 @@ pub(super) fn render_state_node_svg(
             } else {
                 WrapMode::SvgLike
             };
-            let mut metrics = ctx.measurer.measure_wrapped(
+            let measurement = crate::state::measure_state_markdown_label(
                 &label,
+                ctx.measurer,
                 &measure_style,
                 Some(ctx.html_label_wrapping_width),
                 wrap_mode,
             );
+            let metrics = &measurement.metrics;
             if let Some(s) = measure_start {
                 details.leaf_nodes_measure += s.elapsed();
             }
 
-            if italic {
-                metrics.width +=
-                    crate::text::mermaid_default_italic_width_delta_px(&label, &measure_style);
-            }
-            metrics.width +=
-                crate::text::mermaid_default_bold_width_delta_px(&label, &measure_style);
-
-            if metrics.width.is_finite() {
-                metrics.width = metrics.width.min(ctx.html_label_wrapping_width);
-            }
-            metrics.width = crate::text::round_to_1_64_px(metrics.width);
-            if metrics.width.is_finite() {
-                metrics.width = metrics.width.min(ctx.html_label_wrapping_width);
-            }
-
-            if !has_metrics_style
-                && let Some(w) =
-                    crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
-                        measure_style.font_size,
-                        label.trim(),
-                    )
-            {
-                metrics.width = w;
-            }
-
-            let bold = measure_style
-                .font_weight
-                .as_deref()
-                .is_some_and(|s| s.to_ascii_lowercase().contains("bold"));
-            if let Some(w) =
-                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px_styled(
-                    measure_style.font_size,
-                    label.trim(),
-                    bold,
-                    italic,
-                )
-            {
-                metrics.width = w;
-            }
-
-            let has_classdef_border_style = node
-                .css_compiled_styles
-                .iter()
-                .any(|s| s.trim_start().to_ascii_lowercase().starts_with("border:"));
-
-            // Mermaid@11.12.2 browser baselines show a surprising `getBoundingClientRect()` inflation
-            // for `classDef`-styled border nodes: even a single-line `<p>` label can measure as `72px`
-            // tall. Mirror that behavior here to avoid relying on string-keyed height overrides.
-            if has_classdef_border_style && (measure_style.font_size - 16.0).abs() <= 0.01 {
-                let trimmed = label.trim();
-                let is_single_line = !trimmed.contains('\n')
-                    && !trimmed.to_ascii_lowercase().contains("<br")
-                    && !trimmed.is_empty();
-                if is_single_line && (metrics.height - 24.0).abs() <= 0.01 {
-                    metrics.height = metrics.height.max(72.0);
-                }
-            }
             let lw = metrics.width.max(0.0);
             let lh = metrics.height.max(0.0);
 
@@ -759,7 +696,7 @@ pub(super) fn render_state_node_svg(
             };
             let label_html_start = timing_enabled.then(web_time::Instant::now);
             let label_dom = if ctx.html_labels {
-                state_node_label_html_with_style(&label, label_span_style)
+                state_node_label_html_with_style(&label, label_span_style, ctx.text_style.font_size)
             } else {
                 state_svg_text_label(&label, false, label_span_style)
             };
@@ -767,12 +704,12 @@ pub(super) fn render_state_node_svg(
                 details.leaf_nodes_label_html += s.elapsed();
             }
 
-            let div_style = if metrics.line_count > 1 {
+            let div_style = if measurement.uses_html_wrapping_table {
                 format!(
                     r#"{}display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;"#,
                     div_style_prefix,
                     fmt(ctx.html_label_wrapping_width),
-                    fmt(lw),
+                    fmt(ctx.html_label_wrapping_width),
                 )
             } else {
                 format!(

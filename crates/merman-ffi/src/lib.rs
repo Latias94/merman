@@ -16,7 +16,7 @@ use std::sync::Mutex;
 #[cfg(target_os = "android")]
 mod android_jni;
 
-pub const MERMAN_ABI_VERSION: u32 = 3;
+pub const MERMAN_ABI_VERSION: u32 = 2;
 
 const PACKAGE_VERSION: &[u8] = concat!(env!("CARGO_PKG_VERSION"), "\0").as_bytes();
 
@@ -37,7 +37,31 @@ pub const MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT: i32 = 0;
 pub const MERMAN_TEXT_MEASUREMENT_PHASE_WRAP: i32 = 1;
 pub const MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX: i32 = 2;
 pub const MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH: i32 = 3;
-pub const MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY: i32 = 4;
+
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE: i32 = 0;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH: i32 = 1;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X: i32 = 2;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG: i32 = 3;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X: i32 = 4;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH: i32 = 5;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH: i32 = 6;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH: i32 = 7;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT: i32 = 8;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH: i32 = 9;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT: i32 = 10;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED: i32 = 11;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH: i32 = 12;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH: i32 = 13;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET: i32 = 14;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS: i32 = 15;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH: i32 = 16;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET: i32 = 17;
+pub const MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT: i32 = 18;
+
+pub const MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS: i32 = 0;
+pub const MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH: i32 = 1;
+pub const MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS: i32 = 2;
+pub const MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH: i32 = 3;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -131,15 +155,40 @@ pub struct MermanHostTextMeasureRequest {
     pub white_space: i32,
     pub has_max_width: u8,
     pub phase: i32,
+    pub operation: i32,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct MermanHostTextMeasureResult {
     pub handled: u8,
+    pub has_raw_width: u8,
+    pub result_kind: i32,
     pub width: f64,
     pub height: f64,
+    pub length: f64,
+    pub bbox_left: f64,
+    pub bbox_right: f64,
+    pub raw_width: f64,
     pub line_count: usize,
+}
+
+#[cfg(test)]
+impl MermanHostTextMeasureResult {
+    const fn unhandled() -> Self {
+        Self {
+            handled: 0,
+            has_raw_width: 0,
+            result_kind: MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS,
+            width: 0.0,
+            height: 0.0,
+            length: 0.0,
+            bbox_left: 0.0,
+            bbox_right: 0.0,
+            raw_width: 0.0,
+            line_count: 0,
+        }
+    }
 }
 
 pub type MermanHostTextMeasureCallback = unsafe extern "C" fn(
@@ -168,19 +217,23 @@ impl FfiHostTextMeasurer {
 
     fn call_host(
         &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &merman_bindings_core::TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
+        request: merman_bindings_core::HostTextMeasurementRequest<'_>,
+    ) -> merman_bindings_core::HostMeasurementResult {
+        let text = request.text;
+        let style = request.style;
+        let max_width = request.max_width;
+        let wrap_mode = request.wrap_mode;
         let font_family = style.font_family.as_deref().unwrap_or_default().as_bytes();
         let font_weight = style
             .font_weight
             .as_deref()
             .map(str::as_bytes)
             .unwrap_or(Self::DEFAULT_FONT_WEIGHT);
-        let font_style = Self::DEFAULT_FONT_STYLE;
+        let font_style = style
+            .font_style
+            .as_deref()
+            .map(str::as_bytes)
+            .unwrap_or(Self::DEFAULT_FONT_STYLE);
         let result = unsafe {
             (self.callback)(
                 MermanHostTextMeasureRequest {
@@ -201,7 +254,8 @@ impl FfiHostTextMeasurer {
                     direction: MERMAN_TEXT_DIRECTION_AUTO,
                     white_space: ffi_white_space(max_width, wrap_mode),
                     has_max_width: u8::from(max_width.is_some()),
-                    phase: ffi_measurement_phase(phase),
+                    phase: ffi_measurement_phase(request.phase),
+                    operation: request.operation.external_code(),
                 },
                 self.user_data as *mut std::ffi::c_void,
             )
@@ -210,22 +264,23 @@ impl FfiHostTextMeasurer {
         if result.handled == 0 {
             return Ok(None);
         }
-        if !result.width.is_finite()
-            || !result.height.is_finite()
-            || result.width < 0.0
-            || result.height < 0.0
-            || result.line_count == 0
-        {
-            return Err(merman_bindings_core::HostTextMeasurementError::new(
-                "host text measurer returned invalid metrics",
-            ));
-        }
 
-        Ok(Some(merman_bindings_core::TextMetrics {
-            width: result.width,
-            height: result.height,
-            line_count: result.line_count,
-        }))
+        Ok(Some(
+            merman_bindings_core::host_text_measurement_from_values(
+                merman_bindings_core::HostTextMeasurementResultKind::from_external_code(
+                    result.result_kind,
+                ),
+                merman_bindings_core::HostTextMeasurementValues {
+                    width: result.width,
+                    height: result.height,
+                    line_count: result.line_count,
+                    length: result.length,
+                    bbox_left: result.bbox_left,
+                    bbox_right: result.bbox_right,
+                    raw_width: (result.has_raw_width != 0).then_some(result.raw_width),
+                },
+            ),
+        ))
     }
 }
 
@@ -233,59 +288,9 @@ impl FfiHostTextMeasurer {
 impl merman_bindings_core::HostTextMeasurer for FfiHostTextMeasurer {
     fn measure(
         &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &merman_bindings_core::TextStyle,
-    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
-        self.call_host(
-            phase,
-            text,
-            style,
-            None,
-            merman_bindings_core::WrapMode::SvgLike,
-        )
-    }
-
-    fn measure_wrapped(
-        &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &merman_bindings_core::TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
-        self.call_host(phase, text, style, max_width, wrap_mode)
-    }
-
-    fn measure_wrapped_with_raw_width(
-        &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &merman_bindings_core::TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::HostMeasurementResult<(merman_bindings_core::TextMetrics, Option<f64>)>
-    {
-        if let Some(metrics) = self.call_host(phase, text, style, max_width, wrap_mode)? {
-            let raw_width = max_width
-                .map(|_| self.call_host(phase, text, style, None, wrap_mode))
-                .transpose()?
-                .flatten()
-                .map(|raw| raw.width);
-            return Ok(Some((metrics, raw_width)));
-        }
-        Ok(None)
-    }
-
-    fn measure_wrapped_raw(
-        &self,
-        phase: merman_bindings_core::TextMeasurementPhase,
-        text: &str,
-        style: &merman_bindings_core::TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: merman_bindings_core::WrapMode,
-    ) -> merman_bindings_core::HostMeasurementResult<merman_bindings_core::TextMetrics> {
-        self.call_host(phase, text, style, max_width, wrap_mode)
+        request: merman_bindings_core::HostTextMeasurementRequest<'_>,
+    ) -> merman_bindings_core::HostMeasurementResult {
+        self.call_host(request)
     }
 }
 
@@ -299,9 +304,6 @@ fn ffi_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> i
         }
         merman_bindings_core::TextMeasurementPhase::ComputedLength => {
             MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH
-        }
-        merman_bindings_core::TextMeasurementPhase::Visibility => {
-            MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY
         }
     }
 }
@@ -813,7 +815,7 @@ pub extern "C" fn merman_ascii_capabilities_json() -> MermanResult {
     ffi_result(merman_bindings_core::ascii_capabilities_json)
 }
 
-/// Return diagram family parser/render capability metadata as a JSON array.
+/// Return the complete diagram family capability catalog as a JSON array.
 #[unsafe(no_mangle)]
 pub extern "C" fn merman_diagram_family_capabilities_json() -> MermanResult {
     ffi_result(merman_bindings_core::diagram_family_capabilities_json)
@@ -1447,6 +1449,37 @@ mod tests {
         assert_eq!(version.to_str().unwrap(), env!("CARGO_PKG_VERSION"));
     }
 
+    #[cfg(feature = "render")]
+    #[test]
+    fn ffi_measurement_operation_codes_match_the_core_contract() {
+        let ffi_codes = [
+            MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET,
+            MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT,
+        ];
+        let core_codes = merman_bindings_core::TextMeasurementOperation::ALL
+            .map(merman_bindings_core::TextMeasurementOperation::external_code);
+
+        assert_eq!(ffi_codes, core_codes);
+        assert_eq!(ffi_codes, std::array::from_fn(|code| code as i32));
+    }
+
     #[test]
     fn render_svg_returns_svg_for_flowchart() {
         let result = call_render(b"flowchart TD\nA[Hello] --> B[World]", b"");
@@ -1466,7 +1499,7 @@ mod tests {
     fn render_svg_accepts_options_json() {
         let options = br#"{
             "environment": { "text_measurement": "deterministic" },
-            "layout": { "viewport_width": 640, "viewport_height": 480 },
+            "layout": { "container_width": 640, "container_height": 480 },
             "svg": { "diagram_id": "ffi diagram", "pipeline": "readable" }
         }"#;
         let result = call_render(b"flowchart TD\nA[Hello]", options);
@@ -1705,9 +1738,16 @@ mod tests {
         }
         assert!(family_capabilities.as_array().unwrap().iter().any(
             |capability| capability["diagram_type"] == "flowchart"
+                && capability["logical_family_kind"] == "flowchart"
                 && capability["metadata_id"] == "flowchart"
+                && capability["render_model_kind"] == "flowchart"
+                && capability["has_detector"] == true
                 && capability["has_semantic_parser"] == true
+                && capability["has_editor_parser"] == true
+                && capability["has_combined_parser"] == true
                 && capability["has_render_parser"] == true
+                && capability["has_header"] == false
+                && capability["config_namespace"] == "flowchart"
         ));
         if let Some(lint_rules_json) = lint_rules_json {
             let lint_rules: Value = serde_json::from_str(&lint_rules_json).unwrap();
@@ -2031,6 +2071,7 @@ mod tests {
             saw_break_spaces: bool,
             saw_font_style: bool,
             saw_spacing_defaults: bool,
+            operations: [bool; 19],
         }
 
         unsafe extern "C" fn measure_condition(
@@ -2038,21 +2079,21 @@ mod tests {
             user_data: *mut std::ffi::c_void,
         ) -> MermanHostTextMeasureResult {
             if user_data.is_null() {
-                return MermanHostTextMeasureResult {
-                    handled: 0,
-                    width: 0.0,
-                    height: 0.0,
-                    line_count: 0,
-                };
+                return MermanHostTextMeasureResult::unhandled();
             }
             let text = unsafe { std::slice::from_raw_parts(request.text, request.text_len) };
             if text == b"Condition?" && request.wrap_mode == MERMAN_WRAP_MODE_HTML_LIKE {
                 let probe = unsafe { &mut *(user_data.cast::<CallbackProbe>()) };
+                if let Ok(operation) = usize::try_from(request.operation)
+                    && operation < probe.operations.len()
+                {
+                    probe.operations[operation] = true;
+                }
                 probe.saw_condition = true;
                 let font_style = unsafe {
                     std::slice::from_raw_parts(request.font_style, request.font_style_len)
                 };
-                probe.saw_font_style |= font_style == b"normal"
+                probe.saw_font_style |= font_style == b"italic"
                     && request.direction == MERMAN_TEXT_DIRECTION_AUTO
                     && request.line_height > request.font_size;
                 probe.saw_spacing_defaults |=
@@ -2063,25 +2104,71 @@ mod tests {
                     probe.saw_break_spaces |=
                         request.white_space == MERMAN_TEXT_WHITE_SPACE_BREAK_SPACES;
                 }
-                return MermanHostTextMeasureResult {
-                    handled: 1,
-                    width: 140.0,
-                    height: 24.0,
-                    line_count: 1,
-                };
+                let mut result = MermanHostTextMeasureResult::unhandled();
+                result.handled = 1;
+                match request.operation {
+                    MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS => {
+                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
+                        result.width = 140.0;
+                        result.height = 24.0;
+                        result.line_count = 1;
+                    }
+                    MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH => {
+                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                        result.length = 140.0;
+                    }
+                    MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT => {
+                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                        result.length = 24.0;
+                    }
+                    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET => {
+                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                        result.length = if request.operation
+                            == MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET
+                        {
+                            -2.0
+                        } else {
+                            -1.0
+                        };
+                    }
+                    MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG
+                    | MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X => {
+                        result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS;
+                        result.bbox_left = 70.0;
+                        result.bbox_right = 70.0;
+                    }
+                    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH => {
+                        result.result_kind =
+                            MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH;
+                        result.width = 140.0;
+                        result.height = 24.0;
+                        result.raw_width = 140.0;
+                        result.line_count = 1;
+                        result.has_raw_width = 1;
+                    }
+                    _ => result.handled = 0,
+                }
+                return result;
             }
-            MermanHostTextMeasureResult {
-                handled: 0,
-                width: 0.0,
-                height: 0.0,
-                line_count: 0,
-            }
+            MermanHostTextMeasureResult::unhandled()
         }
 
         let engine = call_engine(b"");
         assert_eq!(engine.code, BindingStatus::Ok.code());
         assert!(!engine.engine.is_null());
-        let source = b"flowchart TD\nA[Start] --> B{Condition?}";
+        let source = b"flowchart TD\nA[Start] --> B{Condition?}\nclassDef emphasized font-style:italic\nclass B emphasized";
 
         let baseline = call_engine_render(engine.engine, source);
         if !cfg!(feature = "render") {
@@ -2117,6 +2204,7 @@ mod tests {
         assert!(callback_probe.saw_break_spaces);
         assert!(callback_probe.saw_font_style);
         assert!(callback_probe.saw_spacing_defaults);
+        assert!(callback_probe.operations[MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED as usize]);
 
         let reset = unsafe {
             merman_engine_set_text_measure_callback(engine.engine, None, ptr::null_mut())
@@ -2133,6 +2221,135 @@ mod tests {
         );
 
         unsafe { merman_engine_free(engine.engine) };
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn ffi_callback_preserves_wrong_result_kind_for_invalid_fallback() {
+        unsafe extern "C" fn wrong_kind(
+            _request: MermanHostTextMeasureRequest,
+            _user_data: *mut std::ffi::c_void,
+        ) -> MermanHostTextMeasureResult {
+            let mut result = MermanHostTextMeasureResult::unhandled();
+            result.handled = 1;
+            result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
+            result.width = 73.0;
+            result.height = 12.0;
+            result.line_count = 1;
+            result
+        }
+
+        let host = FfiHostTextMeasurer::new(wrong_kind, std::ptr::null_mut());
+        let style = merman_bindings_core::TextStyle::default();
+        let result = host
+            .call_host(merman_bindings_core::HostTextMeasurementRequest {
+                operation: merman_bindings_core::TextMeasurementOperation::ComputedLength,
+                phase: merman_bindings_core::TextMeasurementPhase::ComputedLength,
+                text: "wrong-kind",
+                style: &style,
+                max_width: None,
+                wrap_mode: merman_bindings_core::WrapMode::SvgLike,
+            })
+            .expect("callback transport")
+            .expect("handled result");
+
+        assert!(matches!(
+            result,
+            merman_bindings_core::HostTextMeasurement::Metrics(_)
+        ));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn ffi_callback_forwards_new_measurement_operations_and_result_shapes() {
+        unsafe extern "C" fn measure_new_operation(
+            request: MermanHostTextMeasureRequest,
+            _user_data: *mut std::ffi::c_void,
+        ) -> MermanHostTextMeasureResult {
+            let mut result = MermanHostTextMeasureResult::unhandled();
+            result.handled = 1;
+            match request.operation {
+                MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS => {
+                    result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
+                    result.width = 81.0;
+                    result.height = 17.0;
+                    result.line_count = 1;
+                }
+                MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH => {
+                    result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                    result.length = 93.5;
+                }
+                MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET => {
+                    result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                    result.length = -3.25;
+                }
+                MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT => {
+                    result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH;
+                    result.length = 19.25;
+                }
+                _ => result.handled = 0,
+            }
+            result
+        }
+
+        let host = FfiHostTextMeasurer::new(measure_new_operation, std::ptr::null_mut());
+        let style = merman_bindings_core::TextStyle::default();
+        let request = |operation| merman_bindings_core::HostTextMeasurementRequest {
+            operation,
+            phase: merman_bindings_core::TextMeasurementPhase::Layout,
+            text: "new-operation",
+            style: &style,
+            max_width: None,
+            wrap_mode: merman_bindings_core::WrapMode::SvgLike,
+        };
+
+        let metrics = host
+            .call_host(request(
+                merman_bindings_core::TextMeasurementOperation::MermaidCalculateTextDimensions,
+            ))
+            .expect("callback transport")
+            .expect("handled dimensions result");
+        let merman_bindings_core::HostTextMeasurement::Metrics(metrics) = metrics else {
+            panic!("Mermaid dimensions must use the metrics result shape");
+        };
+        assert_eq!(
+            (metrics.width, metrics.height, metrics.line_count),
+            (81.0, 17.0, 1)
+        );
+
+        let length = host
+            .call_host(request(
+                merman_bindings_core::TextMeasurementOperation::CanvasMeasureTextWidth,
+            ))
+            .expect("callback transport")
+            .expect("handled canvas result");
+        let merman_bindings_core::HostTextMeasurement::Length(length) = length else {
+            panic!("canvas text width must use the length result shape");
+        };
+        assert_eq!(length, 93.5);
+
+        let middle_y_offset = host
+            .call_host(request(
+                merman_bindings_core::TextMeasurementOperation::CreateTextMiddleBBoxYOffset,
+            ))
+            .expect("callback transport")
+            .expect("handled createText middle y-offset result");
+        let merman_bindings_core::HostTextMeasurement::Length(middle_y_offset) = middle_y_offset
+        else {
+            panic!("createText middle y-offset must use the length result shape");
+        };
+        assert_eq!(middle_y_offset, -3.25);
+
+        let raw_height = host
+            .call_host(request(
+                merman_bindings_core::TextMeasurementOperation::RawBBoxHeight,
+            ))
+            .expect("callback transport")
+            .expect("handled raw bbox height result");
+        let merman_bindings_core::HostTextMeasurement::Length(raw_height) = raw_height else {
+            panic!("raw bbox height must use the length result shape");
+        };
+        assert_eq!(raw_height, 19.25);
     }
 
     #[cfg(feature = "render")]
@@ -2162,6 +2379,7 @@ mod tests {
                 width: (request.text_len as f64 * 8.0).max(1.0),
                 height: request.line_height.max(1.0),
                 line_count: 1,
+                ..MermanHostTextMeasureResult::unhandled()
             }
         }
 
@@ -2211,6 +2429,7 @@ mod tests {
                 width: (request.text_len as f64 * 8.0).max(1.0),
                 height: request.line_height.max(1.0),
                 line_count: 1,
+                ..MermanHostTextMeasureResult::unhandled()
             }
         }
 

@@ -11,6 +11,22 @@ mod spectral;
 
 const GEOMETRY_EPSILON: f64 = 1e-9;
 
+// Mermaid 11.16 does not override these Cytoscape 3.33.3 default stylesheet values. Cytoscape's
+// `boundingBoxImpl(...)` starts edge body bounds at half the styled width and parent body bounds at
+// half the centered border width, then expands the completed element bbox by one pixel per side.
+const CYTOSCAPE_DEFAULT_EDGE_WIDTH_PX: f64 = 3.0;
+const CYTOSCAPE_DEFAULT_PARENT_BORDER_WIDTH_PX: f64 = 1.0;
+const CYTOSCAPE_FINAL_BBOX_EXPANSION_PX: f64 = 1.0;
+const CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX: f64 =
+    CYTOSCAPE_DEFAULT_EDGE_WIDTH_PX / 2.0 + CYTOSCAPE_FINAL_BBOX_EXPANSION_PX;
+const CYTOSCAPE_PARENT_NON_PADDING_BBOX_OUTSET_PX: f64 =
+    CYTOSCAPE_DEFAULT_PARENT_BORDER_WIDTH_PX / 2.0 + CYTOSCAPE_FINAL_BBOX_EXPANSION_PX;
+
+// Native Cytoscape label bounds have a separate `marginOfError` phase. `IndexedEdge` currently
+// carries adapter-provided label dimensions rather than renderer `labelBounds`, so preserve the
+// established relocation contract until that boundary represents the native label phase.
+const FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX: f64 = CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FcoseRandomSource {
     #[default]
@@ -1755,14 +1771,6 @@ impl SimGraph {
             .as_deref()
             == Some("1");
 
-        // Cytoscape edge bboxes are inflated by a small padding (see `edge.boundingBox()`).
-        // Mermaid Architecture baselines empirically match ~2.5px here.
-        const EDGE_BBOX_PAD: f64 = 2.5;
-        // Cytoscape compound nodes (with `padding`) end up slightly larger than the naive
-        // "child bbox + padding" model, largely due to renderer bbox padding.
-        // Mermaid Architecture baselines match adding an additional ~1.5px on each side.
-        const COMPOUND_BBOX_EXTRA: f64 = 1.5;
-
         let mut min_x = f64::INFINITY;
         let mut min_y = f64::INFINITY;
         let mut max_x = f64::NEG_INFINITY;
@@ -1777,7 +1785,8 @@ impl SimGraph {
         // - using leaf `bound_*` (includes label extras) as the base primitive
         // - computing compound bboxes bottom-up from immediate children (so compound padding
         //   stacks across deep nesting, as observed in Mermaid/Cytoscape)
-        // - inflating each compound by `padding + COMPOUND_BBOX_EXTRA`
+        // - applying layout-base/cose-base child-graph padding, then Cytoscape's centered parent
+        //   half-border and final whole-bbox expansion
         //
         // This keeps layout rects (used by the spring embedder) unchanged while making the
         // relocation origin (`eles.boundingBox()` center) match upstream.
@@ -1866,8 +1875,9 @@ impl SimGraph {
                 });
                 bb = Some(bb.map(|b| b.union(ch_bb)).unwrap_or(ch_bb));
             }
-            let pad = n.padding.max(0.0) + COMPOUND_BBOX_EXTRA;
-            bbs[cidx] = bb.map(|b| b.inflate(pad));
+            let compound_bbox_outset =
+                n.padding.max(0.0) + CYTOSCAPE_PARENT_NON_PADDING_BBOX_OUTSET_PX;
+            bbs[cidx] = bb.map(|b| b.inflate(compound_bbox_outset));
         }
 
         let top_level = self
@@ -1992,8 +2002,8 @@ impl SimGraph {
                 &mut min_y,
                 &mut max_x,
                 &mut max_y,
-                sx - EDGE_BBOX_PAD,
-                sy - EDGE_BBOX_PAD,
+                sx - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
+                sy - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
             );
             if debug_bbox {
                 debug_rows.push(format!(
@@ -2006,24 +2016,24 @@ impl SimGraph {
                 &mut min_y,
                 &mut max_x,
                 &mut max_y,
-                sx + EDGE_BBOX_PAD,
-                sy + EDGE_BBOX_PAD,
+                sx + CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
+                sy + CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
             );
             include_point(
                 &mut min_x,
                 &mut min_y,
                 &mut max_x,
                 &mut max_y,
-                tx - EDGE_BBOX_PAD,
-                ty - EDGE_BBOX_PAD,
+                tx - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
+                ty - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
             );
             include_point(
                 &mut min_x,
                 &mut min_y,
                 &mut max_x,
                 &mut max_y,
-                tx + EDGE_BBOX_PAD,
-                ty + EDGE_BBOX_PAD,
+                tx + CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
+                ty + CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
             );
 
             // Mermaid styles XY edges as Cytoscape `curve-style: segments` with
@@ -2052,16 +2062,16 @@ impl SimGraph {
                         &mut min_y,
                         &mut max_x,
                         &mut max_y,
-                        px - EDGE_BBOX_PAD,
-                        py - EDGE_BBOX_PAD,
+                        px - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
+                        py - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
                     );
                     include_point(
                         &mut min_x,
                         &mut min_y,
                         &mut max_x,
                         &mut max_y,
-                        px + EDGE_BBOX_PAD,
-                        py + EDGE_BBOX_PAD,
+                        px + CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
+                        py + CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
                     );
                 }
             }
@@ -2076,24 +2086,24 @@ impl SimGraph {
                 path_points.insert(1, (bx, by));
                 // After Mermaid updates segment weights/distances, the SVG renderer treats this
                 // bend point as the "midpoint" of the orthogonal polyline. Cytoscape's edge label
-                // placement for the same style is closest to this bend as well, so use it for the
-                // bbox approximation.
+                // placement for the same style is closest to this bend as well, so retain it as
+                // this relocation bbox phase's label point.
                 label_point_override = Some((bx, by));
                 include_point(
                     &mut min_x,
                     &mut min_y,
                     &mut max_x,
                     &mut max_y,
-                    bx - EDGE_BBOX_PAD,
-                    by - EDGE_BBOX_PAD,
+                    bx - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
+                    by - CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
                 );
                 include_point(
                     &mut min_x,
                     &mut min_y,
                     &mut max_x,
                     &mut max_y,
-                    bx + EDGE_BBOX_PAD,
-                    by + EDGE_BBOX_PAD,
+                    bx + CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
+                    by + CYTOSCAPE_EDGE_BODY_BBOX_OUTSET_PX,
                 );
             }
 
@@ -2118,16 +2128,16 @@ impl SimGraph {
                             &mut min_y,
                             &mut max_x,
                             &mut max_y,
-                            mx - hw - EDGE_BBOX_PAD,
-                            my - hh - EDGE_BBOX_PAD,
+                            mx - hw - FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX,
+                            my - hh - FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX,
                         );
                         include_point(
                             &mut min_x,
                             &mut min_y,
                             &mut max_x,
                             &mut max_y,
-                            mx + hw + EDGE_BBOX_PAD,
-                            my + hh + EDGE_BBOX_PAD,
+                            mx + hw + FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX,
+                            my + hh + FCOSE_RELOCATION_EDGE_LABEL_OUTSET_PX,
                         );
                     }
                 }
@@ -2286,6 +2296,11 @@ impl SimGraph {
         mut debug_stages: Option<&mut Vec<IndexedFcoseDebugStage>>,
         mut timings: Option<&mut FcoseSpringTimings>,
     ) -> SpringStats {
+        // `cytoscape-fcose` constructs a fresh CoSELayout for every `layout.run()`. Keep the
+        // generation-based FR-grid deduplication scratch run-local as well; reusing markers while
+        // restarting the generation counter can silently drop repulsion pairs on the second run.
+        self.surrounding_seen.fill(0);
+
         if self.nodes.is_empty() {
             return SpringStats::default();
         }

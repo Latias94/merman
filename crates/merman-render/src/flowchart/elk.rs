@@ -4,7 +4,7 @@ use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
-use crate::{Error, FlowchartElkBackend, Result};
+use crate::{Error, Result};
 use merman_core::MermaidConfig;
 use merman_layout_elk as elk;
 use std::collections::{HashMap, HashSet};
@@ -16,11 +16,9 @@ use super::label::compute_bounds;
 use super::layout::{first_parent_cycle_assignment, flowchart_svg_plain_computed_width_px};
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{
-    FlowchartLabelMetricsRequest, flowchart_effective_font_style_for_classes,
-    flowchart_effective_font_style_for_node_classes, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
-    flowchart_label_plain_text_for_layout, flowchart_node_has_span_css_height_parity,
-    flowchart_whole_label_font_style_requests_italic,
+    FlowchartLabelMetricsRequest, flowchart_apply_html_node_class_box_metrics,
+    flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
+    flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
 };
 
 pub fn layout_flowchart_elk_typed(
@@ -28,31 +26,12 @@ pub fn layout_flowchart_elk_typed(
     effective_config: &MermaidConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    backend: FlowchartElkBackend,
 ) -> Result<FlowchartLayout> {
-    let graph = build_flowchart_elk_graph_for_backend(
-        model,
-        effective_config,
-        measurer,
-        math_renderer,
-        backend,
-    )?;
-    let layout = layout_elk_graph(&graph, backend).map_err(|err| Error::InvalidModel {
+    let graph = build_flowchart_elk_graph(model, effective_config, measurer, math_renderer)?;
+    let layout = elk::layout(&graph).map_err(|err| Error::InvalidModel {
         message: format!("ELK layout failed: {err}"),
     })?;
-    flowchart_layout_from_elk(model, effective_config, &graph, layout, backend)
-}
-
-fn layout_elk_graph(
-    graph: &elk::Graph,
-    backend: FlowchartElkBackend,
-) -> std::result::Result<elk::LayoutResult, elk::Error> {
-    match backend {
-        FlowchartElkBackend::Compat => elk::layout(graph, elk::Algorithm::Layered),
-        FlowchartElkBackend::SourcePorted => {
-            elk::layout_source_ported(graph, elk::Algorithm::Layered)
-        }
-    }
+    flowchart_layout_from_elk(model, effective_config, &graph, layout)
 }
 
 fn flowchart_layout_from_elk(
@@ -60,7 +39,6 @@ fn flowchart_layout_from_elk(
     effective_config: &MermaidConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
-    backend: FlowchartElkBackend,
 ) -> Result<FlowchartLayout> {
     let effective_config_value = effective_config.as_value();
     let FlowchartLayoutSettings {
@@ -107,9 +85,6 @@ fn flowchart_layout_from_elk(
     let diagram_direction = model.direction.as_deref().unwrap_or("TB");
     let mut clusters = Vec::new();
     for sg in &model.subgraphs {
-        if sg.nodes.is_empty() && backend != FlowchartElkBackend::SourcePorted {
-            continue;
-        }
         let Some(node) = layout_node_by_id.get(sg.id.as_str()).copied() else {
             return Err(Error::InvalidModel {
                 message: format!("missing ELK layout cluster {}", sg.id),
@@ -197,7 +172,7 @@ fn flowchart_layout_from_elk(
     }
 
     let bounds = compute_bounds(&out_nodes, &out_edges);
-    let dom_node_order_by_root = flowchart_elk_dom_node_order_by_root(graph, backend);
+    let dom_node_order_by_root = flowchart_elk_dom_node_order_by_root(graph);
 
     Ok(FlowchartLayout {
         nodes: out_nodes,
@@ -205,28 +180,22 @@ fn flowchart_layout_from_elk(
         clusters,
         bounds,
         dom_node_order_by_root,
-        source_ported_elk_rendering: backend == FlowchartElkBackend::SourcePorted,
+        uses_elk_adapter_dom: true,
     })
 }
 
-fn flowchart_elk_dom_node_order_by_root(
-    graph: &elk::Graph,
-    backend: FlowchartElkBackend,
-) -> HashMap<String, Vec<String>> {
-    let ids = match backend {
-        FlowchartElkBackend::Compat => graph.nodes.iter().map(|node| node.id.clone()).collect(),
-        FlowchartElkBackend::SourcePorted => source_ported_mermaid_add_vertices_dom_order(graph),
-    };
+fn flowchart_elk_dom_node_order_by_root(graph: &elk::Graph) -> HashMap<String, Vec<String>> {
+    let ids = mermaid_elk_adapter_dom_order(graph);
     std::iter::once((String::new(), ids)).collect()
 }
 
-fn source_ported_mermaid_add_vertices_dom_order(graph: &elk::Graph) -> Vec<String> {
+fn mermaid_elk_adapter_dom_order(graph: &elk::Graph) -> Vec<String> {
     let mut out = Vec::new();
-    append_source_ported_mermaid_add_vertices_dom_order(graph, None, &mut out);
+    append_mermaid_elk_adapter_dom_order(graph, None, &mut out);
     out
 }
 
-fn append_source_ported_mermaid_add_vertices_dom_order(
+fn append_mermaid_elk_adapter_dom_order(
     graph: &elk::Graph,
     parent_id: Option<&str>,
     out: &mut Vec<String>,
@@ -238,7 +207,7 @@ fn append_source_ported_mermaid_add_vertices_dom_order(
     {
         if node.kind == elk::NodeKind::Group {
             out.push(node.id.clone());
-            append_source_ported_mermaid_add_vertices_dom_order(graph, Some(node.id.as_str()), out);
+            append_mermaid_elk_adapter_dom_order(graph, Some(node.id.as_str()), out);
         } else {
             out.push(node.id.clone());
         }
@@ -319,42 +288,7 @@ pub fn build_flowchart_elk_graph(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<elk::Graph> {
-    build_flowchart_elk_graph_with_mode(
-        model,
-        effective_config,
-        measurer,
-        math_renderer,
-        FlowchartElkGraphBuildMode::Compat,
-    )
-}
-
-pub fn build_flowchart_elk_graph_for_backend(
-    model: &FlowchartModel,
-    effective_config: &MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    backend: FlowchartElkBackend,
-) -> Result<elk::Graph> {
-    let mode = match backend {
-        FlowchartElkBackend::Compat => FlowchartElkGraphBuildMode::Compat,
-        FlowchartElkBackend::SourcePorted => FlowchartElkGraphBuildMode::SourcePorted,
-    };
-    build_flowchart_elk_graph_with_mode(model, effective_config, measurer, math_renderer, mode)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FlowchartElkGraphBuildMode {
-    Compat,
-    SourcePorted,
-}
-
-fn build_flowchart_elk_graph_with_mode(
-    model: &FlowchartModel,
-    effective_config: &MermaidConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    mode: FlowchartElkGraphBuildMode,
-) -> Result<elk::Graph> {
+    super::validate_flowchart_model_shapes(model)?;
     let effective_config_value = effective_config.as_value();
     let FlowchartLayoutSettings {
         node_padding,
@@ -363,7 +297,6 @@ fn build_flowchart_elk_graph_with_mode(
         edge_label_wrapping_width,
         cluster_title_wrapping_width,
         edge_html_labels,
-        node_html_label_css_parity,
         node_wrap_mode,
         edge_wrap_mode,
         cluster_wrap_mode,
@@ -436,41 +369,19 @@ fn build_flowchart_elk_graph_with_mode(
         node_padding,
         state_padding,
         node_wrap_mode,
-        node_html_label_css_parity,
+        class_html_labels: edge_html_labels,
     };
-    let empty_subgraph_measure_ctx = EmptySubgraphMeasureContext {
-        model,
-        effective_config,
-        measurer,
-        math_renderer,
-        cluster_label_base_style,
-        cluster_title_wrapping_width,
-        node_wrap_mode,
-        node_html_label_css_parity,
-        cluster_padding,
-        state_padding,
-        diagram_direction_text,
-    };
-
     let mut inserted_ids: HashSet<&str> = HashSet::new();
     for sg in model.subgraphs.iter().rev() {
         if !inserted_ids.insert(sg.id.as_str()) {
             continue;
         }
-        if sg.nodes.is_empty() && mode == FlowchartElkGraphBuildMode::Compat {
-            graph.nodes.push(empty_subgraph_to_elk_node(
-                sg,
-                parent_by_id.get(&sg.id).cloned(),
-                empty_subgraph_measure_ctx,
-            ));
-        } else {
-            graph.nodes.push(subgraph_to_elk_node(
-                sg,
-                parent_by_id.get(&sg.id).cloned(),
-                &include_children_groups,
-                &cluster_measure_ctx,
-            ));
-        }
+        graph.nodes.push(subgraph_to_elk_node(
+            sg,
+            parent_by_id.get(&sg.id).cloned(),
+            &include_children_groups,
+            &cluster_measure_ctx,
+        ));
     }
 
     for node in &model.nodes {
@@ -545,22 +456,7 @@ struct NodeMeasureContext<'a> {
     node_padding: f64,
     state_padding: f64,
     node_wrap_mode: WrapMode,
-    node_html_label_css_parity: bool,
-}
-
-#[derive(Clone, Copy)]
-struct EmptySubgraphMeasureContext<'a> {
-    model: &'a FlowchartModel,
-    effective_config: &'a MermaidConfig,
-    measurer: &'a dyn TextMeasurer,
-    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    cluster_label_base_style: &'a TextStyle,
-    cluster_title_wrapping_width: f64,
-    node_wrap_mode: WrapMode,
-    node_html_label_css_parity: bool,
-    cluster_padding: f64,
-    state_padding: f64,
-    diagram_direction_text: &'a str,
+    class_html_labels: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -873,19 +769,21 @@ fn ancestor_path(node_id: &str, parent_by_id: &HashMap<String, String>) -> Vec<S
 
 fn subgraph_label(sg: &FlowSubgraph, ctx: &ElkMeasureContext<'_>) -> Option<elk::Label> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
-    let title_font_style =
-        flowchart_effective_font_style_for_classes(&ctx.model.class_defs, &sg.classes, &sg.styles);
+    let text_style = flowchart_effective_text_style_for_classes(
+        ctx.cluster_label_base_style,
+        &ctx.model.class_defs,
+        &sg.classes,
+        &sg.styles,
+    );
     let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
         measurer: ctx.measurer,
         raw_label: &sg.title,
         label_type,
-        style: ctx.cluster_label_base_style,
+        style: text_style.as_ref(),
         max_width_px: Some(ctx.cluster_title_wrapping_width),
         wrap_mode: ctx.cluster_wrap_mode,
         config: ctx.effective_config,
         math_renderer: ctx.math_renderer,
-        preserve_string_whitespace_height: false,
-        whole_label_font_style: title_font_style.as_deref(),
     });
     Some(elk::Label {
         width: metrics.width.max(1.0),
@@ -905,11 +803,6 @@ fn node_dimensions_and_label(
         &node.classes,
         &node.styles,
     );
-    let node_font_style = flowchart_effective_font_style_for_node_classes(
-        &ctx.model.class_defs,
-        &node.classes,
-        &node.styles,
-    );
     let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
         measurer: ctx.measurer,
         raw_label,
@@ -919,25 +812,12 @@ fn node_dimensions_and_label(
         wrap_mode: ctx.node_wrap_mode,
         config: ctx.effective_config,
         math_renderer: ctx.math_renderer,
-        preserve_string_whitespace_height: ctx.node_html_label_css_parity,
-        whole_label_font_style: node_font_style.as_deref(),
     });
-    if ctx.node_html_label_css_parity
-        && flowchart_node_has_span_css_height_parity(&ctx.model.class_defs, &node.classes)
-    {
-        crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-            &mut metrics,
-            node_text_style.as_ref(),
-        );
-    }
     if ctx.node_wrap_mode == WrapMode::SvgLike
         && label_type != "markdown"
         && !raw_label.contains('<')
         && !raw_label.contains('>')
-        && matches!(
-            node.layout_shape.as_deref().unwrap_or("squareRect"),
-            "squareRect"
-        )
+        && super::is_flowchart_process_shape(node.layout_shape.as_deref().unwrap_or("squareRect"))
     {
         let plain = flowchart_label_plain_text_for_layout(raw_label, label_type, false);
         metrics.width = flowchart_svg_plain_computed_width_px(
@@ -945,6 +825,16 @@ fn node_dimensions_and_label(
             &plain,
             node_text_style.as_ref(),
             Some(ctx.wrapping_width),
+        );
+    }
+    if ctx.node_wrap_mode == WrapMode::HtmlLike && ctx.class_html_labels {
+        flowchart_apply_html_node_class_box_metrics(
+            &mut metrics,
+            raw_label,
+            label_type,
+            node_text_style.as_ref(),
+            &ctx.model.class_defs,
+            &node.classes,
         );
     }
 
@@ -958,58 +848,11 @@ fn node_dimensions_and_label(
         metrics,
         padding: ctx.node_padding,
         state_padding: ctx.state_padding,
-        wrap_mode: ctx.node_wrap_mode,
         node_icon: node.icon.as_deref(),
         node_img: node.img.as_deref(),
         node_pos: node.pos.as_deref(),
         node_asset_width: node.asset_width,
         node_asset_height: node.asset_height,
-    });
-
-    (width, height, label)
-}
-
-fn empty_subgraph_dimensions_and_label(
-    sg: &FlowSubgraph,
-    ctx: EmptySubgraphMeasureContext<'_>,
-) -> (f64, f64, elk::Label) {
-    let label_type = sg.label_type.as_deref().unwrap_or("text");
-    let sg_text_style = flowchart_effective_text_style_for_classes(
-        ctx.cluster_label_base_style,
-        &ctx.model.class_defs,
-        &sg.classes,
-        &sg.styles,
-    );
-    let sg_font_style =
-        flowchart_effective_font_style_for_classes(&ctx.model.class_defs, &sg.classes, &sg.styles);
-    let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-        measurer: ctx.measurer,
-        raw_label: &sg.title,
-        label_type,
-        style: sg_text_style.as_ref(),
-        max_width_px: Some(ctx.cluster_title_wrapping_width),
-        wrap_mode: ctx.node_wrap_mode,
-        config: ctx.effective_config,
-        math_renderer: ctx.math_renderer,
-        preserve_string_whitespace_height: ctx.node_html_label_css_parity,
-        whole_label_font_style: sg_font_style.as_deref(),
-    });
-    let label = elk::Label {
-        width: metrics.width,
-        height: metrics.height,
-    };
-    let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
-        layout_shape: Some("squareRect"),
-        layout_direction: ctx.diagram_direction_text,
-        metrics,
-        padding: ctx.cluster_padding,
-        state_padding: ctx.state_padding,
-        wrap_mode: ctx.node_wrap_mode,
-        node_icon: None,
-        node_img: None,
-        node_pos: None,
-        node_asset_width: None,
-        node_asset_height: None,
     });
 
     (width, height, label)
@@ -1028,34 +871,14 @@ fn edge_label(edge: &FlowEdge, ctx: EdgeMeasureContext<'_>) -> Option<elk::Label
         &edge.classes,
         &edge.style,
     );
-    let edge_font_style = flowchart_effective_font_style_for_classes(
-        &ctx.model.class_defs,
-        &edge.classes,
-        &edge.style,
-    );
     let metrics = if label_type == "markdown" && ctx.edge_wrap_mode != WrapMode::HtmlLike {
-        let mut metrics = crate::text::measure_wrapped_markdown_with_flowchart_bold_deltas(
+        crate::text::measure_wrapped_markdown_with_inline_styles(
             ctx.measurer,
             label_text,
             edge_text_style.as_ref(),
             Some(ctx.edge_label_wrapping_width),
             ctx.edge_wrap_mode,
-        );
-        if flowchart_whole_label_font_style_requests_italic(edge_font_style.as_deref()) {
-            let plain = flowchart_label_plain_text_for_layout(
-                label_text,
-                label_type,
-                ctx.edge_wrap_mode == WrapMode::HtmlLike,
-            );
-            let italic_delta = crate::text::mermaid_default_italic_width_delta_px(
-                &plain,
-                edge_text_style.as_ref(),
-            );
-            if italic_delta > 0.0 {
-                metrics.width = crate::text::round_to_1_64_px(metrics.width + italic_delta);
-            }
-        }
-        metrics
+        )
     } else {
         flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
@@ -1066,8 +889,6 @@ fn edge_label(edge: &FlowEdge, ctx: EdgeMeasureContext<'_>) -> Option<elk::Label
             wrap_mode: ctx.edge_wrap_mode,
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: edge_font_style.as_deref(),
         })
     };
 
@@ -1131,25 +952,6 @@ fn subgraph_to_elk_node(
         },
         layer_constraint: None,
         label: subgraph_label(sg, ctx),
-    }
-}
-
-fn empty_subgraph_to_elk_node(
-    sg: &FlowSubgraph,
-    parent: Option<String>,
-    ctx: EmptySubgraphMeasureContext<'_>,
-) -> elk::Node {
-    let (width, height, label) = empty_subgraph_dimensions_and_label(sg, ctx);
-    elk::Node {
-        id: sg.id.clone(),
-        kind: elk::NodeKind::Leaf,
-        width,
-        height,
-        parent,
-        direction: None,
-        hierarchy_handling: None,
-        layer_constraint: None,
-        label: Some(label),
     }
 }
 
@@ -1285,7 +1087,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_elk_source_ported_adapter_keeps_empty_subgraphs_as_groups() {
+    fn flowchart_elk_adapter_keeps_empty_subgraphs_as_groups() {
         let mut model = model(
             vec![node("a", Some("a"), None), node("b", Some("b"), None)],
             vec![edge("L-a-b", "a", "b", None)],
@@ -1312,36 +1114,18 @@ mod tests {
             nodes: Vec::new(),
         });
 
-        let compat_graph = build_flowchart_elk_graph(
+        let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
             &crate::text::VendoredFontMetricsTextMeasurer::default(),
             None,
         )
         .unwrap();
-        let source_graph = build_flowchart_elk_graph_with_mode(
-            &model,
-            &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
-            None,
-            FlowchartElkGraphBuildMode::SourcePorted,
-        )
-        .unwrap();
 
-        let compat_empty = compat_graph
-            .nodes
-            .iter()
-            .find(|node| node.id == "B")
-            .unwrap();
-        let source_empty = source_graph
-            .nodes
-            .iter()
-            .find(|node| node.id == "B")
-            .unwrap();
+        let empty = graph.nodes.iter().find(|node| node.id == "B").unwrap();
 
-        assert_eq!(compat_empty.kind, elk::NodeKind::Leaf);
-        assert_eq!(source_empty.kind, elk::NodeKind::Group);
-        assert_eq!(source_empty.label.map(|label| label.height), Some(22.0));
+        assert_eq!(empty.kind, elk::NodeKind::Group);
+        assert_eq!(empty.label.map(|label| label.height), Some(22.0));
     }
 
     #[test]
@@ -1403,7 +1187,7 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_source_ported_elk_dom_order_matches_mermaid_add_vertices_recursion() {
+    fn flowchart_elk_dom_order_matches_mermaid_add_vertices_recursion() {
         let mut model = model(
             vec![
                 node("A", Some("A"), None),
@@ -1437,16 +1221,15 @@ mod tests {
             nodes: vec!["E".to_string(), "F".to_string()],
         });
 
-        let graph = build_flowchart_elk_graph_with_mode(
+        let graph = build_flowchart_elk_graph(
             &model,
             &MermaidConfig::default(),
             &crate::text::VendoredFontMetricsTextMeasurer::default(),
             None,
-            FlowchartElkGraphBuildMode::SourcePorted,
         )
         .unwrap();
 
-        let ids = source_ported_mermaid_add_vertices_dom_order(&graph);
+        let ids = mermaid_elk_adapter_dom_order(&graph);
         let actual: Vec<&str> = ids.iter().map(String::as_str).collect();
         assert_eq!(
             actual,
@@ -1654,7 +1437,6 @@ mod tests {
             &MermaidConfig::default(),
             &crate::text::VendoredFontMetricsTextMeasurer::default(),
             None,
-            FlowchartElkBackend::Compat,
         )
         .unwrap();
 
@@ -1669,7 +1451,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "elk-layout")]
-    fn flowchart_source_ported_elk_uses_exported_edge_label_position() {
+    fn flowchart_source_backed_elk_uses_exported_edge_label_position() {
         let model = model(
             vec![
                 node("A", Some("Alpha"), None),
@@ -1689,7 +1471,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let raw_layout = elk::layout_source_ported(&graph, elk::Algorithm::Layered).unwrap();
+        let raw_layout = elk::layout(&graph).unwrap();
         let raw_edge = raw_layout
             .edges
             .iter()
@@ -1702,7 +1484,6 @@ mod tests {
             &MermaidConfig::default(),
             &crate::text::VendoredFontMetricsTextMeasurer::default(),
             None,
-            FlowchartElkBackend::SourcePorted,
         )
         .unwrap();
 
@@ -1715,45 +1496,8 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_elk_layout_uses_subgraph_direction_for_child_geometry() {
-        let mut model = model(
-            vec![
-                node("A", Some("Alpha"), None),
-                node("B", Some("Beta"), None),
-                node("C", Some("Gamma"), None),
-            ],
-            vec![edge("L-A-B", "A", "B", None), edge("L-B-C", "B", "C", None)],
-        );
-        model.subgraphs.push(FlowSubgraph {
-            id: "cluster".to_string(),
-            title: "Cluster".to_string(),
-            dir: Some("LR".to_string()),
-            has_explicit_dir: true,
-            label_type: Some("text".to_string()),
-            classes: Vec::new(),
-            styles: Vec::new(),
-            nodes: vec!["A".to_string(), "B".to_string()],
-        });
-
-        let layout = layout_flowchart_elk_typed(
-            &model,
-            &MermaidConfig::default(),
-            &crate::text::VendoredFontMetricsTextMeasurer::default(),
-            None,
-            FlowchartElkBackend::Compat,
-        )
-        .unwrap();
-        let a = layout.nodes.iter().find(|node| node.id == "A").unwrap();
-        let b = layout.nodes.iter().find(|node| node.id == "B").unwrap();
-        let c = layout.nodes.iter().find(|node| node.id == "C").unwrap();
-
-        assert!(b.x > a.x);
-        assert!(c.y > b.y);
-    }
-
-    #[test]
     #[cfg(feature = "elk-layout")]
-    fn flowchart_source_ported_elk_recursively_lays_out_directed_subgraphs() {
+    fn flowchart_source_backed_elk_recursively_lays_out_directed_subgraphs() {
         let mut model = model(
             vec![
                 node("A", Some("A"), None),
@@ -1808,7 +1552,6 @@ mod tests {
             &MermaidConfig::default(),
             &crate::text::VendoredFontMetricsTextMeasurer::default(),
             None,
-            FlowchartElkBackend::SourcePorted,
         )
         .unwrap();
 

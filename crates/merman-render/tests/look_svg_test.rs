@@ -4,15 +4,12 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::ParseOptions;
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, RootViewportOverridePolicy};
+use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_svg(diagram_id: &str, source: &str) -> String {
-    let session = RenderEnvironment::parity()
-        .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
-        .begin_session()
-        .unwrap();
+    let session = RenderEnvironment::parity().begin_session().unwrap();
     let engine = legacy_init_theme_compat_engine();
     let parsed = block_on(engine.parse_diagram_for_render_model(source, ParseOptions::default()))
         .expect("parse ok")
@@ -85,7 +82,7 @@ erDiagram
         LookDomCase {
             name: "state",
             diagram_id: "look-state",
-            source: r##"%%{init: {"look": "neo", "themeVariables": {"mainBkg": "#606060", "stateBorder": "#040404", "strokeWidth": 4}}}%%
+            source: r##"%%{init: {"look": "neo", "themeVariables": {"mainBkg": "#606060", "nodeBorder": "#040404", "strokeWidth": 4}}}%%
 stateDiagram-v2
 [*] --> Active
 state Active {

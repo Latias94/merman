@@ -9,6 +9,8 @@
 mod common;
 mod engine;
 mod metadata;
+#[cfg(feature = "render")]
+mod text_measurement;
 
 #[cfg(feature = "ascii")]
 mod ascii;
@@ -40,11 +42,16 @@ use merman_analysis::{AnalysisFactsPayload, AnalysisPayload, Analyzer};
 pub use ascii::render_ascii;
 #[cfg(feature = "render")]
 pub use merman::render::{
-    HostMeasurementResult, HostTextMeasurementError, HostTextMeasurer, TextMeasurementPhase,
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
+    HostTextMeasurementRequest, HostTextMeasurer, TextMeasurementOperation, TextMeasurementPhase,
     TextMetrics, TextStyle, WrapMode,
 };
 #[cfg(feature = "render")]
 pub use render::{layout_json, parse_json, render_svg};
+#[cfg(feature = "render")]
+pub use text_measurement::{
+    HostTextMeasurementResultKind, HostTextMeasurementValues, host_text_measurement_from_values,
+};
 
 #[cfg(not(feature = "ascii"))]
 pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {

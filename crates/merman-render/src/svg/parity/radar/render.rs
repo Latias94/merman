@@ -141,20 +141,21 @@ pub(crate) fn render_radar_diagram_svg_model(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Radar,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        &mut out,
-        root_svg::RootViewportSpec::mermaid(
-            root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.svg_width, layout.svg_height),
-            render_settings.use_max_width,
-        )
-        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
-        root_chrome,
-    )?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Radar, diagram_id)
+        .write_open(
+            &mut out,
+            root_svg::RootViewportSpec::mermaid(
+                root_svg::DiagramBounds::from_view_box(
+                    0.0,
+                    0.0,
+                    layout.svg_width,
+                    layout.svg_height,
+                ),
+                render_settings.use_max_width,
+            )
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.svg_width)),
+            root_chrome,
+        )?;
 
     if has_acc_title {
         let _ = write!(

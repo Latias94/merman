@@ -1,5 +1,8 @@
 # Root Viewport Derivation TODO
 
+> Historical snapshot, not an active backlog. Production root/text/SVG overrides and their
+> generator/audit commands were removed on 2026-07-15 under ADR-0062.
+
 This backlog tracks root viewport override replacement work. Deleting an entry is only complete
 when a typed/layout/emitted-bounds rule explains the same root `viewBox` and `max-width`.
 

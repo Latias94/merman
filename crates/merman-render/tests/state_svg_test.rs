@@ -28,7 +28,7 @@ fn render_state_svg_from_text_with_engine(engine: Engine, text: &str) -> String 
 }
 
 fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
-    let init = serde_json::json!({
+    let site_config = MermaidConfig::from_value(serde_json::json!({
         "look": "handDrawn",
         "handDrawnSeed": seed,
         "themeVariables": {
@@ -42,10 +42,8 @@ fn render_state_svg_with_hand_drawn_seed(seed: u64) -> String {
             "noteBkgColor": "#fef3c7",
             "noteBorderColor": "#92400e"
         }
-    });
-    let source = format!(
-        r#"%%{{init: {init}}}%%
-stateDiagram-v2
+    }));
+    let source = r#"stateDiagram-v2
 [*] --> Idle
 state Decide <<choice>>
 Idle --> Decide
@@ -54,20 +52,42 @@ state Fork <<fork>>
 Fork --> Join
 state Join <<join>>
 Join --> [*]
-note right of Idle : seeded note"#
-    );
+note right of Idle : seeded note"#;
 
-    render_state_svg_from_text_with_engine(legacy_init_theme_compat_engine(), &source)
+    render_state_svg_from_text_with_engine(Engine::new().with_site_config(site_config), source)
 }
 
 #[test]
 fn state_svg_honors_mermaid_11_16_theme_css_options() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "transitionColor": "#202020",
+            "lineColor": "#303030",
+            "nodeBorder": "#404040",
+            "stateLabelColor": "#505050",
+            "mainBkg": "#606060",
+            "background": "#707070",
+            "altBackground": "#808080",
+            "strokeWidth": 4,
+            "noteBorderColor": "#909090",
+            "noteBkgColor": "#a0a0a0",
+            "noteTextColor": "#b0b0b0",
+            "labelBackgroundColor": "#c0c0c0",
+            "edgeLabelBackground": "#d0d0d0",
+            "transitionLabelColor": "#e0e0e0",
+            "specialStateColor": "#f0f0f0",
+            "innerEndBackground": "#010101",
+            "compositeBackground": "#020202",
+            "stateBkg": "#030303",
+            "stateBorder": "#040404",
+            "compositeTitleBackground": "#050505"
+        }
+    })));
     let svg = render_state_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"transitionColor": "#202020", "lineColor": "#303030", "nodeBorder": "#404040", "stateLabelColor": "#505050", "mainBkg": "#606060", "background": "#707070", "altBackground": "#808080", "strokeWidth": 4, "noteBorderColor": "#909090", "noteBkgColor": "#a0a0a0", "noteTextColor": "#b0b0b0", "labelBackgroundColor": "#c0c0c0", "edgeLabelBackground": "#d0d0d0", "transitionLabelColor": "#e0e0e0", "specialStateColor": "#f0f0f0", "innerEndBackground": "#010101", "compositeBackground": "#020202", "stateBkg": "#030303", "stateBorder": "#040404", "compositeTitleBackground": "#050505"}}}%%
-stateDiagram-v2
+        engine,
+        r#"stateDiagram-v2
 [*] --> Active: start
-Active --> [*]: done"##,
+Active --> [*]: done"#,
     );
 
     assert!(
@@ -263,6 +283,31 @@ note right of A : Note text
 }
 
 #[test]
+fn state_svg_serializes_sanitized_note_images_as_valid_xhtml() {
+    let svg = render_state_svg_from_text(
+        r#"stateDiagram-v2
+A
+note right of A
+  <a href='https://mermaid.js.org/' target='_blank'><code>note about mermaid</code></a><br/>
+  <img src=x onerror=alert(1)>
+end note
+"#,
+    );
+
+    let document = roxmltree::Document::parse(&svg).expect("valid State SVG XML");
+    let image = document
+        .descendants()
+        .find(|node| node.is_element() && node.tag_name().name() == "img")
+        .expect("sanitized note image");
+    assert_eq!(image.attribute("src"), Some("x"));
+    assert_eq!(
+        image.attribute("style"),
+        Some("display: flex; flex-direction: column; width: 100%;")
+    );
+    assert!(image.attribute("onerror").is_none());
+}
+
+#[test]
 fn state_svg_root_html_labels_false_uses_svg_text_for_rect_with_title() {
     let svg = render_state_svg_from_text(
         r#"%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": true}}}%%
@@ -369,10 +414,23 @@ click S1 href "javascript:alert(1)"
 
 #[test]
 fn state_svg_honors_theme_options_on_visible_rough_paths() {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": {
+            "stateBkg": "#101827",
+            "stateBorder": "#38bdf8",
+            "mainBkg": "#0f172a",
+            "strokeWidth": 4,
+            "specialStateColor": "#f97316",
+            "innerEndBackground": "#22c55e",
+            "background": "#020617",
+            "compositeBackground": "#111827",
+            "noteBkgColor": "#fef3c7",
+            "noteBorderColor": "#92400e"
+        }
+    })));
     let svg = render_state_svg_from_text_with_engine(
-        legacy_init_theme_compat_engine(),
-        r##"%%{init: {"themeVariables": {"stateBkg": "#101827", "stateBorder": "#38bdf8", "mainBkg": "#0f172a", "strokeWidth": 4, "specialStateColor": "#f97316", "innerEndBackground": "#22c55e", "background": "#020617", "compositeBackground": "#111827", "noteBkgColor": "#fef3c7", "noteBorderColor": "#92400e"}}}%%
-stateDiagram-v2
+        engine,
+        r#"stateDiagram-v2
 [*] --> Idle
 state Decide <<choice>>
 Idle --> Decide
@@ -381,7 +439,7 @@ state Fork <<fork>>
 Fork --> Join
 state Join <<join>>
 Join --> [*]
-note right of Idle : themed note"##,
+note right of Idle : themed note"#,
     );
 
     assert!(

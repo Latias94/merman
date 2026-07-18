@@ -2094,10 +2094,12 @@ dependencies = [
  "krilla-svg",
  "merman-ascii",
  "merman-core",
+ "merman-fixture-render-context",
  "merman-render",
  "png",
  "resvg",
  "roxmltree 0.21.1",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tiny-skia",
@@ -2172,6 +2174,7 @@ dependencies = [
  "lalrpop",
  "lalrpop-util",
  "lol_html",
+ "merman-fixture-render-context",
  "regex",
  "rustc-hash",
  "ryu-js",
@@ -2208,6 +2211,18 @@ dependencies = [
  "libloading",
  "merman-bindings-core",
  "serde_json",
+]
+
+[[package]]
+name = "merman-fixture-render-context"
+version = "0.8.0-alpha.3"
+dependencies = [
+ "json5",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -2249,10 +2264,13 @@ dependencies = [
  "dugong",
  "futures",
  "indexmap",
+ "kurbo",
  "manatee",
  "merman-core",
+ "merman-fixture-render-context",
  "merman-layout-elk",
  "pulldown-cmark",
+ "rand 0.10.2",
  "ratex-layout",
  "ratex-parser",
  "ratex-svg",
@@ -2266,6 +2284,7 @@ dependencies = [
  "serde_json",
  "syn",
  "thiserror 2.0.18",
+ "unicode-linebreak",
  "unicode-width",
 ]
 
@@ -4403,6 +4422,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
+name = "unicode-linebreak"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f"
+
+[[package]]
 name = "unicode-normalization"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5173,6 +5198,7 @@ dependencies = [
  "libc",
  "merman",
  "merman-core",
+ "merman-fixture-render-context",
  "merman-layout-elk",
  "merman-render",
  "regex",
@@ -5182,6 +5208,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "syn",
+ "tempfile",
  "thiserror 2.0.18",
  "toml",
  "wasmi",

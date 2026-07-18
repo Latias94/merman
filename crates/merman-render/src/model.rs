@@ -208,7 +208,6 @@ pub struct ArchitectureCytoscapeServiceBounds {
 pub struct ArchitectureCytoscapeServiceLabelMetrics {
     pub text_width: f64,
     pub half_width: f64,
-    pub applied_scale: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -592,9 +591,106 @@ pub struct FlowchartLayout {
     /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).
     #[serde(skip)]
     pub dom_node_order_by_root: std::collections::HashMap<String, Vec<String>>,
-    /// Source-ported ELK should follow Mermaid ELK renderer DOM quirks.
+    /// Whether SVG emission follows Mermaid's ELK adapter DOM structure.
     #[serde(skip)]
-    pub source_ported_elk_rendering: bool,
+    pub uses_elk_adapter_dom: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SwimlaneDirection {
+    #[serde(rename = "TB")]
+    Tb,
+    #[serde(rename = "LR")]
+    Lr,
+    #[serde(rename = "BT")]
+    Bt,
+    #[serde(rename = "RL")]
+    Rl,
+}
+
+impl SwimlaneDirection {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Tb => "TB",
+            Self::Lr => "LR",
+            Self::Bt => "BT",
+            Self::Rl => "RL",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneTitleRect {
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+    pub bottom: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneNodeLayout {
+    pub id: String,
+    pub label: String,
+    pub label_type: String,
+    pub shape: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    #[serde(default)]
+    pub top_lane_id: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub label_width: f64,
+    pub label_height: f64,
+    pub layer: usize,
+    pub order: usize,
+    pub is_edge_label: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneLaneLayout {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub padding: f64,
+    /// Layout-phase label width. SVG rendering must remeasure the emitted title with its
+    /// `SvgBBox` measurer rather than treating this as a browser `<text>.getBBox()` fact.
+    pub title_label_width: f64,
+    /// Layout-phase label height; see `title_label_width` for the phase boundary.
+    pub title_label_height: f64,
+    #[serde(default)]
+    pub content_top: Option<f64>,
+    #[serde(default)]
+    pub title_rect: Option<SwimlaneTitleRect>,
+    #[serde(default)]
+    pub requested_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneEdgeLayout {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub points: Vec<LayoutPoint>,
+    #[serde(default)]
+    pub label_node_id: Option<String>,
+    pub reversed_for_layout: bool,
+    pub curve: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwimlaneLayout {
+    pub direction: SwimlaneDirection,
+    pub nodes: Vec<SwimlaneNodeLayout>,
+    pub lanes: Vec<SwimlaneLaneLayout>,
+    pub edges: Vec<SwimlaneEdgeLayout>,
+    pub bounds: Option<Bounds>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -613,6 +709,44 @@ pub struct ClassDiagramLayout {
     pub bounds: Option<Bounds>,
     #[serde(skip)]
     pub class_row_metrics_by_id: FxHashMap<String, Arc<ClassNodeRowMetrics>>,
+    /// DOM ownership produced by the same recursive Dagre preparation that owns layout.
+    ///
+    /// Compatibility layout JSON remains flat, while SVG rendering consumes this typed tree so it
+    /// never has to reconstruct extracted namespace roots from the semantic model.
+    #[serde(skip)]
+    pub render_tree: ClassRenderTree,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ClassRenderRoot {
+    pub namespace_id: Option<String>,
+    pub cluster_ids: Vec<String>,
+    pub edge_ids: Vec<String>,
+    pub items: Vec<ClassRenderItem>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ClassRenderRootId(pub usize);
+
+#[derive(Debug, Clone)]
+pub struct ClassRenderTree {
+    pub roots: Vec<ClassRenderRoot>,
+    pub top: ClassRenderRootId,
+}
+
+impl Default for ClassRenderTree {
+    fn default() -> Self {
+        Self {
+            roots: vec![ClassRenderRoot::default()],
+            top: ClassRenderRootId(0),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ClassRenderItem {
+    Node(String),
+    Subgraph(ClassRenderRootId),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1450,8 +1584,8 @@ pub struct C4DiagramLayout {
     pub height: f64,
     #[serde(default = "crate::c4::default_use_max_width")]
     pub use_max_width: bool,
-    pub viewport_width: f64,
-    pub viewport_height: f64,
+    pub container_width: f64,
+    pub container_height: f64,
     pub c4_type: String,
     pub title: Option<String>,
     pub boundaries: Vec<C4BoundaryLayout>,

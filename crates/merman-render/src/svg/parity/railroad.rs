@@ -33,12 +33,8 @@ pub(crate) fn render_railroad_diagram_svg_model(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Railroad,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Railroad, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(

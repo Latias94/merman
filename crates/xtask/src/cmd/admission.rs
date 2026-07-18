@@ -1,5 +1,6 @@
 //! Diagram admission inventory for alignment and compare tooling.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
@@ -7,9 +8,6 @@ use std::path::Path;
 pub(crate) enum AdmissionStatus {
     PrimarySvgMatrix,
     CompatibilityOnly,
-    ParseOnly,
-    NotAdmitted,
-    NotInPinnedBaseline,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -17,14 +15,12 @@ pub(crate) enum CoverageStatus {
     Covered,
     Deferred,
     NotApplicable,
-    NotAdmitted,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum FixtureCorpusStatus {
     Normalized,
     NormalizedWithDeferred,
-    None,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -63,19 +59,14 @@ impl DiagramAdmissionRecord {
         self.admission == AdmissionStatus::PrimarySvgMatrix
     }
 
-    fn is_root_viewport_deferred(self) -> bool {
-        self.is_primary_svg_matrix() && self.root_viewport == CoverageStatus::Deferred
-    }
-
     fn requires_verification_fact(self) -> bool {
         self.is_primary_svg_matrix()
     }
 
     fn requires_defer_reason(self) -> bool {
-        matches!(
-            self.admission,
-            AdmissionStatus::NotAdmitted | AdmissionStatus::NotInPinnedBaseline
-        ) || self.is_root_viewport_deferred()
+        [self.semantic, self.layout, self.svg, self.root_viewport]
+            .into_iter()
+            .any(|coverage| coverage == CoverageStatus::Deferred)
     }
 
     fn has_consistent_fixture_dirs(self) -> bool {
@@ -110,10 +101,14 @@ pub(crate) fn primary_svg_matrix_diagrams() -> impl Iterator<Item = &'static str
 
 pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Vec<String> {
     let workspace_root = crate::cmd::workspace_root();
+    let supported_diagrams = merman_core::supported_diagrams_for_profile(
+        merman_core::baseline::BaselineRegistryProfile::Full,
+    );
     let core_capabilities = merman_core::diagram_family_capabilities_for_profile(
         merman_core::baseline::BaselineRegistryProfile::Full,
     );
-    let mut failures = Vec::new();
+    let mut failures =
+        public_metadata_admission_failures(supported_diagrams, admission_inventory());
 
     for record in admission_inventory() {
         let core_capability = core_family_capability(core_capabilities, record.diagram);
@@ -160,13 +155,6 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
         {
             failures.push(format!(
                 "admission inventory: `{}` is layout/SVG-covered but has no core render parser fact",
-                record.diagram
-            ));
-        }
-
-        if record.admission == AdmissionStatus::NotInPinnedBaseline && core_capability.is_some() {
-            failures.push(format!(
-                "admission inventory: `{}` is marked outside pinned baseline but exists in core family facts",
                 record.diagram
             ));
         }
@@ -242,6 +230,46 @@ pub(crate) fn admission_inventory_alignment_failures(fixtures_root: &Path) -> Ve
     failures
 }
 
+fn public_metadata_admission_failures(
+    supported_diagrams: &[&str],
+    inventory: &[DiagramAdmissionRecord],
+) -> Vec<String> {
+    let mut failures = Vec::new();
+    let mut seen_supported = BTreeSet::new();
+    for &diagram in supported_diagrams {
+        if !seen_supported.insert(diagram) {
+            failures.push(format!(
+                "admission inventory: duplicate full-profile public metadata family `{diagram}`"
+            ));
+            continue;
+        }
+
+        let matching: Vec<_> = inventory
+            .iter()
+            .filter(|record| record.diagram == diagram)
+            .collect();
+        match matching.as_slice() {
+            [] => failures.push(format!(
+                "admission inventory: full-profile public metadata family `{diagram}` has no admission record"
+            )),
+            [record]
+                if matches!(
+                    record.admission,
+                    AdmissionStatus::PrimarySvgMatrix | AdmissionStatus::CompatibilityOnly
+                ) => {}
+            [record] => failures.push(format!(
+                "admission inventory: full-profile public metadata family `{diagram}` has unsupported admission status {:?}",
+                record.admission
+            )),
+            records => failures.push(format!(
+                "admission inventory: full-profile public metadata family `{diagram}` has {} admission records; expected exactly one",
+                records.len()
+            )),
+        }
+    }
+    failures
+}
+
 fn core_family_capability<'a>(
     capabilities: &'a [merman_core::DiagramFamilyCapability],
     diagram: &str,
@@ -276,7 +304,7 @@ macro_rules! primary {
             normalized_fixture_dir: Some($diagram),
             deferred_fixture_dir: match $fixtures {
                 FixtureCorpusStatus::NormalizedWithDeferred => Some($diagram),
-                FixtureCorpusStatus::Normalized | FixtureCorpusStatus::None => None,
+                FixtureCorpusStatus::Normalized => None,
             },
             semantic: CoverageStatus::Covered,
             layout: CoverageStatus::Covered,
@@ -284,42 +312,6 @@ macro_rules! primary {
             root_viewport: CoverageStatus::Covered,
             owner_doc: $owner,
             defer_reason: None,
-        }
-    };
-}
-
-macro_rules! not_admitted {
-    ($diagram:literal, $reason:literal) => {
-        DiagramAdmissionRecord {
-            diagram: $diagram,
-            admission: AdmissionStatus::NotAdmitted,
-            fixtures: FixtureCorpusStatus::None,
-            normalized_fixture_dir: None,
-            deferred_fixture_dir: None,
-            semantic: CoverageStatus::NotAdmitted,
-            layout: CoverageStatus::NotAdmitted,
-            svg: CoverageStatus::NotAdmitted,
-            root_viewport: CoverageStatus::NotApplicable,
-            owner_doc: "docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md",
-            defer_reason: Some($reason),
-        }
-    };
-}
-
-macro_rules! parse_only {
-    ($diagram:literal, $fixture_dir:literal, $owner:literal, $reason:literal) => {
-        DiagramAdmissionRecord {
-            diagram: $diagram,
-            admission: AdmissionStatus::ParseOnly,
-            fixtures: FixtureCorpusStatus::Normalized,
-            normalized_fixture_dir: Some($fixture_dir),
-            deferred_fixture_dir: None,
-            semantic: CoverageStatus::Covered,
-            layout: CoverageStatus::NotApplicable,
-            svg: CoverageStatus::Deferred,
-            root_viewport: CoverageStatus::NotApplicable,
-            owner_doc: $owner,
-            defer_reason: Some($reason),
         }
     };
 }
@@ -468,29 +460,20 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         owner_doc: "docs/alignment/ZENUML_MINIMUM.md",
         defer_reason: Some("upstream ZenUML renders through browser-only @zenuml/core"),
     },
-    DiagramAdmissionRecord {
-        diagram: "error",
-        admission: AdmissionStatus::ParseOnly,
-        fixtures: FixtureCorpusStatus::Normalized,
-        normalized_fixture_dir: Some("error"),
-        deferred_fixture_dir: None,
-        semantic: CoverageStatus::Covered,
-        layout: CoverageStatus::NotApplicable,
-        svg: CoverageStatus::Deferred,
-        root_viewport: CoverageStatus::NotApplicable,
-        owner_doc: "docs/alignment/ERROR_MINIMUM.md",
-        defer_reason: Some("tracked as parse/snapshot-only; no upstream SVG baseline corpus"),
-    },
+    primary!(
+        "error",
+        FixtureCorpusStatus::Normalized,
+        "docs/alignment/ERROR_MINIMUM.md"
+    ),
     primary!(
         "venn",
         FixtureCorpusStatus::Normalized,
         "docs/alignment/VENN_BETA_ADMISSION_PLAN.md"
     ),
-    parse_only!(
+    primary!(
         "swimlane",
-        "swimlane",
-        "docs/alignment/SWIMLANE_MINIMUM.md",
-        "present in pinned Mermaid 11.16 source; Flowchart parser/editor reuse exists, while layout/render admission is tracked by the 11.16 parity plan"
+        FixtureCorpusStatus::Normalized,
+        "docs/alignment/SWIMLANE_MINIMUM.md"
     ),
     primary!(
         "railroad",
@@ -512,9 +495,10 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
         FixtureCorpusStatus::Normalized,
         "docs/alignment/RAILROAD_MINIMUM.md"
     ),
-    not_admitted!(
+    primary!(
         "wardley",
-        "large family lane deferred behind smaller source-backed work"
+        FixtureCorpusStatus::Normalized,
+        "docs/alignment/WARDLEY_MINIMUM.md"
     ),
     primary!(
         "cynefin",
@@ -527,16 +511,6 @@ const ADMISSION_INVENTORY: &[DiagramAdmissionRecord] = &[
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
-
-    fn diagram_config_key(diagram: &'static str) -> Option<&'static str> {
-        match diagram {
-            "gitgraph" => Some("gitGraph"),
-            "quadrantchart" => Some("quadrantChart"),
-            "treemap" => None,
-            "xychart" => Some("xyChart"),
-            other => Some(other),
-        }
-    }
 
     fn record(diagram: &str) -> DiagramAdmissionRecord {
         admission_inventory()
@@ -554,114 +528,10 @@ mod tests {
         assert!(diagrams.contains(&"flowchart"));
         assert!(diagrams.contains(&"treeView"));
         assert!(diagrams.contains(&"venn"));
+        assert!(diagrams.contains(&"swimlane"));
+        assert!(diagrams.contains(&"error"));
+        assert!(diagrams.contains(&"wardley"));
         assert!(!diagrams.contains(&"zenuml"));
-        assert!(!diagrams.contains(&"error"));
-    }
-
-    #[test]
-    fn default_config_overrides_do_not_remove_primary_svg_config_keys() {
-        let overrides_path = crate::cmd::workspace_root()
-            .join("crates")
-            .join("xtask")
-            .join("default_config_overrides.json");
-        let overrides_text =
-            fs::read_to_string(&overrides_path).expect("default config overrides should read");
-        let overrides: Vec<serde_json::Value> =
-            serde_json::from_str(&overrides_text).expect("default config overrides should parse");
-        let removed_keys: BTreeSet<String> = overrides
-            .iter()
-            .filter(|entry| entry.get("op").and_then(serde_json::Value::as_str) == Some("remove"))
-            .filter_map(|entry| {
-                let path = entry.get("path").and_then(serde_json::Value::as_array)?;
-                if path.len() != 1 {
-                    return None;
-                }
-                path.first()
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string)
-            })
-            .collect();
-
-        let schema_path = crate::cmd::default_config_schema_path();
-        let schema_text =
-            fs::read_to_string(&schema_path).expect("Mermaid config schema should read");
-        let schema: serde_json::Value =
-            serde_saphyr::from_str(&schema_text).expect("Mermaid config schema should parse");
-        let schema_properties = schema
-            .get("properties")
-            .and_then(serde_json::Value::as_object)
-            .expect("Mermaid config schema should expose root properties");
-        let schema_keys: BTreeSet<String> =
-            schema_properties.keys().map(String::to_string).collect();
-
-        let removed_admitted_keys: Vec<String> = admission_inventory()
-            .iter()
-            .copied()
-            .filter(|record| record.is_primary_svg_matrix())
-            .filter_map(|record| {
-                diagram_config_key(record.diagram).map(|key| (record.diagram, key))
-            })
-            .filter(|(_, key)| schema_keys.contains(*key) && removed_keys.contains(*key))
-            .map(|(diagram, key)| format!("{diagram} (`{key}`)"))
-            .collect();
-
-        assert!(
-            removed_admitted_keys.is_empty(),
-            "default config overrides remove admitted primary SVG config keys: {}",
-            removed_admitted_keys.join(", ")
-        );
-    }
-
-    #[test]
-    fn default_config_overrides_keep_runtime_defaults_proven_by_local_tests() {
-        let overrides_path = crate::cmd::workspace_root()
-            .join("crates")
-            .join("xtask")
-            .join("default_config_overrides.json");
-        let overrides_text =
-            fs::read_to_string(&overrides_path).expect("default config overrides should read");
-        let overrides: Vec<serde_json::Value> =
-            serde_json::from_str(&overrides_text).expect("default config overrides should parse");
-
-        let expected = [
-            (["architecture", "seed"].as_slice(), serde_json::json!(1)),
-            (
-                ["ishikawa", "useMaxWidth"].as_slice(),
-                serde_json::json!(true),
-            ),
-            (["pie", "donutHole"].as_slice(), serde_json::json!(0)),
-            (["pie", "highlightSlice"].as_slice(), serde_json::json!("")),
-            (
-                ["pie", "legendPosition"].as_slice(),
-                serde_json::json!("right"),
-            ),
-            (
-                ["sankey", "useMaxWidth"].as_slice(),
-                serde_json::json!(true),
-            ),
-        ];
-
-        for (path, value) in expected {
-            let found = overrides.iter().any(|entry| {
-                entry.get("op").and_then(serde_json::Value::as_str) == Some("set")
-                    && entry
-                        .get("path")
-                        .and_then(serde_json::Value::as_array)
-                        .is_some_and(|actual_path| {
-                            actual_path
-                                .iter()
-                                .filter_map(serde_json::Value::as_str)
-                                .eq(path.iter().copied())
-                        })
-                    && entry.get("value") == Some(&value)
-            });
-            assert!(
-                found,
-                "default config overrides should preserve tested runtime default {} = {}",
-                path.join("."),
-                value
-            );
-        }
     }
 
     #[test]
@@ -669,7 +539,7 @@ mod tests {
         for diagram in ["treeView", "ishikawa", "eventmodeling"] {
             let record = record(diagram);
             assert!(record.is_primary_svg_matrix());
-            assert!(!record.is_root_viewport_deferred());
+            assert_ne!(record.root_viewport, CoverageStatus::Deferred);
             assert!(!record.requires_defer_reason());
             assert_eq!(record.root_viewport, CoverageStatus::Covered);
             assert!(record.defer_reason.is_none());
@@ -696,19 +566,19 @@ mod tests {
         assert!(venn.layout_requires_golden());
         assert!(venn.svg_requires_upstream_baseline());
 
-        let not_admitted = record("wardley");
-        assert!(!not_admitted.requires_verification_fact());
-        assert!(not_admitted.requires_defer_reason());
-        assert!(!not_admitted.semantic_requires_golden());
-        assert!(!not_admitted.layout_requires_golden());
-        assert!(!not_admitted.svg_requires_upstream_baseline());
+        let wardley = record("wardley");
+        assert!(wardley.requires_verification_fact());
+        assert!(!wardley.requires_defer_reason());
+        assert!(wardley.semantic_requires_golden());
+        assert!(wardley.layout_requires_golden());
+        assert!(wardley.svg_requires_upstream_baseline());
 
-        let parse_only = record("swimlane");
-        assert_eq!(parse_only.admission, AdmissionStatus::ParseOnly);
-        assert!(!parse_only.requires_verification_fact());
-        assert!(parse_only.semantic_requires_golden());
-        assert!(!parse_only.layout_requires_golden());
-        assert!(!parse_only.svg_requires_upstream_baseline());
+        let swimlane = record("swimlane");
+        assert_eq!(swimlane.admission, AdmissionStatus::PrimarySvgMatrix);
+        assert!(swimlane.requires_verification_fact());
+        assert!(swimlane.semantic_requires_golden());
+        assert!(swimlane.layout_requires_golden());
+        assert!(swimlane.svg_requires_upstream_baseline());
     }
 
     #[test]
@@ -735,6 +605,21 @@ mod tests {
                 fact.diagram
             );
         }
+    }
+
+    #[test]
+    fn full_profile_public_metadata_families_have_exactly_one_admission_record() {
+        let supported_diagrams = merman_core::supported_diagrams_for_profile(
+            merman_core::baseline::BaselineRegistryProfile::Full,
+        );
+        let failures =
+            public_metadata_admission_failures(supported_diagrams, admission_inventory());
+
+        assert!(
+            failures.is_empty(),
+            "full-profile public metadata must map one-to-one into admission records:\n{}",
+            failures.join("\n")
+        );
     }
 
     #[test]
@@ -787,29 +672,21 @@ mod tests {
                     record.diagram
                 );
             }
-
-            if record.admission == AdmissionStatus::NotInPinnedBaseline {
-                assert!(
-                    capability.is_none(),
-                    "{} should not exist in core family facts",
-                    record.diagram
-                );
-            }
         }
 
         let wardley = record("wardley");
         let wardley_capability = core_family_capability(core_capabilities, "wardley")
-            .expect("wardley should exist in core detector facts");
-        assert_eq!(wardley.admission, AdmissionStatus::NotAdmitted);
-        assert!(!wardley_capability.has_semantic_parser);
-        assert!(!wardley_capability.has_render_parser);
+            .expect("wardley should exist in core detector/parser facts");
+        assert_eq!(wardley.admission, AdmissionStatus::PrimarySvgMatrix);
+        assert!(wardley_capability.has_semantic_parser);
+        assert!(wardley_capability.has_render_parser);
 
         let swimlane = record("swimlane");
         let swimlane_capability = core_family_capability(core_capabilities, "swimlane")
             .expect("swimlane should exist in core detector/parser facts");
-        assert_eq!(swimlane.admission, AdmissionStatus::ParseOnly);
+        assert_eq!(swimlane.admission, AdmissionStatus::PrimarySvgMatrix);
         assert!(swimlane_capability.has_semantic_parser);
-        assert!(!swimlane_capability.has_render_parser);
+        assert!(swimlane_capability.has_render_parser);
 
         let cynefin = record("cynefin");
         let cynefin_capability = core_family_capability(core_capabilities, "cynefin")

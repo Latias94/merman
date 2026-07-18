@@ -2,7 +2,6 @@
 //
 // Keep behavior identical; these helpers are used across multiple diagram renderers.
 
-use std::borrow::Cow;
 use std::str::FromStr as _;
 
 use roughr::Color;
@@ -391,17 +390,7 @@ pub(super) fn escape_xml(text: &str) -> String {
     out
 }
 
-pub(super) fn decode_mermaid_entities_for_render_text(text: &str) -> Cow<'_, str> {
-    // Mermaid preprocesses diagrams with `encodeEntities(...)`, rewriting `#...;` sequences into
-    // `ﬂ°...¶ß` placeholders so grammars that treat `#` / `;` specially do not break.
-    //
-    // In headless SVG output we must decode those placeholders back into Unicode so text labels
-    // match upstream Mermaid's browser-decoded output.
-    if !text.contains('ﬂ') && !text.contains('¶') && !text.contains('#') {
-        return Cow::Borrowed(text);
-    }
-    merman_core::entities::decode_mermaid_entities_to_unicode(text)
-}
+pub(super) use crate::entities::decode_mermaid_entities_for_render_text;
 
 fn xml_text_is_plain_ascii(text: &str) -> bool {
     text.bytes().all(|b| {

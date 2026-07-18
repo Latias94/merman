@@ -2,10 +2,7 @@
 //!
 //! This module intentionally mirrors Mermaid behavior (including quirks) for parity.
 
-use super::{
-    DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode, estimate_char_width_em,
-    estimate_line_width_px,
-};
+use super::{DeterministicTextMeasurer, TextMeasurer, TextStyle};
 
 pub fn ceil_to_1_64_px(v: f64) -> f64 {
     if !(v.is_finite() && v >= 0.0) {
@@ -49,116 +46,11 @@ pub fn round_to_1_64_px_ties_to_even(v: f64) -> f64 {
     if out == -0.0 { 0.0 } else { out }
 }
 
-pub fn wrap_text_lines_px(
-    text: &str,
-    style: &TextStyle,
-    max_width_px: Option<f64>,
-    wrap_mode: WrapMode,
-) -> Vec<String> {
-    let font_size = style.font_size.max(1.0);
-    let max_width_px = max_width_px.filter(|w| w.is_finite() && *w > 0.0);
-    let break_long_words = wrap_mode == WrapMode::SvgLike;
-
-    fn split_token_to_width_px(tok: &str, max_width_px: f64, font_size: f64) -> (String, String) {
-        let max_em = max_width_px / font_size;
-        let mut em = 0.0;
-        let chars = tok.chars().collect::<Vec<_>>();
-        let mut split_at = 0usize;
-        for (idx, ch) in chars.iter().enumerate() {
-            em += estimate_char_width_em(*ch);
-            if em > max_em && idx > 0 {
-                break;
-            }
-            split_at = idx + 1;
-            if em >= max_em {
-                break;
-            }
-        }
-        if split_at == 0 {
-            split_at = 1.min(chars.len());
-        }
-        let head = chars.iter().take(split_at).collect::<String>();
-        let tail = chars.iter().skip(split_at).collect::<String>();
-        (head, tail)
-    }
-
-    fn wrap_line_to_width_px(
-        line: &str,
-        max_width_px: f64,
-        font_size: f64,
-        break_long_words: bool,
-    ) -> Vec<String> {
-        let mut tokens =
-            std::collections::VecDeque::from(DeterministicTextMeasurer::split_line_to_words(line));
-        let mut out: Vec<String> = Vec::new();
-        let mut cur = String::new();
-
-        while let Some(tok) = tokens.pop_front() {
-            if cur.is_empty() && tok == " " {
-                continue;
-            }
-
-            let candidate = format!("{cur}{tok}");
-            let candidate_trimmed = candidate.trim_end();
-            if estimate_line_width_px(candidate_trimmed, font_size) <= max_width_px {
-                cur = candidate;
-                continue;
-            }
-
-            if !cur.trim().is_empty() {
-                out.push(cur.trim_end().to_string());
-                cur.clear();
-                tokens.push_front(tok);
-                continue;
-            }
-
-            if tok == " " {
-                continue;
-            }
-
-            if !break_long_words {
-                out.push(tok);
-            } else {
-                let (head, tail) = split_token_to_width_px(&tok, max_width_px, font_size);
-                out.push(head);
-                if !tail.is_empty() {
-                    tokens.push_front(tail);
-                }
-            }
-        }
-
-        if !cur.trim().is_empty() {
-            out.push(cur.trim_end().to_string());
-        }
-
-        if out.is_empty() {
-            vec!["".to_string()]
-        } else {
-            out
-        }
-    }
-
-    let mut lines: Vec<String> = Vec::new();
-    for line in DeterministicTextMeasurer::normalized_text_lines(text) {
-        if let Some(w) = max_width_px {
-            lines.extend(wrap_line_to_width_px(&line, w, font_size, break_long_words));
-        } else {
-            lines.push(line);
-        }
-    }
-
-    if lines.is_empty() {
-        vec!["".to_string()]
-    } else {
-        lines
-    }
-}
-
 /// Wraps SVG-like text into lines using the provided [`TextMeasurer`] for width decisions.
 ///
 /// This mirrors Mermaid's `wrapLabel(...)` behavior at a high level (greedy word wrapping), but
-/// delegates width measurements to the active measurer so diagram-specific SVG bbox overrides can
-/// affect wrapping breakpoints.
+/// delegates width measurements to the active measurer so the operation-selected font backend and
+/// SVG measurement phase determine wrapping breakpoints.
 pub fn wrap_text_lines_measurer(
     text: &str,
     measurer: &dyn TextMeasurer,
@@ -259,7 +151,6 @@ pub(crate) fn wrap_svg_text_lines_by_measurement(
     max_width_px: Option<f64>,
     break_long_words: bool,
 ) -> Vec<String> {
-    const EPS_PX: f64 = 0.125;
     let max_width_px = max_width_px.filter(|w| w.is_finite() && *w > 0.0);
 
     fn measure_w_px(measurer: &dyn TextMeasurer, style: &TextStyle, s: &str) -> f64 {
@@ -284,7 +175,7 @@ pub(crate) fn wrap_svg_text_lines_by_measurement(
         for i in 1..=chars.len() {
             let head = chars[..i].iter().collect::<String>();
             let w = measure_w_px(measurer, style, &head);
-            if w.is_finite() && w <= max_width_px + EPS_PX {
+            if w.is_finite() && w <= max_width_px {
                 split_at = i;
             } else {
                 break;
@@ -314,7 +205,7 @@ pub(crate) fn wrap_svg_text_lines_by_measurement(
 
             let candidate = format!("{cur}{tok}");
             let candidate_trimmed = candidate.trim_end();
-            if measure_w_px(measurer, style, candidate_trimmed) <= max_width_px + EPS_PX {
+            if measure_w_px(measurer, style, candidate_trimmed) <= max_width_px {
                 cur = candidate;
                 continue;
             }
@@ -330,7 +221,7 @@ pub(crate) fn wrap_svg_text_lines_by_measurement(
                 continue;
             }
 
-            if measure_w_px(measurer, style, tok.as_str()) <= max_width_px + EPS_PX {
+            if measure_w_px(measurer, style, tok.as_str()) <= max_width_px {
                 cur = tok;
                 continue;
             }

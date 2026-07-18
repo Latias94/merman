@@ -1,7 +1,6 @@
 //! State diagram layout implementation (stateDiagram-v2).
 
 use crate::dagre::self_loop::compact_self_loop_geometry;
-use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
 };
@@ -13,11 +12,8 @@ use merman_core::geom::Size;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-// Mermaid@11.12.2 renders end states (`[*]`) as a path-based circle whose `getBBox().width`
-// is slightly larger than the nominal diameter (14px). Mermaid feeds that measured bbox into
-// Dagre, which can shift the end node center by ~0.0066px and affect root `viewBox/max-width`.
 use super::config::*;
-use super::{STATE_END_NODE_DAGRE_WIDTH_PX_11_12_2, StateDiagramModel, StateNode};
+use super::{StateDiagramModel, StateNode};
 
 struct PreparedGraph {
     graph: Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -66,6 +62,7 @@ struct StateDagreInput {
     explicit_dir_ids: HashSet<String>,
     text_style: TextStyle,
     wrap_mode: WrapMode,
+    wrapping_width: f64,
     html_labels: bool,
 }
 
@@ -100,16 +97,15 @@ fn edge_label_metrics(
     if label.trim().is_empty() {
         return (0.0, 0.0);
     }
-    // Mermaid stores sanitized labels that can contain HTML entities like `&lt;`. In the browser,
-    // those are decoded before layout/measurement, so decode them here to avoid skewing widths.
-    let decoded = decode_html_entities_once(label);
-    let wrapping_width = state_text_overrides::state_edge_label_max_width_px();
-    let mut metrics = measurer.measure_wrapped(
-        decoded.as_ref(),
+    let wrapping_width = crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
+    let mut metrics = super::measure_state_markdown_label(
+        label,
+        measurer,
         text_style,
         Some(wrapping_width),
         wrap_mode,
-    );
+    )
+    .metrics;
     // For SVG edge labels, `createText(..., addSvgBackground=true)` adds a background rect with a
     // 2px padding.
     if wrap_mode == WrapMode::SvgLike {
@@ -117,20 +113,6 @@ fn edge_label_metrics(
         metrics.height += 4.0;
     }
 
-    if wrap_mode == WrapMode::HtmlLike {
-        // Mermaid DOM measurements routinely land on a 1/64px lattice.
-        metrics.width = crate::text::round_to_1_64_px(metrics.width);
-        if wrapping_width.is_finite() && wrapping_width > 0.0 {
-            metrics.width = metrics.width.min(wrapping_width);
-        }
-
-        let trimmed = decoded.as_ref().trim();
-        if let Some(w) =
-            state_text_overrides::lookup_state_edge_label_width_px(text_style.font_size, trimmed)
-        {
-            metrics.width = w;
-        }
-    }
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
@@ -154,9 +136,9 @@ fn node_label_metrics(
     fn parse_text_style_overrides(
         compiled: &[String],
         direct: &[String],
-    ) -> (Option<String>, bool, Option<f64>, Option<String>) {
+    ) -> (Option<String>, Option<String>, Option<f64>, Option<String>) {
         let mut weight: Option<String> = None;
-        let mut italic: bool = false;
+        let mut font_style: Option<String> = None;
         let mut font_size_px: Option<f64> = None;
         let mut font_family: Option<String> = None;
 
@@ -178,12 +160,9 @@ fn node_label_metrics(
                     }
                 }
                 "font-style" => {
-                    let val = val
-                        .trim_end_matches("!important")
-                        .trim()
-                        .to_ascii_lowercase();
-                    if val.contains("italic") || val.contains("oblique") {
-                        italic = true;
+                    let val = val.trim_end_matches("!important").trim();
+                    if !val.is_empty() {
+                        font_style = Some(val.to_string());
                     }
                 }
                 "font-size" => {
@@ -204,11 +183,10 @@ fn node_label_metrics(
             }
         }
 
-        (weight, italic, font_size_px, font_family)
+        (weight, font_style, font_size_px, font_family)
     }
 
-    let decoded = decode_html_entities_once(label);
-    let (weight, italic, font_size_px, font_family) =
+    let (weight, font_style, font_size_px, font_family) =
         parse_text_style_overrides(node_css_compiled_styles, node_css_styles);
     let mut style = text_style.clone();
     if let Some(px) = font_size_px {
@@ -217,93 +195,22 @@ fn node_label_metrics(
     if let Some(ff) = font_family {
         style.font_family = Some(ff);
     }
-    style.font_weight = weight;
-
-    let mut metrics =
-        measurer.measure_wrapped(decoded.as_ref(), &style, Some(wrapping_width), wrap_mode);
-
-    if italic && wrap_mode == WrapMode::HtmlLike {
-        metrics.width +=
-            crate::text::mermaid_default_italic_width_delta_px(decoded.as_ref(), &style);
+    if let Some(weight) = weight {
+        style.font_weight = Some(weight);
+    }
+    if let Some(font_style) = font_style {
+        style.font_style = Some(font_style);
     }
 
-    if wrap_mode == WrapMode::HtmlLike {
-        metrics.width += crate::text::mermaid_default_bold_width_delta_px(decoded.as_ref(), &style);
-    }
+    let metrics = super::measure_state_markdown_label(
+        label,
+        measurer,
+        &style,
+        Some(wrapping_width),
+        wrap_mode,
+    )
+    .metrics;
 
-    if wrap_mode == WrapMode::HtmlLike && wrapping_width.is_finite() && wrapping_width > 0.0 {
-        // Mermaid HTML labels are effectively clamped by CSS `max-width`. Any additional width
-        // adjustments (italic/bold deltas) must not exceed that wrapping width.
-        metrics.width = metrics.width.min(wrapping_width);
-    }
-
-    if wrap_mode == WrapMode::HtmlLike {
-        // Mermaid DOM measurements routinely land on a 1/64px lattice.
-        metrics.width = crate::text::round_to_1_64_px(metrics.width);
-        if wrapping_width.is_finite() && wrapping_width > 0.0 {
-            metrics.width = metrics.width.min(wrapping_width);
-        }
-    }
-
-    if wrap_mode == WrapMode::HtmlLike {
-        let has_metrics_style = italic
-            || style
-                .font_weight
-                .as_deref()
-                .is_some_and(|s| !s.trim().is_empty())
-            || font_size_px.is_some()
-            || text_style
-                .font_family
-                .as_deref()
-                .zip(style.font_family.as_deref())
-                .is_some_and(|(a, b)| a.trim() != b.trim());
-        if !has_metrics_style {
-            let trimmed = decoded.as_ref().trim();
-            if let Some(w) =
-                crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px(
-                    style.font_size,
-                    trimmed,
-                )
-            {
-                metrics.width = w;
-            }
-        }
-
-        let trimmed = decoded.as_ref().trim();
-        let bold = style
-            .font_weight
-            .as_deref()
-            .is_some_and(|s| s.to_ascii_lowercase().contains("bold"));
-        if let Some(w) =
-            crate::generated::state_text_overrides_11_12_2::lookup_state_node_label_width_px_styled(
-                style.font_size,
-                trimmed,
-                bold,
-                italic,
-            )
-        {
-            metrics.width = w;
-        }
-    }
-
-    if wrap_mode == WrapMode::HtmlLike {
-        let has_classdef_border_style = node_css_compiled_styles
-            .iter()
-            .any(|s| s.trim_start().to_ascii_lowercase().starts_with("border:"));
-
-        // Mermaid@11.12.2 browser baselines show a surprising `getBoundingClientRect()` inflation
-        // for `classDef`-styled border nodes: even a single-line `<p>` label can measure as `72px`
-        // tall. Mirror that behavior here to avoid relying on string-keyed height overrides.
-        if has_classdef_border_style && (style.font_size - 16.0).abs() <= 0.01 {
-            let trimmed = decoded.as_ref().trim();
-            let is_single_line = !trimmed.contains('\n')
-                && !trimmed.to_ascii_lowercase().contains("<br")
-                && !trimmed.is_empty();
-            if is_single_line && (metrics.height - 24.0).abs() <= 0.01 {
-                metrics.height = metrics.height.max(72.0);
-            }
-        }
-    }
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
@@ -316,12 +223,7 @@ fn title_label_metrics(
     // Mermaid state diagram cluster titles use `createLabel(...)` (nowrap) rather than
     // `createText(...)` (width constrained).
     let decoded = decode_html_entities_once(label);
-    let mut metrics = measurer.measure_wrapped(decoded.as_ref(), text_style, None, wrap_mode);
-
-    if wrap_mode == WrapMode::HtmlLike {
-        // Mermaid DOM measurements routinely land on a 1/64px lattice.
-        metrics.width = crate::text::round_to_1_64_px(metrics.width);
-    }
+    let metrics = measurer.measure_wrapped(decoded.as_ref(), text_style, None, wrap_mode);
 
     (metrics.width.max(0.0), metrics.height.max(0.0))
 }
@@ -1157,6 +1059,53 @@ fn merge_edge_segments(mut segments: Vec<EdgeSegment>) -> Vec<LayoutEdge> {
     out
 }
 
+fn merge_self_loop_segment_fallback(id: String, mut segments: Vec<EdgeSegment>) -> LayoutEdge {
+    segments.sort_by_key(|segment| segment.segment);
+    let first = &segments[0];
+    let from = first.original_from.clone();
+    let to = first.original_to.clone();
+    let from_cluster = segments
+        .iter()
+        .find_map(|segment| segment.from_cluster.clone());
+    let to_cluster = segments
+        .iter()
+        .find_map(|segment| segment.to_cluster.clone());
+    let label = segments
+        .iter()
+        .find(|segment| segment.segment == 1)
+        .and_then(|segment| segment.label.clone())
+        .or_else(|| segments.iter().find_map(|segment| segment.label.clone()));
+
+    let mut points = Vec::new();
+    for segment in &segments {
+        for point in &segment.points {
+            if points.last().is_some_and(|last: &LayoutPoint| {
+                (last.x - point.x).abs() < 1e-9 && (last.y - point.y).abs() < 1e-9
+            }) {
+                continue;
+            }
+            points.push(point.clone());
+        }
+    }
+
+    LayoutEdge {
+        id,
+        from,
+        to,
+        from_cluster,
+        to_cluster,
+        points,
+        label,
+        start_label_left: None,
+        start_label_right: None,
+        end_label_left: None,
+        end_label_right: None,
+        start_marker: None,
+        end_marker: None,
+        stroke_dasharray: None,
+    }
+}
+
 fn compact_self_loop_edges(
     segments: Vec<EdgeSegment>,
     nodes: &[LayoutNode],
@@ -1179,7 +1128,7 @@ fn compact_self_loop_edges(
         let is_complete_group =
             segments.len() == 3 && segments.iter().map(|segment| segment.segment).eq([0, 1, 2]);
         if !is_complete_group {
-            passthrough.extend(segments);
+            edges.push(merge_self_loop_segment_fallback(id, segments));
             continue;
         }
 
@@ -1191,7 +1140,7 @@ fn compact_self_loop_edges(
                 .iter()
                 .any(|segment| segment.original_from != from || segment.original_to != to)
         {
-            passthrough.extend(segments);
+            edges.push(merge_self_loop_segment_fallback(id, segments));
             continue;
         }
         let Some((node_x, node_y, node_width, node_height)) = nodes
@@ -1205,7 +1154,7 @@ fn compact_self_loop_edges(
                     .map(|cluster| (cluster.x, cluster.y, cluster.width, cluster.height))
             })
         else {
-            passthrough.extend(segments);
+            edges.push(merge_self_loop_segment_fallback(id, segments));
             continue;
         };
 
@@ -1362,8 +1311,7 @@ fn build_state_diagram_dagre_input(
         multigraph: true,
         compound: true,
     });
-    // Mermaid `@11.12.2` dagre-wrapper renderer does not set `ranker`, so Dagre defaults to
-    // `network-simplex`.
+    // Mermaid 11.16's Dagre adapter leaves `ranker` unset, so Dagre uses `network-simplex`.
     graph.set_graph(graph_label);
 
     // Pre-size nodes (leaf nodes only). Cluster nodes start with a tiny placeholder size.
@@ -1396,7 +1344,7 @@ fn build_state_diagram_dagre_input(
 
         let (w, h) = match n.shape.as_str() {
             "stateStart" => (14.0, 14.0),
-            "stateEnd" => (STATE_END_NODE_DAGRE_WIDTH_PX_11_12_2, 14.0),
+            "stateEnd" => (14.0, 14.0),
             "choice" => (28.0, 28.0),
             "fork" | "join" => {
                 let (mut width, mut height) = if matches!(diagram_dir, RankDir::LR | RankDir::RL) {
@@ -1409,7 +1357,7 @@ fn build_state_diagram_dagre_input(
                 (width, height)
             }
             "note" => {
-                let (mut tw, th) = node_label_metrics(
+                let (tw, th) = node_label_metrics(
                     &label_text,
                     wrapping_width,
                     &n.css_compiled_styles,
@@ -1418,15 +1366,6 @@ fn build_state_diagram_dagre_input(
                     &text_style,
                     wrap_mode,
                 );
-                if wrap_mode == WrapMode::HtmlLike {
-                    let decoded = decode_html_entities_once(&label_text);
-                    if let Some(w) = state_text_overrides::lookup_state_note_label_width_px(
-                        text_style.font_size,
-                        decoded.as_ref().trim(),
-                    ) {
-                        tw = w;
-                    }
-                }
                 (tw + padding * 2.0, th + padding * 2.0)
             }
             "rectWithTitle" => {
@@ -1440,13 +1379,10 @@ fn build_state_diagram_dagre_input(
                 let (desc_w, desc_h) =
                     title_label_metrics(&desc, measurer, &text_style, WrapMode::HtmlLike);
 
-                let inner_w = title_w.max(desc_w);
-                let top_pad = state_text_overrides::state_rect_with_title_top_pad_px(padding);
-                let bottom_pad = state_text_overrides::state_rect_with_title_bottom_pad_px(padding);
-                let gap = state_text_overrides::state_rect_with_title_gap_px(padding);
-                let h = top_pad + title_h.max(0.0) + gap + desc_h.max(0.0) + bottom_pad;
-                let w = inner_w + padding;
-                (w.max(1.0), h.max(1.0))
+                let geometry = super::RectWithTitleGeometry::from_metrics(
+                    title_w, title_h, desc_w, desc_h, padding,
+                );
+                (geometry.width, geometry.height)
             }
             "rect" => {
                 let (tw, th) = node_label_metrics(
@@ -1627,6 +1563,7 @@ fn build_state_diagram_dagre_input(
         explicit_dir_ids,
         text_style,
         wrap_mode,
+        wrapping_width,
         html_labels,
     })
 }
@@ -1646,6 +1583,7 @@ fn layout_state_diagram_inner(
         explicit_dir_ids,
         text_style,
         wrap_mode,
+        wrapping_width,
         html_labels,
     } = build_state_diagram_dagre_input(model, effective_config, measurer)?;
 
@@ -1758,6 +1696,15 @@ fn layout_state_diagram_inner(
         let pad = n.padding.unwrap_or(8.0).max(0.0);
         let (tw, th) = if title.trim().is_empty() {
             (0.0, 0.0)
+        } else if n.shape == "noteGroup" {
+            let measurement = super::measure_state_markdown_label(
+                &title,
+                measurer,
+                &text_style,
+                Some(wrapping_width),
+                wrap_mode,
+            );
+            (measurement.metrics.width, measurement.metrics.height)
         } else {
             title_label_metrics(&title, measurer, &text_style, wrap_mode)
         };
@@ -2274,6 +2221,82 @@ pub fn debug_build_state_diagram_dagre_graph(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::TextMetrics;
+
+    struct NonLatticeMeasurer {
+        width: f64,
+        height: f64,
+    }
+
+    impl TextMeasurer for NonLatticeMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: self.width,
+                height: self.height,
+                line_count: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn state_html_metrics_preserve_host_measurement_precision() {
+        let measurer = NonLatticeMeasurer {
+            width: 73.123_456_789,
+            height: 17.25,
+        };
+        let style = TextStyle::default();
+
+        assert_eq!(
+            edge_label_metrics("edge", &measurer, &style, WrapMode::HtmlLike),
+            (73.123_456_789, 17.25)
+        );
+        assert_eq!(
+            node_label_metrics(
+                "node",
+                180.0,
+                &[],
+                &[],
+                &measurer,
+                &style,
+                WrapMode::HtmlLike,
+            ),
+            (73.123_456_789, 17.25)
+        );
+        assert_eq!(
+            title_label_metrics("title", &measurer, &style, WrapMode::HtmlLike),
+            (73.123_456_789, 17.25)
+        );
+    }
+
+    #[test]
+    fn state_label_metrics_keep_html_min_content_and_svg_background_padding() {
+        let measurer = NonLatticeMeasurer {
+            width: 250.123_456_789,
+            height: 17.25,
+        };
+        let style = TextStyle::default();
+
+        assert_eq!(
+            edge_label_metrics("edge", &measurer, &style, WrapMode::HtmlLike),
+            (250.123_456_789, 17.25)
+        );
+        assert_eq!(
+            node_label_metrics(
+                "node",
+                180.0,
+                &[],
+                &[],
+                &measurer,
+                &style,
+                WrapMode::HtmlLike,
+            ),
+            (250.123_456_789, 17.25)
+        );
+        assert_eq!(
+            edge_label_metrics("edge", &measurer, &style, WrapMode::SvgLike),
+            (254.123_456_789, 21.25)
+        );
+    }
 
     fn self_loop_segment(original_id: &str, segment: i32) -> EdgeSegment {
         EdgeSegment {
@@ -2343,7 +2366,7 @@ mod tests {
     }
 
     #[test]
-    fn compact_self_loop_preserves_incomplete_group() {
+    fn compact_self_loop_keeps_incomplete_helpers_out_of_public_layout() {
         let edges = compact_self_loop_edges(
             vec![
                 self_loop_segment("A-cyclic-special-1", 0),
@@ -2354,13 +2377,15 @@ mod tests {
             RankDir::TB,
         );
 
-        assert_eq!(edges.len(), 2);
-        assert_eq!(edges[0].id, "A-cyclic-special-1");
-        assert_eq!(edges[1].id, "A-cyclic-special-mid");
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].id, "edge1");
+        assert_eq!(edges[0].from, "A");
+        assert_eq!(edges[0].to, "A");
+        assert!(edges.iter().all(|edge| !edge.id.contains("cyclic-special")));
     }
 
     #[test]
-    fn compact_self_loop_preserves_group_when_bounds_are_missing() {
+    fn compact_self_loop_keeps_helpers_private_when_bounds_are_missing() {
         let edges = compact_self_loop_edges(
             vec![
                 self_loop_segment("A-cyclic-special-1", 0),
@@ -2372,9 +2397,10 @@ mod tests {
             RankDir::TB,
         );
 
-        assert_eq!(edges.len(), 3);
-        assert_eq!(edges[0].id, "A-cyclic-special-1");
-        assert_eq!(edges[1].id, "A-cyclic-special-2");
-        assert_eq!(edges[2].id, "A-cyclic-special-mid");
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].id, "edge1");
+        assert_eq!(edges[0].from, "A");
+        assert_eq!(edges[0].to, "A");
+        assert!(edges.iter().all(|edge| !edge.id.contains("cyclic-special")));
     }
 }

@@ -11,14 +11,14 @@ for the main library contract.
 
 ## Compatibility And Release Notes
 
-This package tracks UniFFI ABI 3 and is regenerated from the `merman-uniffi` cdylib. The
+This package tracks UniFFI ABI 2 and is regenerated from the `merman-uniffi` cdylib. The
 published PyPI page shows this README together with the metadata links in `pyproject.toml`, so the
 package page can point directly to the binding docs, issues, and changelog.
 
 `MermanReusableEngine` exposes the reusable render path, and `MermanTextMeasurer` lets Python
 hosts provide a callback when they need host-owned text measurement. `ascii_capabilities()` reports
-ASCII support grades and summary fallback metadata; `diagram_family_capabilities()` reports
-parser/render family availability. `analyze_document_json()` and
+ASCII support grades and summary fallback metadata; `diagram_family_capabilities()` reports the
+complete detector/parser/editor/header/config/render family catalog. `analyze_document_json()` and
 `analyze_document_facts_json()` expose Markdown/MDX-aware diagnostics and facts.
 
 For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md).
@@ -29,7 +29,7 @@ For package-specific release notes, see [`CHANGELOG.md`](CHANGELOG.md).
 import merman
 
 engine = merman.MermanEngine()
-assert engine.abi_version() == 3
+assert engine.abi_version() == 2
 print(engine.package_version())
 
 source = "flowchart TD\nA[Hello] --> B[World]"
@@ -53,10 +53,33 @@ family_capabilities = engine.diagram_family_capabilities()
 class Measurer(merman.MermanTextMeasurer):
     def measure(self, request):
         print(request.phase)
+        width = max(len(request.text) * 8.0, 1.0)
+        if request.operation == merman.MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH:
+            return merman.MermanTextMeasureResult(
+                result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+                width=0.0,
+                height=0.0,
+                length=width,
+                line_count=0,
+                bbox_left=None,
+                bbox_right=None,
+                raw_width=None,
+            )
+        if request.operation not in {
+            merman.MermanTextMeasurementOperation.MEASURE,
+            merman.MermanTextMeasurementOperation.WRAPPED,
+            merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+        }:
+            return None
         return merman.MermanTextMeasureResult(
-            width=max(len(request.text) * 8.0, 1.0),
+            result_kind=merman.MermanTextMeasurementResultKind.METRICS,
+            width=width,
             height=max(request.line_height, 1.0),
+            length=0.0,
             line_count=1,
+            bbox_left=None,
+            bbox_right=None,
+            raw_width=None,
         )
 
 reusable = engine.reusable_engine_with_text_measurer(None, Measurer())
@@ -77,6 +100,17 @@ except merman.MermanError.Binding as error:
     print(error.code_name, error.message)
 ```
 
+The callback receives a routing phase and exact operation. A handled record must set the matching
+`MermanTextMeasurementResultKind`; scalar width/height operations use `length`. Return `None` when
+the exact primitive is unsupported. Wrong-kind or invalid records fall back and are not inferred
+from default-valued fields.
+ABI 2 exposes 19 exact operations with contiguous codes `0..18`. `RAW_B_BOX_HEIGHT` (18) measures
+the height from a direct SVG `<text>.getBBox()` probe and returns a non-negative length.
+`CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` (17) returns a signed length for Architecture's
+`createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
+`CREATE_TEXT_B_BOX_Y_OFFSET` remains the ordinary createText probe; it cannot substitute for the
+middle-baseline operation, and both y-offset operations may return a finite negative value.
+
 `options_json` is optional. Pass `None` for defaults, or a JSON string with `parse`, `layout`, and
 `svg` options. The shared schema is documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
@@ -90,9 +124,9 @@ batch rendering.
 If a Python GUI, browser automation host, or WebView application needs geometry that matches its
 own font stack, create a `MermanReusableEngine` with `reusable_engine_with_text_measurer(...)` or
 call `set_text_measurer(...)` on an existing reusable engine. Call `clear_text_measurer()` to
-restore the engine's original built-in measurer. Inspect `request.phase` to distinguish layout,
-wrap, SVG bbox, computed-length, and visibility work. Returning `None`, invalid metrics, or raising
-a callback exception uses the operation's named vendored fallback for that request. See
+restore the engine's original built-in measurer. Inspect `request.phase` for routing and
+`request.operation` for the exact primitive. Returning `None`, a wrong-kind/invalid result, or
+raising a callback exception uses the operation's named vendored fallback for that request. See
 [`docs/bindings/HOST_TEXT_MEASUREMENT.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/HOST_TEXT_MEASUREMENT.md).
 
 ## Generate Locally
@@ -127,6 +161,9 @@ Or run the example script:
 ```bash
 PYTHONPATH=platforms/python/merman/src python platforms/python/merman/examples/smoke.py
 ```
+
+This smoke asserts ABI 2, all 19 generated operation variants, the `RAW_B_BOX_HEIGHT` result, and a
+distinct signed `CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` callback result.
 
 Build a local platform wheel and run an install smoke:
 

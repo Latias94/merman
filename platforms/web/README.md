@@ -13,6 +13,10 @@ npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
 ```
 
+The wrapper smoke asserts WASM ABI 2. The text-measurement test covers all 19 operation names,
+including raw bbox height, and probes state isolation between ordinary and middle-baseline
+createText bbox-y requests.
+
 `npm run build` produces the default `browser-full` artifact used for npm publication. The surface
 includes rendering, parsing, layout, ASCII, validation, diagnostics analysis, and the current
 editor-language APIs. Source and CI builds can choose a browser WASM preset when a smaller local
@@ -163,6 +167,25 @@ main thread through your own worker protocol.
 `createBrowserTextMeasurer()` measures the natural no-wrap width for HTML-like labels before it
 applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWidth` for a short
 label can make the diagram wider than Mermaid would make it in the browser.
+Requests carry the exact primitive in `operation`, including SVG `getBBox()`,
+`getComputedTextLength()`, and `getBoundingClientRect()` variants. Custom callbacks return a
+TypeScript discriminated union with `kind: "metrics"`, `"length"`, `"horizontal-extents"`, or
+`"wrapped-with-raw-width"`. Wrong-kind results are invalid and use the configured fallback; the
+wrapper never infers a result shape from optional fields.
+The browser measurer also implements `mermaid-calculate-text-dimensions` with Mermaid's
+body-attached `calculateTextDimensions()` SVG probe and `canvas-measure-text-width` with
+Cytoscape's Canvas2D `measureText()` font string. These remain distinct because their font fallback
+and shaping behavior can differ from ordinary SVG text measurement.
+
+The current wrapper requires WASM ABI 2 and exposes 19 text-measurement operations with contiguous
+codes `0..18`. Operation 18, `raw-bbox-height`, returns the non-negative height from a direct SVG
+`<text>.getBBox()` probe. Operation 17, `create-text-middle-bbox-y-offset`, is an isolated
+formatted-text DOM probe for Architecture's inherited `dominant-baseline="middle"`; it returns a
+signed `length`. Operation 14,
+`create-text-bbox-y-offset`, measures ordinary createText and is not a valid replacement because
+the middle-baseline shift depends on the resolved font's baseline and x-height. Custom callbacks
+that cannot reproduce the exact middle-baseline DOM should return `undefined` for operation 17 and
+allow the configured fallback to answer it.
 
 `analyze()` returns the diagnostics payload JSON object for a standalone Mermaid diagram.
 `analyzeDocument(source, options, uri)` uses the shared document source model to analyze standalone
@@ -233,8 +256,10 @@ the shared public option/result types and stable helper values, then export only
 wrappers that make sense for that surface. Use `@mermanjs/web/full` or the default import when you
 want one module namespace with render, ASCII, and editor-language wrappers together.
 `selectedRegistryProfile()` reports the active Mermaid registry profile and
-`diagramFamilyCapabilities()` reports the diagram parser/render facts registered in the current
-artifact. Artifacts with `bindingCapabilities().analysis === true` also expose `lintRuleCatalog()`
+`diagramFamilyCapabilities()` reports the complete family catalog registered in the current
+artifact: logical/render identities, detector and semantic/editor parser support, authoring
+headers, config namespaces, and typed-render availability. Artifacts with
+`bindingCapabilities().analysis === true` also expose `lintRuleCatalog()`
 for analyzer rule ids, evidence references, default profiles, origins, configurability, and
 fixability.
 
@@ -332,10 +357,9 @@ Editor query results expose semantic fact provenance where applicable, matching 
 `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, and
 `supportedHostThemePresets()` return typed metadata and fail fast if the generated WebAssembly
 metadata drifts from the TypeScript surface. `lintRuleCatalog()` is available only on
-analysis-capable artifacts. ASCII support is typed separately from SVG diagram metadata because
-some terminal-friendly renderers, such as `treeView`, can be exposed through
-`asciiSupportedDiagrams()` even when they are not part of the public SVG `supportedDiagrams()`
-list.
+analysis-capable artifacts. ASCII support is typed and admitted separately from SVG diagram
+metadata so the two rendering surfaces can evolve independently without implying capability from
+family membership alone.
 
 ## Benchmarking against Mermaid JS
 

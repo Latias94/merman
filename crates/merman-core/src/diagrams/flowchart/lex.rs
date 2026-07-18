@@ -6,8 +6,7 @@ use crate::SourceSpan;
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
     let trimmed = raw.trim();
-    let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''));
+    let quoted = trimmed.starts_with('"') && trimmed.ends_with('"');
     let quote_char = trimmed.as_bytes().first().copied();
 
     let (text, kind) = super::parse_label_text(raw);
@@ -103,7 +102,7 @@ pub(super) fn find_unquoted_delim(input: &str, start: usize, delim: &str) -> Opt
         // Mermaid's flowchart lexer stays in a label-specific text state until the shape closer,
         // so newlines and semicolons inside node labels are label text rather than statement ends.
         match bytes[pos] {
-            b'"' | b'\'' | b'`' => {
+            b'"' => {
                 let quote = bytes[pos];
                 pos += 1;
                 while pos < len {

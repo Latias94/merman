@@ -75,6 +75,54 @@ fn architecture_prepared_artifact_renders_the_typed_family() {
     assert!(svg.svg().contains(r#"id="typed-architecture-service-api""#));
 }
 
+#[cfg(not(feature = "cytoscape-layout"))]
+#[test]
+fn architecture_requires_the_cytoscape_layout_feature() {
+    let parsed = match Engine::new().parse_diagram_for_render_model_with_type_sync(
+        "architecture",
+        "architecture-beta\n  service api(server)[API]\n",
+        ParseOptions::strict(),
+    ) {
+        Ok(Some(parsed)) => parsed,
+        Err(merman_core::Error::UnsupportedDiagram { .. }) => return,
+        result => panic!("unexpected Architecture parse result: {result:?}"),
+    };
+    let error = match family::prepare(parsed, &LayoutOptions::default(), render_session()) {
+        Err(error) => error,
+        Ok(_) => panic!("Architecture must be rejected without cytoscape-layout"),
+    };
+
+    assert!(matches!(
+        error,
+        merman_render::Error::UnsupportedDiagram { ref diagram_type }
+            if diagram_type == "architecture"
+    ));
+}
+
+#[cfg(not(feature = "cytoscape-layout"))]
+#[test]
+fn mindmap_requires_the_cytoscape_layout_feature() {
+    let parsed = match Engine::new().parse_diagram_for_render_model_with_type_sync(
+        "mindmap",
+        "mindmap\n  Root\n    Child\n",
+        ParseOptions::strict(),
+    ) {
+        Ok(Some(parsed)) => parsed,
+        Err(merman_core::Error::UnsupportedDiagram { .. }) => return,
+        result => panic!("unexpected Mindmap parse result: {result:?}"),
+    };
+    let error = match family::prepare(parsed, &LayoutOptions::default(), render_session()) {
+        Err(error) => error,
+        Ok(_) => panic!("Mindmap must be rejected without cytoscape-layout"),
+    };
+
+    assert!(matches!(
+        error,
+        merman_render::Error::UnsupportedDiagram { ref diagram_type }
+            if diagram_type == "mindmap"
+    ));
+}
+
 #[test]
 fn state_prepared_artifact_renders_the_typed_family() {
     let parsed = parse_for_render("stateDiagram-v2\n[*] --> Active\n");

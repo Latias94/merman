@@ -58,6 +58,29 @@ fn root_viewbox_width(svg: &str) -> f64 {
         .expect("viewBox width parses")
 }
 
+fn pie_content_translate(svg: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).expect("valid Pie SVG");
+    let centered = document
+        .root_element()
+        .children()
+        .find(|node| node.is_element() && node.attribute("transform").is_some())
+        .expect("centered pie group");
+    let transform = centered
+        .children()
+        .find(|node| node.is_element() && node.attribute("transform").is_some())
+        .and_then(|node| node.attribute("transform"))
+        .expect("translated pie content group");
+    let values = transform
+        .strip_prefix("translate(")
+        .and_then(|value| value.strip_suffix(')'))
+        .expect("translate transform")
+        .split(',')
+        .map(|value| value.parse::<f64>().expect("numeric translate component"))
+        .collect::<Vec<_>>();
+    assert_eq!(values.len(), 2, "two-dimensional translate transform");
+    (values[0], values[1])
+}
+
 #[test]
 fn pie_slices_follow_input_order_like_mermaid_11_16() {
     let layout = layout_pie_from_text(
@@ -259,8 +282,9 @@ pie
 "#,
     );
     assert!(top_svg.contains(r#"viewBox="0 0 490 494""#));
+    let top_offset = pie_content_translate(&top_svg);
     assert!(
-        top_svg.contains(r#"<g transform="translate(0,66)">"#),
+        top_offset.0.abs() <= f64::EPSILON && (top_offset.1 - 66.0).abs() <= f64::EPSILON,
         "top legend should move the pie group below the legend: {top_svg}"
     );
 
@@ -271,8 +295,11 @@ pie
   "B" : 1
 "#,
     );
+    let left_offset = pie_content_translate(&left_svg);
+    let expected_left_offset = root_viewbox_width(&left_svg) - 490.0;
     assert!(
-        left_svg.contains(r#"<g transform="translate(32.203125,0)">"#),
+        (left_offset.0 - expected_left_offset).abs() <= 1.0e-9
+            && left_offset.1.abs() <= f64::EPSILON,
         "left legend should move the pie group right by legend width: {left_svg}"
     );
     assert!(left_svg.contains(r#"class="legend" transform="translate(-207,-22)""#));

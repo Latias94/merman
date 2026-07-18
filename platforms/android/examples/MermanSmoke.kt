@@ -4,10 +4,141 @@ import io.merman.MermanEngine
 import io.merman.MermanException
 import io.merman.MermanReusableEngine
 import io.merman.MermanTextMeasureResult
+import io.merman.MermanTextMeasurementOperation
+import io.merman.MermanTextMeasurementResultKind
+
+private val textMeasurementOperations = intArrayOf(
+    MermanTextMeasurementOperation.MEASURE,
+    MermanTextMeasurementOperation.COMPUTED_LENGTH,
+    MermanTextMeasurementOperation.BBOX_X,
+    MermanTextMeasurementOperation.BBOX_X_WITH_ASCII_OVERHANG,
+    MermanTextMeasurementOperation.TITLE_BBOX_X,
+    MermanTextMeasurementOperation.SIMPLE_BBOX_WIDTH,
+    MermanTextMeasurementOperation.RAW_BBOX_WIDTH,
+    MermanTextMeasurementOperation.TSPAN_BBOX_WIDTH,
+    MermanTextMeasurementOperation.TSPAN_BBOX_HEIGHT,
+    MermanTextMeasurementOperation.WRAP_PROBE_BBOX_WIDTH,
+    MermanTextMeasurementOperation.SIMPLE_BBOX_HEIGHT,
+    MermanTextMeasurementOperation.WRAPPED,
+    MermanTextMeasurementOperation.WRAPPED_WITH_RAW_WIDTH,
+    MermanTextMeasurementOperation.BOUNDING_CLIENT_RECT_WIDTH,
+    MermanTextMeasurementOperation.CREATE_TEXT_BBOX_Y_OFFSET,
+    MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+    MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH,
+    MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET,
+    MermanTextMeasurementOperation.RAW_BBOX_HEIGHT,
+)
+
+private fun smokeTextMeasurementResult(
+    operation: Int,
+    width: Double,
+    height: Double,
+): MermanTextMeasureResult? = when (operation) {
+    MermanTextMeasurementOperation.MEASURE,
+    MermanTextMeasurementOperation.WRAPPED,
+    MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS ->
+        MermanTextMeasureResult(
+            resultKind = MermanTextMeasurementResultKind.METRICS,
+            width = width,
+            height = height,
+            lineCount = 1,
+        )
+    MermanTextMeasurementOperation.COMPUTED_LENGTH,
+    MermanTextMeasurementOperation.SIMPLE_BBOX_WIDTH,
+    MermanTextMeasurementOperation.RAW_BBOX_WIDTH,
+    MermanTextMeasurementOperation.BOUNDING_CLIENT_RECT_WIDTH,
+    MermanTextMeasurementOperation.TSPAN_BBOX_WIDTH,
+    MermanTextMeasurementOperation.WRAP_PROBE_BBOX_WIDTH,
+    MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH ->
+        MermanTextMeasureResult(
+            resultKind = MermanTextMeasurementResultKind.LENGTH,
+            length = width,
+        )
+    MermanTextMeasurementOperation.TSPAN_BBOX_HEIGHT,
+    MermanTextMeasurementOperation.SIMPLE_BBOX_HEIGHT,
+    MermanTextMeasurementOperation.RAW_BBOX_HEIGHT ->
+        MermanTextMeasureResult(
+            resultKind = MermanTextMeasurementResultKind.LENGTH,
+            length = height,
+        )
+    MermanTextMeasurementOperation.CREATE_TEXT_BBOX_Y_OFFSET,
+    MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET ->
+        MermanTextMeasureResult(
+            resultKind = MermanTextMeasurementResultKind.LENGTH,
+            length = -1.0,
+        )
+    MermanTextMeasurementOperation.BBOX_X,
+    MermanTextMeasurementOperation.BBOX_X_WITH_ASCII_OVERHANG,
+    MermanTextMeasurementOperation.TITLE_BBOX_X -> MermanTextMeasureResult(
+        resultKind = MermanTextMeasurementResultKind.HORIZONTAL_EXTENTS,
+        bboxLeft = width / 2.0,
+        bboxRight = width / 2.0,
+    )
+    MermanTextMeasurementOperation.WRAPPED_WITH_RAW_WIDTH -> MermanTextMeasureResult(
+        resultKind = MermanTextMeasurementResultKind.WRAPPED_WITH_RAW_WIDTH,
+        width = width,
+        height = height,
+        lineCount = 1,
+        rawWidth = width,
+        hasRawWidth = true,
+    )
+    else -> null
+}
 
 fun runMermanSmoke() {
     val source = "flowchart TD\nA[Hello] --> B[World]"
     val textMeasureSource = "flowchart TD\nA[Start] --> B{Condition?}"
+
+    check(textMeasurementOperations.contentEquals(IntArray(19) { it })) {
+        "text measurement operation constants are not the contiguous ABI range 0..18"
+    }
+    check(
+        smokeTextMeasurementResult(
+            MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+            42.0,
+            24.0,
+        )?.resultKind == MermanTextMeasurementResultKind.METRICS,
+    ) {
+        "MermaidCalculateTextDimensions must return metrics"
+    }
+    check(
+        smokeTextMeasurementResult(
+            MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH,
+            42.0,
+            24.0,
+        )?.resultKind == MermanTextMeasurementResultKind.LENGTH,
+    ) {
+        "CanvasMeasureTextWidth must return length"
+    }
+    check(
+        smokeTextMeasurementResult(
+            MermanTextMeasurementOperation.RAW_BBOX_HEIGHT,
+            42.0,
+            24.0,
+        )?.let {
+            it.resultKind == MermanTextMeasurementResultKind.LENGTH && it.length == 24.0
+        } == true,
+    ) {
+        "RawBBoxHeight must return the raw bbox height as length"
+    }
+    check(
+        smokeTextMeasurementResult(
+            MermanTextMeasurementOperation.CREATE_TEXT_BBOX_Y_OFFSET,
+            42.0,
+            24.0,
+        )?.length?.let { it < 0.0 } == true,
+    ) {
+        "CreateTextBBoxYOffset must preserve signed lengths"
+    }
+    check(
+        smokeTextMeasurementResult(
+            MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET,
+            42.0,
+            24.0,
+        )?.length?.let { it < 0.0 } == true,
+    ) {
+        "CreateTextMiddleBBoxYOffset must preserve signed lengths"
+    }
 
     val earlyReusableEngine = MermanReusableEngine()
     try {
@@ -104,12 +235,14 @@ fun runMermanSmoke() {
         val seenMeasureTexts = linkedSetOf<String>()
         val seenWrapModes = linkedSetOf<Int>()
         val seenPhases = linkedSetOf<Int>()
+        val seenOperations = linkedSetOf<Int>()
         val seenMaxWidthStates = linkedSetOf<String>()
 
         fun textMeasureSummary(): String =
             "calls=$measureCalls, texts=${seenMeasureTexts.joinToString("|")}, " +
                 "wrapModes=${seenWrapModes.joinToString("|")}, " +
                 "phases=${seenPhases.joinToString("|")}, " +
+                "operations=${seenOperations.joinToString("|")}, " +
                 "maxWidth=${seenMaxWidthStates.joinToString("|")}"
 
         engine.setTextMeasurer { request ->
@@ -121,6 +254,7 @@ fun runMermanSmoke() {
                 seenWrapModes += request.wrapMode
             }
             seenPhases += request.phase
+            seenOperations += request.operation
             if (seenMaxWidthStates.size < 8) {
                 seenMaxWidthStates += if (request.maxWidth == null) "none" else "some"
             }
@@ -135,11 +269,7 @@ fun runMermanSmoke() {
                 } else {
                     sawBreakSpaces = true
                 }
-                MermanTextMeasureResult(
-                    width = 140.0,
-                    height = 24.0,
-                    lineCount = 1,
-                )
+                smokeTextMeasurementResult(request.operation, width = 140.0, height = 24.0)
             } else {
                 null
             }
@@ -151,8 +281,17 @@ fun runMermanSmoke() {
         check(measureCalls > 0) {
             "text measurer callback smoke failed: ${textMeasureSummary()}"
         }
-        check(seenPhases.size >= 2 && seenPhases.all { it in 0..4 }) {
+        check(seenPhases.size >= 2 && seenPhases.all { it in 0..3 }) {
             "text measurement phase smoke failed: ${textMeasureSummary()}"
+        }
+        check(
+            seenOperations.size >= 2 &&
+                seenOperations.all {
+                    it in MermanTextMeasurementOperation.MEASURE..
+                        MermanTextMeasurementOperation.RAW_BBOX_HEIGHT
+                },
+        ) {
+            "text measurement operation smoke failed: ${textMeasureSummary()}"
         }
         check(sawCondition && sawNowrap && sawBreakSpaces && sawFontStyle && sawSpacingDefaults) {
             "text measurer request metadata smoke failed: ${textMeasureSummary()}"

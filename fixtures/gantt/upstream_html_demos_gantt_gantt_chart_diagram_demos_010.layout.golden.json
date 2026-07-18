@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 196.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 196.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -43,7 +43,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -51,7 +51,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -59,7 +59,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         }
@@ -104,7 +104,7 @@
             "id": "task1",
             "x": 75.0,
             "y": 50.0,
-            "width": 54.0,
+            "width": 34.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -115,7 +115,7 @@
             "text": "Clean",
             "font_size": 11.0,
             "width": 23.87,
-            "x": 102.0,
+            "x": 92.0,
             "y": 63.5,
             "class": "taskText taskText0 width-23.869999999999997"
           }
@@ -135,7 +135,7 @@
             "id": "task8",
             "x": 75.0,
             "y": 74.0,
-            "width": 341.0,
+            "width": 214.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -146,7 +146,7 @@
             "text": "A",
             "font_size": 11.0,
             "width": 6.6,
-            "x": 245.5,
+            "x": 182.0,
             "y": 87.5,
             "class": "taskText taskText1 width-6.6"
           }
@@ -164,9 +164,9 @@
           "vert": false,
           "bar": {
             "id": "task2",
-            "x": 237.0,
+            "x": 177.0,
             "y": 50.0,
-            "width": 65.0,
+            "width": 41.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -177,7 +177,7 @@
             "text": "Clean",
             "font_size": 11.0,
             "width": 23.87,
-            "x": 269.5,
+            "x": 197.5,
             "y": 63.5,
             "class": "taskText taskText0 width-23.869999999999997"
           }
@@ -195,9 +195,9 @@
           "vert": false,
           "bar": {
             "id": "task9",
-            "x": 237.0,
+            "x": 177.0,
             "y": 98.0,
-            "width": 65.0,
+            "width": 41.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -208,7 +208,7 @@
             "text": "B",
             "font_size": 11.0,
             "width": 6.6,
-            "x": 269.5,
+            "x": 197.5,
             "y": 111.5,
             "class": "taskText taskText1 width-6.6"
           }
@@ -226,9 +226,9 @@
           "vert": false,
           "bar": {
             "id": "task3",
-            "x": 400.0,
+            "x": 279.0,
             "y": 50.0,
-            "width": 43.0,
+            "width": 27.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -239,7 +239,7 @@
             "text": "Clean",
             "font_size": 11.0,
             "width": 23.87,
-            "x": 421.5,
+            "x": 292.5,
             "y": 63.5,
             "class": "taskText taskText0 width-23.869999999999997"
           }
@@ -257,9 +257,9 @@
           "vert": false,
           "bar": {
             "id": "task10",
-            "x": 427.0,
+            "x": 296.0,
             "y": 74.0,
-            "width": 65.0,
+            "width": 41.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -270,7 +270,7 @@
             "text": "C",
             "font_size": 11.0,
             "width": 6.6,
-            "x": 459.5,
+            "x": 316.5,
             "y": 87.5,
             "class": "taskText taskText1 width-6.6"
           }
@@ -288,9 +288,9 @@
           "vert": false,
           "bar": {
             "id": "task11",
-            "x": 432.0,
+            "x": 300.0,
             "y": 98.0,
-            "width": 179.0,
+            "width": 112.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -301,7 +301,7 @@
             "text": "D",
             "font_size": 11.0,
             "width": 6.6,
-            "x": 521.5,
+            "x": 356.0,
             "y": 111.5,
             "class": "taskText taskText1 width-6.6"
           }
@@ -319,9 +319,9 @@
           "vert": false,
           "bar": {
             "id": "task12",
-            "x": 481.0,
+            "x": 330.0,
             "y": 122.0,
-            "width": 298.0,
+            "width": 187.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -332,7 +332,7 @@
             "text": "E",
             "font_size": 11.0,
             "width": 6.6,
-            "x": 630.0,
+            "x": 423.5,
             "y": 135.5,
             "class": "taskText taskText1 width-6.6"
           }
@@ -350,9 +350,9 @@
           "vert": false,
           "bar": {
             "id": "task13",
-            "x": 508.0,
+            "x": 347.0,
             "y": 74.0,
-            "width": 65.0,
+            "width": 41.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -363,7 +363,7 @@
             "text": "F",
             "font_size": 11.0,
             "width": 6.6,
-            "x": 540.5,
+            "x": 367.5,
             "y": 87.5,
             "class": "taskText taskText1 width-6.6"
           }
@@ -381,9 +381,9 @@
           "vert": false,
           "bar": {
             "id": "task4",
-            "x": 562.0,
+            "x": 381.0,
             "y": 50.0,
-            "width": 49.0,
+            "width": 31.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -394,7 +394,7 @@
             "text": "Clean",
             "font_size": 11.0,
             "width": 23.87,
-            "x": 586.5,
+            "x": 396.5,
             "y": 63.5,
             "class": "taskText taskText0 width-23.869999999999997"
           }
@@ -412,9 +412,9 @@
           "vert": false,
           "bar": {
             "id": "task14",
-            "x": 573.0,
+            "x": 388.0,
             "y": 74.0,
-            "width": 97.0,
+            "width": 61.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -425,7 +425,7 @@
             "text": "G",
             "font_size": 11.0,
             "width": 6.6,
-            "x": 621.5,
+            "x": 418.5,
             "y": 87.5,
             "class": "taskText taskText1 width-6.6"
           }
@@ -443,9 +443,9 @@
           "vert": false,
           "bar": {
             "id": "task15",
-            "x": 670.0,
+            "x": 449.0,
             "y": 74.0,
-            "width": 109.0,
+            "width": 68.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -456,7 +456,7 @@
             "text": "H",
             "font_size": 11.0,
             "width": 6.6,
-            "x": 724.5,
+            "x": 483.0,
             "y": 87.5,
             "class": "taskText taskText1 width-6.6"
           }
@@ -474,9 +474,9 @@
           "vert": false,
           "bar": {
             "id": "task5",
-            "x": 725.0,
+            "x": 483.0,
             "y": 50.0,
-            "width": 70.0,
+            "width": 45.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -487,7 +487,7 @@
             "text": "Clean",
             "font_size": 11.0,
             "width": 23.87,
-            "x": 760.0,
+            "x": 505.5,
             "y": 63.5,
             "class": "taskText taskText0 width-23.869999999999997"
           }
@@ -505,9 +505,9 @@
           "vert": false,
           "bar": {
             "id": "task16",
-            "x": 779.0,
+            "x": 517.0,
             "y": 74.0,
-            "width": 54.0,
+            "width": 34.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -518,7 +518,7 @@
             "text": "I",
             "font_size": 11.0,
             "width": 3.3,
-            "x": 806.0,
+            "x": 534.0,
             "y": 87.5,
             "class": "taskText taskText1 width-3.3"
           }
@@ -536,9 +536,9 @@
           "vert": false,
           "bar": {
             "id": "task6",
-            "x": 887.0,
+            "x": 585.0,
             "y": 50.0,
-            "width": 54.0,
+            "width": 35.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -549,7 +549,7 @@
             "text": "Clean",
             "font_size": 11.0,
             "width": 23.87,
-            "x": 914.0,
+            "x": 602.5,
             "y": 63.5,
             "class": "taskText taskText0 width-23.869999999999997"
           }
@@ -567,9 +567,9 @@
           "vert": false,
           "bar": {
             "id": "task7",
-            "x": 1049.0,
+            "x": 688.0,
             "y": 50.0,
-            "width": 60.0,
+            "width": 37.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -580,7 +580,7 @@
             "text": "Clean",
             "font_size": 11.0,
             "width": 23.87,
-            "x": 1079.0,
+            "x": 706.5,
             "y": 63.5,
             "class": "taskText taskText0 width-23.869999999999997"
           }
@@ -596,68 +596,68 @@
         },
         {
           "time_ms": 1771157700000.0,
-          "x": 156.0,
+          "x": 126.0,
           "label": " 12h15"
         },
         {
           "time_ms": 1771158600000.0,
-          "x": 237.0,
+          "x": 177.0,
           "label": " 12h30"
         },
         {
           "time_ms": 1771159500000.0,
-          "x": 319.0,
+          "x": 228.0,
           "label": " 12h45"
         },
         {
           "time_ms": 1771160400000.0,
-          "x": 400.0,
+          "x": 279.0,
           "label": " 13h00"
         },
         {
           "time_ms": 1771161300000.0,
-          "x": 481.0,
+          "x": 330.0,
           "label": " 13h15"
         },
         {
           "time_ms": 1771162200000.0,
-          "x": 562.0,
+          "x": 381.0,
           "label": " 13h30"
         },
         {
           "time_ms": 1771163100000.0,
-          "x": 643.0,
+          "x": 432.0,
           "label": " 13h45"
         },
         {
           "time_ms": 1771164000000.0,
-          "x": 725.0,
+          "x": 483.0,
           "label": " 14h00"
         },
         {
           "time_ms": 1771164900000.0,
-          "x": 806.0,
+          "x": 534.0,
           "label": " 14h15"
         },
         {
           "time_ms": 1771165800000.0,
-          "x": 887.0,
+          "x": 585.0,
           "label": " 14h30"
         },
         {
           "time_ms": 1771166700000.0,
-          "x": 968.0,
+          "x": 637.0,
           "label": " 14h45"
         },
         {
           "time_ms": 1771167600000.0,
-          "x": 1049.0,
+          "x": 688.0,
           "label": " 15h00"
         }
       ],
       "top_ticks": [],
       "title": "GANTT compact",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

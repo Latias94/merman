@@ -1,5 +1,9 @@
 # Fearless Refactor Completion Audit
 
+> Historical completion snapshot. References to override inventories, budgets, policies, or
+> `report-overrides` describe mechanisms removed on 2026-07-15 under ADR-0062. See `STATUS.md` for
+> the current contract.
+
 This audit maps the active objective to concrete evidence so the workstream can track what is
 done, what is verified, and what still needs attention.
 

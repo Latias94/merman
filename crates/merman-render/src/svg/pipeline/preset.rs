@@ -69,7 +69,14 @@ pub(crate) fn apply_preset<'a>(
     svg: &'a str,
     session: &RenderSession,
 ) -> Cow<'a, str> {
-    let mut current = Cow::Borrowed(svg);
+    apply_preset_cow(preset, Cow::Borrowed(svg), session)
+}
+
+pub(crate) fn apply_preset_cow<'a>(
+    preset: SvgPipelinePreset,
+    mut current: Cow<'a, str>,
+    session: &RenderSession,
+) -> Cow<'a, str> {
     for stage in builtin_stages_for_preset(preset) {
         current = stage.apply(current, session);
     }

@@ -75,14 +75,14 @@ pub fn supported_diagrams_for_profile(
     family::supported_diagram_metadata_ids(profile)
 }
 
-/// Returns detector/parser/render capability facts for Mermaid diagram ids in the selected pinned
-/// profile. Detector-only families have both parser flags set to `false`.
+/// Returns the complete family capability facts for Mermaid diagram ids in the selected pinned
+/// profile.
 pub fn diagram_family_capabilities() -> &'static [DiagramFamilyCapability] {
     diagram_family_capabilities_for_profile(selected_baseline_registry_profile())
 }
 
-/// Returns detector/parser/render capability facts for Mermaid diagram ids in an explicit registry
-/// profile. Detector-only families have both parser flags set to `false`.
+/// Returns the complete family capability facts for Mermaid diagram ids in an explicit registry
+/// profile.
 pub fn diagram_family_capabilities_for_profile(
     profile: baseline::BaselineRegistryProfile,
 ) -> &'static [DiagramFamilyCapability] {

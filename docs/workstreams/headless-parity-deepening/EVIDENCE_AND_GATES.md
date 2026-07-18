@@ -1,7 +1,11 @@
 # Headless Parity Deepening - Evidence And Gates
 
-Status: Active
+Status: Completed; historical snapshot
 Last updated: 2026-06-07
+
+> Archive note: fixture/root/text/SVG table inventories and `report-overrides` commands below
+> describe retired production mechanisms removed under ADR-0062. Mermaid configuration, theme, and
+> CSS "override" terminology elsewhere in this file is a separate, still-valid domain concept.
 
 ## HPD-090 - Baseline Preparation, Info Refresh, And Inventory
 

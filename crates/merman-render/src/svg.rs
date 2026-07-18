@@ -11,6 +11,7 @@ mod fallback;
 mod icon_registry;
 mod parity;
 mod pipeline;
+pub(crate) mod scanner;
 mod theme_profile;
 
 pub(crate) use parity::render_builtin_family_artifact;

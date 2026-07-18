@@ -77,6 +77,24 @@ fn parse_swimlane_reuses_flowchart_semantics_and_editor_facts() {
 }
 
 #[test]
+fn parse_swimlane_reuses_flowchart_apostrophe_semantics() {
+    let engine = Engine::new();
+    let text = "swimlane-beta LR\nsubgraph Supplier\nA[Update the RFQs based on the supplier's response]\nB[Done]\nend\nA -->|'Owner's review'| B\n";
+    let parsed = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .expect("Swimlane accepts apostrophes through the shared Flowchart parser")
+        .expect("swimlane diagram detected");
+
+    assert_eq!(parsed.meta.diagram_type, "swimlane");
+    assert_eq!(
+        parsed.model["nodes"][0]["label"],
+        json!("Update the RFQs based on the supplier's response")
+    );
+    assert_eq!(parsed.model["nodes"][0]["labelType"], json!("text"));
+    assert_eq!(parsed.model["edges"][0]["label"], json!("'Owner's review'"));
+    assert_eq!(parsed.model["edges"][0]["labelType"], json!("text"));
+}
+
+#[test]
 fn parse_swimlane_layout_default_respects_user_config_precedence() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
         "layout": "dagre"
@@ -131,25 +149,25 @@ fn parse_swimlane_layout_default_respects_user_config_precedence() {
 }
 
 #[test]
-fn parse_swimlane_render_model_stays_unadmitted_until_layout_exists() {
+fn parse_swimlane_render_model_reuses_flowchart_semantics() {
     let engine = Engine::new();
-    let err = engine
+    let parsed = engine
         .parse_diagram_for_render_model_sync("swimlane-beta LR\nA-->B\n", ParseOptions::strict())
-        .unwrap_err();
+        .expect("swimlane render parse succeeds")
+        .expect("swimlane render model");
 
-    let Error::DiagramParse {
-        diagram_type,
-        diagnostic,
-    } = err
-    else {
-        panic!("unexpected swimlane render error: {err}");
-    };
-    assert_eq!(diagram_type, "swimlane");
-    assert!(
-        diagnostic
-            .message()
-            .contains("missing a typed render parser")
+    assert_eq!(parsed.meta.diagram_type, "swimlane");
+    assert_eq!(
+        parsed.meta.effective_config.get_str("layout"),
+        Some("swimlane")
     );
+    let RenderSemanticModel::Flowchart(model) = parsed.model else {
+        panic!("swimlane should reuse the flowchart semantic model");
+    };
+    assert_eq!(model.keyword, "swimlane-beta");
+    assert_eq!(model.direction.as_deref(), Some("LR"));
+    assert_eq!(model.nodes.len(), 2);
+    assert_eq!(model.edges.len(), 1);
 }
 
 #[test]
@@ -1221,6 +1239,33 @@ fn parse_diagram_flowchart_plain_node_labels_can_span_indented_lines() {
 }
 
 #[test]
+fn parse_diagram_flowchart_apostrophes_are_plain_text() {
+    let engine = Engine::new();
+    let text = "flowchart TD\nA[Reviews the supplier's response]\nB[[Owner's task]]\nC['Literal quotes']\nD[bare `tick` text]\nA -->|'Known issue'| B --> C --> D\n";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .expect("apostrophes are ordinary characters in the Jison text state")
+        .expect("diagram detected");
+
+    let nodes = res.model["nodes"].as_array().unwrap();
+    let find_node = |id: &str| nodes.iter().find(|node| node["id"] == json!(id)).unwrap();
+    assert_eq!(
+        find_node("A")["label"],
+        json!("Reviews the supplier's response")
+    );
+    assert_eq!(find_node("A")["labelType"], json!("text"));
+    assert_eq!(find_node("B")["label"], json!("Owner's task"));
+    assert_eq!(find_node("B")["labelType"], json!("text"));
+    assert_eq!(find_node("C")["label"], json!("'Literal quotes'"));
+    assert_eq!(find_node("C")["labelType"], json!("text"));
+    assert_eq!(find_node("D")["label"], json!("bare `tick` text"));
+    assert_eq!(find_node("D")["labelType"], json!("text"));
+
+    let edges = res.model["edges"].as_array().unwrap();
+    assert_eq!(edges[0]["label"], json!("'Known issue'"));
+    assert_eq!(edges[0]["labelType"], json!("text"));
+}
+
+#[test]
 fn parse_diagram_flowchart_markdown_strings_in_subgraphs() {
     let engine = Engine::new();
     let text = r#"flowchart LR
@@ -2013,6 +2058,27 @@ fn parse_diagram_flowchart_subgraph_markdown_title_sets_label_type_markdown() {
         .unwrap();
     assert_eq!(res.model["subgraphs"][0]["title"], json!("**Two**"));
     assert_eq!(res.model["subgraphs"][0]["labelType"], json!("markdown"));
+}
+
+#[test]
+fn parse_diagram_flowchart_subgraph_single_quotes_and_bare_backticks_stay_text() {
+    let engine = Engine::new();
+    let text = "graph TD\nsubgraph quoted['Literal quotes']\nA\nend\nsubgraph ticks[bare `tick` title]\nB\nend";
+    let res = block_on(engine.parse_diagram(text, ParseOptions::strict()))
+        .expect("single quotes and bare backticks are ordinary text")
+        .expect("diagram detected");
+
+    let subgraphs = res.model["subgraphs"].as_array().unwrap();
+    let find = |id: &str| {
+        subgraphs
+            .iter()
+            .find(|subgraph| subgraph["id"] == json!(id))
+            .unwrap()
+    };
+    assert_eq!(find("quoted")["title"], json!("'Literal quotes'"));
+    assert_eq!(find("quoted")["labelType"], json!("text"));
+    assert_eq!(find("ticks")["title"], json!("bare `tick` title"));
+    assert_eq!(find("ticks")["labelType"], json!("text"));
 }
 
 #[test]

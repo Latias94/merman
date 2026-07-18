@@ -78,6 +78,27 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/checkout@v6
+        name: Checkout pinned Mermaid Cypress sources
+        if: matrix.parity
+        with:
+          repository: mermaid-js/mermaid
+          ref: 7c0cafcf42e76bfaf79d0cbbd12edb986612f014
+          path: repo-ref/mermaid
+          persist-credentials: false
+          sparse-checkout: |
+            cypress/integration/rendering/treeView/treeView.spec.ts
+            cypress/integration/rendering/cynefin/cynefin.spec.js
+            cypress/integration/rendering/railroad/railroad.spec.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Verify pinned Mermaid source checkout
+        if: matrix.parity
+        shell: bash
+        run: |
+          actual="$(git -C repo-ref/mermaid rev-parse HEAD)"
+          test "$actual" = "7c0cafcf42e76bfaf79d0cbbd12edb986612f014"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
 
@@ -106,6 +127,29 @@ jobs:
       - name: Test (nextest)
         run: cargo nextest run --cargo-quiet
 
+      - name: Verify Cypress corpus against pinned Mermaid source
+        if: matrix.parity
+        run: cargo run --locked -p xtask -- import-upstream-cypress --check-11-16-corpus-manifest-source
+
+      - name: Setup Node for generated Mermaid artifacts
+        if: matrix.parity
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: tools/mermaid-cli/package-lock.json
+
+      - name: Install pinned Mermaid runtime
+        if: matrix.parity
+        working-directory: tools/mermaid-cli
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm ci
+
+      - name: Verify generated default config
+        if: matrix.parity
+        run: cargo run --locked -p xtask -- verify-default-config
+
       - name: Test (nextest, merman render)
         if: matrix.parity
         run: cargo nextest run -p merman --features render --cargo-quiet
@@ -123,17 +167,20 @@ jobs:
       - name: Build (release)
         run: cargo build --release --locked -p merman-cli
 
-      - name: Override inventory
+      - name: Override-free architecture guard
         if: matrix.parity
-        run: cargo run --release -p xtask -- report-overrides
+        run: cargo nextest run -p merman-render -E 'test(production_rendering_contains_no_fixture_or_exact_text_overrides)'
+
+      - name: SVG DOM structure
+        if: matrix.parity
+        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode structure --dom-decimals 3
 
       - name: SVG DOM parity
         if: matrix.parity
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3
 
-      - name: SVG DOM parity (parity-root, non-blocking)
+      - name: SVG DOM parity (parity-root)
         if: matrix.parity
-        continue-on-error: true
         run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --flowchart-text-measurer vendored --report-root
 
   typst-package:

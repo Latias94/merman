@@ -1,0 +1,83 @@
+{
+  "diagramType": "railroad",
+  "model": {
+    "type": "railroad",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "rules": [
+      {
+        "name": "value",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "nonterminal",
+              "name": "string"
+            },
+            {
+              "type": "nonterminal",
+              "name": "number"
+            },
+            {
+              "type": "nonterminal",
+              "name": "object"
+            },
+            {
+              "type": "nonterminal",
+              "name": "array"
+            },
+            {
+              "type": "terminal",
+              "value": "true"
+            },
+            {
+              "type": "terminal",
+              "value": "false"
+            },
+            {
+              "type": "terminal",
+              "value": "null"
+            }
+          ]
+        }
+      },
+      {
+        "name": "number",
+        "definition": {
+          "type": "repetition",
+          "element": {
+            "type": "nonterminal",
+            "name": "digit"
+          },
+          "min": 1,
+          "max": null
+        }
+      },
+      {
+        "name": "digit",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "0"
+            },
+            {
+              "type": "terminal",
+              "value": "1"
+            },
+            {
+              "type": "terminal",
+              "value": "2"
+            },
+            {
+              "type": "terminal",
+              "value": "3"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

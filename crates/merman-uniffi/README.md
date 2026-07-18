@@ -3,8 +3,8 @@
 UniFFI bindings for Merman headless Mermaid rendering.
 
 `merman-uniffi` exposes the shared native binding facade through UniFFI. It is primarily used by the
-experimental Python package scaffold, while `merman-ffi` remains the stable C ABI entry point for
-native hosts.
+experimental Python package scaffold, while `merman-ffi` remains the C ABI entry point for native
+hosts.
 
 Generated bindings use the built-in headless measurer by default. GUI and WebView hosts that need
 their platform font stack can use `MermanReusableEngine` with a `MermanTextMeasurer` callback.
@@ -12,9 +12,12 @@ Call `MermanReusableEngine::set_text_measurer` to install a host measurer later,
 `MermanReusableEngine::clear_text_measurer` to restore the built-in measurer. The request exposes a
 named measurement phase. `None`, invalid metrics, and callback errors use the operation's vendored
 fallback for that request.
+The current alpha UniFFI contract reports ABI 2 and preserves all 19 exact text-measurement
+operations in order from code 0 through operation 18, `raw-bbox-height`.
 `ascii_capabilities()` exposes ASCII support grades and summary fallback metadata.
-`diagram_family_capabilities()` exposes the same parser/render discovery information as the C ABI
-metadata surface.
+`diagram_family_capabilities()` exposes the same complete family discovery information as the C ABI
+metadata surface, including logical/render-model identities, detector and editor-parser support,
+authoring headers, and config namespaces.
 `analyze_document_json()` and `analyze_document_facts_json()` expose Markdown/MDX-aware diagnostics
 and syntax facts for hosts that need editor, lint, or LSP-style document ranges.
 `lint_rule_catalog()` and `configurable_lint_rule_catalog()` expose governed analyzer rule metadata,

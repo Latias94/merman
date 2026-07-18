@@ -203,6 +203,7 @@ where
     // polyline points). Headlessly, approximate that by unioning a tight bbox over each rendered
     // edge path `d` into our base bbox.
     {
+        let edge_bounds_base = (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y);
         let _g = timing_enabled
             .then(|| super::super::timing::TimingGuard::new(viewbox_edge_curve_bounds));
         let mut lca_scratch: Vec<&str> = Vec::new();
@@ -278,9 +279,32 @@ where
                     FlowchartEdgePathCacheEntry {
                         origin_x: off.origin_x,
                         origin_y: off.origin_y,
+                        abs_top_transform: off.abs_top_transform,
                         geom,
                     },
                 );
+            }
+        }
+
+        if ctx.swimlane_direction.is_some() {
+            super::swimlane::apply_line_hops_to_edge_geometries(
+                edge_path_cache,
+                render_edges,
+                ctx.config,
+            );
+
+            // Line hops are a render-time replacement of the original path. Rebuild edge bounds
+            // from the same post-processed geometry that SVG emission consumes, while retaining
+            // node, cluster, and label bounds as the base.
+            (bbox_min_x, bbox_min_y, bbox_max_x, bbox_max_y) = edge_bounds_base;
+            for cache_entry in edge_path_cache.values() {
+                let _g = detail_guard(timing_enabled, &mut detail.viewbox_edge_curve_bbox_union);
+                if let Some(pb) = cache_entry.geom.pb {
+                    bbox_min_x = bbox_min_x.min(pb.min_x + cache_entry.origin_x);
+                    bbox_min_y = bbox_min_y.min(pb.min_y + cache_entry.abs_top_transform);
+                    bbox_max_x = bbox_max_x.max(pb.max_x + cache_entry.origin_x);
+                    bbox_max_y = bbox_max_y.max(pb.max_y + cache_entry.abs_top_transform);
+                }
             }
         }
     }
@@ -293,6 +317,7 @@ where
             font_family: Some(font_family.to_string()),
             font_size: TITLE_FONT_SIZE_PX,
             font_weight: None,
+            font_style: None,
         };
         let (title_left, title_right) = ctx.measurer.measure_svg_title_bbox_x(title, &title_style);
         let baseline_y = -title_top_margin;

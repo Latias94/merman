@@ -11,13 +11,99 @@
     "renderer_revision": "xtask-upstream-svg-v2"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
     "basic_domains_transitions": {
       "input_sha256": "32458e67a3fbbfef64c09cce483dff3cbd28b7d3c9bdae0d0d8387bb4a6686f2",
-      "svg_sha256": "5abdd0cb851c48f21251c1f7a7f468c3aaf8eb3da4fc0cf21db0e714600e3f4f",
+      "svg_sha256": "788364067ed8c4ee92e785fbb86268a3a3edd89e27d95f137eb04f4a6354dcce",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_a_cynefin_diagram_with_transitions_002": {
+      "input_sha256": "0a47698534945e3f559fdfab51082c1c16df493cef0b19bbc6b3a532b5095b94",
+      "svg_sha256": "da0f928227edf7833593617a83c43c21d2125bf3827ff391757b006d89a39709",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_a_simple_cynefin_diagram_with_all_five_domains_001": {
+      "input_sha256": "f852451974b9d7025570b33b097f890b65e942ef22a7828c21cbbb178d4cefc0",
+      "svg_sha256": "e8f24bcf340c36fa70f50fa76195e1a1d85cdbff36b33fa40f699661af8a7ceb",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_an_empty_cynefin_framework_003": {
+      "input_sha256": "ddf6d8c645a3e4c47385972e85e7f7d9227565c31ba0ec7f72919363c8cddb06",
+      "svg_sha256": "60f30ff1f7fc3cbc4e8ca991b3d61c38635ddcc85ec1fe6705eb871c46ca401a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_deterministically_with_an_explicit_seed_ov_012": {
+      "input_sha256": "7fd8fc1553c2fc1d0f8aa0711ef7c195593ec39cf5508008dbf0cb473fd46700",
+      "svg_sha256": "1b8dbdf39d11d14d6abac057387e7a6364aa49ed74b0d97deda59b68bc9fb3df",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_with_accessibility_directives_011": {
+      "input_sha256": "adb943a62a736bb4f4eea2b26103804d7c4b90baf12970077e50a1323620a62f",
+      "svg_sha256": "e80b92a101a21954b13bd101eb028a6283d4932adbf5d0f5a5cbf8d001521f46",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_with_config_override_005": {
+      "input_sha256": "fb4a5744a0284c975950a821832b9772f962827f8b2506cf2503c42304b4fb5b",
+      "svg_sha256": "cef65e092a31dfe07e2f7e18d72dcb937115f49d23b73729e208ca5527f895e4",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_with_confusion_domain_items_without_overfl_009": {
+      "input_sha256": "e882baf77e7368f3d5d8b9e1ad52a2f18f8def4d4da7397902f3c075c4373df7",
+      "svg_sha256": "e0b18ef4db9e44ed90685dbf5adb9d1118485d4f0ed5495244dafa534e765da9",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_with_many_items_per_domain_004": {
+      "input_sha256": "c54deb58b120a90e04c013f3d3eb4098f4a7e4afd9de9dd6fff4ec387bf44ddd",
+      "svg_sha256": "6a4c1fac68f26809148e978dc0fec7d4dfb420f47f4e7dc092616edd2790ef25",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_with_self_loop_transitions_silently_droppe_010": {
+      "input_sha256": "597acbdcb50f080fa6412672745c6d63db0216d819e2dedbe5ce472dc9682234",
+      "svg_sha256": "e343bb72757ce46af7114f333dd217afc8b945e2f74eda193222b283e6b0d159",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_with_straight_boundaries_when_amplitude_is_008": {
+      "input_sha256": "0cd8a81a21c16857bcb99d739dd9e6465452eed4f7e2d618756029de824bd8e8",
+      "svg_sha256": "35ccf31841688192861fb7d111971e0001d10e594af0ca04fce03e24e7a8f80e",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_with_theme_override_007": {
+      "input_sha256": "d151983627107c9a74cddb845bf186b8ae6503faafa45da646c84177aded6bf8",
+      "svg_sha256": "c8f7caf16db55fd824143201ab55e34c6b6a4bace502363c03ae9ab891e21f41",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_cynefin_spec_should_render_cynefin_without_domain_descriptions_006": {
+      "input_sha256": "fe496a41b972da9de67afdc962bc5f42fc874f6340990815ff034a0e05773a0b",
+      "svg_sha256": "084cf7f38605baa0cedce0ab281487e4c3a1cc204ac8f561e393cd85515463b3",
       "renderer_profile": "mmdc-default"
     }
   },

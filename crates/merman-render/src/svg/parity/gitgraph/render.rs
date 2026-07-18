@@ -491,6 +491,32 @@ fn parse_gitgraph_label_font_size_px(raw: &str) -> f64 {
         .max(1.0)
 }
 
+fn gitgraph_commit_tag_label_width_px(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &crate::text::TextStyle,
+) -> f64 {
+    measurer
+        .measure_svg_raw_text_bbox_width_px(text, style)
+        .max(0.0)
+}
+
+fn gitgraph_commit_tag_label_height_px(
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &crate::text::TextStyle,
+) -> f64 {
+    if text.trim_end().is_empty() {
+        return 0.0;
+    }
+    if style.font_size <= 10.0 {
+        return measurer
+            .measure_svg_simple_text_bbox_height_px(text, style)
+            .max(0.0);
+    }
+    crate::text::svg_wrapped_first_line_bbox_height_px(style).max(0.0)
+}
+
 pub(crate) fn render_gitgraph_diagram_svg_model(
     layout: &crate::model::GitGraphDiagramLayout,
     model: &merman_core::diagrams::git_graph::GitGraphRenderModel,
@@ -542,31 +568,6 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     const TITLE_X_PLACEHOLDER: &str = "__MERMAID_GITGRAPH_TITLE_X__";
     const VIEWBOX_PADDING_PX: f64 = 8.0;
     const TITLE_FONT_SIZE_PX: f64 = 18.0;
-
-    fn gitgraph_commit_tag_label_width_px(
-        measurer: &dyn TextMeasurer,
-        text: &str,
-        style: &crate::text::TextStyle,
-    ) -> f64 {
-        crate::text::round_to_1_64_px(measurer.measure_svg_text_computed_length_px(text, style))
-            .max(0.0)
-    }
-
-    fn gitgraph_commit_tag_label_height_px(
-        measurer: &dyn TextMeasurer,
-        text: &str,
-        style: &crate::text::TextStyle,
-    ) -> f64 {
-        if text.trim_end().is_empty() {
-            return 0.0;
-        }
-        if style.font_size <= 10.0 {
-            return measurer
-                .measure_svg_simple_text_bbox_height_px(text, style)
-                .max(0.0);
-        }
-        crate::text::svg_wrapped_first_line_bbox_height_px(style).max(0.0)
-    }
 
     fn include_gitgraph_branch_line_bounds(
         bounds: &mut Bounds,
@@ -623,11 +624,8 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     let mut out = String::new();
     let aria_describedby = acc_descr.is_some().then_some(aria_desc_id.as_str());
     let aria_labelledby = acc_title.is_some().then_some(aria_title_id.as_str());
-    let root_context = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::GitGraph,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    );
+    let root_context =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::GitGraph, diagram_id);
     let root_document = root_context.begin_document(
         &mut out,
         root_svg::DeferredRootSpec::responsive(),
@@ -668,6 +666,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         font_family: Some(css.font_family.clone()),
         font_size: TITLE_FONT_SIZE_PX,
         font_weight: None,
+        font_style: None,
     };
     let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
 
@@ -1034,11 +1033,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         font_family: Some(commit_font_family),
         font_size: css.commit_label_font_size_px,
         font_weight: None,
+        font_style: None,
     };
     let tag_label_style = crate::text::TextStyle {
         font_family: commit_label_style.font_family.clone(),
         font_size: css.tag_label_font_size_px,
         font_weight: None,
+        font_style: None,
     };
 
     out.push_str(r#"<g class="commit-labels">"#);
@@ -1261,79 +1262,29 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     });
     include_gitgraph_branch_line_bounds(&mut b, layout, use_redux_geometry);
     let title_anchor_x = (b.min_x + b.max_x) / 2.0;
-    let mut title_expands_x_bounds = false;
     if let Some(title) = title {
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
         let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
         let title_min_x = title_anchor_x - title_left;
         let title_max_x = title_anchor_x + title_right;
-        title_expands_x_bounds = title_min_x < b.min_x && title_max_x > b.max_x;
         b.min_x = b.min_x.min(title_min_x);
         b.max_x = b.max_x.max(title_max_x);
         b.min_y = b.min_y.min(title_y - ascent);
         b.max_y = b.max_y.max(title_y + descent);
     }
 
-    // Mermaid computes the root viewBox from `svg.getBBox()` + padding.
-    //
-    // Our `svg_emitted_bounds_from_svg` implementation already evaluates transforms in `f32` and
-    // applies a small outward bias on rotated minima (matching Chromium quirks seen in Mermaid's
-    // gitGraph baselines). Use those bounds directly as an `f32` bbox here.
-    let pad = VIEWBOX_PADDING_PX as f32;
-
-    fn next_up_f32(v: f32) -> f32 {
-        if v.is_nan() || v == f32::INFINITY {
-            return v;
-        }
-        if v == 0.0 {
-            return f32::from_bits(1);
-        }
-        let bits = v.to_bits();
-        if v > 0.0 {
-            f32::from_bits(bits + 1)
-        } else {
-            f32::from_bits(bits - 1)
-        }
-    }
-
-    fn f32_round_up(v: f64) -> f32 {
-        let q = v as f32;
-        if !q.is_finite() {
-            return q;
-        }
-        if (q as f64) < v { next_up_f32(q) } else { q }
-    }
-
-    let bbox_x = b.min_x as f32;
-    let bbox_y = b.min_y as f32;
-    // Match Chromium's `getBBox()` behavior more closely:
-    // - x/y: `f32`-quantized extrema
-    // - w/h: computed in `f64`, then rounded to `f32` with an upward bias
-    let title_bbox_w_bias = if title_expands_x_bounds {
-        // GitGraph centers titles after measuring the emitted graph bbox. When the title alone
-        // expands both horizontal bounds, Chromium's final root width behaves one 1/128px lattice
-        // cell wider than the deterministic symmetric title half-width.
-        1.0 / 128.0
-    } else {
-        0.0
-    };
-    let bbox_w = f32_round_up((b.max_x - b.min_x) + title_bbox_w_bias);
-    let bbox_h = f32_round_up(b.max_y - b.min_y);
-    // Mermaid sets the root viewBox from `getBBox()` + padding in JS `Number` (double) space.
-    // Keep these computations in `f64` so we match the upstream stringified values exactly.
-    let vb_min_x = (bbox_x as f64) - (pad as f64);
-    let vb_min_y = (bbox_y as f64) - (pad as f64);
-    let vb_w = (bbox_w as f64) + 2.0 * (pad as f64);
-    let vb_h = (bbox_h as f64) + 2.0 * (pad as f64);
-    // Mermaid gitGraph baselines stringify `max-width` directly from the computed `viewBox` width
-    // (no fixed precision rounding), so keep the full `Number#toString()`-like output here.
+    let root_bounds = root_svg::DiagramBounds::from_extents(
+        b.min_x,
+        b.min_y,
+        b.max_x,
+        b.max_y,
+        VIEWBOX_PADDING_PX,
+    );
     root_context.finish_document(
         &mut out,
         root_document,
-        root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
-            vb_min_x, vb_min_y, vb_w, vb_h,
-        ))
-        .with_max_width(root_svg::RootMaxWidth::SvgNumber(vb_w)),
+        root_svg::RootViewportSpec::responsive(root_bounds)
+            .with_max_width(root_svg::RootMaxWidth::SvgNumber(root_bounds.width)),
     )?;
     out = out.replacen(TITLE_X_PLACEHOLDER, &fmt_string(title_anchor_x), 1);
     Ok(out)
@@ -1401,6 +1352,59 @@ mod tests {
             )
         })
         .expect("render gitGraph SVG")
+    }
+
+    #[test]
+    fn commit_and_tag_measurements_route_raw_width_and_simple_height() {
+        struct OperationProbe;
+
+        impl crate::text::TextMeasurer for OperationProbe {
+            fn measure(
+                &self,
+                _text: &str,
+                _style: &crate::text::TextStyle,
+            ) -> crate::text::TextMetrics {
+                crate::text::TextMetrics {
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_raw_text_bbox_width_px(
+                &self,
+                _text: &str,
+                _style: &crate::text::TextStyle,
+            ) -> f64 {
+                41.25
+            }
+
+            fn measure_svg_simple_text_bbox_height_px(
+                &self,
+                _text: &str,
+                _style: &crate::text::TextStyle,
+            ) -> f64 {
+                7.75
+            }
+        }
+
+        let style = crate::text::TextStyle {
+            font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
+            font_size: 10.0,
+            font_weight: None,
+            font_style: None,
+        };
+
+        for label in ["1-abcdefg", "A", "MyTag"] {
+            assert_eq!(
+                gitgraph_commit_tag_label_width_px(&OperationProbe, label, &style),
+                41.25
+            );
+            assert_eq!(
+                gitgraph_commit_tag_label_height_px(&OperationProbe, label, &style),
+                7.75
+            );
+        }
     }
 
     #[test]

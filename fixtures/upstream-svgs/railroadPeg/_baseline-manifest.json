@@ -11,13 +11,44 @@
     "renderer_revision": "xtask-upstream-svg-v2"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
     "prefix_suffix_any": {
       "input_sha256": "a6ab8a1fefeff79413e7ded4acbbcb8834031879c00bb6afcc837f20b08d2552",
-      "svg_sha256": "1ec99c25cad689708f57d8567703b8f3edca01a2dea588330a9cd107991a38fb",
+      "svg_sha256": "371977da3f5779dae044eb22e2c76a2bc4f2abcb466fe87e0b4b3b83752a258f",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_ordered_choice_and_suffixes_009": {
+      "input_sha256": "c35baff65d9d519cc69bad54f7100cac550dc9a3317533edbadd18275dbf4ef6",
+      "svg_sha256": "f81db88c7b9622ddf04a68ddbdec0a3573a074bed055da8bb5c7a73acae63ab4",
       "renderer_profile": "mmdc-default"
     }
   },

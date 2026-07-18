@@ -2,12 +2,13 @@
 pub use merman_render::environment::SystemRenderClock;
 pub use merman_render::environment::{
     FixedOffsetRenderClock, FixedRenderClock, FixedRenderSeedSource, HostFallbackReason,
-    HostMeasurementResult, HostTextMeasurementError, HostTextMeasurer, MeasurementProfileId,
-    RenderClock, RenderEnvironment, RenderOperationReport, RenderRandomnessPolicy,
-    RenderSeedOrigin, RenderSession, RenderTimeError, RenderTimeSnapshot,
-    RootViewportOverridePolicy, TextMeasurementOperation, TextMeasurementPhase,
-    TextMeasurementPolicy, TextMeasurementProfile, TextMeasurementProfileIdentity,
-    TextMeasurementReport, TextMeasurementRoute, TextMeasurementSource, TextMeasurementSummary,
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
+    HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId, RenderClock,
+    RenderEnvironment, RenderRandomnessPolicy, RenderSeedOrigin, RenderSession,
+    RenderSessionReport, RenderTimeError, RenderTimeSnapshot, TextMeasurementOperation,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfile,
+    TextMeasurementProfileIdentity, TextMeasurementReport, TextMeasurementRoute,
+    TextMeasurementSource, TextMeasurementSummary,
 };
 pub use merman_render::family::RenderFamilyKind;
 #[cfg(feature = "ratex-math")]
@@ -32,12 +33,12 @@ pub use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
     VendoredFontMetricsTextMeasurer, WrapMode,
 };
-pub use merman_render::{
-    Error as RenderError, FlowchartElkBackend, LayoutOptions, Result as RenderResult,
-};
+pub use merman_render::{Error as RenderError, LayoutOptions, Result as RenderResult};
 
 mod operation;
-pub use operation::{PreparedRender, PreparedSemantic, RenderedSvg};
+pub use operation::{
+    PreparedRender, PreparedSemantic, RenderExecutionPath, RenderOperationReport, RenderedSvg,
+};
 
 #[cfg(feature = "raster")]
 pub mod raster;
@@ -263,6 +264,15 @@ pub fn apply_svg_pipeline_with_metadata(
     session: &merman_render::environment::RenderSession,
 ) -> Result<String> {
     Ok(pipeline.process_to_string_with_metadata(svg, metadata, session)?)
+}
+
+fn apply_owned_svg_pipeline_with_metadata(
+    svg: String,
+    pipeline: &SvgPipeline,
+    metadata: &SvgPostprocessMetadata,
+    session: &merman_render::environment::RenderSession,
+) -> Result<String> {
+    Ok(pipeline.process_owned_to_string_with_metadata(svg, metadata, session)?)
 }
 
 pub fn svg_readable(
@@ -509,11 +519,7 @@ mod svg_pipeline_tests {
                 "stateDiagram",
                 "StateDiagramV2",
             ),
-            (
-                "classDiagram\nclass Animal",
-                "classDiagram",
-                "ClassDiagramV2",
-            ),
+            ("classDiagram\nclass Animal", "class", "ClassDiagramV2"),
         ] {
             let free_layout =
                 layout_json_sync(&renderer.engine, source, renderer.parse, &renderer.layout)
@@ -608,7 +614,7 @@ mod svg_pipeline_tests {
             .unwrap()
             .unwrap();
 
-        let wrapped_raw_count = |rendered: &RenderedSvg| {
+        let wrapped_count = |rendered: &RenderedSvg| {
             rendered
                 .report()
                 .measurement()
@@ -616,14 +622,14 @@ mod svg_pipeline_tests {
                 .iter()
                 .filter(|entry| {
                     entry.provenance().phase == TextMeasurementPhase::Wrap
-                        && entry.provenance().operation == TextMeasurementOperation::WrappedRaw
+                        && entry.provenance().operation == TextMeasurementOperation::Wrapped
                 })
                 .map(TextMeasurementSummary::count)
                 .sum::<u64>()
         };
 
         assert!(readable.svg().contains("data-merman-foreignobject"));
-        assert!(wrapped_raw_count(&readable) > wrapped_raw_count(&plain));
+        assert!(wrapped_count(&readable) > wrapped_count(&plain));
         assert_eq!(
             readable_renderer.render_svg_sync(source).unwrap().unwrap(),
             readable.svg(),
@@ -1146,14 +1152,6 @@ impl HeadlessRenderer {
         self.with_resource_limits(RenderResourceLimits::for_profile(profile))
     }
 
-    pub fn with_root_viewport_override_policy(
-        mut self,
-        policy: RootViewportOverridePolicy,
-    ) -> Self {
-        self.environment = self.environment.with_root_viewport_override_policy(policy);
-        self
-    }
-
     pub fn with_svg_options(mut self, svg: SvgRenderOptions) -> Self {
         self.svg = svg;
         self
@@ -1166,13 +1164,6 @@ impl HeadlessRenderer {
 
     pub fn with_diagram_id(mut self, diagram_id: &str) -> Self {
         self.svg.diagram_id = Some(sanitize_svg_id(diagram_id));
-        self
-    }
-
-    /// Overrides the current time for SVG-only presentation without changing parse/layout time or
-    /// the operation-owned environment snapshot.
-    pub fn with_svg_current_time_unix_ms(mut self, unix_ms: i64) -> Self {
-        self.svg.current_time_unix_ms = Some(unix_ms);
         self
     }
 

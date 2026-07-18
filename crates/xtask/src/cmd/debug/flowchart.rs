@@ -3,7 +3,6 @@
 use crate::XtaskError;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{ParsedDiagramRender, RenderSemanticModel};
-use merman_render::LayoutOptions;
 use merman_render::environment::{RenderSession, TextMeasurementPhase};
 use merman_render::model::FlowchartLayout;
 use regex::Regex;
@@ -24,7 +23,6 @@ fn flowchart_model(parsed: &ParsedDiagramRender) -> Result<&FlowchartModel, Xtas
 
 fn layout_flowchart_render_model(
     parsed: &ParsedDiagramRender,
-    options: &LayoutOptions,
     session: &RenderSession,
 ) -> Result<FlowchartLayout, XtaskError> {
     let model = flowchart_model(parsed)?;
@@ -42,7 +40,6 @@ fn layout_flowchart_render_model(
             &parsed.meta.effective_config,
             &measurer,
             session.math_renderer(),
-            options.flowchart_elk_backend,
         )
     } else {
         merman_render::flowchart::layout_flowchart_typed(
@@ -1326,7 +1323,6 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     let mut out: Option<PathBuf> = None;
     let mut upstream: Option<PathBuf> = None;
     let mut local: Option<PathBuf> = None;
-    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -1350,11 +1346,6 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
             "--local" => {
                 i += 1;
                 local = args.get(i).map(PathBuf::from);
-            }
-            "--flowchart-elk-backend" => {
-                i += 1;
-                flowchart_elk_backend =
-                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1385,10 +1376,7 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     // Keep layout snapshots consistent with the in-repo `layout_snapshots_test` harness, which
     // uses the default engine configuration.
     let engine = merman::Engine::new();
-    let layout_opts = merman_render::LayoutOptions {
-        flowchart_elk_backend,
-        ..Default::default()
-    };
+    let layout_opts = merman_render::LayoutOptions::default();
     let session = merman::render::RenderEnvironment::parity()
         .begin_session()
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
@@ -1454,7 +1442,6 @@ pub(crate) fn debug_flowchart_edge_trace(args: Vec<String>) -> Result<(), XtaskE
     println!("trace:   {}", out.display());
     println!("fixture: {fixture_name}");
     println!("edge:    {edge_id}");
-    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!();
     println!("== Local edge trace (JSON) ==");
     println!("{trace_json}");
@@ -1568,7 +1555,6 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
     let mut fixture: Option<PathBuf> = None;
     let mut edge_id: Option<String> = None;
     let mut text_measurer: String = "deterministic".to_string();
-    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -1587,11 +1573,6 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
                     .get(i)
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "deterministic".to_string());
-            }
-            "--flowchart-elk-backend" => {
-                i += 1;
-                flowchart_elk_backend =
-                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
             }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -1622,7 +1603,6 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
         XtaskError::DebugSvgFailed(format!("no diagram detected in {}", fixture_path.display()))
     })?;
 
-    let mut layout_opts = merman_render::LayoutOptions::default();
     let measurement_policy = if matches!(
         text_measurer.as_str(),
         "vendored" | "vendored-font" | "vendored-font-metrics"
@@ -1635,8 +1615,7 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
         .with_text_measurement_policy(measurement_policy)
         .begin_session()
         .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
-    layout_opts.flowchart_elk_backend = flowchart_elk_backend;
-    let layout = layout_flowchart_render_model(&parsed, &layout_opts, &session)?;
+    let layout = layout_flowchart_render_model(&parsed, &session)?;
 
     println!("fixture: {}", fixture_path.display());
     if let Some(title) = parsed.meta.title.as_deref() {
@@ -1644,7 +1623,6 @@ pub(crate) fn debug_flowchart_layout(args: Vec<String>) -> Result<(), XtaskError
     }
     println!("diagram_type: {}", parsed.meta.diagram_type);
     println!("text_measurer: {}", text_measurer);
-    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!();
 
     // Mirror `compute_layout_bounds` (private to `merman-render`) for debugging.
@@ -1788,7 +1766,6 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
     let mut fixture: Option<PathBuf> = None;
     let mut phase = Some(merman_layout_elk::source_port::LayeredPhase::P3NodeOrdering);
     let mut processor: Option<merman_layout_elk::source_port::ProcessorKind> = None;
-    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
     let mut p3_trace = false;
 
     let mut i = 0;
@@ -1830,11 +1807,6 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
             "--p3-trace" => {
                 p3_trace = true;
             }
-            "--flowchart-elk-backend" => {
-                i += 1;
-                flowchart_elk_backend =
-                    parse_debug_flowchart_elk_backend(args.get(i).map(String::as_str))?;
-            }
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
         }
@@ -1866,12 +1838,11 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
     let model = flowchart_model(&parsed)?;
 
     let measurer = merman_render::text::VendoredFontMetricsTextMeasurer::default();
-    let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph_for_backend(
+    let elk_graph = merman_render::flowchart::elk::build_flowchart_elk_graph(
         model,
         &parsed.meta.effective_config,
         &measurer,
         None,
-        flowchart_elk_backend,
     )
     .map_err(|e| XtaskError::DebugSvgFailed(e.to_string()))?;
     let source_input = merman_layout_elk::source_input_from_graph(&elk_graph);
@@ -1950,7 +1921,6 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
 
     println!("fixture: {}", fixture_path.display());
     println!("diagram_type: {}", parsed.meta.diagram_type);
-    println!("flowchart_elk_backend: {flowchart_elk_backend:?}");
     println!(
         "phase: {:?}",
         phase.unwrap_or(merman_layout_elk::source_port::LayeredPhase::P5EdgeRouting)
@@ -1973,12 +1943,6 @@ pub(crate) fn debug_flowchart_elk_source_phase(args: Vec<String>) -> Result<(), 
     dump_source_graph(&lgraph, 0);
 
     Ok(())
-}
-
-fn parse_debug_flowchart_elk_backend(
-    raw: Option<&str>,
-) -> Result<merman_render::FlowchartElkBackend, XtaskError> {
-    crate::cmd::parse_flowchart_elk_backend(raw)
 }
 
 fn parse_source_processor_kind(

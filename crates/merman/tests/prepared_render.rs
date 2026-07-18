@@ -1,8 +1,8 @@
 use merman::ParseOptions;
 use merman::render::{
-    HeadlessRenderer, LayoutOptions, PreparedRender, RenderEnvironment, RenderResourceLimits,
-    RenderTimeSnapshot, SvgRenderOptions, prepare_render_sync, prepare_semantic_sync,
-    render_svg_sync,
+    HeadlessRenderer, LayoutOptions, PreparedRender, RenderEnvironment, RenderExecutionPath,
+    RenderResourceLimits, RenderTimeSnapshot, SvgRenderOptions, prepare_render_sync,
+    prepare_semantic_sync, render_svg_sync,
 };
 
 fn assert_info_artifact(prepared: &PreparedRender) {
@@ -10,6 +10,29 @@ fn assert_info_artifact(prepared: &PreparedRender) {
     assert_eq!(
         prepared.family_kind(),
         merman::render::RenderFamilyKind::Info
+    );
+}
+
+#[test]
+fn completed_render_report_records_the_canonical_execution_path() {
+    let environment = RenderEnvironment::parity();
+    let session_report = environment
+        .begin_session()
+        .expect("fresh render session")
+        .report();
+    assert_eq!(session_report.measurement_routes().len(), 4);
+
+    let prepared = HeadlessRenderer::new()
+        .with_environment(environment)
+        .prepare_render_sync("info")
+        .expect("prepare succeeds")
+        .expect("Info should prepare");
+    let rendered = prepared
+        .render_svg_report(&SvgRenderOptions::default())
+        .expect("prepared render succeeds");
+    assert_eq!(
+        rendered.report().execution_path(),
+        RenderExecutionPath::HeadlessOperationTyped
     );
 }
 
@@ -134,6 +157,26 @@ fn high_level_render_matches_the_prepared_artifact_path() {
 }
 
 #[test]
+fn flowchart_ellipse_preserves_parser_semantics_but_rejects_svg_like_mermaid_11_16() {
+    let prepared = prepare_render_sync(
+        &merman::Engine::new(),
+        "graph TD\nA(-this is an ellipse-)-->B\n",
+        ParseOptions::strict(),
+        &LayoutOptions::headless_svg_defaults(),
+    )
+    .expect("Mermaid 11.16 accepts ellipse syntax during parsing")
+    .expect("ellipse source produces a typed Flowchart artifact");
+
+    let error = prepared
+        .render_svg(&SvgRenderOptions::default())
+        .expect_err("Mermaid 11.16 has no registered ellipse renderer");
+    assert!(
+        error.to_string().contains("No such shape: ellipse"),
+        "{error}"
+    );
+}
+
+#[test]
 fn prepared_gantt_exposes_owned_time_axis_diagnostics() {
     let source = r#"---
 config:
@@ -174,7 +217,7 @@ Second: second,after first,2ms
 }
 
 #[test]
-fn prepared_gantt_request_time_override_preserves_operation_time() {
+fn prepared_gantt_svg_and_report_share_the_operation_time() {
     let source = r#"gantt
 dateFormat x
 section Delivery
@@ -190,19 +233,17 @@ Second: second,after first,2ms
         .prepare_render_sync(source)
         .unwrap()
         .expect("Gantt should produce a prepared render artifact");
-    let request_render = prepared
+    let prepared_render = prepared
         .render_svg_report(&SvgRenderOptions {
             diagram_id: Some("prepared-gantt-time".to_string()),
-            current_time_unix_ms: Some(request_time.unix_ms()),
             ..Default::default()
         })
-        .expect("request-time Gantt render");
+        .expect("prepared Gantt render");
     let high_level_request_render = renderer
         .clone()
-        .with_svg_current_time_unix_ms(request_time.unix_ms())
         .render_svg_report_sync(source)
         .unwrap()
-        .expect("high-level request-time Gantt render");
+        .expect("high-level Gantt render");
     let session_render = HeadlessRenderer::new()
         .with_fixed_time(request_time)
         .with_diagram_id("prepared-gantt-time")
@@ -217,15 +258,15 @@ Second: second,after first,2ms
     }
 
     assert_eq!(
-        today_line(request_render.svg()),
+        today_line(prepared_render.svg()),
+        today_line(high_level_request_render.svg())
+    );
+    assert_ne!(
+        today_line(prepared_render.svg()),
         today_line(session_render.svg())
     );
     assert_eq!(
-        today_line(high_level_request_render.svg()),
-        today_line(session_render.svg())
-    );
-    assert_eq!(
-        request_render.report().time().unix_ms(),
+        prepared_render.report().time().unix_ms(),
         session_time.unix_ms()
     );
     assert_eq!(

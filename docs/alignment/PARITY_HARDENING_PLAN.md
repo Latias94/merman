@@ -1,5 +1,9 @@
 # Parity Hardening Plan (Post 100% Baseline)
 
+Status: Superseded on 2026-07-15 by `docs/alignment/STATUS.md`,
+`docs/workstreams/PARITY_BOUNDARY.md`, ADR-0057, and ADR-0062. The phase notes below are retained as
+historical evidence and are not an active override or release workflow.
+
 Current baseline version: Mermaid `@11.16.0`.
 
 Historical note: this plan started at Mermaid `@11.12.3`; many inventory snapshots below preserve
@@ -49,34 +53,12 @@ Largest fixture buckets:
 - `class`: 151
 - `gantt`: 133
 
-### Override Footprint (11.12.3)
+### Historical Override Footprint (11.12.3)
 
-This is the original hardening-plan snapshot. The current live override inventory is maintained in
-`docs/workstreams/fearless-refactor/OVERRIDE_FOOTPRINT.md`; as of 2026-05-09 the Class root
-override module has been deleted after typed viewport calibration replaced its remaining entries,
-and the Architecture root table has been pruned to 31 remaining entries after two default root
-viewport profile calibrations landed.
-
-Root viewport overrides:
-
-- `architecture_root_overrides_11_12_2.rs`: 103 entries
-- `block_root_overrides_11_12_2.rs`: 4 entries
-- `flowchart_root_overrides_11_12_2.rs`: 127 entries
-- Class root overrides: removed; this snapshot originally had 155 entries
-- `mindmap_root_overrides_11_12_2.rs`: 77 entries
-- `gitgraph_root_overrides_11_12_2.rs`: 83 entries
-- `journey_root_overrides_11_12_2.rs`: 4 entries
-- `er_root_overrides_11_12_2.rs`: 17 entries
-- `pie_root_overrides_11_12_2.rs`: 14 entries
-- `requirement_root_overrides_11_12_2.rs`: 6 entries
-- `sankey_root_overrides_11_12_2.rs`: 5 entries
-- `sequence_root_overrides_11_12_2.rs`: 117 entries
-- `state_root_overrides_11_12_2.rs`: 111 entries
-- `timeline_root_overrides_11_12_2.rs`: 14 entries
-
-State text/bbox overrides:
-
-- `state_text_overrides_11_12_2.rs`: 46 `Some(...)` entries across width/height/bbox helpers
+Earlier versions of this plan tracked generated root and complete-label text tables. Those tables,
+their runtime policy, and their generation/audit commands were removed in the 11.16 family-owned
+architecture refactor. Current production code derives root bounds from family geometry and uses
+operation-selected text measurement. Fixtures remain verification inputs only.
 
 Related planning:
 
@@ -691,13 +673,14 @@ Actions:
 1. Keep mandatory checks for:
    - `compare-all-svgs --check-dom --dom-mode parity --dom-decimals 3`
    - `compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
-2. Add a lightweight override inventory report in CI logs (entry count per override file):
-   - `xtask report-overrides`
-3. Document update protocol when pinned Mermaid version changes.
+2. Run the production architecture guard that rejects fixture ids, complete-label answers, and
+   direct family root emission.
+3. Document the profile regeneration and independent fixture-validation protocol when the pinned
+   Mermaid version changes.
 
 Exit criteria:
 
-- CI rejects parity regressions and makes override growth visible.
+- CI rejects parity regressions and any reintroduction of production fixture answers.
 
 ## Acceptance Gates
 

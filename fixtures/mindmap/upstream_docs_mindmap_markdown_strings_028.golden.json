@@ -42,6 +42,7 @@
         "id": "2",
         "domId": "node_2",
         "label": "Regular labels still works",
+        "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
         "width": 200,

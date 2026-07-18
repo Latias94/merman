@@ -674,6 +674,25 @@ class CiWorkflowSecurityTests(unittest.TestCase):
             with self.subTest(checkout=index):
                 self.assertIn("persist-credentials: false", block)
 
+    def test_ci_pins_cypress_corpus_source_alignment(self) -> None:
+        text = read_workflow(WORKFLOW_ROOT / "ci.yml")
+
+        self.assertIn("repository: mermaid-js/mermaid", text)
+        self.assertIn(
+            "ref: 7c0cafcf42e76bfaf79d0cbbd12edb986612f014",
+            text,
+        )
+        for source in (
+            "cypress/integration/rendering/treeView/treeView.spec.ts",
+            "cypress/integration/rendering/cynefin/cynefin.spec.js",
+            "cypress/integration/rendering/railroad/railroad.spec.ts",
+        ):
+            self.assertIn(source, text)
+        self.assertIn(
+            "import-upstream-cypress --check-11-16-corpus-manifest-source",
+            text,
+        )
+
 
 class PagesWorkflowSecurityTests(unittest.TestCase):
     def test_pages_workflow_header_is_read_only(self) -> None:

@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Draft
-Last updated: 2026-07-14
+Last updated: 2026-07-16
 
 This guide explains how native hosts should use Merman's text-measurement callback and where the
 remaining headless-rendering limits are. It complements the exact C ABI contract in
@@ -39,7 +39,7 @@ sequenceDiagram
     Host->>Engine: renderSvg(source)
     Engine->>Adapter: measure request
     alt Host can measure this request
-        Adapter-->>Engine: width, height, lineCount
+        Adapter-->>Engine: tagged operation-specific result
     else Unsupported font or wrapping mode
         Adapter-->>Engine: not handled
         Engine->>Fallback: measure request
@@ -108,8 +108,8 @@ surface that will render the SVG.
 
 ## C ABI Contract Summary
 
-The text-measurement request shape described here requires C ABI v3
-(`MERMAN_ABI_VERSION == 3`). Install a callback on a reusable engine:
+The operation-aware text-measurement request and tagged result described here use C ABI v2
+(`MERMAN_ABI_VERSION == 2`). Install a callback on a reusable engine:
 
 ```c
 MermanResult merman_engine_set_text_measure_callback(
@@ -126,19 +126,67 @@ The request includes:
 - `line_height`, `letter_spacing`, and `word_spacing` in CSS pixels.
 - `wrap_mode`, `direction`, and `white_space` constants.
 - Optional `max_width` when wrapping is requested.
-- `phase`, which identifies the operation that requested the measurement:
+- `phase`, which identifies the routing stage that requested the measurement:
   `MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT`, `MERMAN_TEXT_MEASUREMENT_PHASE_WRAP`,
   `MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX`,
-  `MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH`, or
-  `MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY`.
+  or `MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH`.
+- `operation`, which identifies the exact browser/platform primitive and therefore the required
+  result shape.
 
-The callback returns `handled=1` with `width`, `height`, and `line_count`, or `handled=0` to let
-Merman fall back for that single request. Invalid, negative, non-finite, or zero-line results and
-callback errors reported by a binding wrapper take the same per-request fallback path. They do not
-abort the enclosing layout or render operation; subsequent requests may still use the host callback.
-Higher-level bindings also map a callback exception or error to this per-request fallback. A raw C
-callback must catch any host-language exception before it crosses the C ABI boundary and return
-`handled=0` instead.
+The stable operation mapping is:
+
+| Code | Operation | Expected result kind |
+| ---: | --- | --- |
+| 0 | `measure` | `metrics` |
+| 1 | `computed-length` | `length` |
+| 2 | `bbox-x` | `horizontal-extents` |
+| 3 | `bbox-x-with-ascii-overhang` | `horizontal-extents` |
+| 4 | `title-bbox-x` | `horizontal-extents` |
+| 5 | `simple-bbox-width` | `length` |
+| 6 | `raw-bbox-width` | `length` |
+| 7 | `tspan-bbox-width` | `length` |
+| 8 | `tspan-bbox-height` | `length` |
+| 9 | `wrap-probe-bbox-width` | `length` |
+| 10 | `simple-bbox-height` | `length` |
+| 11 | `wrapped` | `metrics` |
+| 12 | `wrapped-with-raw-width` | `wrapped-with-raw-width` |
+| 13 | `bounding-client-rect-width` | `length` |
+| 14 | `create-text-bbox-y-offset` | `length` (signed) |
+| 15 | `mermaid-calculate-text-dimensions` | `metrics` |
+| 16 | `canvas-measure-text-width` | `length` |
+| 17 | `create-text-middle-bbox-y-offset` | `length` (signed) |
+| 18 | `raw-bbox-height` | `length` |
+
+The four stable result kinds are `metrics` (`width`, `height`, `line_count`), `length` (`length`),
+`horizontal-extents` (`bbox_left`, `bbox_right`), and `wrapped-with-raw-width` (metrics plus an
+optional `raw_width`). The C ABI carries their numeric codes 0 through 3 in `result_kind`; UniFFI
+uses `MermanTextMeasurementResultKind`; Web uses the `kind` discriminant.
+
+The callback returns `handled=1` with the exact result kind required by `operation`, or `handled=0`
+to let Merman fall back for that single request. Operation 14,
+`create-text-bbox-y-offset`, mirrors an ordinary `createFormattedText(...).getBBox().y`. Operation
+17, `create-text-middle-bbox-y-offset`, mirrors the same formatted text after Architecture's outer
+label group contributes inherited `dominant-baseline="middle"`. The middle baseline changes
+`getBBox().y` according to the resolved font's baseline and x-height, so operation 14 is not a valid
+answer for operation 17. Both operations carry a finite signed `length`; other lengths and all
+metric/extents dimensions must be non-negative. A handled result with the wrong kind, missing
+required fields, an invalid/non-finite value, or zero metric lines is recorded as `Invalid`; a
+callback exception/error is recorded as `Error`; an unsupported result is recorded as `Missing`.
+All three use the configured per-request fallback and do not abort the enclosing render. A raw C
+callback must catch any host-language exception before it crosses the C ABI boundary and normally
+return `handled=0` because the value-returning C callback cannot transport an exception.
+
+A browser adapter should use two isolated formatted-text probes, or explicitly clear inherited
+baseline and anchor state between requests. The ordinary probe has no inherited middle baseline;
+the Architecture probe applies the outer group's `alignment-baseline="middle"`,
+`dominant-baseline="middle"`, and `text-anchor="middle"` before reading the descendant text bbox.
+If a host cannot reproduce that DOM and font state, it should leave operation 17 unhandled rather
+than derive it from operation 14.
+
+Operation 18, `raw-bbox-height`, reads the non-negative `height` from
+`<text>TEXT_CONTENT</text>.getBBox()` with the requested font style. It intentionally uses direct
+text content, not a `<tspan>` and not a Mermaid text-construction helper, so hosts must preserve
+that DOM shape or leave the operation unhandled.
 
 Request string pointers are valid only during the callback. Copy or decode them immediately if the
 host text API needs owned strings.
@@ -229,12 +277,9 @@ The Swift wrapper currently exposes the raw C callback:
 
 ```swift
 let callback: MermanTextMeasureCallback = { request, userData in
-    return MermanTextMeasureResult(
-        handled: 0,
-        width: 0,
-        height: 0,
-        line_count: 0
-    )
+    var result = MermanTextMeasureResult()
+    result.handled = 0
+    return result
 }
 
 try reusable.setTextMeasureCallback(callback)
@@ -299,8 +344,8 @@ Recommended Flutter implementation choices:
   exposes one. Otherwise prefer the vendored fallback plus non-clipping output.
 - If rendering in pure Dart UI, use Flutter paragraph/text layout APIs in the same isolate and with
   the same font registration as the preview.
-- Include the full request shape in cache keys: text, font family, size, weight, style, line
-  height, spacing, wrap mode, white-space mode, direction, and `maxWidth`.
+- Include the full request shape in cache keys: operation, phase, text, font family, size, weight,
+  style, line height, spacing, wrap mode, white-space mode, direction, and `maxWidth`.
 - Do not wait for WebView JavaScript, font loading, platform channels, or another isolate from
   inside the synchronous callback. Pre-measure and cache instead; return `null` when the cache does
   not have a faithful value yet.
@@ -317,13 +362,16 @@ For browser-like hosts, the usual measurement adapter is:
 
 1. Load the same CSS and fonts as the preview surface.
 2. Wait for font readiness where possible.
-3. Build a CSS `font` string from the Merman request.
-4. Use `CanvasRenderingContext2D.measureText()` for single-line width.
-5. Use DOM measurement for wrapped HTML labels when `maxWidth` and `white-space` matter.
-6. Return `handled=0` for CSS features the adapter does not model.
+3. Build the requested direct `<text>`, `<text><tspan>`, or HTML probe shape.
+4. Execute the exact `operation`: Mermaid's aggregate text-dimensions calculation,
+   `CanvasRenderingContext2D.measureText().width`, `getComputedTextLength()`, `getBBox()`,
+   `getBoundingClientRect()`, or wrapped layout as requested.
+5. Return the matching tagged result kind without applying adapter-side quantization.
+6. Return unsupported for primitives or CSS features the adapter does not model.
 
-Canvas is useful for advances, but wrapped HTML labels often need DOM measurement because line
-breaking, white-space, and inline layout are part of the browser's layout engine.
+Canvas is the correct primitive for `canvas-measure-text-width`, but it is not a substitute for an
+operation that explicitly asks for SVG DOM geometry. Wrapped HTML labels need DOM measurement
+because line breaking, white-space, and inline layout are part of the browser's layout engine.
 
 For HTML-like labels, avoid setting `width=maxWidth` up front. Measure natural width first with a
 nowrap inline/table-cell style; only switch to the wrapped `width=maxWidth` table/block style when

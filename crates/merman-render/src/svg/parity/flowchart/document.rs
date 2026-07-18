@@ -1,13 +1,12 @@
 use super::super::root_svg;
 use super::super::util::{escape_attr_into, escape_xml_into};
-use crate::environment::RootViewportOverridePolicy;
 
 pub(super) struct FlowchartSvgDocumentRequest<'a> {
+    pub family_kind: crate::family::RenderFamilyKind,
     pub diagram_id: &'a str,
     pub diagram_type: &'a str,
     pub model: &'a crate::flowchart::FlowchartModel,
     pub use_max_width: bool,
-    pub root_viewport_override_policy: RootViewportOverridePolicy,
     pub diagram_padding: f64,
     pub bbox_min_x: f64,
     pub bbox_min_y: f64,
@@ -30,42 +29,16 @@ pub(super) struct FlowchartSvgDocument<'a> {
 pub(super) fn prepare_flowchart_svg_document(
     request: FlowchartSvgDocumentRequest<'_>,
 ) -> FlowchartSvgDocument<'_> {
-    // Chromium's `getBBox()` values frequently land on an `f32` lattice. Mermaid then computes the
-    // root viewport in JS double space:
-    // - viewBox.x/y = bbox.x/y - padding
-    // - viewBox.w/h = bbox.width/height + 2*padding
-    //
-    // Mirror that by quantizing the content bounds to `f32` first, then applying padding in `f64`.
-    let bbox_min_x_f32 = request.bbox_min_x as f32;
-    let bbox_min_y_f32 = request.bbox_min_y as f32;
-    let bbox_max_x_f32 = request.bbox_max_x as f32;
-    let bbox_max_y_f32 = request.bbox_max_y as f32;
-    let bbox_has_area = (bbox_max_x_f32 - bbox_min_x_f32).abs() >= 1e-6
-        || (bbox_max_y_f32 - bbox_min_y_f32).abs() >= 1e-6;
-    let bbox_w_f32 = if bbox_has_area {
-        (bbox_max_x_f32 - bbox_min_x_f32).max(1.0)
-    } else {
-        0.0
-    };
-    let bbox_h_f32 = if bbox_has_area {
-        (bbox_max_y_f32 - bbox_min_y_f32).max(1.0)
-    } else {
-        0.0
-    };
-
-    let vb_min_x = (bbox_min_x_f32 as f64) - request.diagram_padding;
-    let vb_min_y = (bbox_min_y_f32 as f64) - request.diagram_padding;
-    let vb_w = ((bbox_w_f32 as f64) + request.diagram_padding * 2.0).max(1.0);
-    let vb_h = ((bbox_h_f32 as f64) + request.diagram_padding * 2.0).max(1.0);
-
-    let root_bounds = root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h);
-    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, request.use_max_width)
-        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w));
-    let root_viewport = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Flowchart,
-        request.diagram_id,
-        request.root_viewport_override_policy,
+    let root_bounds = root_svg::DiagramBounds::from_extents(
+        request.bbox_min_x,
+        request.bbox_min_y,
+        request.bbox_max_x,
+        request.bbox_max_y,
+        request.diagram_padding,
     );
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, request.use_max_width)
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
+    let root_viewport = root_svg::RootViewportContext::new(request.family_kind, request.diagram_id);
 
     let acc_title = request
         .model

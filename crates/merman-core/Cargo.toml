@@ -51,3 +51,4 @@ lalrpop.workspace = true
 
 [dev-dependencies]
 futures.workspace = true
+merman-fixture-render-context = { path = "../merman-fixture-render-context" }

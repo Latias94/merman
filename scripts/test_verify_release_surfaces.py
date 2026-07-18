@@ -131,6 +131,42 @@ class ReleaseSurfaceInventoryTests(unittest.TestCase):
 
             verify_release_surfaces.check_package_inventory(root, contract)
 
+    def test_package_inventory_allows_internal_generated_web_presets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            write(root, "playground/package.json", json.dumps({"name": "playground", "private": True}))
+            write(
+                root,
+                "tools/mermaid-cli/package.json",
+                json.dumps({"name": "mermaid-cli", "private": True}),
+            )
+            write(root, "platforms/web/package.json", json.dumps({"name": "@mermanjs/web"}))
+            write(
+                root,
+                "platforms/web/pkg/full-no-elk/package.json",
+                json.dumps({"name": "@mermanjs/web-full-no-elk"}),
+            )
+            write(
+                root,
+                "platforms/web/pkg/ratex-math/package.json",
+                json.dumps({"name": "@mermanjs/web-ratex-math"}),
+            )
+            contract = {
+                "surfaces": [
+                    {
+                        "packages": [
+                            {
+                                "kind": "npm",
+                                "name": "@mermanjs/web",
+                                "manifest": "platforms/web/package.json",
+                            }
+                        ]
+                    }
+                ]
+            }
+
+            verify_release_surfaces.check_package_inventory(root, contract)
+
     def test_package_inventory_requires_tracked_non_surface_package_jsons(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -1,7 +1,10 @@
 # Mermaid 11.15 Root Viewport Residuals - TODO
 
-Status: Active
+Status: Superseded on 2026-07-15
 Last updated: 2026-06-04
+
+> Historical backlog, not current work. Production root/text/SVG overrides and their generator/audit
+> commands were removed under ADR-0062; completed entries below preserve migration evidence only.
 
 ## M0 - Baseline Split
 

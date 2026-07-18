@@ -12,6 +12,7 @@ mod render;
 mod render_config;
 mod render_input;
 mod style;
+mod swimlane;
 mod types;
 mod util;
 mod viewbox;
@@ -64,3 +65,4 @@ pub(in crate::svg::parity::flowchart) fn flowchart_config_diagram_look(
 
 mod svg_emit;
 pub(super) use svg_emit::render_flowchart_svg_model_with_config;
+pub(super) use swimlane::render_swimlane_svg_model_with_config;

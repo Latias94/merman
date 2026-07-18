@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "ida",
-          "x": 15.195,
+          "x": 13.12,
           "y": 0.0,
-          "width": 30.391,
+          "width": 26.24,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "idb",
-          "x": 168.758,
+          "x": 150.08,
           "y": 0.0,
-          "width": 30.391,
+          "width": 26.24,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "idc",
-          "x": 207.148,
+          "x": 184.32,
           "y": 0.0,
-          "width": 30.391,
+          "width": 26.24,
           "height": 32.0,
           "is_cluster": false
         }
@@ -32,7 +32,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,
-        "max_x": 222.344,
+        "max_x": 197.44,
         "max_y": 16.0
       }
     }

@@ -29,6 +29,7 @@ impl<'a> BlockConfigView<'a> {
                 )
                 .max(1.0),
                 font_weight: None,
+                font_style: None,
             },
         }
     }

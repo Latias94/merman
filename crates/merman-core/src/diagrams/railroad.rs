@@ -674,7 +674,7 @@ impl<'a> RailroadParser<'a> {
                 self.error_at_token(&token, format!("expected {} header", self.dialect.header()))
             );
         };
-        if !value.eq_ignore_ascii_case(self.dialect.header()) {
+        if value != self.dialect.header() {
             return Err(
                 self.error_at_token(&token, format!("expected {} header", self.dialect.header()))
             );

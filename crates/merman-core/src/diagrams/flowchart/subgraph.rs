@@ -126,10 +126,17 @@ impl SubgraphBuilder {
             }
         });
 
-        let raw_id = unquote(&sg.header.raw_id);
+        let raw_id = sg.header.raw_id.trim();
         let (title_raw, title_kind) =
             parse_subgraph_title(&sg.header.raw_title, sg.header.id_equals_title);
-        let id_raw = strip_wrapping_backticks(raw_id.trim()).0;
+        let id_raw = if raw_id.starts_with('"') && raw_id.ends_with('"') {
+            // Only a double-quoted header enters Mermaid's string state. Markdown backticks are
+            // meaningful after that quote has been removed; bare backticks stay in the id.
+            let unquoted = unquote(raw_id);
+            strip_wrapping_backticks(unquoted.trim()).0
+        } else {
+            raw_id.to_string()
+        };
 
         let mut id: Option<String> = {
             let trimmed = id_raw.trim();
@@ -216,8 +223,7 @@ pub(super) fn subgraphs_exist(subgraphs: &[FlowSubGraph], node_id: &str) -> bool
 
 fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, TitleKind) {
     let trimmed = raw_title.trim();
-    let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''));
+    let quoted = trimmed.starts_with('"') && trimmed.ends_with('"');
     let unquoted = if quoted {
         // Keep flowchart subgraph titles raw (strip only surrounding quotes).
         // This matches upstream and avoids mangling backslash-heavy labels.
@@ -226,9 +232,11 @@ fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, Titl
         trimmed.to_string()
     };
 
-    let (no_backticks, is_markdown) = strip_wrapping_backticks(unquoted.trim());
-    if is_markdown {
-        return (no_backticks, TitleKind::Markdown);
+    if quoted {
+        let (no_backticks, is_markdown) = strip_wrapping_backticks(unquoted.trim());
+        if is_markdown {
+            return (no_backticks, TitleKind::Markdown);
+        }
     }
 
     if !id_equals_title && quoted {

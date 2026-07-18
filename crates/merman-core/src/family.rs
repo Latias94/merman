@@ -7,6 +7,7 @@ use crate::baseline::BaselineRegistryProfile;
 use crate::detect::DetectorFn;
 use crate::diagram::{BuiltInRenderSemanticParser, DiagramSemanticParser, RenderSemanticModel};
 use crate::{EditorSemanticFacts, MermaidConfig, ParseMetadata, Result};
+use serde::Serialize;
 use serde_json::Value;
 use std::sync::OnceLock;
 
@@ -71,7 +72,7 @@ pub struct DiagramHeaderFact {
     pub full_only: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct DiagramFamilyCapability {
     /// Mermaid diagram type id used by the pinned detector and parser registries.
     pub diagram_type: &'static str,
@@ -641,6 +642,10 @@ infallible_editor_adapter!(
 );
 infallible_editor_adapter!(editor_venn, crate::diagrams::venn::parse_venn_editor_facts);
 infallible_editor_adapter!(
+    editor_wardley,
+    crate::diagrams::wardley::parse_wardley_editor_facts
+);
+infallible_editor_adapter!(
     editor_xychart,
     crate::diagrams::xychart::parse_xychart_editor_facts
 );
@@ -825,6 +830,11 @@ render_parser!(
     render_venn,
     crate::diagrams::venn::parse_venn_model_for_render,
     RenderSemanticModel::Venn
+);
+render_parser!(
+    render_wardley,
+    crate::diagrams::wardley::parse_wardley_model_for_render,
+    RenderSemanticModel::Wardley
 );
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1196,7 +1206,7 @@ const FLOWCHART_VARIANTS: &[FamilyVariantDefinition] = &[
         combined: Some(ordered(0, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
         typed: Some(ordered(5, render_flowchart)),
         render_kind: Some("flowchart"),
-        metadata: Some(metadata("flowchart", Some(6))),
+        metadata: Some(metadata("flowchart", Some(7))),
         headers: FLOWCHART_HEADERS,
         config_alias_order: Some(2),
         known_effect: KnownTypeEffect::FlowchartConfiguredRenderer,
@@ -1230,9 +1240,9 @@ const SWIMLANE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     semantic: Some(ordered(9, crate::diagrams::flowchart::parse_flowchart)),
     editor: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_editor_facts)),
     combined: Some(ordered(3, crate::diagrams::flowchart::parse_flowchart_json_and_editor_facts)),
-    typed: None,
-    render_kind: None,
-    metadata: None,
+    typed: Some(ordered(39, render_flowchart)),
+    render_kind: Some("flowchart"),
+    metadata: Some(metadata("swimlane", Some(27))),
     headers: SWIMLANE_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1250,7 +1260,7 @@ const MINDMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(5, crate::diagrams::mindmap::parse_mindmap_json_and_editor_facts)),
     typed: Some(ordered(0, render_mindmap)),
     render_kind: Some("mindmap"),
-    metadata: Some(metadata("mindmap", Some(12))),
+    metadata: Some(metadata("mindmap", Some(14))),
     headers: MINDMAP_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1286,7 +1296,7 @@ const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(36, crate::diagrams::zenuml::parse_zenuml_json_and_editor_facts)),
     typed: Some(ordered(3, render_zenuml)),
     render_kind: Some("sequence"),
-    metadata: Some(metadata("zenuml", Some(29))),
+    metadata: Some(metadata("zenuml", Some(34))),
     headers: ZENUML_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1304,7 +1314,7 @@ const SEQUENCE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(19, crate::diagrams::sequence::parse_sequence_json_and_editor_facts)),
     typed: Some(ordered(4, render_sequence)),
     render_kind: Some("sequence"),
-    metadata: Some(metadata("sequence", Some(23))),
+    metadata: Some(metadata("sequence", Some(25))),
     headers: SEQUENCE_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1340,7 +1350,7 @@ const KANBAN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(29, crate::diagrams::kanban::parse_kanban_json_and_editor_facts)),
     typed: Some(ordered(17, render_kanban)),
     render_kind: Some("kanban"),
-    metadata: Some(metadata("kanban", Some(11))),
+    metadata: Some(metadata("kanban", Some(13))),
     headers: KANBAN_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1432,7 +1442,7 @@ const GANTT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(30, crate::diagrams::gantt::parse_gantt_json_and_editor_facts)),
     typed: Some(ordered(18, render_gantt)),
     render_kind: Some("gantt"),
-    metadata: Some(metadata("gantt", Some(7))),
+    metadata: Some(metadata("gantt", Some(8))),
     headers: GANTT_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1450,7 +1460,7 @@ const INFO_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(10, crate::diagrams::info::parse_info_json_and_editor_facts)),
     typed: Some(ordered(26, render_info)),
     render_kind: Some("info"),
-    metadata: Some(metadata("info", Some(9))),
+    metadata: Some(metadata("info", Some(10))),
     headers: INFO_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1468,7 +1478,7 @@ const PIE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(11, crate::diagrams::pie::parse_pie_json_and_editor_facts)),
     typed: Some(ordered(19, render_pie)),
     render_kind: Some("pie"),
-    metadata: Some(metadata("pie", Some(14))),
+    metadata: Some(metadata("pie", Some(16))),
     headers: PIE_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1486,7 +1496,7 @@ const REQUIREMENT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(31, crate::diagrams::requirement::parse_requirement_json_and_editor_facts)),
     typed: Some(ordered(23, render_requirement)),
     render_kind: Some("requirement"),
-    metadata: Some(metadata("requirement", Some(21))),
+    metadata: Some(metadata("requirement", Some(23))),
     headers: REQUIREMENT_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1504,7 +1514,7 @@ const TIMELINE_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(32, crate::diagrams::timeline::parse_timeline_json_and_editor_facts)),
     typed: Some(ordered(21, render_timeline)),
     render_kind: Some("timeline"),
-    metadata: Some(metadata("timeline", Some(25))),
+    metadata: Some(metadata("timeline", Some(28))),
     headers: TIMELINE_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1522,7 +1532,7 @@ const GIT_GRAPH_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(15, crate::diagrams::git_graph::parse_git_graph_json_and_editor_facts)),
     typed: Some(ordered(33, render_git_graph)),
     render_kind: Some("gitGraph"),
-    metadata: Some(metadata("gitgraph", Some(8))),
+    metadata: Some(metadata("gitgraph", Some(9))),
     headers: &[],
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1541,7 +1551,7 @@ const STATE_VARIANTS: &[FamilyVariantDefinition] = &[
         combined: Some(ordered(26, crate::diagrams::state::parse_state_json_and_editor_facts)),
         typed: Some(ordered(1, render_state)),
         render_kind: Some("state"),
-        metadata: Some(metadata("state", Some(24))),
+        metadata: Some(metadata("state", Some(26))),
         headers: STATE_HEADERS,
         config_alias_order: Some(4),
         known_effect: KnownTypeEffect::None,
@@ -1577,7 +1587,7 @@ const JOURNEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(33, crate::diagrams::journey::parse_journey_json_and_editor_facts)),
     typed: Some(ordered(22, render_journey)),
     render_kind: Some("journey"),
-    metadata: Some(metadata("journey", Some(10))),
+    metadata: Some(metadata("journey", Some(12))),
     headers: JOURNEY_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1595,7 +1605,7 @@ const QUADRANT_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(34, crate::diagrams::quadrant_chart::parse_quadrant_chart_json_and_editor_facts)),
     typed: Some(ordered(31, render_quadrant_chart)),
     render_kind: Some("quadrantChart"),
-    metadata: Some(metadata("quadrantchart", Some(15))),
+    metadata: Some(metadata("quadrantchart", Some(17))),
     headers: QUADRANT_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1613,7 +1623,7 @@ const SANKEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(16, crate::diagrams::sankey::parse_sankey_json_and_editor_facts)),
     typed: Some(ordered(24, render_sankey)),
     render_kind: Some("sankey"),
-    metadata: Some(metadata("sankey", Some(22))),
+    metadata: Some(metadata("sankey", Some(24))),
     headers: SANKEY_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1631,7 +1641,7 @@ const PACKET_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(12, crate::diagrams::packet::parse_packet_json_and_editor_facts)),
     typed: Some(ordered(20, render_packet)),
     render_kind: Some("packet"),
-    metadata: Some(metadata("packet", Some(13))),
+    metadata: Some(metadata("packet", Some(15))),
     headers: PACKET_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1649,7 +1659,7 @@ const XYCHART_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(38, crate::diagrams::xychart::parse_xychart_json_and_editor_facts)),
     typed: Some(ordered(32, render_xychart)),
     render_kind: Some("xychart"),
-    metadata: Some(metadata("xychart", Some(28))),
+    metadata: Some(metadata("xychart", Some(33))),
     headers: XYCHART_HEADERS,
     config_alias_order: Some(5),
     known_effect: KnownTypeEffect::None,
@@ -1685,7 +1695,7 @@ const EVENTMODELING_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(22, crate::diagrams::eventmodeling::parse_eventmodeling_json_and_editor_facts)),
     typed: Some(ordered(36, render_eventmodeling)),
     render_kind: Some("eventmodeling"),
-    metadata: None,
+    metadata: Some(metadata("eventmodeling", Some(6))),
     headers: EVENTMODELING_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1703,7 +1713,7 @@ const TREE_VIEW_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(23, crate::diagrams::tree_view::parse_tree_view_json_and_editor_facts)),
     typed: Some(ordered(34, render_tree_view)),
     render_kind: Some("treeView"),
-    metadata: None,
+    metadata: Some(metadata("treeView", Some(29))),
     headers: TREE_VIEW_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1721,7 +1731,7 @@ const RADAR_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(14, crate::diagrams::radar::parse_radar_json_and_editor_facts)),
     typed: Some(ordered(25, render_radar)),
     render_kind: Some("radar"),
-    metadata: Some(metadata("radar", Some(16))),
+    metadata: Some(metadata("radar", Some(18))),
     headers: RADAR_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1739,7 +1749,7 @@ const ISHIKAWA_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(24, crate::diagrams::ishikawa::parse_ishikawa_json_and_editor_facts)),
     typed: Some(ordered(35, render_ishikawa)),
     render_kind: Some("ishikawa"),
-    metadata: None,
+    metadata: Some(metadata("ishikawa", Some(11))),
     headers: ISHIKAWA_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1757,7 +1767,7 @@ const TREEMAP_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(25, crate::diagrams::treemap::parse_treemap_json_and_editor_facts)),
     typed: Some(ordered(27, render_treemap)),
     render_kind: Some("treemap"),
-    metadata: Some(metadata("treemap", Some(26))),
+    metadata: Some(metadata("treemap", Some(30))),
     headers: TREEMAP_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1776,7 +1786,7 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         combined: Some(ordered(6, crate::diagrams::railroad::parse_railroad_json_and_editor_facts)),
         typed: Some(ordered(12, render_railroad)),
         render_kind: Some("railroad"),
-        metadata: Some(metadata("railroad", Some(17))),
+        metadata: Some(metadata("railroad", Some(19))),
         headers: RAILROAD_HEADERS,
         config_alias_order: None,
         known_effect: KnownTypeEffect::None,
@@ -1793,7 +1803,7 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         combined: Some(ordered(7, crate::diagrams::railroad::parse_railroad_ebnf_json_and_editor_facts)),
         typed: Some(ordered(13, render_railroad_ebnf)),
         render_kind: Some("railroad"),
-        metadata: Some(metadata("railroadEbnf", Some(19))),
+        metadata: Some(metadata("railroadEbnf", Some(21))),
         headers: RAILROAD_EBNF_HEADERS,
         config_alias_order: None,
         known_effect: KnownTypeEffect::None,
@@ -1810,7 +1820,7 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         combined: Some(ordered(8, crate::diagrams::railroad::parse_railroad_abnf_json_and_editor_facts)),
         typed: Some(ordered(14, render_railroad_abnf)),
         render_kind: Some("railroad"),
-        metadata: Some(metadata("railroadAbnf", Some(18))),
+        metadata: Some(metadata("railroadAbnf", Some(20))),
         headers: RAILROAD_ABNF_HEADERS,
         config_alias_order: None,
         known_effect: KnownTypeEffect::None,
@@ -1827,7 +1837,7 @@ const RAILROAD_VARIANTS: &[FamilyVariantDefinition] = &[
         combined: Some(ordered(9, crate::diagrams::railroad::parse_railroad_peg_json_and_editor_facts)),
         typed: Some(ordered(15, render_railroad_peg)),
         render_kind: Some("railroad"),
-        metadata: Some(metadata("railroadPeg", Some(20))),
+        metadata: Some(metadata("railroadPeg", Some(22))),
         headers: RAILROAD_PEG_HEADERS,
         config_alias_order: None,
         known_effect: KnownTypeEffect::None,
@@ -1846,7 +1856,7 @@ const VENN_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     combined: Some(ordered(35, crate::diagrams::venn::parse_venn_json_and_editor_facts)),
     typed: Some(ordered(37, render_venn)),
     render_kind: Some("venn"),
-    metadata: Some(metadata("venn", Some(27))),
+    metadata: Some(metadata("venn", Some(31))),
     headers: VENN_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1859,12 +1869,12 @@ const WARDLEY_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     catalog_order: 39,
     detector: Some(ordered(39, crate::detect::detector_wardley)),
     fast: &[],
-    semantic: None,
-    editor: None,
-    combined: None,
-    typed: None,
-    render_kind: None,
-    metadata: None,
+    semantic: Some(ordered(40, crate::diagrams::wardley::parse_wardley)),
+    editor: Some(ordered(39, editor_wardley)),
+    combined: Some(ordered(39, crate::diagrams::wardley::parse_wardley_json_and_editor_facts)),
+    typed: Some(ordered(40, render_wardley)),
+    render_kind: Some("wardley"),
+    metadata: Some(metadata("wardley", Some(32))),
     headers: WARDLEY_HEADERS,
     config_alias_order: None,
     known_effect: KnownTypeEffect::None,
@@ -1931,7 +1941,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         logical_kind: "zenuml",
         config: Some(FamilyConfigDefinition {
             namespace: "zenuml",
-            frontmatter_order: 29,
+            frontmatter_order: 30,
         }),
         variants: ZENUML_VARIANTS,
     },
@@ -2064,7 +2074,7 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
         logical_kind: "xychart",
         config: Some(FamilyConfigDefinition {
             namespace: "xyChart",
-            frontmatter_order: 28,
+            frontmatter_order: 29,
         }),
         variants: XYCHART_VARIANTS,
     },
@@ -2134,7 +2144,10 @@ const FAMILY_CATALOG: &[DiagramFamilyDefinition] = &[
     },
     DiagramFamilyDefinition {
         logical_kind: "wardley",
-        config: None,
+        config: Some(FamilyConfigDefinition {
+            namespace: "wardley-beta",
+            frontmatter_order: 28,
+        }),
         variants: WARDLEY_VARIANTS,
     },
     DiagramFamilyDefinition {

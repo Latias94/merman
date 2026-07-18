@@ -1,27 +1,27 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Apple",
-          "x": 82.965,
+          "x": 82.161,
           "y": 75.0,
-          "width": 143.922,
+          "width": 142.959,
           "height": 150.0,
           "is_cluster": false
         },
         {
           "id": "Pineapple",
-          "x": 82.965,
+          "x": 82.161,
           "y": 287.0,
-          "width": 165.93,
+          "width": 164.322,
           "height": 174.0,
           "is_cluster": false
         },
         {
           "id": "interface0",
-          "x": 233.29,
+          "x": 231.682,
           "y": 75.0,
           "width": 34.72,
           "height": 24.0,
@@ -29,7 +29,7 @@
         },
         {
           "id": "interface1",
-          "x": 233.29,
+          "x": 231.682,
           "y": 287.0,
           "width": 34.72,
           "height": 24.0,
@@ -45,15 +45,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 215.93,
+              "x": 214.322,
               "y": 75.0
             },
             {
-              "x": 190.93,
+              "x": 189.322,
               "y": 75.0
             },
             {
-              "x": 154.926,
+              "x": 153.641,
               "y": 75.0
             }
           ],
@@ -74,15 +74,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 215.93,
+              "x": 214.322,
               "y": 287.0
             },
             {
-              "x": 190.93,
+              "x": 189.322,
               "y": 287.0
             },
             {
-              "x": 165.93,
+              "x": 164.322,
               "y": 287.0
             }
           ],
@@ -100,7 +100,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 250.65,
+        "max_x": 249.042,
         "max_y": 374.0
       }
     }

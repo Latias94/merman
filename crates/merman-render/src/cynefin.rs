@@ -489,10 +489,14 @@ fn push_item_layout(
     measurer: &dyn TextMeasurer,
     overflow: bool,
 ) {
-    let measured_width = measurer
-        .measure(label, style)
-        .width
-        .max(label.chars().count() as f64 * 7.0);
+    let bbox_width = measurer.measure(label, style).width;
+    let measured_width = if bbox_width > 0.0 {
+        bbox_width
+    } else {
+        // Mermaid uses JavaScript `String.length`, so preserve UTF-16 code-unit semantics in the
+        // browser-only fallback instead of replacing a valid bbox with a character estimate.
+        label.encode_utf16().count() as f64 * 7.0
+    };
     let width = measured_width + ITEM_PADDING_X * 2.0;
     let x = domain_layout.cx - width / 2.0;
     let y = start_y + idx as f64 * (ITEM_HEIGHT + ITEM_GAP);
@@ -595,7 +599,19 @@ fn fmt_number(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::DeterministicTextMeasurer;
+    use crate::text::{DeterministicTextMeasurer, TextMetrics};
+
+    struct FixedWidthMeasurer(f64);
+
+    impl TextMeasurer for FixedWidthMeasurer {
+        fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: self.0,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
 
     #[test]
     fn cynefin_boundary_seed_is_stable() {
@@ -628,5 +644,45 @@ mod tests {
         assert_eq!(layout.items.len(), 4);
         assert!(layout.items.last().unwrap().overflow);
         assert_eq!(layout.items.last().unwrap().label, "+1 more");
+    }
+
+    #[test]
+    fn cynefin_item_width_prefers_a_positive_bbox_over_the_character_fallback() {
+        let model = CynefinDiagramRenderModel {
+            domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
+                name: DOMAIN_COMPLEX.to_string(),
+                items: vec![merman_core::diagrams::cynefin::CynefinItemModel {
+                    label: "a deliberately long label".into(),
+                }],
+            }],
+            ..Default::default()
+        };
+        let layout =
+            layout_cynefin_diagram_typed(&model, &serde_json::json!({}), &FixedWidthMeasurer(3.5))
+                .unwrap();
+
+        assert_eq!(layout.items[0].width, 3.5 + ITEM_PADDING_X * 2.0);
+    }
+
+    #[test]
+    fn cynefin_item_width_uses_the_utf16_character_fallback_for_a_zero_bbox() {
+        let label = "A\u{1f642}";
+        let model = CynefinDiagramRenderModel {
+            domains: vec![merman_core::diagrams::cynefin::CynefinDomainModel {
+                name: DOMAIN_COMPLEX.to_string(),
+                items: vec![merman_core::diagrams::cynefin::CynefinItemModel {
+                    label: label.into(),
+                }],
+            }],
+            ..Default::default()
+        };
+        let layout =
+            layout_cynefin_diagram_typed(&model, &serde_json::json!({}), &FixedWidthMeasurer(0.0))
+                .unwrap();
+
+        assert_eq!(
+            layout.items[0].width,
+            label.encode_utf16().count() as f64 * 7.0 + ITEM_PADDING_X * 2.0
+        );
     }
 }

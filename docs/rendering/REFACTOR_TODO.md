@@ -23,8 +23,8 @@ Related docs:
 
 - [x] Introduce a shared root `<svg>` writer (open tag) and adopt it in a single low-risk diagram
       (ER) first, then expand adoption diagram-by-diagram.
-- [x] Centralize root viewport override application (parse viewBox → w/h + style max-width) into a
-      helper and use it across diagrams.
+- [x] Route computed family or emitted-content bounds, sizing, and root emission through the shared
+      Root Viewport module for every built-in family.
 - [x] Support root attribute ordering quirks (e.g. `viewBox` before `style`) in the shared writer
       so strict XML diffs can remain stable while refactoring.
 - [ ] Consolidate common SVG escaping + number formatting usage so diagram renderers don’t reach for
@@ -79,20 +79,22 @@ Related docs:
       `svg/parity/state/node.rs` via `docs/workstreams/state-node-renderer-extraction/`).
 - [ ] Create a consistent naming convention for “Stage B” parity render entry points across diagrams.
 
-### P2: Overrides and tooling ergonomics
+### P2: Measurement-profile tooling
 
-- [ ] Add an `xtask` command to update root viewport overrides from a report, e.g.
-      `xtask update-root-overrides --diagram <name> --from-report <path>`.
-- [ ] Add a “coverage sanity” report for root viewport overrides:
-      - list mismatch stems that lack overrides
-      - list overrides that no longer affect any fixture
+- [ ] Validate the generated Mermaid 11.16 glyph, kerning, trigram, fallback-font, and endpoint
+      overhang profile against an independent fixture corpus without emitting fixture ids or
+      complete-label answers.
+- [x] Remove generated root pins, exact-label text/SVG tables, override budgets, and their
+      generator/audit commands. Root parity now verifies computed family and emitted-content
+      bounds directly.
 - [x] Finish generated-artifact verification ergonomics: keep `xtask verify-generated` as an
       umbrella check, expose artifact-specific gates for default config and DOMPurify, and decide
       whether missing optional `repo-ref/*` build artifacts should be bootstrap failures or
       optional-gate failures. 2026-05-31: completed in
-      `docs/workstreams/generated-default-config-parity/`; `verify-default-config` is green via
-      `crates/xtask/default_config_overrides.json`, and DOMPurify is pinned to Mermaid 11.15's
-      resolved `dompurify@3.4.0` with actionable reference-checkout remediation.
+      `docs/workstreams/generated-default-config-parity/`; `verify-default-config` now regenerates
+      both the upstream value and key-shape planes from the content-pinned Mermaid 11.16 runtime.
+      DOMPurify remains pinned to the resolved `dompurify@3.4.0` with actionable
+      reference-checkout remediation.
 
 ### P3: Output stability and debug UX
 

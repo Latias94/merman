@@ -20,16 +20,14 @@ pub enum TextMeasurementPhase {
     Wrap,
     SvgBBox,
     ComputedLength,
-    Visibility,
 }
 
 impl TextMeasurementPhase {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 4] = [
         Self::Layout,
         Self::Wrap,
         Self::SvgBBox,
         Self::ComputedLength,
-        Self::Visibility,
     ];
 
     const fn index(self) -> usize {
@@ -38,7 +36,6 @@ impl TextMeasurementPhase {
             Self::Wrap => 1,
             Self::SvgBBox => 2,
             Self::ComputedLength => 3,
-            Self::Visibility => 4,
         }
     }
 }
@@ -166,7 +163,7 @@ impl fmt::Debug for TextMeasurementProfile {
 }
 
 fn vendored_parity_profile() -> TextMeasurementProfile {
-    let profile = MeasurementProfileId::new("merman.vendored-font-metrics")
+    let profile = MeasurementProfileId::new("merman.mermaid-11.16-text-metrics")
         .expect("static vendored profile id is valid");
     let identity = TextMeasurementProfileIdentity::new(
         profile,
@@ -176,12 +173,7 @@ fn vendored_parity_profile() -> TextMeasurementProfile {
             "/mermaid@11.16.0"
         ),
     )
-    .expect("static vendored profile version is valid")
-    .with_decorators([
-        "flowchart-text-overrides@11.12.2",
-        "sequence-svg-overrides@11.16.0",
-    ])
-    .expect("static vendored decorators are valid");
+    .expect("static vendored profile version is valid");
     TextMeasurementProfile::new(
         identity,
         Arc::new(VendoredFontMetricsTextMeasurer::default()),
@@ -197,24 +189,32 @@ pub enum HostFallbackReason {
 }
 
 /// The exact [`TextMeasurer`] operation performed through a phase facade.
+#[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextMeasurementOperation {
-    Measure,
-    ComputedLength,
-    BBoxX,
-    BBoxXWithAsciiOverhang,
-    TitleBBoxX,
-    SimpleBBoxWidth,
-    RawBBoxWidth,
-    WrapProbeBBoxWidth,
-    SimpleBBoxHeight,
-    Wrapped,
-    WrappedWithRawWidth,
-    WrappedRaw,
+    Measure = 0,
+    ComputedLength = 1,
+    BBoxX = 2,
+    BBoxXWithAsciiOverhang = 3,
+    TitleBBoxX = 4,
+    SimpleBBoxWidth = 5,
+    RawBBoxWidth = 6,
+    TspanBBoxWidth = 7,
+    TspanBBoxHeight = 8,
+    WrapProbeBBoxWidth = 9,
+    SimpleBBoxHeight = 10,
+    Wrapped = 11,
+    WrappedWithRawWidth = 12,
+    BoundingClientRectWidth = 13,
+    CreateTextBBoxYOffset = 14,
+    MermaidCalculateTextDimensions = 15,
+    CanvasMeasureTextWidth = 16,
+    CreateTextMiddleBBoxYOffset = 17,
+    RawBBoxHeight = 18,
 }
 
 impl TextMeasurementOperation {
-    const ALL: [Self; 12] = [
+    pub const ALL: [Self; 19] = [
         Self::Measure,
         Self::ComputedLength,
         Self::BBoxX,
@@ -222,11 +222,18 @@ impl TextMeasurementOperation {
         Self::TitleBBoxX,
         Self::SimpleBBoxWidth,
         Self::RawBBoxWidth,
+        Self::TspanBBoxWidth,
+        Self::TspanBBoxHeight,
         Self::WrapProbeBBoxWidth,
         Self::SimpleBBoxHeight,
         Self::Wrapped,
         Self::WrappedWithRawWidth,
-        Self::WrappedRaw,
+        Self::BoundingClientRectWidth,
+        Self::CreateTextBBoxYOffset,
+        Self::MermaidCalculateTextDimensions,
+        Self::CanvasMeasureTextWidth,
+        Self::CreateTextMiddleBBoxYOffset,
+        Self::RawBBoxHeight,
     ];
 
     const fn index(self) -> usize {
@@ -238,11 +245,46 @@ impl TextMeasurementOperation {
             Self::TitleBBoxX => 4,
             Self::SimpleBBoxWidth => 5,
             Self::RawBBoxWidth => 6,
-            Self::WrapProbeBBoxWidth => 7,
-            Self::SimpleBBoxHeight => 8,
-            Self::Wrapped => 9,
-            Self::WrappedWithRawWidth => 10,
-            Self::WrappedRaw => 11,
+            Self::TspanBBoxWidth => 7,
+            Self::TspanBBoxHeight => 8,
+            Self::WrapProbeBBoxWidth => 9,
+            Self::SimpleBBoxHeight => 10,
+            Self::Wrapped => 11,
+            Self::WrappedWithRawWidth => 12,
+            Self::BoundingClientRectWidth => 13,
+            Self::CreateTextBBoxYOffset => 14,
+            Self::MermaidCalculateTextDimensions => 15,
+            Self::CanvasMeasureTextWidth => 16,
+            Self::CreateTextMiddleBBoxYOffset => 17,
+            Self::RawBBoxHeight => 18,
+        }
+    }
+
+    pub const fn external_code(self) -> i32 {
+        self as i32
+    }
+
+    pub const fn external_name(self) -> &'static str {
+        match self {
+            Self::Measure => "measure",
+            Self::ComputedLength => "computed-length",
+            Self::BBoxX => "bbox-x",
+            Self::BBoxXWithAsciiOverhang => "bbox-x-with-ascii-overhang",
+            Self::TitleBBoxX => "title-bbox-x",
+            Self::SimpleBBoxWidth => "simple-bbox-width",
+            Self::RawBBoxWidth => "raw-bbox-width",
+            Self::TspanBBoxWidth => "tspan-bbox-width",
+            Self::TspanBBoxHeight => "tspan-bbox-height",
+            Self::WrapProbeBBoxWidth => "wrap-probe-bbox-width",
+            Self::SimpleBBoxHeight => "simple-bbox-height",
+            Self::Wrapped => "wrapped",
+            Self::WrappedWithRawWidth => "wrapped-with-raw-width",
+            Self::BoundingClientRectWidth => "bounding-client-rect-width",
+            Self::CreateTextBBoxYOffset => "create-text-bbox-y-offset",
+            Self::MermaidCalculateTextDimensions => "mermaid-calculate-text-dimensions",
+            Self::CanvasMeasureTextWidth => "canvas-measure-text-width",
+            Self::CreateTextMiddleBBoxYOffset => "create-text-middle-bbox-y-offset",
+            Self::RawBBoxHeight => "raw-bbox-height",
         }
     }
 }
@@ -432,142 +474,39 @@ impl HostTextMeasurementError {
     }
 }
 
-pub type HostMeasurementResult<T> = Result<Option<T>, HostTextMeasurementError>;
+#[derive(Debug, Clone, Copy)]
+pub struct HostTextMeasurementRequest<'a> {
+    pub operation: TextMeasurementOperation,
+    pub phase: TextMeasurementPhase,
+    pub text: &'a str,
+    pub style: &'a TextStyle,
+    pub max_width: Option<f64>,
+    pub wrap_mode: WrapMode,
+}
 
-/// Fallible host counterpart of the complete [`TextMeasurer`] interface.
+#[derive(Debug, Clone, Copy)]
+pub enum HostTextMeasurement {
+    Metrics(TextMetrics),
+    Length(f64),
+    HorizontalExtents {
+        left: f64,
+        right: f64,
+    },
+    WrappedWithRawWidth {
+        metrics: TextMetrics,
+        raw_width: Option<f64>,
+    },
+}
+
+pub type HostMeasurementResult = Result<Option<HostTextMeasurement>, HostTextMeasurementError>;
+
+/// Fallible, operation-aware host counterpart of [`TextMeasurer`].
 ///
-/// Returning `Ok(None)` declines exactly that operation. The environment then calls the same
-/// method on the configured fallback profile once and records why it did so.
+/// Returning `Ok(None)` declines exactly the requested operation. Returning a result variant that
+/// does not match `request.operation`, or an invalid value, uses the configured fallback and is
+/// recorded as [`HostFallbackReason::Invalid`].
 pub trait HostTextMeasurer: Send + Sync {
-    fn measure(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<TextMetrics>;
-
-    fn measure_svg_text_computed_length_px(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<f64> {
-        self.measure_svg_simple_text_bbox_width_px(phase, text, style)
-    }
-
-    fn measure_svg_text_bbox_x(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<(f64, f64)> {
-        self.measure(phase, text, style).map(|metrics| {
-            metrics.map(|metrics| {
-                if valid_metrics(&metrics) {
-                    let half = metrics.width / 2.0;
-                    (half, half)
-                } else {
-                    (f64::NAN, f64::NAN)
-                }
-            })
-        })
-    }
-
-    fn measure_svg_text_bbox_x_with_ascii_overhang(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<(f64, f64)> {
-        self.measure_svg_text_bbox_x(phase, text, style)
-    }
-
-    fn measure_svg_title_bbox_x(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<(f64, f64)> {
-        self.measure_svg_text_bbox_x(phase, text, style)
-    }
-
-    fn measure_svg_simple_text_bbox_width_px(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<f64> {
-        self.measure_svg_title_bbox_x(phase, text, style)
-            .map(|extents| extents.map(|(left, right)| left + right))
-    }
-
-    fn measure_svg_raw_text_bbox_width_px(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<f64> {
-        self.measure_svg_simple_text_bbox_width_px(phase, text, style)
-    }
-
-    fn measure_svg_simple_text_bbox_width_for_wrap_px(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<f64> {
-        self.measure_svg_simple_text_bbox_width_px(phase, text, style)
-    }
-
-    fn measure_svg_simple_text_bbox_height_px(
-        &self,
-        phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<f64> {
-        self.measure(phase, text, style).map(|metrics| {
-            metrics.map(|metrics| {
-                if valid_metrics(&metrics) {
-                    metrics.height
-                } else {
-                    f64::NAN
-                }
-            })
-        })
-    }
-
-    fn measure_wrapped(
-        &self,
-        _phase: TextMeasurementPhase,
-        _text: &str,
-        _style: &TextStyle,
-        _max_width: Option<f64>,
-        _wrap_mode: WrapMode,
-    ) -> HostMeasurementResult<TextMetrics> {
-        Ok(None)
-    }
-
-    fn measure_wrapped_with_raw_width(
-        &self,
-        _phase: TextMeasurementPhase,
-        _text: &str,
-        _style: &TextStyle,
-        _max_width: Option<f64>,
-        _wrap_mode: WrapMode,
-    ) -> HostMeasurementResult<(TextMetrics, Option<f64>)> {
-        Ok(None)
-    }
-
-    fn measure_wrapped_raw(
-        &self,
-        _phase: TextMeasurementPhase,
-        _text: &str,
-        _style: &TextStyle,
-        _max_width: Option<f64>,
-        _wrap_mode: WrapMode,
-    ) -> HostMeasurementResult<TextMetrics> {
-        Ok(None)
-    }
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult;
 }
 
 #[derive(Clone)]
@@ -592,7 +531,7 @@ pub struct TextMeasurementRoute {
 /// Immutable routing policy for all text-measurement phases in one environment.
 #[derive(Clone)]
 pub struct TextMeasurementPolicy {
-    routes: [TextMeasurementRouteConfig; 5],
+    routes: [TextMeasurementRouteConfig; 4],
 }
 
 impl fmt::Debug for TextMeasurementPolicy {
@@ -682,7 +621,7 @@ impl TextMeasurementPolicy {
         }
     }
 
-    pub fn routes(&self) -> [TextMeasurementRoute; 5] {
+    pub fn routes(&self) -> [TextMeasurementRoute; 4] {
         TextMeasurementPhase::ALL.map(|phase| self.route(phase))
     }
 }
@@ -709,23 +648,32 @@ impl RoutedTextMeasurer<'_> {
             | TextMeasurementOperation::TitleBBoxX
             | TextMeasurementOperation::SimpleBBoxWidth
             | TextMeasurementOperation::RawBBoxWidth
+            | TextMeasurementOperation::RawBBoxHeight
+            | TextMeasurementOperation::BoundingClientRectWidth
+            | TextMeasurementOperation::TspanBBoxWidth
+            | TextMeasurementOperation::TspanBBoxHeight
+            | TextMeasurementOperation::CreateTextBBoxYOffset
+            | TextMeasurementOperation::CreateTextMiddleBBoxYOffset
+            | TextMeasurementOperation::MermaidCalculateTextDimensions
             | TextMeasurementOperation::SimpleBBoxHeight => TextMeasurementPhase::SvgBBox,
+            TextMeasurementOperation::CanvasMeasureTextWidth => TextMeasurementPhase::Layout,
             TextMeasurementOperation::WrapProbeBBoxWidth => TextMeasurementPhase::Wrap,
-            TextMeasurementOperation::Wrapped
-            | TextMeasurementOperation::WrappedWithRawWidth
-            | TextMeasurementOperation::WrappedRaw => TextMeasurementPhase::Wrap,
+            TextMeasurementOperation::Wrapped | TextMeasurementOperation::WrappedWithRawWidth => {
+                TextMeasurementPhase::Wrap
+            }
             TextMeasurementOperation::Measure => self.default_phase,
         }
     }
 
     fn resolve<T>(
         &self,
-        operation: TextMeasurementOperation,
-        host_call: impl FnOnce(&dyn HostTextMeasurer) -> HostMeasurementResult<T>,
+        request: HostTextMeasurementRequest<'_>,
+        decode_host: impl FnOnce(HostTextMeasurement) -> Option<T>,
         profile_call: impl FnOnce(&(dyn TextMeasurer + Send + Sync)) -> T,
         valid: impl FnOnce(&T) -> bool,
     ) -> T {
-        let phase = self.phase_for(operation);
+        let phase = request.phase;
+        let operation = request.operation;
         match &self.policy.routes[phase.index()] {
             TextMeasurementRouteConfig::Profile(profile) => {
                 let value = profile_call(profile.backend.as_ref());
@@ -735,27 +683,49 @@ impl RoutedTextMeasurer<'_> {
             }
             TextMeasurementRouteConfig::Host {
                 backend, fallback, ..
-            } => match host_call(backend.as_ref()) {
-                Ok(Some(value)) if valid(&value) => {
+            } => {
+                let attempt = backend.measure(request);
+                let decoded = match &attempt {
+                    Ok(Some(value)) => decode_host(*value),
+                    Ok(None) | Err(_) => None,
+                };
+                if let Some(value) = decoded.filter(|value| valid(value)) {
                     self.recorder
                         .record(phase, operation, TextMeasurementRouteOutcome::Host);
-                    value
+                    return value;
                 }
-                attempt => {
-                    let reason = match attempt {
-                        Ok(Some(_)) => HostFallbackReason::Invalid,
-                        Ok(None) => HostFallbackReason::Missing,
-                        Err(_) => HostFallbackReason::Error,
-                    };
-                    let value = profile_call(fallback.backend.as_ref());
-                    self.recorder.record(
-                        phase,
-                        operation,
-                        TextMeasurementRouteOutcome::Fallback(reason),
-                    );
-                    value
-                }
-            },
+
+                let reason = match attempt {
+                    Ok(Some(_)) => HostFallbackReason::Invalid,
+                    Ok(None) => HostFallbackReason::Missing,
+                    Err(_) => HostFallbackReason::Error,
+                };
+                let value = profile_call(fallback.backend.as_ref());
+                self.recorder.record(
+                    phase,
+                    operation,
+                    TextMeasurementRouteOutcome::Fallback(reason),
+                );
+                value
+            }
+        }
+    }
+
+    fn request<'a>(
+        &self,
+        operation: TextMeasurementOperation,
+        text: &'a str,
+        style: &'a TextStyle,
+        max_width: Option<f64>,
+        wrap_mode: WrapMode,
+    ) -> HostTextMeasurementRequest<'a> {
+        HostTextMeasurementRequest {
+            operation,
+            phase: self.phase_for(operation),
+            text,
+            style,
+            max_width,
+            wrap_mode,
         }
     }
 }
@@ -763,14 +733,14 @@ impl RoutedTextMeasurer<'_> {
 impl TextMeasurer for RoutedTextMeasurer<'_> {
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.resolve(
-            TextMeasurementOperation::Measure,
-            |host| {
-                host.measure(
-                    self.phase_for(TextMeasurementOperation::Measure),
-                    text,
-                    style,
-                )
-            },
+            self.request(
+                TextMeasurementOperation::Measure,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_metrics,
             |profile| profile.measure(text, style),
             valid_metrics,
         )
@@ -778,14 +748,14 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
 
     fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
-            TextMeasurementOperation::ComputedLength,
-            |host| {
-                host.measure_svg_text_computed_length_px(
-                    TextMeasurementPhase::ComputedLength,
-                    text,
-                    style,
-                )
-            },
+            self.request(
+                TextMeasurementOperation::ComputedLength,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
             |profile| profile.measure_svg_text_computed_length_px(text, style),
             valid_length,
         )
@@ -793,8 +763,14 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
 
     fn measure_svg_text_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
         self.resolve(
-            TextMeasurementOperation::BBoxX,
-            |host| host.measure_svg_text_bbox_x(TextMeasurementPhase::SvgBBox, text, style),
+            self.request(
+                TextMeasurementOperation::BBoxX,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_extents,
             |profile| profile.measure_svg_text_bbox_x(text, style),
             valid_extents,
         )
@@ -806,14 +782,14 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         style: &TextStyle,
     ) -> (f64, f64) {
         self.resolve(
-            TextMeasurementOperation::BBoxXWithAsciiOverhang,
-            |host| {
-                host.measure_svg_text_bbox_x_with_ascii_overhang(
-                    TextMeasurementPhase::SvgBBox,
-                    text,
-                    style,
-                )
-            },
+            self.request(
+                TextMeasurementOperation::BBoxXWithAsciiOverhang,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_extents,
             |profile| profile.measure_svg_text_bbox_x_with_ascii_overhang(text, style),
             valid_extents,
         )
@@ -821,8 +797,14 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
 
     fn measure_svg_title_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
         self.resolve(
-            TextMeasurementOperation::TitleBBoxX,
-            |host| host.measure_svg_title_bbox_x(TextMeasurementPhase::SvgBBox, text, style),
+            self.request(
+                TextMeasurementOperation::TitleBBoxX,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_extents,
             |profile| profile.measure_svg_title_bbox_x(text, style),
             valid_extents,
         )
@@ -830,14 +812,14 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
 
     fn measure_svg_simple_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
-            TextMeasurementOperation::SimpleBBoxWidth,
-            |host| {
-                host.measure_svg_simple_text_bbox_width_px(
-                    TextMeasurementPhase::SvgBBox,
-                    text,
-                    style,
-                )
-            },
+            self.request(
+                TextMeasurementOperation::SimpleBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
             |profile| profile.measure_svg_simple_text_bbox_width_px(text, style),
             valid_length,
         )
@@ -845,55 +827,172 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
 
     fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
-            TextMeasurementOperation::RawBBoxWidth,
-            |host| {
-                host.measure_svg_raw_text_bbox_width_px(TextMeasurementPhase::SvgBBox, text, style)
-            },
+            self.request(
+                TextMeasurementOperation::RawBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
             |profile| profile.measure_svg_raw_text_bbox_width_px(text, style),
             valid_length,
         )
     }
 
+    fn measure_svg_raw_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawBBoxHeight,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_raw_text_bbox_height_px(text, style),
+            valid_length,
+        )
+    }
+
+    fn measure_svg_text_bounding_client_rect_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::BoundingClientRectWidth,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_text_bounding_client_rect_width_px(text, style),
+            valid_length,
+        )
+    }
+
+    fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::TspanBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_tspan_text_bbox_width_px(text, style),
+            valid_length,
+        )
+    }
+
+    fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::TspanBBoxHeight,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_tspan_text_bbox_height_px(text, style),
+            valid_length,
+        )
+    }
+
+    fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::CreateTextBBoxYOffset,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_create_text_bbox_y_offset_px(text, style),
+            valid_signed_length,
+        )
+    }
+
+    fn measure_svg_create_text_middle_bbox_y_offset_px(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::CreateTextMiddleBBoxYOffset,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_create_text_middle_bbox_y_offset_px(text, style),
+            valid_signed_length,
+        )
+    }
+
     fn measure_svg_simple_text_bbox_width_for_wrap_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
-            TextMeasurementOperation::WrapProbeBBoxWidth,
-            |host| {
-                host.measure_svg_simple_text_bbox_width_for_wrap_px(
-                    TextMeasurementPhase::Wrap,
-                    text,
-                    style,
-                )
-            },
+            self.request(
+                TextMeasurementOperation::WrapProbeBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
             |profile| profile.measure_svg_simple_text_bbox_width_for_wrap_px(text, style),
             valid_length,
         )
     }
 
-    fn measure_mermaid_calculate_text_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+    fn measure_mermaid_calculate_text_dimensions(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> TextMetrics {
         self.resolve(
-            TextMeasurementOperation::WrapProbeBBoxWidth,
-            |host| {
-                host.measure_svg_simple_text_bbox_width_for_wrap_px(
-                    TextMeasurementPhase::Wrap,
-                    text,
-                    style,
-                )
-            },
-            |profile| profile.measure_mermaid_calculate_text_width_px(text, style),
+            self.request(
+                TextMeasurementOperation::MermaidCalculateTextDimensions,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_metrics,
+            |profile| profile.measure_mermaid_calculate_text_dimensions(text, style),
+            valid_metrics,
+        )
+    }
+
+    fn measure_canvas_text_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::CanvasMeasureTextWidth,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_canvas_text_width_px(text, style),
             valid_length,
         )
     }
 
     fn measure_svg_simple_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
-            TextMeasurementOperation::SimpleBBoxHeight,
-            |host| {
-                host.measure_svg_simple_text_bbox_height_px(
-                    TextMeasurementPhase::SvgBBox,
-                    text,
-                    style,
-                )
-            },
+            self.request(
+                TextMeasurementOperation::SimpleBBoxHeight,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            decode_host_length,
             |profile| profile.measure_svg_simple_text_bbox_height_px(text, style),
             valid_length,
         )
@@ -907,16 +1006,14 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         wrap_mode: WrapMode,
     ) -> TextMetrics {
         self.resolve(
-            TextMeasurementOperation::Wrapped,
-            |host| {
-                host.measure_wrapped(
-                    TextMeasurementPhase::Wrap,
-                    text,
-                    style,
-                    max_width,
-                    wrap_mode,
-                )
-            },
+            self.request(
+                TextMeasurementOperation::Wrapped,
+                text,
+                style,
+                max_width,
+                wrap_mode,
+            ),
+            decode_host_metrics,
             |profile| profile.measure_wrapped(text, style, max_width, wrap_mode),
             valid_metrics,
         )
@@ -930,42 +1027,49 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         wrap_mode: WrapMode,
     ) -> (TextMetrics, Option<f64>) {
         self.resolve(
-            TextMeasurementOperation::WrappedWithRawWidth,
-            |host| {
-                host.measure_wrapped_with_raw_width(
-                    TextMeasurementPhase::Wrap,
-                    text,
-                    style,
-                    max_width,
-                    wrap_mode,
-                )
-            },
+            self.request(
+                TextMeasurementOperation::WrappedWithRawWidth,
+                text,
+                style,
+                max_width,
+                wrap_mode,
+            ),
+            decode_host_wrapped_with_raw_width,
             |profile| profile.measure_wrapped_with_raw_width(text, style, max_width, wrap_mode),
             valid_wrapped_with_raw_width,
         )
     }
+}
 
-    fn measure_wrapped_raw(
-        &self,
-        text: &str,
-        style: &TextStyle,
-        max_width: Option<f64>,
-        wrap_mode: WrapMode,
-    ) -> TextMetrics {
-        self.resolve(
-            TextMeasurementOperation::WrappedRaw,
-            |host| {
-                host.measure_wrapped_raw(
-                    TextMeasurementPhase::Wrap,
-                    text,
-                    style,
-                    max_width,
-                    wrap_mode,
-                )
-            },
-            |profile| profile.measure_wrapped_raw(text, style, max_width, wrap_mode),
-            valid_metrics,
-        )
+fn decode_host_metrics(measurement: HostTextMeasurement) -> Option<TextMetrics> {
+    match measurement {
+        HostTextMeasurement::Metrics(metrics) => Some(metrics),
+        _ => None,
+    }
+}
+
+fn decode_host_length(measurement: HostTextMeasurement) -> Option<f64> {
+    match measurement {
+        HostTextMeasurement::Length(length) => Some(length),
+        _ => None,
+    }
+}
+
+fn decode_host_extents(measurement: HostTextMeasurement) -> Option<(f64, f64)> {
+    match measurement {
+        HostTextMeasurement::HorizontalExtents { left, right } => Some((left, right)),
+        _ => None,
+    }
+}
+
+fn decode_host_wrapped_with_raw_width(
+    measurement: HostTextMeasurement,
+) -> Option<(TextMetrics, Option<f64>)> {
+    match measurement {
+        HostTextMeasurement::WrappedWithRawWidth { metrics, raw_width } => {
+            Some((metrics, raw_width))
+        }
+        _ => None,
     }
 }
 
@@ -979,6 +1083,10 @@ fn valid_metrics(metrics: &TextMetrics) -> bool {
 
 fn valid_length(value: &f64) -> bool {
     value.is_finite() && *value >= 0.0
+}
+
+fn valid_signed_length(value: &f64) -> bool {
+    value.is_finite()
 }
 
 fn valid_extents(value: &(f64, f64)) -> bool {
@@ -1126,11 +1234,8 @@ impl RenderSeedSource for SystemRenderSeedSource {
         static COUNTER: AtomicU64 = AtomicU64::new(1);
 
         let counter = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos() as u64;
-        let mut mixed = time ^ counter.rotate_left(23);
+        let entropy = rand::random::<u64>();
+        let mut mixed = entropy ^ counter.rotate_left(23);
         mixed ^= mixed >> 30;
         mixed = mixed.wrapping_mul(0xbf58_476d_1ce4_e5b9);
         mixed ^= mixed >> 27;
@@ -1215,22 +1320,6 @@ pub struct ResolvedRenderSeed {
     origin: RenderSeedOrigin,
 }
 
-/// Operation-wide policy for fixture-derived root viewport overrides.
-///
-/// Families still compute their natural viewport. This policy only decides whether a matching
-/// generated override may replace that computation; the policy is frozen before parsing starts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RootViewportOverridePolicy {
-    ApplyGenerated,
-    ComputedOnly,
-}
-
-impl RootViewportOverridePolicy {
-    pub const fn applies_generated(self) -> bool {
-        matches!(self, Self::ApplyGenerated)
-    }
-}
-
 impl ResolvedRenderSeed {
     pub const fn seed(self) -> NonZeroU64 {
         self.seed
@@ -1250,7 +1339,6 @@ pub struct RenderEnvironment {
     clock: Arc<dyn RenderClock>,
     randomness: RenderRandomnessPolicy,
     resource_limits: RenderResourceLimits,
-    root_viewport_overrides: RootViewportOverridePolicy,
 }
 
 impl fmt::Debug for RenderEnvironment {
@@ -1261,7 +1349,6 @@ impl fmt::Debug for RenderEnvironment {
             .field("has_icon_registry", &self.icon_registry.is_some())
             .field("randomness", &self.randomness)
             .field("resource_limits", &self.resource_limits)
-            .field("root_viewport_overrides", &self.root_viewport_overrides)
             .finish_non_exhaustive()
     }
 }
@@ -1275,7 +1362,6 @@ impl RenderEnvironment {
             clock: Arc::new(FixedRenderClock::new(RenderTimeSnapshot::unix_epoch_utc())),
             randomness: RenderRandomnessPolicy::parity(),
             resource_limits: RenderResourceLimits::interactive(),
-            root_viewport_overrides: RootViewportOverridePolicy::ApplyGenerated,
         }
     }
 
@@ -1289,7 +1375,6 @@ impl RenderEnvironment {
             clock: Arc::new(SystemRenderClock),
             randomness: RenderRandomnessPolicy::ambient(Arc::new(SystemRenderSeedSource)),
             resource_limits: RenderResourceLimits::interactive(),
-            root_viewport_overrides: RootViewportOverridePolicy::ApplyGenerated,
         }
     }
 
@@ -1339,14 +1424,6 @@ impl RenderEnvironment {
         self
     }
 
-    pub const fn with_root_viewport_override_policy(
-        mut self,
-        policy: RootViewportOverridePolicy,
-    ) -> Self {
-        self.root_viewport_overrides = policy;
-        self
-    }
-
     /// Freezes time, ambient seed, and provenance collection exactly once per operation.
     pub fn begin_session(&self) -> Result<RenderSession, RenderTimeError> {
         let (unix_ms, offset) = self.clock.unix_millis_and_offset();
@@ -1358,7 +1435,6 @@ impl RenderEnvironment {
             time: RenderTimeSnapshot::from_unix_millis(unix_ms, offset)?,
             seed: self.randomness.resolve(),
             resource_limits: self.resource_limits,
-            root_viewport_overrides: self.root_viewport_overrides,
         })
     }
 }
@@ -1378,7 +1454,6 @@ pub struct RenderSession {
     time: RenderTimeSnapshot,
     seed: ResolvedRenderSeed,
     resource_limits: RenderResourceLimits,
-    root_viewport_overrides: RootViewportOverridePolicy,
 }
 
 impl RenderSession {
@@ -1410,10 +1485,6 @@ impl RenderSession {
         self.resource_limits
     }
 
-    pub const fn root_viewport_override_policy(&self) -> RootViewportOverridePolicy {
-        self.root_viewport_overrides
-    }
-
     pub fn math_renderer(&self) -> Option<&(dyn MathRenderer + Send + Sync)> {
         self.math_renderer.as_deref()
     }
@@ -1423,29 +1494,27 @@ impl RenderSession {
     }
 
     /// Freezes the observable policy and provenance accumulated so far.
-    pub fn report(&self) -> RenderOperationReport {
-        RenderOperationReport {
+    pub fn report(&self) -> RenderSessionReport {
+        RenderSessionReport {
             measurement_routes: self.text_measurement.routes(),
             measurement: self.measurement_recorder.report(&self.text_measurement),
             time: self.time,
             seed: self.seed,
-            root_viewport_overrides: self.root_viewport_overrides,
         }
     }
 }
 
-/// Immutable post-operation evidence safe to retain after the opaque session is consumed.
+/// Immutable environment evidence accumulated by an operation session.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RenderOperationReport {
-    measurement_routes: [TextMeasurementRoute; 5],
+pub struct RenderSessionReport {
+    measurement_routes: [TextMeasurementRoute; 4],
     measurement: TextMeasurementReport,
     time: RenderTimeSnapshot,
     seed: ResolvedRenderSeed,
-    root_viewport_overrides: RootViewportOverridePolicy,
 }
 
-impl RenderOperationReport {
-    pub fn measurement_routes(&self) -> &[TextMeasurementRoute; 5] {
+impl RenderSessionReport {
+    pub fn measurement_routes(&self) -> &[TextMeasurementRoute; 4] {
         &self.measurement_routes
     }
 
@@ -1460,16 +1529,222 @@ impl RenderOperationReport {
     pub const fn seed(&self) -> ResolvedRenderSeed {
         self.seed
     }
-
-    pub const fn root_viewport_override_policy(&self) -> RootViewportOverridePolicy {
-        self.root_viewport_overrides
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[test]
+    fn text_measurement_operations_have_stable_external_mappings() {
+        let mappings = TextMeasurementOperation::ALL
+            .map(|operation| (operation.external_code(), operation.external_name()));
+
+        assert_eq!(
+            mappings,
+            [
+                (0, "measure"),
+                (1, "computed-length"),
+                (2, "bbox-x"),
+                (3, "bbox-x-with-ascii-overhang"),
+                (4, "title-bbox-x"),
+                (5, "simple-bbox-width"),
+                (6, "raw-bbox-width"),
+                (7, "tspan-bbox-width"),
+                (8, "tspan-bbox-height"),
+                (9, "wrap-probe-bbox-width"),
+                (10, "simple-bbox-height"),
+                (11, "wrapped"),
+                (12, "wrapped-with-raw-width"),
+                (13, "bounding-client-rect-width"),
+                (14, "create-text-bbox-y-offset"),
+                (15, "mermaid-calculate-text-dimensions"),
+                (16, "canvas-measure-text-width"),
+                (17, "create-text-middle-bbox-y-offset"),
+                (18, "raw-bbox-height"),
+            ]
+        );
+    }
+
+    struct OperationAwareHost {
+        operations: Arc<Mutex<Vec<TextMeasurementOperation>>>,
+    }
+
+    impl HostTextMeasurer for OperationAwareHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            self.operations
+                .lock()
+                .expect("operation probe lock")
+                .push(request.operation);
+            match request.operation {
+                TextMeasurementOperation::ComputedLength => {
+                    Ok(Some(HostTextMeasurement::Length(73.25)))
+                }
+                TextMeasurementOperation::BoundingClientRectWidth => {
+                    Ok(Some(HostTextMeasurement::Length(91.875)))
+                }
+                TextMeasurementOperation::CreateTextBBoxYOffset => {
+                    Ok(Some(HostTextMeasurement::Length(-1.25)))
+                }
+                TextMeasurementOperation::MermaidCalculateTextDimensions => {
+                    Ok(Some(HostTextMeasurement::Metrics(metrics(82.5))))
+                }
+                TextMeasurementOperation::CanvasMeasureTextWidth => {
+                    Ok(Some(HostTextMeasurement::Length(94.25)))
+                }
+                TextMeasurementOperation::CreateTextMiddleBBoxYOffset => {
+                    Ok(Some(HostTextMeasurement::Length(-2.5)))
+                }
+                _ => Ok(None),
+            }
+        }
+    }
+
+    #[test]
+    fn host_computed_length_receives_exact_operation_and_is_authoritative() {
+        let operations = Arc::new(Mutex::new(Vec::new()));
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.operation-aware-host", "v1", &[]),
+            Arc::new(OperationAwareHost {
+                operations: Arc::clone(&operations),
+            }),
+            [TextMeasurementPhase::ComputedLength],
+            vendored_parity_profile(),
+        );
+        let session = RenderEnvironment::parity()
+            .with_text_measurement_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+
+        let length = session
+            .text_measurer(TextMeasurementPhase::Layout)
+            .measure_svg_text_computed_length_px("operation", &TextStyle::default());
+
+        assert_eq!(length, 73.25);
+        assert_eq!(
+            *operations.lock().expect("operation probe lock"),
+            [TextMeasurementOperation::ComputedLength]
+        );
+    }
+
+    #[test]
+    fn host_bounding_client_rect_width_receives_exact_operation_and_is_authoritative() {
+        let operations = Arc::new(Mutex::new(Vec::new()));
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.operation-aware-host", "v1", &[]),
+            Arc::new(OperationAwareHost {
+                operations: Arc::clone(&operations),
+            }),
+            [TextMeasurementPhase::SvgBBox],
+            vendored_parity_profile(),
+        );
+        let session = RenderEnvironment::parity()
+            .with_text_measurement_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+
+        let length = session
+            .text_measurer(TextMeasurementPhase::Layout)
+            .measure_svg_text_bounding_client_rect_width_px("operation", &TextStyle::default());
+
+        assert_eq!(length, 91.875);
+        assert_eq!(
+            *operations.lock().expect("operation probe lock"),
+            [TextMeasurementOperation::BoundingClientRectWidth]
+        );
+    }
+
+    #[test]
+    fn host_create_text_bbox_y_offset_accepts_signed_authoritative_values() {
+        let operations = Arc::new(Mutex::new(Vec::new()));
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.operation-aware-host", "v1", &[]),
+            Arc::new(OperationAwareHost {
+                operations: Arc::clone(&operations),
+            }),
+            [TextMeasurementPhase::SvgBBox],
+            vendored_parity_profile(),
+        );
+        let session = RenderEnvironment::parity()
+            .with_text_measurement_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+
+        let offset = session
+            .text_measurer(TextMeasurementPhase::Layout)
+            .measure_svg_create_text_bbox_y_offset_px("operation", &TextStyle::default());
+
+        assert_eq!(offset, -1.25);
+        assert_eq!(
+            *operations.lock().expect("operation probe lock"),
+            [TextMeasurementOperation::CreateTextBBoxYOffset]
+        );
+    }
+
+    #[test]
+    fn host_create_text_middle_bbox_y_offset_is_a_distinct_signed_operation() {
+        let operations = Arc::new(Mutex::new(Vec::new()));
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.operation-aware-host", "v1", &[]),
+            Arc::new(OperationAwareHost {
+                operations: Arc::clone(&operations),
+            }),
+            [TextMeasurementPhase::SvgBBox],
+            vendored_parity_profile(),
+        );
+        let session = RenderEnvironment::parity()
+            .with_text_measurement_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+
+        let offset = session
+            .text_measurer(TextMeasurementPhase::Layout)
+            .measure_svg_create_text_middle_bbox_y_offset_px("operation", &TextStyle::default());
+
+        assert_eq!(offset, -2.5);
+        assert_eq!(
+            *operations.lock().expect("operation probe lock"),
+            [TextMeasurementOperation::CreateTextMiddleBBoxYOffset]
+        );
+    }
+
+    #[test]
+    fn host_source_specific_width_operations_are_authoritative() {
+        let operations = Arc::new(Mutex::new(Vec::new()));
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.operation-aware-host", "v1", &[]),
+            Arc::new(OperationAwareHost {
+                operations: Arc::clone(&operations),
+            }),
+            [TextMeasurementPhase::SvgBBox, TextMeasurementPhase::Layout],
+            vendored_parity_profile(),
+        );
+        let session = RenderEnvironment::parity()
+            .with_text_measurement_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+
+        assert_eq!(
+            measurer
+                .measure_mermaid_calculate_text_dimensions("operation", &TextStyle::default())
+                .width,
+            82.5,
+        );
+        assert_eq!(
+            measurer.measure_canvas_text_width_px("operation", &TextStyle::default()),
+            94.25
+        );
+        assert_eq!(
+            *operations.lock().expect("operation probe lock"),
+            [
+                TextMeasurementOperation::MermaidCalculateTextDimensions,
+                TextMeasurementOperation::CanvasMeasureTextWidth,
+            ]
+        );
+    }
 
     fn identity(
         profile: &str,
@@ -1529,12 +1804,44 @@ mod tests {
             10.0
         }
 
+        fn measure_svg_tspan_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            10.5
+        }
+
+        fn measure_svg_tspan_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            11.5
+        }
+
+        fn measure_svg_create_text_bbox_y_offset_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            -1.25
+        }
+
+        fn measure_svg_create_text_middle_bbox_y_offset_px(
+            &self,
+            _text: &str,
+            _style: &TextStyle,
+        ) -> f64 {
+            -2.5
+        }
+
         fn measure_svg_simple_text_bbox_width_for_wrap_px(
             &self,
             _text: &str,
             _style: &TextStyle,
         ) -> f64 {
             11.0
+        }
+
+        fn measure_mermaid_calculate_text_dimensions(
+            &self,
+            _text: &str,
+            _style: &TextStyle,
+        ) -> TextMetrics {
+            metrics(11.25)
+        }
+
+        fn measure_canvas_text_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            11.75
         }
 
         fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
@@ -1559,16 +1866,6 @@ mod tests {
             _wrap_mode: WrapMode,
         ) -> (TextMetrics, Option<f64>) {
             (metrics(14.0), Some(15.0))
-        }
-
-        fn measure_wrapped_raw(
-            &self,
-            _text: &str,
-            _style: &TextStyle,
-            _max_width: Option<f64>,
-            _wrap_mode: WrapMode,
-        ) -> TextMetrics {
-            metrics(16.0)
         }
     }
 
@@ -1607,9 +1904,32 @@ mod tests {
             10.0
         );
         assert_eq!(
+            measurer.measure_svg_tspan_text_bbox_width_px("x", &style),
+            10.5
+        );
+        assert_eq!(
+            measurer.measure_svg_tspan_text_bbox_height_px("x", &style),
+            11.5
+        );
+        assert_eq!(
+            measurer.measure_svg_create_text_bbox_y_offset_px("x", &style),
+            -1.25
+        );
+        assert_eq!(
+            measurer.measure_svg_create_text_middle_bbox_y_offset_px("x", &style),
+            -2.5
+        );
+        assert_eq!(
             measurer.measure_svg_simple_text_bbox_width_for_wrap_px("x", &style),
             11.0
         );
+        assert_eq!(
+            measurer
+                .measure_mermaid_calculate_text_dimensions("x", &style)
+                .width,
+            11.25
+        );
+        assert_eq!(measurer.measure_canvas_text_width_px("x", &style), 11.75);
         assert_eq!(
             measurer.measure_svg_simple_text_bbox_height_px("x", &style),
             12.0
@@ -1626,16 +1946,9 @@ mod tests {
                 .1,
             Some(15.0)
         );
-        assert_eq!(
-            measurer
-                .measure_wrapped_raw("x", &style, Some(10.0), WrapMode::HtmlLike)
-                .width,
-            16.0
-        );
-
         let route = session.text_measurement_route(TextMeasurementPhase::SvgBBox);
         assert_eq!(route.primary, profile_identity);
-        assert_eq!(session.text_measurement_report().entries().len(), 12);
+        assert_eq!(session.text_measurement_report().entries().len(), 17);
     }
 
     #[test]
@@ -1667,6 +1980,7 @@ mod tests {
     #[derive(Clone)]
     enum HostOutcome {
         Measured(TextMetrics),
+        Length(f64),
         Missing,
         Error,
     }
@@ -1677,15 +1991,11 @@ mod tests {
     }
 
     impl HostTextMeasurer for CountingHost {
-        fn measure(
-            &self,
-            _phase: TextMeasurementPhase,
-            _text: &str,
-            _style: &TextStyle,
-        ) -> HostMeasurementResult<TextMetrics> {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
             self.calls.fetch_add(1, Ordering::Relaxed);
             match self.outcome {
-                HostOutcome::Measured(metrics) => Ok(Some(metrics)),
+                HostOutcome::Measured(metrics) => Ok(Some(HostTextMeasurement::Metrics(metrics))),
+                HostOutcome::Length(length) => Ok(Some(HostTextMeasurement::Length(length))),
                 HostOutcome::Missing => Ok(None),
                 HostOutcome::Error => Err(HostTextMeasurementError::new("host failed")),
             }
@@ -1734,6 +2044,11 @@ mod tests {
         let scenarios = [
             (HostOutcome::Measured(metrics(73.0)), None, 73.0),
             (
+                HostOutcome::Length(73.0),
+                Some(HostFallbackReason::Invalid),
+                41.0,
+            ),
+            (
                 HostOutcome::Missing,
                 Some(HostFallbackReason::Missing),
                 41.0,
@@ -1775,12 +2090,67 @@ mod tests {
         }
     }
 
+    struct StyleCapturingHost {
+        observed_font_style: Arc<Mutex<Option<String>>>,
+    }
+
+    impl HostTextMeasurer for StyleCapturingHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation != TextMeasurementOperation::Wrapped {
+                return Ok(None);
+            }
+            *self
+                .observed_font_style
+                .lock()
+                .expect("font style probe lock") = request.style.font_style.clone();
+            Ok(Some(HostTextMeasurement::Metrics(metrics(73.25))))
+        }
+    }
+
     #[test]
-    fn specialized_host_operation_derives_from_the_phase_aware_measurement() {
+    fn host_success_receives_italic_style_without_fallback_adjustment() {
+        let observed_font_style = Arc::new(Mutex::new(None));
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let fallback = TextMeasurementProfile::new(
+            identity("test.italic-fallback", "v1", &[]),
+            Arc::new(CountingFallback(Arc::clone(&fallback_calls))),
+        );
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.italic-host", "v1", &[]),
+            Arc::new(StyleCapturingHost {
+                observed_font_style: Arc::clone(&observed_font_style),
+            }),
+            [TextMeasurementPhase::Wrap],
+            fallback,
+        );
+        let environment = RenderEnvironment::parity().with_text_measurement_policy(policy);
+        let session = environment.begin_session().expect("begin render session");
+        let style = TextStyle {
+            font_style: Some("italic".to_string()),
+            ..TextStyle::default()
+        };
+
+        let measured = session
+            .text_measurer(TextMeasurementPhase::Layout)
+            .measure_wrapped("italic label", &style, Some(200.0), WrapMode::HtmlLike);
+
+        assert_eq!(measured.width, 73.25);
+        assert_eq!(
+            observed_font_style
+                .lock()
+                .expect("font style probe lock")
+                .as_deref(),
+            Some("italic")
+        );
+        assert_eq!(fallback_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn operation_specific_length_is_authoritative_and_invalid_lengths_fallback() {
         let host_calls = Arc::new(AtomicUsize::new(0));
         let fallback_calls = Arc::new(AtomicUsize::new(0));
         let environment = RenderEnvironment::parity().with_text_measurement_policy(host_policy(
-            HostOutcome::Measured(metrics(73.0)),
+            HostOutcome::Length(73.0),
             &host_calls,
             &fallback_calls,
         ));
@@ -1805,28 +2175,12 @@ mod tests {
         );
         assert_eq!(report.entries()[0].provenance().fallback_reason, None);
 
-        for invalid_metrics in [
-            TextMetrics {
-                width: -1.0,
-                height: 10.0,
-                line_count: 1,
-            },
-            TextMetrics {
-                width: f64::NAN,
-                height: 10.0,
-                line_count: 1,
-            },
-            TextMetrics {
-                width: 10.0,
-                height: 10.0,
-                line_count: 0,
-            },
-        ] {
+        for invalid_length in [-1.0, f64::NAN] {
             let host_calls = Arc::new(AtomicUsize::new(0));
             let fallback_calls = Arc::new(AtomicUsize::new(0));
             let environment =
                 RenderEnvironment::parity().with_text_measurement_policy(host_policy(
-                    HostOutcome::Measured(invalid_metrics),
+                    HostOutcome::Length(invalid_length),
                     &host_calls,
                     &fallback_calls,
                 ));
@@ -1855,23 +2209,15 @@ mod tests {
     }
 
     impl HostTextMeasurer for ExtentHost {
-        fn measure(
-            &self,
-            _phase: TextMeasurementPhase,
-            _text: &str,
-            _style: &TextStyle,
-        ) -> HostMeasurementResult<TextMetrics> {
-            Ok(None)
-        }
-
-        fn measure_svg_text_bbox_x(
-            &self,
-            _phase: TextMeasurementPhase,
-            _text: &str,
-            _style: &TextStyle,
-        ) -> HostMeasurementResult<(f64, f64)> {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation != TextMeasurementOperation::BBoxX {
+                return Ok(None);
+            }
             self.calls.fetch_add(1, Ordering::Relaxed);
-            Ok(Some(self.value))
+            Ok(Some(HostTextMeasurement::HorizontalExtents {
+                left: self.value.0,
+                right: self.value.1,
+            }))
         }
     }
 
@@ -2046,8 +2392,7 @@ mod tests {
             )))
             .with_math_renderer(Arc::new(crate::math::NoopMathRenderer))
             .with_icon_registry(Arc::new(IconRegistry::new()))
-            .with_resource_limits(limits)
-            .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly);
+            .with_resource_limits(limits);
 
         let session = environment.begin_session().expect("begin render session");
         assert_eq!(session.time().unix_ms(), 0);
@@ -2055,16 +2400,8 @@ mod tests {
         assert_eq!(session.seed().seed(), NonZeroU64::new(77).unwrap());
         assert_eq!(session.seed().origin(), RenderSeedOrigin::Ambient);
         assert_eq!(session.resource_limits(), limits);
-        assert_eq!(
-            session.root_viewport_override_policy(),
-            RootViewportOverridePolicy::ComputedOnly
-        );
         assert!(session.math_renderer().is_some());
         assert!(session.icon_registry().is_some());
-        assert_eq!(
-            session.report().root_viewport_override_policy(),
-            RootViewportOverridePolicy::ComputedOnly
-        );
 
         assert_eq!(session.seed().seed(), NonZeroU64::new(77).unwrap());
         assert_eq!(clock_calls.load(Ordering::Relaxed), 1);

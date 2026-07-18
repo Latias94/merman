@@ -67,24 +67,20 @@ pub(crate) fn render_sankey_diagram_svg(
     .with_max_width(root_svg::RootMaxWidth::SvgNumber(vb_w));
 
     let mut out = String::new();
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Sankey,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        &mut out,
-        root_spec,
-        root_svg::RootChrome {
-            dom: root_svg::RootDomProfile {
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                trailing_newline: false,
-                ..Default::default()
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Sankey, diagram_id)
+        .write_open(
+            &mut out,
+            root_spec,
+            root_svg::RootChrome {
+                dom: root_svg::RootDomProfile {
+                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                    trailing_newline: false,
+                    ..Default::default()
+                },
+                ..root_svg::RootChrome::new(diagram_id, "sankey")
             },
-            ..root_svg::RootChrome::new(diagram_id, "sankey")
-        },
-    )?;
+        )?;
     let _ = write!(
         &mut out,
         "<style>{}</style>",

@@ -18,7 +18,7 @@ use super::model::*;
 const MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED: &str = r#"<defs><marker id="solidTopArrowHead" refX="7.9" refY="7.25" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 8 L 0 8 z"/></marker></defs><defs><marker id="solidBottomArrowHead" refX="7.9" refY="0.75" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 10 0 L 0 8 z"/></marker></defs><defs><marker id="stickTopArrowHead" refX="7.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 0 L 7 7" stroke="black" stroke-width="1.5" fill="none"/></marker></defs><defs><marker id="stickBottomArrowHead" refX="7.5" refY="0" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto-start-reverse"><path d="M 0 7 L 7 0" stroke="black" stroke-width="1.5" fill="none"/></marker></defs>"#;
 
 fn scoped_sequence_base_defs(diagram_id: &str) -> String {
-    let mut defs = MERMAID_SEQUENCE_BASE_DEFS_11_12_2.to_string();
+    let mut defs = PINNED_MERMAID_SEQUENCE_BASE_DEFS.to_string();
     defs.push_str(MERMAID_SEQUENCE_EXTRA_MARKER_DEFS_PINNED);
     for local_id in [
         "computer",
@@ -43,7 +43,7 @@ fn scoped_sequence_base_defs(diagram_id: &str) -> String {
     defs
 }
 
-pub(super) fn render_sequence_diagram_svg_model_with_config(
+pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     effective_config: &merman_core::MermaidConfig,
@@ -78,13 +78,7 @@ fn render_sequence_diagram_svg_inner(
 
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
     let mut out = String::new();
-    let root_metrics = write_sequence_svg_root_open(
-        &mut out,
-        layout,
-        model,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )?;
+    let root_metrics = write_sequence_svg_root_open(&mut out, layout, model, diagram_id)?;
 
     let mut nodes_by_id: FxHashMap<&str, &LayoutNode> =
         FxHashMap::with_capacity_and_hasher(layout.nodes.len(), Default::default());

@@ -27,6 +27,8 @@ ANDROID_WRAPPER_CLASSES = [
     "io/merman/MermanException.class",
     "io/merman/MermanTextMeasureRequest.class",
     "io/merman/MermanTextMeasureResult.class",
+    "io/merman/MermanTextMeasurementOperation.class",
+    "io/merman/MermanTextMeasurementResultKind.class",
     "io/merman/MermanTextMeasurer.class",
 ]
 FLUTTER_JAR_OUT = REPO_ROOT / "target" / "platforms" / "flutter" / "merman-flutter-android-plugin.jar"

@@ -1,0 +1,405 @@
+{
+  "diagramType": "wardley",
+  "layout": {
+    "WardleyDiagram": {
+      "width": 1100.0,
+      "height": 800.0,
+      "use_max_width": true,
+      "padding": 48.0,
+      "chart_width": 1004.0,
+      "chart_height": 704.0,
+      "node_radius": 6.0,
+      "node_label_offset": 8.0,
+      "axis_font_size": 12.0,
+      "label_font_size": 10.0,
+      "square_size": 9.6,
+      "title": {
+        "text": "Theme Test - forest",
+        "x": 550.0,
+        "y": 24.0,
+        "font_size": 12.6,
+        "font_weight": "bold",
+        "text_anchor": "middle",
+        "dominant_baseline": "middle",
+        "rotation": null
+      },
+      "axes": {
+        "x_axis": {
+          "x1": 48.0,
+          "y1": 752.0,
+          "x2": 1052.0,
+          "y2": 752.0
+        },
+        "y_axis": {
+          "x1": 48.0,
+          "y1": 48.0,
+          "x2": 48.0,
+          "y2": 752.0
+        },
+        "x_label": {
+          "text": "Evolution",
+          "x": 550.0,
+          "y": 788.0,
+          "font_size": 12.0,
+          "font_weight": "bold",
+          "text_anchor": "middle",
+          "dominant_baseline": null,
+          "rotation": null
+        },
+        "y_label": {
+          "text": "Visibility",
+          "x": 16.0,
+          "y": 400.0,
+          "font_size": 12.0,
+          "font_weight": "bold",
+          "text_anchor": "middle",
+          "dominant_baseline": null,
+          "rotation": {
+            "degrees": -90.0,
+            "cx": 16.0,
+            "cy": 400.0
+          }
+        }
+      },
+      "stages": [
+        {
+          "name": "Genesis",
+          "start_x": 48.0,
+          "end_x": 299.0,
+          "label": {
+            "text": "Genesis",
+            "x": 173.5,
+            "y": 768.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          },
+          "divider": null
+        },
+        {
+          "name": "Custom Built",
+          "start_x": 299.0,
+          "end_x": 550.0,
+          "label": {
+            "text": "Custom Built",
+            "x": 424.5,
+            "y": 768.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          },
+          "divider": {
+            "x1": 299.0,
+            "y1": 48.0,
+            "x2": 299.0,
+            "y2": 752.0
+          }
+        },
+        {
+          "name": "Product",
+          "start_x": 550.0,
+          "end_x": 801.0,
+          "label": {
+            "text": "Product",
+            "x": 675.5,
+            "y": 768.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          },
+          "divider": {
+            "x1": 550.0,
+            "y1": 48.0,
+            "x2": 550.0,
+            "y2": 752.0
+          }
+        },
+        {
+          "name": "Commodity",
+          "start_x": 801.0,
+          "end_x": 1052.0,
+          "label": {
+            "text": "Commodity",
+            "x": 926.5,
+            "y": 768.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          },
+          "divider": {
+            "x1": 801.0,
+            "y1": 48.0,
+            "x2": 801.0,
+            "y2": 752.0
+          }
+        }
+      ],
+      "grid": [],
+      "pipeline_boxes": [],
+      "pipeline_links": [],
+      "links": [
+        {
+          "source": "User",
+          "target": "App",
+          "line": {
+            "x1": 897.017,
+            "y1": 87.298,
+            "x2": 755.183,
+            "y2": 219.902
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "App",
+          "target": "API",
+          "line": {
+            "x1": 746.417,
+            "y1": 228.098,
+            "x2": 604.583,
+            "y2": 360.702
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "API",
+          "target": "Database",
+          "line": {
+            "x1": 601.846,
+            "y1": 370.57,
+            "x2": 648.754,
+            "y2": 535.03
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "API",
+          "target": "Cache",
+          "line": {
+            "x1": 594.357,
+            "y1": 366.166,
+            "x2": 455.443,
+            "y2": 398.634
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        }
+      ],
+      "trends": [
+        {
+          "node_id": "Database",
+          "origin": {
+            "x": 650.4,
+            "y": 540.8
+          },
+          "target": {
+            "x": 851.2,
+            "y": 540.8
+          },
+          "line": {
+            "x1": 650.4,
+            "y1": 540.8,
+            "x2": 843.2,
+            "y2": 540.8
+          }
+        }
+      ],
+      "nodes": [
+        {
+          "id": "User",
+          "label": "User",
+          "class_name": "anchor",
+          "position": {
+            "x": 901.4,
+            "y": 83.2
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "anchor"
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "User",
+            "x": 901.4,
+            "y": 80.2,
+            "font_size": 10.0,
+            "font_weight": "bold",
+            "text_anchor": "middle",
+            "dominant_baseline": "middle",
+            "rotation": null
+          }
+        },
+        {
+          "id": "App",
+          "label": "App",
+          "class_name": "component",
+          "position": {
+            "x": 750.8,
+            "y": 224.0
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 750.8,
+                "y": 224.0
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "App",
+            "x": 758.8,
+            "y": 216.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "API",
+          "label": "API",
+          "class_name": "component",
+          "position": {
+            "x": 600.2,
+            "y": 364.8
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 600.2,
+                "y": 364.8
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "API",
+            "x": 608.2,
+            "y": 356.8,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "Database",
+          "label": "Database",
+          "class_name": "component",
+          "position": {
+            "x": 650.4,
+            "y": 540.8
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 650.4,
+                "y": 540.8
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "Database",
+            "x": 658.4,
+            "y": 532.8,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "Cache",
+          "label": "Cache",
+          "class_name": "component",
+          "position": {
+            "x": 449.6,
+            "y": 400.0
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 449.6,
+                "y": 400.0
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "Cache",
+            "x": 457.6,
+            "y": 392.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        }
+      ],
+      "annotations": [],
+      "annotations_box": null,
+      "notes": [],
+      "accelerators": [],
+      "deaccelerators": []
+    }
+  }
+}

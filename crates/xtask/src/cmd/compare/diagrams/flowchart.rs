@@ -2,14 +2,14 @@
 
 use crate::XtaskError;
 use crate::cmd::compare::{
-    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunOptions,
-    DEFAULT_LABEL_DELTA_REPORT_LIMIT, DEFAULT_ROOT_DELTA_REPORT_LIMIT, DiagramVerificationFact,
-    LabelDeltaReportLimit, LabelMetricDelta, ObservedRenderOperations, RootDelta,
-    RootDeltaReportLimit, collect_label_metric_deltas, compare_render_environment,
-    parse_label_delta_report_limit, parse_root_attrs, parse_root_delta_report_limit,
-    run_svg_compare, sanitize_svg_id, svg_compare_engine_with_site_config,
-    write_compare_result_section, write_label_deltas_report, write_notes_section,
-    write_root_deltas_report, write_verification_policy_metadata,
+    CompareFixtureResult, CompareHarnessOptions, CompareRequest, CompareRunFailure,
+    CompareRunOptions, CompareRunResult, DEFAULT_LABEL_DELTA_REPORT_LIMIT,
+    DEFAULT_ROOT_DELTA_REPORT_LIMIT, DiagramVerificationFact, LabelDeltaReportLimit,
+    LabelMetricDelta, ObservedRenderOperations, RootDelta, RootDeltaReportLimit,
+    collect_label_metric_deltas, parse_label_delta_report_limit, parse_root_attrs,
+    parse_root_delta_report_limit, run_svg_compare, sanitize_svg_id,
+    svg_compare_engine_with_site_config, write_compare_result_section, write_label_deltas_report,
+    write_notes_section, write_root_deltas_report, write_verification_policy_metadata,
 };
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
@@ -71,17 +71,12 @@ pub(super) fn compare_flowchart_args(
     let mut check_dom: bool = false;
     let mut report_root: bool = false;
     let mut root_report_limit = DEFAULT_ROOT_DELTA_REPORT_LIMIT;
-    let mut report_root_pins_only: bool = false;
     let mut report_label: bool = false;
     let mut label_report_limit = DEFAULT_LABEL_DELTA_REPORT_LIMIT;
-    let mut report_label_root_pins_only: bool = false;
     let mut dom_decimals: u32 = 3;
     let mut dom_mode = fact.default_dom_mode.to_string();
     let mut text_measurer: String = "vendored".to_string();
-    let mut apply_root_overrides: bool = true;
-    let mut include_elk_probes: bool = false;
     let mut force_elk_fixture: bool = false;
-    let mut flowchart_elk_backend = crate::cmd::default_flowchart_elk_backend();
 
     let mut i = 0;
     while i < args.len() {
@@ -104,19 +99,11 @@ pub(super) fn compare_flowchart_args(
             }
             "--check-dom" => check_dom = true,
             "--report-root" => report_root = true,
-            "--report-root-pins-only" => {
-                report_root = true;
-                report_root_pins_only = true;
-            }
             "--report-root-all" => {
                 report_root = true;
                 root_report_limit = RootDeltaReportLimit::All;
             }
             "--report-label" => report_label = true,
-            "--report-label-root-pins-only" => {
-                report_label = true;
-                report_label_root_pins_only = true;
-            }
             "--report-label-all" => {
                 report_label = true;
                 label_report_limit = LabelDeltaReportLimit::All;
@@ -150,13 +137,6 @@ pub(super) fn compare_flowchart_args(
                     .map(|s| s.trim().to_ascii_lowercase())
                     .unwrap_or_else(|| "deterministic".to_string());
             }
-            "--flowchart-elk-backend" => {
-                i += 1;
-                flowchart_elk_backend =
-                    crate::cmd::parse_flowchart_elk_backend(args.get(i).map(String::as_str))?;
-            }
-            "--no-root-overrides" => apply_root_overrides = false,
-            "--include-elk-probes" => include_elk_probes = true,
             "--force-elk-fixture" => force_elk_fixture = true,
             "--help" | "-h" => return Err(XtaskError::Usage),
             _ => return Err(XtaskError::Usage),
@@ -175,37 +155,32 @@ pub(super) fn compare_flowchart_args(
                 dom_decimals: Some(dom_decimals),
                 report_root,
                 root_report_limit: Some(root_report_limit),
-                apply_root_overrides,
                 flowchart_text_measurer: Some(text_measurer),
-                flowchart_elk_backend: Some(flowchart_elk_backend),
-                include_elk_probes,
                 ..CompareRequest::default()
             },
             fixtures_root: fixtures_root_arg,
             upstream_root: upstream_root_arg,
-            report_root_pins_only,
             report_label,
             label_report_limit,
-            report_label_root_pins_only,
             force_elk_fixture,
         },
     )
+    .map(|_| ())
+    .map_err(CompareRunFailure::into_error)
 }
 
 pub(super) fn compare_flowchart_request(
     fact: DiagramVerificationFact,
     request: CompareRequest,
-) -> Result<(), XtaskError> {
+) -> CompareRunResult {
     run_flowchart_compare(
         fact,
         FlowchartCompareRequest {
             common: request,
             fixtures_root: None,
             upstream_root: None,
-            report_root_pins_only: false,
             report_label: false,
             label_report_limit: DEFAULT_LABEL_DELTA_REPORT_LIMIT,
-            report_label_root_pins_only: false,
             force_elk_fixture: false,
         },
     )
@@ -215,25 +190,21 @@ struct FlowchartCompareRequest {
     common: CompareRequest,
     fixtures_root: Option<PathBuf>,
     upstream_root: Option<PathBuf>,
-    report_root_pins_only: bool,
     report_label: bool,
     label_report_limit: LabelDeltaReportLimit,
-    report_label_root_pins_only: bool,
     force_elk_fixture: bool,
 }
 
 fn run_flowchart_compare(
     fact: DiagramVerificationFact,
     request: FlowchartCompareRequest,
-) -> Result<(), XtaskError> {
+) -> CompareRunResult {
     let FlowchartCompareRequest {
         common,
         fixtures_root: fixtures_root_arg,
         upstream_root: upstream_root_arg,
-        report_root_pins_only,
         report_label,
         label_report_limit,
-        report_label_root_pins_only,
         force_elk_fixture,
     } = request;
     let out_path = common.out_path.clone();
@@ -252,53 +223,39 @@ fn run_flowchart_compare(
         .flowchart_text_measurer
         .clone()
         .unwrap_or_else(|| "vendored".to_string());
-    let include_elk_probes = common.include_elk_probes;
-    let flowchart_elk_backend = common
-        .flowchart_elk_backend
-        .unwrap_or_else(crate::cmd::default_flowchart_elk_backend);
-
-    if force_elk_fixture
-        && flowchart_elk_backend != merman_render::FlowchartElkBackend::SourcePorted
-    {
-        return Err(XtaskError::SvgCompareFailed(
-            "`--force-elk-fixture` requires `--flowchart-elk-backend source-ported`".to_string(),
-        ));
-    }
 
     let should_report_root =
         report_root || matches!(dom_mode.trim(), "parity-root" | "parity_root");
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
-    let mut layout_opts = merman_render::LayoutOptions::default();
+    let layout_opts = merman_render::LayoutOptions::default();
     let tools_root = crate::cmd::mermaid_cli_root();
-    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
+    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)
+        .map_err(CompareRunFailure::without_evidence)?;
     let flowchart_math_renderer = toolchain_read_guard.node_katex_math_renderer();
-    layout_opts.flowchart_elk_backend = flowchart_elk_backend;
     let text_measurement = match text_measurer.as_str() {
         "vendored" | "vendored-font" | "vendored-font-metrics" => {
             merman::render::TextMeasurementPolicy::parity()
         }
         "deterministic" => merman::render::TextMeasurementPolicy::deterministic(),
         other => {
-            return Err(XtaskError::SvgCompareFailed(format!(
-                "unsupported Flowchart text measurer: {other}"
-            )));
+            return Err(CompareRunFailure::without_evidence(
+                XtaskError::SvgCompareFailed(format!(
+                    "unsupported Flowchart text measurer: {other}"
+                )),
+            ));
         }
     };
     let mut environment =
-        compare_render_environment(&common).with_text_measurement_policy(text_measurement);
+        merman::render::RenderEnvironment::parity().with_text_measurement_policy(text_measurement);
     if let Some(renderer) = flowchart_math_renderer.clone() {
         environment = environment.with_math_renderer(renderer);
     }
-    let observed_operations = ObservedRenderOperations::from_environment(&environment)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment)
+        .map_err(CompareRunFailure::without_evidence)?;
     let mut state = FlowchartCompareState {
         root_deltas: Vec::new(),
         label_deltas: Vec::new(),
         observed_operations,
-        root_pin_ids: if report_label || report_label_root_pins_only || report_root_pins_only {
-            collect_flowchart_root_pin_ids()
-        } else {
-            BTreeSet::new()
-        },
     };
 
     run_svg_compare(
@@ -320,7 +277,7 @@ fn run_flowchart_compare(
             write_flowchart_upstream_metadata(report, &paths.upstream_dir, options.filter);
             let _ = writeln!(
                 report,
-                "- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Flowchart ELK backend: `{}`\n- Forced ELK fixtures: `{}`\n- Root rows: `{}`\n- Label rows: `{}`\n",
+                "- Command: `{}`\n- Mode: `{}`\n- Decimals: `{}`\n- Text measurer: `{}`\n- Math renderer: `{}`\n- Forced ELK fixtures: `{}`\n",
                 fact.command,
                 options.dom_mode,
                 options.dom_decimals,
@@ -330,21 +287,10 @@ fn run_flowchart_compare(
                 } else {
                     "none"
                 },
-                crate::cmd::flowchart_elk_backend_name(flowchart_elk_backend),
                 if force_elk_fixture {
                     "enabled"
                 } else {
                     "disabled"
-                },
-                if report_root_pins_only {
-                    "root-pins-only"
-                } else {
-                    "all fixtures"
-                },
-                if report_label_root_pins_only {
-                    "root-pins-only"
-                } else {
-                    "all fixtures"
                 }
             );
             write_verification_policy_metadata(
@@ -406,24 +352,14 @@ fn run_flowchart_compare(
                     .effective_config
                     .get_str("flowchart.defaultRenderer")
                     == Some("elk");
-            if semantic.metadata().diagram_type == "flowchart-elk" || flowchart_layout_elk {
-                let admitted = crate::cmd::flowchart_elk_svg_compare_admitted(
-                    input.stem,
-                    include_elk_probes,
-                    flowchart_elk_backend,
-                );
-                if !admitted
-                    && !force_elk_fixture
-                    && let Some(reason) = crate::cmd::flowchart_elk_svg_compare_skip_reason(
-                        input.stem,
-                        include_elk_probes,
-                        flowchart_elk_backend,
-                    )
-                {
-                    return Ok(CompareFixtureResult::Skipped {
-                        reason: reason.to_string(),
-                    });
-                }
+            if (semantic.metadata().diagram_type == "flowchart-elk" || flowchart_layout_elk)
+                && !crate::cmd::flowchart_elk_svg_parity_admitted(input.stem)
+                && !force_elk_fixture
+                && let Some(reason) = crate::cmd::flowchart_elk_svg_parity_skip_reason(input.stem)
+            {
+                return Ok(CompareFixtureResult::Skipped {
+                    reason: reason.to_string(),
+                });
             }
 
             let prepared = match semantic.continue_layout() {
@@ -446,7 +382,6 @@ fn run_flowchart_compare(
 
             let svg_opts = merman_render::svg::SvgRenderOptions {
                 diagram_id: Some(diagram_id),
-                aria_roledescription: Some(prepared.metadata().diagram_type.clone()),
                 ..Default::default()
             };
 
@@ -459,20 +394,14 @@ fn run_flowchart_compare(
                     ));
                 }
             };
-            state
+            let render_evidence = state
                 .observed_operations
                 .observe(input.stem, rendered.report())?;
             let local_svg = rendered.into_svg();
 
-            let root_pinned = state.root_pin_ids.contains(input.stem);
             let mut issues = Vec::new();
-            if report_label && (!report_label_root_pins_only || root_pinned) {
-                match collect_label_metric_deltas(
-                    input.stem,
-                    input.upstream_svg,
-                    &local_svg,
-                    root_pinned,
-                ) {
+            if report_label {
+                match collect_label_metric_deltas(input.stem, input.upstream_svg, &local_svg) {
                     Ok(mut rows) => state.label_deltas.append(&mut rows),
                     Err(e) => {
                         issues.push(format!("label metric parse failed for {}: {e}", input.stem))
@@ -480,7 +409,7 @@ fn run_flowchart_compare(
                 }
             }
 
-            if should_report_root && (!report_root_pins_only || root_pinned) {
+            if should_report_root {
                 match (
                     parse_root_attrs(input.upstream_svg),
                     parse_root_attrs(&local_svg),
@@ -515,6 +444,7 @@ fn run_flowchart_compare(
             }
 
             Ok(CompareFixtureResult::Rendered {
+                render_evidence,
                 local_svg,
                 compare_dom: !skip_dom_compare_for_math,
                 issues,
@@ -540,12 +470,9 @@ struct FlowchartCompareState {
     root_deltas: Vec<RootDelta>,
     label_deltas: Vec<LabelMetricDelta>,
     observed_operations: ObservedRenderOperations,
-    root_pin_ids: BTreeSet<String>,
 }
 
-pub(crate) fn check_flowchart_elk_source_backed_probes(
-    args: Vec<String>,
-) -> Result<(), XtaskError> {
+pub(crate) fn check_flowchart_elk_parity(args: Vec<String>) -> Result<(), XtaskError> {
     if !args.is_empty() {
         return Err(XtaskError::Usage);
     }
@@ -554,19 +481,16 @@ pub(crate) fn check_flowchart_elk_source_backed_probes(
         .copied()
         .expect("Flowchart must have a verification fact");
     let mut failures = Vec::new();
-    for stem in crate::cmd::flowchart_elk_svg_source_backed_probe_stems() {
+    for stem in crate::cmd::flowchart_elk_svg_parity_stems() {
         let out_path = crate::cmd::target_root()
             .join("compare")
-            .join("flowchart_elk_source_backed")
+            .join("flowchart_elk_parity")
             .join(format!("{stem}.md"));
         let result = compare_flowchart_args(
             fact,
             vec![
                 "--filter".to_string(),
                 (*stem).to_string(),
-                "--include-elk-probes".to_string(),
-                "--flowchart-elk-backend".to_string(),
-                "source-ported".to_string(),
                 "--check-dom".to_string(),
                 "--dom-mode".to_string(),
                 "parity".to_string(),
@@ -588,9 +512,7 @@ pub(crate) fn check_flowchart_elk_source_backed_probes(
     }
 }
 
-pub(crate) fn audit_flowchart_elk_source_backed_coverage(
-    args: Vec<String>,
-) -> Result<(), XtaskError> {
+pub(crate) fn audit_flowchart_elk_parity_coverage(args: Vec<String>) -> Result<(), XtaskError> {
     if !args.is_empty() {
         return Err(XtaskError::Usage);
     }
@@ -612,7 +534,7 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
         .join("flowchart");
 
     let cases = collect_flowchart_elk_spec_snapshot_cases(&spec)?;
-    let admitted = crate::cmd::flowchart_elk_svg_source_backed_probe_stems();
+    let admitted = crate::cmd::flowchart_elk_svg_parity_stems();
     let mut admitted_layout_body_keys: BTreeMap<String, String> = BTreeMap::new();
     for stem in admitted {
         let fixture_path = fixture_dir.join(format!("{stem}.mmd"));
@@ -686,17 +608,17 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
     let uncovered_layout_body_count =
         unique_layout_body_keys.len() - covered_layout_body_keys.len();
 
-    println!("Flowchart ELK source-backed coverage");
+    println!("Flowchart ELK parity coverage");
     println!("spec: {}", spec_path.display());
     let duplicate_covered_count = duplicate_covered.len();
     println!("ELK render calls: {}", cases.len());
     println!(
-        "exact render calls covered by admitted probes or duplicate layout bodies: {}",
+        "exact render calls covered by parity fixtures or duplicate layout bodies: {}",
         admitted_count + duplicate_covered_count
     );
     println!("dedicated fixtures present: {fixture_count}");
     println!("dedicated upstream SVGs present: {upstream_svg_count}");
-    println!("source-backed admitted fixtures: {admitted_count}");
+    println!("canonical parity fixtures: {admitted_count}");
     println!(
         "dedicated fixture gaps covered by duplicate layout body: {}",
         missing
@@ -717,7 +639,7 @@ pub(crate) fn audit_flowchart_elk_source_backed_coverage(
     );
     println!("unique layout bodies: {}", unique_layout_body_keys.len());
     println!(
-        "unique layout bodies covered by admitted probes: {}",
+        "unique layout bodies covered by parity fixtures: {}",
         covered_layout_body_keys.len()
     );
     println!("uncovered unique layout bodies: {uncovered_layout_body_count}");
@@ -1220,24 +1142,6 @@ fn strip_flowchart_elk_yaml_frontmatter(input: &str) -> &str {
     input
 }
 
-fn collect_flowchart_root_pin_ids() -> std::collections::BTreeSet<String> {
-    let path = crate::cmd::workspace_root()
-        .join("crates")
-        .join("merman-render")
-        .join("src")
-        .join("generated")
-        .join("flowchart_root_overrides_11_12_2.rs");
-    let Ok(src) = fs::read_to_string(path) else {
-        return std::collections::BTreeSet::new();
-    };
-    let Ok(re) = Regex::new(r#""((?:stress|upstream)_[^"]+)""#) else {
-        return std::collections::BTreeSet::new();
-    };
-    re.captures_iter(&src)
-        .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_string()))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1304,17 +1208,15 @@ mod tests {
     }
 
     #[test]
-    fn source_backed_elk_admission_matches_html_demo_fixture() {
+    fn flowchart_elk_parity_admission_matches_html_demo_fixture() {
         let out_path = crate::cmd::target_root()
             .join("compare")
             .join("xtask-tests")
-            .join("flowchart_elk_demo_probe_sourceported.md");
+            .join("flowchart_elk_demo_parity.md");
 
         compare_flowchart(vec![
             "--filter".to_string(),
             "upstream_html_demos_flowchart_elk_flowchart_elk_001".to_string(),
-            "--flowchart-elk-backend".to_string(),
-            "source-ported".to_string(),
             "--check-dom".to_string(),
             "--dom-mode".to_string(),
             "parity".to_string(),
@@ -1323,14 +1225,14 @@ mod tests {
             "--out".to_string(),
             out_path.display().to_string(),
         ])
-        .expect("source-backed ELK admission should match the pinned HTML demo fixture");
+        .expect("ELK parity admission should match the pinned HTML demo fixture");
 
         let report = std::fs::read_to_string(&out_path).expect("probe report should be written");
         assert!(report.contains("All fixtures matched."));
     }
 
     #[test]
-    fn default_flowchart_elk_backend_allows_forced_fixture_diagnostics() {
+    fn forced_flowchart_elk_fixture_diagnostics_use_the_canonical_layout() {
         let out_path = crate::cmd::target_root()
             .join("compare")
             .join("xtask-tests")
@@ -1343,25 +1245,11 @@ mod tests {
             "--out".to_string(),
             out_path.display().to_string(),
         ])
-        .expect("forced ELK fixture diagnostics should use the default source-backed backend");
+        .expect("forced ELK fixture diagnostics should use the canonical ELK layout");
 
         let report = std::fs::read_to_string(&out_path).expect("forced report should be written");
-        assert!(report.contains("- Flowchart ELK backend: `source-ported`"));
-    }
-
-    #[test]
-    fn forced_elk_fixtures_reject_explicit_compat_backend() {
-        let err = compare_flowchart(vec![
-            "--force-elk-fixture".to_string(),
-            "--flowchart-elk-backend".to_string(),
-            "compat".to_string(),
-        ])
-        .expect_err("forced ELK fixture diagnostics should not run on the compat backend");
-
-        assert!(
-            err.to_string()
-                .contains("`--force-elk-fixture` requires `--flowchart-elk-backend source-ported`")
-        );
+        assert!(report.contains("- Forced ELK fixtures: `enabled`"));
+        assert!(!report.contains("Flowchart ELK backend"));
     }
 
     #[test]

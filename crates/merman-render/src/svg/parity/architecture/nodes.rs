@@ -1,8 +1,7 @@
 use std::fmt::Write as _;
 
-use crate::architecture_metrics::ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX;
 use crate::model::Bounds;
-use crate::text::{TextMeasurer, WrapMode};
+use crate::text::TextMeasurer;
 
 use super::super::{escape_xml_into, fmt};
 use super::foreign_object::{
@@ -13,8 +12,8 @@ use super::icons::{
     arch_icon_needs_id_scope, write_arch_icon_svg, write_arch_icon_svg_with_registry,
 };
 use super::labels::{
-    plain_ascii_words_single_line_width, svg_line_plain_text, wrap_svg_words_to_lines,
-    write_architecture_service_title, write_svg_plain_ascii_words_text_line, write_svg_text_lines,
+    svg_line_tspan_bbox_width_px, wrap_svg_words_to_lines, write_architecture_service_title,
+    write_svg_text_lines,
 };
 use super::model::ArchitectureModelAccess;
 use super::settings::ArchitectureRenderSettings;
@@ -29,7 +28,6 @@ pub(super) struct ArchitectureNodeRenderContext<'a, M: ArchitectureModelAccess> 
     pub(super) sanitize_config: &'a merman_core::MermaidConfig,
     pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(super) content_bounds: &'a mut Option<Bounds>,
-    pub(super) singleton_icon_text_service_id: Option<&'a str>,
 }
 
 fn write_diagram_service_id(out: &mut String, diagram_id: &str, service_id: &str) {
@@ -54,8 +52,6 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let sanitize_config = ctx.sanitize_config;
-    let singleton_icon_text_service_id = ctx.singleton_icon_text_service_id;
-
     let service_count = model.services().count();
     let junction_count = model.junctions().count();
 
@@ -65,7 +61,6 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
         out.push_str(r#"<g class="architecture-services">"#);
         for svc in model.services() {
             let (x, y) = node_xy.get(svc.id).copied().unwrap_or((0.0, 0.0));
-            let y = y + singleton_icon_text_offset_y(singleton_icon_text_service_id, svc.id);
 
             out.push_str(r#"<g id=""#);
             write_diagram_service_id(out, diagram_id, svc.id);
@@ -234,53 +229,17 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
             }
 
             if let Some(title) = grp.title.map(str::trim).filter(|t| !t.is_empty()) {
-                let plain_title_width = plain_ascii_words_single_line_width(
-                    title,
-                    w,
-                    text_measurer,
-                    &settings.text_style,
-                );
-                let lines = if plain_title_width.is_some() {
-                    None
-                } else {
-                    Some(wrap_svg_words_to_lines(
-                        title,
-                        w,
-                        text_measurer,
-                        &settings.text_style,
-                    ))
-                };
+                let lines = wrap_svg_words_to_lines(title, w, text_measurer, &settings.text_style);
 
                 // Group titles are SVG `<text>` (no explicit bbox geometry), so our SVG bbox pass
-                // cannot "see" their extents. Union a conservative horizontal bbox so
+                // cannot "see" their extents. Measure the emitted outer tspan DOM primitive so
                 // `setupGraphViewbox(svg.getBBox() + padding)` matches upstream in parity-root.
-                let title_bbox_w = if let Some(width) = plain_title_width {
-                    width
-                } else {
-                    let lines = lines.as_ref().expect("group title lines");
-                    let mut title_bbox_w = 0.0f64;
-                    let has_multiline_title = lines.len() > 1;
-                    for line in lines {
-                        let s = svg_line_plain_text(line);
-                        let m = text_measurer.measure_wrapped(
-                            s.as_str(),
-                            &settings.text_style,
-                            None,
-                            WrapMode::SvgLike,
-                        );
-                        // Chromium's SVG `getBBox()` reports multi-`tspan` title rows on an integer
-                        // pixel boundary in upstream Architecture roots; keep this limited to wrapped
-                        // group titles so ordinary service labels and one-line group titles retain the
-                        // existing fractional text metric model.
-                        let width = if has_multiline_title {
-                            m.width.ceil()
-                        } else {
-                            m.width
-                        };
-                        title_bbox_w = title_bbox_w.max(width);
-                    }
-                    title_bbox_w
-                };
+                let title_bbox_w = lines
+                    .iter()
+                    .map(|line| {
+                        svg_line_tspan_bbox_width_px(line, text_measurer, &settings.text_style)
+                    })
+                    .fold(0.0_f64, f64::max);
                 if title_bbox_w.is_finite() && title_bbox_w > 0.0 {
                     let title_x = shifted_x1 + settings.half_icon + 4.0;
                     // Keep Y extents within the group rect; we only need this to expand X.
@@ -298,11 +257,7 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
                     x = fmt(shifted_x1 + settings.half_icon + 4.0),
                     y = fmt(shifted_y1 + settings.half_icon + 2.0)
                 );
-                if plain_title_width.is_some() {
-                    write_svg_plain_ascii_words_text_line(out, title);
-                } else if let Some(lines) = lines.as_ref() {
-                    write_svg_text_lines(out, lines);
-                }
+                write_svg_text_lines(out, &lines);
                 out.push_str("</g></g>");
             }
 
@@ -310,16 +265,5 @@ pub(super) fn push_architecture_groups<'a, M: ArchitectureModelAccess>(
         }
 
         out.push_str("</g>");
-    }
-}
-
-fn singleton_icon_text_offset_y(
-    singleton_icon_text_service_id: Option<&str>,
-    service_id: &str,
-) -> f64 {
-    if singleton_icon_text_service_id == Some(service_id) {
-        ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX
-    } else {
-        0.0
     }
 }

@@ -14,17 +14,18 @@ produces compatibility layout JSON or Mermaid-like SVG through one family artifa
 
 The default build stays host-agnostic while keeping Mermaid-compatible full configuration and
 sanitizer behavior through `core-full`. `core-full` also enables `cytoscape-layout`, the shared
-Architecture and Mindmap layout seam backed by `manatee`. Disable default features for Typst and
-other size-sensitive pure-wasm consumers, then opt into `cytoscape-layout` only when those diagram
-families are needed. Enable the `host` feature when you want host clock access, host-seeded timing,
-and host randomness for diagnostic or browser-oriented builds.
+Architecture FCoSE and Mindmap COSE-Bilkent implementation backed by `manatee`. When this feature
+is enabled, Architecture and non-`tidy-tree` Mindmap diagrams always use those source-backed
+layouts. Builds without it report those families as unsupported. Disable default features for
+Typst and other size-sensitive pure-wasm consumers, then enable `cytoscape-layout` when those
+diagram families are needed. Enable the `host` feature when you want host clock access,
+host-seeded timing, and host randomness for diagnostic or browser-oriented builds.
 
 ELK integration is kept behind the explicit `elk-layout` feature in this low-level crate. The
 public `merman` render facade enables that feature for ordinary render builds, while direct
-`merman-render` users can keep it disabled for minimal custom stacks. The current feature defaults
-Flowchart ELK to the source-backed Rust port of Mermaid's ELK adapter and Eclipse ELK layered
-layout. The previous lightweight compatibility backend remains selectable through
-`LayoutOptions::flowchart_elk_backend` for alpha diagnostics.
+`merman-render` users can keep it disabled for minimal custom stacks. When enabled, Flowchart ELK,
+Class, and ER layout use the sole source-backed Rust implementation of Mermaid's ELK adapter and
+Eclipse ELK layered pipeline; no compatibility backend or runtime selector is retained.
 
 Most applications should start with the `merman` crate and `merman::render::HeadlessRenderer`. Use
 `merman-render` directly when you need lower-level control over layout, text measurement, SVG
@@ -39,18 +40,24 @@ options, or SVG postprocessing.
 - `LayoutOptions::headless_svg_defaults()` for editor/export use cases.
 - Text measurement hooks through `TextMeasurer`.
 - Math rendering hooks through `MathRenderer`.
-- Shared Root Viewport policy for sizing, generated override resolution, accessibility chrome, and
-  root SVG emission.
+- Shared Root Viewport policy for computed sizing, accessibility chrome, and root SVG emission.
 - `SvgPipeline` presets and postprocessors for readable or rasterizer-friendly SVG.
 
 ## Render Environment
 
 `RenderEnvironment` owns adapters and policy for one operation: named text-measurement routes,
-math rendering, icons, time, randomness, resource limits, and generated root-viewport overrides.
+math rendering, icons, time, randomness, and resource limits.
 Call `begin_session()` once before layout and retain that `RenderSession` through SVG and any raster
 postprocessing so those phases observe the same snapshot and provenance. The higher-level
 `HeadlessRenderer` also applies the frozen session date and timezone to date-sensitive parsing;
 direct low-level callers are responsible for configuring the core `Engine` consistently.
+
+`TextMeasurer` keeps browser DOM primitives distinct. In particular,
+`measure_svg_create_text_bbox_y_offset_px` measures ordinary Mermaid createText, while
+`measure_svg_create_text_middle_bbox_y_offset_px` measures Architecture's formatted text under an
+inherited middle baseline. The latter is font- and x-height-dependent and cannot reuse the former.
+The vendored profile's pinned middle-baseline shift is a deterministic fallback, not a general
+system-font formula; an authoritative host measurement bypasses it.
 
 This is a breaking replacement for independently configured layout and SVG services. Text and math
 adapters no longer live in `LayoutOptions`, and render code does not read process-global policy.

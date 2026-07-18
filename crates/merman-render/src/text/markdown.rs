@@ -7,6 +7,36 @@ pub(crate) enum MermaidMarkdownWordType {
     Em,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MermaidMarkdownAnalysis {
+    pub(crate) lines: Vec<Vec<(String, MermaidMarkdownWordType)>>,
+    pub(crate) has_styled_runs: bool,
+    pub(crate) line_count: usize,
+}
+
+impl MermaidMarkdownAnalysis {
+    pub(crate) fn all_runs_normal(&self) -> bool {
+        !self.has_styled_runs
+    }
+}
+
+pub(crate) fn analyze_mermaid_markdown(
+    markdown: &str,
+    markdown_auto_wrap: bool,
+) -> MermaidMarkdownAnalysis {
+    let lines = mermaid_markdown_to_lines(markdown, markdown_auto_wrap);
+    let has_styled_runs = lines
+        .iter()
+        .flatten()
+        .any(|(_, word_type)| !matches!(word_type, MermaidMarkdownWordType::Normal));
+    let line_count = lines.len();
+    MermaidMarkdownAnalysis {
+        lines,
+        has_styled_runs,
+        line_count,
+    }
+}
+
 /// Minimal, deterministic subset of Mermaid's `markdownToLines(...)` output.
 ///
 /// This aims to match Mermaid's token boundaries for emphasis/strong delimiters (including `_`
@@ -127,6 +157,45 @@ pub(crate) fn mermaid_markdown_to_lines(
         } else {
             (left_flanking, right_flanking)
         }
+    }
+
+    fn mermaid_delim_has_closer(
+        chars: &[char],
+        mut i: usize,
+        delimiter: char,
+        run_len: usize,
+    ) -> bool {
+        let mut in_code_span = false;
+        while i < chars.len() {
+            if chars[i] == '<'
+                && let Some(end) = chars[i..].iter().position(|ch| *ch == '>')
+            {
+                i += end + 1;
+                continue;
+            }
+            if chars[i] == '`' {
+                in_code_span = !in_code_span;
+                i += 1;
+                continue;
+            }
+            if !in_code_span && chars[i] == delimiter {
+                let candidate_len = if i + 1 < chars.len() && chars[i + 1] == delimiter {
+                    2
+                } else {
+                    1
+                };
+                let prev = i.checked_sub(1).map(|index| chars[index]);
+                let next = chars.get(i + candidate_len).copied();
+                let (_, can_close) = mermaid_delim_can_open_close(delimiter, prev, next);
+                if candidate_len == run_len && can_close {
+                    return true;
+                }
+                i += candidate_len;
+                continue;
+            }
+            i += 1;
+        }
+        false
     }
 
     // Mermaid wraps SVG-label Markdown strings in single backticks; strip to avoid inline-code
@@ -265,7 +334,7 @@ pub(crate) fn mermaid_markdown_to_lines(
                 i += run_len;
                 continue;
             }
-            if can_open {
+            if can_open && mermaid_delim_has_closer(&chars, i + run_len, ch, run_len) {
                 flush_word(&mut out, &mut line_idx, &mut word, word_ty);
                 stack.push(want_ty);
                 word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
@@ -375,5 +444,35 @@ mod tests {
                 ],
             ]
         );
+    }
+
+    #[test]
+    fn svg_analysis_distinguishes_literal_markers_from_styled_runs() {
+        for literal in [
+            "driver_license",
+            "*unclosed",
+            "literal ` backtick",
+            "`code`",
+        ] {
+            let analysis = analyze_mermaid_markdown(literal, true);
+            assert!(
+                analysis.all_runs_normal(),
+                "literal={literal:?}, analysis={analysis:?}"
+            );
+            assert_eq!(analysis.line_count, 1, "literal={literal:?}");
+        }
+
+        for styled in ["*emphasis*", "__strong__"] {
+            let analysis = analyze_mermaid_markdown(styled, true);
+            assert!(
+                analysis.has_styled_runs,
+                "styled={styled:?}, analysis={analysis:?}"
+            );
+            assert_eq!(analysis.line_count, 1, "styled={styled:?}");
+        }
+
+        let multiline = analyze_mermaid_markdown("first<br/>second", true);
+        assert_eq!(multiline.line_count, 2);
+        assert!(multiline.all_runs_normal());
     }
 }

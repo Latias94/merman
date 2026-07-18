@@ -5,91 +5,91 @@
       "nodes": [
         {
           "id": "Start",
-          "x": 62.383,
-          "y": -102.031,
-          "width": 124.766,
-          "height": 43.016,
+          "x": 57.2,
+          "y": -106.24,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "down",
-          "x": 62.383,
-          "y": -51.016,
-          "width": 124.766,
-          "height": 43.016,
+          "x": 57.2,
+          "y": -53.12,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "Decision",
-          "x": 62.383,
+          "x": 57.2,
           "y": 0.0,
-          "width": 124.766,
-          "height": 43.016,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "right",
-          "x": 195.148,
+          "x": 179.6,
           "y": 0.0,
-          "width": 124.766,
-          "height": 43.016,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "Process1",
-          "x": 327.914,
+          "x": 302.0,
           "y": 0.0,
-          "width": 124.766,
-          "height": 43.016,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "downAgain",
-          "x": 62.383,
-          "y": 51.016,
-          "width": 124.766,
-          "height": 43.016,
+          "x": 57.2,
+          "y": 53.12,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "r3",
-          "x": 327.914,
-          "y": 51.016,
-          "width": 124.766,
-          "height": 43.016,
+          "x": 302.0,
+          "y": 53.12,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "Process2",
-          "x": 62.383,
-          "y": 102.031,
-          "width": 124.766,
-          "height": 43.016,
+          "x": 57.2,
+          "y": 106.24,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "r2",
-          "x": 195.148,
-          "y": 102.031,
-          "width": 124.766,
-          "height": 43.016,
+          "x": 179.6,
+          "y": 106.24,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         },
         {
           "id": "End",
-          "x": 327.914,
-          "y": 102.031,
-          "width": 124.766,
-          "height": 43.016,
+          "x": 302.0,
+          "y": 106.24,
+          "width": 114.4,
+          "height": 45.12,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -123.539,
-        "max_x": 390.297,
-        "max_y": 123.539
+        "min_y": -128.8,
+        "max_x": 359.2,
+        "max_y": 128.8
       }
     }
   }

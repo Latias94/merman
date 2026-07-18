@@ -23,6 +23,8 @@ npm install @mermanjs/web
 For browser font fidelity, use the web wrapper's `renderSvgWithTextMeasurer`,
 `layoutJsonWithTextMeasurer`, and `createBrowserTextMeasurer` APIs. The wrapper owns the
 TypeScript request/response shape and DOM helper for browser text measurement.
+The current alpha WASM contract reports ABI 2. Host callbacks receive one of 19 exact measurement
+operation names; the contiguous core operation range is `0..18`, ending in `raw-bbox-height`.
 
 Use this crate directly when you need to rebuild the wasm-bindgen package from source or integrate
 the generated wasm artifacts into a custom packaging flow.

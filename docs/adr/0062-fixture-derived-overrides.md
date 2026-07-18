@@ -1,4 +1,4 @@
-# ADR-0062: Fixture-Derived Overrides
+# ADR-0062: No Production Fixture Overrides
 
 ## Status
 
@@ -10,110 +10,90 @@ Accepted
 
 ## Context
 
-Merman is a headless reimplementation of a pinned Mermaid release. Official upstream SVG baselines
-are produced in a browser pipeline and therefore contain observable values that a deterministic
-Rust implementation cannot always reproduce algorithmically:
+Merman is a headless implementation of a pinned Mermaid release. Official SVG baselines are
+produced by a browser and therefore contain platform-dependent results from font fallback,
+shaping, hinting, `getBBox()`, `getComputedTextLength()`, and SVG serialization.
 
-- browser `getBBox()` and `getComputedTextLength()` float lattices;
-- platform font fallback, shaping, and hinting;
-- browser serialization details; and
-- rare upstream oddities such as non-finite coordinates.
-
-DOM parity must still catch semantic and structural regressions. A residual mechanism is therefore
-needed without turning fixtures into an unrestricted tuning surface.
+The previous architecture copied some of those results into production tables keyed by fixture id
+or complete label text. That made a known corpus reproducible, but it also let fixtures become a
+second implementation of rendering semantics. A new input with the same grammar and style could
+take a different path merely because its full text was absent from a generated table.
 
 ## Decision
 
-Fixture-derived overrides are accepted only as small, deterministic, version-pinned projections of
-the authoritative upstream SVG corpus. They model bounded browser behavior that is currently
-impractical to reproduce headlessly. They are not visual tuning knobs and do not override parser,
-semantic, layout, or DOM-structure correctness.
+Production rendering must not use fixture ids or complete source/label strings as lookup keys.
+Fixture baselines are verification inputs, never runtime inputs.
 
-### Allowed categories
+### Root viewports are computed
 
-1. **Root viewport overrides**
-   - Surface: root `<svg>` `viewBox` and responsive `max-width` only.
-   - Key: typed render family plus exact fixture `diagram_id`.
-   - Source: root attributes extracted from the pinned upstream SVG baseline.
-   - Owner: the Root Viewport module; family renderers never query generated tables directly.
+Every family supplies source-backed content bounds and a root algorithm to the shared Root Viewport
+module. Root Viewport normalizes finite dimensions, applies padding and sizing rules, emits root
+attributes, and finalizes deferred documents from emitted content bounds.
 
-2. **Text and bbox overrides**
-   - Surface: a documented text measurement result for an exact profile/font key and label.
-   - Source: pinned upstream measurement or SVG evidence when vendored metrics are insufficient.
-   - Owner: cross-family measurement adapters and decorators belong to the named profile selected by
-     `RenderEnvironment`. A family-specific calibration may remain with its source-backed layout or
-     SVG algorithm, but it must stay visible in the override inventory and must not instantiate or
-     select another production measurer.
+There is no generated root table, root-override policy, audit mode, or fixture-id lookup. A root
+parity difference must be fixed in semantics, layout, emitted geometry, measurement, or the
+family's root algorithm. A browser-only residual may remain documented in verification evidence;
+it must not be copied into production as a pin.
 
-3. **Upstream-oddity compatibility markers**
-   - Surface: rare behavior that cannot be represented directly in normal JSON, such as an upstream
-     non-finite SVG value.
-   - Policy: preserve semantic intent in the typed model and materialize the oddity only at the
-     explicitly documented compatibility surface.
+### Text measurement uses general facts
 
-### Root override resolution
+Text measurement follows the operation-owned phase route defined by ADR-0057:
 
-Root override resolution is an explicit render-environment policy:
+1. A successful host measurement is authoritative for that operation and bypasses vendored facts.
+2. The deterministic headless fallback may use generated facts keyed by properties that generalize
+   to unseen text: DOM shape, font stack, font size and weight, glyph advances, kerning pairs,
+   trigrams, and endpoint overhangs.
+3. Generated measurement facts must come from synthetic browser probes or another reproducible font
+   measurement source. Fixture text may select validation coverage, but must not train a value keyed
+   by the fixture or the complete string.
 
-- `RootViewportOverridePolicy::ApplyGenerated` permits the Root Viewport module to query generated
-  evidence.
-- `RootViewportOverridePolicy::ComputedOnly` uses computed source-backed bounds and is the audit
-  path for identifying stale or unnecessary entries.
-- Generated entries are used only under `ApplyGenerated`; computed bounds are the complete
-  alternative under `ComputedOnly`. There is no mutable request-local explicit root override path.
-- `merman-render` does not read `MERMAN_DISABLE_ROOT_VIEWPORT_OVERRIDES` or any other process-global
-  switch. Developer tooling may translate CLI or environment input into the explicit policy before
-  constructing the operation.
+Full-string HTML widths, SVG extents, family label widths, and Sequence SVG tables are forbidden.
+Family-owned constants remain valid only when they are direct projections of an upstream algorithm
+or configuration default and apply independently of fixture identity and label text.
 
-Generated root lookup is centralized and accepts `RenderFamilyKind`, the pinned Mermaid baseline,
-and `diagram_id`. A key from another family or baseline cannot apply accidentally. Historical
-generated filenames may retain suffixes such as `*_11_12_2.rs`; those filenames are storage history,
-not runtime authority. The typed router and generated provenance bind the values to Mermaid 11.16.
+### Verification owns residuals
 
-### Governance
+Comparator normalization remains narrow and non-semantic. Accepted browser residuals are explicit
+verification policy describing a bounded mismatch set; they do not alter production output.
 
-- Every entry must be traceable to an upstream fixture and reproducible from its baseline.
-- Prefer a source-backed parser, layout, measurement, or root algorithm fix before adding an entry.
-- Overrides must not compensate for incorrect semantics, model ordering, layout topology, or SVG
-  structure.
-- Comparator normalization remains narrow and non-semantic. An override is not permission to add a
-  broad mask.
-- The inventory must not grow without reviewed upstream evidence:
+Architecture and generation gates enforce the boundary:
 
-  ```sh
-  cargo run -p xtask -- report-overrides --check-no-growth
-  ```
-
-- Root entries must remain live and exact for the pinned baseline:
-
-  ```sh
-  cargo run -p xtask -- audit-root-overrides --fail-on-stale
-  ```
-
-- Root parity is verified through the canonical typed headless operation. Compare adapters must not
-  rebuild a JSON parse-layout-render path to apply or inspect overrides.
-
-## Paydown Strategy
-
-- Run computed-only audits to identify entries whose source-backed algorithm now matches upstream.
-- Remove stale keys when fixtures move or disappear.
-- Prefer replacing fixture entries with deterministic measurement, layout, or root algorithms that
-  generalize across the corpus.
-- Keep accepted browser-dependent residuals explicit when no robust algorithmic fix exists.
+- production Rust sources contain no fixture-id or complete-text override modules or symbols;
+- generated measurement facts contain no complete fixture strings;
+- browser-probe generators are deterministic and validate against an independent fixture corpus;
+- host-measurement tests prove that a successful host result bypasses the vendored fallback; and
+- structural, normal, and root parity continue to reject new or changed mismatches.
 
 ## Consequences
 
-- Browser-only float behavior can remain reproducible without weakening semantic or structural
-  parity.
-- Override selection has one policy owner and one typed lookup boundary.
-- Family renderers remain free of fixture tables and mutable root-string patches.
-- The override footprint is measurable debt whose growth and staleness are release-gated.
-- Historical generated filenames no longer imply that production code targets an old Mermaid
-  baseline.
+- Production behavior generalizes to unseen diagrams instead of recognizing the fixture corpus.
+- Root and text parity failures expose the owning semantic, geometry, or measurement problem.
+- Browser-dependent results cannot always be reproduced exactly by the deterministic fallback.
+  Hosts that require their system-font geometry must install a host measurer.
+- Generated data remains appropriate for reproducible font facts, but not for fixture answers.
+- The former `report-overrides`, `audit-root-overrides`, root policy, generated root tables, and exact
+  text generators are removed rather than retained as migration paths.
+
+## Rejected Alternatives
+
+### Keep a bounded override budget
+
+Rejected. A non-growing table is still a second behavior path and still fails for unseen text.
+
+### Hide residuals in comparator normalization
+
+Rejected. Broad normalization can erase semantic or geometry regressions and provides no runtime
+benefit to users.
+
+### Implement a complete browser in Rust
+
+Rejected. The CSS, font fallback, shaping, and SVG text-layout surface is not a bounded renderer
+dependency. Host measurement is the correct authority when exact system-font behavior matters.
 
 ## Related Decisions
 
 - ADR-0014: Upstream Parity Policy
+- ADR-0049: Vendored Font Metrics for Headless Parity
 - ADR-0050: Release Quality Gates
 - ADR-0057: Headless SVG Text `getBBox()` Approximation
 - ADR-0073: Family-Owned Diagram Architecture

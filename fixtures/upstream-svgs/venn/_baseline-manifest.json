@@ -11,10 +11,51 @@
     "renderer_revision": "xtask-upstream-svg-v2"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
+    "upstream_cypress_venn_handdrawn_custom_styles_018": {
+      "input_sha256": "567ca43bb5831f07711d9d41bad5b0d4a2f9258b367a4e035e1791c2a904e339",
+      "svg_sha256": "e1d2b3bcfa1d11f72cf17bc3f775e79a85c0ca6729c8902a194aaa899594d3e0",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_venn_handdrawn_three_set_title_015": {
+      "input_sha256": "7590d23264ae0388cff9b5cc6705d46fbfe1a07059a7d0a0f5a83853f81c20a5",
+      "svg_sha256": "4f809711d32658e03a29aca41f895cc2f9c7b9e767f67f54e18f3a7af8066f3d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_venn_handdrawn_two_set_014": {
+      "input_sha256": "7a32e907225567352604410c43e3508399adfc59f036c8f352858c91036d3368",
+      "svg_sha256": "f307855a43b1f9e974b754cdf67e7007429433b0b8f2d7082e58cf999f9e3054",
+      "renderer_profile": "mmdc-default"
+    },
     "upstream_docs_venn_labels_and_sizes_002": {
       "input_sha256": "dbe2e15b8822e28a45210626bc600ead36dd030635490449f24091d953008c18",
       "svg_sha256": "cb0c0064ed0fc6f83c5b76e36a8a52e407564c6b46d35565bd22c3cb4b7f1c0a",

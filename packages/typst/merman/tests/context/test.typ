@@ -17,7 +17,7 @@
   id: "context-direct",
   pipeline: "readable",
   typography: (font: "Explicit Sans", size: "18px"),
-  viewport-width: 444,
+  container-width: 444,
 )
 #assert(direct-svg.contains("Explicit Sans"), message: "direct typography should be usable without context")
 #assert(not direct-svg.contains("Arial"), message: "SVG export should remain explicit-only")
@@ -33,7 +33,7 @@
   source,
   document-context: true,
   id: "context-direct-width",
-  viewport-width: 444,
+  container-width: 444,
   width: 100%,
 )
 
@@ -41,7 +41,7 @@
   source,
   document-context: true,
   id: "context-direct-layout",
-  layout: (viewport_width: 333),
+  layout: (container_width: 333),
   width: 100%,
 )
 

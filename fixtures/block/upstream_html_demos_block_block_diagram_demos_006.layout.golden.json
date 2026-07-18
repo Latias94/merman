@@ -5,57 +5,57 @@
       "nodes": [
         {
           "id": "a",
-          "x": 36.031,
+          "x": 34.88,
           "y": -56.0,
-          "width": 72.063,
+          "width": 69.76,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "e",
-          "x": 36.031,
+          "x": 34.88,
           "y": 0.0,
-          "width": 72.063,
+          "width": 69.76,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "f",
-          "x": 20.016,
+          "x": 19.44,
           "y": 0.0,
-          "width": 24.031,
+          "width": 22.88,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "g",
-          "x": 52.047,
+          "x": 50.32,
           "y": 0.0,
-          "width": 24.031,
+          "width": 22.88,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "h",
-          "x": 9.344,
+          "x": 8.96,
           "y": 56.0,
-          "width": 18.688,
+          "width": 17.92,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "i",
-          "x": 36.031,
+          "x": 34.88,
           "y": 56.0,
-          "width": 18.688,
+          "width": 17.92,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "j",
-          "x": 62.719,
+          "x": 60.8,
           "y": 56.0,
-          "width": 18.688,
+          "width": 17.92,
           "height": 48.0,
           "is_cluster": false
         }
@@ -64,7 +64,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -80.0,
-        "max_x": 72.063,
+        "max_x": 69.76,
         "max_y": 80.0
       }
     }

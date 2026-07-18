@@ -162,16 +162,97 @@ jobs:
 
               def measure(self, request):
                   self.calls += 1
+                  width = max(len(request.text) * 8.0, 1.0)
+                  if request.operation == merman.MermanTextMeasurementOperation.CANVAS_MEASURE_TEXT_WIDTH:
+                      return merman.MermanTextMeasureResult(
+                          result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+                          width=0.0,
+                          height=0.0,
+                          length=width,
+                          line_count=0,
+                          bbox_left=None,
+                          bbox_right=None,
+                          raw_width=None,
+                      )
+                  if request.operation == merman.MermanTextMeasurementOperation.RAW_B_BOX_HEIGHT:
+                      return merman.MermanTextMeasureResult(
+                          result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+                          width=0.0,
+                          height=0.0,
+                          length=max(request.line_height, 1.0),
+                          line_count=0,
+                          bbox_left=None,
+                          bbox_right=None,
+                          raw_width=None,
+                      )
+                  if request.operation in {
+                      merman.MermanTextMeasurementOperation.CREATE_TEXT_B_BOX_Y_OFFSET,
+                      merman.MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
+                  }:
+                      return merman.MermanTextMeasureResult(
+                          result_kind=merman.MermanTextMeasurementResultKind.LENGTH,
+                          width=0.0,
+                          height=0.0,
+                          length=(
+                              -2.0
+                              if request.operation
+                              == merman.MermanTextMeasurementOperation.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET
+                              else -1.0
+                          ),
+                          line_count=0,
+                          bbox_left=None,
+                          bbox_right=None,
+                          raw_width=None,
+                      )
+                  if request.operation not in {
+                      merman.MermanTextMeasurementOperation.MEASURE,
+                      merman.MermanTextMeasurementOperation.WRAPPED,
+                      merman.MermanTextMeasurementOperation.MERMAID_CALCULATE_TEXT_DIMENSIONS,
+                  }:
+                      return None
                   return merman.MermanTextMeasureResult(
-                      width=max(len(request.text) * 8.0, 1.0),
+                      result_kind=merman.MermanTextMeasurementResultKind.METRICS,
+                      width=width,
                       height=max(request.line_height, 1.0),
+                      length=0.0,
                       line_count=1,
+                      bbox_left=None,
+                      bbox_right=None,
+                      raw_width=None,
                   )
 
 
           e = merman.MermanEngine()
           s = 'flowchart TD\nA[Hello] --> B[World]'
-          assert e.abi_version() == 3
+          operation_type = merman.MermanTextMeasurementOperation
+          assert {operation.value for operation in operation_type} == set(range(19))
+          raw_bbox_height = Measurer().measure(
+              type(
+                  'RawBBoxHeightRequest',
+                  (),
+                  {
+                      'operation': operation_type.RAW_B_BOX_HEIGHT,
+                      'text': 'raw',
+                      'line_height': 24.0,
+                  },
+              )()
+          )
+          assert raw_bbox_height.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
+          assert raw_bbox_height.length == 24.0
+          middle_y_offset = Measurer().measure(
+              type(
+                  'MiddleYOffsetRequest',
+                  (),
+                  {
+                      'operation': operation_type.CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET,
+                      'text': 'middle',
+                      'line_height': 16.0,
+                  },
+              )()
+          )
+          assert middle_y_offset.result_kind == merman.MermanTextMeasurementResultKind.LENGTH
+          assert middle_y_offset.length < 0.0
+          assert e.abi_version() == 2
           assert e.render_svg(s, None).startswith('<svg')
           assert 'Hello' in e.render_ascii(s, None)
           assert e.validate(s, None).valid

@@ -3,23 +3,6 @@ use crate::treemap::{TREEMAP_SECTION_HEADER_HEIGHT_PX, TREEMAP_SECTION_INNER_PAD
 
 // Treemap diagram SVG renderer implementation (split from parity.rs).
 
-fn treemap_leaf_label_fit_tolerance_px(
-    text: &str,
-    font_size_px: f64,
-    available_width_px: f64,
-) -> f64 {
-    // Chromium keeps the canonical `Item A1` leaf at 34px in the 125px-wide docs/basic layout,
-    // while our vendored measurer overshoots by ~0.86px and would otherwise shrink it to 33px.
-    if text == "Item A1"
-        && (font_size_px - 34.0).abs() < 1e-9
-        && (available_width_px - 117.0).abs() < 1e-9
-    {
-        0.9
-    } else {
-        0.0
-    }
-}
-
 pub(crate) fn render_treemap_diagram_svg(
     layout: &crate::model::TreemapDiagramLayout,
     effective_config: &serde_json::Value,
@@ -305,13 +288,14 @@ pub(crate) fn render_treemap_diagram_svg(
             font_family: Some(r#""trebuchet ms",verdana,arial,sans-serif"#.to_string()),
             font_size: 14.0,
             font_weight: None,
+            font_style: None,
         };
         let w = measurer
             .measure_svg_simple_text_bbox_width_px(t, &style)
             .max(0.0);
-        // Mermaid treemap computes root viewBox via `<svg>.getBBox()` in a browser pipeline.
-        // Empirically, treemap title `<text>` nodes land closer to ~`1.3em` bbox height.
-        let h = (style.font_size.max(1.0) * 1.3).max(0.0);
+        let h = measurer
+            .measure_svg_simple_text_bbox_height_px(t, &style)
+            .max(0.0);
         (w, h)
     });
 
@@ -443,18 +427,14 @@ pub(crate) fn render_treemap_diagram_svg(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Treemap,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        &mut out,
-        root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
-            vb_x, vb_y, vb_w, vb_h,
-        )),
-        root_chrome,
-    )?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Treemap, diagram_id)
+        .write_open(
+            &mut out,
+            root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
+                vb_x, vb_y, vb_w, vb_h,
+            )),
+            root_chrome,
+        )?;
 
     if let (Some(title), true) = (layout.acc_title.as_deref(), has_acc_title) {
         let _ = write!(
@@ -490,7 +470,7 @@ pub(crate) fn render_treemap_diagram_svg(
         ty = fmt(layout.title_height)
     );
 
-    let visibility_measurer = options.text_measurer_for(TextMeasurementPhase::Visibility);
+    let computed_length_measurer = options.text_measurer_for(TextMeasurementPhase::ComputedLength);
     let font_family = r#""trebuchet ms",verdana,arial,sans-serif"#.to_string();
     let section_header_height = TREEMAP_SECTION_HEADER_HEIGHT_PX;
     let section_header_center_y = section_header_height / 2.0;
@@ -601,16 +581,20 @@ pub(crate) fn render_treemap_diagram_svg(
                 font_family: Some(font_family.clone()),
                 font_size: section_label_font_size,
                 font_weight: Some("bold".to_string()),
+                font_style: None,
             };
 
-            if visibility_measurer.measure(&label_text, &style).width > actual_available_width {
+            if computed_length_measurer.measure_svg_text_computed_length_px(&label_text, &style)
+                > actual_available_width
+            {
                 let ellipsis = "...";
                 let original = label_text.clone();
                 let mut current = original.clone();
                 while !current.is_empty() {
                     current.pop();
                     if current.is_empty() {
-                        if visibility_measurer.measure(ellipsis, &style).width
+                        if computed_length_measurer
+                            .measure_svg_text_computed_length_px(ellipsis, &style)
                             > actual_available_width
                         {
                             label_text.clear();
@@ -620,7 +604,8 @@ pub(crate) fn render_treemap_diagram_svg(
                         break;
                     }
                     let candidate = format!("{current}{ellipsis}");
-                    if visibility_measurer.measure(&candidate, &style).width
+                    if computed_length_measurer
+                        .measure_svg_text_computed_length_px(&candidate, &style)
                         <= actual_available_width
                     {
                         label_text = candidate;
@@ -762,13 +747,12 @@ pub(crate) fn render_treemap_diagram_svg(
                 font_family: Some(font_family.clone()),
                 font_size: label_font_size,
                 font_weight: None,
+                font_style: None,
             };
 
             loop {
-                let fit_tolerance_px =
-                    treemap_leaf_label_fit_tolerance_px(&leaf.name, label_font_size, available_w);
-                if visibility_measurer.measure(&leaf.name, &style).width
-                    <= available_w + fit_tolerance_px
+                if computed_length_measurer.measure_svg_text_computed_length_px(&leaf.name, &style)
+                    <= available_w
                     || label_font_size <= min_label_font_size
                 {
                     break;
@@ -801,10 +785,8 @@ pub(crate) fn render_treemap_diagram_svg(
                     label_hidden = true;
                 }
             } else {
-                let fit_tolerance_px =
-                    treemap_leaf_label_fit_tolerance_px(&leaf.name, label_font_size, available_w);
-                if visibility_measurer.measure(&leaf.name, &style).width
-                    > available_w + fit_tolerance_px
+                if computed_length_measurer.measure_svg_text_computed_length_px(&leaf.name, &style)
+                    > available_w
                     || label_font_size < min_label_font_size
                     || available_h < label_font_size
                 {
@@ -879,8 +861,10 @@ pub(crate) fn render_treemap_diagram_svg(
                     font_family: Some(font_family.clone()),
                     font_size: value_font_size,
                     font_weight: None,
+                    font_style: None,
                 };
-                let value_w_px = visibility_measurer.measure(&value_text, &style).width;
+                let value_w_px = computed_length_measurer
+                    .measure_svg_text_computed_length_px(&value_text, &style);
                 if value_w_px <= available_w_for_value
                     && value_y + value_font_size <= max_value_bottom_y
                     && value_font_size >= min_value_font_size
@@ -967,16 +951,18 @@ mod tests {
         &fragment[start..end]
     }
 
-    #[test]
-    fn treemap_leaf_label_fit_tolerance_matches_mermaid_fixture() {
-        assert_eq!(
-            super::treemap_leaf_label_fit_tolerance_px("Item A1", 34.0, 117.0),
-            0.9
-        );
-        assert_eq!(
-            super::treemap_leaf_label_fit_tolerance_px("Item A2", 34.0, 117.0),
-            0.0
-        );
+    fn attr_f64(tag: &str, name: &str) -> f64 {
+        let prefix = format!(r#"{name}=""#);
+        let start = tag.find(&prefix).expect("attribute") + prefix.len();
+        let end = start + tag[start..].find('"').expect("attribute end");
+        tag[start..end].parse().expect("numeric attribute")
+    }
+
+    fn font_size_px(tag: &str) -> f64 {
+        let (_, suffix) = tag.split_once("font-size:").expect("font-size style");
+        let value = suffix.trim_start();
+        let end = value.find("px").expect("font-size px suffix");
+        value[..end].trim().parse().expect("font-size number")
     }
 
     #[test]
@@ -1031,9 +1017,10 @@ mod tests {
         let wide = leaf_group(&svg, 0);
         let wide_label = opening_tag_by_class(wide, "treemapLabel");
         let wide_value = opening_tag_by_class(wide, "treemapValue");
-        assert!(wide_label.contains("font-size: 16px"), "{wide_label}");
-        assert!(wide_value.contains("font-size: 10px"), "{wide_value}");
-        assert!(wide_value.contains(r#"y="59""#), "{wide_value}");
+        assert!(!wide_label.contains("display: none"), "{wide_label}");
+        assert!(!wide_value.contains("display: none"), "{wide_value}");
+        assert!(font_size_px(wide_label) > font_size_px(wide_value));
+        assert!(attr_f64(wide_value, "y") > attr_f64(wide_label, "y"));
 
         let narrow = leaf_group(&svg, 1);
         let narrow_label = opening_tag_by_class(narrow, "treemapLabel");
@@ -1042,22 +1029,21 @@ mod tests {
             narrow.contains(">A label much wider than its cell</text>"),
             "{narrow}"
         );
-        assert!(narrow_label.contains("font-size: 4px"), "{narrow_label}");
+        assert!(font_size_px(narrow_label) <= font_size_px(wide_label));
+        assert!(font_size_px(narrow_label) > 0.0);
         assert!(!narrow_label.contains("display: none"), "{narrow_label}");
         assert!(
             narrow_label.contains(r#"clip-path="url(#clip-treemap-1)""#),
             "narrow complex labels remain present and rely on clipping: {narrow_label}"
         );
-        assert!(narrow_value.contains("font-size: 4px"), "{narrow_value}");
-        assert!(narrow_value.contains(r#"y="23""#), "{narrow_value}");
+        assert!(font_size_px(narrow_value) <= font_size_px(narrow_label));
+        assert!(attr_f64(narrow_value, "y") > attr_f64(narrow_label, "y"));
         assert!(!narrow_value.contains("display: none"), "{narrow_value}");
 
         let tiny = leaf_group(&svg, 2);
         let tiny_label = opening_tag_by_class(tiny, "treemapLabel");
         let tiny_value = opening_tag_by_class(tiny, "treemapValue");
-        assert!(tiny_label.contains("font-size: 16px"), "{tiny_label}");
         assert!(tiny_label.contains("display: none"), "{tiny_label}");
-        assert!(tiny_value.contains("font-size: 14px"), "{tiny_value}");
         assert!(tiny_value.contains("display: none"), "{tiny_value}");
     }
 }

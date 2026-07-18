@@ -42,12 +42,7 @@ fn block_html_label_metrics_px(
     style: &TextStyle,
 ) -> (f64, f64) {
     let html_metrics = measurer.measure_wrapped(text, style, None, WrapMode::HtmlLike);
-    let width =
-        crate::generated::block_text_overrides_11_12_2::lookup_html_width_px(style.font_size, text)
-            .unwrap_or(html_metrics.width)
-            .max(0.0);
-    let height = html_metrics.height.max(0.0);
-    (width, height)
+    (html_metrics.width.max(0.0), html_metrics.height.max(0.0))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1058,7 +1053,7 @@ pub fn layout_block_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use crate::text::{TextStyle, VendoredFontMetricsTextMeasurer};
+    use crate::text::{TextMeasurer, TextMetrics, TextStyle};
 
     use super::SizedBlock;
 
@@ -1067,6 +1062,7 @@ mod tests {
             font_family: Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()),
             font_size,
             font_weight: None,
+            font_style: None,
         }
     }
 
@@ -1138,17 +1134,28 @@ mod tests {
     }
 
     #[test]
-    fn block_label_metrics_use_block_owned_width_and_height_overrides() {
-        let measurer = VendoredFontMetricsTextMeasurer::default();
+    fn block_label_metrics_use_the_selected_html_measurer() {
+        struct SelectedMeasurer;
+
+        impl TextMeasurer for SelectedMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: 321.25,
+                    height: 45.5,
+                    line_count: 1,
+                }
+            }
+        }
+
         let style = default_style(24.0);
 
         let (width, height) = super::block_html_label_metrics_px(
             "Font size precedence should widen this block",
-            &measurer,
+            &SelectedMeasurer,
             &style,
         );
 
-        assert_eq!(width, 487.890625);
-        assert_eq!(height, 36.0);
+        assert_eq!(width, 321.25);
+        assert_eq!(height, 45.5);
     }
 }

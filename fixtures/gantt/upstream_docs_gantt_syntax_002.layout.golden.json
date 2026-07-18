@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 508.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 508.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -37,7 +37,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -45,7 +45,7 @@
           "index": 4.0,
           "x": 0.0,
           "y": 144.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -53,7 +53,7 @@
           "index": 5.0,
           "x": 0.0,
           "y": 168.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -61,7 +61,7 @@
           "index": 11.0,
           "x": 0.0,
           "y": 312.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section2"
         },
@@ -69,7 +69,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -77,7 +77,7 @@
           "index": 6.0,
           "x": 0.0,
           "y": 192.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -85,7 +85,7 @@
           "index": 12.0,
           "x": 0.0,
           "y": 336.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section2"
         },
@@ -93,7 +93,7 @@
           "index": 13.0,
           "x": 0.0,
           "y": 360.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section2"
         },
@@ -101,7 +101,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -109,7 +109,7 @@
           "index": 7.0,
           "x": 0.0,
           "y": 216.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -117,7 +117,7 @@
           "index": 14.0,
           "x": 0.0,
           "y": 384.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section3"
         },
@@ -125,7 +125,7 @@
           "index": 15.0,
           "x": 0.0,
           "y": 408.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section3"
         },
@@ -133,7 +133,7 @@
           "index": 16.0,
           "x": 0.0,
           "y": 432.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section3"
         },
@@ -141,7 +141,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -149,7 +149,7 @@
           "index": 8.0,
           "x": 0.0,
           "y": 240.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -157,7 +157,7 @@
           "index": 9.0,
           "x": 0.0,
           "y": 264.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -165,7 +165,7 @@
           "index": 10.0,
           "x": 0.0,
           "y": 288.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         }
@@ -232,7 +232,7 @@
             "id": "des1",
             "x": 75.0,
             "y": 50.0,
-            "width": 94.0,
+            "width": 59.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -243,9 +243,9 @@
             "text": "Completed task            ",
             "font_size": 11.0,
             "width": 70.51,
-            "x": 122.0,
+            "x": 139.0,
             "y": 63.5,
-            "class": "taskText taskText0 width-70.51"
+            "class": "taskTextOutsideRight taskTextOutside0 width-70.51"
           }
         },
         {
@@ -263,7 +263,7 @@
             "id": "task1",
             "x": 75.0,
             "y": 146.0,
-            "width": 47.0,
+            "width": 30.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -274,7 +274,7 @@
             "text": "Completed task in the critical line ",
             "font_size": 11.0,
             "width": 155.54,
-            "x": 127.0,
+            "x": 110.0,
             "y": 159.5,
             "class": "taskTextOutsideRight taskTextOutside1 width-155.53999999999994"
           }
@@ -292,9 +292,9 @@
           "vert": false,
           "bar": {
             "id": "task2",
-            "x": 169.0,
+            "x": 134.0,
             "y": 170.0,
-            "width": 94.0,
+            "width": 59.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -305,7 +305,7 @@
             "text": "Implement parser and jison          ",
             "font_size": 11.0,
             "width": 122.65,
-            "x": 268.0,
+            "x": 198.0,
             "y": 183.5,
             "class": "taskTextOutsideRight taskTextOutside1 width-122.64999999999996"
           }
@@ -323,9 +323,9 @@
           "vert": false,
           "bar": {
             "id": "a1",
-            "x": 169.0,
+            "x": 134.0,
             "y": 314.0,
-            "width": 141.0,
+            "width": 89.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -336,7 +336,7 @@
             "text": "Describe gantt syntax               ",
             "font_size": 11.0,
             "width": 98.67,
-            "x": 239.5,
+            "x": 228.0,
             "y": 327.5,
             "class": "taskText taskText2 width-98.66999999999997"
           }
@@ -354,9 +354,9 @@
           "vert": false,
           "bar": {
             "id": "des2",
-            "x": 216.0,
+            "x": 164.0,
             "y": 74.0,
-            "width": 235.0,
+            "width": 147.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -367,7 +367,7 @@
             "text": "Active task               ",
             "font_size": 11.0,
             "width": 52.47,
-            "x": 333.5,
+            "x": 237.5,
             "y": 87.5,
             "class": "taskText taskText0 width-52.470000000000006"
           }
@@ -385,9 +385,9 @@
           "vert": false,
           "bar": {
             "id": "task3",
-            "x": 263.0,
+            "x": 193.0,
             "y": 194.0,
-            "width": 235.0,
+            "width": 148.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -398,7 +398,7 @@
             "text": "Create tests for parser             ",
             "font_size": 11.0,
             "width": 107.36,
-            "x": 380.5,
+            "x": 267.0,
             "y": 207.5,
             "class": "taskText taskText1 width-107.35999999999999"
           }
@@ -416,9 +416,9 @@
           "vert": false,
           "bar": {
             "id": "task7",
-            "x": 404.0,
+            "x": 282.0,
             "y": 338.0,
-            "width": 39.0,
+            "width": 24.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -429,7 +429,7 @@
             "text": "Add gantt diagram to demo page      ",
             "font_size": 11.0,
             "width": 144.32,
-            "x": 448.0,
+            "x": 311.0,
             "y": 351.5,
             "class": "taskTextOutsideRight taskTextOutside2 width-144.31999999999996"
           }
@@ -447,9 +447,9 @@
           "vert": false,
           "bar": {
             "id": "doc1",
-            "x": 404.0,
+            "x": 282.0,
             "y": 362.0,
-            "width": 94.0,
+            "width": 59.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -460,7 +460,7 @@
             "text": "Add another diagram to demo page    ",
             "font_size": 11.0,
             "width": 153.78,
-            "x": 503.0,
+            "x": 346.0,
             "y": 375.5,
             "class": "taskTextOutsideRight taskTextOutside2 width-153.77999999999997"
           }
@@ -478,9 +478,9 @@
           "vert": false,
           "bar": {
             "id": "des3",
-            "x": 451.0,
+            "x": 311.0,
             "y": 98.0,
-            "width": 329.0,
+            "width": 207.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -491,7 +491,7 @@
             "text": "Future task               ",
             "font_size": 11.0,
             "width": 54.12,
-            "x": 615.5,
+            "x": 414.5,
             "y": 111.5,
             "class": "taskText taskText0 width-54.12"
           }
@@ -509,9 +509,9 @@
           "vert": false,
           "bar": {
             "id": "task4",
-            "x": 498.0,
+            "x": 341.0,
             "y": 218.0,
-            "width": 329.0,
+            "width": 207.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -522,7 +522,7 @@
             "text": "Future task in critical line        ",
             "font_size": 11.0,
             "width": 121.33,
-            "x": 662.5,
+            "x": 444.5,
             "y": 231.5,
             "class": "taskText taskText1 width-121.32999999999996"
           }
@@ -540,9 +540,9 @@
           "vert": false,
           "bar": {
             "id": "task8",
-            "x": 498.0,
+            "x": 341.0,
             "y": 386.0,
-            "width": 141.0,
+            "width": 89.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -553,7 +553,7 @@
             "text": "Describe gantt syntax               ",
             "font_size": 11.0,
             "width": 98.67,
-            "x": 568.5,
+            "x": 435.0,
             "y": 399.5,
             "class": "taskText taskText3 width-98.66999999999997"
           }
@@ -571,9 +571,9 @@
           "vert": false,
           "bar": {
             "id": "task9",
-            "x": 733.0,
+            "x": 489.0,
             "y": 410.0,
-            "width": 39.0,
+            "width": 24.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -584,7 +584,7 @@
             "text": "Add gantt diagram to demo page      ",
             "font_size": 11.0,
             "width": 144.32,
-            "x": 777.0,
+            "x": 518.0,
             "y": 423.5,
             "class": "taskTextOutsideRight taskTextOutside3 width-144.31999999999996"
           }
@@ -602,9 +602,9 @@
           "vert": false,
           "bar": {
             "id": "task10",
-            "x": 772.0,
+            "x": 513.0,
             "y": 434.0,
-            "width": 94.0,
+            "width": 59.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -615,7 +615,7 @@
             "text": "Add another diagram to demo page    ",
             "font_size": 11.0,
             "width": 153.78,
-            "x": 871.0,
+            "x": 577.0,
             "y": 447.5,
             "class": "taskTextOutsideRight taskTextOutside3 width-153.77999999999997"
           }
@@ -633,9 +633,9 @@
           "vert": false,
           "bar": {
             "id": "des4",
-            "x": 780.0,
+            "x": 518.0,
             "y": 122.0,
-            "width": 329.0,
+            "width": 207.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -646,7 +646,7 @@
             "text": "Future task2              ",
             "font_size": 11.0,
             "width": 60.28,
-            "x": 944.5,
+            "x": 621.5,
             "y": 135.5,
             "class": "taskText taskText0 width-60.28"
           }
@@ -664,9 +664,9 @@
           "vert": false,
           "bar": {
             "id": "task5",
-            "x": 827.0,
+            "x": 548.0,
             "y": 242.0,
-            "width": 94.0,
+            "width": 59.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -677,7 +677,7 @@
             "text": "Create tests for renderer           ",
             "font_size": 11.0,
             "width": 116.82,
-            "x": 926.0,
+            "x": 612.0,
             "y": 255.5,
             "class": "taskTextOutsideRight taskTextOutside1 width-116.81999999999996"
           }
@@ -695,9 +695,9 @@
           "vert": false,
           "bar": {
             "id": "task6",
-            "x": 921.0,
+            "x": 607.0,
             "y": 266.0,
-            "width": 47.0,
+            "width": 29.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -708,7 +708,7 @@
             "text": "Add to mermaid                      ",
             "font_size": 11.0,
             "width": 71.94,
-            "x": 973.0,
+            "x": 641.0,
             "y": 279.5,
             "class": "taskText taskText1 width-71.94"
           }
@@ -726,7 +726,7 @@
           "vert": false,
           "bar": {
             "id": "isadded",
-            "x": 958.0,
+            "x": 626.0,
             "y": 290.0,
             "width": 20.0,
             "height": 20.0,
@@ -739,7 +739,7 @@
             "text": "Functionality added                 ",
             "font_size": 11.0,
             "width": 87.01,
-            "x": 983.0,
+            "x": 651.0,
             "y": 303.5,
             "class": "taskTextOutsideRight taskTextOutside1 width-87.00999999999998"
           }
@@ -750,27 +750,27 @@
           "id": "exclude-2014-01-11",
           "start_ms": 1389398400000.0,
           "end_ms": 1389571199999.0,
-          "x": 310.0,
+          "x": 223.0,
           "y": 35.0,
-          "width": 94.0,
+          "width": 59.0,
           "height": 423.0
         },
         {
           "id": "exclude-2014-01-18",
           "start_ms": 1390003200000.0,
           "end_ms": 1390175999999.0,
-          "x": 639.0,
+          "x": 430.0,
           "y": 35.0,
-          "width": 94.0,
+          "width": 59.0,
           "height": 423.0
         },
         {
           "id": "exclude-2014-01-25",
           "start_ms": 1390608000000.0,
           "end_ms": 1390780799999.0,
-          "x": 968.0,
+          "x": 636.0,
           "y": 35.0,
-          "width": 94.0,
+          "width": 59.0,
           "height": 423.0
         }
       ],
@@ -778,63 +778,63 @@
       "bottom_ticks": [
         {
           "time_ms": 1389052800000.0,
-          "x": 122.0,
+          "x": 105.0,
           "label": "2014-01-07"
         },
         {
           "time_ms": 1389225600000.0,
-          "x": 216.0,
+          "x": 164.0,
           "label": "2014-01-09"
         },
         {
           "time_ms": 1389398400000.0,
-          "x": 310.0,
+          "x": 223.0,
           "label": "2014-01-11"
         },
         {
           "time_ms": 1389571200000.0,
-          "x": 404.0,
+          "x": 282.0,
           "label": "2014-01-13"
         },
         {
           "time_ms": 1389744000000.0,
-          "x": 498.0,
+          "x": 341.0,
           "label": "2014-01-15"
         },
         {
           "time_ms": 1389916800000.0,
-          "x": 592.0,
+          "x": 400.0,
           "label": "2014-01-17"
         },
         {
           "time_ms": 1390089600000.0,
-          "x": 686.0,
+          "x": 459.0,
           "label": "2014-01-19"
         },
         {
           "time_ms": 1390262400000.0,
-          "x": 780.0,
+          "x": 518.0,
           "label": "2014-01-21"
         },
         {
           "time_ms": 1390435200000.0,
-          "x": 874.0,
+          "x": 577.0,
           "label": "2014-01-23"
         },
         {
           "time_ms": 1390608000000.0,
-          "x": 968.0,
+          "x": 636.0,
           "label": "2014-01-25"
         },
         {
           "time_ms": 1390780800000.0,
-          "x": 1062.0,
+          "x": 695.0,
           "label": "2014-01-27"
         }
       ],
       "top_ticks": [],
       "title": "Adding GANTT diagram functionality to mermaid",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

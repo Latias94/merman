@@ -5,35 +5,35 @@
       "nodes": [
         {
           "id": "A",
-          "x": 33.422,
+          "x": 28.08,
           "y": 0.0,
-          "width": 66.844,
-          "height": 48.078,
+          "width": 56.16,
+          "height": 44.48,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 108.266,
+          "x": 92.24,
           "y": 0.0,
-          "width": 66.844,
-          "height": 48.078,
+          "width": 56.16,
+          "height": 44.48,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 183.109,
+          "x": 156.4,
           "y": 0.0,
-          "width": 66.844,
-          "height": 48.078,
+          "width": 56.16,
+          "height": 44.48,
           "is_cluster": false
         }
       ],
       "edges": [],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -24.039,
-        "max_x": 216.531,
-        "max_y": 24.039
+        "min_y": -22.24,
+        "max_x": 184.48,
+        "max_y": 22.24
       }
     }
   }

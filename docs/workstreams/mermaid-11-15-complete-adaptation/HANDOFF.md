@@ -3,6 +3,10 @@
 Status: Closed
 Last updated: 2026-06-01
 
+> Archive note: "current" state and override inventory below are the 11.15 closeout snapshot, not
+> the present 11.16 contract. Production fixture/root/text/SVG overrides and their tooling were
+> removed under ADR-0062.
+
 ## Current State
 
 The umbrella campaign is closed. The repo baseline points at Mermaid `11.15.0`, generated artifacts

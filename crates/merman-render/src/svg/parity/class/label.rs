@@ -16,22 +16,6 @@ pub(super) fn render_class_html_label(
     extra_span_class: Option<&str>,
     span_style: Option<&str>,
 ) {
-    fn is_simple_plain_label(text: &str) -> bool {
-        // Fast-path for the common case: no Markdown tokens and no hard/soft line breaks.
-        // This avoids pulldown-cmark overhead while producing the same XHTML fragment Mermaid
-        // would emit for plain text labels.
-        if text.to_ascii_lowercase().contains("<br") {
-            return false;
-        }
-        let bytes = text.as_bytes();
-        !bytes.iter().any(|&b| {
-            matches!(
-                b,
-                b'\n' | b'\r' | b'*' | b'_' | b'`' | b'~' | b'|' | b'[' | b']'
-            )
-        })
-    }
-
     out.push_str(r#"<span class=""#);
     escape_xml_into(out, span_class);
     if let Some(extra) = extra_span_class.map(|s| s.trim()).filter(|s| !s.is_empty()) {
@@ -45,18 +29,6 @@ pub(super) fn render_class_html_label(
         out.push_str(r#"">"#);
     } else {
         out.push_str(r#"">"#);
-    }
-
-    if is_simple_plain_label(text) {
-        if include_p {
-            out.push_str("<p>");
-            escape_xml_into(out, text);
-            out.push_str("</p>");
-        } else {
-            escape_xml_into(out, text);
-        }
-        out.push_str("</span>");
-        return;
     }
 
     let html = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
@@ -118,10 +90,6 @@ pub(super) fn class_note_html_div_style(width: f64, max_width_px: i64) -> String
     }
 }
 
-pub(super) fn class_html_label_max_width_px(width: f64, is_bold: bool) -> i64 {
-    width.max(0.0).ceil() as i64 + if is_bold { 51 } else { 50 }
-}
-
 pub(super) fn class_html_label_metrics(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
@@ -129,19 +97,7 @@ pub(super) fn class_html_label_metrics(
     max_width_px: i64,
     css_style: &str,
 ) -> crate::text::TextMetrics {
-    let mut metrics = crate::class::class_html_measure_label_metrics(
-        measurer,
-        style,
-        text,
-        max_width_px,
-        css_style,
-    );
-    if let Some(width) =
-        crate::class::class_html_known_rendered_width_override_px(text, style, false)
-    {
-        metrics.width = width;
-    }
-    metrics
+    crate::class::class_html_measure_label_metrics(measurer, style, text, max_width_px, css_style)
 }
 
 pub(super) fn class_html_title_metrics(
@@ -155,7 +111,7 @@ pub(super) fn class_html_title_metrics(
         .map(|line| format!("**{line}**"))
         .collect::<Vec<_>>()
         .join("\n");
-    crate::text::measure_markdown_with_flowchart_bold_deltas(
+    crate::text::measure_markdown_with_inline_styles(
         measurer,
         markdown.as_str(),
         style,
@@ -194,16 +150,6 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
         return text.to_string();
     };
 
-    // Vendored font metrics do not line up with Chromium's SVG `getComputedTextLength()` exactly.
-    // Most default-font SVG labels need a small inflation. Explicit large theme font sizes already
-    // reproduce Mermaid's two-font-size wrapping path without additional slack: the available
-    // width is measured with the root font size while the emitted tspans inherit the theme size.
-    let computed_len_fudge = if bold || style.font_size >= 20.0 {
-        1.0
-    } else {
-        1.02
-    };
-
     let mut lines: Vec<String> = Vec::new();
     for line in crate::text::DeterministicTextMeasurer::normalized_text_lines(text) {
         let mut tokens = std::collections::VecDeque::from(
@@ -218,8 +164,7 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
 
             let candidate = format!("{cur}{tok}");
             let candidate_w =
-                class_svg_text_computed_length_px(measurer, candidate.trim_end(), style, bold)
-                    * computed_len_fudge;
+                class_svg_text_computed_length_px(measurer, candidate.trim_end(), style, bold);
             if candidate_w <= wrap_width_px {
                 cur = candidate;
                 continue;
@@ -241,8 +186,7 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
             while cut < chars.len() {
                 let head: String = chars[..cut].iter().collect();
                 let head_w =
-                    class_svg_text_computed_length_px(measurer, head.as_str(), style, bold)
-                        * computed_len_fudge;
+                    class_svg_text_computed_length_px(measurer, head.as_str(), style, bold);
                 if head_w > wrap_width_px {
                     break;
                 }
@@ -269,36 +213,6 @@ pub(super) fn wrap_class_svg_text_like_mermaid(
     }
 }
 
-pub(super) fn round_to_1_1024_px_ties_to_even(v: f64) -> f64 {
-    if !(v.is_finite() && v >= 0.0) {
-        return 0.0;
-    }
-    let x = v * 1024.0;
-    let f = x.floor();
-    let frac = x - f;
-    let i = if frac < 0.5 {
-        f
-    } else if frac > 0.5 {
-        f + 1.0
-    } else {
-        let fi = f as i64;
-        if fi % 2 == 0 { f } else { f + 1.0 }
-    };
-    let out = i / 1024.0;
-    if out == -0.0 { 0.0 } else { out }
-}
-
-pub(super) fn bolder_delta_scale_for_svg(font_size: f64) -> f64 {
-    let fs = font_size.max(1.0);
-    if fs <= 16.0 {
-        1.0
-    } else if fs >= 24.0 {
-        0.6
-    } else {
-        1.0 - (fs - 16.0) * (0.4 / 8.0)
-    }
-}
-
 fn mermaid_class_svg_create_text_width_px(
     measurer: &dyn TextMeasurer,
     text: &str,
@@ -308,7 +222,7 @@ fn mermaid_class_svg_create_text_width_px(
     let wrap_probe_font_size = wrap_probe_font_size.max(1.0);
     // Mermaid `calculateTextWidth(...)` selects between `sans-serif` and the configured font
     // family using `calculateTextDimensions(...)` (it does *not* always take the max width).
-    // Replicate that selection logic so SVG-label wrapping matches upstream fixtures.
+    // Replicate that selection logic so SVG-label wrapping matches Mermaid's utility contract.
     #[derive(Clone, Copy)]
     struct Dim {
         width: f64,
@@ -339,11 +253,13 @@ fn mermaid_class_svg_create_text_width_px(
             .or_else(|| Some("Arial".to_string())),
         font_size: wrap_probe_font_size,
         font_weight: None,
+        font_style: None,
     };
     let sans_probe_style = TextStyle {
         font_family: Some("sans-serif".to_string()),
         font_size: wrap_probe_font_size,
         font_weight: None,
+        font_style: None,
     };
     let dims = [
         dim_for(measurer, text, &sans_probe_style),
@@ -374,6 +290,7 @@ fn class_svg_text_computed_length_px(
             font_family: style.font_family.clone(),
             font_size: style.font_size,
             font_weight: Some("bolder".to_string()),
+            font_style: None,
         };
         measurer.measure_svg_text_computed_length_px(text, &bold_style)
     } else {
@@ -425,5 +342,37 @@ pub(super) fn class_apply_inline_styles<'a>(
         stroke,
         stroke_width,
         stroke_dasharray,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_class_html_label;
+
+    #[test]
+    fn class_html_label_serializes_raw_html_and_escaped_generics_structurally() {
+        let mut rich = String::new();
+        render_class_html_label(
+            &mut rich,
+            "nodeLabel",
+            "<a href='https://example.com'><code>Entity</code></a>",
+            true,
+            Some("markdown-node-label"),
+            None,
+        );
+        assert!(rich.contains(r#"<a href='https://example.com'><code>Entity</code></a>"#));
+        assert!(!rich.contains("&lt;code&gt;"));
+
+        let mut generic = String::new();
+        render_class_html_label(
+            &mut generic,
+            "nodeLabel",
+            "Generic&lt;T&gt; driver_license",
+            true,
+            Some("markdown-node-label"),
+            None,
+        );
+        assert!(generic.contains("<p>Generic&lt;T&gt; driver_license</p>"));
+        assert!(!generic.contains("&amp;lt;"));
     }
 }

@@ -7,7 +7,7 @@
           "id": "pkg_mod",
           "x": 62.32,
           "y": 92.0,
-          "width": 108.641,
+          "width": 108.64,
           "height": 40.0,
           "is_cluster": false
         },
@@ -15,7 +15,7 @@
           "id": "pkg_mod2",
           "x": 62.32,
           "y": 206.0,
-          "width": 108.641,
+          "width": 108.64,
           "height": 40.0,
           "is_cluster": false
         },
@@ -23,7 +23,7 @@
           "id": "root_end",
           "x": 62.32,
           "y": 283.0,
-          "width": 14.013,
+          "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
@@ -89,7 +89,7 @@
           "label": {
             "x": 62.32,
             "y": 149.0,
-            "width": 48.156,
+            "width": 48.16,
             "height": 24.0
           },
           "start_label_left": null,
@@ -134,7 +134,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 116.641,
+        "max_x": 116.64,
         "max_y": 290.0
       }
     }

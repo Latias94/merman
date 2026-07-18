@@ -39,6 +39,31 @@ fn render_er_svg_from_text(text: &str, options: &SvgRenderOptions) -> String {
         .to_owned()
 }
 
+fn entity_transform(svg: &str, entity_id: &str) -> (f64, f64) {
+    let re = Regex::new(&format!(
+        r#"id="merman-{}"[^>]*transform="translate\(([^,]+), ([^)]+)\)""#,
+        regex::escape(entity_id)
+    ))
+    .expect("entity transform regex");
+    let captures = re
+        .captures(svg)
+        .unwrap_or_else(|| panic!("missing transform for {entity_id}: {svg}"));
+    (
+        captures[1].parse().expect("entity x"),
+        captures[2].parse().expect("entity y"),
+    )
+}
+
+fn root_view_box(svg: &str) -> [f64; 4] {
+    let re = Regex::new(r#"\bviewBox="([^\"]+)""#).expect("viewBox regex");
+    let captures = re.captures(svg).expect("root viewBox");
+    let values = captures[1]
+        .split_ascii_whitespace()
+        .map(|value| value.parse::<f64>().expect("viewBox number"))
+        .collect::<Vec<_>>();
+    values.try_into().expect("four viewBox numbers")
+}
+
 #[test]
 fn er_svg_renders_entities_and_relationships() {
     let path = workspace_root()
@@ -110,6 +135,28 @@ erDiagram
     assert!(svg.contains(r#"class="erDiagramTitleText""#));
     assert!(svg.contains(">Diagram Title<"));
     assert!(svg.contains("viewBox="));
+}
+
+#[test]
+fn er_svg_title_expands_negative_viewbox_without_rebasing_graph_content() {
+    let untitled = r#"erDiagram
+  A ||--o{ B : has
+"#;
+    let titled = r#"---
+title: A deliberately wide diagram title
+---
+erDiagram
+  A ||--o{ B : has
+"#;
+
+    let untitled_svg = render_er_svg_from_text(untitled, &SvgRenderOptions::default());
+    let titled_svg = render_er_svg_from_text(titled, &SvgRenderOptions::default());
+
+    assert_eq!(
+        entity_transform(&untitled_svg, "entity-A-0"),
+        entity_transform(&titled_svg, "entity-A-0")
+    );
+    assert!(root_view_box(&titled_svg)[1] < 0.0);
 }
 
 #[test]

@@ -674,8 +674,8 @@ fn format_local_label_metrics(
     metrics
         .map(|metrics| {
             format!(
-                "text_w={:.6} half={:.6} scale={:.6}",
-                metrics.text_width, metrics.half_width, metrics.applied_scale
+                "text_w={:.6} half={:.6}",
+                metrics.text_width, metrics.half_width
             )
         })
         .unwrap_or_else(|| "<none>".to_string())
@@ -3547,7 +3547,6 @@ pub(crate) fn debug_architecture_delta(args: Vec<String>) -> Result<(), XtaskErr
                 model,
                 parsed.meta.effective_config.as_value(),
                 &measurer,
-                layout_opts.use_manatee_layout,
                 session.seed().seed().get(),
             )
             .map_err(|e| {
@@ -5339,7 +5338,6 @@ mod tests {
                         merman_render::model::ArchitectureCytoscapeServiceLabelMetrics {
                             text_width: 103.0,
                             half_width: 51.5,
-                            applied_scale: 1.055,
                         },
                     ),
                     union_bounds: merman_render::model::Bounds {
@@ -5403,7 +5401,7 @@ mod tests {
             )
         );
         assert!(md.contains("| `storage` | `pipeline` | `x=20.000000 y=30.000000` | `x=21.000000 y=31.000000` | 1.000000 | 1.000000 |"));
-        assert!(md.contains("| -2.000000 | -2.000000 | `w=99.000000 h=16.000000` | `text_w=103.000000 half=51.500000 scale=1.055000` | 4.000000 |"));
+        assert!(md.contains("| -2.000000 | -2.000000 | `w=99.000000 h=16.000000` | `text_w=103.000000 half=51.500000` | 4.000000 |"));
         assert!(md.contains("local contribution label final-frame"));
         assert!(md.contains("| `x=20.000000 y=30.000000 w=101.000000 h=20.000000` | `x=20.000000 y=30.000000 w=103.000000 h=48.000000` | `x=-20.000000 y=10.000000 w=103.000000 h=48.000000` | -40.000000 | -20.000000 | 2.000000 | 28.000000 |"));
         assert!(md.contains("browser child union"));

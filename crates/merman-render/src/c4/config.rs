@@ -87,6 +87,7 @@ impl<'a> C4ConfigView<'a> {
             font_family: Some(self.font_family("boundaryFontFamily")),
             font_size: self.font_size("boundaryFontSize", DEFAULT_BOUNDARY_FONT_SIZE),
             font_weight: self.font_weight("boundaryFontWeight"),
+            font_style: None,
         }
     }
 
@@ -95,6 +96,7 @@ impl<'a> C4ConfigView<'a> {
             font_family: Some(self.font_family("messageFontFamily")),
             font_size: self.font_size("messageFontSize", DEFAULT_MESSAGE_FONT_SIZE),
             font_weight: self.font_weight("messageFontWeight"),
+            font_style: None,
         }
     }
 
@@ -107,6 +109,7 @@ impl<'a> C4ConfigView<'a> {
             font_family: Some(self.font_family(&key_family)),
             font_size: self.font_size(&key_size, 14.0),
             font_weight: self.font_weight(&key_weight),
+            font_style: None,
         }
     }
 
@@ -162,6 +165,7 @@ impl C4LayoutSettings {
             font_family: self.boundary_font_family.clone(),
             font_size: self.boundary_font_size,
             font_weight: self.boundary_font_weight.clone(),
+            font_style: None,
         }
     }
 
@@ -170,6 +174,7 @@ impl C4LayoutSettings {
             font_family: self.message_font_family.clone(),
             font_size: self.message_font_size,
             font_weight: self.message_font_weight.clone(),
+            font_style: None,
         }
     }
 }

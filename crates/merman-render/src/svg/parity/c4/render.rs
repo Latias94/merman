@@ -151,7 +151,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let viewbox_x = bounds.min_x - diagram_margin_x;
     let viewbox_y = -(diagram_margin_y + extra_vert_for_title);
 
-    let aria_roledescription = options.aria_roledescription.as_deref().unwrap_or("c4");
+    let aria_roledescription = "c4";
 
     let aria_describedby = model
         .acc_descr
@@ -179,12 +179,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::C4,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::C4, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = model
         .acc_title
@@ -217,9 +213,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str("<g/>");
 
-    const C4_DATABASE_SYMBOL_D_11_12_2: &str = include_str!(concat!(
+    const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/assets/c4_database_d_11_12_2.txt"
+        "/assets/c4_database_d_11_16_0.txt"
     ));
 
     let _ = write!(
@@ -231,7 +227,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
         &mut out,
         r#"<defs><symbol id="{}" fill-rule="evenodd" clip-rule="evenodd"><path transform="scale(.5)" d="{}"/></symbol></defs>"#,
         escape_attr(&scoped_svg_id(diagram_id, "database")),
-        escape_attr(C4_DATABASE_SYMBOL_D_11_12_2.trim())
+        escape_attr(PINNED_C4_DATABASE_SYMBOL_D.trim())
     );
     let _ = write!(
         &mut out,

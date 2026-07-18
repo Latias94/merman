@@ -1,5 +1,8 @@
 # Fearless Refactor Changelog
 
+> Historical changelog. Override inventories and commands below record the former implementation;
+> production fixture/root/text/SVG overrides and their tooling are no longer available.
+
 This log records completed changes that materially advance the fearless-refactor workstream.
 Detailed planning remains in `TODO.md` and `MILESTONES.md`.
 

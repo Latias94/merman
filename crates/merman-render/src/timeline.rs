@@ -3,7 +3,7 @@ use crate::model::{
     Bounds, TimelineDiagramLayout, TimelineLineLayout, TimelineNodeLayout, TimelineSectionLayout,
     TimelineTaskLayout,
 };
-use crate::text::{TextMeasurer, TextStyle, normalize_font_key};
+use crate::text::{TextMeasurer, TextStyle};
 use merman_core::diagrams::timeline::{TimelineDiagramRenderModel, TimelineRenderTask};
 use std::borrow::Cow;
 
@@ -24,18 +24,6 @@ const TITLE_Y: f64 = 20.0;
 
 pub(crate) fn default_use_max_width() -> bool {
     false
-}
-
-fn timeline_font_key(style: &TextStyle) -> String {
-    style
-        .font_family
-        .as_deref()
-        .map(normalize_font_key)
-        .unwrap_or_default()
-}
-
-fn timeline_uses_fira_sans_browser_fallback(style: &TextStyle) -> bool {
-    timeline_font_key(style) == "firasans"
 }
 
 fn section_index(full_section: i64) -> i64 {
@@ -181,32 +169,19 @@ fn wrap_lines(
     }
 }
 
-fn timeline_first_line_bbox_height_px(style: &TextStyle) -> f64 {
-    if timeline_uses_fira_sans_browser_fallback(style) && (style.font_size - 17.0).abs() <= 0.01 {
-        return 25.0;
-    }
-
-    let first_line_em = 1.1875;
-    (style.font_size.max(1.0) * first_line_em).floor()
-}
-
-fn text_bbox_height(lines: &[String], style: &TextStyle) -> f64 {
+fn text_bbox_height(lines: &[String], style: &TextStyle, measurer: &dyn TextMeasurer) -> f64 {
     // Mermaid timeline measures SVG `<text>.getBBox().height` (see upstream `svgDraw.js`).
     //
-    // In the pinned Mermaid CLI/browser baselines, the bbox behaves as:
-    // - first line: ~1.1875em (Trebuchet MS default)
-    // - additional lines: 1.1em each
+    // The first visible line is measured through the operation-selected DOM-shape route. Mermaid
+    // places subsequent tspans at `dy=1.1em`, so their contribution is source-derived.
     let font_size = style.font_size.max(1.0);
-    let lines = lines.iter().filter(|l| !l.trim().is_empty()).count();
-    if lines == 0 {
+    let mut visible_lines = lines.iter().filter(|line| !line.trim().is_empty());
+    let Some(first_line) = visible_lines.next() else {
         return 0.0;
-    }
-    // Empirically, browser `getBBox().height` for SVG `<text>` in upstream timeline fixtures can
-    // "snap" the first-line height down to an integer for non-default font sizes (notably when
-    // the diagram sets `themeVariables.fontSize`). Mirror that so our layout stays on the same
-    // lattice as upstream `mmdc` baselines.
-    let first = timeline_first_line_bbox_height_px(style);
-    let additional = (lines.saturating_sub(1) as f64) * font_size * 1.1;
+    };
+    let additional_lines = visible_lines.count();
+    let first = measurer.measure_svg_tspan_text_bbox_height_px(first_line, style);
+    let additional = additional_lines as f64 * font_size * 1.1;
     first + additional
 }
 
@@ -221,7 +196,7 @@ fn virtual_node_height(
     // Mermaid timeline `wrap()` compares `tspan.getComputedTextLength()` against `node.width`
     // (the configured inner width, excluding padding).
     let lines = wrap_lines(text, content_width.max(1.0), style, measurer);
-    let bbox_h = text_bbox_height(&lines, style);
+    let bbox_h = text_bbox_height(&lines, style, measurer);
     // Mermaid timeline uses `conf.fontSize` (top-level `config.fontSize`) for the extra vertical
     // offset, even when the actual rendered font size comes from `themeVariables.fontSize`.
     let h = bbox_h + layout_font_size.max(1.0) * 1.1 * 0.5 + padding;
@@ -312,15 +287,6 @@ fn bounds_from_nodes_and_lines<'a, 'b>(
     }
 }
 
-fn timeline_svg_bbox_x_with_ascii_overhang_override_px(
-    font_key: &str,
-    font_size_px: f64,
-    text: &str,
-) -> Option<(f64, f64)> {
-    crate::generated::timeline_text_overrides_11_12_2::
-        lookup_timeline_svg_bbox_x_with_ascii_overhang_px(font_key, font_size_px, text)
-}
-
 fn expand_bounds_for_node_text(
     min_x: &mut f64,
     _min_y: &mut f64,
@@ -340,17 +306,16 @@ fn expand_bounds_for_node_text(
             if line.trim().is_empty() {
                 continue;
             }
-            // Timeline node labels can overflow the node shape. Mermaid computes the final
-            // viewport from SVG `getBBox()`, which includes glyph overhang and can be asymmetric
-            // even for ASCII strings (observed in upstream fixtures).
-            let (left, right) = timeline_svg_bbox_x_with_ascii_overhang_override_px(
-                style.font_family.as_deref().unwrap_or_default(),
-                style.font_size,
-                line,
-            )
-            .unwrap_or_else(|| measurer.measure_svg_text_bbox_x_with_ascii_overhang(line, style));
-            *min_x = (*min_x).min(anchor_x - left);
-            *max_x = (*max_x).max(anchor_x + right);
+            // `wrap()` replaces the direct text run with child `<tspan>` rows before Mermaid
+            // reads the root SVG bbox. Preserve that DOM shape in the measurement route. The
+            // rendered text is middle-anchored at the node center, so each row contributes half
+            // of its tspan bbox width on either side of that anchor.
+            let half_width = measurer
+                .measure_svg_tspan_text_bbox_width_px(line, style)
+                .max(0.0)
+                / 2.0;
+            *min_x = (*min_x).min(anchor_x - half_width);
+            *max_x = (*max_x).max(anchor_x + half_width);
         }
     }
 }
@@ -656,6 +621,7 @@ pub fn layout_timeline_diagram_typed(
             font_family: text_style.font_family.clone(),
             font_size: title_font_size,
             font_weight: Some("bold".to_string()),
+            font_style: None,
         };
         let metrics = measurer.measure(t, &title_style);
         all_nodes_full.push(TimelineNodeLayout {
@@ -719,8 +685,6 @@ mod tests {
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
     use std::path::PathBuf;
 
-    const LONG_WORD: &str = "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious";
-
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
@@ -742,48 +706,91 @@ mod tests {
     }
 
     #[test]
-    fn fira_sans_17_timeline_metrics_match_mermaid_11_16_computed_length_wrap() {
+    fn timeline_bbox_height_uses_tspan_measurement_for_first_line() {
+        struct TspanHeightMeasurer;
+
+        impl TextMeasurer for TspanHeightMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+                crate::text::TextMetrics {
+                    width: 1.0,
+                    height: 1.0,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                assert_eq!(text, "first");
+                25.0
+            }
+        }
+
         let style = TextStyle {
-            font_family: Some("Fira Sans".to_string()),
             font_size: 17.0,
-            font_weight: None,
+            ..TextStyle::default()
         };
-        let measurer = crate::text::VendoredFontMetricsTextMeasurer::default();
+        let lines = vec!["first".to_string(), "second".to_string()];
 
-        let (height, lines) = virtual_node_height(
-            "Quality Management System (4)",
-            TASK_CONTENT_WIDTH_DEFAULT,
-            &style,
-            16.0,
-            NODE_PADDING,
-            &measurer,
-        );
+        let height = text_bbox_height(&lines, &style, &TspanHeightMeasurer);
 
-        assert_eq!(lines, ["Quality   Management", "System   (4)"]);
-        assert!(
-            (height - 72.5).abs() < 0.001,
-            "expected Fira/Sans browser Timeline height to be 72.5px, got {height}"
-        );
+        assert_eq!(height, 25.0 + 17.0 * 1.1);
     }
 
     #[test]
-    fn svg_override_paths_cover_long_word_bbox() {
-        assert_eq!(
-            timeline_svg_bbox_x_with_ascii_overhang_override_px(
-                "\"trebuchet ms\", verdana, arial, sans-serif",
-                16.0,
-                LONG_WORD,
-            ),
-            Some((235.3203125, 235.3203125))
+    fn node_text_bounds_measure_the_rendered_tspan_dom_shape() {
+        struct TspanOnlyMeasurer;
+
+        impl TextMeasurer for TspanOnlyMeasurer {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+                crate::text::TextMetrics {
+                    width: 1.0,
+                    height: 1.0,
+                    line_count: 1,
+                }
+            }
+
+            fn measure_svg_text_bbox_x_with_ascii_overhang(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> (f64, f64) {
+                panic!("timeline labels are rendered as child tspans")
+            }
+
+            fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                assert_eq!(text, "an overflowing label");
+                320.0
+            }
+        }
+
+        let node = TimelineNodeLayout {
+            x: 200.0,
+            y: 50.0,
+            width: 190.0,
+            height: 50.0,
+            content_width: 150.0,
+            padding: 20.0,
+            section_class: "section-0".to_string(),
+            label: "an overflowing label".to_string(),
+            label_lines: vec!["an overflowing label".to_string()],
+            kind: "event".to_string(),
+        };
+        let mut min_x = node.x;
+        let mut min_y = node.y;
+        let mut max_x = node.x + node.width;
+        let mut max_y = node.y + node.height;
+
+        expand_bounds_for_node_text(
+            &mut min_x,
+            &mut min_y,
+            &mut max_x,
+            &mut max_y,
+            &[node],
+            &TextStyle::default(),
+            &TspanOnlyMeasurer,
         );
-        assert_eq!(
-            timeline_svg_bbox_x_with_ascii_overhang_override_px("", 16.0, LONG_WORD),
-            Some((235.3203125, 235.3203125))
-        );
-        assert_eq!(
-            timeline_svg_bbox_x_with_ascii_overhang_override_px("courier", 16.0, "Line 2"),
-            None
-        );
+
+        assert_eq!(min_x, 135.0);
+        assert_eq!(max_x, 455.0);
     }
 
     #[test]

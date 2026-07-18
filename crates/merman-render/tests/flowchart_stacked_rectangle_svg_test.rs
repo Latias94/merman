@@ -2,9 +2,7 @@ use futures::executor::block_on;
 use merman_core::diagrams::flowchart::FlowchartModel;
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
-use merman_render::environment::{
-    RenderEnvironment, RenderSession, RootViewportOverridePolicy, TextMeasurementPhase,
-};
+use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
 use merman_render::family;
 use merman_render::flowchart::layout_flowchart_typed;
 use merman_render::model::FlowchartLayout;
@@ -38,7 +36,6 @@ fn layout_flowchart_render_model(
                 &parsed.meta.effective_config,
                 &measurer,
                 session.math_renderer(),
-                _options.flowchart_elk_backend,
             );
         }
         #[cfg(not(feature = "elk-layout"))]
@@ -140,10 +137,7 @@ fn assert_close(actual: f64, expected: f64, name: &str) {
 
 #[test]
 fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
-    let _session = RenderEnvironment::parity()
-        .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
-        .begin_session()
-        .unwrap();
+    let _session = RenderEnvironment::parity().begin_session().unwrap();
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;
@@ -203,10 +197,7 @@ fn flowchart_stacked_rectangle_svg_uses_layout_bbox_once() {
 
 #[test]
 fn flowchart_stacked_rectangle_classic_merges_each_layer_path() {
-    let _session = RenderEnvironment::parity()
-        .with_root_viewport_override_policy(RootViewportOverridePolicy::ComputedOnly)
-        .begin_session()
-        .unwrap();
+    let _session = RenderEnvironment::parity().begin_session().unwrap();
     let text = r#"flowchart
  n0@{ shape: procs, label: "procs" }
 "#;

@@ -202,6 +202,7 @@ impl<'a> StateConfigView<'a> {
             font_family,
             font_size,
             font_weight: None,
+            font_style: None,
         }
     }
 

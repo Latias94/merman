@@ -45,6 +45,7 @@ import type {
   EditorWorkspaceEdit,
   HostTextMeasureRequest,
   HostTextMeasureResult,
+  HostTextMetricsResult,
   HostTextMeasurer,
   MermanInitInput,
   MermanWasmModule,
@@ -155,53 +156,404 @@ export function layoutJsonWithTextMeasurer(
 }
 
 export function createBrowserTextMeasurer(): HostTextMeasurer {
-  let probe: HTMLDivElement | null = null;
+  let probes: BrowserTextMeasureProbes | null = null;
 
   return (request) => {
-    probe ??= createTextMeasureProbe();
-    if (!probe) {
+    try {
+      probes ??= createTextMeasureProbes();
+      if (!probes) {
+        return undefined;
+      }
+      return measureWithBrowserProbes(probes, request);
+    } catch {
       return undefined;
     }
-
-    if (!request.text) {
-      return {
-        width: 0,
-        height: request.line_height || request.font_size,
-        line_count: 1,
-      };
-    }
-
-    applyTextMeasureStyle(probe, request);
-    const maxWidth = normalizeMeasureMaxWidth(request);
-    if (request.wrap_mode === "html-like" && maxWidth !== null) {
-      const natural = measureProbeText(probe, request.text, {
-        display: "inline-block",
-        width: "auto",
-        maxWidth: "none",
-        whiteSpace: "nowrap",
-      });
-      if (natural.width <= maxWidth) {
-        return natural;
-      }
-
-      return measureProbeText(probe, request.text, {
-        display: "table",
-        width: `${maxWidth}px`,
-        maxWidth: `${maxWidth}px`,
-        whiteSpace: "break-spaces",
-      });
-    }
-
-    return measureProbeText(probe, request.text, {
-      display: "inline-block",
-      width: "auto",
-      maxWidth: maxWidth === null ? "none" : `${maxWidth}px`,
-      whiteSpace: request.white_space,
-    });
   };
 }
 
-function applyTextMeasureStyle(
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+interface BrowserTextMeasureProbes {
+  html: HTMLDivElement;
+  svg: SVGSVGElement;
+  directText: SVGTextElement;
+  tspanText: SVGTextElement;
+  tspan: SVGTSpanElement;
+  wrappedText: SVGTextElement;
+  formattedTextGroup: SVGGElement;
+  formattedText: SVGTextElement;
+  canvasContext?: CanvasRenderingContext2D | null;
+}
+
+type SvgProbeShape = "direct" | "tspan";
+
+function measureWithBrowserProbes(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest
+): HostTextMeasureResult | undefined {
+  if (!request.text) {
+    return emptyMeasurement(request);
+  }
+
+  switch (request.operation) {
+    case "measure":
+      return svgMetrics(probes, request, "direct");
+    case "computed-length": {
+      prepareSvgText(probes, request, "tspan", "start");
+      if (typeof probes.tspan.getComputedTextLength !== "function") {
+        return undefined;
+      }
+      return { kind: "length", length: Math.max(0, probes.tspan.getComputedTextLength()) };
+    }
+    case "bbox-x":
+    case "bbox-x-with-ascii-overhang":
+    case "title-bbox-x": {
+      const bbox = svgBBox(probes, request, "direct", "middle");
+      return {
+        kind: "horizontal-extents",
+        bbox_left: Math.max(0, -bbox.x),
+        bbox_right: Math.max(0, bbox.x + bbox.width),
+      };
+    }
+    case "simple-bbox-width":
+    case "wrap-probe-bbox-width":
+      return { kind: "length", length: Math.max(0, svgBBox(probes, request, "tspan").width) };
+    case "raw-bbox-width":
+      return { kind: "length", length: Math.max(0, svgBBox(probes, request, "direct").width) };
+    case "raw-bbox-height":
+      return { kind: "length", length: Math.max(0, svgBBox(probes, request, "direct").height) };
+    case "bounding-client-rect-width": {
+      const text = prepareSvgText(probes, request, "direct", "start");
+      return { kind: "length", length: Math.max(0, text.getBoundingClientRect().width) };
+    }
+    case "tspan-bbox-width":
+      return { kind: "length", length: Math.max(0, svgBBox(probes, request, "tspan").width) };
+    case "tspan-bbox-height":
+      return { kind: "length", length: Math.max(0, svgBBox(probes, request, "tspan").height) };
+    case "create-text-bbox-y-offset":
+      return { kind: "length", length: svgCreateTextBBoxYOffset(probes, request, false) };
+    case "create-text-middle-bbox-y-offset":
+      return { kind: "length", length: svgCreateTextBBoxYOffset(probes, request, true) };
+    case "mermaid-calculate-text-dimensions":
+      return mermaidCalculateTextDimensions(request);
+    case "canvas-measure-text-width":
+      return canvasTextWidth(probes, request);
+    case "simple-bbox-height":
+      return { kind: "length", length: Math.max(0, svgBBox(probes, request, "tspan").height) };
+    case "wrapped":
+      return request.wrap_mode === "html-like"
+        ? htmlWrappedMetrics(probes.html, request).metrics
+        : svgWrappedMetrics(probes, request);
+    case "wrapped-with-raw-width": {
+      const measured = wrappedMetrics(probes, request);
+      return {
+        ...measured.metrics,
+        kind: "wrapped-with-raw-width",
+        raw_width: measured.rawWidth,
+      };
+    }
+  }
+}
+
+function emptyMeasurement(request: HostTextMeasureRequest): HostTextMeasureResult {
+  switch (request.operation) {
+    case "bbox-x":
+    case "bbox-x-with-ascii-overhang":
+    case "title-bbox-x":
+      return { kind: "horizontal-extents", bbox_left: 0, bbox_right: 0 };
+    case "tspan-bbox-height":
+    case "simple-bbox-height":
+    case "raw-bbox-height":
+    case "create-text-bbox-y-offset":
+    case "create-text-middle-bbox-y-offset":
+      return { kind: "length", length: 0 };
+    case "measure":
+    case "wrapped":
+    case "mermaid-calculate-text-dimensions":
+      return { kind: "metrics", width: 0, height: 0, line_count: 1 };
+    case "wrapped-with-raw-width":
+      return {
+        kind: "wrapped-with-raw-width",
+        width: 0,
+        height: 0,
+        line_count: 1,
+        raw_width: 0,
+      };
+    default:
+      return { kind: "length", length: 0 };
+  }
+}
+
+function mermaidCalculateTextDimensions(
+  request: HostTextMeasureRequest
+): HostTextMetricsResult {
+  const svg = document.createElementNS(SVG_NAMESPACE, "svg") as SVGSVGElement;
+  const text = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+  const tspan = document.createElementNS(SVG_NAMESPACE, "tspan") as SVGTSpanElement;
+
+  text.setAttribute("x", "0");
+  text.setAttribute("y", "0");
+  text.style.textAnchor = "start";
+  text.style.fontSize = `${Number.isFinite(request.font_size) ? request.font_size : 12}px`;
+  text.style.fontWeight = request.font_weight ?? "400";
+  text.style.fontFamily = request.font_family ?? "Arial";
+  tspan.setAttribute("x", "0");
+  tspan.textContent = request.text;
+  text.appendChild(tspan);
+  svg.appendChild(text);
+  document.body.appendChild(svg);
+
+  try {
+    const bbox = text.getBBox();
+    if (bbox.width === 0 && bbox.height === 0) {
+      throw new Error("svg element not in render tree");
+    }
+    return {
+      kind: "metrics",
+      width: Math.max(0, bbox.width),
+      height: Math.max(0, bbox.height),
+      line_count: 1,
+    };
+  } finally {
+    svg.remove();
+  }
+}
+
+function canvasTextWidth(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest
+): HostTextMeasureResult | undefined {
+  if (probes.canvasContext === undefined) {
+    probes.canvasContext = document.createElement("canvas").getContext("2d");
+  }
+  const context = probes.canvasContext;
+  if (!context || typeof context.measureText !== "function") {
+    return undefined;
+  }
+
+  const fontStyle = request.font_style;
+  const fontWeight = request.font_weight ?? "normal";
+  const fontSize = Number.isFinite(request.font_size) ? request.font_size : 16;
+  const fontFamily = request.font_family ?? "sans-serif";
+  context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+  const width = context.measureText(request.text).width;
+  if (!Number.isFinite(width)) {
+    return undefined;
+  }
+  return { kind: "length", length: Math.max(0, width) };
+}
+
+function wrappedMetrics(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest
+): { metrics: HostTextMetricsResult; rawWidth: number } {
+  if (request.wrap_mode === "html-like") {
+    return htmlWrappedMetrics(probes.html, request);
+  }
+
+  const rawWidth = Math.max(0, svgBBox(probes, request, "tspan").width);
+  return {
+    metrics: svgWrappedMetrics(probes, request),
+    rawWidth,
+  };
+}
+
+function htmlWrappedMetrics(
+  probe: HTMLDivElement,
+  request: HostTextMeasureRequest
+): { metrics: HostTextMetricsResult; rawWidth: number } {
+  applyHtmlTextMeasureStyle(probe, request);
+  const natural = measureHtmlProbe(probe, request.text, {
+    display: "inline-block",
+    width: "auto",
+    maxWidth: "none",
+    whiteSpace: "nowrap",
+  });
+  const maxWidth = normalizeMeasureMaxWidth(request);
+  if (maxWidth === null || natural.width <= maxWidth) {
+    return { metrics: natural, rawWidth: natural.width };
+  }
+
+  return {
+    metrics: measureHtmlProbe(probe, request.text, {
+      display: "table",
+      width: `${maxWidth}px`,
+      maxWidth: `${maxWidth}px`,
+      whiteSpace: "break-spaces",
+    }),
+    rawWidth: natural.width,
+  };
+}
+
+function svgWrappedMetrics(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest
+): HostTextMetricsResult {
+  const maxWidth = normalizeMeasureMaxWidth(request);
+  const breakLongWords = request.wrap_mode === "svg-like";
+  const lines = splitExplicitLines(request.text).flatMap((line) =>
+    maxWidth === null
+      ? [line]
+      : wrapSvgLine(probes, request, line, maxWidth, breakLongWords)
+  );
+
+  applySvgTextStyle(probes.wrappedText, request);
+  probes.wrappedText.setAttribute("x", "0");
+  probes.wrappedText.setAttribute("y", "0");
+  probes.wrappedText.setAttribute("text-anchor", "start");
+  probes.wrappedText.textContent = "";
+  for (const [index, line] of lines.entries()) {
+    const tspan = document.createElementNS(SVG_NAMESPACE, "tspan");
+    tspan.setAttribute("x", "0");
+    tspan.setAttribute("dy", index === 0 ? "0" : `${Math.max(1, request.line_height)}px`);
+    tspan.textContent = line || "\u200b";
+    probes.wrappedText.appendChild(tspan);
+  }
+  const bbox = probes.wrappedText.getBBox();
+  return {
+    kind: "metrics",
+    width: Math.max(0, bbox.width),
+    height: Math.max(0, bbox.height),
+    line_count: Math.max(1, lines.length),
+  };
+}
+
+function svgCreateTextBBoxYOffset(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest,
+  middleBaseline: boolean
+): number {
+  const group = probes.formattedTextGroup;
+  const text = probes.formattedText;
+  for (const attribute of ["dy", "alignment-baseline", "dominant-baseline", "text-anchor"]) {
+    group.removeAttribute(attribute);
+  }
+  if (middleBaseline) {
+    group.setAttribute("dy", "1em");
+    group.setAttribute("alignment-baseline", "middle");
+    group.setAttribute("dominant-baseline", "middle");
+    group.setAttribute("text-anchor", "middle");
+  }
+  applySvgTextStyle(text, request);
+  text.removeAttribute("x");
+  text.removeAttribute("text-anchor");
+  text.setAttribute("y", "-10.1");
+  text.textContent = "";
+
+  const tspan = document.createElementNS(SVG_NAMESPACE, "tspan");
+  tspan.setAttribute("x", "0");
+  tspan.setAttribute("y", "-0.1em");
+  tspan.setAttribute("dy", "1.1em");
+  tspan.textContent = request.text || "\u200b";
+  text.appendChild(tspan);
+  return text.getBBox().y;
+}
+
+function splitExplicitLines(text: string): string[] {
+  const lines = text.split(/(?:<br\s*\/?>|\r?\n)/gi);
+  return lines.length === 0 ? [""] : lines;
+}
+
+function wrapSvgLine(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest,
+  line: string,
+  maxWidth: number,
+  breakLongWords: boolean
+): string[] {
+  const words = line.trim().split(/\s+/u).filter(Boolean);
+  if (words.length === 0) {
+    return [""];
+  }
+
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (svgTextWidth(probes, request, candidate) <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+    if (current) {
+      lines.push(current);
+      current = "";
+    }
+    if (!breakLongWords || svgTextWidth(probes, request, word) <= maxWidth) {
+      current = word;
+      continue;
+    }
+
+    let segment = "";
+    for (const character of Array.from(word)) {
+      const candidateSegment = `${segment}${character}`;
+      if (segment && svgTextWidth(probes, request, candidateSegment) > maxWidth) {
+        lines.push(segment);
+        segment = character;
+      } else {
+        segment = candidateSegment;
+      }
+    }
+    current = segment;
+  }
+  if (current) {
+    lines.push(current);
+  }
+  return lines.length === 0 ? [""] : lines;
+}
+
+function svgTextWidth(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest,
+  text: string
+): number {
+  prepareSvgText(probes, { ...request, text }, "tspan", "start");
+  return Math.max(0, probes.tspanText.getBBox().width);
+}
+
+function svgMetrics(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest,
+  shape: SvgProbeShape
+): HostTextMetricsResult {
+  const bbox = svgBBox(probes, request, shape);
+  return {
+    kind: "metrics",
+    width: Math.max(0, bbox.width),
+    height: Math.max(0, bbox.height),
+    line_count: 1,
+  };
+}
+
+function svgBBox(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest,
+  shape: SvgProbeShape,
+  anchor: "start" | "middle" = "start"
+): DOMRect {
+  const element = prepareSvgText(probes, request, shape, anchor);
+  return element.getBBox() as DOMRect;
+}
+
+function prepareSvgText(
+  probes: BrowserTextMeasureProbes,
+  request: HostTextMeasureRequest,
+  shape: SvgProbeShape,
+  anchor: "start" | "middle"
+): SVGTextElement {
+  const element = shape === "direct" ? probes.directText : probes.tspanText;
+  applySvgTextStyle(element, request);
+  element.setAttribute("x", "0");
+  element.setAttribute("y", "0");
+  element.setAttribute("text-anchor", anchor);
+  if (shape === "direct") {
+    element.textContent = request.text;
+  } else {
+    probes.tspan.textContent = request.text;
+  }
+  return element;
+}
+
+function applyHtmlTextMeasureStyle(
   probe: HTMLDivElement,
   request: HostTextMeasureRequest
 ) {
@@ -217,27 +569,40 @@ function applyTextMeasureStyle(
     style.direction = request.direction === "auto" ? "" : request.direction;
 }
 
-function measureProbeText(
+function applySvgTextStyle(element: SVGTextElement, request: HostTextMeasureRequest) {
+  const style = element.style;
+  style.fontFamily = request.font_family || "sans-serif";
+  style.fontSize = `${Math.max(1, request.font_size)}px`;
+  style.fontWeight = request.font_weight || "normal";
+  style.fontStyle = request.font_style || "normal";
+  style.letterSpacing = `${request.letter_spacing || 0}px`;
+  style.wordSpacing = `${request.word_spacing || 0}px`;
+  style.direction = request.direction === "auto" ? "" : request.direction;
+  style.whiteSpace = request.white_space;
+}
+
+function measureHtmlProbe(
   probe: HTMLDivElement,
   text: string,
   styleOverride: Pick<
     CSSStyleDeclaration,
     "display" | "width" | "maxWidth" | "whiteSpace"
   >
-): HostTextMeasureResult {
-    probe.style.display = styleOverride.display;
-    probe.style.width = styleOverride.width;
-    probe.style.maxWidth = styleOverride.maxWidth;
-    probe.style.whiteSpace = styleOverride.whiteSpace;
-    probe.textContent = text;
-    const rect = probe.getBoundingClientRect();
-    const lineHeight = Math.max(1, parseFloat(probe.style.lineHeight) || 1);
-    const height = Math.max(lineHeight, rect.height);
-    return {
-      width: Math.max(0, rect.width),
-      height,
-      line_count: Math.max(1, Math.round(height / lineHeight)),
-    };
+): HostTextMetricsResult {
+  probe.style.display = styleOverride.display;
+  probe.style.width = styleOverride.width;
+  probe.style.maxWidth = styleOverride.maxWidth;
+  probe.style.whiteSpace = styleOverride.whiteSpace;
+  probe.textContent = text;
+  const rect = probe.getBoundingClientRect();
+  const lineHeight = Math.max(1, parseFloat(probe.style.lineHeight) || 1);
+  const height = Math.max(lineHeight, rect.height);
+  return {
+    kind: "metrics",
+    width: Math.max(0, rect.width),
+    height,
+    line_count: Math.max(1, Math.round(height / lineHeight)),
+  };
 }
 
 function normalizeMeasureMaxWidth(
@@ -254,14 +619,18 @@ function normalizeMeasureMaxWidth(
   return request.max_width;
 }
 
-function createTextMeasureProbe(): HTMLDivElement | null {
-  if (typeof document === "undefined" || !document.body) {
+function createTextMeasureProbes(): BrowserTextMeasureProbes | null {
+  if (
+    typeof document === "undefined" ||
+    !document.body ||
+    typeof document.createElementNS !== "function"
+  ) {
     return null;
   }
 
-  const probe = document.createElement("div");
-  probe.setAttribute("aria-hidden", "true");
-  Object.assign(probe.style, {
+  const html = document.createElement("div");
+  html.setAttribute("aria-hidden", "true");
+  Object.assign(html.style, {
     position: "fixed",
     left: "-10000px",
     top: "-10000px",
@@ -273,8 +642,43 @@ function createTextMeasureProbe(): HTMLDivElement | null {
     border: "0",
     display: "block",
   });
-  document.body.appendChild(probe);
-  return probe;
+  document.body.appendChild(html);
+
+  const svg = document.createElementNS(SVG_NAMESPACE, "svg") as SVGSVGElement;
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("width", "0");
+  svg.setAttribute("height", "0");
+  Object.assign(svg.style, {
+    position: "fixed",
+    left: "-10000px",
+    top: "-10000px",
+    visibility: "hidden",
+    overflow: "visible",
+  });
+  const directText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+  const tspanText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+  const tspan = document.createElementNS(SVG_NAMESPACE, "tspan") as SVGTSpanElement;
+  const wrappedText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+  const formattedTextGroup = document.createElementNS(SVG_NAMESPACE, "g") as SVGGElement;
+  const formattedText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+  formattedTextGroup.appendChild(formattedText);
+  tspanText.appendChild(tspan);
+  svg.appendChild(directText);
+  svg.appendChild(tspanText);
+  svg.appendChild(wrappedText);
+  svg.appendChild(formattedTextGroup);
+  document.body.appendChild(svg);
+
+  return {
+    html,
+    svg,
+    directText,
+    tspanText,
+    tspan,
+    wrappedText,
+    formattedTextGroup,
+    formattedText,
+  };
 }
 
 export function renderSvgElement(
@@ -629,9 +1033,37 @@ function normalizeDiagramFamilyCapability(
       : assertDiagramType(String(capability.metadata_id));
   return {
     diagram_type: capability.diagram_type,
+    logical_family_kind: assertStringField(
+      capability.logical_family_kind,
+      "diagram logical family kind"
+    ),
     metadata_id: metadataId,
-    has_semantic_parser: Boolean(capability.has_semantic_parser),
-    has_render_parser: Boolean(capability.has_render_parser),
+    render_model_kind: assertNullableStringField(
+      capability.render_model_kind,
+      "diagram render model kind"
+    ),
+    has_detector: assertBooleanField(capability.has_detector, "diagram detector capability"),
+    has_semantic_parser: assertBooleanField(
+      capability.has_semantic_parser,
+      "diagram semantic parser capability"
+    ),
+    has_editor_parser: assertBooleanField(
+      capability.has_editor_parser,
+      "diagram editor parser capability"
+    ),
+    has_combined_parser: assertBooleanField(
+      capability.has_combined_parser,
+      "diagram combined parser capability"
+    ),
+    has_render_parser: assertBooleanField(
+      capability.has_render_parser,
+      "diagram render parser capability"
+    ),
+    has_header: assertBooleanField(capability.has_header, "diagram header capability"),
+    config_namespace: assertNullableStringField(
+      capability.config_namespace,
+      "diagram config namespace"
+    ),
   };
 }
 
@@ -698,6 +1130,20 @@ function normalizeLintRuleCatalogResponse(
 
 function assertStringField(value: unknown, label: string): string {
   if (typeof value === "string") {
+    return value;
+  }
+  throw new Error(`Merman WASM returned an invalid ${label}.`);
+}
+
+function assertNullableStringField(value: unknown, label: string): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return assertStringField(value, label);
+}
+
+function assertBooleanField(value: unknown, label: string): boolean {
+  if (typeof value === "boolean") {
     return value;
   }
   throw new Error(`Merman WASM returned an invalid ${label}.`);

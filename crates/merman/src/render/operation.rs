@@ -1,14 +1,86 @@
 use super::{
     LayoutOptions, Result, SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
-    apply_svg_pipeline_with_metadata,
+    apply_owned_svg_pipeline_with_metadata,
 };
 use merman_render::{
     ResourceLimitExceeded, ResourceLimitPhase,
-    environment::{RenderEnvironment, RenderOperationReport, RenderSession},
+    environment::{RenderEnvironment, RenderSession, RenderSessionReport},
 };
 
 #[cfg(feature = "raster")]
 use super::raster;
+
+/// Stable identity of the operation that produced a retained render result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RenderExecutionPath {
+    HeadlessOperationTyped,
+}
+
+impl RenderExecutionPath {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HeadlessOperationTyped => "headless-operation-typed",
+        }
+    }
+}
+
+/// Immutable evidence emitted only after a typed headless SVG operation completes successfully.
+///
+/// A fresh render session yields [`RenderSessionReport`], which cannot be substituted for this
+/// completed operation report.
+///
+/// ```compile_fail
+/// use merman::render::{RenderEnvironment, RenderOperationReport};
+///
+/// fn retain_completed(_: &RenderOperationReport) {}
+/// let snapshot = RenderEnvironment::parity().begin_session().unwrap().report();
+/// retain_completed(&snapshot);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderOperationReport {
+    execution_path: RenderExecutionPath,
+    session: RenderSessionReport,
+}
+
+impl RenderOperationReport {
+    pub const fn execution_path(&self) -> RenderExecutionPath {
+        self.execution_path
+    }
+
+    pub fn measurement_routes(&self) -> &[super::TextMeasurementRoute; 4] {
+        self.session.measurement_routes()
+    }
+
+    pub fn measurement(&self) -> &super::TextMeasurementReport {
+        self.session.measurement()
+    }
+
+    pub const fn time(&self) -> super::RenderTimeSnapshot {
+        self.session.time()
+    }
+
+    pub const fn seed(&self) -> merman_render::environment::ResolvedRenderSeed {
+        self.session.seed()
+    }
+}
+
+struct CompletedTypedHeadlessSvg {
+    session: RenderSession,
+}
+
+impl CompletedTypedHeadlessSvg {
+    fn new(session: RenderSession) -> Self {
+        Self { session }
+    }
+
+    fn into_report(self) -> RenderOperationReport {
+        RenderOperationReport {
+            execution_path: RenderExecutionPath::HeadlessOperationTyped,
+            session: self.session.report(),
+        }
+    }
+}
 
 pub(super) struct HeadlessOperation<'a> {
     engine: merman_core::Engine,
@@ -126,8 +198,8 @@ impl PreparedRender {
 
     /// Renders SVG once from the prepared semantic model and layout.
     ///
-    /// Request-scoped values in `svg_options` affect SVG presentation only; they do not replace
-    /// the operation-owned session snapshot reported by [`RenderedSvg`].
+    /// Request-scoped values in `svg_options` affect geometry and SVG identity only. Production
+    /// dependencies and deterministic policy come from the operation-owned render session.
     pub fn render_svg(self, svg_options: &SvgRenderOptions) -> Result<String> {
         self.render_svg_with_debug(svg_options, &SvgDebugOptions::default())
     }
@@ -384,7 +456,7 @@ struct RenderedSvgParts {
 
 impl RenderedSvgParts {
     fn into_rendered_svg(self) -> RenderedSvg {
-        let report = self.session.report();
+        let report = CompletedTypedHeadlessSvg::new(self.session).into_report();
         RenderedSvg {
             svg: self.svg,
             report,
@@ -402,12 +474,12 @@ impl RenderedSvgParts {
             .with_diagram_type(diagram_type)
             .with_optional_diagram_title(diagram_title);
 
-        let out = apply_svg_pipeline_with_metadata(&svg, pipeline, &metadata, &session)?;
+        let out = apply_owned_svg_pipeline_with_metadata(svg, pipeline, &metadata, &session)?;
         session
             .resource_limits()
             .check_svg_bytes(&out, ResourceLimitPhase::SvgPostprocess)
             .map_err(resource_limit_error)?;
-        let report = session.report();
+        let report = CompletedTypedHeadlessSvg::new(session).into_report();
         Ok(RenderedSvg { svg: out, report })
     }
 }

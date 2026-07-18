@@ -1,7 +1,10 @@
 # Mermaid 11.15 Root Viewport Residuals - Evidence And Gates
 
-Status: Active
+Status: Superseded on 2026-07-15
 Last updated: 2026-06-02
+
+> Historical evidence for the former Mermaid 11.15 root-pin system. Override inventories and
+> commands below describe mechanisms removed under ADR-0062 and must not be run as current gates.
 
 ## Starting Evidence
 

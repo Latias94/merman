@@ -149,6 +149,15 @@ pub(crate) fn load_existing_imported_fixtures(
     )
 }
 
+pub(crate) fn should_revalidate_deferred_fixture(
+    existing_path: &Path,
+    deferred_candidate_path: &Path,
+    with_baselines: bool,
+    overwrite: bool,
+) -> bool {
+    with_baselines && overwrite && existing_path == deferred_candidate_path
+}
+
 pub(crate) fn validate_exact_import_candidate_filter(
     diagram_dir: &str,
     stem: &str,
@@ -379,7 +388,7 @@ mod tests {
         acquire_imported_fixture_family_locks_in, acquire_imported_fixture_workspace_lock_in,
         candidate_snapshot_failure, candidate_svg_compare_failure, candidate_upstream_svg_failure,
         is_candidate_upstream_svg_failure, load_existing_imported_fixtures_from_dirs,
-        rollback_imported_fixture_snapshots,
+        rollback_imported_fixture_snapshots, should_revalidate_deferred_fixture,
     };
     use crate::XtaskError;
     use crate::cmd::import::ImportedFixtureSnapshot;
@@ -435,6 +444,33 @@ mod tests {
     }
 
     #[test]
+    fn deferred_fixture_revalidation_requires_matching_path_baselines_and_overwrite() {
+        let deferred = Path::new("fixtures/_deferred/treeView/example.mmd");
+
+        assert!(should_revalidate_deferred_fixture(
+            deferred, deferred, true, true
+        ));
+        assert!(!should_revalidate_deferred_fixture(
+            deferred, deferred, false, true
+        ));
+        assert!(!should_revalidate_deferred_fixture(
+            deferred, deferred, true, false
+        ));
+        assert!(!should_revalidate_deferred_fixture(
+            Path::new("fixtures/treeView/example.mmd"),
+            deferred,
+            true,
+            true,
+        ));
+        assert!(!should_revalidate_deferred_fixture(
+            Path::new("fixtures/_deferred/treeView/duplicate.mmd"),
+            deferred,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
     fn non_baseline_batch_serializes_fixture_writes_with_family_generation() {
         let sequence = TEMP_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
@@ -478,10 +514,10 @@ mod tests {
                 let config_dir = writer_root.join("_config");
                 fs::create_dir_all(&config_dir).expect("create config directory");
                 fs::write(
-                    config_dir.join("site_config_overrides.json"),
-                    "{\"sequence/imported.mmd\":{}}\n",
+                    config_dir.join("render_contexts.json"),
+                    "{\"schemaVersion\":1,\"contexts\":[]}\n",
                 )
-                .expect("commit imported site config");
+                .expect("commit imported render contexts");
                 import_committed_tx
                     .send(())
                     .expect("signal imported fixture commit");

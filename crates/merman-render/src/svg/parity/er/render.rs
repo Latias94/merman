@@ -368,31 +368,29 @@ pub(crate) fn render_er_diagram_svg_model(
     });
 
     let mut content_bounds = bounds.clone();
-    if let Some(title) = diagram_title {
+    let diagram_title_x = diagram_title.map(|title| {
         let title_style = crate::text::TextStyle {
             font_family: Some(font_family.clone()),
             font_size,
             font_weight: None,
+            font_style: None,
         };
-        let measure = measurer.measure(title, &title_style);
-        // ER titles inherit the root font-size in upstream CSS. Chromium's SVG bbox for this
-        // inherited title sits on a 1/32px width lattice and includes 4px of vertical overhang
-        // beyond the shared single-line text height.
-        let title_width = ((measure.width.max(1.0) * 32.0).floor()) / 32.0;
-        let title_height = measure.height + 4.0;
+        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
+        let (title_ascent, title_descent) =
+            crate::text::svg_title_bbox_vertical_extents_px(&title_style);
         let w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
         let title_x = content_bounds.min_x + w / 2.0;
         let title_y = -title_top_margin;
-        let title_min_x = title_x - title_width / 2.0;
-        let title_max_x = title_x + title_width / 2.0;
-        // Approximate the SVG text bbox using the measured height above the baseline.
-        let title_min_y = title_y - title_height;
-        let title_max_y = title_y;
+        let title_min_x = title_x - title_left;
+        let title_max_x = title_x + title_right;
+        let title_min_y = title_y - title_ascent;
+        let title_max_y = title_y + title_descent;
         content_bounds.min_x = content_bounds.min_x.min(title_min_x);
         content_bounds.max_x = content_bounds.max_x.max(title_max_x);
         content_bounds.min_y = content_bounds.min_y.min(title_min_y);
         content_bounds.max_y = content_bounds.max_y.max(title_max_y);
-    }
+        title_x
+    });
 
     let pad = options.viewbox_padding.max(0.0);
     let mut out = String::new();
@@ -409,29 +407,23 @@ pub(crate) fn render_er_diagram_svg_model(
         let content_h = (content_bounds.max_y - content_bounds.min_y).max(1.0);
         let vb_w = content_w + pad * 2.0;
         let vb_h = content_h + pad * 2.0;
-        let translate_x = pad - content_bounds.min_x;
-        let translate_y = pad - content_bounds.min_y;
-
-        // Upstream Mermaid viewports are driven by browser `getBBox()` values which frequently land on
-        // a single-precision lattice. Snap the root viewport width/height to that lattice to keep
-        // `parity-root` comparisons stable at high decimal precision.
-        let vb_w_attr = ((vb_w.max(1.0)) as f32) as f64;
-        let vb_h_attr = ((vb_h.max(1.0)) as f32) as f64;
         (
-            translate_x,
-            translate_y,
-            root_svg::DiagramBounds::from_view_box(0.0, 0.0, vb_w_attr, vb_h_attr),
-            vb_w_attr,
+            0.0,
+            0.0,
+            root_svg::DiagramBounds::from_view_box(
+                content_bounds.min_x - pad,
+                content_bounds.min_y - pad,
+                vb_w,
+                vb_h,
+            ),
+            vb_w,
         )
     };
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width).with_max_width(
         root_svg::RootMaxWidth::CssSixSignificant(root_width_for_title),
     );
-    let root_viewport = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Er,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    );
+    let root_viewport =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Er, diagram_id);
     let root_plan = root_viewport.plan(root_spec)?;
 
     let has_acc_title = model.acc_title.as_ref().is_some_and(|s| !s.is_empty());
@@ -861,8 +853,12 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(h)
             );
             let wrap_mode = entity_wrap_mode;
-            let label_metrics =
-                measurer.measure_wrapped(&measure.label_text, &label_style, None, wrap_mode);
+            let label_metrics = measurer.measure_wrapped(
+                measure.label.rendered_text(),
+                &label_style,
+                None,
+                wrap_mode,
+            );
             let lw = if wrap_mode == crate::text::WrapMode::HtmlLike {
                 measure.label_html_width.max(0.0)
             } else {
@@ -879,7 +875,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(lw),
                 fmt(lh),
                 measure.label_max_width_px.max(0),
-                html_label_content(&measure.label_text, "", true)
+                html_label_content(&measure.label, "", true)
             );
             out.push_str("</g>");
             continue;
@@ -928,7 +924,7 @@ pub(crate) fn render_er_diagram_svg_model(
         }
 
         fn html_label_content(
-            text: &str,
+            label: &crate::er::ErBoxLabel,
             span_style_attr: &str,
             markdown_node_label: bool,
         ) -> String {
@@ -937,66 +933,20 @@ pub(crate) fn render_er_diagram_svg_model(
             } else {
                 "nodeLabel"
             };
-            let decoded = decode_mermaid_entities_for_render_text(text);
-            let text = decoded.as_ref().trim();
+            let text = label.rendered_text();
             if text.is_empty() {
                 return format!(r#"<span class="{}"{}></span>"#, span_class, span_style_attr);
             }
 
-            let lower = text.to_ascii_lowercase();
-            let has_inline_html =
-                lower.contains("<br") || lower.contains("<strong") || lower.contains("<em");
-            let has_inline_code = text.contains('`');
-            let has_markdown = crate::er::er_label_has_structural_markdown(text);
-
-            // Mermaid's DOM serialization for generics (`type<T>`) avoids nested HTML tags.
-            // When the generic source also used markdown delimiters, the delimiters affect
-            // parsing but are not emitted as literal text.
-            if (text.contains('<') || text.contains('>')) && !has_inline_html {
-                if let Some(plain) = crate::er::er_generic_markdown_plain_text(text) {
-                    return escape_xml(&plain);
-                }
+            if label.uses_generic_workaround() {
                 return escape_xml(text);
             }
 
-            if has_inline_code {
-                let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-                return format!(
-                    r#"<span class="{}"{}>{}</span>"#,
-                    span_class, span_style_attr, html_out
-                );
-            }
-
-            if has_markdown || has_inline_html {
-                let mut html_out = String::new();
-                let parser = pulldown_cmark::Parser::new_ext(
-                    text,
-                    pulldown_cmark::Options::ENABLE_TABLES
-                        | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-                        | pulldown_cmark::Options::ENABLE_TASKLISTS,
-                )
-                .map(|ev| match ev {
-                    pulldown_cmark::Event::SoftBreak => pulldown_cmark::Event::HardBreak,
-                    other => other,
-                });
-                pulldown_cmark::html::push_html(&mut html_out, parser);
-                let html_out = html_out.trim().to_string();
-                let html_out = html_out
-                    .replace("<br>", "<br />")
-                    .replace("<br/>", "<br />")
-                    .replace("<br >", "<br />");
-
-                return format!(
-                    r#"<span class="{}"{}>{}</span>"#,
-                    span_class, span_style_attr, html_out
-                );
-            }
-
             format!(
-                r#"<span class="{}"{}><p>{}</p></span>"#,
+                r#"<span class="{}"{}>{}</span>"#,
                 span_class,
                 span_style_attr,
-                escape_xml(text)
+                label.xhtml_fragment()
             )
         }
 
@@ -1276,23 +1226,13 @@ pub(crate) fn render_er_diagram_svg_model(
             pad *= 1.25;
         }
 
-        fn er_calc_text_input_for_calculate_text_width(text: &str) -> String {
-            // Mermaid erBox.ts measures `calculateTextWidth` on the pre-workaround string, which
-            // can include literal `&lt;` / `&gt;` for generics.
-            if text.contains('<') || text.contains('>') {
-                text.replace('<', "&lt;").replace('>', "&gt;")
-            } else {
-                text.to_string()
-            }
-        }
-
         let name_w = measure.label_html_width.max(0.0);
         let name_x = -name_w / 2.0;
         let name_y = oy + name_row_h / 2.0 - line_h / 2.0;
         let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
             measurer,
             &label_style,
-            &er_calc_text_input_for_calculate_text_width(&measure.label_text),
+            measure.label.markdown_input(),
         ) + 100;
         let _ = write!(
             &mut out,
@@ -1304,7 +1244,7 @@ pub(crate) fn render_er_diagram_svg_model(
             fmt(line_h),
             escape_xml(&label_div_color_prefix),
             name_mw_px.max(0),
-            html_label_content(&measure.label_text, &span_style_attr, false)
+            html_label_content(&measure.label, &span_style_attr, false)
         );
         out.push_str("</div></foreignObject></g>");
 
@@ -1324,39 +1264,39 @@ pub(crate) fn render_er_diagram_svg_model(
             let row_h = row.height.max(1.0);
             let cell_y = row_top + row_h / 2.0 - line_h / 2.0;
 
-            let type_w = crate::er::er_html_label_metrics(&row.type_text, measurer, &attr_style)
+            let type_w = crate::er::er_box_label_metrics(&row.type_label, measurer, &attr_style)
                 .width
                 .max(0.0);
-            let name_w = crate::er::er_html_label_metrics(&row.name_text, measurer, &attr_style)
+            let name_w = crate::er::er_box_label_metrics(&row.name_label, measurer, &attr_style)
                 .width
                 .max(0.0);
-            let keys_w = crate::er::er_html_label_metrics(&row.key_text, measurer, &attr_style)
+            let keys_w = crate::er::er_box_label_metrics(&row.key_label, measurer, &attr_style)
                 .width
                 .max(0.0);
             let comment_w =
-                crate::er::er_html_label_metrics(&row.comment_text, measurer, &attr_style)
+                crate::er::er_box_label_metrics(&row.comment_label, measurer, &attr_style)
                     .width
                     .max(0.0);
 
             let type_mw_px = crate::er::calculate_text_width_like_mermaid_px(
                 measurer,
                 &attr_style,
-                &er_calc_text_input_for_calculate_text_width(&row.type_text),
+                row.type_label.markdown_input(),
             ) + 100;
             let name_mw_px = crate::er::calculate_text_width_like_mermaid_px(
                 measurer,
                 &attr_style,
-                &er_calc_text_input_for_calculate_text_width(&row.name_text),
+                row.name_label.markdown_input(),
             ) + 100;
             let keys_mw_px = crate::er::calculate_text_width_like_mermaid_px(
                 measurer,
                 &attr_style,
-                &er_calc_text_input_for_calculate_text_width(&row.key_text),
+                row.key_label.markdown_input(),
             ) + 100;
             let comment_mw_px = crate::er::calculate_text_width_like_mermaid_px(
                 measurer,
                 &attr_style,
-                &er_calc_text_input_for_calculate_text_width(&row.comment_text),
+                row.comment_label.markdown_input(),
             ) + 100;
 
             let _ = write!(
@@ -1369,7 +1309,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(line_h),
                 escape_xml(&label_div_color_prefix),
                 type_mw_px.max(0),
-                html_label_content(&row.type_text, &span_style_attr, false)
+                html_label_content(&row.type_label, &span_style_attr, false)
             );
             out.push_str("</div></foreignObject></g>");
 
@@ -1383,7 +1323,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(line_h),
                 escape_xml(&label_div_color_prefix),
                 name_mw_px.max(0),
-                html_label_content(&row.name_text, &span_style_attr, false)
+                html_label_content(&row.name_label, &span_style_attr, false)
             );
             out.push_str("</div></foreignObject></g>");
 
@@ -1394,14 +1334,14 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(cell_y),
                 label_style_attr,
                 fmt(keys_w),
-                fmt(if row.key_text.trim().is_empty() {
+                fmt(if row.key_label.rendered_text().is_empty() {
                     0.0
                 } else {
                     line_h
                 }),
                 escape_xml(&label_div_color_prefix),
                 keys_mw_px.max(0),
-                html_label_content(&row.key_text, &span_style_attr, false)
+                html_label_content(&row.key_label, &span_style_attr, false)
             );
             out.push_str("</div></foreignObject></g>");
 
@@ -1412,14 +1352,14 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(cell_y),
                 label_style_attr,
                 fmt(comment_w),
-                fmt(if row.comment_text.trim().is_empty() {
+                fmt(if row.comment_label.rendered_text().is_empty() {
                     0.0
                 } else {
                     line_h
                 }),
                 escape_xml(&label_div_color_prefix),
                 comment_mw_px.max(0),
-                html_label_content(&row.comment_text, &span_style_attr, false)
+                html_label_content(&row.comment_label, &span_style_attr, false)
             );
             out.push_str("</div></foreignObject></g>");
 
@@ -1517,15 +1457,14 @@ pub(crate) fn render_er_diagram_svg_model(
         // - `text-anchor="middle"`
         // - `x = bounds.x + bounds.width / 2`
         // - `y = -titleTopMargin` (default: 25)
-        let (vb_min_x, vb_w) = root_plan
+        let fallback_title_x = root_plan
             .view_box()
-            .map(|view_box| (view_box.min_x, view_box.width))
-            .unwrap_or((0.0, root_width_for_title));
-
+            .map(|view_box| view_box.min_x + view_box.width / 2.0)
+            .unwrap_or(root_width_for_title / 2.0);
         let _ = write!(
             &mut out,
             r#"<text text-anchor="middle" x="{}" y="{}" class="erDiagramTitleText">{}"#,
-            fmt(vb_min_x + vb_w / 2.0),
+            fmt(diagram_title_x.unwrap_or(fallback_title_x)),
             fmt(-insert_title_top_margin),
             escape_xml(title)
         );

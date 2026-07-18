@@ -8,16 +8,7 @@ pub(in crate::svg::parity) fn flowchart_label_html(
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> String {
-    flowchart_label_html_impl(label, label_type, config, math_renderer, false)
-}
-
-pub(in crate::svg::parity) fn flowchart_edge_label_html(
-    label: &str,
-    label_type: &str,
-    config: &merman_core::MermaidConfig,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-) -> String {
-    flowchart_label_html_impl(label, label_type, config, math_renderer, true)
+    flowchart_label_html_impl(label, label_type, config, math_renderer)
 }
 
 fn flowchart_label_html_impl(
@@ -25,7 +16,6 @@ fn flowchart_label_html_impl(
     label_type: &str,
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-    force_non_markdown_paragraph: bool,
 ) -> String {
     if label.trim().is_empty() {
         return String::new();
@@ -512,8 +502,6 @@ fn flowchart_label_html_impl(
                 label
             };
             let label = label.trim_end_matches('\n');
-            let wants_p = force_non_markdown_paragraph
-                || crate::text::mermaid_markdown_wants_paragraph_wrap(label);
             let label = crate::flowchart::flowchart_normalize_plain_multiline_label_for_html(label);
             let label = label.as_ref();
 
@@ -526,29 +514,16 @@ fn flowchart_label_html_impl(
                 && !label.contains('&')
                 && !label.contains(":fa-")
             {
-                let inner = if wants_p {
-                    replace_non_markdown_html_line_breaks(label)
-                } else {
-                    label.to_string()
-                };
-                if wants_p {
-                    return format!("<p>{inner}</p>");
-                }
-                return inner;
+                let inner = replace_non_markdown_html_line_breaks(label);
+                return format!("<p>{inner}</p>");
             }
 
-            let label = if wants_p {
-                replace_non_markdown_html_line_breaks(label)
-            } else {
-                label.to_string()
-            };
+            // Mermaid's nonMarkdownToHTML() wraps every non-empty label in one paragraph.
+            // Markdown block classification must not leak into this branch.
+            let label = replace_non_markdown_html_line_breaks(label);
             let fixed_img_width = is_single_img_label(&label);
             let label = normalize_flowchart_img_tags(&label, fixed_img_width);
-            let wrapped = if !wants_p {
-                label
-            } else {
-                format!("<p>{}</p>", label)
-            };
+            let wrapped = format!("<p>{}</p>", label);
             let wrapped = if wrapped.contains(":fa-") {
                 crate::text::replace_fontawesome_icons(&wrapped)
             } else {

@@ -2,6 +2,8 @@
 
 Experimental Android wrapper for `merman-ffi`.
 
+The current Kotlin wrapper targets C ABI 2 and rejects mismatched native libraries during startup.
+
 The Kotlin layer loads `libmerman_ffi.so`, checks the native ABI version, then exposes blocking
 string APIs for SVG, ASCII text, semantic JSON, layout JSON, validation JSON, and metadata.
 Rendering work should be called from a background dispatcher in app code.
@@ -56,11 +58,20 @@ diagnostics, and LSP-related UI. Hosts should prefer it over hard-coded rule met
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasurer`. Unsupported measurement requests can return `null` to fall back to merman's
 vendored metrics for that request.
+Handled results must set a `MermanTextMeasurementResultKind` matching `request.operation`; scalar
+width and height primitives use `length`. Wrong-kind results are invalid and fall back rather than
+being inferred from default-valued fields.
+ABI 2 exposes 19 exact text-measurement operations with contiguous codes `0..18`.
+`RAW_BBOX_HEIGHT` (18) measures the height from a direct SVG `<text>.getBBox()` probe and returns a
+non-negative `length`. `CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET` (17) returns a signed `length` for
+Architecture's `createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
+`CREATE_TEXT_BBOX_Y_OFFSET` remains the ordinary createText probe; it cannot substitute for the
+middle-baseline operation, and both y-offset operations may return a finite negative value.
 Reusable engine methods are serialized around the native handle. A text-measurement callback should
 not call back into the same `MermanReusableEngine`; calling `close()` from a callback is safe and
 releases the engine after the current native call returns.
-If a Kotlin measurer throws, the JNI bridge clears the pending exception, reports that single
-measurement request as unsupported, and keeps the engine usable for the next JNI call. Log callback
+If a Kotlin measurer throws, the JNI bridge clears the pending exception, records that single
+measurement request as a callback error, falls back, and keeps the engine usable for the next JNI call. Log callback
 exceptions in host code so accidental fallback does not hide geometry drift.
 
 `MermanEngine.analyzeDocumentJson(...)` and `analyzeDocumentFactsJson(...)` are also available on
@@ -80,7 +91,8 @@ natural width is larger; returning `maxWidth` for short labels can make diagrams
 
 [`examples/MermanSmoke.kt`](examples/MermanSmoke.kt) shows the smallest Android-side smoke call
 sequence. Use it from an Android app or instrumentation test after packaging
-`libmerman_ffi.so` into the app.
+`libmerman_ffi.so` into the app. The contract checks include ABI 2, all 19 operation codes, the raw
+bbox height result, and the distinct signed middle-baseline createText y-offset.
 
 ## Local Verification
 

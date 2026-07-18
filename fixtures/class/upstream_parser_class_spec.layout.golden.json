@@ -1,37 +1,37 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "A::B",
-          "x": 89.875,
+          "x": 87.977,
           "y": 77.0,
-          "width": 179.75,
+          "width": 175.953,
           "height": 154.0,
           "is_cluster": true
         },
         {
           "id": "IPC::Sender",
-          "x": 89.875,
+          "x": 87.977,
           "y": 77.0,
-          "width": 104.75,
+          "width": 100.953,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "__proto__",
-          "x": 259.922,
+          "x": 255.156,
           "y": 77.0,
-          "width": 60.344,
+          "width": 58.406,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "constructor",
-          "x": 392.195,
+          "x": 384.203,
           "y": 77.0,
-          "width": 104.203,
+          "width": 99.688,
           "height": 84.0,
           "is_cluster": false
         }
@@ -40,15 +40,15 @@
       "clusters": [
         {
           "id": "A::B",
-          "x": 89.875,
+          "x": 87.977,
           "y": 77.0,
-          "width": 179.75,
+          "width": 175.953,
           "height": 154.0,
           "diff": -15.0,
           "offset_y": 16.5,
           "title": "A::B",
           "title_label": {
-            "x": 89.875,
+            "x": 87.977,
             "y": 12.0,
             "width": 28.16,
             "height": 24.0
@@ -63,7 +63,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 444.297,
+        "max_x": 434.047,
         "max_y": 154.0
       }
     }

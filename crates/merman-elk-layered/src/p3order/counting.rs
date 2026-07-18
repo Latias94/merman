@@ -571,6 +571,54 @@ mod tests {
     }
 
     #[test]
+    fn crossing_counter_reuse_matches_a_fresh_counter_after_order_changes() {
+        let graph = graph(
+            vec![node("Top"), node("Bottom"), node("Left"), node("Right")],
+            vec![
+                edge("Top-Right", "Top", "Right"),
+                edge("Bottom-Left", "Bottom", "Left"),
+            ],
+        );
+        let top = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Top")
+            .unwrap();
+        let bottom = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Bottom")
+            .unwrap();
+        let left = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Left")
+            .unwrap();
+        let right = graph
+            .layerless_nodes
+            .iter()
+            .position(|node| node.id == "Right")
+            .unwrap();
+        let crossing_order = vec![vec![top, bottom], vec![left, right]];
+        let non_crossing_order = vec![vec![top, bottom], vec![right, left]];
+
+        let mut reused = CrossingsCounter::new();
+        assert_eq!(
+            reused.count_all_crossings_in_order(&graph, &crossing_order),
+            1
+        );
+        assert_eq!(
+            reused.count_all_crossings_in_order(&graph, &non_crossing_order),
+            0
+        );
+
+        let reused_result = reused.count_all_crossings_in_order(&graph, &crossing_order);
+        let fresh_result =
+            CrossingsCounter::new().count_all_crossings_in_order(&graph, &crossing_order);
+        assert_eq!(reused_result, fresh_result);
+    }
+
+    #[test]
     fn crossing_counter_counts_crossing_ports_between_same_two_nodes() {
         let mut graph = LGraph::new("root", LayeredOptions::default());
         graph

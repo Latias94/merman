@@ -3,9 +3,10 @@
 This workstream tracks the cleanup plan for the next merman version. The goal is to make the
 project cleaner, faster, and easier to extend while preserving Mermaid parity.
 
-Baseline upstream remains Mermaid `@11.12.3`. Parity work still lives in
-`docs/workstreams/TODO.md`; this workstream is about internal architecture, maintainability,
-feature-gate health, and performance-oriented simplification.
+The active baseline is Mermaid `@11.16.0`. Current parity boundaries live in
+`docs/workstreams/PARITY_BOUNDARY.md`; family ownership and cleanup rules live in ADR-0073. This
+workstream remains historical context for internal architecture, maintainability, feature-gate
+health, and performance-oriented simplification.
 
 ## Mission
 
@@ -18,7 +19,8 @@ The target state is:
 - One authoritative dispatch point for each pipeline stage.
 - Large renderer/text modules split by responsibility.
 - Feature-gated code that compiles under `--all-features`.
-- Override tables treated as generated compatibility data, not as unchecked permanent debt.
+- Browser-probed font profiles that contain reusable glyph facts rather than complete-label or
+  fixture-keyed answers.
 - Benchmarks and parity gates that make refactoring safe.
 
 ## Non-goals
@@ -37,8 +39,8 @@ The target state is:
 - Preserve the public parse APIs until a replacement is documented.
 - Add or reuse tests before changing behavior-sensitive code.
 - Run the smallest relevant gate first, then a broader gate before committing.
-- Use generated override data only when the underlying upstream behavior is genuinely browser/font
-  dependent or intentionally pinned.
+- Keep browser-dependent residuals visible. Prefer operation-provided host measurement when exact
+  system-font behavior is required; never copy fixture answers into production code.
 
 ## Standard Gates
 
@@ -130,7 +132,5 @@ Use this order when choosing work:
 - `TYPED_MIGRATION_TIMING.md`: index of typed migration timing reports and follow-up canaries.
 - `RENDER_MODEL_INVENTORY.md`: current typed-vs-JSON render pipeline inventory and API decision.
 - `PUBLIC_API_CLI_REVIEW.md`: public render API and CLI cleanup decisions.
-- `OVERRIDE_FOOTPRINT.md`: generated parity override footprint and governance gaps.
-- `OVERRIDE_POLICY.md`: rules for adding, reviewing, and removing text/render overrides.
 - `LINT_ALLOW_AUDIT.md`: remaining hand-written lint allowances and removal criteria.
 - `COMPLETION_AUDIT.md`: objective-to-evidence checklist and remaining release gaps.

@@ -7,7 +7,7 @@
           "id": "Lambda",
           "x": 108.0,
           "y": 92.0,
-          "width": 65.281,
+          "width": 65.28,
           "height": 40.0,
           "is_cluster": false
         },
@@ -15,7 +15,7 @@
           "id": "Mu",
           "x": 108.0,
           "y": 230.0,
-          "width": 65.281,
+          "width": 65.28,
           "height": 40.0,
           "is_cluster": false
         },
@@ -23,7 +23,7 @@
           "id": "Sigma",
           "x": 108.0,
           "y": 320.0,
-          "width": 65.281,
+          "width": 65.28,
           "height": 40.0,
           "is_cluster": false
         },
@@ -31,7 +31,7 @@
           "id": "root_end",
           "x": 108.0,
           "y": 421.0,
-          "width": 14.013,
+          "width": 14.0,
           "height": 14.0,
           "is_cluster": false
         },
@@ -160,7 +160,7 @@
           "label": {
             "x": 108.0,
             "y": 377.0,
-            "width": 27.844,
+            "width": 27.84,
             "height": 24.0
           },
           "start_label_left": null,

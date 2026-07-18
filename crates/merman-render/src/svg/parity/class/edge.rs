@@ -8,9 +8,8 @@ use super::label::{
 };
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
-use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use base64::Engine as _;
 use std::fmt::Write as _;
 
@@ -21,7 +20,8 @@ const CLASS_HAND_DRAWN_EDGE_STROKE: &str = "#000";
 const CLASS_HAND_DRAWN_EDGE_STROKE_WIDTH: &str = "1";
 
 pub(super) struct ClassEdgeGroupsRenderState<'a> {
-    pub out: &'a mut String,
+    pub edge_paths: &'a mut String,
+    pub edge_labels: &'a mut String,
     pub content_bounds: &'a mut Option<Bounds>,
     pub detail: &'a mut ClassRenderDetails,
 }
@@ -254,7 +254,7 @@ pub(super) fn render_class_edge_groups(
     state: ClassEdgeGroupsRenderState<'_>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
 ) {
-    let out = &mut *state.out;
+    let out = &mut *state.edge_paths;
     let content_bounds = &mut *state.content_bounds;
     let detail = &mut *state.detail;
 
@@ -422,6 +422,7 @@ pub(super) fn render_class_edge_groups(
     }
 
     let edge_labels_start = ctx.timing_enabled.then(web_time::Instant::now);
+    let out = &mut *state.edge_labels;
     out.push_str(r#"<g class="edgeLabels">"#);
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.
     for e in ordered_edges.iter().copied() {
@@ -584,7 +585,7 @@ pub(super) fn render_class_edge_label_group(
     let trimmed = decoded.trim();
     if use_html_labels {
         let empty_div_style =
-            class_html_div_style(0.0, class_text_overrides::class_html_label_max_width_px());
+            class_html_div_style(0.0, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
         if trimmed.is_empty() {
             let _ = write!(
                 out,
@@ -595,7 +596,7 @@ pub(super) fn render_class_edge_label_group(
         } else if let Some(lbl) = label {
             let div_style = class_html_div_style(
                 lbl.width.max(0.0),
-                class_text_overrides::class_html_label_max_width_px(),
+                MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64,
             );
             let _ = write!(
                 out,
@@ -682,11 +683,8 @@ pub(super) fn render_class_edge_terminal_group(
     }
     let (style_width, style_height) = class_terminal_box_size(trimmed);
     let measured =
-        text_measurer.measure_wrapped_raw(trimmed, terminal_text_style, None, WrapMode::HtmlLike);
-    // Chromium's `getBoundingClientRect()` for the terminal div lands one 1/64px cell above the
-    // raw font advance for these unpadded inline labels. Keep that browser-boundary correction
-    // local to cardinality terminals instead of changing the shared text measurement profile.
-    let foreign_width = (measured.width + (1.0 / 64.0)).max(0.0);
+        text_measurer.measure_wrapped(trimmed, terminal_text_style, None, WrapMode::HtmlLike);
+    let foreign_width = measured.width.max(0.0);
     let foreign_height = measured.height.max(0.0);
     let inner_tx = -foreign_width / 2.0;
     let inner_ty = -foreign_height / 2.0;

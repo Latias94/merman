@@ -113,13 +113,88 @@ const presetManifest = JSON.parse(
 );
 
 class FakeMeasureElement {
-  style = {};
-  textContent = "";
+  constructor(tagName = "div", canvasContext = null) {
+    this.tagName = tagName;
+    this.canvasContext = canvasContext;
+  }
 
-  setAttribute() {}
+  style = {};
+  attributes = new Map();
+  children = [];
+  _textContent = "";
+
+  get textContent() {
+    if (this.children.length > 0) {
+      return this.children.map((child) => child.textContent || "").join("");
+    }
+    return this._textContent;
+  }
+
+  set textContent(value) {
+    this._textContent = value || "";
+    this.children = [];
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  inheritedAttribute(name) {
+    return this.attributes.get(name) ?? this.parentElement?.inheritedAttribute?.(name);
+  }
+
+  appendChild(child) {
+    child.parentElement = this;
+    this.children.push(child);
+    return child;
+  }
+
+  remove() {
+    this.removed = true;
+  }
+
+  getContext(kind) {
+    assert.equal(this.tagName, "canvas");
+    assert.equal(kind, "2d");
+    return this.canvasContext;
+  }
+
+  effectiveFontSize() {
+    return (
+      parseFloat(this.style.fontSize) ||
+      parseFloat(this.parentElement?.style?.fontSize) ||
+      16
+    );
+  }
+
+  getBBox() {
+    const fontSize = this.effectiveFontSize();
+    const rows =
+      this.children.filter((child) => child.tagName === "tspan").map((child) => child.textContent) ||
+      [];
+    const lines = rows.length > 0 ? rows : [this.textContent || ""];
+    const width = Math.max(...lines.map((line) => line.length * fontSize * 0.6), 0);
+    const height = Math.max(1, lines.length) * fontSize * 1.1;
+    const anchor = this.inheritedAttribute("text-anchor");
+    const middleBaseline = this.inheritedAttribute("dominant-baseline") === "middle";
+    return {
+      x: anchor === "middle" ? -width / 2 : 0,
+      y: -fontSize + (middleBaseline ? fontSize * 0.25 : 0),
+      width,
+      height,
+    };
+  }
+
+  getComputedTextLength() {
+    return (this.textContent || "").length * this.effectiveFontSize() * 0.4;
+  }
 
   getBoundingClientRect() {
-    const fontSize = parseFloat(this.style.fontSize) || 16;
+    const fontSize = this.effectiveFontSize();
     const lineHeight = parseFloat(this.style.lineHeight) || fontSize;
     const naturalWidth = (this.textContent || "").length * fontSize * 0.5;
     const fixedWidth =
@@ -142,7 +217,7 @@ class FakeMeasureElement {
 }
 
 assert.equal(api.isMermanInitialized(), true);
-assert.equal(api.abiVersion(), 3);
+assert.equal(api.abiVersion(), 2);
 assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 if (surfaceContract.render) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
@@ -152,6 +227,7 @@ if (surfaceContract.render) {
   withFakeMeasureDom(() => {
     const browserMeasurer = api.createBrowserTextMeasurer();
     const shortLabel = browserMeasurer(textMeasureRequest("Condition?", 200));
+    assert.equal(shortLabel.kind, "metrics");
     assert.ok(shortLabel.width > 0);
     assert.ok(
       shortLabel.width < 200,
@@ -163,6 +239,81 @@ if (surfaceContract.render) {
     );
     assert.equal(longLabel.width, 200);
     assert.ok(longLabel.line_count > 1);
+    assert.ok(longLabel.raw_width === undefined);
+
+    const computed = browserMeasurer(
+      textMeasureRequest("Computed", null, "computed-length", "svg-like")
+    );
+    assert.equal(computed.kind, "length");
+    assert.equal(computed.length, "Computed".length * 16 * 0.4);
+
+    const rawBBox = browserMeasurer(
+      textMeasureRequest("Raw", null, "raw-bbox-width", "svg-like")
+    );
+    assert.equal(rawBBox.kind, "length");
+    assert.equal(rawBBox.length, "Raw".length * 16 * 0.6);
+
+    const clientRect = browserMeasurer(
+      textMeasureRequest("Client", null, "bounding-client-rect-width", "svg-like")
+    );
+    assert.equal(clientRect.kind, "length");
+    assert.equal(clientRect.length, "Client".length * 16 * 0.5);
+
+    const rawCreateTextYOffset = browserMeasurer(
+      textMeasureRequest("Formatted", null, "create-text-bbox-y-offset", "svg-like")
+    );
+    const middleCreateTextYOffset = browserMeasurer(
+      textMeasureRequest("Formatted", null, "create-text-middle-bbox-y-offset", "svg-like")
+    );
+    assert.equal(rawCreateTextYOffset.length, -16);
+    assert.equal(middleCreateTextYOffset.length, -12);
+    assert.equal(
+      browserMeasurer(
+        textMeasureRequest("Formatted", null, "create-text-bbox-y-offset", "svg-like")
+      ).length,
+      -16
+    );
+
+    const mermaidDimensions = browserMeasurer(
+      textMeasureRequest(
+        "Mermaid dimensions",
+        null,
+        "mermaid-calculate-text-dimensions",
+        "svg-like"
+      )
+    );
+    assert.equal(mermaidDimensions.kind, "metrics");
+    assert.equal(mermaidDimensions.line_count, 1);
+    assert.ok(mermaidDimensions.width > 0);
+    assert.ok(mermaidDimensions.height > 0);
+
+    const canvasWidth = browserMeasurer(
+      textMeasureRequest("Canvas", null, "canvas-measure-text-width", "svg-like")
+    );
+    assert.equal(canvasWidth.kind, "length");
+    assert.equal(canvasWidth.length, "Canvas".length * 16 * 0.55);
+
+    const extents = browserMeasurer(
+      textMeasureRequest("Centered", null, "bbox-x", "svg-like")
+    );
+    assert.equal(extents.bbox_left, extents.bbox_right);
+    assert.ok(extents.bbox_left > 0);
+
+    const wrappedWithRaw = browserMeasurer(
+      textMeasureRequest(
+        "Condition ".repeat(40),
+        200,
+        "wrapped-with-raw-width",
+        "html-like"
+      )
+    );
+    assert.equal(wrappedWithRaw.width, 200);
+    assert.ok(wrappedWithRaw.raw_width > wrappedWithRaw.width);
+
+    const svgWrapped = browserMeasurer(
+      textMeasureRequest("one two three four five", 60, "wrapped", "svg-like")
+    );
+    assert.ok(svgWrapped.line_count > 1);
   });
 }
 
@@ -203,9 +354,16 @@ assert.equal(
   familyCapabilities.some(
     (capability) =>
       capability.diagram_type === "flowchart" &&
+      capability.logical_family_kind === "flowchart" &&
       capability.metadata_id === "flowchart" &&
+      capability.render_model_kind === "flowchart" &&
+      capability.has_detector &&
       capability.has_semantic_parser &&
-      capability.has_render_parser
+      capability.has_editor_parser &&
+      capability.has_combined_parser &&
+      capability.has_render_parser &&
+      !capability.has_header &&
+      capability.config_namespace === "flowchart"
   ),
   true
 );
@@ -368,30 +526,51 @@ User Testing    :c2, after c1, 5d`;
 
   let measureCallCount = 0;
   const measurementPhases = new Set();
+  const measurementOperations = new Set();
   const hostTextMeasurer = (request) => {
     measureCallCount += 1;
     measurementPhases.add(request.phase);
-    return {
-      width: Math.max(1, request.text.length * 8),
-      height: Math.max(1, request.line_height || request.font_size),
-      line_count: 1,
-    };
+    measurementOperations.add(request.operation);
+    return hostTextMeasurementResult(request);
   };
   const measuredSvg = api.renderSvgWithTextMeasurer(source, hostTextMeasurer, options);
   assert.match(measuredSvg, /<svg/);
   assert.match(measuredSvg, /Hello/);
-  assert.ok(measurementPhases.size >= 2);
   assert.ok(
+    measurementPhases.size > 0 &&
     [...measurementPhases].every((phase) =>
-      ["layout", "wrap", "svg-bbox", "computed-length", "visibility"].includes(phase)
+      ["layout", "wrap", "svg-bbox", "computed-length"].includes(phase)
     )
   );
   assert.ok(measureCallCount > 0);
+  assert.ok(measurementOperations.has("wrapped"));
+
+  if (api.supportedDiagrams().includes("architecture")) {
+    const architectureOperations = new Map();
+    const architectureSvg = api.renderSvgWithTextMeasurer(
+      "architecture-beta\n  service api(server)[API service]\n",
+      (request) => {
+        architectureOperations.set(request.operation, request.phase);
+        return hostTextMeasurementResult(request);
+      },
+      options
+    );
+    assert.match(architectureSvg, /<svg/);
+    assert.ok(
+      architectureOperations.has("create-text-middle-bbox-y-offset"),
+      "Architecture host measurement must transport the signed middle-baseline offset"
+    );
+    assert.equal(
+      architectureOperations.get("create-text-middle-bbox-y-offset"),
+      "svg-bbox"
+    );
+  }
+
   const measuredLayout = api.layoutJsonWithTextMeasurer(source, hostTextMeasurer, options);
   assert.equal(typeof JSON.parse(measuredLayout), "object");
   for (const fallbackResult of [
     undefined,
-    { handled: false, width: 1, height: 1 },
+    { handled: false },
   ]) {
     let fallbackCallCount = 0;
     const fallbackSvg = api.renderSvgWithTextMeasurer(
@@ -515,33 +694,91 @@ if (capabilities.ascii) {
   }
 }
 
-function textMeasureRequest(text, maxWidth) {
+function textMeasureRequest(text, maxWidth, operation = "wrapped", wrapMode = "html-like") {
   return {
+    operation,
+    phase:
+      operation.startsWith("wrapped")
+        ? "wrap"
+        : operation === "canvas-measure-text-width"
+          ? "layout"
+          : "svg-bbox",
     text,
     font_family: "Trebuchet MS, sans-serif",
     font_size: 16,
     font_weight: "normal",
     font_style: "normal",
     max_width: maxWidth,
-    has_max_width: true,
+    has_max_width: maxWidth !== null,
     line_height: 24,
     letter_spacing: 0,
     word_spacing: 0,
-    wrap_mode: "html-like",
+    wrap_mode: wrapMode,
     direction: "ltr",
     white_space: "break-spaces",
   };
 }
 
+function hostTextMeasurementResult(request) {
+  const width = Math.max(1, request.text.length * 8);
+  const height = Math.max(1, request.line_height || request.font_size);
+  switch (request.operation) {
+    case "measure":
+    case "wrapped":
+    case "mermaid-calculate-text-dimensions":
+      return { kind: "metrics", width, height, line_count: 1 };
+    case "computed-length":
+    case "simple-bbox-width":
+    case "raw-bbox-width":
+    case "bounding-client-rect-width":
+    case "tspan-bbox-width":
+    case "wrap-probe-bbox-width":
+    case "canvas-measure-text-width":
+      return { kind: "length", length: width };
+    case "tspan-bbox-height":
+    case "simple-bbox-height":
+    case "raw-bbox-height":
+      return { kind: "length", length: height };
+    case "create-text-bbox-y-offset":
+      return { kind: "length", length: 1 };
+    case "create-text-middle-bbox-y-offset":
+      return { kind: "length", length: -1 };
+    case "bbox-x":
+    case "bbox-x-with-ascii-overhang":
+    case "title-bbox-x":
+      return { kind: "horizontal-extents", bbox_left: width / 2, bbox_right: width / 2 };
+    case "wrapped-with-raw-width":
+      return {
+        kind: "wrapped-with-raw-width",
+        width,
+        height,
+        line_count: 1,
+        raw_width: width,
+      };
+    default:
+      return undefined;
+  }
+}
+
 function withFakeMeasureDom(run) {
   const originalDocument = globalThis.document;
+  const canvasContext = {
+    font: "",
+    measureText(text) {
+      return { width: text.length * 16 * 0.55 };
+    },
+  };
   globalThis.document = {
     body: {
       appendChild() {},
     },
     createElement(tagName) {
-      assert.equal(tagName, "div");
-      return new FakeMeasureElement();
+      assert.ok(tagName === "div" || tagName === "canvas");
+      return new FakeMeasureElement(tagName, tagName === "canvas" ? canvasContext : null);
+    },
+    createElementNS(namespace, tagName) {
+      assert.equal(namespace, "http://www.w3.org/2000/svg");
+      return new FakeMeasureElement(tagName);
     },
   };
 
@@ -586,10 +823,19 @@ const fixtureNames = {
 
 const repositoryFixturePaths = {
   cynefin: ["fixtures", "cynefin", "basic_domains_transitions.mmd"],
+  eventmodeling: ["fixtures", "eventmodeling", "upstream_docs_eventmodeling_minimum.mmd"],
+  ishikawa: ["fixtures", "ishikawa", "upstream_docs_ishikawa_basic.mmd"],
   railroad: ["fixtures", "railroad", "basic_ir.mmd"],
   railroadAbnf: ["fixtures", "railroadAbnf", "repetition_optional_numval.mmd"],
   railroadEbnf: ["fixtures", "railroadEbnf", "choice_optional_repetition.mmd"],
   railroadPeg: ["fixtures", "railroadPeg", "prefix_suffix_any.mmd"],
+  swimlane: ["fixtures", "swimlane", "basic_flowchart_reuse.mmd"],
+  treeView: ["fixtures", "treeView", "upstream_docs_treeview_basic.mmd"],
+  wardley: [
+    "fixtures",
+    "wardley",
+    "upstream_cypress_wardley_spec_1_should_render_tea_shop_001.mmd",
+  ],
 };
 
 if (capabilities.render) {

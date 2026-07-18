@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 196.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 196.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -35,7 +35,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -43,7 +43,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -51,7 +51,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         },
@@ -59,7 +59,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section1"
         }
@@ -104,7 +104,7 @@
             "id": "a1",
             "x": 75.0,
             "y": 50.0,
-            "width": 517.0,
+            "width": 325.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -115,7 +115,7 @@
             "text": "A task           ",
             "font_size": 11.0,
             "width": 30.47,
-            "x": 333.5,
+            "x": 237.5,
             "y": 63.5,
             "class": "taskText taskText0 width-30.469999999999995"
           }
@@ -133,9 +133,9 @@
           "vert": false,
           "bar": {
             "id": "task1",
-            "x": 592.0,
+            "x": 400.0,
             "y": 74.0,
-            "width": 517.0,
+            "width": 325.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -146,7 +146,7 @@
             "text": "Another task     ",
             "font_size": 11.0,
             "width": 58.85,
-            "x": 850.5,
+            "x": 562.5,
             "y": 87.5,
             "class": "taskText taskText0 width-58.849999999999994"
           }
@@ -164,9 +164,9 @@
           "vert": false,
           "bar": {
             "id": "a2",
-            "x": 592.0,
+            "x": 400.0,
             "y": 98.0,
-            "width": 259.0,
+            "width": 163.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -177,7 +177,7 @@
             "text": "Task in sec      ",
             "font_size": 11.0,
             "width": 51.37,
-            "x": 721.5,
+            "x": 481.5,
             "y": 111.5,
             "class": "taskText taskText1 width-51.37"
           }
@@ -195,9 +195,9 @@
           "vert": false,
           "bar": {
             "id": "task2",
-            "x": 851.0,
+            "x": 563.0,
             "y": 122.0,
-            "width": 258.0,
+            "width": 162.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -208,7 +208,7 @@
             "text": "another task     ",
             "font_size": 11.0,
             "width": 56.98,
-            "x": 980.0,
+            "x": 644.0,
             "y": 135.5,
             "class": "taskText taskText1 width-56.98"
           }
@@ -224,38 +224,38 @@
         },
         {
           "time_ms": 1771113600002.0,
-          "x": 247.0,
+          "x": 183.0,
           "label": "  002ms"
         },
         {
           "time_ms": 1771113600004.0,
-          "x": 420.0,
+          "x": 292.0,
           "label": "  004ms"
         },
         {
           "time_ms": 1771113600006.0,
-          "x": 592.0,
+          "x": 400.0,
           "label": "  006ms"
         },
         {
           "time_ms": 1771113600008.0,
-          "x": 764.0,
+          "x": 508.0,
           "label": "  008ms"
         },
         {
           "time_ms": 1771113600010.0,
-          "x": 937.0,
+          "x": 617.0,
           "label": "  010ms"
         },
         {
           "time_ms": 1771113600012.0,
-          "x": 1109.0,
+          "x": 725.0,
           "label": "  012ms"
         }
       ],
       "top_ticks": [],
       "title": "A Gantt Diagram",
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

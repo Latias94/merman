@@ -3,7 +3,7 @@
   "layout": {
     "GitGraphDiagram": {
       "bounds": {
-        "min_x": -205.484,
+        "min_x": -205.48,
         "min_y": -20.0,
         "max_x": 58.0,
         "max_y": 546.0
@@ -20,49 +20,49 @@
           "name": "main",
           "index": 0.0,
           "pos": 0.0,
-          "bbox_width": 30.719,
+          "bbox_width": 30.72,
           "bbox_height": 17.6
         },
         {
           "name": "branch01",
           "index": 1.0,
           "pos": 90.0,
-          "bbox_width": 59.203,
+          "bbox_width": 59.2,
           "bbox_height": 17.6
         },
         {
           "name": "checkout02",
           "index": 2.0,
           "pos": 180.0,
-          "bbox_width": 74.875,
+          "bbox_width": 74.88,
           "bbox_height": 17.6
         },
         {
           "name": "cherry-pick03",
           "index": 3.0,
           "pos": 270.0,
-          "bbox_width": 93.438,
+          "bbox_width": 93.44,
           "bbox_height": 17.6
         },
         {
           "name": "branch/example-branch",
           "index": 4.0,
           "pos": 360.0,
-          "bbox_width": 144.484,
+          "bbox_width": 144.48,
           "bbox_height": 17.6
         },
         {
           "name": "merge/test_merge",
           "index": 5.0,
           "pos": 450.0,
-          "bbox_width": 118.078,
+          "bbox_width": 118.08,
           "bbox_height": 17.6
         },
         {
           "name": "A",
           "index": 6.0,
           "pos": 540.0,
-          "bbox_width": 9.594,
+          "bbox_width": 9.6,
           "bbox_height": 17.6
         }
       ],

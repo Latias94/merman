@@ -11,13 +11,64 @@
     "renderer_revision": "xtask-upstream-svg-v2"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
     "basic_ir": {
       "input_sha256": "0b80631185c18e748face0ab265a682c087b1d61db1a14df0c5c3fb867ce9b02",
-      "svg_sha256": "47b4921049ab0ccedaf3d6ad66dfaea289b076d9f1dbed07bd70153c4fbde623",
+      "svg_sha256": "1d19dc330f108297e78b46c459c4e0246f8277e1fcdb97a394d4150464b02e17",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_adapts_to_dark_theme_colors_005": {
+      "input_sha256": "00d2bdb000c021e8067e139fcf908095850df89012990c99be623d65e1e38502",
+      "svg_sha256": "2e8e34157a57f57e233efcebf1d2f85a1f84f4bc57a596acbadee78ad20ae7d2",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_a_simple_rule_001": {
+      "input_sha256": "12d244ce3dae4a34af166429b28dadbe93c71ab7eb3ac6892dd8af401594706d",
+      "svg_sha256": "683182d89f82d698cdc890843c22e566bc4b1ef361b5dd3eb1dd3e1ac9bd6b0b",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_multiple_rules_in_one_diagram_004": {
+      "input_sha256": "ba16459943fd5be3f4b3fe40a9cb926ace49b97c9bb990a722d8d2ad1c98775a",
+      "svg_sha256": "4de4abc531502a7c6253f4abb694b696b2de45dbaf01108efd703c097c6f2352",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_optional_and_repetition_operators_003": {
+      "input_sha256": "8ca3b06bf302f72f0bb99ff943df7b758dc25e7bf1a267fcaf55b99791fcf820",
+      "svg_sha256": "3fe658502e1349aa96e546c52293bf43cb833229bf627a35b9ba07fc9a563174",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_railroad_spec_renders_sequences_and_choices_002": {
+      "input_sha256": "64f8ee52ccdb712eef550d4a52717464a1e7e32d211ad6264f6bae2cc6d6dc89",
+      "svg_sha256": "55094d604057c0a83a20e50c6ac02591cb6dfa630a0038d6ef6a157381ed0240",
       "renderer_profile": "mmdc-default"
     }
   },

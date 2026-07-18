@@ -1,13 +1,13 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Duck",
-          "x": 29.148,
+          "x": 28.078,
           "y": 24.0,
-          "width": 58.297,
+          "width": 56.156,
           "height": 48.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 58.297,
+        "max_x": 56.156,
         "max_y": 48.0
       }
     }

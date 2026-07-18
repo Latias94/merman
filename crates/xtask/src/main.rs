@@ -31,14 +31,10 @@ enum XtaskError {
     ParseYaml(#[from] serde_saphyr::Error),
     #[error("failed to process JSON: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("invalid $ref: {0}")]
-    InvalidRef(String),
-    #[error("unresolved $ref: {0}")]
-    UnresolvedRef(String),
     #[error("failed to parse dompurify dist file: {0}")]
     ParseDompurify(String),
-    #[error("failed to apply default config override: {0}")]
-    DefaultConfigOverride(String),
+    #[error("failed to project Mermaid default config: {0}")]
+    DefaultConfigProjection(String),
     #[error("missing reference checkout: {0}")]
     MissingReference(String),
     #[error("verification failed:\n{0}")]
@@ -84,6 +80,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify");
     println!("  verify-default-config");
     println!("  verify-dompurify-defaults");
+    println!("  verify-web-diagram-catalog");
     println!("  check-alignment");
     println!("  profile-budget");
     println!("  wasm-size-matrix");
@@ -99,9 +96,11 @@ fn print_help(topic: Option<&str>) {
     println!("  update-snapshots");
     println!("  update-layout-snapshots   (alias: gen-layout-goldens)");
     println!("  gen-upstream-svgs");
+    println!("  sync-upstream-mmd-corpus");
     println!("  adopt-upstream-svg-provenance");
     println!("  check-upstream-svgs");
     println!("  compare-all-svgs");
+    println!("  accept-root-residual-candidate");
     println!("  compare-svg-xml");
     println!("  canon-svg-xml");
     println!("  debug-svg-bbox");
@@ -113,17 +112,16 @@ fn print_help(topic: Option<&str>) {
     println!("  compare-dagre-layout");
     println!("  analyze-state-fixture");
     println!("  debug-mindmap-svg-positions");
-    println!("  report-overrides");
-    println!("  gen-c4-text-overrides");
-    println!("  audit-root-overrides");
-    println!("  triage-flowchart-root-pins");
+    println!("  gen-font-metrics");
+    println!("  measure-text");
+    println!("  gen-web-diagram-catalog");
     println!();
     println!("Per-diagram SVG compare commands:");
     for fact in cmd::DIAGRAM_VERIFICATION_FACTS {
         println!("  {}", fact.command);
     }
-    println!("  check-flowchart-elk-source-backed-probes");
-    println!("  audit-flowchart-elk-source-backed-coverage");
+    println!("  check-flowchart-elk-parity");
+    println!("  audit-flowchart-elk-parity-coverage");
     println!();
     println!("Tips:");
     println!("  - `cargo run -p xtask -- verify`");
@@ -164,9 +162,11 @@ fn main() -> Result<(), XtaskError> {
     match cmd_name.as_str() {
         "gen-default-config" => cmd::gen_default_config(args.collect()),
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
+        "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
         "verify" => cmd::verify(args.collect()),
         "verify-default-config" => cmd::verify_default_config(args.collect()),
         "verify-dompurify-defaults" => cmd::verify_dompurify_defaults(args.collect()),
+        "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),
         "profile-budget" => cmd::profile_budget(args.collect()),
         "wasm-size-matrix" => cmd::wasm_size_matrix(args.collect()),
@@ -191,17 +191,14 @@ fn main() -> Result<(), XtaskError> {
         "gen-class-svgs" => cmd::gen_class_svgs(args.collect()),
         "gen-c4-svgs" => cmd::gen_c4_svgs(args.collect()),
         "gen-font-metrics" => cmd::gen_font_metrics(args.collect()),
-        "gen-c4-text-overrides" => cmd::gen_c4_text_overrides(args.collect()),
-        "gen-svg-overrides" => cmd::gen_svg_overrides(args.collect()),
         "measure-text" => cmd::measure_text(args.collect()),
         "gen-upstream-svgs" => cmd::gen_upstream_svgs(args.collect()),
+        "sync-upstream-mmd-corpus" => cmd::sync_upstream_mmd_corpus(args.collect()),
         "adopt-upstream-svg-provenance" => cmd::adopt_upstream_svg_provenance(args.collect()),
         "check-upstream-svgs" => cmd::check_upstream_svgs(args.collect()),
-        "check-flowchart-elk-source-backed-probes" => {
-            cmd::check_flowchart_elk_source_backed_probes(args.collect())
-        }
-        "audit-flowchart-elk-source-backed-coverage" => {
-            cmd::audit_flowchart_elk_source_backed_coverage(args.collect())
+        "check-flowchart-elk-parity" => cmd::check_flowchart_elk_parity(args.collect()),
+        "audit-flowchart-elk-parity-coverage" => {
+            cmd::audit_flowchart_elk_parity_coverage(args.collect())
         }
         "debug-flowchart-layout" => cmd::debug_flowchart_layout(args.collect()),
         "debug-flowchart-elk-source-phase" => cmd::debug_flowchart_elk_source_phase(args.collect()),
@@ -222,11 +219,9 @@ fn main() -> Result<(), XtaskError> {
         "compare-dagre-layout" => cmd::compare_dagre_layout(args.collect()),
         "analyze-state-fixture" => state_svgdump::analyze_state_fixture(args.collect()),
         "compare-all-svgs" => cmd::compare_all_svgs(args.collect()),
+        "accept-root-residual-candidate" => cmd::accept_root_residual_candidate(args.collect()),
         "compare-svg-xml" => cmd::compare_svg_xml(args.collect()),
         "canon-svg-xml" => cmd::canon_svg_xml(args.collect()),
-        "report-overrides" => cmd::report_overrides(args.collect()),
-        "audit-root-overrides" => cmd::audit_root_overrides(args.collect()),
-        "triage-flowchart-root-pins" => cmd::triage_flowchart_root_pins(args.collect()),
         other => Err(XtaskError::UnknownCommand(other.to_string())),
     }
 }

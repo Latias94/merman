@@ -157,18 +157,6 @@ fn render_timeline_diagram_svg_inner(
         max_x: 100.0,
         max_y: 100.0,
     });
-    // Mermaid's root viewport is derived from browser `getBBox()` values, which frequently land on
-    // a single-precision lattice. Mirror that by quantizing extrema to `f32`, then computing
-    // width/height in `f32` space.
-    let min_x_f32 = bounds.min_x as f32;
-    let min_y_f32 = bounds.min_y as f32;
-    let max_x_f32 = bounds.max_x as f32;
-    let max_y_f32 = bounds.max_y as f32;
-
-    let vb_min_x = min_x_f32 as f64;
-    let vb_min_y = min_y_f32 as f64;
-    let vb_w = ((max_x_f32 - min_x_f32).max(1.0)) as f64;
-    let vb_h = ((max_y_f32 - min_y_f32).max(1.0)) as f64;
 
     fn node_line_class(section_class: &str) -> String {
         let rest = section_class
@@ -260,31 +248,31 @@ fn render_timeline_diagram_svg_inner(
         out.push_str("</text></g></g>");
     }
 
-    let root_spec = root_svg::RootViewportSpec::mermaid(
-        root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
-        layout.use_max_width,
-    )
-    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w));
+    let root_bounds = root_svg::DiagramBounds::from_extents(
+        bounds.min_x,
+        bounds.min_y,
+        bounds.max_x,
+        bounds.max_y,
+        0.0,
+    );
+    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width));
 
     let mut out = String::new();
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Timeline,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(
-        &mut out,
-        root_spec,
-        root_svg::RootChrome {
-            dom: root_svg::RootDomProfile {
-                fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
-                fixed_style_placement: root_svg::RootStylePlacement::Tail,
-                trailing_newline: false,
-                ..Default::default()
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Timeline, diagram_id)
+        .write_open(
+            &mut out,
+            root_spec,
+            root_svg::RootChrome {
+                dom: root_svg::RootDomProfile {
+                    fixed_height_placement: root_svg::SvgRootFixedHeightPlacement::AfterXmlns,
+                    fixed_style_placement: root_svg::RootStylePlacement::Tail,
+                    trailing_newline: false,
+                    ..Default::default()
+                },
+                ..root_svg::RootChrome::new(diagram_id, "timeline")
             },
-            ..root_svg::RootChrome::new(diagram_id, "timeline")
-        },
-    )?;
+        )?;
     let css = timeline_css(diagram_id, effective_config, &theme);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);

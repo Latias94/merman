@@ -14,7 +14,7 @@
         {
           "id": "actor-bottom-D",
           "x": 75.0,
-          "y": 194.0,
+          "y": 196.0,
           "width": 150.0,
           "height": 70.0,
           "is_cluster": false
@@ -30,18 +30,18 @@
           "points": [
             {
               "x": 76.0,
-              "y": 109.0
+              "y": 111.0
             },
             {
               "x": 76.0,
-              "y": 109.0
+              "y": 111.0
             }
           ],
           "label": {
             "x": 76.0,
             "y": 80.0,
-            "width": 28.0,
-            "height": 17.0
+            "width": 27.52,
+            "height": 17.6
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -64,7 +64,7 @@
             },
             {
               "x": 75.0,
-              "y": 159.0
+              "y": 161.0
             }
           ],
           "label": null,
@@ -82,7 +82,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 201.0,
-        "max_y": 240.0
+        "max_y": 242.0
       }
     }
   }

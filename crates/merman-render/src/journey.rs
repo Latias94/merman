@@ -37,7 +37,8 @@ fn wrap_actor_label_lines(
     style: &TextStyle,
 ) -> Vec<String> {
     let max_label_width = max_label_width.max(1.0);
-    let full_text_width = journey_actor_legend_text_bbox_width_px(person, measurer, style);
+    let full_text_width =
+        journey_actor_legend_text_bounding_client_rect_width_px(person, measurer, style);
     if full_text_width <= max_label_width {
         return vec![person.to_string()];
     }
@@ -53,21 +54,24 @@ fn wrap_actor_label_lines(
             format!("{current_line} {word}")
         };
 
-        let test_width = journey_actor_legend_text_bbox_width_px(&test_line, measurer, style);
+        let test_width =
+            journey_actor_legend_text_bounding_client_rect_width_px(&test_line, measurer, style);
         if test_width > max_label_width {
             if !current_line.is_empty() {
                 lines.push(std::mem::take(&mut current_line));
             }
             current_line = word.to_string();
 
-            let word_width = journey_actor_legend_text_bbox_width_px(word, measurer, style);
+            let word_width =
+                journey_actor_legend_text_bounding_client_rect_width_px(word, measurer, style);
             if word_width > max_label_width {
                 let mut broken_word = String::new();
                 for ch in word.chars() {
                     broken_word.push(ch);
                     let candidate = format!("{broken_word}-");
-                    let candidate_width =
-                        journey_actor_legend_text_bbox_width_px(&candidate, measurer, style);
+                    let candidate_width = journey_actor_legend_text_bounding_client_rect_width_px(
+                        &candidate, measurer, style,
+                    );
                     if candidate_width > max_label_width {
                         let mut head = broken_word.clone();
                         head.pop();
@@ -104,16 +108,17 @@ fn journey_actor_legend_text_style(effective_config: &Value) -> TextStyle {
         )
         .max(1.0),
         font_weight: None,
+        font_style: None,
     }
 }
 
-fn journey_actor_legend_text_bbox_width_px(
+fn journey_actor_legend_text_bounding_client_rect_width_px(
     line: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
 ) -> f64 {
     measurer
-        .measure_svg_raw_text_bbox_width_px(line, style)
+        .measure_svg_text_bounding_client_rect_width_px(line, style)
         .max(0.0)
 }
 
@@ -122,9 +127,9 @@ fn journey_actor_legend_line_width_px(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
 ) -> f64 {
-    let width = journey_actor_legend_text_bbox_width_px(line, measurer, style);
+    let width = journey_actor_legend_text_bounding_client_rect_width_px(line, measurer, style);
     if width.is_finite() && width > 0.0 {
-        (width * 32.0).floor() / 32.0
+        width
     } else {
         0.0
     }
@@ -380,7 +385,10 @@ pub fn layout_journey_diagram_typed(
 
 #[cfg(test)]
 mod tests {
-    use crate::text::{DeterministicTextMeasurer, VendoredFontMetricsTextMeasurer};
+    use crate::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle,
+        VendoredFontMetricsTextMeasurer,
+    };
     use merman_core::diagrams::journey::JourneyDiagramRenderModel;
     use serde_json::json;
 
@@ -409,25 +417,48 @@ mod tests {
     }
 
     #[test]
-    fn journey_actor_legend_width_uses_browser_bbox_lattice() {
+    fn journey_actor_legend_width_preserves_profile_bounding_client_rect_result() {
         let measurer = VendoredFontMetricsTextMeasurer::default();
         let style = super::journey_actor_legend_text_style(&json!({}));
 
+        for line in [
+            "Giancarlo Esposito and is a",
+            "split into multiple lines to test the wrapping",
+        ] {
+            assert_eq!(
+                super::journey_actor_legend_line_width_px(line, &measurer, &style),
+                measurer.measure_svg_text_bounding_client_rect_width_px(line, &style)
+            );
+        }
+    }
+
+    struct BoundingClientRectMeasurer;
+
+    impl TextMeasurer for BoundingClientRectMeasurer {
+        fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+            panic!("journey actor labels must use the source-backed browser primitive")
+        }
+
+        fn measure_svg_raw_text_bbox_width_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+            panic!("getBBox must not stand in for getBoundingClientRect")
+        }
+
+        fn measure_svg_text_bounding_client_rect_width_px(
+            &self,
+            _text: &str,
+            _style: &TextStyle,
+        ) -> f64 {
+            123.456_789
+        }
+    }
+
+    #[test]
+    fn journey_actor_legend_width_uses_exact_bounding_client_rect_result() {
+        let style = super::journey_actor_legend_text_style(&json!({}));
+
         assert_eq!(
-            super::journey_actor_legend_line_width_px(
-                "Giancarlo Esposito and is a",
-                &measurer,
-                &style
-            ),
-            192.28125
-        );
-        assert_eq!(
-            super::journey_actor_legend_line_width_px(
-                "split into multiple lines to test the wrapping",
-                &measurer,
-                &style
-            ),
-            318.53125
+            super::journey_actor_legend_line_width_px("actor", &BoundingClientRectMeasurer, &style,),
+            123.456_789
         );
     }
 

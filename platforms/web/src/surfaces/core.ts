@@ -40,8 +40,8 @@ export const {
   selectedRegistryProfile,
   supportedDiagrams,
   diagramFamilyCapabilities,
-  lintRuleCatalog,
   supportedThemes,
   abiVersion,
   packageVersion,
+  lintRuleCatalog,
 } = runtime;

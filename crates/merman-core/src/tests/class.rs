@@ -15,7 +15,7 @@ cssClass "C1" styleClass
     let res = block_on(engine.parse_diagram(text, ParseOptions::default()))
         .unwrap()
         .unwrap();
-    assert_eq!(res.meta.diagram_type, "classDiagram");
+    assert_eq!(res.meta.diagram_type, "class");
 
     let c1 = &res.model["classes"]["C1"];
     assert_eq!(c1["label"], json!("Class 1 with text label"));

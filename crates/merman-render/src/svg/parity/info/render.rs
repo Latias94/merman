@@ -10,12 +10,8 @@ pub(crate) fn render_info_diagram_svg(
     let root_spec = root_svg::RootViewportSpec::responsive_without_view_box(400.0);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "info");
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Info,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Info, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
     let css = info_css_with_config(diagram_id, effective_config);
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str(r#"<g/>"#);

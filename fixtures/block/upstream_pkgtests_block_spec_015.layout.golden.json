@@ -5,17 +5,17 @@
       "nodes": [
         {
           "id": "compoundBlock",
-          "x": 59.188,
+          "x": 51.28,
           "y": 0.0,
-          "width": 118.375,
+          "width": 102.56,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "block2",
-          "x": 59.188,
+          "x": 51.28,
           "y": 0.0,
-          "width": 102.375,
+          "width": 86.56,
           "height": 32.0,
           "is_cluster": false
         }
@@ -24,7 +24,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -24.0,
-        "max_x": 118.375,
+        "max_x": 102.56,
         "max_y": 24.0
       }
     }

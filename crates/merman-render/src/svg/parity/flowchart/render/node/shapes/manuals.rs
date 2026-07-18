@@ -79,7 +79,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
     let bbox_y_offset = if ctx.node_html_labels {
         0.0
     } else {
-        crate::text::svg_create_text_bbox_y_offset_px(&node_text_style)
+        ctx.measurer
+            .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style)
     };
     label.dy = metrics.height / 2.0 - h / 2.0 + p / 2.0 + bbox_y_offset;
 }
@@ -151,7 +152,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
     let bbox_y_offset = if ctx.node_html_labels {
         0.0
     } else {
-        crate::text::svg_create_text_bbox_y_offset_px(&node_text_style)
+        ctx.measurer
+            .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style)
     };
     label.dy = metrics.height / 2.0 - h / 4.0 + p - bbox_y_offset;
 }

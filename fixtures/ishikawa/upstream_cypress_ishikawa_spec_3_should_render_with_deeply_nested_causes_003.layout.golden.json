@@ -3,14 +3,14 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -205.084,
+        "min_x": -205.083,
         "min_y": -40.337,
         "max_x": 92.0,
         "max_y": 539.797
       },
-      "total_width": 297.084,
+      "total_width": 297.083,
       "total_height": 580.134,
-      "viewbox_x": -205.084,
+      "viewbox_x": -205.083,
       "viewbox_y": -40.337,
       "padding": 20.0,
       "use_max_width": true,
@@ -42,7 +42,7 @@
         }
       },
       "spine": {
-        "x1": -185.084,
+        "x1": -185.083,
         "y1": 357.143,
         "x2": 0.0,
         "y2": 357.143,
@@ -108,7 +108,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -144.8,
+                    "min_x": -144.804,
                     "min_y": 287.386,
                     "max_x": -93.284,
                     "max_y": 306.386
@@ -136,7 +136,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -161.553,
+                    "min_x": -161.548,
                     "min_y": 220.254,
                     "max_x": -69.068,
                     "max_y": 239.254
@@ -164,7 +164,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -144.618,
+                    "min_x": -144.612,
                     "min_y": 169.497,
                     "max_x": -114.852,
                     "max_y": 188.497
@@ -192,7 +192,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -185.084,
+                    "min_x": -185.083,
                     "min_y": 102.365,
                     "max_x": -99.803,
                     "max_y": 121.365
@@ -220,7 +220,7 @@
                   "line_height": 16.8,
                   "font_size": 16.0,
                   "bbox": {
-                    "min_x": -161.551,
+                    "min_x": -161.554,
                     "min_y": 43.42,
                     "max_x": -84.754,
                     "max_y": 62.42

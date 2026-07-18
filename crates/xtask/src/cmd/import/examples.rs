@@ -442,7 +442,20 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
                     canonical_fixture_text,
                 )
             });
-        if let Some(existing_path) = existing.get(&c.body) {
+        let existing_path = existing.get(&c.body).cloned();
+        let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
+        let deferred_out_path = crate::cmd::fixtures_root()
+            .join("_deferred")
+            .join(&c.diagram_dir)
+            .join(format!("{}.mmd", c.stem));
+        if let Some(existing_path) = existing_path.as_deref()
+            && !should_revalidate_deferred_fixture(
+                existing_path,
+                &deferred_out_path,
+                with_baselines,
+                overwrite,
+            )
+        {
             if with_baselines {
                 report_skip_duplicate_content += 1;
                 report_lines.push(format!(
@@ -463,7 +476,6 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             continue;
         }
 
-        let out_path = c.fixtures_dir.join(format!("{}.mmd", c.stem));
         if out_path.exists() && !overwrite {
             if with_baselines {
                 report_skip_exists += 1;
@@ -480,10 +492,6 @@ pub(crate) fn import_upstream_examples(args: Vec<String>) -> Result<(), XtaskErr
             skipped.push(format!("skip (exists): {}", out_path.display()));
             continue;
         }
-        let deferred_out_path = crate::cmd::fixtures_root()
-            .join("_deferred")
-            .join(&c.diagram_dir)
-            .join(format!("{}.mmd", c.stem));
         if deferred_out_path.exists() && !overwrite {
             skipped.push(format!(
                 "skip (already deferred): {}",

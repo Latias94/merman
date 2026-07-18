@@ -4,8 +4,6 @@ pub(super) const CLASS_GRAPH_MARGIN_PX: f64 = 8.0;
 
 pub(super) struct ClassSvgDocument {
     pub(super) root: root_svg::RootDocument,
-    pub(super) has_acc_title: bool,
-    pub(super) has_acc_descr: bool,
 }
 
 pub(super) fn begin_class_svg_document(
@@ -54,9 +52,5 @@ pub(super) fn begin_class_svg_document(
         out.push_str("</desc>");
     }
 
-    Ok(ClassSvgDocument {
-        root: document,
-        has_acc_title,
-        has_acc_descr,
-    })
+    Ok(ClassSvgDocument { root: document })
 }

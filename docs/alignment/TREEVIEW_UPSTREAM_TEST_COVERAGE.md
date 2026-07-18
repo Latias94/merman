@@ -92,13 +92,14 @@ Phase 2 admission backlog: `docs/alignment/PHASE2_PARITY_BACKLOG.md`.
 
 ## Root Viewport Residuals
 
-Command run on 2026-06-04:
+Command run on 2026-07-17:
 
 - `cargo run -p xtask -- compare-tree-view-svgs --check-dom --dom-mode parity-root --dom-decimals 3`
 
 Result:
 
-- `parity-root` is not green for the current corpus.
+- Normal `parity` is green for the current corpus. `parity-root` reports 13 root-only residuals;
+  normalized descendants match in every case.
 - Root `width` is aligned: upstream and local emit `width="100%"` for all committed treeView
   fixtures.
 - Root `height` has no current attr residual: no committed treeView fixture emits a root `height`
@@ -109,18 +110,28 @@ Representative raw root values:
 
 | Fixture | Upstream `viewBox` w x h | Local `viewBox` w x h | Upstream `max-width` | Local `max-width` |
 |---|---:|---:|---:|---:|
-| `upstream_docs_treeview_basic` | `103.390625 x 145` | `99 x 138` | `103.391px` | `99px` |
-| `upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001` | `76.015625 x 58` | `76.5390625 x 55.2` | `76.0156px` | `76.5390625px` |
-| `upstream_parser_treeview_title_accessibility_spec` | `76.515625 x 87` | `76.5859375 x 82.8` | `76.5156px` | `76.5859375px` |
+| `upstream_docs_treeview_basic` | `103.390625 x 145` | `103.40625 x 145` | `103.391px` | `103.406px` |
+| `upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001` | `76.015625 x 58` | `76.03125 x 58` | `76.016px` | `76.031px` |
+| `upstream_cypress_treeview_spec_should_preserve_consecutive_spaces_and_unicode_in_labels_013` | `170.59375 x 119` | `166.625 x 115.59375` | `170.594px` | `166.625px` |
+| `upstream_cypress_treeview_spec_should_render_emoji_as_icons_with_the_default_icons_hidden_014` | `150.953125 x 157` | `145.96875 x 143.375` | `150.953px` | `145.969px` |
 
 Classification:
 
 - The treeView renderer derives `viewBox` and `max-width` directly from label `getBBox()`
   measurements.
-- Local output uses headless text metrics, so root viewport parity remains a bounded
-  browser-text-measurement residual.
-- Subtree DOM parity remains the current admission signal for treeView; do not add broad
-  fixture-specific root magic numbers for this family without a source-backed text metric fix.
+- Eleven residuals are ASCII direct-text bbox quantization differences. Their signed width deltas
+  range from one to two `1/64px` browser lattice steps, including both positive and negative
+  directions. A uniform correction would therefore be wrong; exact convergence requires a
+  reusable direct-text horizontal DOM profile rather than fixture or complete-label values.
+- Two residuals contain emoji or other non-ASCII glyphs. The upstream macOS Chromium baseline
+  resolves those glyphs through system fallback fonts, while the deterministic vendored profile
+  deliberately has no OS-specific fallback-font table. Their width and row-height differences are
+  therefore browser/system-font measurements, not TreeView layout semantics.
+- `RawBBoxWidth` and `RawBBoxHeight` are already distinct render-environment operations. A host
+  with the installed browser fonts can answer them exactly without a TreeView-specific ABI.
+- These observations are suitable for a version- and hash-bound root residual catalog. Do not add
+  fixture ids, complete labels, a blanket `1/64px` adjustment, or emoji-specific geometry to the
+  production renderer.
 
 ## Not Yet Covered
 

@@ -31,6 +31,8 @@ WEB_GENERATED_PACKAGE_MANIFESTS = {
     "platforms/web/pkg/render-only/package.json",
     "platforms/web/pkg/ascii/package.json",
     "platforms/web/pkg/full/package.json",
+    "platforms/web/pkg/full-no-elk/package.json",
+    "platforms/web/pkg/ratex-math/package.json",
 }
 REQUIRED_SURFACE_DOCS = [
     "docs/release/PACKAGE_SURFACES.md",

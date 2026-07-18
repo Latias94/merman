@@ -17,11 +17,9 @@ use super::label::compute_bounds;
 use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
 use super::{FlowEdge, FlowSubgraph, FlowchartModel};
 use super::{
-    FlowchartLabelMetricsRequest, flowchart_effective_font_style_for_classes,
-    flowchart_effective_font_style_for_node_classes, flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
-    flowchart_label_plain_text_for_layout, flowchart_node_has_span_css_height_parity,
-    flowchart_whole_label_font_style_requests_italic,
+    FlowchartLabelMetricsRequest, flowchart_apply_html_node_class_box_metrics,
+    flowchart_effective_text_style_for_classes, flowchart_effective_text_style_for_node_classes,
+    flowchart_label_metrics_for_layout,
 };
 
 pub(super) fn flowchart_svg_plain_computed_width_px(
@@ -36,7 +34,7 @@ pub(super) fn flowchart_svg_plain_computed_width_px(
     for line in wrapped_lines {
         width = width.max(measurer.measure_svg_text_computed_length_px(line.trim_end(), style));
     }
-    crate::text::round_to_1_64_px(width)
+    width
 }
 
 fn rank_dir_from_flow(direction: &str) -> RankDir {
@@ -971,6 +969,7 @@ fn layout_flowchart_with_model(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<FlowchartLayout> {
+    super::validate_flowchart_model_shapes(model)?;
     let effective_config_value = effective_config.as_value();
 
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
@@ -1029,7 +1028,6 @@ fn layout_flowchart_with_model(
         edge_label_wrapping_width,
         cluster_title_wrapping_width,
         edge_html_labels,
-        node_html_label_css_parity,
         node_wrap_mode,
         edge_wrap_mode,
         cluster_wrap_mode,
@@ -1121,11 +1119,6 @@ fn layout_flowchart_with_model(
             &n.classes,
             &n.styles,
         );
-        let node_font_style = flowchart_effective_font_style_for_node_classes(
-            &model.class_defs,
-            &n.classes,
-            &n.styles,
-        );
         let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label,
@@ -1135,25 +1128,12 @@ fn layout_flowchart_with_model(
             wrap_mode: node_wrap_mode,
             config: effective_config,
             math_renderer,
-            preserve_string_whitespace_height: node_html_label_css_parity,
-            whole_label_font_style: node_font_style.as_deref(),
         });
-        let span_css_height_parity =
-            flowchart_node_has_span_css_height_parity(&model.class_defs, &n.classes);
-        if node_html_label_css_parity && span_css_height_parity {
-            crate::text::flowchart_apply_mermaid_styled_node_height_parity(
-                &mut metrics,
-                node_text_style.as_ref(),
-            );
-        }
         if node_wrap_mode == WrapMode::SvgLike
             && label_type != "markdown"
             && !raw_label.contains('<')
             && !raw_label.contains('>')
-            && matches!(
-                n.layout_shape.as_deref().unwrap_or("squareRect"),
-                "squareRect"
-            )
+            && super::is_flowchart_process_shape(n.layout_shape.as_deref().unwrap_or("squareRect"))
         {
             let plain = crate::flowchart::flowchart_label_plain_text_for_layout(
                 raw_label, label_type, false,
@@ -1165,6 +1145,16 @@ fn layout_flowchart_with_model(
                 Some(wrapping_width),
             );
         }
+        if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
+            flowchart_apply_html_node_class_box_metrics(
+                &mut metrics,
+                raw_label,
+                label_type,
+                node_text_style.as_ref(),
+                &model.class_defs,
+                &n.classes,
+            );
+        }
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: n.layout_shape.as_deref(),
@@ -1172,7 +1162,6 @@ fn layout_flowchart_with_model(
             metrics,
             padding: node_padding,
             state_padding,
-            wrap_mode: node_wrap_mode,
             node_icon: n.icon.as_deref(),
             node_img: n.img.as_deref(),
             node_pos: n.pos.as_deref(),
@@ -1199,9 +1188,7 @@ fn layout_flowchart_with_model(
             &sg.classes,
             &sg.styles,
         );
-        let sg_font_style =
-            flowchart_effective_font_style_for_classes(&model.class_defs, &sg.classes, &sg.styles);
-        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+        let mut metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label: &sg.title,
             label_type,
@@ -1210,9 +1197,17 @@ fn layout_flowchart_with_model(
             wrap_mode: node_wrap_mode,
             config: effective_config,
             math_renderer,
-            preserve_string_whitespace_height: node_html_label_css_parity,
-            whole_label_font_style: sg_font_style.as_deref(),
         });
+        if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
+            flowchart_apply_html_node_class_box_metrics(
+                &mut metrics,
+                &sg.title,
+                label_type,
+                sg_text_style.as_ref(),
+                &model.class_defs,
+                &sg.classes,
+            );
+        }
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
         let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
             layout_shape: Some("squareRect"),
@@ -1220,7 +1215,6 @@ fn layout_flowchart_with_model(
             metrics,
             padding: cluster_padding,
             state_padding,
-            wrap_mode: node_wrap_mode,
             node_icon: None,
             node_img: None,
             node_pos: None,
@@ -1375,31 +1369,14 @@ fn layout_flowchart_with_model(
                 &e.classes,
                 &e.style,
             );
-            let edge_font_style =
-                flowchart_effective_font_style_for_classes(&model.class_defs, &e.classes, &e.style);
             let metrics = if label_type == "markdown" && edge_wrap_mode != WrapMode::HtmlLike {
-                let mut metrics = crate::text::measure_wrapped_markdown_with_flowchart_bold_deltas(
+                crate::text::measure_wrapped_markdown_with_inline_styles(
                     measurer,
                     label_text,
                     edge_text_style.as_ref(),
                     Some(edge_label_wrapping_width),
                     edge_wrap_mode,
-                );
-                if flowchart_whole_label_font_style_requests_italic(edge_font_style.as_deref()) {
-                    let plain = flowchart_label_plain_text_for_layout(
-                        label_text,
-                        label_type,
-                        edge_wrap_mode == WrapMode::HtmlLike,
-                    );
-                    let italic_delta = crate::text::mermaid_default_italic_width_delta_px(
-                        &plain,
-                        edge_text_style.as_ref(),
-                    );
-                    if italic_delta > 0.0 {
-                        metrics.width = crate::text::round_to_1_64_px(metrics.width + italic_delta);
-                    }
-                }
-                metrics
+                )
             } else {
                 flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
                     measurer,
@@ -1410,8 +1387,6 @@ fn layout_flowchart_with_model(
                     wrap_mode: edge_wrap_mode,
                     config: effective_config,
                     math_renderer,
-                    preserve_string_whitespace_height: false,
-                    whole_label_font_style: edge_font_style.as_deref(),
                 })
             };
             let (label_width, label_height) = if edge_html_labels {
@@ -1533,24 +1508,27 @@ fn layout_flowchart_with_model(
     ) -> Option<(f64, f64)> {
         let sg = ctx.subgraphs_by_id.get(id)?;
         let label_type = sg.label_type.as_deref().unwrap_or("text");
-        let title_font_style =
-            flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
         let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
+        let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+            ctx.html_label_text_style
+        } else {
+            ctx.text_style
+        };
+        let text_style = flowchart_effective_text_style_for_classes(
+            base_style,
+            ctx.class_defs,
+            &sg.classes,
+            &sg.styles,
+        );
         let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: &sg.title,
             label_type,
-            style: if ctx.wrap_mode == WrapMode::HtmlLike {
-                ctx.html_label_text_style
-            } else {
-                ctx.text_style
-            },
+            style: text_style.as_ref(),
             max_width_px: title_width_limit,
             wrap_mode: ctx.wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: title_font_style.as_deref(),
         });
         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
     }
@@ -2459,23 +2437,26 @@ fn layout_flowchart_with_model(
 
             let label_type = sg.label_type.as_deref().unwrap_or("text");
             let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
-            let title_font_style =
-                flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
+            let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+                ctx.html_label_text_style
+            } else {
+                ctx.text_style
+            };
+            let text_style = flowchart_effective_text_style_for_classes(
+                base_style,
+                ctx.class_defs,
+                &sg.classes,
+                &sg.styles,
+            );
             let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
                 measurer: ctx.measurer,
                 raw_label: &sg.title,
                 label_type,
-                style: if ctx.wrap_mode == WrapMode::HtmlLike {
-                    ctx.html_label_text_style
-                } else {
-                    ctx.text_style
-                },
+                style: text_style.as_ref(),
                 max_width_px: title_width_limit,
                 wrap_mode: ctx.wrap_mode,
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
-                preserve_string_whitespace_height: false,
-                whole_label_font_style: title_font_style.as_deref(),
             });
             let mut rect = if let Some(r) = content {
                 r
@@ -2495,9 +2476,8 @@ fn layout_flowchart_with_model(
             // rect to fit the label bbox during rendering.
             let base_width = rect.width();
 
-            // Mermaid cluster "rect" rendering widens to fit the raw title bbox, plus a small
-            // horizontal inset. Empirically (Mermaid@11.12.2 fixtures), this behaves like
-            // `title_width + cluster_padding` when the title is wider than the content.
+            // Mermaid 11.16 `rendering-elements/clusters.js` sets the rect width to
+            // `max(node.width, labelBBox.width + node.padding)`.
             let min_width = title_metrics.width.max(1.0) + ctx.cluster_padding;
             if rect.width() < min_width {
                 let (cx, cy) = rect.center();
@@ -2560,23 +2540,26 @@ fn layout_flowchart_with_model(
         ctx: &ClusterTitleAdjustContext<'_>,
     ) -> Rect {
         let title_width_limit = (label_type == "markdown").then_some(ctx.title_wrapping_width);
-        let title_font_style =
-            flowchart_effective_font_style_for_classes(ctx.class_defs, &sg.classes, &sg.styles);
+        let base_style = if ctx.wrap_mode == WrapMode::HtmlLike {
+            ctx.html_label_text_style
+        } else {
+            ctx.text_style
+        };
+        let text_style = flowchart_effective_text_style_for_classes(
+            base_style,
+            ctx.class_defs,
+            &sg.classes,
+            &sg.styles,
+        );
         let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer: ctx.measurer,
             raw_label: title,
             label_type,
-            style: if ctx.wrap_mode == WrapMode::HtmlLike {
-                ctx.html_label_text_style
-            } else {
-                ctx.text_style
-            },
+            style: text_style.as_ref(),
             max_width_px: title_width_limit,
             wrap_mode: ctx.wrap_mode,
             config: ctx.config,
             math_renderer: ctx.math_renderer,
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: title_font_style.as_deref(),
         });
         let title_w = title_metrics.width.max(1.0);
         let title_h = title_metrics.height.max(1.0);
@@ -2686,50 +2669,27 @@ fn layout_flowchart_with_model(
 
         let label_type = sg.label_type.as_deref().unwrap_or("text");
         let title_width_limit = (label_type == "markdown").then_some(cluster_title_wrapping_width);
-        let title_font_style =
-            flowchart_effective_font_style_for_classes(&model.class_defs, &sg.classes, &sg.styles);
-        let mut title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+        let base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
+            &html_label_text_style
+        } else {
+            &text_style
+        };
+        let title_text_style = flowchart_effective_text_style_for_classes(
+            base_style,
+            &model.class_defs,
+            &sg.classes,
+            &sg.styles,
+        );
+        let title_metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
             measurer,
             raw_label: &sg.title,
             label_type,
-            style: if cluster_wrap_mode == WrapMode::HtmlLike {
-                &html_label_text_style
-            } else {
-                &text_style
-            },
+            style: title_text_style.as_ref(),
             max_width_px: title_width_limit,
             wrap_mode: cluster_wrap_mode,
             config: effective_config,
             math_renderer,
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: title_font_style.as_deref(),
         });
-        if cluster_wrap_mode == crate::text::WrapMode::SvgLike && label_type == "markdown" {
-            // Cluster titles with markdown emphasis are rendered as SVG `<text>/<tspan>` runs and
-            // measured via browser `getBBox()` in upstream Mermaid. For italic `<em>` titles, the
-            // 1/64px-snapped markdown width can be just enough to shift the left-aligned label
-            // transform across a strict-XML rounding boundary; use a tighter lattice width probe.
-            let has_emphasis = crate::text::mermaid_markdown_to_wrapped_word_lines(
-                measurer,
-                &sg.title,
-                &text_style,
-                title_width_limit,
-                cluster_wrap_mode,
-            )
-            .iter()
-            .any(|line| {
-                line.iter()
-                    .any(|(_, ty)| *ty == crate::text::MermaidMarkdownWordType::Em)
-            });
-            if has_emphasis {
-                title_metrics.width = crate::text::measure_markdown_svg_like_precise_width_px(
-                    measurer,
-                    &sg.title,
-                    &text_style,
-                    title_width_limit,
-                );
-            }
-        }
         let title_label = LayoutLabel {
             x: cx,
             y: cy - rect.height() / 2.0 + title_margin_top + title_metrics.height / 2.0,
@@ -3002,7 +2962,7 @@ fn layout_flowchart_with_model(
         clusters,
         bounds,
         dom_node_order_by_root,
-        source_ported_elk_rendering: false,
+        uses_elk_adapter_dom: false,
     })
 }
 

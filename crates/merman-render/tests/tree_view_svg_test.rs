@@ -3,15 +3,40 @@ mod common;
 use common::legacy_init_theme_compat_engine;
 use merman_core::diagrams::tree_view::{TreeViewDiagramRenderModel, TreeViewNodeRenderModel};
 use merman_core::{
-    Engine, MAX_DIAGRAM_NESTING_DEPTH, ParseOptions, ParsedDiagramRender, RenderSemanticModel,
+    Engine, MAX_DIAGRAM_NESTING_DEPTH, MermaidConfig, ParseOptions, ParsedDiagramRender,
+    RenderSemanticModel,
 };
 use merman_render::LayoutOptions;
-use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementOperation,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+};
 use merman_render::family;
 use merman_render::model::TreeViewDiagramLayout;
 use merman_render::svg::{IconRegistry, IconSvg, SvgDebugOptions, SvgRenderOptions};
+use merman_render::text::{TextMeasurer, TextStyle};
 use merman_render::tree_view::layout_tree_view_diagram_typed;
 use std::sync::Arc;
+use std::sync::Mutex;
+
+#[derive(Default)]
+struct TreeViewBBoxHost {
+    operations: Mutex<Vec<TextMeasurementOperation>>,
+}
+
+impl HostTextMeasurer for TreeViewBBoxHost {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        self.operations.lock().unwrap().push(request.operation);
+        Ok(match request.operation {
+            TextMeasurementOperation::RawBBoxWidth => {
+                Some(HostTextMeasurement::Length(request.text.len() as f64 * 8.0))
+            }
+            TextMeasurementOperation::RawBBoxHeight => Some(HostTextMeasurement::Length(31.0)),
+            _ => None,
+        })
+    }
+}
 
 fn render_tree_view_svg_with_options(input: &str, options: SvgRenderOptions) -> String {
     render_tree_view_svg_with_environment(input, options, &RenderEnvironment::parity())
@@ -22,8 +47,17 @@ fn render_tree_view_svg_with_environment(
     options: SvgRenderOptions,
     environment: &RenderEnvironment,
 ) -> String {
+    render_tree_view_svg_with_engine_and_environment(input, options, &Engine::new(), environment)
+}
+
+fn render_tree_view_svg_with_engine_and_environment(
+    input: &str,
+    options: SvgRenderOptions,
+    engine: &Engine,
+    environment: &RenderEnvironment,
+) -> String {
     let session = environment.begin_session().unwrap();
-    let parsed = Engine::new()
+    let parsed = engine
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .unwrap()
         .expect("TreeView diagram");
@@ -175,14 +209,77 @@ src/ :::highlight icon(folder) ## source directory
     assert!(svg.contains(r#"class="treeView-node-description""#));
     assert!(svg.contains("source directory"));
     assert!(svg.contains("main component"));
-    assert!(
-        svg.contains(r##"xlink:href="#tv-icon-tree-view-11-16-test-mermaid-treeview-folder""##)
-    );
-    assert!(svg.contains(r##"xlink:href="#tv-icon-tree-view-11-16-test-logos-react""##));
+    assert!(svg.contains(r#"id="tv-icon-tree-view-11-16-test-mermaid-treeview-folder""#));
+    assert!(svg.contains(r#"id="tv-icon-tree-view-11-16-test-logos-react""#));
+    assert!(!svg.contains("<use"));
     assert!(!svg.contains("package.json icon"));
     assert!(svg.contains(".treeView-node-icon"));
     assert!(svg.contains(".treeView-node-description"));
     assert!(svg.contains(".treeView-highlight-bg"));
+}
+
+#[test]
+fn tree_view_security_level_controls_only_icon_use_nodes() {
+    let input = "treeView-beta\nRoot icon(folder)\n";
+    let options = SvgRenderOptions {
+        diagram_id: Some("tree-view-security-level-test".to_string()),
+        ..Default::default()
+    };
+    let strict_svg = render_tree_view_svg_with_options(input, options.clone());
+    let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({ "securityLevel": "loose" }),
+    ));
+    let loose_svg = render_tree_view_svg_with_engine_and_environment(
+        input,
+        options,
+        &loose_engine,
+        &RenderEnvironment::parity(),
+    );
+    let strict_document = roxmltree::Document::parse(&strict_svg).expect("valid strict SVG");
+    let loose_document = roxmltree::Document::parse(&loose_svg).expect("valid loose SVG");
+    let symbol_id = "tv-icon-tree-view-security-level-test-mermaid-treeview-folder";
+    let symbol_href = format!("#{symbol_id}");
+
+    for document in [&strict_document, &loose_document] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("id") == Some(symbol_id)),
+            "both security levels retain the icon definition"
+        );
+    }
+    assert!(
+        strict_document
+            .descendants()
+            .all(|node| node.tag_name().name() != "use"),
+        "strict rendering mirrors Mermaid's final DOMPurify pass"
+    );
+    assert!(loose_document.descendants().any(|node| {
+        node.tag_name().name() == "use"
+            && node.attribute(("http://www.w3.org/1999/xlink", "href"))
+                == Some(symbol_href.as_str())
+    }));
+
+    let root_attribute = |document: &roxmltree::Document<'_>, name| {
+        document
+            .root_element()
+            .attribute(name)
+            .expect("root attribute")
+            .to_string()
+    };
+    assert_eq!(
+        root_attribute(&strict_document, "viewBox"),
+        root_attribute(&loose_document, "viewBox")
+    );
+    let label_x = |document: &roxmltree::Document<'_>| {
+        document
+            .descendants()
+            .find(|node| node.tag_name().name() == "text" && node.text() == Some("Root"))
+            .and_then(|node| node.attribute("x"))
+            .expect("label x")
+            .to_string()
+    };
+    assert_eq!(label_x(&strict_document), label_x(&loose_document));
 }
 
 #[test]
@@ -201,12 +298,16 @@ App.tsx icon(logos:react)
         );
     }
     let environment = RenderEnvironment::parity().with_icon_registry(Arc::new(registry));
-    let svg = render_tree_view_svg_with_environment(
+    let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({ "securityLevel": "loose" }),
+    ));
+    let svg = render_tree_view_svg_with_engine_and_environment(
         input,
         SvgRenderOptions {
             diagram_id: Some("tree-view-icon-size-test".to_string()),
             ..Default::default()
         },
+        &loose_engine,
         &environment,
     );
     let document = roxmltree::Document::parse(&svg).expect("valid TreeView SVG");
@@ -528,6 +629,95 @@ src/ :::directory-probe
     );
     assert!(svg.contains(r#"class="treeView-node-label file-probe""#));
     assert!(!svg.contains(r#"treeView-node-dir file-probe"#));
+}
+
+#[test]
+fn tree_view_layout_measures_directory_labels_with_bold_style() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "treeView-beta\nverylongdirectoryname/ :::directory-probe\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let layout = layout_tree_view(&parsed, &session);
+    let directory = layout
+        .nodes
+        .iter()
+        .find(|node| node.css_class.as_deref() == Some("directory-probe"))
+        .expect("directory node");
+    let style = TextStyle {
+        font_size: layout.label_font_size,
+        font_weight: Some("bold".to_string()),
+        ..Default::default()
+    };
+    let expected = session
+        .text_measurer(TextMeasurementPhase::SvgBBox)
+        .measure_svg_raw_text_bbox_width_px(&directory.name, &style);
+
+    assert_eq!(directory.label_width, expected);
+}
+
+#[test]
+fn tree_view_layout_measures_descriptions_with_italic_style() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(
+            "treeView-beta\nfile.txt ## a long slanted description\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let layout = layout_tree_view(&parsed, &session);
+    let node = layout
+        .nodes
+        .iter()
+        .find(|node| node.description.is_some())
+        .expect("described node");
+    let description = node.description.as_deref().expect("description");
+    let style = TextStyle {
+        font_size: layout.label_font_size,
+        font_style: Some("italic".to_string()),
+        ..Default::default()
+    };
+    let expected = session
+        .text_measurer(TextMeasurementPhase::SvgBBox)
+        .measure_svg_raw_text_bbox_width_px(description, &style);
+
+    assert_eq!(node.description_width, Some(expected));
+}
+
+#[test]
+fn tree_view_layout_routes_direct_text_bbox_height_through_the_host() {
+    let host = Arc::new(TreeViewBBoxHost::default());
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.tree-view-bbox-host").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::parity().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(
+            identity,
+            host.clone(),
+            [TextMeasurementPhase::SvgBBox],
+        ),
+    );
+    let session = environment.begin_session().unwrap();
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync("treeView-beta\nfile.txt\n", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let layout = layout_tree_view(&parsed, &session);
+
+    assert!(layout.nodes.iter().all(|node| node.label_height == 31.0));
+    assert!(layout.nodes.iter().all(|node| node.height == 41.0));
+    assert!(
+        host.operations
+            .lock()
+            .unwrap()
+            .contains(&TextMeasurementOperation::RawBBoxHeight)
+    );
 }
 
 #[test]

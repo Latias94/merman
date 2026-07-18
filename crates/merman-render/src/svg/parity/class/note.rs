@@ -1,6 +1,9 @@
 use crate::entities::decode_entities_minimal_cow;
 use crate::model::{Bounds, LayoutNode};
-use crate::text::{MermaidMarkdownWordType, TextMeasurer, TextStyle, WrapMode};
+use crate::text::{
+    MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownWordType, TextMeasurer, TextStyle,
+    WrapMode,
+};
 use std::fmt::Write as _;
 use web_time::Duration;
 
@@ -99,7 +102,10 @@ pub(super) fn render_class_note_node(
     let label_y = if ctx.use_html_labels {
         -label_h / 2.0
     } else {
-        -label_h / 2.0 - crate::class::class_svg_create_text_bbox_y_offset_px(ctx.text_style)
+        -label_h / 2.0
+            - ctx
+                .measurer
+                .measure_svg_create_text_bbox_y_offset_px(note_text.as_ref(), ctx.text_style)
     };
     let hand_drawn = ctx.look == "handDrawn";
     let rough_seed = class_rough_seed(ctx.hand_drawn_seed, ctx.diagram_id, &note.id);
@@ -193,7 +199,8 @@ pub(super) fn render_class_note_node(
     }
 
     if ctx.use_html_labels {
-        let note_div_style = class_note_html_div_style(label_w, 200);
+        let note_div_style =
+            class_note_html_div_style(label_w, MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX as i64);
         let _ = write!(
             out,
             r##"<g class="{}" id="{}"{} transform="translate({}, {})">{}<g class="{}" style="text-align:left !important;white-space:nowrap !important" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div style="{}" xmlns="http://www.w3.org/1999/xhtml"><span style="text-align:left !important;white-space:nowrap !important" class="{}"><p>"##,

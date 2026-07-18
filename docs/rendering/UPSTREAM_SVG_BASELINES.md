@@ -282,12 +282,14 @@ Outputs to:
 Some fixtures are intentionally **parser-only** (they validate semantic parsing but are not
 renderable in upstream Mermaid at the pinned version).
 
-Convention:
+Policy:
 
-- Any fixture whose filename contains `_parser_only_` (or `_parser_only_spec`) is skipped by:
-  - `xtask gen-upstream-svgs`
-  - `xtask check-upstream-svgs`
-  - diagram compare tasks like `xtask compare-flowchart-svgs`
+- Parser-only status is an exact, family-scoped fact owned by
+  `merman-fixture-render-context::parser_only_fixture_reason`.
+- `xtask gen-upstream-svgs`, `xtask check-upstream-svgs`, layout snapshot generation, raster
+  audits, and diagram compare tasks consume that same catalog.
+- A filename containing `parser_only` has no policy effect by itself. New exclusions require a
+  source-backed reason in the shared catalog and focused coverage for every consumer.
 - Flowchart KaTeX HTML-demo fixtures are an explicit non-example: the active files use `*_katex`
   stems and participate in upstream SVG generation/check/compare through the Node/Puppeteer KaTeX
   measurement backend.
@@ -300,9 +302,10 @@ rejected by the pinned Mermaid CLI (currently `@11.16.0`), often due to shorthan
 To preserve the upstream strings *and* still get authoritative CLI SVG baselines + DOM parity
 comparisons, we add `*_normalized` variants that rewrite the input into the pinned Mermaid grammar.
 
-Rule of thumb:
+Rule of thumb for an upstream-invalid input that still carries useful parser evidence:
 
-- keep the upstream string as a `*_parser_only_` fixture (semantic-only), and
+- keep the upstream string as a semantic-only fixture with an exact family-scoped exclusion fact,
+  using a descriptive stem rather than relying on its name for policy, and
 - add a `*_normalized` fixture that is eligible for:
   - `xtask gen-upstream-svgs`
   - layout snapshots (`*.layout.golden.json`)

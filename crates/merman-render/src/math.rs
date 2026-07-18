@@ -173,8 +173,8 @@ impl RatexMathRenderer {
             .with_color(ratex_types::Color::BLACK);
         let layout_box = ratex_layout::layout(&ast, &layout_options);
         let display_list = ratex_layout::to_display_list(&layout_box);
-        let width_em = display_list.width.max(0.0);
-        let height_em = display_list.total_height().max(0.0);
+        let width_em = Self::emitted_em_dimension(display_list.width.max(0.0));
+        let height_em = Self::emitted_em_dimension(display_list.total_height().max(0.0));
         let svg = ratex_svg::render_to_svg(
             &display_list,
             &ratex_svg::SvgOptions {
@@ -265,10 +265,14 @@ impl RatexMathRenderer {
     fn metrics_from_em(rendered: &RatexRenderedMath, font_size: f64) -> TextMetrics {
         let font_size = font_size.max(1.0);
         TextMetrics {
-            width: crate::text::round_to_1_64_px(rendered.width_em * font_size),
-            height: crate::text::round_to_1_64_px(rendered.height_em * font_size),
+            width: rendered.width_em * font_size,
+            height: rendered.height_em * font_size,
             line_count: rendered.line_count,
         }
+    }
+
+    fn emitted_em_dimension(value: f64) -> f64 {
+        Self::fmt_num(value).parse().unwrap_or(0.0)
     }
 
     fn fmt_num(n: f64) -> String {
@@ -671,8 +675,8 @@ impl MathRenderer for NodeKatexMathRenderer {
         }
         let probed = self.probe_cached(text, config, style, max_width_px, wrap_mode)?;
         Some(TextMetrics {
-            width: crate::text::round_to_1_64_px(probed.width),
-            height: crate::text::round_to_1_64_px(probed.height),
+            width: probed.width,
+            height: probed.height,
             line_count: probed.line_count,
         })
     }
@@ -687,8 +691,8 @@ impl MathRenderer for NodeKatexMathRenderer {
         }
         let probed = self.sequence_probe_cached(text, config)?;
         Some(TextMetrics {
-            width: crate::text::round_to_1_64_px(probed.width),
-            height: crate::text::round_to_1_64_px(probed.height),
+            width: probed.width,
+            height: probed.height,
             line_count: probed.line_count,
         })
     }
@@ -709,6 +713,21 @@ mod tests {
             RatexMathRenderer::math_only_lines("$$x$$<brx>$$y$$").is_none(),
             "non-source <br> lookalikes must not split a same-line multi-formula label"
         );
+    }
+
+    #[cfg(feature = "ratex-math")]
+    #[test]
+    fn ratex_math_metrics_preserve_emitted_em_precision() {
+        let rendered = RatexRenderedMath {
+            width_em: 0.6255,
+            height_em: 1.2505,
+            line_count: 1,
+        };
+
+        let metrics = RatexMathRenderer::metrics_from_em(&rendered, 16.0);
+
+        assert_eq!(metrics.width, rendered.width_em * 16.0);
+        assert_eq!(metrics.height, rendered.height_em * 16.0);
     }
 
     #[cfg(feature = "ratex-math")]
@@ -830,16 +849,32 @@ mod tests {
 
     #[cfg(feature = "ratex-math")]
     #[test]
-    fn ratex_math_renderer_measures_flowchart_and_sequence_math_labels() {
+    fn ratex_math_measurements_match_emitted_svg_dimensions() {
         let renderer = RatexMathRenderer;
         let config = MermaidConfig::default();
         let style = TextStyle::default();
+        let (svg, width_em, height_em) = RatexMathRenderer::render_formula_svg_em("x^2")
+            .expect("ratex should emit the formula SVG");
+        assert!(
+            svg.contains(&format!(
+                "width=\"{}em\"",
+                RatexMathRenderer::fmt_num(width_em)
+            )),
+            "unexpected emitted SVG width: {svg}"
+        );
+        assert!(
+            svg.contains(&format!(
+                "height=\"{}em\"",
+                RatexMathRenderer::fmt_num(height_em)
+            )),
+            "unexpected emitted SVG height: {svg}"
+        );
 
         let flowchart = renderer
             .measure_html_label("$$x^2$$", &config, &style, Some(200.0), WrapMode::HtmlLike)
             .expect("ratex should measure pure flowchart math labels");
-        assert_eq!(flowchart.width, 15.546875);
-        assert_eq!(flowchart.height, 13.828125);
+        assert_eq!(flowchart.width, width_em * style.font_size);
+        assert_eq!(flowchart.height, height_em * style.font_size);
         assert_eq!(flowchart.line_count, 1);
 
         let sequence = renderer
@@ -858,8 +893,6 @@ mod tests {
             wrap_mode: WrapMode::HtmlLike,
             config: &config,
             math_renderer: Some(&renderer),
-            preserve_string_whitespace_height: false,
-            whole_label_font_style: None,
         };
         let through_flowchart =
             crate::flowchart::flowchart_label_metrics_for_layout(flowchart_request);
@@ -898,6 +931,49 @@ mod tests {
         };
         assert!(metrics.width.is_finite() && metrics.width > 0.0);
         assert!(metrics.height.is_finite() && metrics.height > 0.0);
+    }
+
+    #[test]
+    fn node_katex_metrics_preserve_browser_probe_precision() {
+        let renderer = NodeKatexMathRenderer::new("missing-node-environment");
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        let render = NodeKatexMathRenderer::render_key("$$x$$", &config);
+        let probe = ProbeCacheValue {
+            html: "<div>x</div>".to_string(),
+            width: 10.008,
+            height: 20.008,
+            line_count: 1,
+        };
+        let key = ProbeCacheKey {
+            render: render.clone(),
+            font_family: style.font_family.clone(),
+            font_size_bits: style.font_size.to_bits(),
+            font_weight: style.font_weight.clone(),
+            max_width_bits: 200.0_f64.to_bits(),
+        };
+        renderer
+            .probe_cache
+            .lock()
+            .unwrap()
+            .insert(key, Some(probe.clone()));
+        renderer
+            .sequence_probe_cache
+            .lock()
+            .unwrap()
+            .insert(render, Some(probe));
+
+        let flowchart = renderer
+            .measure_html_label("$$x$$", &config, &style, Some(200.0), WrapMode::HtmlLike)
+            .unwrap();
+        let sequence = renderer
+            .measure_sequence_html_label("$$x$$", &config)
+            .unwrap();
+
+        assert_eq!(flowchart.width, 10.008);
+        assert_eq!(flowchart.height, 20.008);
+        assert_eq!(sequence.width, 10.008);
+        assert_eq!(sequence.height, 20.008);
     }
 
     #[test]

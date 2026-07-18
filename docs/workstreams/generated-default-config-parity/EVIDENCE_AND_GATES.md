@@ -3,6 +3,10 @@
 Status: Closed
 Last updated: 2026-05-31
 
+> Historical evidence below records the closed Mermaid 11.15 implementation. ADR-0019 superseded
+> its override manifest on 2026-07-16; the current gates verify the Mermaid 11.16 value and shape
+> projections directly against the content-pinned runtime.
+
 ## Smallest Current Repro
 
 ```bash
@@ -22,8 +26,8 @@ cargo run -p xtask -- verify-default-config
 cargo run -p xtask -- verify-dompurify-defaults
 ```
 
-`cargo nextest run -p xtask` proves the Rust-side helper behavior. The two xtask commands prove the
-CLI surface and artifact-specific source requirements.
+`cargo nextest run -p xtask` proves the Rust-side validation and serialization helpers. The two
+artifact-specific xtask commands prove their CLI surfaces and source requirements.
 
 ### Package Gates
 
@@ -146,6 +150,8 @@ Run `review-workstream` before accepting task or lane completion.
 - `docs/workstreams/generated-default-config-parity/MILESTONES.md`
 - `docs/adr/0019-generated-default-config.md`
 - `docs/adr/0024-dompurify-default-allowlists-and-generation.md`
-- `crates/xtask/default_config_overrides.json`
+- `crates/xtask/src/cmd/default_config.rs`
+- `crates/merman-core/src/generated/default_config.json`
+- `crates/merman-core/src/generated/default_config_shape.json`
 - `crates/merman-core/src/generated/dompurify_defaults.rs`
 - `tools/upstreams/REPOS.lock.json`

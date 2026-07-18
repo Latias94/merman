@@ -25,7 +25,6 @@ impl LabelDeltaReportLimit {
 pub(crate) struct LabelMetricDelta {
     pub(crate) stem: String,
     pub(crate) index: usize,
-    pub(crate) root_pinned: bool,
     pub(crate) label_class: String,
     pub(crate) text: String,
     pub(crate) markup: String,
@@ -64,7 +63,6 @@ pub(crate) fn collect_label_metric_deltas(
     stem: &str,
     upstream_svg: &str,
     local_svg: &str,
-    root_pinned: bool,
 ) -> Result<Vec<LabelMetricDelta>, String> {
     let upstream =
         extract_label_metric_samples(upstream_svg).map_err(|e| format!("upstream {stem}: {e}"))?;
@@ -85,7 +83,6 @@ pub(crate) fn collect_label_metric_deltas(
         out.push(LabelMetricDelta {
             stem: stem.to_string(),
             index: idx,
-            root_pinned,
             label_class: if !lo.label_class.is_empty() {
                 lo.label_class.clone()
             } else {
@@ -133,7 +130,7 @@ pub(crate) fn write_label_deltas_report(
     let take = limit.take_count(label_deltas.len());
     let _ = writeln!(
         report,
-        "\n## Label Metric Deltas\n\nHTML `<foreignObject>` labels and SVG `<text>` labels are paired by fixture-local DOM order. SVG text rows use emitted label-container geometry when no browser `getBBox()` dimensions are present. This report is intended to identify shared text metric drift before adding or deleting root viewport overrides.\n"
+        "\n## Label Metric Deltas\n\nHTML `<foreignObject>` labels and SVG `<text>` labels are paired by fixture-local DOM order. SVG text rows use emitted label-container geometry when no browser `getBBox()` dimensions are present. This report identifies shared text metric drift without changing production rendering.\n"
     );
     match limit {
         LabelDeltaReportLimit::All => {
@@ -154,14 +151,13 @@ pub(crate) fn write_label_deltas_report(
 
     let _ = writeln!(
         report,
-        "| Fixture | root pin | # | class | upstream w×h | local w×h | Δw | Δh | text | markup |\n|---|---:|---:|---|---:|---:|---:|---:|---|---|"
+        "| Fixture | # | class | upstream w×h | local w×h | Δw | Δh | text | markup |\n|---|---:|---|---:|---:|---:|---:|---|---|"
     );
     for d in label_deltas.iter().take(take) {
         let _ = writeln!(
             report,
-            "| `{}` | {} | {} | `{}` | {:.3}×{:.3} | {:.3}×{:.3} | {:+.3} | {:+.3} | {} | {} |",
+            "| `{}` | {} | `{}` | {:.3}×{:.3} | {:.3}×{:.3} | {:+.3} | {:+.3} | {} | {} |",
             d.stem,
-            if d.root_pinned { "yes" } else { "" },
             d.index,
             markdown_cell(&d.label_class),
             d.upstream_width,
@@ -496,13 +492,12 @@ mod tests {
         let upstream = r#"<svg><foreignObject width="85.0625" height="24"><div><span class="nodeLabel"><p><i class="fa fa-twitter"></i> for peace</p></span></div></foreignObject></svg>"#;
         let local = r#"<svg><foreignObject width="89.0625" height="24"><div><span class="nodeLabel"><p><i class="fa fa-twitter"></i> for peace</p></span></div></foreignObject></svg>"#;
 
-        let rows = collect_label_metric_deltas("fixture", upstream, local, true).unwrap();
+        let rows = collect_label_metric_deltas("fixture", upstream, local).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].label_class, "nodeLabel");
         assert_eq!(rows[0].text, "for peace");
         assert_eq!(rows[0].markup, "i.fa.fa-twitter");
         assert_eq!(rows[0].width_delta, 4.0);
-        assert!(rows[0].root_pinned);
     }
 
     #[test]
@@ -510,7 +505,7 @@ mod tests {
         let upstream = r#"<svg><g class="node default"><polygon class="label-container" points="-10,0 110,0 100,-40 0,-40"/><g class="label"><text><tspan class="text-outer-tspan"><tspan font-weight="bold">Hello</tspan></tspan><tspan class="text-outer-tspan"><tspan>World</tspan></tspan></text></g></g></svg>"#;
         let local = r#"<svg><g class="node default"><polygon class="label-container" points="-10,0 108,0 98,-40 0,-40"/><g class="label"><text><tspan class="text-outer-tspan"><tspan font-weight="bold">Hello</tspan></tspan><tspan class="text-outer-tspan"><tspan>World</tspan></tspan></text></g></g></svg>"#;
 
-        let rows = collect_label_metric_deltas("fixture", upstream, local, true).unwrap();
+        let rows = collect_label_metric_deltas("fixture", upstream, local).unwrap();
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].label_class, "nodeLabel");

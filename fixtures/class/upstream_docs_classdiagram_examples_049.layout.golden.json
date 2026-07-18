@@ -1,5 +1,5 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
@@ -7,7 +7,7 @@
           "id": "MyClass",
           "x": 290.883,
           "y": 128.0,
-          "width": 79.484,
+          "width": 77.125,
           "height": 84.0,
           "is_cluster": false
         },

@@ -48,10 +48,42 @@ fn tiny_build_flowchart_elk_falls_back_to_flowchart_v2() {
 }
 
 #[test]
-fn engine_with_site_config_preserves_default_renderer_for_detection() {
+fn generated_defaults_preserve_mermaids_runtime_class_object_override() {
+    let expected = json!({
+        "hideEmptyMembersBox": false,
+        "hierarchicalNamespaces": true
+    });
+    assert_eq!(
+        crate::generated::default_site_config()
+            .as_value()
+            .get("class"),
+        Some(&expected),
+        "Mermaid 11.16 defaultConfig.ts replaces rather than spreads the schema Class object"
+    );
+}
+
+#[test]
+fn class_diagram_detection_keeps_runtime_default_absent_when_site_config_is_merged() {
     let engine = Engine::new().with_site_config({
         let mut cfg = MermaidConfig::empty_object();
         cfg.set_value("securityLevel", json!("sandbox"));
+        cfg
+    });
+
+    let text = r#"classDiagram
+class Class1
+"#;
+    let res = block_on(engine.parse_metadata(text, ParseOptions::default()))
+        .unwrap()
+        .unwrap();
+    assert_eq!(res.diagram_type, "class");
+}
+
+#[test]
+fn class_diagram_detection_respects_explicit_wrapper_renderer() {
+    let engine = Engine::new().with_site_config({
+        let mut cfg = MermaidConfig::empty_object();
+        cfg.set_value("class.defaultRenderer", json!("dagre-wrapper"));
         cfg
     });
 
@@ -65,7 +97,7 @@ class Class1
 }
 
 #[test]
-fn class_diagram_detection_respects_non_default_renderer() {
+fn class_diagram_detection_respects_explicit_dagre_d3_renderer() {
     let engine = Engine::new().with_site_config({
         let mut cfg = MermaidConfig::empty_object();
         cfg.set_value("class.defaultRenderer", json!("dagre-d3"));

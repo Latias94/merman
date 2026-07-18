@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "id-<id>-1",
-          "x": 67.797,
+          "x": 66.24,
           "y": 0.0,
-          "width": 135.594,
+          "width": 132.48,
           "height": 48.0,
           "is_cluster": false
         },
         {
           "id": "aBlock",
-          "x": 35.898,
+          "x": 35.12,
           "y": 0.0,
-          "width": 55.797,
+          "width": 54.24,
           "height": 32.0,
           "is_cluster": false
         },
         {
           "id": "bBlock",
-          "x": 99.695,
+          "x": 97.36,
           "y": 0.0,
-          "width": 55.797,
+          "width": 54.24,
           "height": 32.0,
           "is_cluster": false
         }
@@ -32,7 +32,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -24.0,
-        "max_x": 135.594,
+        "max_x": 132.48,
         "max_y": 24.0
       }
     }

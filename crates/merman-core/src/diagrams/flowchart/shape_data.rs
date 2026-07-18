@@ -5,7 +5,7 @@ pub(super) fn parse_shape_data(input: &str) -> std::result::Result<Value, String
     crate::inline_config::parse_mermaid_inline_object(input)
 }
 
-const MERMAID_SHAPES_11_12_2: &[&str] = &[
+const PINNED_MERMAID_SHAPES: &[&str] = &[
     "anchor",
     "bang",
     "bolt",
@@ -169,12 +169,12 @@ const MERMAID_SHAPES_11_12_2: &[&str] = &[
     "window-pane",
 ];
 
-fn is_valid_shape_11_12_2(shape: &str) -> bool {
-    MERMAID_SHAPES_11_12_2.binary_search(&shape).is_ok()
+fn is_valid_pinned_shape(shape: &str) -> bool {
+    PINNED_MERMAID_SHAPES.binary_search(&shape).is_ok()
 }
 
-pub(super) fn public_shape_names_11_12_2() -> impl Iterator<Item = &'static str> {
-    MERMAID_SHAPES_11_12_2
+pub(super) fn public_pinned_shape_names() -> impl Iterator<Item = &'static str> {
+    PINNED_MERMAID_SHAPES
         .iter()
         .copied()
         .filter(|shape| is_public_shape_name(shape))
@@ -228,7 +228,7 @@ pub(super) fn apply_shape_data_to_node(
                         "No such shape: {shape}. Shape names should be lowercase."
                     ));
                 }
-                if !is_valid_shape_11_12_2(shape) {
+                if !is_valid_pinned_shape(shape) {
                     return Err(format!("No such shape: {shape}."));
                 }
                 node.shape = Some(shape.to_string());

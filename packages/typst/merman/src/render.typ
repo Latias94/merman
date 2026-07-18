@@ -60,7 +60,7 @@
 ) = context {
   let inferred-host-theme = context-host-theme(text.font, text.size)
   let base-config = render-config(context-host-theme: inferred-host-theme, ..args)
-  if base-config.direct_layout != none or base-config.direct_viewport_width != none or base-config.direct_options != none or base-config.profile_options != none {
+  if base-config.direct_layout != none or base-config.direct_container_width != none or base-config.direct_options != none or base-config.profile_options != none {
     let result = render-svg-result-with-config(source, base-config)
     result-image(result, width, height, fit, alt, scale, error-mode)
   } else {

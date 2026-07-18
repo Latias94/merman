@@ -1,50 +1,63 @@
+#![cfg(feature = "cytoscape-layout")]
+
 use merman_core::{Engine, MermaidConfig, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::architecture::layout_architecture_diagram_typed;
 use merman_render::environment::{
-    HostMeasurementResult, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
-    RenderRandomnessPolicy, RenderSession, TextMeasurementPhase, TextMeasurementPolicy,
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, RenderRandomnessPolicy, RenderSession,
+    TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy,
     TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMetrics, TextStyle};
+use merman_render::text::TextMetrics;
 use regex::Regex;
 use std::num::NonZeroU64;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 struct CountingArchitectureHost {
     calls: AtomicUsize,
+    operations: Mutex<Vec<TextMeasurementOperation>>,
+    reject_generic_svg_measurement: std::sync::atomic::AtomicBool,
 }
 
 impl HostTextMeasurer for CountingArchitectureHost {
-    fn measure(
-        &self,
-        _phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<TextMetrics> {
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
         self.calls.fetch_add(1, Ordering::Relaxed);
-        Ok(Some(TextMetrics {
-            width: text.chars().count() as f64 * style.font_size.max(1.0),
-            height: style.font_size.max(1.0),
-            line_count: 1,
+        self.operations
+            .lock()
+            .expect("Architecture host operations lock")
+            .push(request.operation);
+        let width = request.text.chars().count() as f64 * request.style.font_size.max(1.0);
+        Ok(Some(match request.operation {
+            TextMeasurementOperation::Measure | TextMeasurementOperation::Wrapped => {
+                assert!(
+                    !self.reject_generic_svg_measurement.load(Ordering::Relaxed),
+                    "Architecture SVG must select a source-backed text primitive instead of generic measurement"
+                );
+                HostTextMeasurement::Metrics(TextMetrics {
+                    width,
+                    height: request.style.font_size.max(1.0),
+                    line_count: 1,
+                })
+            }
+            TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width * 0.75),
+            TextMeasurementOperation::TspanBBoxWidth => HostTextMeasurement::Length(width + 11.0),
+            TextMeasurementOperation::BBoxX => HostTextMeasurement::HorizontalExtents {
+                left: width / 2.0,
+                right: width / 2.0,
+            },
+            TextMeasurementOperation::TspanBBoxHeight => HostTextMeasurement::Length(23.0),
+            TextMeasurementOperation::CreateTextMiddleBBoxYOffset => {
+                HostTextMeasurement::Length(7.0)
+            }
+            _ => return Ok(None),
         }))
-    }
-
-    fn measure_svg_text_bbox_x(
-        &self,
-        _phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<(f64, f64)> {
-        self.calls.fetch_add(1, Ordering::Relaxed);
-        let half = text.chars().count() as f64 * style.font_size.max(1.0) / 2.0;
-        Ok(Some((half, half)))
     }
 }
 
@@ -109,7 +122,6 @@ fn render_architecture_text_with_engine_and_options(
 
 fn layout_architecture_typed(
     parsed: &ParsedDiagramRender,
-    options: &LayoutOptions,
     session: &RenderSession,
 ) -> ArchitectureDiagramLayout {
     let RenderSemanticModel::Architecture(model) = &parsed.model else {
@@ -120,7 +132,6 @@ fn layout_architecture_typed(
         model,
         parsed.meta.effective_config.as_value(),
         &measurer,
-        options.use_manatee_layout,
         session.seed().seed().get(),
     )
     .expect("layout ok")
@@ -423,8 +434,8 @@ fn architecture_group_rect_uses_configured_padding_for_small_icons() {
 
     let left = group_rect(&svg, "architecture-padding-group-left");
     assert!(
-        left.2 >= 158.0,
-        "custom architecture.padding should expand the group rect beyond the legacy iconSize/2 sizing, got width {}",
+        (left.2 - 162.0).abs() <= 1.0e-9,
+        "custom architecture.padding should follow Cytoscape label, border, and final-bbox phases, got width {}",
         left.2
     );
 }
@@ -459,7 +470,7 @@ fn architecture_vertical_edge_label_bounds_use_create_text_y_offsets() {
 }
 
 #[test]
-fn architecture_long_title_group_rect_uses_narrower_long_label_canvas_approximation() {
+fn architecture_long_title_group_rect_uses_cytoscape_canvas_font_stack() {
     let svg = render_architecture_fixture_with_options(
         "stress_architecture_batch5_long_titles_and_punct_076.mmd",
         &SvgRenderOptions {
@@ -471,7 +482,7 @@ fn architecture_long_title_group_rect_uses_narrower_long_label_canvas_approximat
     let pipeline = group_rect(&svg, "architecture-batch5-long-group-pipeline");
     assert!(
         pipeline.2 > 460.0 && pipeline.2 < 473.5,
-        "unexpected pipeline group width regression for long-title architecture fixture after the narrower long-label canvas approximation: {}",
+        "long-title group width should use Cytoscape's Helvetica Canvas font stack: {}",
         pipeline.2
     );
 }
@@ -489,11 +500,10 @@ fn architecture_layout_caches_service_child_bounds() {
         .parse_diagram_for_render_model_sync(text, ParseOptions::strict())
         .expect("parse ok")
         .expect("diagram detected");
-    let layout_options = LayoutOptions::headless_svg_defaults();
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("begin render session");
-    let layout = layout_architecture_typed(&parsed, &layout_options, &session);
+    let layout = layout_architecture_typed(&parsed, &session);
     assert!(
         !layout.cytoscape_service_bounds.is_empty(),
         "expected layout to expose Architecture service child bounds"
@@ -523,7 +533,13 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let session = counting_architecture_environment(Arc::clone(&host))
         .begin_session()
         .expect("begin render session");
-    let source = "architecture-beta\n  service api(server)[API service]\n";
+    let source = r#"architecture-beta
+  group app(cloud)[Application platform]
+  service api(server)[API service] in app
+  service db(database)[Data store] in app
+  service outside(server)[Outside service]
+  api:R -[request path]- L:db
+"#;
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse ok")
@@ -532,6 +548,12 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let artifact = family::prepare(parsed.clone(), &layout_options, session)
         .expect("prepare Architecture artifact");
     host.calls.store(0, Ordering::Relaxed);
+    host.operations
+        .lock()
+        .expect("Architecture host operations lock")
+        .clear();
+    host.reject_generic_svg_measurement
+        .store(true, Ordering::Relaxed);
 
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -542,13 +564,48 @@ fn architecture_svg_uses_the_session_measurement_route() {
         host.calls.load(Ordering::Relaxed) > 0,
         "Architecture must not bypass the session with a family-local vendored measurer"
     );
+    let operations = host
+        .operations
+        .lock()
+        .expect("Architecture host operations lock");
+    assert!(
+        operations.contains(&TextMeasurementOperation::ComputedLength),
+        "Architecture createText wrapping must request SVG computed text length"
+    );
+    assert!(
+        operations.contains(&TextMeasurementOperation::TspanBBoxWidth),
+        "Architecture root bounds must request the emitted outer tspan bbox width"
+    );
+    assert!(
+        operations.contains(&TextMeasurementOperation::TspanBBoxHeight),
+        "Architecture root bounds must request the rendered tspan height"
+    );
+    assert!(
+        operations.contains(&TextMeasurementOperation::CreateTextMiddleBBoxYOffset),
+        "Architecture root bounds must request the inherited middle-baseline bbox y offset"
+    );
+    drop(operations);
     assert!(
         session
             .text_measurement_report()
             .entries()
             .iter()
             .any(|entry| {
-                entry.provenance().phase == TextMeasurementPhase::SvgBBox
+                entry.provenance().operation == TextMeasurementOperation::ComputedLength
+                    && entry.provenance().phase == TextMeasurementPhase::ComputedLength
+                    && entry.provenance().source
+                        == merman_render::environment::TextMeasurementSource::Host
+            }),
+        "Architecture wrap probes must retain computed-length host provenance"
+    );
+    assert!(
+        session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .any(|entry| {
+                entry.provenance().operation == TextMeasurementOperation::TspanBBoxWidth
+                    && entry.provenance().phase == TextMeasurementPhase::SvgBBox
                     && entry.provenance().source
                         == merman_render::environment::TextMeasurementSource::Host
             }),
@@ -582,8 +639,7 @@ fn architecture_and_hand_drawn_zero_seeds_share_the_session_seed() {
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
             .expect("parse ok")
             .expect("diagram detected");
-        let layout =
-            layout_architecture_typed(&parsed, &LayoutOptions::headless_svg_defaults(), &session);
+        let layout = layout_architecture_typed(&parsed, &session);
         let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("prepare Architecture artifact");
         let svg = artifact

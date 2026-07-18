@@ -145,9 +145,6 @@ pub(crate) fn render_gantt_diagram_svg_model(
 
     let w = layout.width.max(1.0);
     let h = layout.height.max(1.0);
-    // Upstream viewBox dimensions frequently match an `f32` lattice.
-    let w_attr = (w as f32) as f64;
-    let h_attr = (h as f32) as f64;
 
     let acc_title = model
         .acc_title
@@ -167,20 +164,16 @@ pub(crate) fn render_gantt_diagram_svg_model(
     let aria_describedby = acc_descr
         .as_ref()
         .map(|_| format!("chart-desc-{diagram_id}"));
-    let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, w_attr, h_attr);
+    let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, w, h);
     let root_spec = root_svg::RootViewportSpec::responsive(root_bounds)
-        .with_max_width(root_svg::RootMaxWidth::SvgNumber(w_attr));
+        .with_max_width(root_svg::RootMaxWidth::SvgNumber(w));
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "gantt");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::Gantt,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::Gantt, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(

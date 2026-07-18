@@ -18,7 +18,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) icon_registry: Option<&'a crate::svg::IconRegistry>,
     pub(in crate::svg::parity::flowchart) node_html_labels: bool,
     pub(in crate::svg::parity::flowchart) edge_html_labels: bool,
-    pub(in crate::svg::parity::flowchart) source_ported_elk_rendering: bool,
+    pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_border_color: String,
     pub(in crate::svg::parity::flowchart) node_fill_color: String,
@@ -42,6 +42,12 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(in crate::svg::parity::flowchart) layout_clusters_by_id:
         FxHashMap<&'a str, &'a LayoutCluster>,
+    pub(in crate::svg::parity::flowchart) swimlane_direction:
+        Option<crate::model::SwimlaneDirection>,
+    pub(in crate::svg::parity::flowchart) swimlane_lanes_by_id:
+        FxHashMap<&'a str, &'a crate::model::SwimlaneLaneLayout>,
+    pub(in crate::svg::parity::flowchart) swimlane_edge_label_edges_by_node_id:
+        FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
     pub(in crate::svg::parity::flowchart) dom_node_order_by_root:
         &'a std::collections::HashMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) node_dom_index: FxHashMap<&'a str, usize>,
@@ -92,7 +98,12 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) d: String,
     pub(in crate::svg::parity::flowchart) pb: Option<path_bounds::SvgPathBounds>,
+    /// Exact point list serialized into `data-points` by Mermaid's `insertEdge`.
+    pub(in crate::svg::parity::flowchart) data_points: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) data_points_b64: String,
+    pub(in crate::svg::parity::flowchart) original_path_length: Option<f64>,
+    pub(in crate::svg::parity::flowchart) path_length: Option<f64>,
+    pub(in crate::svg::parity::flowchart) line_hop_applied: bool,
     pub(in crate::svg::parity::flowchart) label_position: Option<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) bounds_skipped_for_viewbox: bool,
 }
@@ -101,6 +112,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
 pub(in crate::svg::parity) struct FlowchartEdgePathCacheEntry {
     pub(in crate::svg::parity::flowchart) origin_x: f64,
     pub(in crate::svg::parity::flowchart) origin_y: f64,
+    pub(in crate::svg::parity::flowchart) abs_top_transform: f64,
     pub(in crate::svg::parity::flowchart) geom: FlowchartEdgePathGeom,
 }
 

@@ -13,16 +13,12 @@ pub(super) fn unquote(s: &str) -> String {
     if bytes.len() >= 2 && bytes[0] == b'"' && bytes[bytes.len() - 1] == b'"' {
         return s[1..s.len() - 1].to_string();
     }
-    if bytes.len() >= 2 && bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\'' {
-        return s[1..s.len() - 1].to_string();
-    }
     s.to_string()
 }
 
 pub(super) fn parse_label_text(raw: &str) -> (String, TitleKind) {
     let trimmed = raw.trim();
-    let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''));
+    let quoted = trimmed.starts_with('"') && trimmed.ends_with('"');
     let unquoted = if quoted {
         // Mermaid flowchart quoted labels are treated as raw text with surrounding quotes stripped.
         // Do not interpret backslash escapes here: fixtures rely on sequences like `\\n`, `\\t`,
@@ -32,11 +28,13 @@ pub(super) fn parse_label_text(raw: &str) -> (String, TitleKind) {
         trimmed.to_string()
     };
 
-    let (no_backticks, is_markdown) = strip_wrapping_backticks(unquoted.trim());
-    if is_markdown {
-        return (no_backticks, TitleKind::Markdown);
-    }
     if quoted {
+        // Mermaid's MD_STR token is only reachable from the double-quoted string state. A bare
+        // backtick is ordinary TEXT and must remain visible in the label.
+        let (no_backticks, is_markdown) = strip_wrapping_backticks(unquoted.trim());
+        if is_markdown {
+            return (no_backticks, TitleKind::Markdown);
+        }
         return (unquoted, TitleKind::String);
     }
     (unquoted, TitleKind::Text)
@@ -44,8 +42,7 @@ pub(super) fn parse_label_text(raw: &str) -> (String, TitleKind) {
 
 pub(super) fn parse_edge_label_text(raw: &str) -> (String, TitleKind) {
     let trimmed = raw.trim();
-    let quoted = (trimmed.starts_with('"') && trimmed.ends_with('"'))
-        || (trimmed.starts_with('\'') && trimmed.ends_with('\''));
+    let quoted = trimmed.starts_with('"') && trimmed.ends_with('"');
 
     if quoted {
         return parse_label_text(trimmed);
@@ -84,6 +81,20 @@ mod tests {
         let (text, kind) = parse_label_text(r#""$$\nabla\therefore\alpha$$""#);
         assert_eq!(kind, TitleKind::String);
         assert_eq!(text, r#"$$\nabla\therefore\alpha$$"#);
+    }
+
+    #[test]
+    fn parse_label_text_keeps_single_quotes_as_text() {
+        let (text, kind) = parse_label_text("'Literal quotes'");
+        assert_eq!(kind, TitleKind::Text);
+        assert_eq!(text, "'Literal quotes'");
+    }
+
+    #[test]
+    fn parse_label_text_keeps_bare_backticks_as_text() {
+        let (text, kind) = parse_label_text("bare `tick` text");
+        assert_eq!(kind, TitleKind::Text);
+        assert_eq!(text, "bare `tick` text");
     }
 
     #[test]

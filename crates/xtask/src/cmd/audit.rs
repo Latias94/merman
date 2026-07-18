@@ -444,10 +444,7 @@ pub(crate) fn audit_gaps(args: Vec<String>) -> Result<(), XtaskError> {
         if top == "_deferred" || top == "upstream-svgs" {
             continue;
         }
-        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !(name.contains("_parser_only_") || name.contains("_parser_only_spec")) {
+        if !crate::cmd::is_parser_only_fixture(&p) {
             continue;
         }
         if let Some(ref f) = filter

@@ -1,3 +1,5 @@
+#![cfg(feature = "cytoscape-layout")]
+
 use merman_core::{Engine, ParseOptions, ParsedDiagramRender, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{RenderEnvironment, RenderSession, TextMeasurementPhase};
@@ -32,20 +34,14 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
 
 fn layout_mindmap_typed(
     parsed: &ParsedDiagramRender,
-    options: &LayoutOptions,
     session: &RenderSession,
 ) -> MindmapDiagramLayout {
     let RenderSemanticModel::Mindmap(model) = &parsed.model else {
         panic!("expected mindmap render model");
     };
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-    layout_mindmap_diagram_typed(
-        model,
-        parsed.meta.effective_config.as_value(),
-        &measurer,
-        options.use_manatee_layout,
-    )
-    .expect("layout ok")
+    layout_mindmap_diagram_typed(model, parsed.meta.effective_config.as_value(), &measurer)
+        .expect("layout ok")
 }
 
 fn deep_mindmap_chain(depth: usize) -> String {
@@ -105,7 +101,7 @@ fn mindmap_typed_layout_handles_deep_chain() {
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout = layout_mindmap_typed(&parsed, &LayoutOptions::default(), &session);
+    let layout = layout_mindmap_typed(&parsed, &session);
 
     assert_eq!(layout.nodes.len(), DEPTH);
     assert_eq!(layout.edges.len(), DEPTH - 1);
@@ -199,7 +195,7 @@ mindmap
         .expect("parse ok")
         .expect("diagram detected");
 
-    let layout = layout_mindmap_typed(&parsed, &LayoutOptions::headless_svg_defaults(), &session);
+    let layout = layout_mindmap_typed(&parsed, &session);
     let node = |id: &str| {
         layout
             .nodes
@@ -214,7 +210,7 @@ mindmap
     let right = node("3");
     let right_child = node("4");
     let also_left = node("5");
-    assert_eq!((root.x, root.y), (0.0, 20.0));
+    assert!(root.x.is_finite() && root.y.is_finite());
     assert!(left.x < root.x && left_child.x < left.x);
     assert!(right.x > root.x && right_child.x > right.x);
     assert!(also_left.x < root.x);

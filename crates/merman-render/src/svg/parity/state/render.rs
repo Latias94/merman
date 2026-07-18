@@ -287,11 +287,8 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let mut out = String::with_capacity(estimated_svg_bytes);
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
-    let root_context = root_svg::RootViewportContext::new(
-        crate::family::RenderFamilyKind::State,
-        diagram_id,
-        options.root_viewport_override_policy(),
-    );
+    let root_context =
+        root_svg::RootViewportContext::new(crate::family::RenderFamilyKind::State, diagram_id);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
     root_chrome.class = Some("statediagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
@@ -367,10 +364,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
             max_y: 100.0,
         });
     drop(_g_scan);
-    // Note: Chromium `getBBox()` values are not always exact `f32`-lattice outputs. Some Mermaid
-    // state diagram fixtures show sub-ulp deltas in `x/y` that survive into the serialized root
-    // `viewBox`. Avoid forcing `f32` quantization here; we keep `max-width` stable via the
-    // Mermaid-like significant-digit formatter (`fmt_max_width_px`).
 
     let mut title_svg = String::new();
     if let Some(title) = diagram_title.as_deref() {
@@ -381,12 +374,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
 
         let mut title_style = crate::state::state_text_style(effective_config);
         title_style.font_size = 18.0;
-        let (title_left, title_right) =
-            crate::generated::state_text_overrides_11_12_2::lookup_state_diagram_title_bbox_x_px(
-                title_style.font_size,
-                title,
-            )
-            .unwrap_or_else(|| measurer.measure_svg_title_bbox_x(title, &title_style));
+        let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
 
         let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
 
@@ -405,21 +393,19 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         );
     }
 
-    let vb_min_x = content_bounds.min_x - viewport_padding;
-    let vb_min_y = content_bounds.min_y - viewport_padding;
-    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
-    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
-    // Mermaid's root viewBox widths/heights often land on a single-precision lattice.
-    let vb_w = (vb_w as f32) as f64;
-    let vb_h = (vb_h as f32) as f64;
+    let root_bounds = root_svg::DiagramBounds::from_extents(
+        content_bounds.min_x,
+        content_bounds.min_y,
+        content_bounds.max_x,
+        content_bounds.max_y,
+        viewport_padding,
+    );
 
     root_context.finish_document(
         &mut out,
         root_document,
-        root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_view_box(
-            vb_min_x, vb_min_y, vb_w, vb_h,
-        ))
-        .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+        root_svg::RootViewportSpec::responsive(root_bounds)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
 
     drop(_g_viewbox);
@@ -722,14 +708,7 @@ fn render_state_root(
                     .get(id.as_str())
                     .map(|n| {
                         let x = (n.x - n.width / 2.0) - origin_x;
-                        let mut y = (n.y - n.height / 2.0) - origin_y;
-                        // Mermaid's self-loop helper nodes are rendered as tiny `labelRect`
-                        // placeholders (`0.1x0.1`). In upstream browser snapshots, their
-                        // effective SVG bbox y-origin lands 0.05px lower than the geometric
-                        // top-left computed from Dagre center/size.
-                        if n.width <= 0.1 + 1e-9 && n.height <= 0.1 + 1e-9 {
-                            y += 0.05;
-                        }
+                        let y = (n.y - n.height / 2.0) - origin_y;
                         (x, y)
                     })
                     .unwrap_or((0.0, 0.0));

@@ -374,11 +374,11 @@
   "excluded": {
     "upstream_xychart_header_only_jison_spec_parser_only_": {
       "input_sha256": "7b7ed6ad2b62a73d1288726fcd6e7d68e7cc0f17c583ef8ed1d829e43647c961",
-      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
+      "reason": "pinned Mermaid 11.16 XYChart renderer crashes because the parser-only fixture has no plot data"
     },
     "upstream_xychart_title_variants_jison_spec_parser_only_": {
       "input_sha256": "aad891514338a8ec11498ab6c3a4108744d51f1a4314dc5826160eab79c10f5a",
-      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
+      "reason": "pinned Mermaid 11.16 XYChart renderer crashes because the parser-only fixture has no plot data"
     }
   }
 }

@@ -35,13 +35,7 @@ pub struct TextMeasurementCapabilities {
     pub font_assets: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct BindingDiagramFamilyCapability {
-    pub diagram_type: &'static str,
-    pub metadata_id: Option<&'static str>,
-    pub has_semantic_parser: bool,
-    pub has_render_parser: bool,
-}
+pub use merman::DiagramFamilyCapability as BindingDiagramFamilyCapability;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BindingAsciiCapability {
@@ -99,15 +93,7 @@ pub fn selected_registry_profile() -> &'static str {
 }
 
 pub fn diagram_family_capabilities() -> Vec<BindingDiagramFamilyCapability> {
-    merman::diagram_family_capabilities()
-        .iter()
-        .map(|capability| BindingDiagramFamilyCapability {
-            diagram_type: capability.diagram_type,
-            metadata_id: capability.metadata_id,
-            has_semantic_parser: capability.has_semantic_parser,
-            has_render_parser: capability.has_render_parser,
-        })
-        .collect()
+    merman::diagram_family_capabilities().to_vec()
 }
 
 pub fn binding_capabilities_json() -> Result<Vec<u8>, BindingError> {
@@ -427,28 +413,39 @@ mod tests {
     }
 
     #[test]
-    fn diagram_family_capabilities_expose_detector_parser_and_render_surface() {
+    fn diagram_family_capabilities_expose_the_complete_core_catalog() {
         let capabilities = diagram_family_capabilities();
-        assert_eq!(
-            capabilities.len(),
-            merman::diagram_family_capabilities().len()
-        );
+        assert_eq!(capabilities, merman::diagram_family_capabilities());
 
         let flowchart = capabilities
             .iter()
             .find(|capability| capability.diagram_type == "flowchart")
             .expect("flowchart capability should be present");
         assert_eq!(flowchart.metadata_id, Some("flowchart"));
+        assert_eq!(flowchart.logical_family_kind, "flowchart");
+        assert_eq!(flowchart.render_model_kind, Some("flowchart"));
+        assert!(flowchart.has_detector);
         assert!(flowchart.has_semantic_parser);
+        assert!(flowchart.has_editor_parser);
+        assert!(flowchart.has_combined_parser);
         assert!(flowchart.has_render_parser);
+        assert!(!flowchart.has_header);
+        assert_eq!(flowchart.config_namespace, Some("flowchart"));
 
         let swimlane = capabilities
             .iter()
             .find(|capability| capability.diagram_type == "swimlane")
-            .expect("parser-only 11.16 swimlane capability should be present");
-        assert_eq!(swimlane.metadata_id, None);
+            .expect("11.16 swimlane capability should be present");
+        assert_eq!(swimlane.metadata_id, Some("swimlane"));
+        assert_eq!(swimlane.logical_family_kind, "swimlane");
+        assert_eq!(swimlane.render_model_kind, Some("flowchart"));
+        assert!(swimlane.has_detector);
         assert!(swimlane.has_semantic_parser);
-        assert!(!swimlane.has_render_parser);
+        assert!(swimlane.has_editor_parser);
+        assert!(swimlane.has_combined_parser);
+        assert!(swimlane.has_render_parser);
+        assert!(swimlane.has_header);
+        assert_eq!(swimlane.config_namespace, Some("swimlane"));
 
         let cynefin = capabilities
             .iter()
@@ -644,13 +641,19 @@ mod tests {
                     .contains(&Value::String("one-dark".to_string()))
             );
         }
-        assert!(
-            family_capabilities
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|capability| capability["diagram_type"] == "flowchart")
-        );
+        let flowchart = family_capabilities
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|capability| capability["diagram_type"] == "flowchart")
+            .expect("flowchart family capability should be present");
+        assert_eq!(flowchart["logical_family_kind"], "flowchart");
+        assert_eq!(flowchart["render_model_kind"], "flowchart");
+        assert_eq!(flowchart["has_detector"], true);
+        assert_eq!(flowchart["has_editor_parser"], true);
+        assert_eq!(flowchart["has_combined_parser"], true);
+        assert_eq!(flowchart["has_header"], false);
+        assert_eq!(flowchart["config_namespace"], "flowchart");
         if cfg!(feature = "analysis") {
             let lint_rules: Value =
                 serde_json::from_slice(&lint_rule_catalog_json().unwrap()).unwrap();

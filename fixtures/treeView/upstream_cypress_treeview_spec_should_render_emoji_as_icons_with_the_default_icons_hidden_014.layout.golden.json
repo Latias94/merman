@@ -1,0 +1,164 @@
+{
+  "diagramType": "treeView",
+  "layout": {
+    "TreeViewDiagram": {
+      "bounds": {
+        "min_x": -0.5,
+        "min_y": 0.0,
+        "max_x": 136.32,
+        "max_y": 138.0
+      },
+      "total_width": 136.32,
+      "total_height": 138.0,
+      "row_indent": 10.0,
+      "padding_x": 5.0,
+      "padding_y": 5.0,
+      "line_thickness": 1.0,
+      "use_max_width": true,
+      "label_font_size": 16.0,
+      "nodes": [
+        {
+          "id": 0.0,
+          "level": -1.0,
+          "name": "/",
+          "nodeType": "directory",
+          "depth": 0.0,
+          "x": 0.0,
+          "y": 0.0,
+          "width": 15.28,
+          "height": 27.6,
+          "label_x": 5.0,
+          "label_y": 13.8,
+          "label_width": 5.28,
+          "label_height": 17.6
+        },
+        {
+          "id": 1.0,
+          "level": 12.0,
+          "name": "🚀 rocket-app",
+          "nodeType": "directory",
+          "depth": 1.0,
+          "x": 15.0,
+          "y": 27.6,
+          "width": 94.0,
+          "height": 27.6,
+          "label_x": 20.0,
+          "label_y": 41.4,
+          "label_width": 84.0,
+          "label_height": 17.6
+        },
+        {
+          "id": 2.0,
+          "level": 16.0,
+          "name": "📦 packages",
+          "nodeType": "directory",
+          "depth": 2.0,
+          "x": 30.0,
+          "y": 55.2,
+          "width": 81.84,
+          "height": 27.6,
+          "label_x": 35.0,
+          "label_y": 69.0,
+          "label_width": 71.84,
+          "label_height": 17.6
+        },
+        {
+          "id": 3.0,
+          "level": 20.0,
+          "name": "🎨 ui",
+          "nodeType": "directory",
+          "depth": 3.0,
+          "x": 45.0,
+          "y": 82.8,
+          "width": 36.24,
+          "height": 27.6,
+          "label_x": 50.0,
+          "label_y": 96.6,
+          "label_width": 26.24,
+          "label_height": 17.6
+        },
+        {
+          "id": 4.0,
+          "level": 16.0,
+          "name": "📝 README.md",
+          "nodeType": "file",
+          "depth": 2.0,
+          "x": 30.0,
+          "y": 110.4,
+          "width": 106.32,
+          "height": 27.6,
+          "label_x": 35.0,
+          "label_y": 124.2,
+          "label_width": 96.32,
+          "label_height": 17.6
+        }
+      ],
+      "lines": [
+        {
+          "x1": -10.0,
+          "y1": 13.8,
+          "x2": 0.0,
+          "y2": 13.8,
+          "stroke_width": 1.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 5.0,
+          "y1": 41.4,
+          "x2": 15.0,
+          "y2": 41.4,
+          "stroke_width": 1.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 20.0,
+          "y1": 69.0,
+          "x2": 30.0,
+          "y2": 69.0,
+          "stroke_width": 1.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 35.0,
+          "y1": 96.6,
+          "x2": 45.0,
+          "y2": 96.6,
+          "stroke_width": 1.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 35.0,
+          "y1": 82.8,
+          "x2": 35.0,
+          "y2": 97.1,
+          "stroke_width": 1.0,
+          "kind": "vertical"
+        },
+        {
+          "x1": 20.0,
+          "y1": 124.2,
+          "x2": 30.0,
+          "y2": 124.2,
+          "stroke_width": 1.0,
+          "kind": "horizontal"
+        },
+        {
+          "x1": 20.0,
+          "y1": 55.2,
+          "x2": 20.0,
+          "y2": 124.7,
+          "stroke_width": 1.0,
+          "kind": "vertical"
+        },
+        {
+          "x1": 5.0,
+          "y1": 27.6,
+          "x2": 5.0,
+          "y2": 41.9,
+          "stroke_width": 1.0,
+          "kind": "vertical"
+        }
+      ]
+    }
+  }
+}

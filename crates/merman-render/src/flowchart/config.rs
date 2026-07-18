@@ -35,7 +35,7 @@ impl<'a> FlowchartConfigView<'a> {
         }
     }
 
-    pub(super) fn layout_settings(&self) -> FlowchartLayoutSettings {
+    pub(crate) fn layout_settings(&self) -> FlowchartLayoutSettings {
         let node_html_labels = self.node_html_labels();
         let edge_html_labels = self.effective_html_labels();
         let cluster_html_labels = edge_html_labels;
@@ -63,7 +63,6 @@ impl<'a> FlowchartConfigView<'a> {
             edge_label_wrapping_width: FLOWCHART_FIXED_LABEL_WRAP_WIDTH,
             cluster_title_wrapping_width: FLOWCHART_FIXED_LABEL_WRAP_WIDTH,
             edge_html_labels,
-            node_html_label_css_parity: node_html_labels && edge_html_labels,
             node_wrap_mode,
             edge_wrap_mode,
             cluster_wrap_mode,
@@ -141,6 +140,7 @@ impl<'a> FlowchartConfigView<'a> {
             font_family: Some(font_family.to_string()),
             font_size,
             font_weight: None,
+            font_style: None,
         }
     }
 
@@ -195,6 +195,7 @@ impl<'a> FlowchartConfigView<'a> {
             font_family: Some(self.font_family()),
             font_size: self.theme_font_size_px().unwrap_or(16.0),
             font_weight: self.root_string("fontWeight"),
+            font_style: None,
         }
     }
 
@@ -258,27 +259,26 @@ impl<'a> FlowchartConfigView<'a> {
     }
 }
 
-pub(super) struct FlowchartLayoutSettings {
-    pub(super) nodesep: f64,
-    pub(super) ranksep: f64,
-    pub(super) node_padding: f64,
-    pub(super) state_padding: f64,
-    pub(super) wrapping_width: f64,
-    pub(super) edge_label_wrapping_width: f64,
-    pub(super) cluster_title_wrapping_width: f64,
-    pub(super) edge_html_labels: bool,
-    pub(super) node_html_label_css_parity: bool,
-    pub(super) node_wrap_mode: WrapMode,
-    pub(super) edge_wrap_mode: WrapMode,
-    pub(super) cluster_wrap_mode: WrapMode,
-    pub(super) cluster_padding: f64,
-    pub(super) title_margin_top: f64,
-    pub(super) title_margin_bottom: f64,
-    pub(super) title_total_margin: f64,
-    pub(super) y_shift: f64,
-    pub(super) inherit_dir: bool,
-    pub(super) text_style: TextStyle,
-    pub(super) html_label_text_style: TextStyle,
+pub(crate) struct FlowchartLayoutSettings {
+    pub(crate) nodesep: f64,
+    pub(crate) ranksep: f64,
+    pub(crate) node_padding: f64,
+    pub(crate) state_padding: f64,
+    pub(crate) wrapping_width: f64,
+    pub(crate) edge_label_wrapping_width: f64,
+    pub(crate) cluster_title_wrapping_width: f64,
+    pub(crate) edge_html_labels: bool,
+    pub(crate) node_wrap_mode: WrapMode,
+    pub(crate) edge_wrap_mode: WrapMode,
+    pub(crate) cluster_wrap_mode: WrapMode,
+    pub(crate) cluster_padding: f64,
+    pub(crate) title_margin_top: f64,
+    pub(crate) title_margin_bottom: f64,
+    pub(crate) title_total_margin: f64,
+    pub(crate) y_shift: f64,
+    pub(crate) inherit_dir: bool,
+    pub(crate) text_style: TextStyle,
+    pub(crate) html_label_text_style: TextStyle,
 }
 
 fn flowchart_wrap_mode(html_labels: bool) -> WrapMode {
@@ -371,7 +371,6 @@ mod tests {
         assert!(!config.effective_html_labels());
         assert_eq!(settings.node_wrap_mode, WrapMode::HtmlLike);
         assert_eq!(settings.edge_wrap_mode, WrapMode::SvgLike);
-        assert!(!settings.node_html_label_css_parity);
     }
 
     #[test]

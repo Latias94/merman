@@ -189,11 +189,11 @@ fn apply_official_defaults(parse: &mut ParseCliArgs, render: &mut RenderCliArgs)
     if parse.theme.is_none() {
         parse.theme = Some("default".to_string());
     }
-    if render.width.is_none() {
-        render.width = Some(800.0);
+    if render.container_width.is_none() {
+        render.container_width = Some(800.0);
     }
-    if render.height.is_none() {
-        render.height = Some(600.0);
+    if render.container_height.is_none() {
+        render.container_height = Some(600.0);
     }
 }
 

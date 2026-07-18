@@ -1,7 +1,6 @@
 use crate::entities::decode_entities_minimal_cow;
-use crate::generated::class_text_overrides_11_12_2 as class_text_overrides;
 use crate::model::{Bounds, LayoutNode};
-use crate::text::{TextMeasurer, TextStyle, WrapMode};
+use crate::text::{MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, TextMeasurer, TextStyle, WrapMode};
 use std::fmt::Write as _;
 
 use super::super::{escape_attr_display, escape_xml_into, fmt};
@@ -81,7 +80,7 @@ pub(super) fn render_class_interface_node(
         fmt(top),
         fmt(fo_w),
         fmt(fo_h),
-        class_text_overrides::class_html_label_max_width_px(),
+        MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX,
     );
     for (idx, line) in label_text.split('\n').enumerate() {
         if idx > 0 {

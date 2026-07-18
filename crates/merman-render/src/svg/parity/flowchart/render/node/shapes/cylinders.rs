@@ -79,7 +79,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_horizontal_cylinde
             common.node_classes,
             common.node_styles,
         );
-        label.dy -= crate::text::svg_create_text_bbox_y_offset_px(&node_text_style);
+        label.dy -= ctx
+            .measurer
+            .measure_svg_create_text_bbox_y_offset_px(label.text, &node_text_style);
     }
 
     let path_data = format!(

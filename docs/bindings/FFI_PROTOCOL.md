@@ -1,7 +1,7 @@
 # Merman FFI Protocol
 
 Status: Draft
-Last updated: 2026-07-07
+Last updated: 2026-07-16
 
 This document defines the first C ABI protocol for `merman-ffi`.
 
@@ -62,8 +62,11 @@ first FFI release candidate:
 The current ABI protocol version is:
 
 ```c
-#define MERMAN_ABI_VERSION 3
+#define MERMAN_ABI_VERSION 2
 ```
+
+ABI 2 exposes 19 exact text-measurement operations with contiguous codes 0 through 18. The operation
+code determines the required tagged result kind.
 
 ```c
 typedef struct MermanBuffer {
@@ -88,8 +91,36 @@ enum {
     MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT = 0,
     MERMAN_TEXT_MEASUREMENT_PHASE_WRAP = 1,
     MERMAN_TEXT_MEASUREMENT_PHASE_SVG_BBOX = 2,
-    MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH = 3,
-    MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY = 4
+    MERMAN_TEXT_MEASUREMENT_PHASE_COMPUTED_LENGTH = 3
+};
+
+enum {
+    MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE = 0,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH = 1,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X = 2,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG = 3,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X = 4,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH = 5,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH = 6,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH = 7,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT = 8,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH = 9,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT = 10,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED = 11,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH = 12,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH = 13,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET = 14,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS = 15,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH = 16,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET = 17,
+    MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT = 18
+};
+
+enum {
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS = 0,
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH = 1,
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS = 2,
+    MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH = 3
 };
 
 enum {
@@ -130,12 +161,19 @@ typedef struct MermanHostTextMeasureRequest {
     int32_t white_space;
     uint8_t has_max_width;
     int32_t phase;
+    int32_t operation;
 } MermanHostTextMeasureRequest;
 
 typedef struct MermanHostTextMeasureResult {
     uint8_t handled;
+    uint8_t has_raw_width;
+    int32_t result_kind;
     double width;
     double height;
+    double length;
+    double bbox_left;
+    double bbox_right;
+    double raw_width;
     size_t line_count;
 } MermanHostTextMeasureResult;
 
@@ -294,8 +332,31 @@ The callback applies to future render/layout calls made through that engine. Pas
 the callback. The callback must not store them. `max_width` is meaningful only when
 `has_max_width != 0`; `wrap_mode`, `direction`, and `white_space` are the corresponding
 `MERMAN_*` constants. `phase` is one of the `MERMAN_TEXT_MEASUREMENT_PHASE_*` constants and tells
-the host which render phase requested the measurement. `line_height`, `letter_spacing`, and
-`word_spacing` are CSS-pixel values.
+the host which routing phase requested the measurement. `operation` is the exact DOM or platform
+primitive to perform. `line_height`, `letter_spacing`, and `word_spacing` are CSS-pixel values.
+
+Handled results are tagged by `result_kind`; fields outside that kind are ignored:
+
+| Result kind | Required fields |
+| --- | --- |
+| `MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS` | finite, non-negative `width` and `height`; `line_count > 0` |
+| `MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH` | finite `length`; non-negative except for the signed y-offsets returned by operations 14 and 17 |
+| `MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS` | finite, non-negative `bbox_left` and `bbox_right` |
+| `MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH` | metrics fields plus optional `raw_width` selected by `has_raw_width` |
+
+Each operation accepts exactly one result kind. `measure`, `wrapped`, and
+`mermaid-calculate-text-dimensions` accept metrics;
+`bbox-x`, `bbox-x-with-ascii-overhang`, and `title-bbox-x` accept horizontal extents;
+`wrapped-with-raw-width` accepts its matching combined kind; every other current operation,
+including `canvas-measure-text-width`, accepts length. Operation 14 transports ordinary
+`createFormattedText(...).getBBox().y`; operation 17 transports the Architecture variant measured
+under inherited `dominant-baseline="middle"`. They are distinct font-dependent DOM probes, and
+either y-offset may be negative. Operation 18 transports the non-negative height from a direct raw
+SVG `<text>.getBBox()` probe; it is distinct from operations that measure a `<tspan>` or a Mermaid
+text helper. A handled result with the wrong kind, a missing required field in a
+higher-level binding, or an invalid numeric value
+is rejected as `Invalid` and uses the operation's configured fallback. It is not coerced into
+another shape.
 
 Return `handled=0` for measurement requests the host does not support. `merman` then falls back
 to its vendored Mermaid-compatible measurer for that request. If an engine is used concurrently for
@@ -620,12 +681,23 @@ Hosts should use `support_level` and `summary_fallback` to label ASCII rendering
 [
   {
     "diagram_type": "flowchart",
+    "logical_family_kind": "flowchart",
     "metadata_id": "flowchart",
+    "render_model_kind": "flowchart",
+    "has_detector": true,
     "has_semantic_parser": true,
-    "has_render_parser": true
+    "has_editor_parser": true,
+    "has_combined_parser": true,
+    "has_render_parser": true,
+    "has_header": false,
+    "config_namespace": "flowchart"
   }
 ]
 ```
+
+Logical family identity is stable when multiple syntax ids or render-model reuse are involved.
+Nullable `metadata_id`, `render_model_kind`, and `config_namespace` fields distinguish absent
+capabilities from false parser/detector/header flags.
 
 `merman_lint_rule_catalog_json` returns a UTF-8 JSON response object from the shared
 `merman-analysis` rule catalog. The top-level `version` tracks the JSON response envelope; `rules`

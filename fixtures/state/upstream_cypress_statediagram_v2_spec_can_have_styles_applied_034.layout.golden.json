@@ -5,9 +5,9 @@
       "nodes": [
         {
           "id": "AState",
-          "x": 39.359,
+          "x": 39.36,
           "y": 28.0,
-          "width": 62.719,
+          "width": 62.72,
           "height": 40.0,
           "is_cluster": false
         }
@@ -17,7 +17,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 70.719,
+        "max_x": 70.72,
         "max_y": 48.0
       }
     }

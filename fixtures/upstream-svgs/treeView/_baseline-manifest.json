@@ -11,38 +11,119 @@
     "renderer_revision": "xtask-upstream-svg-v2"
   },
   "attestation": {
-    "mode": "adopted-existing"
+    "mode": "generated",
+    "render_environment": {
+      "browser": {
+        "product": "HeadlessChrome",
+        "version": "131.0.6778.204",
+        "revision": "@52183f9e99a61056f9b78535f53d256f1516f2a0",
+        "timezone": "Asia/Shanghai"
+      },
+      "puppeteer": {
+        "version": "23.11.1"
+      },
+      "operating_system": {
+        "platform": "darwin",
+        "arch": "arm64",
+        "release": "25.5.0"
+      },
+      "mermaid_runtime": {
+        "esm_version": "11.16.0",
+        "iife_version": "11.16.0",
+        "mermaid_package_sha256": "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0",
+        "mermaid_cli_package_sha256": "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632"
+      },
+      "font_probe": {
+        "revision": "mermaid-font-probe-v1",
+        "sha256": "f03521bd4356783dc11fec2ed2219380d6ae8fa24313e2008f50b1a8cd70ce14"
+      }
+    }
   },
   "complete": true,
   "fixtures": {
+    "upstream_cypress_treeview_spec_should_hide_default_icons_with_icon_none_and_icon_012": {
+      "input_sha256": "d16cb9703ab60054411f8fc7df2c39168d77d0638814361e928b5b19c3e19d38",
+      "svg_sha256": "9652d5ebdac0cef951b21424ba77d2d6892558a48aec24f6fa4b0f1dff49e627",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_pick_file_icons_from_the_filenameicons_and_extensionicons_009": {
+      "input_sha256": "8126215acbea049f0c0d09f8ca821a25043c15bb7d4be017a40d8830bc8f2d03",
+      "svg_sha256": "46c8b9f3d741645e8e406c75fe7ee3ca3c188bc1d982a3344f3fddefcc91c939",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_preserve_consecutive_spaces_and_unicode_in_labels_013": {
+      "input_sha256": "2133e74ef78c33317db543c81e1f741c9ff3f408130ba74cbb323fd9b4f925dc",
+      "svg_sha256": "f801dbcc76c0592f15a646664acd9c989f237db9101d422a77f84325fee311cb",
+      "renderer_profile": "mmdc-default"
+    },
     "upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_002": {
       "input_sha256": "a38d3ba62d10c850189fd241cc4f4bffda35b7c32d0492e587ea25a8813c64e3",
-      "svg_sha256": "8e315317b0c2686e349c1118a7c07af541983ac29831d480ecdc5b234a6e1e87",
+      "svg_sha256": "3969632c5fda0f70a807f58c2d3330c42fe74465560d36156aedb345ad938d70",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_treeview_spec_should_render_a_complex_treeview_diagram_with_multiple_roots_003": {
       "input_sha256": "cb74cbb3fd4d5f2213389c88ad8ee48798d06fb69684df5ab31decb1aebadb17",
-      "svg_sha256": "1ac10b440514e4e9bfbb72967e9d8a2ed8f7120d86523c6eaffb91853195760f",
+      "svg_sha256": "5d33bc481485e752f8599248103861920c95133605413805ac8d335ee1dcad4a",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_treeview_spec_should_render_a_simple_treeview_diagram_001": {
       "input_sha256": "e3eca43634d7f863673982fd132e036c4c4526001c08ebe28b184d81af660050",
-      "svg_sha256": "e2f70470e564871159c17ce9d326a4ff149981ec3c154d3ee4c869e451392c0d",
+      "svg_sha256": "dc78c5617a9dcfea7ecdd8c0a7f16c069a779bc413f9e61d29da580a39ca9d4b",
       "renderer_profile": "mmdc-default"
     },
     "upstream_cypress_treeview_spec_should_render_a_treeview_diagram_with_custom_config_004": {
       "input_sha256": "1b2f98d6f3eba98efcab26cfb69539758bd01659fbb9d75edc15d84ce5fa0f54",
-      "svg_sha256": "2b6c62715f16534a5a1a81f0ebf0d148f355c157701b53a2c0be28c3df26f5cb",
+      "svg_sha256": "480d5c9a61cbe9c96152a2e1f6c30f7148aed6d2586f2ce0a05699ca555533ca",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_bare_unquoted_labels_with_icons_005": {
+      "input_sha256": "6c0ed7d5cc652777211483a3f8631f74746d24e1fddb77b3a1a5d58d23792431",
+      "svg_sha256": "d4e9b95b4f0e36247ad98c51ff96605195287d091ada102499081cd0942f9995",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_class_annotations_for_highlighting_006": {
+      "input_sha256": "aea6bc9be34757d2a7ac7f6be05168d9ebfae47b68739c9e8ae9cfac1a472fb4",
+      "svg_sha256": "2b459f76db827da652c1fa47562dc19ae83ddc61c7fe119c962f7716b612405a",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_combined_annotations_015": {
+      "input_sha256": "98f26f192904142c48d95da0f88c48a41b275f77d36b72104fc1c2737d3a8b9e",
+      "svg_sha256": "2e19b9028eb6adfa419548445f09aa75812f7d1cff83337687dd51ea8dde3c4c",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_descriptions_007": {
+      "input_sha256": "3287ef263fcaecfc50b70ae5431d215f052e7b957834adf9ae6c2e5ac7118050",
+      "svg_sha256": "cbe07b02dfbdf8b52738be776f5496f429fc61119c01ebbb365cad4343daa4ab",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_emoji_as_icons_with_the_default_icons_hidden_014": {
+      "input_sha256": "d9baaefe1f24b96b0a7da40ad420826b820e65a15f75236f0e16b7582f05d02f",
+      "svg_sha256": "d365d05f4d79f500258d84535f74b228b7b10d435b93a7c5f9801f87e475f258",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_icon_overrides_from_registered_iconify_packs_008": {
+      "input_sha256": "3071e575e774b951b32647d6f708b2149ed36914c86ac95c2e4300488285fdd2",
+      "svg_sha256": "08aab79973ec5bb0cf29db5ca16e650f9b3a898c3a90ff1a83fe3943273f4041",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_render_the_unknown_icon_fallback_for_unregistered_icons_011": {
+      "input_sha256": "4fc6b35bd70a5779781c16b1a255c09b847478060eafb0a6fc5253ab08dd28fc",
+      "svg_sha256": "f9e94d6e1219f001d83a5043469e4d532ba5d34eda8019ba0ea87984201f888d",
+      "renderer_profile": "mmdc-default"
+    },
+    "upstream_cypress_treeview_spec_should_resolve_unprefixed_icon_overrides_via_defaulticonpack_010": {
+      "input_sha256": "9e1705a988b70426a4503da50e492b4d5d7921c705eb0cb67dbdefa1924a5de9",
+      "svg_sha256": "6d0445dace49581d3e3fbc2a60199eb5d853c4458467e29a9c02855214316a47",
       "renderer_profile": "mmdc-default"
     },
     "upstream_docs_treeview_basic": {
       "input_sha256": "47b72aedb6fc36c74e7a3aa8c0f17e473766a97cf0a67f66b2523ddb24e2fae1",
-      "svg_sha256": "c9017c97605a21456890986fd1acdd8d2609f5e8614bf66c51db923f88e6632f",
+      "svg_sha256": "d0bd738da0e2c31b7cad4c22c013c5ac5f559a625f98db439084d9f817ae0968",
       "renderer_profile": "mmdc-default"
     },
     "upstream_parser_treeview_title_accessibility_spec": {
       "input_sha256": "8fb64bfd2beec5a048f5e4a0acd0897ebbcce6f180f783340d604b1a22ecea55",
-      "svg_sha256": "59a57f98c439161b8164e90be3474905d3c8d2e5262fac6cd1658300a227d108",
+      "svg_sha256": "b8a6a8f941edc41bbfdfed190b5d9b3fc89555c30ec388828bb9d28bf6e936b5",
       "renderer_profile": "mmdc-default"
     }
   },

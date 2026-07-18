@@ -168,8 +168,8 @@
   layout,
   text-measurer,
   math-renderer,
-  viewport-width,
-  viewport-height,
+  container-width,
+  container-height,
   base-layout: none,
 ) = {
   if layout != none {
@@ -180,13 +180,13 @@
     } else {
       (:)
     }
-    let out = if viewport-width != none {
-      (: ..out, viewport_width: viewport-width)
+    let out = if container-width != none {
+      (: ..out, container_width: container-width)
     } else {
       out
     }
-    let out = if viewport-height != none {
-      (: ..out, viewport_height: viewport-height)
+    let out = if container-height != none {
+      (: ..out, container_height: container-height)
     } else {
       out
     }
@@ -222,8 +222,8 @@
   drop-native-duplicate-fallbacks: none,
   text-measurer: none,
   math-renderer: none,
-  viewport-width: none,
-  viewport-height: none,
+  container-width: none,
+  container-height: none,
   fixed-today: none,
   fixed-local-offset-minutes: none,
   figure: none,
@@ -246,8 +246,8 @@
     drop-native-duplicate-fallbacks: drop-native-duplicate-fallbacks,
     text-measurer: text-measurer,
     math-renderer: math-renderer,
-    viewport-width: viewport-width,
-    viewport-height: viewport-height,
+    container-width: container-width,
+    container-height: container-height,
     fixed-today: fixed-today,
     fixed-local-offset-minutes: fixed-local-offset-minutes,
     figure: figure,
@@ -274,8 +274,8 @@
   drop-native-duplicate-fallbacks: none,
   text-measurer: none,
   math-renderer: none,
-  viewport-width: none,
-  viewport-height: none,
+  container-width: none,
+  container-height: none,
   fixed-today: none,
   fixed-local-offset-minutes: none,
 ) = {
@@ -314,13 +314,13 @@
     profile-field(profile, "math-renderer", alt: "math_renderer"),
     math-renderer,
   )
-  let viewport-width = choose-value(
-    profile-field(profile, "viewport-width", alt: "viewport_width"),
-    viewport-width,
+  let container-width = choose-value(
+    profile-field(profile, "container-width", alt: "container_width"),
+    container-width,
   )
-  let viewport-height = choose-value(
-    profile-field(profile, "viewport-height", alt: "viewport_height"),
-    viewport-height,
+  let container-height = choose-value(
+    profile-field(profile, "container-height", alt: "container_height"),
+    container-height,
   )
   let fixed-today = choose-value(profile-field(profile, "fixed-today", alt: "fixed_today"), fixed-today)
   let fixed-local-offset-minutes = choose-value(
@@ -350,8 +350,8 @@
         layout,
         text-measurer,
         math-renderer,
-        viewport-width,
-        viewport-height,
+        container-width,
+        container-height,
         base-layout: profile-layout,
       ),
       svg: (
@@ -369,14 +369,14 @@
     binding_options: binding-options,
     direct_layout: layout,
     direct_options: options,
-    direct_viewport_width: viewport-width,
+    direct_container_width: container-width,
     profile_layout: profile-layout,
     profile_options: profile-options,
   )
 }
 
 #let config-with-context-width(config, width) = {
-  if config.direct_layout != none or config.direct_viewport_width != none or config.direct_options != none or config.profile_options != none {
+  if config.direct_layout != none or config.direct_container_width != none or config.direct_options != none or config.profile_options != none {
     config
   } else {
     let binding-options = config.binding_options

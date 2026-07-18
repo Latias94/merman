@@ -1,21 +1,21 @@
 {
-  "diagramType": "classDiagram",
+  "diagramType": "class",
   "layout": {
     "ClassDiagramV2": {
       "nodes": [
         {
           "id": "Cat",
-          "x": 296.379,
+          "x": 296.156,
           "y": 242.0,
-          "width": 47.703,
+          "width": 47.359,
           "height": 84.0,
           "is_cluster": false
         },
         {
           "id": "Dog",
-          "x": 296.379,
+          "x": 296.156,
           "y": 75.0,
-          "width": 92.445,
+          "width": 92.0,
           "height": 150.0,
           "is_cluster": false
         },
@@ -90,8 +90,8 @@
               "y": 195.5
             },
             {
-              "x": 272.527,
-              "y": 226.428
+              "x": 272.476,
+              "y": 226.491
             }
           ],
           "label": null,
@@ -119,8 +119,8 @@
               "y": 282.0
             },
             {
-              "x": 272.527,
-              "y": 255.395
+              "x": 272.476,
+              "y": 255.341
             }
           ],
           "label": null,
@@ -137,7 +137,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 342.602,
+        "max_x": 342.156,
         "max_y": 300.0
       }
     }

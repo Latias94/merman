@@ -1,7 +1,8 @@
 use super::activation::SequenceActivationState;
 use super::constants::SEQUENCE_MESSAGE_WRAP_PADDING_SIDES;
 use super::metrics::{
-    SequenceMathHeightMode, measure_sequence_label_for_layout, measure_svg_like_with_html_br,
+    SequenceDrawnTextNode, SequenceMathHeightMode, measure_drawn_svg_like_with_html_br,
+    measure_sequence_label_for_layout, measure_svg_like_with_html_br,
 };
 use super::wrap_sequence_label_like_mermaid_lines;
 use crate::math::MathRenderer;
@@ -219,6 +220,8 @@ pub(super) struct SequenceMessageLayout {
     pub(super) edge: LayoutEdge,
     pub(super) from_x: f64,
     pub(super) to_x: f64,
+    pub(super) inserted_min_x: f64,
+    pub(super) inserted_max_x: f64,
     pub(super) line_y: f64,
     pub(super) inserted_bottom_y: f64,
     pub(super) cursor_step: f64,
@@ -257,7 +260,7 @@ pub(super) fn layout_sequence_message(
     let mut stopx = horizontal.stop_x;
     let is_self = from == to;
 
-    if !is_self {
+    let lifecycle_insert = if !is_self {
         adjust_created_destroyed_actor_endpoints(EndpointAdjustmentRequest {
             from,
             to,
@@ -268,8 +271,10 @@ pub(super) fn layout_sequence_message(
             startx: &mut startx,
             stopx: &mut stopx,
             ctx: &ctx,
-        });
-    }
+        })
+    } else {
+        None
+    };
 
     let text = msg.message_text();
     let is_math_message = text.contains("$$");
@@ -294,6 +299,35 @@ pub(super) fn layout_sequence_message(
         vertical.label_y,
         &ctx,
     );
+
+    let self_insert = is_self.then(|| {
+        let dx = (vertical.text_width / 2.0).max(ctx.actor_width_min / 2.0);
+        (startx - dx, stopx + dx)
+    });
+    let inserted_min_x = horizontal
+        .from_bound
+        .min(startx)
+        .min(stopx)
+        .min(self_insert.map(|bounds| bounds.0).unwrap_or(f64::INFINITY))
+        .min(
+            lifecycle_insert
+                .map(|bounds| bounds.0)
+                .unwrap_or(f64::INFINITY),
+        );
+    let inserted_max_x = horizontal
+        .to_bound
+        .max(startx)
+        .max(stopx)
+        .max(
+            self_insert
+                .map(|bounds| bounds.1)
+                .unwrap_or(f64::NEG_INFINITY),
+        )
+        .max(
+            lifecycle_insert
+                .map(|bounds| bounds.1)
+                .unwrap_or(f64::NEG_INFINITY),
+        );
 
     Some(SequenceMessageLayout {
         edge: LayoutEdge {
@@ -323,6 +357,8 @@ pub(super) fn layout_sequence_message(
         },
         from_x,
         to_x,
+        inserted_min_x,
+        inserted_max_x,
         line_y: vertical.line_y,
         inserted_bottom_y: vertical.inserted_bottom_y,
         cursor_step: vertical.cursor_step,
@@ -371,7 +407,9 @@ struct EndpointAdjustmentRequest<'a, 'b> {
     ctx: &'b SequenceMessageLayoutContext<'a>,
 }
 
-fn adjust_created_destroyed_actor_endpoints(req: EndpointAdjustmentRequest<'_, '_>) {
+fn adjust_created_destroyed_actor_endpoints(
+    req: EndpointAdjustmentRequest<'_, '_>,
+) -> Option<(f64, f64)> {
     // Mermaid adjusts creating/destroying messages so arrowheads land outside the actor box.
     const ACTOR_TYPE_WIDTH_HALF: f64 = 18.0;
 
@@ -382,9 +420,13 @@ fn adjust_created_destroyed_actor_endpoints(req: EndpointAdjustmentRequest<'_, '
             req.ctx.actor_widths[req.to_idx] / 2.0 + 3.0
         };
         if req.to_x < req.from_x {
+            let inserted = ((*req.stopx - adjustment).min(*req.startx), *req.startx);
             *req.stopx += adjustment;
+            Some(inserted)
         } else {
+            let inserted = (*req.startx, (*req.stopx + adjustment).max(*req.startx));
             *req.stopx -= adjustment;
+            Some(inserted)
         }
     } else if req.ctx.destroyed_from_index == Some(req.ctx.msg_idx) {
         let adjustment = if (req.ctx.actor_is_type_width_limited)(req.from) {
@@ -393,9 +435,21 @@ fn adjust_created_destroyed_actor_endpoints(req: EndpointAdjustmentRequest<'_, '
             req.ctx.actor_widths[req.from_idx] / 2.0
         };
         if req.from_x < req.to_x {
+            let inserted_start = *req.startx - adjustment;
+            let inserted = (
+                inserted_start.min(*req.stopx),
+                inserted_start.max(*req.stopx),
+            );
             *req.startx += adjustment;
+            Some(inserted)
         } else {
+            let inserted_stop = *req.startx + adjustment;
+            let inserted = (
+                (*req.stopx).min(inserted_stop),
+                (*req.stopx).max(inserted_stop),
+            );
             *req.startx -= adjustment;
+            Some(inserted)
         }
     } else if req.ctx.destroyed_to_index == Some(req.ctx.msg_idx) {
         let adjustment = if (req.ctx.actor_is_type_width_limited)(req.to) {
@@ -404,10 +458,16 @@ fn adjust_created_destroyed_actor_endpoints(req: EndpointAdjustmentRequest<'_, '
             req.ctx.actor_widths[req.to_idx] / 2.0 + 3.0
         };
         if req.to_x < req.from_x {
+            let inserted = ((*req.stopx - adjustment).min(*req.startx), *req.startx);
             *req.stopx += adjustment;
+            Some(inserted)
         } else {
+            let inserted = (*req.startx, (*req.stopx + adjustment).max(*req.startx));
             *req.stopx -= adjustment;
+            Some(inserted)
         }
+    } else {
+        None
     }
 }
 
@@ -433,6 +493,7 @@ fn wrapped_message_text(
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct SequenceMessageVerticalGeometry {
+    text_width: f64,
     line_y: f64,
     label_y: f64,
     cursor_step: f64,
@@ -445,7 +506,7 @@ fn message_vertical_geometry(
     is_self: bool,
     ctx: &SequenceMessageLayoutContext<'_>,
 ) -> SequenceMessageVerticalGeometry {
-    let (_width, text_height) = if effective_text.is_empty() {
+    let (text_width, text_height) = if effective_text.is_empty() {
         (0.0, 0.0)
     } else {
         measure_sequence_label_for_layout(
@@ -459,7 +520,7 @@ fn message_vertical_geometry(
     };
 
     let lines = split_html_br_lines(effective_text).len().max(1);
-    message_vertical_geometry_from_measurement(SequenceMessageVerticalRequest {
+    let mut geometry = message_vertical_geometry_from_measurement(SequenceMessageVerticalRequest {
         cursor_y: ctx.cursor_y,
         text_height,
         line_count: lines,
@@ -468,7 +529,9 @@ fn message_vertical_geometry(
         right_angles: ctx.right_angles,
         box_margin: ctx.box_margin,
         wrap_padding: ctx.wrap_padding,
-    })
+    });
+    geometry.text_width = text_width;
+    geometry
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -498,6 +561,7 @@ fn message_vertical_geometry_from_measurement(
     let self_advance = if req.is_self { 30.0 } else { 0.0 };
 
     SequenceMessageVerticalGeometry {
+        text_width: 0.0,
         line_y,
         // drawMessage sets y=starty+10; drawText then centers the first line within wrapPadding.
         label_y: req.cursor_y + 10.0 + req.wrap_padding / 2.0,
@@ -525,18 +589,26 @@ fn message_label(
         });
     }
 
-    let (w, h) = measure_sequence_label_for_layout(
-        ctx.measurer,
-        effective_text,
-        ctx.msg_text_style,
-        ctx.math_config,
-        ctx.math_renderer,
-        if is_math_message {
-            SequenceMathHeightMode::Draw
-        } else {
-            SequenceMathHeightMode::Bound
-        },
-    );
+    let (w, h) = if is_math_message {
+        measure_sequence_label_for_layout(
+            ctx.measurer,
+            effective_text,
+            ctx.msg_text_style,
+            ctx.math_config,
+            ctx.math_renderer,
+            SequenceMathHeightMode::Draw,
+        )
+    } else {
+        // Sequence sets `textObj.tspan = false` for messages, so the final label bbox is a direct
+        // `<text>` measurement even though the earlier layout probe used `drawSimpleText` with a
+        // child `<tspan>`.
+        measure_drawn_svg_like_with_html_br(
+            ctx.measurer,
+            effective_text,
+            ctx.msg_text_style,
+            SequenceDrawnTextNode::Direct,
+        )
+    };
     Some(LayoutLabel {
         x: ((x1 + x2) / 2.0).round(),
         y: label_y.round(),

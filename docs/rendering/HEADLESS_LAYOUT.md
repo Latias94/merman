@@ -63,14 +63,14 @@ unless a renderer capability is designed and registered separately.
 
 ## Render Environment
 
-`RenderEnvironment` selects text measurement, math and icon services, time, randomness, resource
-limits, and root override policy before the operation begins. `begin_session()` freezes those
-choices once. Layout uses named measurement phases rather than constructing a family-local
-production measurer.
+`RenderEnvironment` selects text measurement, math and icon services, time, randomness, and
+resource limits before the operation begins. `begin_session()` freezes those choices once. Layout
+uses named measurement phases rather than constructing a family-local production measurer.
 
 Use `RenderEnvironment::parity()` for deterministic vendored measurement and pinned operation
-policy. Host builds can supply host services explicitly. `LayoutOptions` contains layout request
-values; it does not own environment services.
+policy. Host builds can supply host services explicitly; a successful host measurement bypasses
+vendored fallback facts. `LayoutOptions` contains layout request values; it does not own environment
+services.
 
 ## Low-Level Use
 

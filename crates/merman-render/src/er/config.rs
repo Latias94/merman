@@ -34,21 +34,30 @@ impl<'a> ErConfigView<'a> {
             font_family: label_style.font_family.clone(),
             font_size: label_style.font_size.max(1.0),
             font_weight: None,
+            font_style: None,
         };
         let relationship_label_style = TextStyle {
             font_family: label_style.font_family.clone(),
             // Mermaid ER relationship labels stay at a fixed 14px in the emitted stylesheet.
             font_size: DEFAULT_RELATIONSHIP_FONT_SIZE,
             font_weight: None,
+            font_style: None,
         };
 
         ErLayoutSettings {
+            algorithm: if self.is_elk_layout() {
+                ErLayoutAlgorithm::Elk
+            } else {
+                ErLayoutAlgorithm::Dagre
+            },
             graph: GraphLabel {
                 rankdir: rank_dir_from(direction),
                 nodesep: self.er_f64("nodeSpacing").unwrap_or(DEFAULT_NODE_SPACING),
                 ranksep: self.er_f64("rankSpacing").unwrap_or(DEFAULT_RANK_SPACING),
-                // Dagre's default `acyclicer` is "greedy" (Mermaid relies on this default).
-                acyclicer: Some("greedy".to_string()),
+                // Mermaid's unified Dagre adapter lays out inside an 8px graph margin, then its
+                // root viewport adds the same 8px around the emitted bbox.
+                marginx: 8.0,
+                marginy: 8.0,
                 ..Default::default()
             },
             label_style,
@@ -76,11 +85,13 @@ impl<'a> ErConfigView<'a> {
                 font_family: Some(font_family.clone()),
                 font_size,
                 font_weight: None,
+                font_style: None,
             },
             attr_style: TextStyle {
                 font_family: Some(font_family),
                 font_size,
                 font_weight: None,
+                font_style: None,
             },
             relationship_html_labels: self.relationship_html_labels(),
             entity_html_label_wrap_mode: self.entity_html_label_wrap_mode(),
@@ -118,6 +129,7 @@ impl<'a> ErConfigView<'a> {
             font_family: Some(self.font_family_css()),
             font_size: self.font_size(),
             font_weight: None,
+            font_style: None,
         }
     }
 
@@ -202,7 +214,14 @@ impl<'a> ErConfigView<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ErLayoutAlgorithm {
+    Dagre,
+    Elk,
+}
+
 pub(super) struct ErLayoutSettings {
+    pub(super) algorithm: ErLayoutAlgorithm,
     pub(super) graph: GraphLabel,
     pub(super) label_style: TextStyle,
     pub(super) attr_style: TextStyle,
@@ -279,9 +298,12 @@ mod tests {
 
         let settings = ErConfigView::new(&cfg).layout_settings("LR");
 
+        assert_eq!(settings.algorithm, ErLayoutAlgorithm::Dagre);
         assert_eq!(settings.graph.rankdir, RankDir::LR);
         assert_eq!(settings.graph.nodesep, 160.0);
         assert_eq!(settings.graph.ranksep, 90.0);
+        assert_eq!(settings.graph.marginx, 8.0);
+        assert_eq!(settings.graph.marginy, 8.0);
         assert_eq!(
             settings.label_style.font_family.as_deref(),
             Some("Root Sans")
@@ -363,6 +385,10 @@ mod tests {
         let settings = ErConfigView::new(&cfg).render_settings();
 
         assert!(settings.is_elk_layout);
+        assert_eq!(
+            ErConfigView::new(&cfg).layout_settings("TB").algorithm,
+            ErLayoutAlgorithm::Elk
+        );
         assert_eq!(settings.diagram_look, "handDrawn");
         assert_eq!(settings.hand_drawn_seed, 7);
         assert_eq!(settings.font_size, 1.0);

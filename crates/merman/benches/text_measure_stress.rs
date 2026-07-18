@@ -21,6 +21,7 @@ fn flowchart_style(font_weight: Option<&str>) -> TextStyle {
         font_family: Some(FLOWCHART_FONT_FAMILY.to_string()),
         font_size: 16.0,
         font_weight: font_weight.map(str::to_string),
+        font_style: None,
     }
 }
 

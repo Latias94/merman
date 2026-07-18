@@ -5,10 +5,10 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 1184.0,
+        "max_x": 800.0,
         "max_y": 196.0
       },
-      "width": 1184.0,
+      "width": 800.0,
       "height": 196.0,
       "left_padding": 75.0,
       "right_padding": 75.0,
@@ -34,7 +34,7 @@
           "index": 0.0,
           "x": 0.0,
           "y": 48.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -42,7 +42,7 @@
           "index": 1.0,
           "x": 0.0,
           "y": 72.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -50,7 +50,7 @@
           "index": 2.0,
           "x": 0.0,
           "y": 96.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         },
@@ -58,7 +58,7 @@
           "index": 3.0,
           "x": 0.0,
           "y": 120.0,
-          "width": 1146.5,
+          "width": 762.5,
           "height": 24.0,
           "class": "section section0"
         }
@@ -90,7 +90,7 @@
           "vert": false,
           "bar": {
             "id": "m1",
-            "x": 110.0,
+            "x": 93.5,
             "y": 50.0,
             "width": 20.0,
             "height": 20.0,
@@ -103,7 +103,7 @@
             "text": "Initial milestone ",
             "font_size": 11.0,
             "width": 73.48,
-            "x": 135.0,
+            "x": 118.5,
             "y": 63.5,
             "class": "taskTextOutsideRight taskTextOutside0 width-73.47999999999999"
           }
@@ -121,9 +121,9 @@
           "vert": false,
           "bar": {
             "id": "task1",
-            "x": 165.0,
+            "x": 132.0,
             "y": 74.0,
-            "width": 449.0,
+            "width": 282.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -134,7 +134,7 @@
             "text": "Task A ",
             "font_size": 11.0,
             "width": 32.34,
-            "x": 389.5,
+            "x": 273.0,
             "y": 87.5,
             "class": "taskText taskText0 width-32.339999999999996"
           }
@@ -152,9 +152,9 @@
           "vert": false,
           "bar": {
             "id": "task2",
-            "x": 614.0,
+            "x": 414.0,
             "y": 98.0,
-            "width": 225.0,
+            "width": 141.0,
             "height": 20.0,
             "rx": 3.0,
             "ry": 3.0,
@@ -165,7 +165,7 @@
             "text": "Task B ",
             "font_size": 11.0,
             "width": 32.34,
-            "x": 726.5,
+            "x": 484.5,
             "y": 111.5,
             "class": "taskText taskText0 width-32.339999999999996"
           }
@@ -183,7 +183,7 @@
           "vert": false,
           "bar": {
             "id": "m2",
-            "x": 1009.0,
+            "x": 658.5,
             "y": 122.0,
             "width": 20.0,
             "height": 20.0,
@@ -196,7 +196,7 @@
             "text": "Final milestone ",
             "font_size": 11.0,
             "width": 68.97,
-            "x": 1034.0,
+            "x": 683.5,
             "y": 135.5,
             "class": "taskTextOutsideRight taskTextOutside0 width-68.96999999999998"
           }
@@ -207,33 +207,33 @@
       "bottom_ticks": [
         {
           "time_ms": 1771177800000.0,
-          "x": 120.0,
+          "x": 103.0,
           "label": "17:50"
         },
         {
           "time_ms": 1771178100000.0,
-          "x": 345.0,
+          "x": 245.0,
           "label": "17:55"
         },
         {
           "time_ms": 1771178400000.0,
-          "x": 570.0,
+          "x": 386.0,
           "label": "18:00"
         },
         {
           "time_ms": 1771178700000.0,
-          "x": 794.0,
+          "x": 527.0,
           "label": "18:05"
         },
         {
           "time_ms": 1771179000000.0,
-          "x": 1019.0,
+          "x": 668.0,
           "label": "18:10"
         }
       ],
       "top_ticks": [],
       "title": null,
-      "title_x": 592.0,
+      "title_x": 400.0,
       "title_y": 25.0
     }
   }

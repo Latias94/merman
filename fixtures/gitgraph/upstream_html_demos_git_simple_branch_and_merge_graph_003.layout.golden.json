@@ -5,7 +5,7 @@
       "bounds": {
         "min_x": -18.0,
         "min_y": 22.0,
-        "max_x": 123.359,
+        "max_x": 123.36,
         "max_y": 188.0
       },
       "direction": "BT",
@@ -20,14 +20,14 @@
           "name": "main",
           "index": 0.0,
           "pos": 0.0,
-          "bbox_width": 30.719,
+          "bbox_width": 30.72,
           "bbox_height": 17.6
         },
         {
           "name": "newbranch",
           "index": 1.0,
-          "pos": 105.359,
-          "bbox_width": 67.516,
+          "pos": 105.36,
+          "bbox_width": 67.52,
           "bbox_height": 17.6
         }
       ],
@@ -64,7 +64,7 @@
           "branch": "newbranch",
           "pos": 80.0,
           "pos_with_offset": 90.0,
-          "x": 105.359,
+          "x": 105.36,
           "y": 90.0
         },
         {
@@ -88,7 +88,7 @@
           "from": "0-<dynamic>",
           "to": "1-<dynamic>",
           "class_index": 1.0,
-          "d": "M 0 140 L 85.359375 140 A 20 20, 0, 0, 0, 105.359375 120 L 105.359375 90"
+          "d": "M 0 140 L 85.36 140 A 20 20, 0, 0, 0, 105.36 120 L 105.36 90"
         },
         {
           "from": "0-<dynamic>",
@@ -100,7 +100,7 @@
           "from": "1-<dynamic>",
           "to": "2-<dynamic>",
           "class_index": 1.0,
-          "d": "M 105.359375 90 L 105.359375 60 A 20 20, 0, 0, 0, 85.359375 40 L 0 40"
+          "d": "M 105.36 90 L 105.36 60 A 20 20, 0, 0, 0, 85.36 40 L 0 40"
         }
       ]
     }

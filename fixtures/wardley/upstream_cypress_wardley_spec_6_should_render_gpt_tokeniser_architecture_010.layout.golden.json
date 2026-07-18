@@ -1,0 +1,2065 @@
+{
+  "diagramType": "wardley",
+  "layout": {
+    "WardleyDiagram": {
+      "width": 1100.0,
+      "height": 800.0,
+      "use_max_width": true,
+      "padding": 48.0,
+      "chart_width": 1004.0,
+      "chart_height": 704.0,
+      "node_radius": 6.0,
+      "node_label_offset": 8.0,
+      "axis_font_size": 12.0,
+      "label_font_size": 10.0,
+      "square_size": 9.6,
+      "title": {
+        "text": "GPT Tokeniser",
+        "x": 550.0,
+        "y": 24.0,
+        "font_size": 12.6,
+        "font_weight": "bold",
+        "text_anchor": "middle",
+        "dominant_baseline": "middle",
+        "rotation": null
+      },
+      "axes": {
+        "x_axis": {
+          "x1": 48.0,
+          "y1": 752.0,
+          "x2": 1052.0,
+          "y2": 752.0
+        },
+        "y_axis": {
+          "x1": 48.0,
+          "y1": 48.0,
+          "x2": 48.0,
+          "y2": 752.0
+        },
+        "x_label": {
+          "text": "Evolution",
+          "x": 550.0,
+          "y": 788.0,
+          "font_size": 12.0,
+          "font_weight": "bold",
+          "text_anchor": "middle",
+          "dominant_baseline": null,
+          "rotation": null
+        },
+        "y_label": {
+          "text": "Visibility",
+          "x": 16.0,
+          "y": 400.0,
+          "font_size": 12.0,
+          "font_weight": "bold",
+          "text_anchor": "middle",
+          "dominant_baseline": null,
+          "rotation": {
+            "degrees": -90.0,
+            "cx": 16.0,
+            "cy": 400.0
+          }
+        }
+      },
+      "stages": [
+        {
+          "name": "Genesis",
+          "start_x": 48.0,
+          "end_x": 299.0,
+          "label": {
+            "text": "Genesis",
+            "x": 173.5,
+            "y": 768.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          },
+          "divider": null
+        },
+        {
+          "name": "Custom Built",
+          "start_x": 299.0,
+          "end_x": 550.0,
+          "label": {
+            "text": "Custom Built",
+            "x": 424.5,
+            "y": 768.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          },
+          "divider": {
+            "x1": 299.0,
+            "y1": 48.0,
+            "x2": 299.0,
+            "y2": 752.0
+          }
+        },
+        {
+          "name": "Product",
+          "start_x": 550.0,
+          "end_x": 801.0,
+          "label": {
+            "text": "Product",
+            "x": 675.5,
+            "y": 768.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          },
+          "divider": {
+            "x1": 550.0,
+            "y1": 48.0,
+            "x2": 550.0,
+            "y2": 752.0
+          }
+        },
+        {
+          "name": "Commodity",
+          "start_x": 801.0,
+          "end_x": 1052.0,
+          "label": {
+            "text": "Commodity",
+            "x": 926.5,
+            "y": 768.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          },
+          "divider": {
+            "x1": 801.0,
+            "y1": 48.0,
+            "x2": 801.0,
+            "y2": 752.0
+          }
+        }
+      ],
+      "grid": [],
+      "pipeline_boxes": [
+        {
+          "node_id": "tokeniser",
+          "component_ids": [
+            "tokeniser_tokeniser v1",
+            "tokeniser_tokeniser v2"
+          ],
+          "rect": {
+            "x": 143.44,
+            "y": 169.76,
+            "width": 722.76,
+            "height": 24.0,
+            "corner_radius": 4.0
+          }
+        },
+        {
+          "node_id": "methodology",
+          "component_ids": [
+            "methodology_methodology v1",
+            "methodology_methodology v2"
+          ],
+          "rect": {
+            "x": 233.8,
+            "y": 233.12,
+            "width": 632.4,
+            "height": 24.0,
+            "corner_radius": 4.0
+          }
+        },
+        {
+          "node_id": "algo",
+          "component_ids": [
+            "algo_algo v1",
+            "algo_algo v2"
+          ],
+          "rect": {
+            "x": 173.56,
+            "y": 366.88,
+            "width": 692.64,
+            "height": 24.0,
+            "corner_radius": 4.0
+          }
+        }
+      ],
+      "pipeline_links": [
+        {
+          "source": "tokeniser_tokeniser v1",
+          "target": "tokeniser_tokeniser v2",
+          "line": {
+            "x1": 158.44,
+            "y1": 181.76,
+            "x2": 851.2,
+            "y2": 181.76
+          }
+        },
+        {
+          "source": "methodology_methodology v1",
+          "target": "methodology_methodology v2",
+          "line": {
+            "x1": 248.8,
+            "y1": 245.12,
+            "x2": 851.2,
+            "y2": 245.12
+          }
+        },
+        {
+          "source": "algo_algo v1",
+          "target": "algo_algo v2",
+          "line": {
+            "x1": 188.56,
+            "y1": 378.88,
+            "x2": 851.2,
+            "y2": 378.88
+          }
+        }
+      ],
+      "links": [
+        {
+          "source": "GPT Tokeniser",
+          "target": "tokeniser",
+          "line": {
+            "x1": 624.742,
+            "y1": 120.611,
+            "x2": 511.13,
+            "y2": 165.658
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "tokeniser",
+          "target": "methodology",
+          "line": {
+            "x1": 508.761,
+            "y1": 173.687,
+            "x2": 546.059,
+            "y2": 225.993
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "methodology",
+          "target": "training code",
+          "line": {
+            "x1": 543.311,
+            "y1": 232.679,
+            "x2": 314.952,
+            "y2": 272.255
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "methodology",
+          "target": "inference code",
+          "line": {
+            "x1": 543.884,
+            "y1": 234.466,
+            "x2": 424.885,
+            "y2": 291.796
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "methodology",
+          "target": "security framework",
+          "line": {
+            "x1": 555.801,
+            "y1": 235.045,
+            "x2": 625.192,
+            "y2": 277.205
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "training code",
+          "target": "special tokens",
+          "line": {
+            "x1": 309.04,
+            "y1": 279.28,
+            "x2": 309.04,
+            "y2": 330.64
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "training code",
+          "target": "python",
+          "line": {
+            "x1": 314.613,
+            "y1": 275.503,
+            "x2": 885.787,
+            "y2": 503.377
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "algo",
+          "target": "tokeniser training data",
+          "line": {
+            "x1": 515.932,
+            "y1": 370.802,
+            "x2": 392.85,
+            "y2": 542.959
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "training code",
+          "target": "text merging rules",
+          "line": {
+            "x1": 305.048,
+            "y1": 277.759,
+            "x2": 262.832,
+            "y2": 325.121
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "training code",
+          "target": "encoder",
+          "line": {
+            "x1": 313.423,
+            "y1": 277.378,
+            "x2": 364.897,
+            "y2": 325.502
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "inference code",
+          "target": "decoder",
+          "line": {
+            "x1": 425.45,
+            "y1": 294.998,
+            "x2": 764.91,
+            "y2": 329.002
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "encoder",
+          "target": "algo",
+          "line": {
+            "x1": 375.118,
+            "y1": 330.983,
+            "x2": 513.275,
+            "y2": 363.715
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "decoder",
+          "target": "algo",
+          "line": {
+            "x1": 764.94,
+            "y1": 330.444,
+            "x2": 526.601,
+            "y2": 364.325
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "algo",
+          "target": "token vocabulary",
+          "line": {
+            "x1": 524.479,
+            "y1": 370.272,
+            "x2": 606.175,
+            "y2": 458.947
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "byte pair encoding (BPE)",
+          "target": "UTF8",
+          "line": {
+            "x1": 810.566,
+            "y1": 384.861,
+            "x2": 791.434,
+            "y2": 626.339
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "MEGABYTE",
+          "target": "UTF8",
+          "line": {
+            "x1": 234.19,
+            "y1": 381.346,
+            "x2": 785.49,
+            "y2": 629.854
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "UTF8",
+          "target": "Unicode License v3",
+          "line": {
+            "x1": 787.477,
+            "y1": 637.205,
+            "x2": 774.363,
+            "y2": 655.595
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "Unicode License v3",
+          "target": "Unicode Consortium",
+          "line": {
+            "x1": 765.115,
+            "y1": 662.144,
+            "x2": 605.965,
+            "y2": 708.096
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "tokeniser training data",
+          "target": "english text data",
+          "line": {
+            "x1": 391.114,
+            "y1": 553.578,
+            "x2": 417.726,
+            "y2": 640.662
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "tokeniser training data",
+          "target": "code data",
+          "line": {
+            "x1": 387.096,
+            "y1": 553.396,
+            "x2": 351.464,
+            "y2": 640.844
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "tokeniser training data",
+          "target": "foreign text data",
+          "line": {
+            "x1": 384.883,
+            "y1": 551.835,
+            "x2": 283.397,
+            "y2": 642.405
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "python",
+          "target": "IDE",
+          "line": {
+            "x1": 893.375,
+            "y1": 511.252,
+            "x2": 909.425,
+            "y2": 556.268
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        },
+        {
+          "source": "python",
+          "target": "sentencepiece",
+          "line": {
+            "x1": 888.387,
+            "y1": 510.812,
+            "x2": 854.173,
+            "y2": 570.788
+          },
+          "dashed": false,
+          "markers": {
+            "start": false,
+            "end": false
+          },
+          "label": null
+        }
+      ],
+      "trends": [],
+      "nodes": [
+        {
+          "id": "GPT Tokeniser",
+          "label": "GPT Tokeniser",
+          "class_name": "anchor",
+          "position": {
+            "x": 630.32,
+            "y": 118.4
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "anchor"
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "GPT Tokeniser",
+            "x": 630.32,
+            "y": 115.4,
+            "font_size": 10.0,
+            "font_weight": "bold",
+            "text_anchor": "middle",
+            "dominant_baseline": "middle",
+            "rotation": null
+          }
+        },
+        {
+          "id": "tokeniser",
+          "label": "tokeniser",
+          "class_name": "component",
+          "position": {
+            "x": 504.82,
+            "y": 168.16
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": true,
+          "source_strategy": null,
+          "shape": {
+            "kind": "pipelineSquare",
+            "rect": {
+              "x": 500.02,
+              "y": 163.36,
+              "width": 9.6,
+              "height": 9.6,
+              "corner_radius": 0.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "tokeniser",
+            "x": 512.82,
+            "y": 160.16,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "encoder",
+          "label": "encoder",
+          "class_name": "component",
+          "position": {
+            "x": 369.28,
+            "y": 329.6
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 369.28,
+                "y": 329.6
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "encoder",
+            "x": 370.28,
+            "y": 320.6,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "decoder",
+          "label": "decoder",
+          "class_name": "component",
+          "position": {
+            "x": 770.88,
+            "y": 329.6
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 770.88,
+                "y": 329.6
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "decoder",
+            "x": 778.88,
+            "y": 321.6,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "methodology",
+          "label": "methodology",
+          "class_name": "component",
+          "position": {
+            "x": 550.0,
+            "y": 231.52
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": true,
+          "source_strategy": null,
+          "shape": {
+            "kind": "pipelineSquare",
+            "rect": {
+              "x": 545.2,
+              "y": 226.72,
+              "width": 9.6,
+              "height": 9.6,
+              "corner_radius": 0.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "methodology",
+            "x": 558.0,
+            "y": 223.52,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "training code",
+          "label": "training code",
+          "class_name": "component",
+          "position": {
+            "x": 309.04,
+            "y": 273.28
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 309.04,
+                "y": 273.28
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "training code",
+            "x": 219.04,
+            "y": 275.28,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "inference code",
+          "label": "inference code",
+          "class_name": "component",
+          "position": {
+            "x": 419.48,
+            "y": 294.4
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 419.48,
+                "y": 294.4
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "inference code",
+            "x": 369.48,
+            "y": 282.4,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "algo",
+          "label": "algo",
+          "class_name": "component",
+          "position": {
+            "x": 519.88,
+            "y": 365.28
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": true,
+          "source_strategy": null,
+          "shape": {
+            "kind": "pipelineSquare",
+            "rect": {
+              "x": 515.08,
+              "y": 360.48,
+              "width": 9.6,
+              "height": 9.6,
+              "corner_radius": 0.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "algo",
+            "x": 504.88,
+            "y": 348.28,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "GPT2",
+          "label": "GPT2",
+          "class_name": "component",
+          "position": {
+            "x": 700.6,
+            "y": 181.76
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 700.6,
+                "y": 181.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "GPT2",
+            "x": 686.6,
+            "y": 208.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "GPT3",
+          "label": "GPT3",
+          "class_name": "component",
+          "position": {
+            "x": 780.92,
+            "y": 181.76
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 780.92,
+                "y": 181.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "GPT3",
+            "x": 765.92,
+            "y": 208.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "GPT4",
+          "label": "GPT4",
+          "class_name": "component",
+          "position": {
+            "x": 821.08,
+            "y": 181.76
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 821.08,
+                "y": 181.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "GPT4",
+            "x": 807.08,
+            "y": 209.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "GPT5",
+          "label": "GPT5",
+          "class_name": "component",
+          "position": {
+            "x": 419.48,
+            "y": 181.76
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 419.48,
+                "y": 181.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "GPT5",
+            "x": 409.48,
+            "y": 209.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "GPT6",
+          "label": "GPT6",
+          "class_name": "component",
+          "position": {
+            "x": 218.68,
+            "y": 181.76
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 218.68,
+                "y": 181.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "GPT6",
+            "x": 198.68,
+            "y": 209.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "GPT7",
+          "label": "GPT7",
+          "class_name": "component",
+          "position": {
+            "x": 178.52,
+            "y": 181.76
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 178.52,
+                "y": 181.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "GPT7",
+            "x": 165.52,
+            "y": 208.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "tokeniser training data",
+          "label": "tokeniser training data",
+          "class_name": "component",
+          "position": {
+            "x": 389.36,
+            "y": 547.84
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 389.36,
+                "y": 547.84
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "tokeniser training data",
+            "x": 315.36,
+            "y": 515.84,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "special tokens",
+          "label": "special tokens",
+          "class_name": "component",
+          "position": {
+            "x": 309.04,
+            "y": 336.64
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 309.04,
+                "y": 336.64
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "special tokens",
+            "x": 248.04,
+            "y": 351.64,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "UTF8",
+          "label": "UTF8",
+          "class_name": "component",
+          "position": {
+            "x": 790.96,
+            "y": 632.32
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 790.96,
+                "y": 632.32
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "UTF8",
+            "x": 798.96,
+            "y": 624.32,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "token vocabulary",
+          "label": "token vocabulary",
+          "class_name": "component",
+          "position": {
+            "x": 610.24,
+            "y": 463.36
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 610.24,
+                "y": 463.36
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "token vocabulary",
+            "x": 585.24,
+            "y": 479.36,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "byte pair encoding (BPE)",
+          "label": "byte pair encoding (BPE)",
+          "class_name": "component",
+          "position": {
+            "x": 811.04,
+            "y": 378.88
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 811.04,
+                "y": 378.88
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "byte pair encoding (BPE)",
+            "x": 784.04,
+            "y": 397.88,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "english text data",
+          "label": "english text data",
+          "class_name": "component",
+          "position": {
+            "x": 419.48,
+            "y": 646.4
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 419.48,
+                "y": 646.4
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "english text data",
+            "x": 419.48,
+            "y": 656.4,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "code data",
+          "label": "code data",
+          "class_name": "component",
+          "position": {
+            "x": 349.2,
+            "y": 646.4
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 349.2,
+                "y": 646.4
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "code data",
+            "x": 318.2,
+            "y": 669.4,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "foreign text data",
+          "label": "foreign text data",
+          "class_name": "component",
+          "position": {
+            "x": 278.92,
+            "y": 646.4
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 278.92,
+                "y": 646.4
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "foreign text data",
+            "x": 227.92,
+            "y": 664.4,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "python",
+          "label": "python",
+          "class_name": "component",
+          "position": {
+            "x": 891.36,
+            "y": 505.6
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 891.36,
+                "y": 505.6
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "python",
+            "x": 899.36,
+            "y": 497.6,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "sentencepiece",
+          "label": "sentencepiece",
+          "class_name": "component",
+          "position": {
+            "x": 851.2,
+            "y": 576.0
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 851.2,
+                "y": 576.0
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "sentencepiece",
+            "x": 802.2,
+            "y": 595.0,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "IDE",
+          "label": "IDE",
+          "class_name": "component",
+          "position": {
+            "x": 911.44,
+            "y": 561.92
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 911.44,
+                "y": 561.92
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "IDE",
+            "x": 919.44,
+            "y": 553.92,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "MEGABYTE",
+          "label": "MEGABYTE",
+          "class_name": "component",
+          "position": {
+            "x": 228.72,
+            "y": 378.88
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 228.72,
+                "y": 378.88
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "MEGABYTE",
+            "x": 200.72,
+            "y": 406.88,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "text merging rules",
+          "label": "text merging rules",
+          "class_name": "component",
+          "position": {
+            "x": 258.84,
+            "y": 329.6
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 258.84,
+                "y": 329.6
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "text merging rules",
+            "x": 194.84,
+            "y": 319.6,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "security framework",
+          "label": "security framework",
+          "class_name": "component",
+          "position": {
+            "x": 630.32,
+            "y": 280.32
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 630.32,
+                "y": 280.32
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "security framework",
+            "x": 603.32,
+            "y": 290.32,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "Unicode Consortium",
+          "label": "Unicode Consortium",
+          "class_name": "component",
+          "position": {
+            "x": 600.2,
+            "y": 709.76
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 600.2,
+                "y": 709.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "Unicode Consortium",
+            "x": 608.2,
+            "y": 701.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "Unicode License v3",
+          "label": "Unicode License v3",
+          "class_name": "component",
+          "position": {
+            "x": 770.88,
+            "y": 660.48
+          },
+          "in_pipeline": false,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 770.88,
+                "y": 660.48
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "Unicode License v3",
+            "x": 741.88,
+            "y": 671.48,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "tokeniser_tokeniser v1",
+          "label": "tokeniser v1",
+          "class_name": "pipeline-component",
+          "position": {
+            "x": 158.44,
+            "y": 181.76
+          },
+          "in_pipeline": true,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 158.44,
+                "y": 181.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "tokeniser v1",
+            "x": 166.44,
+            "y": 173.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "tokeniser_tokeniser v2",
+          "label": "tokeniser v2",
+          "class_name": "pipeline-component",
+          "position": {
+            "x": 851.2,
+            "y": 181.76
+          },
+          "in_pipeline": true,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 851.2,
+                "y": 181.76
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "tokeniser v2",
+            "x": 859.2,
+            "y": 173.76,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "methodology_methodology v1",
+          "label": "methodology v1",
+          "class_name": "pipeline-component",
+          "position": {
+            "x": 248.8,
+            "y": 245.12
+          },
+          "in_pipeline": true,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 248.8,
+                "y": 245.12
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "methodology v1",
+            "x": 256.8,
+            "y": 237.12,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "methodology_methodology v2",
+          "label": "methodology v2",
+          "class_name": "pipeline-component",
+          "position": {
+            "x": 851.2,
+            "y": 245.12
+          },
+          "in_pipeline": true,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 851.2,
+                "y": 245.12
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "methodology v2",
+            "x": 859.2,
+            "y": 237.12,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "algo_algo v1",
+          "label": "algo v1",
+          "class_name": "pipeline-component",
+          "position": {
+            "x": 188.56,
+            "y": 378.88
+          },
+          "in_pipeline": true,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 188.56,
+                "y": 378.88
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "algo v1",
+            "x": 196.56,
+            "y": 370.88,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        },
+        {
+          "id": "algo_algo v2",
+          "label": "algo v2",
+          "class_name": "pipeline-component",
+          "position": {
+            "x": 851.2,
+            "y": 378.88
+          },
+          "in_pipeline": true,
+          "is_pipeline_parent": false,
+          "source_strategy": null,
+          "shape": {
+            "kind": "circle",
+            "circle": {
+              "center": {
+                "x": 851.2,
+                "y": 378.88
+              },
+              "radius": 6.0
+            }
+          },
+          "source_overlay": null,
+          "inertia": null,
+          "label_layout": {
+            "text": "algo v2",
+            "x": 859.2,
+            "y": 370.88,
+            "font_size": 10.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "auto",
+            "rotation": null
+          }
+        }
+      ],
+      "annotations": [
+        {
+          "number": 1.0,
+          "points": [
+            {
+              "center": {
+                "x": 208.64,
+                "y": 350.72
+              },
+              "radius": 10.0,
+              "label": {
+                "text": "1",
+                "x": 208.64,
+                "y": 350.72,
+                "font_size": 10.0,
+                "font_weight": "bold",
+                "text_anchor": "middle",
+                "dominant_baseline": "central",
+                "rotation": null
+              }
+            }
+          ],
+          "segments": []
+        },
+        {
+          "number": 2.0,
+          "points": [
+            {
+              "center": {
+                "x": 811.04,
+                "y": 350.72
+              },
+              "radius": 10.0,
+              "label": {
+                "text": "2",
+                "x": 811.04,
+                "y": 350.72,
+                "font_size": 10.0,
+                "font_weight": "bold",
+                "text_anchor": "middle",
+                "dominant_baseline": "central",
+                "rotation": null
+              }
+            }
+          ],
+          "segments": []
+        },
+        {
+          "number": 3.0,
+          "points": [
+            {
+              "center": {
+                "x": 349.2,
+                "y": 611.2
+              },
+              "radius": 10.0,
+              "label": {
+                "text": "3",
+                "x": 349.2,
+                "y": 611.2,
+                "font_size": 10.0,
+                "font_weight": "bold",
+                "text_anchor": "middle",
+                "dominant_baseline": "central",
+                "rotation": null
+              }
+            }
+          ],
+          "segments": []
+        },
+        {
+          "number": 4.0,
+          "points": [
+            {
+              "center": {
+                "x": 329.12,
+                "y": 329.6
+              },
+              "radius": 10.0,
+              "label": {
+                "text": "4",
+                "x": 329.12,
+                "y": 329.6,
+                "font_size": 10.0,
+                "font_weight": "bold",
+                "text_anchor": "middle",
+                "dominant_baseline": "central",
+                "rotation": null
+              }
+            }
+          ],
+          "segments": []
+        },
+        {
+          "number": 5.0,
+          "points": [
+            {
+              "center": {
+                "x": 550.0,
+                "y": 259.2
+              },
+              "radius": 10.0,
+              "label": {
+                "text": "5",
+                "x": 550.0,
+                "y": 259.2,
+                "font_size": 10.0,
+                "font_weight": "bold",
+                "text_anchor": "middle",
+                "dominant_baseline": "central",
+                "rotation": null
+              }
+            }
+          ],
+          "segments": []
+        }
+      ],
+      "annotations_box": {
+        "rect": {
+          "x": 48.0,
+          "y": 48.0,
+          "width": 326.85,
+          "height": 106.05,
+          "corner_radius": 4.0
+        },
+        "lines": [
+          {
+            "text": "1. Alternative algos in research",
+            "x": 58.0,
+            "y": 74.0,
+            "font_size": 11.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "middle",
+            "rotation": null
+          },
+          {
+            "text": "2. Most popular, but not the most efficient",
+            "x": 58.0,
+            "y": 90.0,
+            "font_size": 11.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "middle",
+            "rotation": null
+          },
+          {
+            "text": "3. Ensure balanced token vocabulary",
+            "x": 58.0,
+            "y": 106.0,
+            "font_size": 11.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "middle",
+            "rotation": null
+          },
+          {
+            "text": "4. Required for delimiters",
+            "x": 58.0,
+            "y": 122.0,
+            "font_size": 11.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "middle",
+            "rotation": null
+          },
+          {
+            "text": "5. A structured approach for achieving a goal",
+            "x": 58.0,
+            "y": 138.0,
+            "font_size": 11.0,
+            "font_weight": "normal",
+            "text_anchor": "start",
+            "dominant_baseline": "middle",
+            "rotation": null
+          }
+        ],
+        "padding": 10.0,
+        "line_height": 16.0,
+        "font_size": 11.0,
+        "max_text_width": 201.85,
+        "max_text_height": 12.1
+      },
+      "notes": [
+        {
+          "text": {
+            "text": "Voting members: Adobe, Amazon, Apple, Google, Meta, Microsoft, Netflix, Salesforce",
+            "x": 399.4,
+            "y": 723.84,
+            "font_size": 11.0,
+            "font_weight": "bold",
+            "text_anchor": "start",
+            "dominant_baseline": null,
+            "rotation": null
+          }
+        }
+      ],
+      "accelerators": [],
+      "deaccelerators": [
+        {
+          "name": "License Play",
+          "direction": "left",
+          "origin": {
+            "x": 831.12,
+            "y": 660.48
+          },
+          "width": 60.0,
+          "height": 30.0,
+          "head_width": 20.0,
+          "path": [
+            {
+              "x": 891.12,
+              "y": 645.48
+            },
+            {
+              "x": 851.12,
+              "y": 645.48
+            },
+            {
+              "x": 851.12,
+              "y": 637.48
+            },
+            {
+              "x": 831.12,
+              "y": 660.48
+            },
+            {
+              "x": 851.12,
+              "y": 683.48
+            },
+            {
+              "x": 851.12,
+              "y": 675.48
+            },
+            {
+              "x": 891.12,
+              "y": 675.48
+            }
+          ],
+          "label": {
+            "text": "License Play",
+            "x": 861.12,
+            "y": 690.48,
+            "font_size": 10.0,
+            "font_weight": "bold",
+            "text_anchor": "middle",
+            "dominant_baseline": null,
+            "rotation": null
+          }
+        }
+      ]
+    }
+  }
+}

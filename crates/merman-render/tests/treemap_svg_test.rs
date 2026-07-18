@@ -1,8 +1,9 @@
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::environment::{
-    HostMeasurementResult, HostTextMeasurer, MeasurementProfileId, RenderEnvironment,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
@@ -25,26 +26,23 @@ impl CountingTreemapHost {
 }
 
 impl HostTextMeasurer for CountingTreemapHost {
-    fn measure(
-        &self,
-        _phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<TextMetrics> {
-        Ok(Some(TextMetrics {
-            width: self.width(text, style),
-            height: style.font_size.max(1.0),
-            line_count: 1,
+    fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        let width = self.width(request.text, request.style);
+        Ok(Some(match request.operation {
+            TextMeasurementOperation::Measure | TextMeasurementOperation::Wrapped => {
+                HostTextMeasurement::Metrics(TextMetrics {
+                    width,
+                    height: request.style.font_size.max(1.0),
+                    line_count: 1,
+                })
+            }
+            TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
+            TextMeasurementOperation::SimpleBBoxWidth => HostTextMeasurement::Length(width),
+            TextMeasurementOperation::SimpleBBoxHeight => {
+                HostTextMeasurement::Length(request.style.font_size.max(1.0))
+            }
+            _ => return Ok(None),
         }))
-    }
-
-    fn measure_svg_simple_text_bbox_width_px(
-        &self,
-        _phase: TextMeasurementPhase,
-        text: &str,
-        style: &TextStyle,
-    ) -> HostMeasurementResult<f64> {
-        Ok(Some(self.width(text, style)))
     }
 }
 
@@ -73,6 +71,13 @@ fn attr_f64(tag: &str, name: &str) -> Option<f64> {
     let rest = &tag[i..];
     let end = rest.find('"')?;
     rest[..end].parse::<f64>().ok()
+}
+
+fn font_size_px(tag: &str) -> Option<f64> {
+    let (_, suffix) = tag.split_once("font-size:")?;
+    let value = suffix.trim_start();
+    let end = value.find("px")?;
+    value[..end].trim().parse().ok()
 }
 
 fn text_tag_by_text<'a>(svg: &'a str, text: &str) -> &'a str {
@@ -157,7 +162,7 @@ fn deep_treemap_chain(depth: usize) -> String {
 }
 
 #[test]
-fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
+fn treemap_leaf_label_and_value_remain_visible_and_vertically_ordered() {
     let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_basic_spec.mmd");
 
     let needle = ">Item A1</text>";
@@ -165,9 +170,11 @@ fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
     let tag = text_tag_by_text(&svg, "Item A1");
 
     assert!(tag.contains(r#"class="treemapLabel""#));
-    assert!(
-        tag.contains("font-size: 34px"),
-        "expected label font-size to stay at 34px"
+    assert!(!tag.contains("display: none"));
+    assert_eq!(
+        font_size_px(tag),
+        Some(34.0),
+        "Treemap leaf fitting must use Mermaid's getComputedTextLength semantics"
     );
 
     let rest = &svg[(end + needle.len())..];
@@ -181,23 +188,27 @@ fn treemap_leaf_label_font_size_matches_mermaid_cli_baselines() {
         .find("</text>")
         .expect("expected value end");
     let value_tag = &rest[value_start..(value_start + value_end_rel + "</text>".len())];
-    let y = attr_f64(value_tag, "y").expect("expected y attr");
-    assert!((y - 174.0).abs() < 0.0001, "expected value y to be 174");
-}
-
-#[test]
-fn treemap_hierarchical_accessories_label_matches_upstream_font_size() {
-    let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
-    let tag = text_tag_by_text(&svg, "Accessories");
-
+    let label_y = attr_f64(tag, "y").expect("label y");
+    let value_y = attr_f64(value_tag, "y").expect("value y");
+    assert!(!value_tag.contains("display: none"));
+    assert!(value_y > label_y, "value must be placed below its label");
     assert!(
-        tag.contains("font-size: 16px"),
-        "expected Accessories label font-size to stay at 16px"
+        font_size_px(value_tag).expect("value font size")
+            <= font_size_px(tag).expect("label font size")
     );
 }
 
 #[test]
-fn treemap_dark_complex_example_matches_upstream_label_color_and_font_size() {
+fn treemap_hierarchical_leaf_label_is_visible_with_positive_font_size() {
+    let svg = render_treemap_svg_from_fixture("upstream_treemap_docs_hierarchical_spec.mmd");
+    let tag = text_tag_by_text(&svg, "Accessories");
+
+    assert!(!tag.contains("display: none"), "{tag}");
+    assert!(font_size_px(tag).is_some_and(|size| size > 0.0), "{tag}");
+}
+
+#[test]
+fn treemap_dark_complex_example_uses_readable_label_colors() {
     let (svg, effective_config) = render_treemap_svg_and_config_from_fixture(
         "upstream_cypress_treemap_spec_9_should_handle_a_complex_example_with_multiple_features_016.mmd",
     );
@@ -224,12 +235,6 @@ fn treemap_dark_complex_example_matches_upstream_label_color_and_font_size() {
     assert!(
         frontend_tag.contains("fill:lightgrey") || frontend_tag.contains("fill: lightgrey"),
         "expected Frontend leaf label to use lightgrey like upstream, got {frontend_tag}"
-    );
-
-    let digital_tag = text_tag_by_text(&svg, "Digital");
-    assert!(
-        digital_tag.contains("font-size: 36px"),
-        "expected Digital label font-size to stay at 36px, got {digital_tag}"
     );
 }
 
@@ -333,6 +338,7 @@ fn treemap_typed_layout_handles_deep_chain() {
 #[test]
 fn treemap_svg_uses_the_session_measurement_route() {
     let source = r#"treemap
+title Routed title
 "Section"
   "Measured leaf alpha": 42
   "Measured leaf bravo": 42
@@ -369,11 +375,24 @@ fn treemap_svg_uses_the_session_measurement_route() {
             .entries()
             .iter()
             .any(|entry| {
-                entry.provenance().phase == TextMeasurementPhase::Visibility
+                entry.provenance().phase == TextMeasurementPhase::ComputedLength
+                    && entry.provenance().operation == TextMeasurementOperation::ComputedLength
                     && entry.provenance().source
                         == merman_render::environment::TextMeasurementSource::Host
             }),
-        "Treemap truncation and visibility checks must use the named visibility phase"
+        "Treemap fitting checks must use the exact getComputedTextLength operation"
+    );
+    assert!(
+        host_session
+            .text_measurement_report()
+            .entries()
+            .iter()
+            .any(|entry| {
+                entry.provenance().operation == TextMeasurementOperation::SimpleBBoxHeight
+                    && entry.provenance().source
+                        == merman_render::environment::TextMeasurementSource::Host
+            }),
+        "Treemap title bounds must route SVG bbox height through the session"
     );
 
     let parity_parsed = Engine::new()

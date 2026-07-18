@@ -184,11 +184,11 @@
   "excluded": {
     "upstream_sankey_allows_proto_id_parser_only_spec": {
       "input_sha256": "7d3277247589a91d7d2196b85716a8a7429d435e1a4ec5866858eb29933bef60",
-      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
+      "reason": "pinned Mermaid 11.16 rejects this parser-only Sankey fixture as a circular link"
     },
     "upstream_sankey_allows_proto_id_sankey_header_parser_only_spec": {
       "input_sha256": "6da1b74ba5d4b6c54e2b8ea821417b748c49b80479c36f5d20bbebc3e0fab5fb",
-      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
+      "reason": "pinned Mermaid 11.16 rejects this parser-only Sankey fixture as a circular link"
     }
   }
 }

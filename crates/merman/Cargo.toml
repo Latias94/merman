@@ -58,9 +58,19 @@ krilla-svg = { workspace = true, optional = true }
 [dev-dependencies]
 base64.workspace = true
 criterion = "0.8.2"
+merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 png.workspace = true
 roxmltree.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+
+[[test]]
+name = "prepared_render"
+required-features = ["render"]
+
+[[test]]
+name = "mermaid_11_16_corpus"
+required-features = ["elk-layout"]
 
 [[bench]]
 name = "pipeline"

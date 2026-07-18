@@ -5,47 +5,47 @@
       "nodes": [
         {
           "id": "Active",
-          "x": 357.672,
+          "x": 354.48,
           "y": 236.5,
-          "width": 699.344,
+          "width": 692.96,
           "height": 329.0,
           "is_cluster": true
         },
         {
           "id": "CapsLockOff",
-          "x": 353.859,
+          "x": 349.36,
           "y": 293.5,
-          "width": 104.656,
+          "width": 101.76,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "NumLockOff",
-          "x": 129.766,
+          "x": 128.24,
           "y": 293.5,
-          "width": 103.531,
+          "width": 100.48,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "ScrollLockOff",
-          "x": 581.766,
+          "x": 575.6,
           "y": 293.5,
-          "width": 111.156,
+          "width": 110.72,
           "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "divider-id-1",
-          "x": 129.766,
+          "x": 128.24,
           "y": 236.5,
-          "width": 173.531,
+          "width": 170.48,
           "height": 254.0,
           "is_cluster": true
         },
         {
           "id": "divider-id-1_start",
-          "x": 129.766,
+          "x": 128.24,
           "y": 166.5,
           "width": 14.0,
           "height": 14.0,
@@ -53,15 +53,15 @@
         },
         {
           "id": "divider-id-2",
-          "x": 353.859,
+          "x": 349.36,
           "y": 236.5,
-          "width": 174.656,
+          "width": 171.76,
           "height": 254.0,
           "is_cluster": true
         },
         {
           "id": "divider-id-2_start",
-          "x": 353.859,
+          "x": 349.36,
           "y": 166.5,
           "width": 14.0,
           "height": 14.0,
@@ -69,15 +69,15 @@
         },
         {
           "id": "id-38dvt516gkfs-1",
-          "x": 581.766,
+          "x": 575.6,
           "y": 236.5,
-          "width": 181.156,
+          "width": 180.72,
           "height": 254.0,
           "is_cluster": true
         },
         {
           "id": "id-38dvt516gkfs-1_start",
-          "x": 581.766,
+          "x": 575.6,
           "y": 166.5,
           "width": 14.0,
           "height": 14.0,
@@ -85,7 +85,7 @@
         },
         {
           "id": "root_start",
-          "x": 357.672,
+          "x": 354.48,
           "y": 15.0,
           "width": 14.0,
           "height": 14.0,
@@ -101,15 +101,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 357.672,
+              "x": 354.48,
               "y": 22.0
             },
             {
-              "x": 357.672,
+              "x": 354.48,
               "y": 47.0
             },
             {
-              "x": 357.672,
+              "x": 354.48,
               "y": 236.5
             }
           ],
@@ -130,15 +130,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 129.766,
+              "x": 128.24,
               "y": 173.5
             },
             {
-              "x": 129.766,
+              "x": 128.24,
               "y": 223.5
             },
             {
-              "x": 130.266,
+              "x": 128.74,
               "y": 274.0
             }
           ],
@@ -159,15 +159,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 353.859,
+              "x": 349.36,
               "y": 173.5
             },
             {
-              "x": 353.859,
+              "x": 349.36,
               "y": 223.5
             },
             {
-              "x": 354.359,
+              "x": 349.86,
               "y": 274.0
             }
           ],
@@ -188,15 +188,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 581.766,
+              "x": 575.6,
               "y": 173.5
             },
             {
-              "x": 581.766,
+              "x": 575.6,
               "y": 223.5
             },
             {
-              "x": 582.266,
+              "x": 576.1,
               "y": 274.0
             }
           ],
@@ -213,17 +213,17 @@
       "clusters": [
         {
           "id": "Active",
-          "x": 357.672,
+          "x": 354.48,
           "y": 236.5,
-          "width": 699.344,
+          "width": 692.96,
           "height": 329.0,
           "diff": -8.0,
           "offset_y": 20.0,
           "title": "Active",
           "title_label": {
-            "x": 357.672,
+            "x": 354.48,
             "y": 85.0,
-            "width": 41.594,
+            "width": 41.6,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -234,17 +234,17 @@
         },
         {
           "id": "divider-id-1",
-          "x": 129.766,
+          "x": 128.24,
           "y": 236.5,
-          "width": 173.531,
+          "width": 170.48,
           "height": 254.0,
           "diff": -8.0,
           "offset_y": 0.0,
           "title": "divider-id-1",
           "title_label": {
-            "x": 129.766,
+            "x": 128.24,
             "y": 122.5,
-            "width": 74.234,
+            "width": 74.24,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -255,17 +255,17 @@
         },
         {
           "id": "divider-id-2",
-          "x": 353.859,
+          "x": 349.36,
           "y": 236.5,
-          "width": 174.656,
+          "width": 171.76,
           "height": 254.0,
           "diff": -8.0,
           "offset_y": 0.0,
           "title": "divider-id-2",
           "title_label": {
-            "x": 353.859,
+            "x": 349.36,
             "y": 122.5,
-            "width": 74.234,
+            "width": 74.24,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -276,17 +276,17 @@
         },
         {
           "id": "id-38dvt516gkfs-1",
-          "x": 581.766,
+          "x": 575.6,
           "y": 236.5,
-          "width": 181.156,
+          "width": 180.72,
           "height": 254.0,
           "diff": -8.0,
           "offset_y": 0.0,
           "title": "id-38dvt516gkfs-1",
           "title_label": {
-            "x": 581.766,
+            "x": 575.6,
             "y": 122.5,
-            "width": 125.766,
+            "width": 125.76,
             "height": 24.0
           },
           "requested_dir": "TB",
@@ -299,7 +299,7 @@
       "bounds": {
         "min_x": 8.0,
         "min_y": 8.0,
-        "max_x": 707.344,
+        "max_x": 700.96,
         "max_y": 401.0
       }
     }

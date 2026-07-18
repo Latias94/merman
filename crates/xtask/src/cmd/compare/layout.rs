@@ -28,10 +28,7 @@ pub(crate) fn svg_compare_engine_with_site_config(overrides: serde_json::Value) 
 }
 
 pub(crate) fn svg_compare_layout_opts() -> merman_render::LayoutOptions {
-    merman_render::LayoutOptions {
-        use_manatee_layout: true,
-        ..Default::default()
-    }
+    merman_render::LayoutOptions::default()
 }
 
 pub(crate) fn svg_compare_environment() -> merman::render::RenderEnvironment {

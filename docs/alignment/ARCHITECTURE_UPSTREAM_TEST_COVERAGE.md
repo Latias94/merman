@@ -47,9 +47,9 @@ Source: `repo-ref/mermaid/docs/syntax/architecture.md`
 The following fixtures are derived from the official syntax documentation and primarily cover
 edge syntax (ports, titles, arrows, group boundary traversal), nesting, and junction statements.
 
-Note: most of these fixtures are currently marked as parser-only (filename contains `_parser_only_`)
-so they are excluded from layout snapshots and SVG DOM parity compares while the Architecture layout
-and renderer are still being brought up. Promoted fixtures will have the suffix removed.
+These fixtures have been promoted to semantic and layout snapshots plus pinned Mermaid 11.16 SVG
+baselines. They participate in the Architecture DOM parity compare; no filename-based parser-only
+policy applies.
 
 - docs example (group + services + edges): `fixtures/architecture/upstream_architecture_docs_example.mmd`
 - edge arrows (`-->`, `<--`, `<-->`): `fixtures/architecture/upstream_architecture_docs_edge_arrows.mmd`
@@ -59,7 +59,7 @@ and renderer are still being brought up. Promoted fixtures will have the suffix 
 - junction statements + edges: `fixtures/architecture/upstream_architecture_docs_junctions.mmd`
 - service icon vs. iconText string: `fixtures/architecture/upstream_architecture_docs_service_icon_text.mmd`
 
-Additional stress case (parser-only):
+Additional admitted stress case:
 
 - tall-ish nested layout input for future viewport/height parity work: `fixtures/architecture/upstream_architecture_layout_reasonable_height.mmd`
 

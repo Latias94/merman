@@ -21,9 +21,10 @@ exclude = [
 [features]
 default = ["core-full"]
 core-full = ["merman-core/full", "cytoscape-layout"]
-host = ["chrono/clock", "chrono/wasmbind", "merman-core/host", "roughr/host-random"]
+host = ["chrono/clock", "chrono/wasmbind", "dep:rand", "merman-core/host", "roughr/host-random"]
 cytoscape-layout = ["dep:manatee"]
 elk-layout = ["dep:merman-layout-elk"]
+font-metrics-generation = []
 ratex-math = [
   "dep:ratex-layout",
   "dep:ratex-parser",
@@ -38,10 +39,12 @@ base64.workspace = true
 chrono.workspace = true
 dugong.workspace = true
 indexmap.workspace = true
+kurbo.workspace = true
 manatee = { workspace = true, optional = true }
 merman-layout-elk = { workspace = true, optional = true }
 merman-core.workspace = true
 pulldown-cmark.workspace = true
+rand = { workspace = true, optional = true }
 ratex-layout = { workspace = true, optional = true }
 ratex-parser = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }
@@ -54,8 +57,10 @@ thiserror.workspace = true
 roughr = { workspace = true, default-features = false }
 ryu-js.workspace = true
 unicode-width.workspace = true
+unicode-linebreak.workspace = true
 
 [dev-dependencies]
 futures.workspace = true
+merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 regex.workspace = true
 syn.workspace = true

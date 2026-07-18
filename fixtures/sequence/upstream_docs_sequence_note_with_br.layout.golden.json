@@ -22,15 +22,15 @@
         {
           "id": "note-1",
           "x": 175.0,
-          "y": 163.5,
+          "y": 168.0,
           "width": 250.0,
-          "height": 55.0,
+          "height": 58.0,
           "is_cluster": false
         },
         {
           "id": "actor-bottom-Alice",
           "x": 75.0,
-          "y": 243.5,
+          "y": 249.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "actor-bottom-John",
           "x": 275.0,
-          "y": 243.5,
+          "y": 249.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -54,18 +54,18 @@
           "points": [
             {
               "x": 76.0,
-              "y": 126.0
+              "y": 129.0
             },
             {
               "x": 274.0,
-              "y": 126.0
+              "y": 129.0
             }
           ],
           "label": {
             "x": 175.0,
             "y": 80.0,
-            "width": 90.0,
-            "height": 34.0
+            "width": 89.6,
+            "height": 35.2
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -88,7 +88,7 @@
             },
             {
               "x": 75.0,
-              "y": 211.0
+              "y": 217.0
             }
           ],
           "label": null,
@@ -113,7 +113,7 @@
             },
             {
               "x": 275.0,
-              "y": 211.0
+              "y": 217.0
             }
           ],
           "label": null,
@@ -131,7 +131,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 400.0,
-        "max_y": 287.0
+        "max_y": 293.0
       }
     }
   }

@@ -5,8 +5,126 @@ public typealias MermanTextMeasureRequest = MermanHostTextMeasureRequest
 public typealias MermanTextMeasureResult = MermanHostTextMeasureResult
 public typealias MermanTextMeasureCallback = MermanHostTextMeasureCallback
 
+/// Shape required by a handled host text-measurement result.
+public enum MermanTextMeasurementResultKind: Int32, CaseIterable, Sendable {
+    case metrics = 0
+    case length = 1
+    case horizontalExtents = 2
+    case wrappedWithRawWidth = 3
+
+    fileprivate var cAbiRawValue: Int {
+        switch self {
+        case .metrics:
+            return MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS
+        case .length:
+            return MERMAN_TEXT_MEASUREMENT_RESULT_KIND_LENGTH
+        case .horizontalExtents:
+            return MERMAN_TEXT_MEASUREMENT_RESULT_KIND_HORIZONTAL_EXTENTS
+        case .wrappedWithRawWidth:
+            return MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH
+        }
+    }
+}
+
+/// Stable C ABI operation code for one host text-measurement primitive.
+public enum MermanTextMeasurementOperation: Int32, CaseIterable, Sendable {
+    case measure = 0
+    case computedLength = 1
+    case bboxX = 2
+    case bboxXWithAsciiOverhang = 3
+    case titleBBoxX = 4
+    case simpleBBoxWidth = 5
+    case rawBBoxWidth = 6
+    case tspanBBoxWidth = 7
+    case tspanBBoxHeight = 8
+    case wrapProbeBBoxWidth = 9
+    case simpleBBoxHeight = 10
+    case wrapped = 11
+    case wrappedWithRawWidth = 12
+    case boundingClientRectWidth = 13
+    case createTextBBoxYOffset = 14
+    case mermaidCalculateTextDimensions = 15
+    case canvasMeasureTextWidth = 16
+    case createTextMiddleBBoxYOffset = 17
+    case rawBBoxHeight = 18
+
+    /// Result shape accepted by this operation.
+    public var requiredResultKind: MermanTextMeasurementResultKind {
+        switch self {
+        case .measure, .wrapped, .mermaidCalculateTextDimensions:
+            return .metrics
+        case .computedLength,
+             .simpleBBoxWidth,
+             .rawBBoxWidth,
+             .tspanBBoxWidth,
+             .tspanBBoxHeight,
+             .wrapProbeBBoxWidth,
+             .simpleBBoxHeight,
+             .boundingClientRectWidth,
+             .createTextBBoxYOffset,
+             .canvasMeasureTextWidth,
+             .createTextMiddleBBoxYOffset,
+             .rawBBoxHeight:
+            return .length
+        case .bboxX, .bboxXWithAsciiOverhang, .titleBBoxX:
+            return .horizontalExtents
+        case .wrappedWithRawWidth:
+            return .wrappedWithRawWidth
+        }
+    }
+
+    /// Whether this operation accepts a finite negative length.
+    public var acceptsSignedLength: Bool {
+        self == .createTextBBoxYOffset || self == .createTextMiddleBBoxYOffset
+    }
+
+    fileprivate var cAbiRawValue: Int {
+        switch self {
+        case .measure:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE
+        case .computedLength:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_COMPUTED_LENGTH
+        case .bboxX:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X
+        case .bboxXWithAsciiOverhang:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_BBOX_X_WITH_ASCII_OVERHANG
+        case .titleBBoxX:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_TITLE_BBOX_X
+        case .simpleBBoxWidth:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_WIDTH
+        case .rawBBoxWidth:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_WIDTH
+        case .tspanBBoxWidth:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_WIDTH
+        case .tspanBBoxHeight:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_TSPAN_BBOX_HEIGHT
+        case .wrapProbeBBoxWidth:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_WRAP_PROBE_BBOX_WIDTH
+        case .simpleBBoxHeight:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_SIMPLE_BBOX_HEIGHT
+        case .wrapped:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED
+        case .wrappedWithRawWidth:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH
+        case .boundingClientRectWidth:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH
+        case .createTextBBoxYOffset:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET
+        case .mermaidCalculateTextDimensions:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS
+        case .canvasMeasureTextWidth:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH
+        case .createTextMiddleBBoxYOffset:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET
+        case .rawBBoxHeight:
+            return MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT
+        }
+    }
+}
+
 public enum MermanError: Error, LocalizedError {
     case abiMismatch(expected: UInt32, actual: UInt32)
+    case abiConstantMismatch(name: String, expected: Int, actual: Int)
     case structSizeMismatch(name: String, expected: Int, actual: Int)
     case binding(code: Int32, codeName: String, message: String)
     case jsonDecode(message: String)
@@ -16,6 +134,8 @@ public enum MermanError: Error, LocalizedError {
         switch self {
         case let .abiMismatch(expected, actual):
             return "Merman ABI mismatch: expected \(expected), got \(actual)"
+        case let .abiConstantMismatch(name, expected, actual):
+            return "Merman ABI constant mismatch for \(name): expected \(expected), got \(actual)"
         case let .structSizeMismatch(name, expected, actual):
             return "Merman ABI struct size mismatch for \(name): expected \(expected), got \(actual)"
         case let .binding(_, codeName, message):
@@ -70,15 +190,29 @@ public struct MermanAsciiCapability: Decodable {
 
 public struct MermanDiagramFamilyCapability: Decodable {
     public let diagramType: String
+    public let logicalFamilyKind: String
     public let metadataId: String?
+    public let renderModelKind: String?
+    public let hasDetector: Bool
     public let hasSemanticParser: Bool
+    public let hasEditorParser: Bool
+    public let hasCombinedParser: Bool
     public let hasRenderParser: Bool
+    public let hasHeader: Bool
+    public let configNamespace: String?
 
     enum CodingKeys: String, CodingKey {
         case diagramType = "diagram_type"
+        case logicalFamilyKind = "logical_family_kind"
         case metadataId = "metadata_id"
+        case renderModelKind = "render_model_kind"
+        case hasDetector = "has_detector"
         case hasSemanticParser = "has_semantic_parser"
+        case hasEditorParser = "has_editor_parser"
+        case hasCombinedParser = "has_combined_parser"
         case hasRenderParser = "has_render_parser"
+        case hasHeader = "has_header"
+        case configNamespace = "config_namespace"
     }
 }
 
@@ -114,7 +248,7 @@ private struct MermanLintRuleCatalogResponse: Decodable {
 }
 
 public final class MermanEngine {
-    public static let abiVersion: UInt32 = 3
+    public static let abiVersion: UInt32 = 2
     private static let okCode: Int32 = 0
 
     public let packageVersion: String
@@ -251,6 +385,25 @@ public final class MermanEngine {
         let actualAbi = merman_abi_version()
         guard actualAbi == abiVersion else {
             throw MermanError.abiMismatch(expected: abiVersion, actual: actualAbi)
+        }
+
+        for operation in MermanTextMeasurementOperation.allCases
+            where Int(operation.rawValue) != operation.cAbiRawValue
+        {
+            throw MermanError.abiConstantMismatch(
+                name: "MermanTextMeasurementOperation.\(operation)",
+                expected: operation.cAbiRawValue,
+                actual: Int(operation.rawValue)
+            )
+        }
+        for resultKind in MermanTextMeasurementResultKind.allCases
+            where Int(resultKind.rawValue) != resultKind.cAbiRawValue
+        {
+            throw MermanError.abiConstantMismatch(
+                name: "MermanTextMeasurementResultKind.\(resultKind)",
+                expected: resultKind.cAbiRawValue,
+                actual: Int(resultKind.rawValue)
+            )
         }
 
         let expectedBufferSize = MemoryLayout<MermanBuffer>.size

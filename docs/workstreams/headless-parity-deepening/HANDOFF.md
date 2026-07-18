@@ -1,7 +1,10 @@
 # Headless Parity Deepening - Handoff
 
-Status: Active
+Status: Superseded on 2026-07-15
 Last updated: 2026-06-07
+
+> Historical Mermaid 11.15 handoff. Fixture/root/text/SVG override inventories and commands below
+> describe retired mechanisms removed under ADR-0062; "current" refers to this dated snapshot.
 
 This workstream opens the post-11.15 structural-parity phase.
 

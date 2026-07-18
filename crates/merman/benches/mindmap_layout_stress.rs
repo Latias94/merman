@@ -1,7 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use merman::render::{
-    LayoutOptions, RenderEnvironment, TextMeasurementPhase, headless_layout_options,
-};
+use merman::render::{RenderEnvironment, TextMeasurementPhase};
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::mindmap::layout_mindmap_diagram_typed;
 use std::hint::black_box;
@@ -11,7 +9,6 @@ const MINDMAP_BALANCED_TREE: &str = include_str!("fixtures/stress_balanced_tree_
 fn bench_mindmap_layout_stress(c: &mut Criterion) {
     let engine = Engine::new();
     let parse_opts = ParseOptions::strict();
-    let layout: LayoutOptions = headless_layout_options();
     let session = RenderEnvironment::parity()
         .begin_session()
         .expect("render session");
@@ -38,7 +35,6 @@ fn bench_mindmap_layout_stress(c: &mut Criterion) {
                     black_box(model),
                     parsed.meta.effective_config.as_value(),
                     &measurer,
-                    layout.use_manatee_layout,
                 )
                 .expect("layout");
                 acc ^= layouted.nodes.len();

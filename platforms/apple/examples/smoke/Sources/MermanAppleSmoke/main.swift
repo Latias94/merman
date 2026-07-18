@@ -5,14 +5,18 @@ import Merman
 struct MermanAppleSmoke {
     private static let phaseLock = NSLock()
     private static var observedPhases = Set<Int32>()
+    private static var observedOperations = Set<Int32>()
 
-    fileprivate static func recordPhase(_ phase: Int32) {
+    fileprivate static func recordMeasurement(_ request: MermanTextMeasureRequest) {
         phaseLock.lock()
-        observedPhases.insert(phase)
+        observedPhases.insert(request.phase)
+        observedOperations.insert(request.operation)
         phaseLock.unlock()
     }
 
     static func main() throws {
+        try assertTextMeasurementContract()
+
         let engine = try MermanEngine()
         let source = "flowchart TD\nA[Hello] --> B[World]"
 
@@ -61,10 +65,14 @@ struct MermanAppleSmoke {
             throw SmokeError.failed("reusable renderSvg smoke failed")
         }
         phaseLock.lock()
-        let phaseCount = observedPhases.count
+        let phases = observedPhases
+        let operations = observedOperations
         phaseLock.unlock()
-        guard phaseCount >= 2 else {
-            throw SmokeError.failed("host text measurement phases were not observable")
+        guard !phases.isEmpty, phases.allSatisfy({ (0...3).contains($0) }) else {
+            throw SmokeError.failed("invalid host text measurement phases: \(phases)")
+        }
+        guard !operations.isEmpty, operations.allSatisfy({ (0...18).contains($0) }) else {
+            throw SmokeError.failed("invalid host text measurement operations: \(operations)")
         }
         let reusableDocumentJson = try reusable.analyzeDocumentJsonRaw(
             documentSource,
@@ -86,6 +94,23 @@ struct MermanAppleSmoke {
 
         guard try engine.supportedDiagrams().contains("flowchart") else {
             throw SmokeError.failed("supported diagrams smoke failed")
+        }
+
+        let flowchartCapability = try engine.diagramFamilyCapabilities().contains { capability in
+            capability.diagramType == "flowchart"
+                && capability.logicalFamilyKind == "flowchart"
+                && capability.metadataId == "flowchart"
+                && capability.renderModelKind == "flowchart"
+                && capability.hasDetector
+                && capability.hasSemanticParser
+                && capability.hasEditorParser
+                && capability.hasCombinedParser
+                && capability.hasRenderParser
+                && !capability.hasHeader
+                && capability.configNamespace == "flowchart"
+        }
+        guard flowchartCapability else {
+            throw SmokeError.failed("diagram family capabilities smoke failed")
         }
 
         let ganttAsciiCapability = try engine.asciiCapabilities().contains { capability in
@@ -270,14 +295,13 @@ private enum ReusableEngineLifecycleSmoke {
                 callbackEntered.signal()
                 _ = callbackMayReturn.wait(timeout: .now() + .seconds(5))
             }
-            return MermanTextMeasureResult(
-                handled: 1,
+            return mermanHandledTextMeasurement(
+                operation: request.operation,
                 width: 64.0,
-                height: request.line_height,
-                line_count: 1
+                height: request.line_height
             )
         }
-        return MermanTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
+        return MermanTextMeasureResult()
     }
 }
 
@@ -289,17 +313,16 @@ private func mermanAppleSmokeMeasureText(
     _ request: MermanTextMeasureRequest,
     _ _: UnsafeMutableRawPointer?
 ) -> MermanTextMeasureResult {
-    MermanAppleSmoke.recordPhase(request.phase)
+    MermanAppleSmoke.recordMeasurement(request)
     let text = mermanSmokeText(request)
     if text == "Hello" {
-        return MermanTextMeasureResult(
-            handled: 1,
+        return mermanHandledTextMeasurement(
+            operation: request.operation,
             width: 42.0,
-            height: request.line_height,
-            line_count: 1
+            height: request.line_height
         )
     }
-    return MermanTextMeasureResult(handled: 0, width: 0.0, height: 0.0, line_count: 0)
+    return MermanTextMeasureResult()
 }
 
 private func mermanReusableLifecycleMeasureText(
@@ -313,4 +336,102 @@ private func mermanSmokeText(_ request: MermanTextMeasureRequest) -> String {
     request.text.map {
         String(decoding: UnsafeBufferPointer(start: $0, count: request.text_len), as: UTF8.self)
     } ?? ""
+}
+
+private func assertTextMeasurementContract() throws {
+    let operationCodes = MermanTextMeasurementOperation.allCases.map(\.rawValue)
+    guard operationCodes == Array(Int32(0)...Int32(18)) else {
+        throw SmokeError.failed("text measurement constants are not the contiguous ABI range 0...18")
+    }
+
+    let dimensions = mermanHandledTextMeasurement(
+        operation: MermanTextMeasurementOperation.mermaidCalculateTextDimensions.rawValue,
+        width: 42.0,
+        height: 24.0
+    )
+    guard dimensions.result_kind == MermanTextMeasurementResultKind.metrics.rawValue else {
+        throw SmokeError.failed("MermaidCalculateTextDimensions must return metrics")
+    }
+
+    let canvasWidth = mermanHandledTextMeasurement(
+        operation: MermanTextMeasurementOperation.canvasMeasureTextWidth.rawValue,
+        width: 42.0,
+        height: 24.0
+    )
+    guard canvasWidth.result_kind == MermanTextMeasurementResultKind.length.rawValue else {
+        throw SmokeError.failed("CanvasMeasureTextWidth must return length")
+    }
+
+    let rawBBoxHeight = mermanHandledTextMeasurement(
+        operation: MermanTextMeasurementOperation.rawBBoxHeight.rawValue,
+        width: 42.0,
+        height: 24.0
+    )
+    guard rawBBoxHeight.result_kind == MermanTextMeasurementResultKind.length.rawValue,
+          rawBBoxHeight.length == 24.0
+    else {
+        throw SmokeError.failed("RawBBoxHeight must return the raw bbox height as length")
+    }
+
+    let yOffset = mermanHandledTextMeasurement(
+        operation: MermanTextMeasurementOperation.createTextBBoxYOffset.rawValue,
+        width: 42.0,
+        height: 24.0
+    )
+    guard MermanTextMeasurementOperation.createTextBBoxYOffset.acceptsSignedLength,
+          yOffset.length < 0
+    else {
+        throw SmokeError.failed("CreateTextBBoxYOffset must preserve signed lengths")
+    }
+    let middleYOffset = mermanHandledTextMeasurement(
+        operation: MermanTextMeasurementOperation.createTextMiddleBBoxYOffset.rawValue,
+        width: 42.0,
+        height: 24.0
+    )
+    guard MermanTextMeasurementOperation.createTextMiddleBBoxYOffset.acceptsSignedLength,
+          middleYOffset.length < 0
+    else {
+        throw SmokeError.failed("CreateTextMiddleBBoxYOffset must preserve signed lengths")
+    }
+}
+
+private func mermanHandledTextMeasurement(
+    operation: Int32,
+    width: Double,
+    height: Double
+) -> MermanTextMeasureResult {
+    var result = MermanTextMeasureResult()
+    guard let operation = MermanTextMeasurementOperation(rawValue: operation) else {
+        return result
+    }
+    result.handled = 1
+    result.result_kind = operation.requiredResultKind.rawValue
+    switch operation {
+    case .measure, .wrapped, .mermaidCalculateTextDimensions:
+        result.width = width
+        result.height = height
+        result.line_count = 1
+    case .computedLength,
+         .simpleBBoxWidth,
+         .rawBBoxWidth,
+         .boundingClientRectWidth,
+         .tspanBBoxWidth,
+         .wrapProbeBBoxWidth,
+         .canvasMeasureTextWidth:
+        result.length = width
+    case .tspanBBoxHeight, .simpleBBoxHeight, .rawBBoxHeight:
+        result.length = height
+    case .createTextBBoxYOffset, .createTextMiddleBBoxYOffset:
+        result.length = -1.0
+    case .bboxX, .bboxXWithAsciiOverhang, .titleBBoxX:
+        result.bbox_left = width / 2
+        result.bbox_right = width / 2
+    case .wrappedWithRawWidth:
+        result.width = width
+        result.height = height
+        result.raw_width = width
+        result.line_count = 1
+        result.has_raw_width = 1
+    }
+    return result
 }

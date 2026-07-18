@@ -6,13 +6,13 @@
         "min_x": 50.0,
         "min_y": 10.0,
         "max_x": 782.0,
-        "max_y": 369.0
+        "max_y": 370.0
       },
       "width": 832.0,
-      "height": 379.0,
+      "height": 380.0,
       "use_max_width": true,
-      "viewport_width": 800.0,
-      "viewport_height": 600.0,
+      "container_width": 800.0,
+      "container_height": 600.0,
       "c4_type": "C4Dynamic",
       "title": "Dynamic diagram",
       "boundaries": [
@@ -22,7 +22,7 @@
           "x": 100.0,
           "y": 66.0,
           "width": 632.0,
-          "height": 253.0,
+          "height": 254.0,
           "image": {
             "width": 0.0,
             "height": 0.0,
@@ -32,14 +32,14 @@
             "text": "global",
             "y": 8.0,
             "width": 36.0,
-            "height": 17.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
-            "y": 30.0,
+            "y": 31.0,
             "width": 41.0,
-            "height": 16.0,
+            "height": 15.0,
             "line_count": 1.0
           },
           "descr": null
@@ -53,7 +53,7 @@
           "x": 150.0,
           "y": 166.0,
           "width": 216.0,
-          "height": 103.0,
+          "height": 104.0,
           "margin": 50.0,
           "image": {
             "width": 48.0,
@@ -70,8 +70,8 @@
           "label": {
             "text": "A",
             "y": 86.0,
-            "width": 13.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -102,8 +102,8 @@
           "label": {
             "text": "B",
             "y": 38.0,
-            "width": 12.0,
-            "height": 17.0,
+            "width": 10.0,
+            "height": 18.0,
             "line_count": 1.0
           },
           "ty": null,
@@ -118,19 +118,19 @@
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
-            "y": 225.142
+            "y": 225.642
           },
           "end_point": {
             "x": 466.0,
-            "y": 222.74
+            "y": 223.0
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "1: calls",
             "y": 0.0,
-            "width": 37.0,
-            "height": 14.0,
+            "width": 36.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,
@@ -142,19 +142,19 @@
           "rel_type": "birel",
           "start_point": {
             "x": 466.0,
-            "y": 222.74
+            "y": 223.0
           },
           "end_point": {
             "x": 366.0,
-            "y": 225.142
+            "y": 225.642
           },
           "offset_x": null,
           "offset_y": null,
           "label": {
             "text": "2: returns",
             "y": 0.0,
-            "width": 51.0,
-            "height": 14.0,
+            "width": 50.0,
+            "height": 13.0,
             "line_count": 1.0
           },
           "techn": null,

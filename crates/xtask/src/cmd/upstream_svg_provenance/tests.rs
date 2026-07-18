@@ -3,6 +3,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TEMP_DIR_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+const TEST_EXCLUDED_DIAGRAM: &str = "flowchart";
+const TEST_EXCLUDED_STEM: &str = "upstream_flow_text_ellipse_vertex_parser_only_spec";
+const TEST_EXCLUDED_REASON: &str =
+    "pinned Mermaid 11.16 cannot render this parser-only ellipse vertex fixture";
+
 struct TestDir(PathBuf);
 
 impl TestDir {
@@ -103,6 +108,24 @@ fn write_svg(dir: &Path, stem: &str, root_id: &str, include_marker: bool) -> Pat
     path
 }
 
+fn write_wardley_svg(dir: &Path, stem: &str, include_flow_markers: bool) -> PathBuf {
+    fs::create_dir_all(dir).expect("create Wardley SVG directory");
+    let flow_markers = if include_flow_markers {
+        format!(r#"<marker id="link-arrow-end-{stem}"/><marker id="link-arrow-start-{stem}"/>"#)
+    } else {
+        String::new()
+    };
+    let path = dir.join(format!("{stem}.svg"));
+    fs::write(
+        &path,
+        format!(
+            r#"<svg id="{stem}" aria-roledescription="wardley"><g class="wardley-map"><rect class="wardley-background"/><g class="wardley-axes"/><g class="wardley-stages"/><g class="wardley-links"/><g class="wardley-trends"/><g class="wardley-nodes"/></g><defs><marker id="arrow-{stem}"/>{flow_markers}</defs></svg>"#
+        ),
+    )
+    .expect("write Wardley SVG");
+    path
+}
+
 #[test]
 fn pinned_source_metadata_is_mermaid_11_16() {
     let source = current_source().expect("read pinned Mermaid source metadata");
@@ -127,13 +150,17 @@ fn renderer_profiles_capture_seed_and_width_variants() {
         "seeded-puppeteer-seed-1-sequence-math-settled-v1"
     );
     assert_eq!(renderer_profile("gantt"), "mmdc-default-width-1200");
+    assert_eq!(
+        renderer_profile("error"),
+        "scripted-puppeteer-error-fallback-v1"
+    );
     assert_eq!(renderer_profile("flowchart"), "mmdc-default");
 }
 
 #[test]
 fn sha256_is_stable() {
     assert_eq!(
-        hash_bytes(b"mermaid@11.16.0"),
+        sha256_hex(b"mermaid@11.16.0"),
         "7df890c8bf83c444c6ed6a3d72b6542be9d574866539c558f3147e4e895beaa2"
     );
 }
@@ -423,24 +450,24 @@ fn filtered_generation_merges_manifest_state_without_losing_other_fixtures() {
     let fixtures_dir = root.path().join("fixtures");
     let out_dir = root.path().join("upstream");
     let kept_fixture = write_fixture(&fixtures_dir, "kept");
-    let generated_fixture = write_fixture(&fixtures_dir, "newly-generated");
-    let excluded_fixture = write_fixture(&fixtures_dir, "newly-excluded_parser_only_spec");
+    let generated_fixture = write_fixture(&fixtures_dir, "upstream_generated");
+    let excluded_fixture = write_fixture(&fixtures_dir, TEST_EXCLUDED_STEM);
     let kept_svg = write_svg(&out_dir, "kept", &upstream_svg_id("kept"), true);
     let generated_svg = write_svg(
         &out_dir,
-        "newly-generated",
-        &upstream_svg_id("newly-generated"),
+        "upstream_generated",
+        &upstream_svg_id("upstream_generated"),
         true,
     );
     let excluded_svg = write_svg(
         &out_dir,
-        "newly-excluded_parser_only_spec",
-        &upstream_svg_id("newly-excluded_parser_only_spec"),
+        TEST_EXCLUDED_STEM,
+        &upstream_svg_id(TEST_EXCLUDED_STEM),
         true,
     );
     let source = current_source().expect("read pinned source");
     let environment = test_render_environment();
-    let profile = renderer_profile("sequence").to_string();
+    let profile = renderer_profile(TEST_EXCLUDED_DIAGRAM).to_string();
     let kept_entry = UpstreamSvgFixtureProvenance {
         input_sha256: hash_file(&kept_fixture).expect("hash kept fixture"),
         svg_sha256: hash_file(&kept_svg).expect("hash kept SVG"),
@@ -455,7 +482,7 @@ fn filtered_generation_merges_manifest_state_without_losing_other_fixtures() {
         .fixtures
         .insert("kept".to_string(), kept_entry.clone());
     existing.fixtures.insert(
-        "newly-excluded_parser_only_spec".to_string(),
+        TEST_EXCLUDED_STEM.to_string(),
         UpstreamSvgFixtureProvenance {
             input_sha256: hash_file(&excluded_fixture).expect("hash excluded fixture"),
             svg_sha256: hash_file(&excluded_svg).expect("hash excluded SVG"),
@@ -463,7 +490,7 @@ fn filtered_generation_merges_manifest_state_without_losing_other_fixtures() {
         },
     );
     existing.excluded.insert(
-        "newly-generated".to_string(),
+        "upstream_generated".to_string(),
         UpstreamSvgExcludedFixture {
             input_sha256: hash_file(&generated_fixture).expect("hash generated fixture"),
             reason: "old exclusion".to_string(),
@@ -473,15 +500,15 @@ fn filtered_generation_merges_manifest_state_without_losing_other_fixtures() {
     fs::remove_file(&excluded_svg).expect("stage excluded SVG deletion");
     let mut snapshots = capture_upstream_svg_fixture_selection(
         &root.path().join("staging"),
-        "sequence",
+        TEST_EXCLUDED_DIAGRAM,
         &fixtures_dir,
-        Some("newly-"),
+        Some("upstream_"),
     )
     .expect("capture filtered fixture evidence");
 
     write_upstream_svg_provenance(
         UpstreamSvgProvenanceWriteRequest {
-            diagram: "sequence",
+            diagram: TEST_EXCLUDED_DIAGRAM,
             fixtures_dir: &fixtures_dir,
             out_dir: &out_dir,
             generated_fixtures: snapshots.renderable(),
@@ -505,22 +532,18 @@ fn filtered_generation_merges_manifest_state_without_losing_other_fixtures() {
     assert_eq!(
         merged
             .fixtures
-            .get("newly-generated")
+            .get("upstream_generated")
             .map(|entry| entry.svg_sha256.as_str()),
         Some(generated_svg_sha256.as_str())
     );
-    assert!(!merged.excluded.contains_key("newly-generated"));
-    assert!(
-        !merged
-            .fixtures
-            .contains_key("newly-excluded_parser_only_spec")
-    );
+    assert!(!merged.excluded.contains_key("upstream_generated"));
+    assert!(!merged.fixtures.contains_key(TEST_EXCLUDED_STEM));
     assert_eq!(
         merged
             .excluded
-            .get("newly-excluded_parser_only_spec")
+            .get(TEST_EXCLUDED_STEM)
             .map(|entry| entry.reason.as_str()),
-        Some(PARSER_ONLY_EXCLUSION_REASON)
+        Some(TEST_EXCLUDED_REASON)
     );
     assert!(!excluded_svg.exists());
     snapshots.cleanup().expect("clean fixture snapshots");
@@ -575,7 +598,7 @@ fn fixture_snapshot_keeps_rendered_bytes_and_rejects_live_drift() {
     let fixtures_dir = root.path().join("fixtures");
     let fixture_path = write_fixture(&fixtures_dir, "only");
     let original = fs::read(&fixture_path).expect("read original fixture");
-    let original_sha256 = hash_bytes(&original);
+    let original_sha256 = sha256_hex(&original);
     let mut snapshots = capture_upstream_svg_fixture_selection(
         &root.path().join("staging"),
         "sequence",
@@ -750,24 +773,25 @@ fn post_install_live_drift_restores_the_previous_manifest() {
 #[test]
 fn excluded_fixture_validation_checks_hash_reason_and_svg_absence() {
     let root = TestDir::new("excluded-validation");
-    let fixture_path = write_fixture(root.path(), "syntax_parser_only_spec");
-    let svg_path = root.path().join("syntax_parser_only_spec.svg");
-    let expected_reason = upstream_svg_fixture_exclusion_reason("sequence", &fixture_path)
-        .expect("evaluate exclusion")
-        .expect("parser-only fixture is excluded");
+    let fixture_path = write_fixture(root.path(), TEST_EXCLUDED_STEM);
+    let svg_path = root.path().join(format!("{TEST_EXCLUDED_STEM}.svg"));
+    let expected_reason =
+        upstream_svg_fixture_exclusion_reason(TEST_EXCLUDED_DIAGRAM, &fixture_path)
+            .expect("evaluate exclusion")
+            .expect("parser-only fixture is excluded");
     let mut manifest = UpstreamSvgManifest::empty(
         test_source(),
         UpstreamSvgAttestation::generated(test_render_environment()),
     );
     manifest.excluded.insert(
-        "syntax_parser_only_spec".to_string(),
+        TEST_EXCLUDED_STEM.to_string(),
         UpstreamSvgExcludedFixture {
             input_sha256: hash_file(&fixture_path).expect("hash excluded fixture"),
             reason: expected_reason.clone(),
         },
     );
     let mut validator = UpstreamSvgProvenanceValidator {
-        diagram: "sequence".to_string(),
+        diagram: TEST_EXCLUDED_DIAGRAM.to_string(),
         manifest,
     };
     validator
@@ -786,7 +810,7 @@ fn excluded_fixture_validation_checks_hash_reason_and_svg_absence() {
     validator
         .manifest
         .excluded
-        .get_mut("syntax_parser_only_spec")
+        .get_mut(TEST_EXCLUDED_STEM)
         .expect("excluded entry")
         .reason = "stale reason".to_string();
     let reason_error = validator
@@ -796,7 +820,7 @@ fn excluded_fixture_validation_checks_hash_reason_and_svg_absence() {
     validator
         .manifest
         .excluded
-        .get_mut("syntax_parser_only_spec")
+        .get_mut(TEST_EXCLUDED_STEM)
         .expect("excluded entry")
         .reason = expected_reason.clone();
 
@@ -911,6 +935,19 @@ fn complete_adoption_requires_the_1116_global_style_marker() {
 }
 
 #[test]
+fn wardley_uses_its_source_backed_1116_structure_instead_of_a_global_style_marker() {
+    let root = TestDir::new("wardley-structure");
+    let valid = write_wardley_svg(root.path(), "wardley-valid", true);
+    validate_mermaid_1116_svg("wardley", "wardley-valid", &valid)
+        .expect("complete Wardley 11.16 structure is valid without a global style node");
+
+    let incomplete = write_wardley_svg(root.path(), "wardley-incomplete", false);
+    let err = validate_mermaid_1116_svg("wardley", "wardley-incomplete", &incomplete)
+        .expect_err("Wardley provenance still requires its complete renderer signature");
+    assert!(err.to_string().contains("Wardley marker"), "{err}");
+}
+
+#[test]
 fn complete_adoption_requires_the_expected_svg_root_id() {
     let root = TestDir::new("wrong-root-id");
     let fixtures_dir = root.path().join("fixtures");
@@ -936,11 +973,11 @@ fn complete_adoption_records_parser_only_fixtures_as_explicit_exclusions() {
     let fixtures_dir = root.path().join("fixtures");
     let upstream_dir = root.path().join("upstream");
     write_fixture(&fixtures_dir, "basic");
-    write_fixture(&fixtures_dir, "syntax_parser_only_spec");
+    write_fixture(&fixtures_dir, TEST_EXCLUDED_STEM);
     write_svg(&upstream_dir, "basic", "basic", true);
 
     let manifest = build_complete_manifest_with_source(
-        "probe",
+        TEST_EXCLUDED_DIAGRAM,
         &fixtures_dir,
         &upstream_dir,
         test_source(),
@@ -955,7 +992,7 @@ fn complete_adoption_records_parser_only_fixtures_as_explicit_exclusions() {
     );
     assert_eq!(manifest.fixtures.len(), 1);
     assert!(manifest.fixtures.contains_key("basic"));
-    assert!(manifest.excluded.contains_key("syntax_parser_only_spec"));
+    assert!(manifest.excluded.contains_key(TEST_EXCLUDED_STEM));
 }
 
 #[test]
@@ -964,17 +1001,12 @@ fn complete_adoption_rejects_an_svg_for_an_excluded_fixture() {
     let fixtures_dir = root.path().join("fixtures");
     let upstream_dir = root.path().join("upstream");
     write_fixture(&fixtures_dir, "basic");
-    write_fixture(&fixtures_dir, "syntax_parser_only_spec");
+    write_fixture(&fixtures_dir, TEST_EXCLUDED_STEM);
     write_svg(&upstream_dir, "basic", "basic", true);
-    write_svg(
-        &upstream_dir,
-        "syntax_parser_only_spec",
-        "syntax_parser_only_spec",
-        true,
-    );
+    write_svg(&upstream_dir, TEST_EXCLUDED_STEM, TEST_EXCLUDED_STEM, true);
 
     let err = build_complete_manifest_with_source(
-        "probe",
+        TEST_EXCLUDED_DIAGRAM,
         &fixtures_dir,
         &upstream_dir,
         test_source(),
@@ -988,13 +1020,20 @@ fn complete_adoption_rejects_an_svg_for_an_excluded_fixture() {
 #[test]
 fn parser_only_fixture_uses_the_shared_generation_exclusion_policy() {
     let root = TestDir::new("parser-only-policy");
-    let fixture = write_fixture(root.path(), "syntax_parser_only_spec");
+    let fixture = write_fixture(root.path(), TEST_EXCLUDED_STEM);
 
-    let reason = upstream_svg_fixture_exclusion_reason("probe", &fixture)
+    let reason = upstream_svg_fixture_exclusion_reason(TEST_EXCLUDED_DIAGRAM, &fixture)
         .expect("evaluate fixture exclusion")
         .expect("parser-only fixture must be excluded");
 
-    assert_eq!(reason, PARSER_ONLY_EXCLUSION_REASON);
+    assert_eq!(reason, TEST_EXCLUDED_REASON);
+
+    let fake = write_fixture(root.path(), "new_parser_only_spec");
+    assert_eq!(
+        upstream_svg_fixture_exclusion_reason(TEST_EXCLUDED_DIAGRAM, &fake)
+            .expect("evaluate fake exclusion"),
+        None
+    );
 }
 
 #[test]
@@ -1027,19 +1066,14 @@ fn full_generation_deletions_remove_excluded_and_orphan_svg_outputs() {
     let fixtures_dir = root.path().join("fixtures");
     let upstream_dir = root.path().join("upstream");
     write_fixture(&fixtures_dir, "current");
-    write_fixture(&fixtures_dir, "excluded_parser_only_spec");
+    write_fixture(&fixtures_dir, TEST_EXCLUDED_STEM);
     let current_svg = write_svg(&upstream_dir, "current", "current", true);
-    let excluded_svg = write_svg(
-        &upstream_dir,
-        "excluded_parser_only_spec",
-        "excluded_parser_only_spec",
-        true,
-    );
+    let excluded_svg = write_svg(&upstream_dir, TEST_EXCLUDED_STEM, TEST_EXCLUDED_STEM, true);
     let orphan_svg = write_svg(&upstream_dir, "renamed-away", "renamed-away", true);
     fs::write(upstream_dir.join("notes.txt"), "keep").expect("write unrelated output");
     let mut snapshots = capture_upstream_svg_fixture_selection(
         &root.path().join("staging"),
-        "probe",
+        TEST_EXCLUDED_DIAGRAM,
         &fixtures_dir,
         None,
     )

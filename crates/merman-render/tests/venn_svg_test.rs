@@ -41,6 +41,23 @@ fn render_typed_venn(input: &str) -> (VennDiagramLayout, String) {
     (layout, svg)
 }
 
+fn find_venn_area<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    sets: &str,
+    class: &str,
+) -> roxmltree::Node<'a, 'input> {
+    document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g")
+                && node.attribute("data-venn-sets") == Some(sets)
+                && node
+                    .attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|item| item == class))
+        })
+        .unwrap_or_else(|| panic!("Venn area `{sets}` with class `{class}`"))
+}
+
 #[test]
 fn venn_typed_render_model_outputs_classic_svg_structure() {
     let input = r##"venn-beta
@@ -142,4 +159,132 @@ union A,B
     assert_eq!(layout.areas.len(), 3);
     assert!(svg.contains(r#"aria-roledescription="venn""#));
     assert!(svg.contains(r#"class="venn-area venn-circle venn-set-0""#));
+}
+
+#[test]
+fn venn_hand_drawn_replaces_styled_areas_with_seeded_rough_paths() {
+    let input = r##"---
+config:
+  look: handDrawn
+  handDrawnSeed: 1
+---
+venn-beta
+set A
+set B
+union A,B
+style A fill:#ff6b6b,stroke:#202020,stroke-width:7
+style A,B fill:#ffe66d,color:#003333
+"##;
+
+    let (_, svg) = render_typed_venn(input);
+    let document = roxmltree::Document::parse(&svg).expect("valid Venn SVG");
+    let circle_a = find_venn_area(&document, "A", "venn-circle");
+    let circle_a_children: Vec<_> = circle_a
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    assert_eq!(circle_a_children.len(), 2);
+    assert!(circle_a_children[0].has_tag_name("g"));
+    assert!(circle_a_children[1].has_tag_name("text"));
+
+    let circle_a_paths: Vec<_> = circle_a_children[0]
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    assert_eq!(circle_a_paths.len(), 2);
+    assert!(circle_a_paths.iter().all(|path| path.has_tag_name("path")));
+    assert_eq!(
+        circle_a_paths[0].attribute("stroke"),
+        Some("rgba(255, 107, 107, 0.3)")
+    );
+    assert_eq!(circle_a_paths[0].attribute("stroke-width"), Some("2"));
+    assert_eq!(circle_a_paths[0].attribute("fill"), Some("none"));
+    assert_eq!(circle_a_paths[1].attribute("stroke"), Some("#202020"));
+    assert_eq!(circle_a_paths[1].attribute("stroke-width"), Some("7"));
+    assert_eq!(circle_a_paths[1].attribute("fill"), Some("none"));
+
+    let circle_b = find_venn_area(&document, "B", "venn-circle");
+    let circle_b_fill_d = circle_b
+        .children()
+        .find(roxmltree::Node::is_element)
+        .and_then(|rough_group| rough_group.children().find(roxmltree::Node::is_element))
+        .and_then(|path| path.attribute("d"))
+        .expect("set B rough fill path");
+    assert_ne!(circle_a_paths[0].attribute("d"), Some(circle_b_fill_d));
+
+    let intersection = find_venn_area(&document, "A_B", "venn-intersection");
+    let intersection_children: Vec<_> = intersection
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    assert_eq!(intersection_children.len(), 2);
+    assert!(intersection_children[0].has_tag_name("g"));
+    assert!(intersection_children[1].has_tag_name("text"));
+    let intersection_paths: Vec<_> = intersection_children[0]
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+    assert_eq!(intersection_paths.len(), 1);
+    assert_eq!(
+        intersection_paths[0].attribute("stroke"),
+        Some("rgba(255, 230, 109, 0.7)")
+    );
+    assert_eq!(intersection_paths[0].attribute("stroke-width"), Some("2"));
+    assert_eq!(intersection_paths[0].attribute("fill"), Some("none"));
+
+    let (_, repeated_svg) = render_typed_venn(input);
+    assert_eq!(svg, repeated_svg);
+
+    let (_, other_seed_svg) =
+        render_typed_venn(&input.replace("handDrawnSeed: 1", "handDrawnSeed: 2"));
+    let other_seed_document =
+        roxmltree::Document::parse(&other_seed_svg).expect("valid Venn SVG for another seed");
+    let other_seed_circle_a_fill_d = find_venn_area(&other_seed_document, "A", "venn-circle")
+        .children()
+        .find(roxmltree::Node::is_element)
+        .and_then(|rough_group| rough_group.children().find(roxmltree::Node::is_element))
+        .and_then(|path| path.attribute("d"))
+        .expect("set A rough fill path for another seed");
+    assert_ne!(
+        circle_a_paths[0].attribute("d"),
+        Some(other_seed_circle_a_fill_d)
+    );
+}
+
+#[test]
+fn venn_hand_drawn_keeps_unstyled_intersection_path_transparent() {
+    let input = r##"---
+config:
+  look: handDrawn
+  handDrawnSeed: 1
+---
+venn-beta
+set A
+set B
+union A,B
+"##;
+
+    let (_, svg) = render_typed_venn(input);
+    let document = roxmltree::Document::parse(&svg).expect("valid Venn SVG");
+    let circle_a = find_venn_area(&document, "A", "venn-circle");
+    let circle_a_fill = circle_a
+        .children()
+        .find(roxmltree::Node::is_element)
+        .and_then(|rough_group| rough_group.children().find(roxmltree::Node::is_element))
+        .expect("set A rough fill path");
+    assert_eq!(
+        circle_a_fill.attribute("stroke"),
+        Some("hsla(240, 100%, 66.2745098039%, 0.30000000000000004)")
+    );
+
+    let intersection = find_venn_area(&document, "A_B", "venn-intersection");
+    let children: Vec<_> = intersection
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect();
+
+    assert_eq!(children.len(), 2);
+    assert!(children[0].has_tag_name("path"));
+    assert_eq!(children[0].attribute("style"), Some("fill-opacity: 0;"));
+    assert!(children[1].has_tag_name("text"));
 }

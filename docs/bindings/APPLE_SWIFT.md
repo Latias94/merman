@@ -58,13 +58,21 @@ let familyCapabilities = try engine.diagramFamilyCapabilities()
 let lintRules = try engine.lintRuleCatalog()
 ```
 
-The wrapper checks native ABI version and struct sizes on initialization. Native error payloads are
-mapped to `MermanError.binding`. `MermanReusableEngine` exposes repeated
+The wrapper targets C ABI 2 and checks native ABI version and struct sizes on initialization.
+Native error payloads are mapped to `MermanError.binding`. `MermanReusableEngine` exposes repeated
 render/parse/layout/analysis/document-analysis/validation calls and `MermanTextMeasureCallback`
 aliases for hosts that need font-aware text measurement. The document-analysis raw JSON APIs use the
 same full-document source plus URI contract as the C ABI and the other platform wrappers.
 `MermanEngine.lintRuleCatalog()` returns governed analyzer rule metadata, including evidence
 references, for editor settings, diagnostic explanations, and LSP rule configuration UI.
+ABI 2 exposes 19 operation codes, contiguously numbered 0 through 18, through the typed
+`MermanTextMeasurementOperation` enum and its `requiredResultKind` property. Mermaid's aggregate
+text-dimensions operation requires
+metrics, canvas width requires a length, and `.createTextBBoxYOffset` plus
+`.createTextMiddleBBoxYOffset` preserve signed lengths. The middle operation measures Architecture
+createText under inherited `dominant-baseline="middle"` and cannot reuse the ordinary createText
+y-offset. `.rawBBoxHeight` measures the non-negative height from a direct raw SVG
+`<text>.getBBox()` probe. The complete mapping is documented in `HOST_TEXT_MEASUREMENT.md`.
 
 ## Text Measurement Guidance
 
@@ -88,6 +96,9 @@ checklist.
 bash scripts/build-apple-xcframework.sh
 swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 ```
+
+The smoke checks ABI 2, the contiguous 0 through 18 operation range, C constant parity, and distinct
+signed results for `.createTextBBoxYOffset` and `.createTextMiddleBBoxYOffset`.
 
 ## Verification Status
 

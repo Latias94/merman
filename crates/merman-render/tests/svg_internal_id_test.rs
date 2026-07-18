@@ -1,4 +1,4 @@
-use merman_core::{Engine, ParseOptions};
+use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -24,8 +24,16 @@ fn render_svg_from_text_with_environment(
     options: &SvgRenderOptions,
     environment: &RenderEnvironment,
 ) -> String {
+    render_svg_from_text_with_engine_and_environment(text, options, &Engine::new(), environment)
+}
+
+fn render_svg_from_text_with_engine_and_environment(
+    text: &str,
+    options: &SvgRenderOptions,
+    engine: &Engine,
+    environment: &RenderEnvironment,
+) -> String {
     let session = environment.begin_session().unwrap();
-    let engine = Engine::new();
     let parsed = futures::executor::block_on(
         engine.parse_diagram_for_render_model(text, ParseOptions::default()),
     )
@@ -248,9 +256,22 @@ fn tree_view_iconify_internal_ids_are_scoped_per_symbol_and_deterministic() {
         ..SvgRenderOptions::default()
     };
     let input = "treeView-beta\nRoot\n    One icon(foo:bar-baz)\n    Two icon(foo-bar:baz)\n    Three icon(foo:bar-baz-2)\n";
+    let loose_engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({ "securityLevel": "loose" }),
+    ));
 
-    let svg = render_svg_from_text_with_environment(input, &options, &environment);
-    let repeated_svg = render_svg_from_text_with_environment(input, &options, &environment);
+    let svg = render_svg_from_text_with_engine_and_environment(
+        input,
+        &options,
+        &loose_engine,
+        &environment,
+    );
+    let repeated_svg = render_svg_from_text_with_engine_and_environment(
+        input,
+        &options,
+        &loose_engine,
+        &environment,
+    );
 
     assert_eq!(svg, repeated_svg);
     assert!(!svg.contains(r#"id="none""#), "{svg}");

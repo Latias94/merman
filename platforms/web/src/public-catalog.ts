@@ -1,3 +1,7 @@
+import { SUPPORTED_DIAGRAMS } from "./generated/diagram-catalog.js";
+
+export { SUPPORTED_DIAGRAMS };
+
 export const SUPPORTED_THEMES = [
   "default",
   "base",
@@ -25,39 +29,6 @@ export const SUPPORTED_HOST_THEME_PRESETS = [
 ] as const;
 
 export type HostThemePresetName = (typeof SUPPORTED_HOST_THEME_PRESETS)[number];
-
-export const SUPPORTED_DIAGRAMS = [
-  "architecture",
-  "block",
-  "c4",
-  "class",
-  "cynefin",
-  "er",
-  "flowchart",
-  "gantt",
-  "gitgraph",
-  "info",
-  "journey",
-  "kanban",
-  "mindmap",
-  "packet",
-  "pie",
-  "quadrantchart",
-  "radar",
-  "railroad",
-  "railroadAbnf",
-  "railroadEbnf",
-  "railroadPeg",
-  "requirement",
-  "sankey",
-  "sequence",
-  "state",
-  "timeline",
-  "treemap",
-  "venn",
-  "xychart",
-  "zenuml",
-] as const;
 
 export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
 
@@ -139,9 +110,16 @@ export type RegistryProfile = "full" | "tiny";
 
 export interface DiagramFamilyCapability {
   diagram_type: string;
+  logical_family_kind: string;
   metadata_id: DiagramType | null;
+  render_model_kind: string | null;
+  has_detector: boolean;
   has_semantic_parser: boolean;
+  has_editor_parser: boolean;
+  has_combined_parser: boolean;
   has_render_parser: boolean;
+  has_header: boolean;
+  config_namespace: string | null;
 }
 
 export type LintRuleSeverity = "error" | "warning" | "info" | "hint";

@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_string};
+use crate::config::{config_bool, config_f64, config_font_family_css, config_string};
 use crate::theme::PresentationTheme;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -44,6 +44,7 @@ impl<'a> TreeViewConfigView<'a> {
             use_max_width: self
                 .tree_view_bool("useMaxWidth")
                 .unwrap_or(DEFAULT_USE_MAX_WIDTH),
+            font_family: config_font_family_css(self.effective_config),
             label_font_size: theme.label_font_size,
             show_icons: self.tree_view_bool("showIcons").unwrap_or(false),
             default_icon_pack: self.tree_view_string("defaultIconPack").unwrap_or_default(),
@@ -87,6 +88,7 @@ pub(crate) struct TreeViewLayoutSettings {
     pub(crate) padding_y: f64,
     pub(crate) line_thickness: f64,
     pub(crate) use_max_width: bool,
+    pub(crate) font_family: String,
     pub(crate) label_font_size: f64,
     pub(crate) show_icons: bool,
     pub(crate) default_icon_pack: String,
@@ -109,6 +111,10 @@ mod tests {
         assert_eq!(settings.padding_y, DEFAULT_PADDING_Y);
         assert_eq!(settings.line_thickness, DEFAULT_LINE_THICKNESS);
         assert!(settings.use_max_width);
+        assert_eq!(
+            settings.font_family,
+            "\"trebuchet ms\",verdana,arial,sans-serif"
+        );
         assert_eq!(settings.label_font_size, 16.0);
         assert!(!settings.show_icons);
         assert_eq!(settings.default_icon_pack, "");

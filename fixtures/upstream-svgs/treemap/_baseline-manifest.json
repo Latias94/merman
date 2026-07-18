@@ -286,10 +286,5 @@
       "renderer_profile": "mmdc-default"
     }
   },
-  "excluded": {
-    "upstream_treemap_classdef_and_css_compiled_styles_db_parser_only_": {
-      "input_sha256": "c05c8ed2b9e0edfbfdd207413608219f71cb1a94e2a4dfe9d6d0899b05f7f4a3",
-      "reason": "parser-only fixture is intentionally excluded from upstream SVG baselines"
-    }
-  }
+  "excluded": {}
 }

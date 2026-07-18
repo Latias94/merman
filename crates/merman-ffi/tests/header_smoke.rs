@@ -14,7 +14,7 @@ fn header_smoke() {
         r#"
 #include "merman.h"
 
-#if MERMAN_ABI_VERSION != 3
+#if MERMAN_ABI_VERSION != 2
 #error "unexpected merman ABI version"
 #endif
 
@@ -23,7 +23,7 @@ int merman_header_smoke(void) {
     MermanResult result = {MERMAN_OK, buffer};
     MermanEngineResult engine_result = {MERMAN_OK, 0, buffer};
     MermanHostTextMeasureRequest measure_request = {0};
-    MermanHostTextMeasureResult measure_result = {0, 0.0, 0.0, 0};
+    MermanHostTextMeasureResult measure_result = {0};
     uint32_t (*abi_version)(void) = &merman_abi_version;
     const char* (*package_version)(void) = &merman_package_version;
     size_t (*buffer_struct_size)(void) = &merman_buffer_struct_size;
@@ -65,6 +65,8 @@ int merman_header_smoke(void) {
     measure_request.direction = MERMAN_TEXT_DIRECTION_AUTO;
     measure_request.white_space = MERMAN_TEXT_WHITE_SPACE_NOWRAP;
     measure_request.phase = MERMAN_TEXT_MEASUREMENT_PHASE_LAYOUT;
+    measure_request.operation = MERMAN_TEXT_MEASUREMENT_OPERATION_MEASURE;
+    measure_result.result_kind = MERMAN_TEXT_MEASUREMENT_RESULT_KIND_METRICS;
     if (MERMAN_WRAP_MODE_HTML_LIKE != 2) {
         return 10;
     }
@@ -77,8 +79,29 @@ int merman_header_smoke(void) {
     if (MERMAN_RESOURCE_LIMIT_EXCEEDED != 10) {
         return 13;
     }
-    if (MERMAN_TEXT_MEASUREMENT_PHASE_VISIBILITY != 4) {
+    if (MERMAN_TEXT_MEASUREMENT_OPERATION_WRAPPED_WITH_RAW_WIDTH != 12) {
         return 14;
+    }
+    if (MERMAN_TEXT_MEASUREMENT_OPERATION_BOUNDING_CLIENT_RECT_WIDTH != 13) {
+        return 15;
+    }
+    if (MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_BBOX_Y_OFFSET != 14) {
+        return 16;
+    }
+    if (MERMAN_TEXT_MEASUREMENT_OPERATION_MERMAID_CALCULATE_TEXT_DIMENSIONS != 15) {
+        return 17;
+    }
+    if (MERMAN_TEXT_MEASUREMENT_OPERATION_CANVAS_MEASURE_TEXT_WIDTH != 16) {
+        return 18;
+    }
+    if (MERMAN_TEXT_MEASUREMENT_OPERATION_CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET != 17) {
+        return 19;
+    }
+    if (MERMAN_TEXT_MEASUREMENT_OPERATION_RAW_BBOX_HEIGHT != 18) {
+        return 20;
+    }
+    if (MERMAN_TEXT_MEASUREMENT_RESULT_KIND_WRAPPED_WITH_RAW_WIDTH != 3) {
+        return 21;
     }
     (void)abi_version;
     (void)package_version;

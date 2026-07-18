@@ -510,6 +510,8 @@ fn mindmap_typed_render_model_projects_exact_compatibility_json() {
     assert_eq!(projected["rootNode"]["class"], "root-class");
     assert_eq!(projected["rootNode"]["children"][0]["padding"], 20);
     assert_eq!(projected["rootNode"]["children"][0]["icon"], "bomb");
+    assert_eq!(projected["nodes"][0]["labelType"], "markdown");
+    assert_eq!(projected["nodes"][1]["labelType"], "markdown");
     assert_eq!(projected["nodes"][2]["labelType"], "markdown");
 }
 

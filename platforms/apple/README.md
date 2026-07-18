@@ -70,6 +70,17 @@ hosts.
 For repeated calls or host font measurement, use `MermanReusableEngine` and install a
 `MermanTextMeasureCallback`. Unsupported measurement requests can return `handled = 0` to fall
 back to merman's vendored metrics for that request.
+For handled ABI 2 results, set `result_kind` to the shape required by `request.operation` and fill
+only that shape's metrics, `length`, extents, or wrapped/raw fields. Wrong-kind results are invalid
+and fall back instead of being inferred from zero-initialized fields.
+The typed `MermanTextMeasurementOperation` mirrors all ABI codes and exposes each operation's
+`requiredResultKind`. ABI 2 exposes 19 exact operations with contiguous codes `0...18`.
+`.rawBBoxHeight` (18) measures the height from a direct SVG `<text>.getBBox()` probe and returns a
+non-negative length. `.createTextMiddleBBoxYOffset` (17) returns a signed length for Architecture's
+`createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
+`.createTextBBoxYOffset` remains the ordinary createText probe; it
+cannot substitute for the middle-baseline operation, and both y-offset operations may return a
+finite negative value.
 Raw document-analysis helpers are available on both `MermanEngine` and `MermanReusableEngine`:
 `analyzeDocumentJsonRaw(source, uri:)` and `analyzeDocumentFactsJsonRaw(source, uri:)`. Pass the
 full Markdown/MDX-like document text and URI to match the C ABI and other platform wrappers.
@@ -98,7 +109,9 @@ swift run --package-path platforms/apple/examples/smoke MermanAppleSmoke
 ```
 
 The example lives in `platforms/apple/examples/smoke` and exercises SVG, ASCII, semantic JSON,
-layout JSON, validation, and metadata through the Swift wrapper.
+layout JSON, validation, and metadata through the Swift wrapper. It also checks ABI 2, all 19
+operation codes, C constant parity, the raw bbox height result, and the distinct signed
+middle-baseline createText y-offset.
 
 Release builds upload a zipped `Merman.xcframework` and checksum to GitHub Releases. Release
 workflows do not move or force-update release tags. Direct remote SwiftPM consumption through

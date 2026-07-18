@@ -1,7 +1,10 @@
+#![cfg(feature = "cytoscape-layout")]
+
 use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use merman_render::LayoutOptions;
 use merman_render::architecture::layout_architecture_diagram_typed;
 use merman_render::environment::{RenderEnvironment, TextMeasurementPhase};
+use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
 
 fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
@@ -14,14 +17,12 @@ fn layout_architecture(text: &str) -> ArchitectureDiagramLayout {
     let RenderSemanticModel::Architecture(model) = &parsed.model else {
         panic!("expected architecture render model");
     };
-    let options = LayoutOptions::headless_svg_defaults();
     let measurer = session.text_measurer(TextMeasurementPhase::Layout);
 
     layout_architecture_diagram_typed(
         model,
         parsed.meta.effective_config.as_value(),
         &measurer,
-        options.use_manatee_layout,
         session.seed().seed().get(),
     )
     .expect("layout ok")
@@ -130,6 +131,43 @@ fn disconnected_diagram() -> &'static str {
 }
 
 #[test]
+fn architecture_default_layout_options_execute_fcose_layout() {
+    let session = RenderEnvironment::parity().begin_session().unwrap();
+    let engine = Engine::new();
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(chain_diagram(), ParseOptions::strict())
+        .expect("parse ok")
+        .expect("diagram detected");
+
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).expect("layout ok");
+    let json = artifact.layout_json().expect("serialize layout");
+    let layout: ArchitectureDiagramLayout =
+        serde_json::from_value(json["layout"]["ArchitectureDiagram"].clone())
+            .expect("architecture layout projection");
+
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .any(|node| node.x.abs() > f64::EPSILON || node.y.abs() > f64::EPSILON),
+        "default options must execute FCoSE instead of leaving every node at the origin"
+    );
+    for (index, left) in layout.nodes.iter().enumerate() {
+        for right in &layout.nodes[index + 1..] {
+            let overlaps = left.x < right.x + right.width
+                && right.x < left.x + left.width
+                && left.y < right.y + right.height
+                && right.y < left.y + left.height;
+            assert!(
+                !overlaps,
+                "default FCoSE layout must separate {} and {}",
+                left.id, right.id
+            );
+        }
+    }
+}
+
+#[test]
 fn architecture_parse_for_render_model_handles_deep_group_chain() {
     const DEPTH: usize = 64;
     let source = deep_group_chain_diagram(DEPTH);
@@ -220,11 +258,7 @@ fn architecture_layout_exposes_cytoscape_service_child_bounds_by_service_id() {
         metrics.text_width,
         metrics.half_width
     );
-    assert!(
-        metrics.applied_scale >= 1.0,
-        "expected service label metric scale to be recorded, got {:.3}",
-        metrics.applied_scale
-    );
+    assert_eq!(metrics.half_width, metrics.text_width / 2.0);
     let (width, height) = cytoscape_service_union_size(&layout, "gateway");
     assert!(
         width > 80.0 && height > 80.0,
@@ -304,4 +338,28 @@ fn architecture_edge_elasticity_changes_same_group_layout() {
         position_signature(&stiff),
         "expected edgeElasticity to affect same-group Architecture FCoSE layout"
     );
+}
+
+#[test]
+fn architecture_fcose_rerun_resets_repulsion_deduplication_scratch() {
+    let layout = layout_architecture(include_str!(
+        "../../../fixtures/architecture/stress_architecture_many_small_groups_025.mmd"
+    ));
+    let min_x = layout
+        .nodes
+        .iter()
+        .map(|node| node.x)
+        .fold(f64::INFINITY, f64::min);
+    let max_x = layout
+        .nodes
+        .iter()
+        .map(|node| node.x)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    // The bundled Mermaid 11.16 SVG places the outer services at
+    // x=-277.2026220743501 and x=277.2026220743501. Reusing the first run's FR-grid
+    // visit markers in the second run silently drops compound repulsion pairs and
+    // contracts this span by about 135px.
+    let span_millipixels = ((max_x - min_x) * 1000.0).round() as i64;
+    assert_eq!(span_millipixels, 554_405);
 }

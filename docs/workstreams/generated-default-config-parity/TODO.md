@@ -3,6 +3,9 @@
 Status: Closed
 Last updated: 2026-05-31
 
+> Historical closeout record. ADR-0019's Mermaid 11.16 value/shape/security-policy split superseded
+> the GDC-030 override-manifest implementation on 2026-07-16.
+
 ## M0 - Scope And Evidence Freeze
 
 - [x] GDC-010 [owner=planner] [deps=none] [scope=docs/workstreams/generated-default-config-parity]

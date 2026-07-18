@@ -3,6 +3,9 @@
 Status: Closed
 Last updated: 2026-06-06
 
+> Archive note: override budgets and `report-overrides` commands below are evidence from the closed
+> 0.7 lane. Production fixture/root/text/SVG overrides and their tooling were removed under ADR-0062.
+
 ## Smallest Current Repro
 
 The latest completed slice is M07A-120 closeout:

@@ -2,6 +2,12 @@
 
 Date: 2026-01-19
 
+## Status
+
+Superseded by ADR-0057 and ADR-0062 on 2026-07-15. The historical C4 complete-text pinning
+described below is no longer a production mechanism; current vendored data is limited to
+generalized Mermaid 11.16 font and DOM-shape facts.
+
 ## Context
 
 Mermaid measures SVG text using the browser rendering engine:

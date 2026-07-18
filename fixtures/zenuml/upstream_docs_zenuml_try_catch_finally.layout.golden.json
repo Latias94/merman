@@ -30,7 +30,7 @@
         {
           "id": "actor-bottom-Consumer",
           "x": 75.0,
-          "y": 438.5,
+          "y": 446.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -38,7 +38,7 @@
         {
           "id": "actor-bottom-API",
           "x": 275.0,
-          "y": 438.5,
+          "y": 446.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -46,7 +46,7 @@
         {
           "id": "actor-bottom-BookingService",
           "x": 489.0,
-          "y": 438.5,
+          "y": 446.5,
           "width": 150.0,
           "height": 65.0,
           "is_cluster": false
@@ -62,18 +62,18 @@
           "points": [
             {
               "x": 76.0,
-              "y": 154.0
+              "y": 156.0
             },
             {
               "x": 271.0,
-              "y": 154.0
+              "y": 156.0
             }
           ],
           "label": {
             "x": 174.0,
             "y": 125.0,
-            "width": 103.0,
-            "height": 17.0
+            "width": 102.56,
+            "height": 17.6
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -92,18 +92,18 @@
           "points": [
             {
               "x": 276.0,
-              "y": 198.0
+              "y": 202.0
             },
             {
               "x": 485.0,
-              "y": 198.0
+              "y": 202.0
             }
           ],
           "label": {
             "x": 381.0,
-            "y": 169.0,
-            "width": 144.0,
-            "height": 17.0
+            "y": 171.0,
+            "width": 143.52,
+            "height": 17.6
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -122,18 +122,18 @@
           "points": [
             {
               "x": 274.0,
-              "y": 287.0
+              "y": 293.0
             },
             {
               "x": 79.0,
-              "y": 287.0
+              "y": 293.0
             }
           ],
           "label": {
             "x": 177.0,
-            "y": 258.0,
-            "width": 82.0,
-            "height": 17.0
+            "y": 262.0,
+            "width": 81.76,
+            "height": 17.6
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -152,18 +152,18 @@
           "points": [
             {
               "x": 276.0,
-              "y": 376.0
+              "y": 384.0
             },
             {
               "x": 485.0,
-              "y": 376.0
+              "y": 384.0
             }
           ],
           "label": {
             "x": 381.0,
-            "y": 347.0,
-            "width": 99.0,
-            "height": 17.0
+            "y": 353.0,
+            "width": 98.72,
+            "height": 17.6
           },
           "start_label_left": null,
           "start_label_right": null,
@@ -186,7 +186,7 @@
             },
             {
               "x": 75.0,
-              "y": 406.0
+              "y": 414.0
             }
           ],
           "label": null,
@@ -211,7 +211,7 @@
             },
             {
               "x": 275.0,
-              "y": 406.0
+              "y": 414.0
             }
           ],
           "label": null,
@@ -236,7 +236,7 @@
             },
             {
               "x": 489.0,
-              "y": 406.0
+              "y": 414.0
             }
           ],
           "label": null,
@@ -254,7 +254,7 @@
         "min_x": -50.0,
         "min_y": -10.0,
         "max_x": 614.0,
-        "max_y": 482.0
+        "max_y": 490.0
       }
     }
   }

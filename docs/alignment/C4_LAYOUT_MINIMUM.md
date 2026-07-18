@@ -1,34 +1,41 @@
-# C4 Layout Minimum Slice (Phase 1)
+# C4 Layout Minimum Contract
 
-Baseline: Mermaid `@11.12.3`.
+Baseline: pinned Mermaid `@11.16.0`.
 
-This document defines the initial, test-driven minimum slice for **headless layout** of C4
-diagrams in `merman-render`.
+This document defines the minimum compatibility contract for **headless layout** of C4 diagrams in
+`merman-render`.
 
-Scope: geometry only (no SVG rendering yet). The goal is to match Mermaid’s layout math in
-`packages/mermaid/src/diagrams/c4/c4Renderer.js`.
+Scope: typed geometry and compatibility layout snapshots. The goal is to match the pinned Mermaid
+layout math in `packages/mermaid/src/diagrams/c4/c4Renderer.js`; SVG root emission is owned by the
+shared Root Viewport protocol.
 
 ## Target behavior
 
-- Boundary and shape placement follows Mermaid’s `Bounds.insert(...)` algorithm:
+- Boundary and shape placement follows Mermaid's `Bounds.insert(...)` algorithm:
   - row wrapping is controlled by both `c4ShapeInRow` and `widthLimit` (`>=` comparisons).
   - the initial placement in a row uses `margin` (not `margin * 2`), subsequent placements use
     `margin * 2`.
   - `bumpLastMargin(c4ShapeMargin)` is applied after drawing a non-empty shape array.
-- Boundary recursion follows Mermaid’s `drawInsideBoundary(...)`:
+- Boundary recursion follows Mermaid's `drawInsideBoundary(...)`:
   - child boundary `widthLimit = parent.widthLimit / min(c4BoundaryInRow, childCount)`.
   - the per-boundary `setData(...)` uses `diagramMarginX/Y` and the boundary’s header text height
     (`Y` accumulator) to offset the inner content.
 
-## Viewport-dependent width
+## Container-dependent width
 
-Mermaid’s C4 renderer uses `screen.availWidth` as the root `widthLimit`.
+Pinned Mermaid uses `screen.availWidth` as the root C4 `widthLimit`.
 
-In a headless Rust context there is no DOM/screen; for determinism and upstream parity with the
-Mermaid CLI default, `merman-render` uses a **configurable viewport width** (default `800px`,
-matching `@mermaid-js/mermaid-cli`’s default `-w 800`).
+In a headless Rust context there is no DOM or `screen`. The operation supplies
+`LayoutOptions::container_width` and `LayoutOptions::container_height`, which default to `800px` and
+`600px`. C4 maps `container_width` to Mermaid's root `widthLimit` and carries both container
+dimensions in compatibility layout output. Binding callers set the same values through
+`layout.container_width` and `layout.container_height`.
 
-## Required layout snapshot fields (Phase 1)
+This is a breaking API contract. Compatibility layout JSON contains `container_width` and
+`container_height`; `viewportWidth` and `viewportHeight` do not exist. The removed binding names
+`layout.viewport_width` and `layout.viewport_height` are rejected rather than treated as aliases.
+
+## Required layout snapshot fields
 
 Layout snapshots (`fixtures/c4/*.layout.golden.json`) must contain enough information to:
 
@@ -41,28 +48,30 @@ Minimum fields:
 - Diagram:
   - `bounds` (min/max box in diagram coordinates, excluding outer margins)
   - `width` / `height` (including `diagramMarginX/Y`)
-  - `viewportWidth` / `viewportHeight` (used for parity/debugging)
+  - `use_max_width`
+  - `container_width` / `container_height` (operation layout-container dimensions)
+  - `c4_type` and optional `title`
 - Shapes:
-  - `alias`, `parentBoundary`, `typeC4Shape`
+  - `alias`, `parent_boundary`, `type_c4_shape`
   - `x`, `y`, `width`, `height`, `margin`
   - `image` block: `{ width, height, y }`
-  - text blocks: `typeC4Shape`, `label`, optional `type`, optional `techn`, optional `descr`:
-    `{ text, y, width, height, lineCount }`
+  - text blocks: `type_block`, `label`, optional `ty`, optional `techn`, optional `descr`:
+    `{ text, y, width, height, line_count }`
 - Boundaries:
-  - `alias`, `parentBoundary`
+  - `alias`, `parent_boundary`
   - `x`, `y`, `width`, `height`
-  - text blocks: `label`, optional `type`, optional `descr`:
-    `{ text, y, width, height, lineCount }`
-- Relationships:
-  - `from`, `to`, `type`
-  - `startPoint`, `endPoint`
-  - optional `offsetX`, `offsetY`
+  - `image` block: `{ width, height, y }`
+  - text blocks: `label`, optional `ty`, optional `descr`:
+    `{ text, y, width, height, line_count }`
+- Relationships (`rels`):
+  - `from`, `to`, `rel_type`
+  - `start_point`, `end_point`
+  - optional `offset_x`, `offset_y`
   - text blocks: `label`, optional `techn`, optional `descr`:
-    `{ text, width, height, lineCount }`
+    `{ text, y, width, height, line_count }`
 
 ## Known Mermaid quirks to match
 
 - `Bounds.setData(...)` does **not** reset the row counter (`nextData.cnt`), so the counter may
   carry over across boundary placements within the same `drawInsideBoundary(...)` call.
   The headless layout must mirror this behavior for parity with upstream.
-

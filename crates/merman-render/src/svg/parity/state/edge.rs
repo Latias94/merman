@@ -1,5 +1,4 @@
 use super::*;
-use crate::generated::state_text_overrides_11_12_2 as state_text_overrides;
 
 #[derive(Debug, Clone, Copy)]
 struct StateEdgeBoundaryNode {
@@ -7,26 +6,6 @@ struct StateEdgeBoundaryNode {
     y: f64,
     width: f64,
     height: f64,
-}
-
-fn state_edge_dedup_consecutive_points(
-    input: &[crate::model::LayoutPoint],
-) -> Vec<crate::model::LayoutPoint> {
-    if input.len() <= 1 {
-        return input.to_vec();
-    }
-    const EPS: f64 = 1e-9;
-    let mut out: Vec<crate::model::LayoutPoint> = Vec::with_capacity(input.len());
-    for p in input {
-        if out
-            .last()
-            .is_some_and(|prev| (prev.x - p.x).abs() <= EPS && (prev.y - p.y).abs() <= EPS)
-        {
-            continue;
-        }
-        out.push(p.clone());
-    }
-    out
 }
 
 fn state_edge_outside_node(
@@ -415,7 +394,6 @@ fn state_line_with_end_marker_offset_points(
 fn state_edge_prepare_points(
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
-    edge_id: &str,
     arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
@@ -433,13 +411,7 @@ fn state_edge_prepare_points(
     let local_points =
         state_edge_clip_self_loop_points_to_node(ctx, le, &raw_local_points, origin_x, origin_y)
             .unwrap_or(raw_local_points);
-
-    let is_cyclic_special = edge_id.contains("-cyclic-special-");
-    let mut points_for_curve = if is_cyclic_special {
-        state_edge_dedup_consecutive_points(&local_points)
-    } else {
-        local_points.clone()
-    };
+    let mut points_for_curve = local_points.clone();
 
     // Match Mermaid `dagre-wrapper/edges.js insertEdge`: cut the path at cluster boundaries when the
     // edge connects to a cluster.
@@ -458,25 +430,6 @@ fn state_edge_prepare_points(
         points_for_curve = rev;
     }
 
-    if is_cyclic_special {
-        if edge_id.contains("-cyclic-special-mid") && points_for_curve.len() > 3 {
-            points_for_curve = vec![
-                points_for_curve[0].clone(),
-                points_for_curve[points_for_curve.len() / 2].clone(),
-                points_for_curve[points_for_curve.len() - 1].clone(),
-            ];
-        }
-        if points_for_curve.len() == 4 {
-            // Mermaid's cyclic-special helper edges frequently collapse the 4-point basis
-            // case into the 3-point command sequence (`C` count = 2).
-            points_for_curve.remove(1);
-        }
-        if edge_id.ends_with("-cyclic-special-2") && points_for_curve.len() == 6 {
-            // Some cyclic-special-2 helper edges are routed with 6 points but Mermaid's path
-            // command sequence matches the 5-point `curveBasis` case (`C` count = 4).
-            points_for_curve.remove(1);
-        }
-    }
     points_for_curve = state_edge_fix_corners(&points_for_curve);
     points_for_curve = state_line_with_end_marker_offset_points(&points_for_curve, arrow_type_end);
 
@@ -486,48 +439,17 @@ fn state_edge_prepare_points(
 fn state_edge_encode_path(
     ctx: &StateRenderCtx<'_>,
     le: &crate::model::LayoutEdge,
-    edge_id: &str,
     arrow_type_end: Option<&str>,
     origin_x: f64,
     origin_y: f64,
 ) -> (String, String) {
     let (local_points, points_for_curve) =
-        state_edge_prepare_points(ctx, le, edge_id, arrow_type_end, origin_x, origin_y);
+        state_edge_prepare_points(ctx, le, arrow_type_end, origin_x, origin_y);
 
     let data_points = base64::engine::general_purpose::STANDARD
         .encode(serde_json::to_vec(&local_points).unwrap_or_default());
     let d = curve_basis_path_d(&points_for_curve);
     (d, data_points)
-}
-
-enum StateSelfLoopLayout<'a> {
-    Compacted(&'a crate::model::LayoutEdge),
-    Segmented(Vec<(String, &'a crate::model::LayoutEdge)>),
-}
-
-fn state_self_loop_layout<'a>(
-    ctx: &'a StateRenderCtx<'_>,
-    edge: &StateSvgEdge,
-) -> Option<StateSelfLoopLayout<'a>> {
-    if edge.start != edge.end {
-        return None;
-    }
-    if let Some(compacted) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() {
-        return Some(StateSelfLoopLayout::Compacted(compacted));
-    }
-
-    let mut segments = Vec::with_capacity(3);
-    for suffix in [
-        "-cyclic-special-1",
-        "-cyclic-special-mid",
-        "-cyclic-special-2",
-    ] {
-        let id = format!("{}{suffix}", edge.start);
-        if let Some(segment) = ctx.layout_edges_by_id.get(id.as_str()).copied() {
-            segments.push((id, segment));
-        }
-    }
-    (!segments.is_empty()).then_some(StateSelfLoopLayout::Segmented(segments))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -546,8 +468,7 @@ fn write_state_edge_path(
         return;
     }
 
-    let (d, data_points) =
-        state_edge_encode_path(ctx, le, edge_id, arrow_type_end, origin_x, origin_y);
+    let (d, data_points) = state_edge_encode_path(ctx, le, arrow_type_end, origin_x, origin_y);
     let _ = write!(
         out,
         r#"<path d="{}" id="{}" class="{}" style="fill:none;;;fill:none" data-edge="true" data-et="edge" data-id="{}" data-points="{}" data-look="{}""#,
@@ -587,42 +508,6 @@ pub(super) fn render_state_edge_path(
         _ => None,
     };
 
-    if edge.start == edge.end {
-        let Some(layout) = state_self_loop_layout(ctx, edge) else {
-            return;
-        };
-        match layout {
-            StateSelfLoopLayout::Compacted(le) => write_state_edge_path(
-                out,
-                ctx,
-                le,
-                edge.id.as_str(),
-                &classes,
-                marker_end.as_deref(),
-                marker_end.as_ref().map(|_| edge.arrow_type_end.as_str()),
-                origin_x,
-                origin_y,
-            ),
-            StateSelfLoopLayout::Segmented(segments) => {
-                for (segment_id, segment) in segments {
-                    let is_terminal = segment_id.ends_with("-cyclic-special-2");
-                    write_state_edge_path(
-                        out,
-                        ctx,
-                        segment,
-                        &segment_id,
-                        &classes,
-                        is_terminal.then_some(marker_end.as_deref()).flatten(),
-                        is_terminal.then_some(edge.arrow_type_end.as_str()),
-                        origin_x,
-                        origin_y,
-                    );
-                }
-            }
-        }
-        return;
-    }
-
     let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
         return;
     };
@@ -649,7 +534,7 @@ pub(super) fn render_state_edge_label(
     fn edge_label_div_style(label_w: f64) -> String {
         // Mermaid uses `createText(..., { width: 200 })` for state edge labels and flips the XHTML
         // `<div>` container to wrapping mode when the label reaches the max width.
-        let max_width = state_text_overrides::state_edge_label_max_width_px();
+        let max_width = crate::text::MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX;
         if label_w >= max_width - 1e-3 {
             format!(
                 "display: table; white-space: break-spaces; line-height: 1.5; max-width: {}px; text-align: center; width: {}px;",
@@ -805,67 +690,37 @@ pub(super) fn render_state_edge_label(
     let empty_edge_label_style = edge_label_div_style(0.0);
     let label_text = edge.label.trim();
     if edge.start == edge.end {
-        match state_self_loop_layout(ctx, edge) {
-            Some(StateSelfLoopLayout::Compacted(le)) => {
-                if label_text.is_empty() {
-                    write_empty_edge_label(
-                        out,
-                        &edge.id,
-                        ctx.html_labels,
-                        empty_edge_label_style.as_str(),
-                    );
-                } else if let Some(lbl) = le.label.as_ref() {
-                    write_visible_edge_label(
-                        out,
-                        &edge.id,
-                        label_text,
-                        crate::model::LayoutPoint {
-                            x: lbl.x - origin_x,
-                            y: lbl.y - origin_y,
-                        },
-                        lbl.width,
-                        lbl.height,
-                        ctx.html_labels,
-                    );
-                }
+        let Some(le) = ctx.layout_edges_by_id.get(edge.id.as_str()).copied() else {
+            if label_text.is_empty() {
+                write_empty_edge_label(
+                    out,
+                    &edge.id,
+                    ctx.html_labels,
+                    empty_edge_label_style.as_str(),
+                );
             }
-            Some(StateSelfLoopLayout::Segmented(segments)) => {
-                for (segment_id, segment) in segments {
-                    let segment_text = if segment_id.ends_with("-cyclic-special-mid") {
-                        label_text
-                    } else {
-                        ""
-                    };
-                    if segment_text.is_empty() {
-                        write_empty_edge_label(
-                            out,
-                            &segment_id,
-                            ctx.html_labels,
-                            empty_edge_label_style.as_str(),
-                        );
-                    } else if let Some(lbl) = segment.label.as_ref() {
-                        write_visible_edge_label(
-                            out,
-                            &segment_id,
-                            segment_text,
-                            crate::model::LayoutPoint {
-                                x: lbl.x - origin_x,
-                                y: lbl.y - origin_y,
-                            },
-                            lbl.width,
-                            lbl.height,
-                            ctx.html_labels,
-                        );
-                    }
-                }
-            }
-            None if label_text.is_empty() => write_empty_edge_label(
+            return;
+        };
+        if label_text.is_empty() {
+            write_empty_edge_label(
                 out,
                 &edge.id,
                 ctx.html_labels,
                 empty_edge_label_style.as_str(),
-            ),
-            None => {}
+            );
+        } else if let Some(lbl) = le.label.as_ref() {
+            write_visible_edge_label(
+                out,
+                &edge.id,
+                label_text,
+                crate::model::LayoutPoint {
+                    x: lbl.x - origin_x,
+                    y: lbl.y - origin_y,
+                },
+                lbl.width,
+                lbl.height,
+                ctx.html_labels,
+            );
         }
         return;
     }
@@ -900,7 +755,6 @@ pub(super) fn render_state_edge_label(
     let (_local_points, points_for_curve) = state_edge_prepare_points(
         ctx,
         le,
-        edge.id.as_str(),
         Some(edge.arrow_type_end.as_str()),
         origin_x,
         origin_y,

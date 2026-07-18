@@ -479,14 +479,18 @@ struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
     text_measurer: &'m dyn TextMeasurer,
     icon_size: f64,
     font_size_px: f64,
-    font_family: &'m str,
 }
 
-fn architecture_cytoscape_text_style(font_size_px: f64, font_family: &str) -> TextStyle {
+const CYTOSCAPE_DEFAULT_FONT_FAMILY: &str = "Helvetica Neue,Helvetica,sans-serif";
+
+fn architecture_cytoscape_text_style(font_size_px: f64) -> TextStyle {
     TextStyle {
-        font_family: Some(font_family.to_string()),
+        // Mermaid sets only `font-size` on Architecture nodes, so Cytoscape retains its own
+        // default canvas font family rather than inheriting Mermaid's root Trebuchet stack.
+        font_family: Some(CYTOSCAPE_DEFAULT_FONT_FAMILY.to_string()),
         font_size: font_size_px,
         font_weight: None,
+        font_style: None,
     }
 }
 
@@ -513,9 +517,8 @@ fn architecture_fcose_node_bounds_extras<'a>(
         text_measurer,
         icon_size,
         font_size_px,
-        font_family,
     } = input;
-    let text_style = architecture_cytoscape_text_style(font_size_px, font_family);
+    let text_style = architecture_cytoscape_text_style(font_size_px);
 
     let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
     node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
@@ -1059,9 +1062,8 @@ fn architecture_cytoscape_service_bounds<'a>(
     text_measurer: &dyn TextMeasurer,
     icon_size: f64,
     font_size_px: f64,
-    font_family: &str,
 ) -> Vec<ArchitectureCytoscapeServiceBounds> {
-    let text_style = architecture_cytoscape_text_style(font_size_px, font_family);
+    let text_style = architecture_cytoscape_text_style(font_size_px);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len().saturating_mul(2));
     for node in nodes {
@@ -1090,8 +1092,7 @@ fn architecture_cytoscape_service_bounds<'a>(
         );
         let label_metrics = label_bounds.map(|label| ArchitectureCytoscapeServiceLabelMetrics {
             text_width: label.metrics.width,
-            half_width: label.half_width,
-            applied_scale: label.metrics.applied_scale,
+            half_width: label.metrics.half_width,
         });
         let contribution =
             architecture_cytoscape_child_contribution_bounds(&body_bounds, label_bounds.as_ref());
@@ -1237,24 +1238,16 @@ pub fn layout_architecture_diagram_typed(
     model: &ArchitectureDiagramRenderModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
     ambient_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
     let model = ArchitectureModelView::from_typed(model);
-    layout_architecture_diagram_model(
-        &model,
-        effective_config,
-        text_measurer,
-        use_manatee_layout,
-        ambient_seed,
-    )
+    layout_architecture_diagram_model(&model, effective_config, text_measurer, ambient_seed)
 }
 
 fn layout_architecture_diagram_model(
     model: &ArchitectureModelView<'_>,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
-    use_manatee_layout: bool,
     ambient_seed: u64,
 ) -> Result<ArchitectureDiagramLayout> {
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
@@ -1264,7 +1257,6 @@ fn layout_architecture_diagram_model(
     let padding_px = padding_px.max(0.0);
     let font_size_px = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
     let font_size_px = font_size_px.max(1.0);
-    let font_family = crate::config::config_font_family_css(effective_config);
     let fcose_randomize =
         config_bool(effective_config, &["architecture", "randomize"]).unwrap_or(false);
     let fcose_node_separation = config_f64(effective_config, &["architecture", "nodeSeparation"])
@@ -1295,7 +1287,6 @@ fn layout_architecture_diagram_model(
             text_measurer,
             icon_size,
             font_size_px,
-            font_family: font_family.as_str(),
         });
     let mut nodes: Vec<LayoutNode> = Vec::new();
 
@@ -1318,7 +1309,7 @@ fn layout_architecture_diagram_model(
     let mut fcose_compound_bounds: Vec<ArchitectureCompoundBounds> = Vec::new();
     let mut fcose_debug_stages: Vec<ArchitectureFcoseDebugStage> = Vec::new();
 
-    if use_manatee_layout && !nodes.is_empty() {
+    if !nodes.is_empty() {
         let plan = build_architecture_fcose_input_plan(ArchitectureFcoseInputPlanInput {
             model,
             layout_nodes: &nodes,
@@ -1353,7 +1344,6 @@ fn layout_architecture_diagram_model(
         text_measurer,
         icon_size,
         font_size_px,
-        font_family.as_str(),
     );
 
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
@@ -2051,27 +2041,25 @@ mod tests {
                 text_measurer: &measurer,
                 icon_size: 80.0,
                 font_size_px: 16.0,
-                font_family: crate::config::MERMAID_DEFAULT_FONT_FAMILY_CSS,
             },
         );
         let extras = node_bounds_extras.get("api").expect("api node extras");
 
-        assert_eq!(extras.top, 1.0);
-        assert_eq!(extras.bottom, 18.0);
-        assert_eq!(extras.left, 1.0);
-        assert_eq!(extras.right, 1.0);
+        assert_eq!(extras.top, 2.0);
+        assert_eq!(extras.bottom, 19.0);
+        assert_eq!(extras.left, 2.0);
+        assert_eq!(extras.right, 2.0);
     }
 
     #[test]
     fn architecture_fcose_edge_label_style_keeps_cytoscape_defaults() {
-        let node_style =
-            super::architecture_cytoscape_text_style(18.0, r#""IBM Plex Sans",Arial,sans-serif"#);
+        let node_style = super::architecture_cytoscape_text_style(18.0);
         let edge_style = super::architecture_cytoscape_edge_text_style();
 
         assert_eq!(node_style.font_size, 18.0);
         assert_eq!(
             node_style.font_family.as_deref(),
-            Some(r#""IBM Plex Sans",Arial,sans-serif"#)
+            Some(super::CYTOSCAPE_DEFAULT_FONT_FAMILY)
         );
         assert_eq!(edge_style.font_size, 16.0);
         assert_eq!(edge_style.font_family.as_deref(), Some("sans-serif"));

@@ -1060,6 +1060,7 @@ fn measure_text(text: &str, style: &RailroadStyle, measurer: &dyn TextMeasurer) 
         font_family: Some(style.font_family.clone()),
         font_size: style.font_size,
         font_weight: None,
+        font_style: None,
     };
     let width = measurer.measure_svg_raw_text_bbox_width_px(text, &text_style);
     let height = measurer

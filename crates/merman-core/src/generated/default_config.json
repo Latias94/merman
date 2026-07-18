@@ -107,6 +107,23 @@
     "external_system_queueFontWeight": "normal",
     "external_system_queue_bg_color": "#999999",
     "external_system_queue_border_color": "#8A8A8A",
+    "flowchart": {
+      "curve": "basis",
+      "defaultRenderer": "dagre-wrapper",
+      "diagramPadding": 8,
+      "htmlLabels": null,
+      "inheritDir": false,
+      "nodeSpacing": 50,
+      "padding": 15,
+      "rankSpacing": 50,
+      "subGraphTitleMargin": {
+        "bottom": 0,
+        "top": 0
+      },
+      "titleTopMargin": 25,
+      "useMaxWidth": true,
+      "wrappingWidth": 200
+    },
     "height": 60,
     "messageFontFamily": "\"Open Sans\", sans-serif",
     "messageFontSize": 12,
@@ -138,17 +155,8 @@
     "wrapPadding": 10
   },
   "class": {
-    "arrowMarkerAbsolute": false,
-    "defaultRenderer": "dagre-wrapper",
-    "diagramPadding": 20,
-    "dividerMargin": 10,
     "hideEmptyMembersBox": false,
-    "hierarchicalNamespaces": true,
-    "htmlLabels": false,
-    "padding": 12,
-    "textHeight": 10,
-    "titleTopMargin": 25,
-    "useMaxWidth": true
+    "hierarchicalNamespaces": true
   },
   "cynefin": {
     "boundaryAmplitude": 8,
@@ -190,7 +198,6 @@
     "curve": "basis",
     "defaultRenderer": "dagre-wrapper",
     "diagramPadding": 8,
-    "htmlLabels": true,
     "inheritDir": false,
     "nodeSpacing": 50,
     "padding": 15,
@@ -323,7 +330,8 @@
     "highlightSlice": "",
     "legendPosition": "right",
     "textPosition": 0.75,
-    "useMaxWidth": true
+    "useMaxWidth": true,
+    "useWidth": 984
   },
   "quadrantChart": {
     "chartHeight": 500,
@@ -358,17 +366,7 @@
     "useMaxWidth": true,
     "width": 600
   },
-  "railroad": {
-    "arcRadius": 10,
-    "compactMode": false,
-    "horizontalSeparation": 10,
-    "markerRadius": 5,
-    "padding": 10,
-    "showMarkers": true,
-    "strokeWidth": 2,
-    "useMaxWidth": true,
-    "verticalSeparation": 8
-  },
+  "railroad": {},
   "requirement": {
     "fontSize": 14,
     "line_height": 20,
@@ -386,7 +384,6 @@
     "labelStyle": "legacy",
     "linkColor": "gradient",
     "nodeAlignment": "justify",
-    "nodeColors": {},
     "nodePadding": 12,
     "nodeWidth": 10,
     "prefix": "",
@@ -401,11 +398,7 @@
     "startOnLoad",
     "maxTextSize",
     "suppressErrorRendering",
-    "maxEdges",
-    "fontFamily",
-    "altFontFamily",
-    "themeCSS",
-    "themeVariables"
+    "maxEdges"
   ],
   "securityLevel": "strict",
   "sequence": {
@@ -523,6 +516,18 @@
     "rowIndent": 10,
     "showIcons": false,
     "useMaxWidth": true
+  },
+  "treemap": {
+    "borderWidth": 1,
+    "diagramPadding": 8,
+    "labelFontSize": 14,
+    "nodeHeight": 40,
+    "nodeWidth": 100,
+    "padding": 10,
+    "showValues": true,
+    "useMaxWidth": true,
+    "valueFontSize": 12,
+    "valueFormat": ","
   },
   "venn": {
     "height": 450,

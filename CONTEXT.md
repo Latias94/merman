@@ -36,11 +36,10 @@ Authoritative baseline sources:
 - `docs/adr/0001-upstream-baseline.md`
 - `crates/merman-core/src/baseline.rs`
 
-Generated override filenames and some historical comments may still carry
-`11_12_2`, `11_15_0`, or `11.12.x`/`11.15.x` suffixes. Treat those names as
-legacy provenance unless a current-facing document explicitly says otherwise. New code should prefer
-`for_pinned_mermaid_baseline`, `pinned_mermaid_baseline_*`, and constants from
-`merman_core::baseline` over versioned constructor names.
+Historical implementation comments may still name the Mermaid release where an algorithm was first
+ported. Current assets and APIs must instead use `for_pinned_mermaid_baseline`,
+`pinned_mermaid_baseline_*`, or constants from `merman_core::baseline`; stale version suffixes are
+not an authority for current behavior.
 
 ## Architecture Boundaries
 
@@ -60,12 +59,13 @@ Current contract:
   parallel successful grammars.
 - Built-in rendering is typed end to end. `FamilyRenderArtifact` owns the matching semantic/layout
   pair, compatibility layout JSON projects from it, and SVG consumes it.
-- `RenderEnvironment` selects text-measurement phases, math/icons, time, randomness, resource
-  limits, and generated root policy once per operation. Family renderers do not construct hidden
-  production services or read process-global render policy.
-- Every built-in SVG root uses the shared Root Viewport protocol for generated/computed policy,
-  sizing, accessibility chrome, escaping, attribute order, and deferred finalization. Families own
-  their content bounds, not root emission or generated lookup.
+- `RenderEnvironment` selects text-measurement phases, math/icons, time, randomness, and resource
+  limits once per operation. Family renderers do not construct hidden production services or read
+  process-global render policy.
+- Every built-in SVG root uses the operation-owned Root Viewport protocol for dimension
+  normalization, sizing, accessibility chrome, escaping, attribute order, and deferred
+  finalization. Families supply source-backed content bounds and family root semantics; they do not
+  own root emission or consult fixture-derived root data.
 - Editor body semantics are parser-complete, parser-recovered, or unavailable. Generic TextScan
   semantics are deleted; legal source-start headers remain catalog-backed.
 - Analysis diagnostics and parser-only facts are independent schema v1 contracts. The
@@ -75,8 +75,10 @@ Current contract:
   and typed-render capability evidence should be checked against Diagram Family Facts projections.
 - Effective config and presentation theme should be projected into narrow views
   before diagram renderers consume them.
-- Override data is a last resort for pinned-baseline parity and must have
-  removal evidence plus no-growth and stale-key gate coverage.
+- ADR-0062 forbids production fixture overrides: fixture ids and complete source or label strings
+  must not select root, geometry, or measurement answers. Mermaid config, theme variables, diagram
+  directives, and host-owned CSS/output overrides remain supported user inputs; they are general
+  configuration and presentation contracts, not fixture answers.
 
 Current non-goal:
 
@@ -99,10 +101,10 @@ Current non-goal:
   `docs/adr/0042-rendering-strategy.md`,
   `docs/adr/0063-extensible-svg-output-pipeline.md`,
   `docs/adr/0064-host-styling-svg-postprocessors.md`
-- SVG root/override policy:
+- SVG root and text-measurement policy:
   `docs/adr/0050-svg-viewbox-parity.md`,
-  `docs/adr/0062-fixture-derived-overrides.md`,
-  `docs/workstreams/fearless-refactor/OVERRIDE_POLICY.md`
+  `docs/adr/0057-headless-svg-text-bbox.md`,
+  `docs/adr/0062-fixture-derived-overrides.md`
 - ASCII boundary:
   `docs/adr/0065-ascii-output-boundary.md`,
   `docs/adr/0067-ascii-color-role-api.md`
