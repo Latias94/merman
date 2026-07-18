@@ -1,7 +1,13 @@
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "@/src/store";
 import { cn } from "@/lib/utils";
-import { useMerman } from "@/src/hooks/useMerman";
+import {
+  selectMermanFacade,
+  selectMermanFailure,
+  selectMermanStatus,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
 
 export function StatusBar() {
   const { t } = useTranslation();
@@ -14,9 +20,20 @@ export function StatusBar() {
     textMeasurementMode,
     diagramFont,
   } = useAppStore();
-  const { ready, getBindingCapabilities, getRegistryProfile } = useMerman();
-  const capabilities = getBindingCapabilities();
-  const registryProfile = getRegistryProfile();
+  const runtimeStatus = useMermanRuntime(selectMermanStatus);
+  const facade = useMermanRuntime(selectMermanFacade);
+  const runtimeFailure = useMermanRuntime(selectMermanFailure);
+  const runtimeMetadata = useMemo(
+    () => ({
+      capabilities: facade?.bindingCapabilities() ?? null,
+      registryProfile: facade?.registryProfile() ?? null,
+    }),
+    [facade]
+  );
+  const { capabilities, registryProfile } = runtimeMetadata;
+  const runtimeLabel = facade
+    ? `${t("status.ready")} ${facade.packageVersion}`
+    : t(runtimeStatus === "error" ? "status.error" : "status.loading");
 
   const lineCount = code.split("\n").length;
   const charCount = code.length;
@@ -44,8 +61,16 @@ export function StatusBar() {
       </div>
       <div className="hidden items-center gap-4 sm:flex">
         <span>
-          {t("status.wasm")}: {ready ? t("status.ready") : t("status.loading")}
+          {t("status.wasm")}: {runtimeLabel}
         </span>
+        {runtimeFailure && (
+          <span
+            className="max-w-52 truncate text-destructive"
+            title={runtimeFailure.message}
+          >
+            {runtimeFailure.stage}: {runtimeFailure.message}
+          </span>
+        )}
         {capabilities && (
           <span>
             {t("status.editorLanguage")}:{" "}

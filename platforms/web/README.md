@@ -138,35 +138,42 @@ vendored measurer when the DOM is unavailable or a request is not handled:
 
 ```ts
 import {
-  createBrowserTextMeasurer,
+  createBrowserTextMeasurementSession,
   initMerman,
   renderSvgWithTextMeasurer,
 } from "@mermanjs/web";
 
 await initMerman();
 
-const measureText = createBrowserTextMeasurer();
-const svg = renderSvgWithTextMeasurer(
-  "flowchart TD\nA[Start] --> B{Condition?}",
-  measureText,
-  {
-    site_config: {
-      fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
-      themeVariables: {
+const measurement = createBrowserTextMeasurementSession();
+try {
+  const svg = renderSvgWithTextMeasurer(
+    "flowchart TD\nA[Start] --> B{Condition?}",
+    measurement.measure,
+    {
+      site_config: {
         fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
+        themeVariables: {
+          fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
+        },
       },
-    },
-  }
-);
+    }
+  );
+} finally {
+  measurement.dispose();
+}
 ```
 
 Use the same font family in both the binding options and your surrounding UI/CSS. If rendering in a
 Web Worker, keep using `renderSvg()` with the headless measurer, or send measurement requests to the
 main thread through your own worker protocol.
 
-`createBrowserTextMeasurer()` measures the natural no-wrap width for HTML-like labels before it
-applies `maxWidth`. Custom measurers should keep that behavior; returning `maxWidth` for a short
-label can make the diagram wider than Mermaid would make it in the browser.
+`createBrowserTextMeasurementSession()` creates no DOM nodes until its `measure` callback is first
+used. Reuse that callback for related renders, then call `dispose()` to remove its HTML/SVG probes
+and release Canvas state. A disposed session remains disposed. The callback measures the natural
+no-wrap width for HTML-like labels before it applies `maxWidth`; custom measurers should keep that
+behavior because returning `maxWidth` for a short label can make the diagram wider than Mermaid
+would make it in the browser.
 Requests carry the exact primitive in `operation`, including SVG `getBBox()`,
 `getComputedTextLength()`, and `getBoundingClientRect()` variants. Custom callbacks return a
 TypeScript discriminated union with `kind: "metrics"`, `"length"`, `"horizontal-extents"`, or
@@ -336,7 +343,7 @@ The default `@mermanjs/web` entry point and `@mermanjs/web/full` expose the full
   `editorSemanticTokenLegend()`, `editorSemanticTokens()`
 - `supportedDiagrams()`, `asciiSupportedDiagrams()`, `supportedThemes()`, `supportedHostThemePresets()`
 - `SUPPORTED_DIAGRAMS`, `SUPPORTED_ASCII_DIAGRAMS`, `isDiagramType()`, `isAsciiDiagramType()`
-- `createBrowserTextMeasurer()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
+- `createBrowserTextMeasurementSession()`, `bindingCapabilities()`, `selectedRegistryProfile()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`
 - `abiVersion()`, `packageVersion()`, `encodeOptions()`
 
 `@mermanjs/web/core` exports initialization, analysis/facts, validation, metadata, ABI/package

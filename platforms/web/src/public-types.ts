@@ -289,6 +289,11 @@ export type HostTextMeasurer = (
   request: HostTextMeasureRequest
 ) => HostTextMeasureResult | null | undefined;
 
+export interface BrowserTextMeasurementSession {
+  readonly measure: HostTextMeasurer;
+  dispose(): void;
+}
+
 
 export interface ValidationResult {
   valid: boolean;

@@ -1,19 +1,23 @@
 import { useMemo } from "react";
-import { useMerman } from "@/src/hooks/useMerman";
 import {
   FALLBACK_ASCII_CAPABILITIES,
+  FALLBACK_ASCII_SUPPORTED_TYPES,
   type AsciiCapability,
   normalizeAsciiDiagramType,
 } from "@/src/lib/ascii-support";
+import {
+  selectMermanFacade,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
 
 export function useAsciiSupport() {
-  const { ready, getAsciiCapabilities, getAsciiSupportedDiagrams } = useMerman();
+  const facade = useMermanRuntime(selectMermanFacade);
   const capabilities = useMemo(
     () =>
-      ready
-        ? getAsciiCapabilities().map(normalizeCapability)
+      facade
+        ? facade.getAsciiCapabilities().map(normalizeCapability)
         : FALLBACK_ASCII_CAPABILITIES.map(normalizeCapability),
-    [getAsciiCapabilities, ready]
+    [facade]
   );
 
   const capabilityMap = useMemo(() => {
@@ -30,8 +34,10 @@ export function useAsciiSupport() {
       .map((capability) => normalizeAsciiDiagramType(capability.diagram_type));
     return fromCapabilities.length > 0
       ? fromCapabilities
-      : getAsciiSupportedDiagrams().map(normalizeAsciiDiagramType);
-  }, [capabilities, getAsciiSupportedDiagrams]);
+      : (facade?.getAsciiSupportedDiagrams() ?? FALLBACK_ASCII_SUPPORTED_TYPES).map(
+          normalizeAsciiDiagramType
+        );
+  }, [capabilities, facade]);
 
   const supportedTypeSet = useMemo(() => new Set(supportedTypes), [supportedTypes]);
 

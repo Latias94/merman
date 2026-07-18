@@ -2,7 +2,6 @@ import Editor from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { editor } from "monaco-editor";
-import { useMerman } from "@/src/hooks/useMerman";
 import {
   clearMermaidMarkers,
   getMermaidHoverDocs,
@@ -13,6 +12,10 @@ import {
   updateMermaidEditorMarkers,
   updateMermaidMarkers,
 } from "@/src/lib/mermaid-language";
+import {
+  selectMermanFacade,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
 import { useAppStore } from "@/src/store";
 
 interface CodeEditorProps {
@@ -24,7 +27,8 @@ export function CodeEditor({ className }: CodeEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
   const { code, setCode, uiTheme } = useAppStore();
-  const { ready, validate, wasm } = useMerman();
+  const facade = useMermanRuntime(selectMermanFacade);
+  const ready = facade !== null;
   const hoverDocs = useMemo(
     () => getMermaidHoverDocs((key) => t(key)),
     [t]
@@ -61,8 +65,8 @@ export function CodeEditor({ className }: CodeEditorProps) {
   }, [hoverDocs]);
 
   useEffect(() => {
-    setMermaidEditorService(ready ? wasm : null);
-  }, [ready, wasm]);
+    setMermaidEditorService(facade);
+  }, [facade]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -74,23 +78,25 @@ export function CodeEditor({ className }: CodeEditorProps) {
     if (!ready || !code.trim()) return;
 
     const timeout = window.setTimeout(() => {
-      if (wasm) {
+      if (facade) {
         try {
           updateMermaidEditorMarkers(
             monaco,
             model,
-            wasm.editor_diagnostics(code)
+            facade.editorDiagnostics(code)
           );
           return;
         } catch {
-          // Fall back to the legacy validation projection below.
+          // Fall back to the validation projection below.
         }
       }
-      updateMermaidMarkers(monaco, model, validate(code));
+      if (facade) {
+        updateMermaidMarkers(monaco, model, facade.validate(code));
+      }
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [code, ready, validate, wasm]);
+  }, [code, facade, ready]);
 
   useEffect(() => {
     return () => {

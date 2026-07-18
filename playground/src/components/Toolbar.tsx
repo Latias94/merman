@@ -25,8 +25,11 @@ import {
   asciiSupportDescription,
   asciiSupportLabelKey,
 } from "@/src/lib/ascii-support";
-import { useMerman } from "@/src/hooks/useMerman";
 import { BenchDialog } from "@/src/components/BenchDialog";
+import {
+  selectMermanFacade,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
 import { languages, changeLanguage, getCurrentLanguage } from "@/src/i18n";
 import {
   createMarkdownImageLink,
@@ -34,6 +37,7 @@ import {
 } from "@/src/lib/mermaid-live";
 import {
   SUPPORTED_HOST_THEME_PRESETS,
+  SUPPORTED_THEMES,
   normalizeHostThemePresetName,
   normalizeThemeName,
   type HostThemePresetName,
@@ -107,14 +111,14 @@ export function Toolbar() {
     diagramType,
   } = useAppStore();
   const { copyShareUrl } = useShare();
-  const { render, renderAscii, getThemes } = useMerman();
+  const facade = useMermanRuntime(selectMermanFacade);
   const asciiSupport = useAsciiSupport();
   const [isExporting, setIsExporting] = useState(false);
   const currentLang = getCurrentLanguage();
 
   const themeOptions: { value: Theme; label: string }[] = useMemo(() => {
     const seen = new Set<Theme>();
-    return getThemes()
+    return (facade?.getThemes() ?? SUPPORTED_THEMES)
       .map(normalizeThemeName)
       .filter((theme) => {
         if (seen.has(theme)) return false;
@@ -125,7 +129,7 @@ export function Toolbar() {
         value: theme,
         label: t(`themes.${theme}`, { defaultValue: theme }),
       }));
-  }, [getThemes, t]);
+  }, [facade, t]);
 
   const hostThemeOptions: { value: HostThemePreset; label: string }[] = useMemo(
     () => [
@@ -168,7 +172,10 @@ export function Toolbar() {
   ];
 
   const renderCurrentSvg = useCallback((pipeline?: "resvg-safe") => {
-    const result = render(code, diagramTheme, mermaidConfig, {
+    if (!facade) {
+      throw new Error("Merman runtime is not ready.");
+    }
+    const result = facade.render(code, diagramTheme, mermaidConfig, {
       ...renderOptions,
       ...(pipeline ? { pipeline } : {}),
     });
@@ -176,7 +183,7 @@ export function Toolbar() {
       throw new Error(result.error ?? "Failed to render SVG");
     }
     return result.svg;
-  }, [code, diagramTheme, mermaidConfig, render, renderOptions]);
+  }, [code, diagramTheme, facade, mermaidConfig, renderOptions]);
 
   // 导出 SVG
   const handleExportSVG = useCallback(() => {
@@ -207,14 +214,14 @@ export function Toolbar() {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
-    const ascii = renderAscii(code, diagramTheme, mermaidConfig);
+    const ascii = facade?.renderAscii(code, diagramTheme, mermaidConfig);
     if (!ascii) {
       toast.error(t("export.asciiNotSupported"));
       return;
     }
     exportASCII(ascii, "merman-diagram");
     toast.success(t("export.asciiSuccess"));
-  }, [asciiSupport, code, diagramType, diagramTheme, mermaidConfig, renderAscii, t]);
+  }, [asciiSupport, code, diagramType, diagramTheme, facade, mermaidConfig, t]);
 
   // 复制代码
   const handleCopyCode = useCallback(async () => {
@@ -481,15 +488,18 @@ export function Toolbar() {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleExportSVG}>
+              <DropdownMenuItem onClick={handleExportSVG} disabled={!facade}>
                 <FileCode className="size-4" />
                 {t("export.svg")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportPNG}>
+              <DropdownMenuItem onClick={handleExportPNG} disabled={!facade}>
                 <ImageIcon className="size-4" />
                 {t("export.png")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportASCII} disabled={!asciiSupported}>
+              <DropdownMenuItem
+                onClick={handleExportASCII}
+                disabled={!facade || !asciiSupported}
+              >
                 <FileText className="size-4" />
                 {t("export.ascii")}
                 <span className="ml-auto max-w-44 truncate text-xs text-muted-foreground">
@@ -505,7 +515,7 @@ export function Toolbar() {
                 <FileText className="size-4" />
                 {t("export.copyMarkdown")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleCopySVG}>
+              <DropdownMenuItem onClick={handleCopySVG} disabled={!facade}>
                 <Copy className="size-4" />
                 {t("export.copySvg")}
               </DropdownMenuItem>
@@ -600,17 +610,20 @@ export function Toolbar() {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>{t("export.title")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleExportSVG}>
+              <DropdownMenuItem onClick={handleExportSVG} disabled={!facade}>
                 <FileCode className="size-4" />
                 {t("export.svg")}
                 <span className="ml-auto text-xs text-muted-foreground">{t("export.svgDesc")}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportPNG}>
+              <DropdownMenuItem onClick={handleExportPNG} disabled={!facade}>
                 <ImageIcon className="size-4" />
                 {t("export.png")}
                 <span className="ml-auto text-xs text-muted-foreground">{t("export.pngDesc")}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportASCII} disabled={!asciiSupported}>
+              <DropdownMenuItem
+                onClick={handleExportASCII}
+                disabled={!facade || !asciiSupported}
+              >
                 <FileText className="size-4" />
                 {t("export.ascii")}
                 <span className="ml-auto text-xs text-muted-foreground">
@@ -629,7 +642,7 @@ export function Toolbar() {
                   {t("export.copyMarkdownDesc")}
                 </span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleCopySVG}>
+              <DropdownMenuItem onClick={handleCopySVG} disabled={!facade}>
                 <Copy className="size-4" />
                 {t("export.copySvg")}
               </DropdownMenuItem>

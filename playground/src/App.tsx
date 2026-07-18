@@ -11,7 +11,6 @@ import { StatusBar } from "./components/StatusBar";
 import { useAppStore, type TextMeasurementMode } from "./store";
 import { isDiagramFont } from "./lib/diagram-font";
 import { useShare } from "./hooks/useShare";
-import { prewarmWasmRenderer } from "./lib/wasm-loader";
 import { normalizeHostThemePresetName, normalizeThemeName } from "@mermanjs/web";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -46,15 +45,10 @@ export default function App() {
   const {
     setCode,
     setDiagramTheme,
-    diagramTheme,
-    hostThemePreset,
     setHostThemePreset,
-    textMeasurementMode,
     setTextMeasurementMode,
-    diagramFont,
     setDiagramFont,
     setMermaidConfig,
-    mermaidConfig,
     editorMode,
     setEditorMode,
     uiTheme,
@@ -132,23 +126,6 @@ export default function App() {
       return () => mediaQuery.removeEventListener("change", handleChange);
     }
   }, [uiTheme]);
-
-  // 页面级后台预热核心 WASM 渲染器；Mermaid JS 是可选对比引擎，按需加载。
-  useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      void prewarmWasmRenderer(
-        diagramTheme,
-        mermaidConfig,
-        {
-          hostThemePreset: hostThemePreset === "none" ? undefined : hostThemePreset,
-          textMeasurementMode,
-          diagramFont,
-        }
-      ).catch(() => undefined);
-    }, 120);
-
-    return () => window.clearTimeout(timeout);
-  }, [diagramFont, diagramTheme, hostThemePreset, mermaidConfig, textMeasurementMode]);
 
   return (
     <TooltipProvider delayDuration={300}>

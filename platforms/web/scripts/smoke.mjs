@@ -222,10 +222,16 @@ assert.match(api.packageVersion(), /^\d+\.\d+\.\d+/);
 if (surfaceContract.render) {
   assert.equal(typeof api.renderSvgWithTextMeasurer, "function");
   assert.equal(typeof api.layoutJsonWithTextMeasurer, "function");
-  assert.equal(typeof api.createBrowserTextMeasurer, "function");
-  assert.equal(api.createBrowserTextMeasurer()({ text: "Node", font_size: 16 }), undefined);
+  assert.equal(typeof api.createBrowserTextMeasurementSession, "function");
+  assert.equal(typeof api.createBrowserTextMeasurer, "undefined");
+  const unavailableSession = api.createBrowserTextMeasurementSession();
+  assert.equal(unavailableSession.measure({ text: "Node", font_size: 16 }), undefined);
+  unavailableSession.dispose();
+  unavailableSession.dispose();
+  assert.equal(unavailableSession.measure({ text: "Node", font_size: 16 }), undefined);
   withFakeMeasureDom(() => {
-    const browserMeasurer = api.createBrowserTextMeasurer();
+    const measurementSession = api.createBrowserTextMeasurementSession();
+    const browserMeasurer = measurementSession.measure;
     const shortLabel = browserMeasurer(textMeasureRequest("Condition?", 200));
     assert.equal(shortLabel.kind, "metrics");
     assert.ok(shortLabel.width > 0);
@@ -314,6 +320,12 @@ if (surfaceContract.render) {
       textMeasureRequest("one two three four five", 60, "wrapped", "svg-like")
     );
     assert.ok(svgWrapped.line_count > 1);
+    measurementSession.dispose();
+    measurementSession.dispose();
+    assert.equal(
+      browserMeasurer(textMeasureRequest("Disposed", null, "measure", "svg-like")),
+      undefined
+    );
   });
 }
 
@@ -643,6 +655,7 @@ User Testing    :c2, after c1, 5d`;
   assert.equal(typeof api.parseObject, "undefined");
   assert.equal(typeof api.layoutJson, "undefined");
   assert.equal(typeof api.layoutObject, "undefined");
+  assert.equal(typeof api.createBrowserTextMeasurementSession, "undefined");
   assert.equal(typeof api.createBrowserTextMeasurer, "undefined");
   assert.equal(capabilities.text_measurement.host_callback, false);
 }

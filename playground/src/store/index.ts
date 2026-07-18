@@ -2,12 +2,13 @@ import { create } from "zustand";
 import type { HostThemePresetName, ThemeName } from "@mermanjs/web";
 import type { DiagramFont } from "@/src/lib/diagram-font";
 import { DEFAULT_MERMAID_CONFIG } from "@/src/lib/mermaid-config";
+import type { MermanTextMeasurementMode } from "@/src/runtime/merman-core";
 
 export type Theme = ThemeName;
 export type HostThemePreset = "none" | HostThemePresetName;
 export type UITheme = "light" | "dark" | "system";
 export type EditorMode = "code" | "config";
-export type TextMeasurementMode = "browser" | "headless";
+export type TextMeasurementMode = MermanTextMeasurementMode;
 export type { DiagramFont };
 
 interface AppState {

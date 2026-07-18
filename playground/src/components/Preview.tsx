@@ -10,9 +10,14 @@ import { useTranslation } from "react-i18next";
 import { assertSafeSvgForDom } from "@mermanjs/web";
 import { toast } from "sonner";
 import {
-  mermanRuntimeErrorI18nKey,
-  useMerman,
-} from "@/src/hooks/useMerman";
+  selectMermanFacade,
+  selectMermanFailure,
+  selectMermanLoadStage,
+  selectMermanStatus,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
+import { retryMermanRuntime } from "@/src/runtime/merman";
+import type { MermanRuntimeFailure } from "@/src/runtime/merman-core";
 import { useAsciiSupport } from "@/src/lib/ascii-capabilities";
 import {
   asciiSupportDescription,
@@ -26,7 +31,6 @@ import {
   freshRenderArtifactValue,
   type RenderArtifact,
 } from "@/src/lib/render-artifacts";
-import { prewarmWasmRenderer } from "@/src/lib/wasm-loader";
 import { useAppStore } from "@/src/store";
 import {
   getMermaidLoadSource,
@@ -129,7 +133,12 @@ export function Preview({ className }: PreviewProps) {
     setDiagramType,
     isDarkMode,
   } = useAppStore();
-  const { ready, loading, render, renderAscii, parseJson, layoutJson } = useMerman();
+  const facade = useMermanRuntime(selectMermanFacade);
+  const runtimeStatus = useMermanRuntime(selectMermanStatus);
+  const runtimeFailure = useMermanRuntime(selectMermanFailure);
+  const runtimeLoadStage = useMermanRuntime(selectMermanLoadStage);
+  const ready = facade !== null;
+  const loading = runtimeStatus === "idle" || runtimeStatus === "loading";
   const asciiSupport = useAsciiSupport();
   const [mermanRenderArtifact, setMermanRenderArtifact] =
     useState<RenderArtifact<MermanRenderArtifact> | null>(null);
@@ -237,14 +246,6 @@ export function Preview({ className }: PreviewProps) {
     svg: mermaidSvg,
     enabled: previewMode === "compare",
   });
-  const localizeMermanError = useCallback(
-    (message: string | null): string | null => {
-      if (!message) return null;
-      const key = mermanRuntimeErrorI18nKey(message);
-      return key ? t(key) : message;
-    },
-    [t]
-  );
   const localizeMermaidError = useCallback(
     (message: string | null): string | null => {
       if (!message) return null;
@@ -266,35 +267,30 @@ export function Preview({ className }: PreviewProps) {
     }
 
     debounceRef.current = setTimeout(() => {
-      if (ready && code.trim()) {
+      if (facade && code.trim()) {
         const diagramType = detectedDiagramType;
         setDiagramType(diagramType);
 
-        void (async () => {
-          await prewarmWasmRenderer(
-            diagramTheme,
-            mermaidConfig,
-            renderOptions
-          ).catch(() => undefined);
-          if (cancelled) return;
+        const result = facade.render(
+          code,
+          diagramTheme,
+          mermaidConfig,
+          renderOptions
+        );
+        if (cancelled) return;
 
-          const result = render(code, diagramTheme, mermaidConfig, renderOptions);
-          if (cancelled) return;
-
-          const renderedAscii = asciiSupport.isSupported(diagramType)
-            ? renderAscii(code, diagramTheme, mermaidConfig)
-            : null;
-          setMermanRenderArtifact(
-            bindRenderArtifact(previewRenderKey, {
-              svg: result.svg,
-              ascii: renderedAscii,
-              error: localizeMermanError(result.error),
-              renderTime: result.error ? null : result.renderTime,
-            })
-          );
-          setLastRenderTime(result.renderTime);
-
-        })();
+        const renderedAscii = asciiSupport.isSupported(diagramType)
+          ? facade.renderAscii(code, diagramTheme, mermaidConfig)
+          : null;
+        setMermanRenderArtifact(
+          bindRenderArtifact(previewRenderKey, {
+            svg: result.svg,
+            ascii: renderedAscii,
+            error: result.error,
+            renderTime: result.error ? null : result.renderTime,
+          })
+        );
+        setLastRenderTime(result.renderTime);
       } else if (!code.trim()) {
         setMermanRenderArtifact(null);
       }
@@ -311,13 +307,10 @@ export function Preview({ className }: PreviewProps) {
     asciiSupport,
     detectedDiagramType,
     diagramTheme,
-    localizeMermanError,
+    facade,
     mermaidConfig,
     previewRenderKey,
-    ready,
-    render,
     renderOptions,
-    renderAscii,
     setDiagramType,
     setLastRenderTime,
   ]);
@@ -393,10 +386,12 @@ export function Preview({ className }: PreviewProps) {
       return;
     }
 
-    if (!ready) {
+    if (!facade) {
       setDiagnostics(
         diagnosticsError(
-          loading ? t("preview.loading") : t("preview.diagnosticsUnavailable")
+          loading
+            ? t("preview.loading")
+            : (runtimeFailure?.message ?? t("preview.diagnosticsUnavailable"))
         )
       );
       setDiagnosticsLoading(false);
@@ -408,23 +403,21 @@ export function Preview({ className }: PreviewProps) {
       setDiagnostics({
         parse: collectDiagnostic(
           () =>
-            parseJson(
+            facade.parseJson(
               code,
               diagramTheme,
               mermaidConfig,
               renderOptions
-            ),
-          localizeMermanError
+            )
         ),
         layout: collectDiagnostic(
           () =>
-            layoutJson(
+            facade.layoutJson(
               code,
               diagramTheme,
               mermaidConfig,
               renderOptions
-            ),
-          localizeMermanError
+            )
         ),
       });
       setDiagnosticsLoading(false);
@@ -438,14 +431,12 @@ export function Preview({ className }: PreviewProps) {
   }, [
     code,
     diagramTheme,
-    layoutJson,
+    facade,
     loading,
-    localizeMermanError,
     mermaidConfig,
-    parseJson,
     previewMode,
-    ready,
     renderOptions,
+    runtimeFailure,
     t,
   ]);
 
@@ -553,12 +544,12 @@ export function Preview({ className }: PreviewProps) {
       const safeValue = requireFreshSvgArtifact(artifact, expectedRenderKey);
       let exportSvg = safeValue;
       if (engine === "merman") {
-        const pngResult = render(code, diagramTheme, mermaidConfig, {
+        const pngResult = facade?.render(code, diagramTheme, mermaidConfig, {
           ...renderOptions,
           pipeline: "resvg-safe",
         });
-        if (!pngResult.svg) {
-          throw new Error(pngResult.error ?? "Failed to render PNG SVG");
+        if (!pngResult?.svg) {
+          throw new Error(pngResult?.error ?? "Failed to render PNG SVG");
         }
         exportSvg = requireSafeSvgString(pngResult.svg);
       }
@@ -571,7 +562,7 @@ export function Preview({ className }: PreviewProps) {
       exportingPngEnginesRef.current.delete(engine);
       setExportingPngEngines(new Set(exportingPngEnginesRef.current));
     }
-  }, [code, diagramTheme, mermaidConfig, render, renderOptions, t]);
+  }, [code, diagramTheme, facade, mermaidConfig, renderOptions, t]);
 
   const handleRefreshCompare = useCallback(() => {
     setRefreshNonce((value) => value + 1);
@@ -609,6 +600,7 @@ export function Preview({ className }: PreviewProps) {
       mode={previewMode}
       onModeChange={setPreviewMode}
       onCompareWarmup={warmCompareRenderer}
+      runtimeReady={ready}
       isAsciiSupported={isAsciiSupported}
       asciiCapability={asciiCapability}
       asciiSupportLabel={asciiSupportLabel}
@@ -623,8 +615,19 @@ export function Preview({ className }: PreviewProps) {
       <div className={cn("flex flex-col h-full", className)}>
         {renderTabBar()}
         <CenteredMessage icon={<Loader2 className="size-8 animate-spin" />}>
-          {t("preview.loading")}
+          {runtimeLoadStage
+            ? `${t("preview.loading")} (${runtimeLoadStage})`
+            : t("preview.loading")}
         </CenteredMessage>
+      </div>
+    );
+  }
+
+  if (runtimeFailure) {
+    return (
+      <div className={cn("flex flex-col h-full", className)}>
+        {renderTabBar()}
+        <RuntimeFailureView failure={runtimeFailure} t={t} />
       </div>
     );
   }
@@ -657,7 +660,7 @@ export function Preview({ className }: PreviewProps) {
     artifactKey: mermanSvgActionKey,
     renderKey: previewRenderKey,
     title: t("preview.mermanEngine"),
-    version: "WASM",
+    version: facade?.packageVersion ?? "-",
     svg,
     renderArtifact: mermanRenderArtifact,
     error,
@@ -873,6 +876,7 @@ interface TabBarProps {
   mode: PreviewMode;
   onModeChange: (mode: PreviewMode) => void;
   onCompareWarmup: () => void;
+  runtimeReady: boolean;
   isAsciiSupported: boolean;
   asciiCapability: AsciiCapability | null;
   asciiSupportLabel: string;
@@ -885,6 +889,7 @@ function TabBar({
   mode,
   onModeChange,
   onCompareWarmup,
+  runtimeReady,
   isAsciiSupported,
   asciiCapability,
   asciiSupportLabel,
@@ -901,14 +906,16 @@ function TabBar({
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              onClick={() => isAsciiSupported && onModeChange("ascii")}
-              disabled={!isAsciiSupported}
+              onClick={() =>
+                runtimeReady && isAsciiSupported && onModeChange("ascii")
+              }
+              disabled={!runtimeReady || !isAsciiSupported}
               className={cn(
                 "shrink-0 px-3 py-1.5 text-sm rounded-md transition-colors",
                 mode === "ascii"
                   ? "bg-background text-foreground shadow-sm font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-background/50",
-                !isAsciiSupported &&
+                (!runtimeReady || !isAsciiSupported) &&
                   "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-muted-foreground"
               )}
             >
@@ -931,12 +938,14 @@ function TabBar({
           onClick={() => onModeChange("compare")}
           onFocus={onCompareWarmup}
           onPointerEnter={onCompareWarmup}
+          disabled={!runtimeReady}
         >
           {t("preview.compareMode")}
         </TabButton>
         <TabButton
           active={mode === "diagnostics"}
           onClick={() => onModeChange("diagnostics")}
+          disabled={!runtimeReady}
         >
           {t("preview.diagnosticsMode")}
         </TabButton>
@@ -994,6 +1003,7 @@ interface TabButtonProps {
   onClick(): void;
   onFocus?: () => void;
   onPointerEnter?: () => void;
+  disabled?: boolean;
   children: ReactNode;
 }
 
@@ -1002,6 +1012,7 @@ function TabButton({
   onClick,
   onFocus,
   onPointerEnter,
+  disabled = false,
   children,
 }: TabButtonProps) {
   return (
@@ -1009,11 +1020,13 @@ function TabButton({
       onClick={onClick}
       onFocus={onFocus}
       onPointerEnter={onPointerEnter}
+      disabled={disabled}
       className={cn(
         "shrink-0 px-3 py-1.5 text-sm rounded-md transition-colors",
         active
           ? "bg-background text-foreground shadow-sm font-medium"
-          : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+          : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent"
       )}
     >
       {children}
@@ -1523,10 +1536,46 @@ function RenderError({
   );
 }
 
-function collectDiagnostic(
-  createJson: () => string,
-  localizeError: (message: string | null) => string | null
-): DiagnosticArtifact {
+function RuntimeFailureView({
+  failure,
+  t,
+}: {
+  failure: MermanRuntimeFailure;
+  t: (key: string) => string;
+}) {
+  const handleRecovery = () => {
+    if (failure.recovery === "reload") {
+      window.location.reload();
+      return;
+    }
+    void retryMermanRuntime().catch(() => undefined);
+  };
+
+  return (
+    <div
+      className="flex h-full flex-1 items-center justify-center p-6"
+      role="alert"
+    >
+      <div className="max-w-md text-center">
+        <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-destructive/10">
+          <AlertCircle className="size-6 text-destructive" />
+        </div>
+        <h3 className="mb-2 font-medium text-foreground">
+          {t("preview.error")}
+        </h3>
+        <p className="mb-4 text-xs text-muted-foreground">{failure.stage}</p>
+        <p className="mb-4 rounded-md bg-muted/50 p-3 font-mono text-sm text-muted-foreground">
+          {failure.message}
+        </p>
+        <Button onClick={handleRecovery}>
+          {t(failure.recovery === "reload" ? "wasm.reload" : "wasm.retry")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function collectDiagnostic(createJson: () => string): DiagnosticArtifact {
   const start = performance.now();
 
   try {
@@ -1539,7 +1588,7 @@ function collectDiagnostic(
   } catch (err) {
     return {
       json: null,
-      error: localizeError(err instanceof Error ? err.message : String(err)),
+      error: err instanceof Error ? err.message : String(err),
       elapsedMs: null,
     };
   }

@@ -28,7 +28,7 @@ const runtimeWrapperOnlyExports = new Set([
   "layoutObject",
 ]);
 const stableWrapperOnlyExports = new Set([
-  "createBrowserTextMeasurer",
+  "createBrowserTextMeasurementSession",
   "encodeOptions",
   "isAsciiDiagramType",
   "isBindingErrorPayload",
@@ -66,6 +66,7 @@ const requiredRuntimeBindings = [
   ...runtimeWrapperOnlyExports,
 ];
 const requiredTypeProperties = new Map([
+  ["BrowserTextMeasurementSession", ["measure", "dispose"]],
   [
     "ResourceOptions",
     ["max_class_nodes", "max_class_edges", "max_class_namespaces"],
@@ -168,6 +169,10 @@ failed ||= reportMissing(
 failed ||= reportMissing(
   "check-contracts: stable public TypeScript helpers are missing",
   requiredPublicWrappers.filter((name) => !publicWrappers.has(name)),
+);
+failed ||= reportPolicyFailure(
+  "check-contracts: legacy createBrowserTextMeasurer export must be removed",
+  publicWrappers.has("createBrowserTextMeasurer"),
 );
 failed ||= reportMissing(
   "check-contracts: runtime-dependent wrappers are not rebound by bindSurfaceRuntime()",
@@ -287,7 +292,9 @@ function extractExportedFunctionNames(source) {
 
 function extractInterfaceProperties(source, interfaceName) {
   const body = extractInterfaceBody(source, interfaceName);
-  return new Set(matches(body, /^\s+([A-Za-z_$][\w$]*)\??:\s*/gm));
+  return new Set(
+    matches(body, /^\s+(?:readonly\s+)?([A-Za-z_$][\w$]*)\??\s*(?::|\()/gm),
+  );
 }
 
 function extractInterfacePropertyType(source, interfaceName, propertyName) {

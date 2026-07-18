@@ -2,7 +2,11 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Gauge, Loader2, Play, Square } from "lucide-react";
 import { useAppStore } from "@/src/store";
-import { useMerman } from "@/src/hooks/useMerman";
+import {
+  selectMermanFacade,
+  selectMermanStatus,
+  useMermanRuntime,
+} from "@/src/runtime/use-merman-runtime";
 import {
   runLocalRenderBench,
   type BenchEngine,
@@ -40,7 +44,10 @@ export function BenchDialog() {
     textMeasurementMode,
     diagramFont,
   } = useAppStore();
-  const { ready, loading, render } = useMerman();
+  const facade = useMermanRuntime(selectMermanFacade);
+  const runtimeStatus = useMermanRuntime(selectMermanStatus);
+  const ready = facade !== null;
+  const loading = runtimeStatus === "idle" || runtimeStatus === "loading";
   const [open, setOpen] = useState(false);
   const [includeMerman, setIncludeMerman] = useState(true);
   const [includeMermaid, setIncludeMermaid] = useState(true);
@@ -75,7 +82,8 @@ export function BenchDialog() {
   );
 
   const handleRun = useCallback(async () => {
-    if (disabledReason || running) return;
+    if (disabledReason || running || !facade) return;
+    const readyFacade = facade;
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -93,7 +101,7 @@ export function BenchDialog() {
         warmupIterations,
         measureIterations,
         renderMerman: (source, theme, configJson) =>
-          render(source, theme, configJson, renderOptions),
+          readyFacade.render(source, theme, configJson, renderOptions),
         signal: controller.signal,
       });
       setResult(nextResult);
@@ -117,7 +125,7 @@ export function BenchDialog() {
     disabledReason,
     engines,
     measureIterations,
-    render,
+    facade,
     renderOptions,
     running,
     t,

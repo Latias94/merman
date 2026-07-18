@@ -81,7 +81,7 @@ export const surfaceStableValueExportNames = [
 
 export const surfaceRenderValueExportNames = [
   "assertSafeSvgForDom",
-  "createBrowserTextMeasurer",
+  "createBrowserTextMeasurementSession",
 ];
 
 const coreRuntimeExportNames = [

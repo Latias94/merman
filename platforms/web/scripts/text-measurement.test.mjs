@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createBrowserTextMeasurer } from "../dist/index.js";
+import * as webApi from "../dist/index.js";
+
+const { createBrowserTextMeasurementSession } = webApi;
 
 const OPERATION_CONTRACTS = new Map([
   ["measure", { kind: "metrics", wrapMode: "svg-like" }],
@@ -124,7 +126,7 @@ class FakeMeasureElement {
   }
 }
 
-test("browser text measurer routes exact operations to their DOM primitives", () => {
+test("browser text measurement session routes exact operations to their DOM primitives", () => {
   const originalDocument = globalThis.document;
   let canvasCreates = 0;
   const canvasCalls = [];
@@ -162,11 +164,18 @@ test("browser text measurer routes exact operations to their DOM primitives", ()
   };
 
   try {
-    const measure = createBrowserTextMeasurer();
+    const session = createBrowserTextMeasurementSession();
+    const measure = session.measure;
+    assert.equal(body.children.length, 0);
 
     const computed = measure(request("Computed", null, "computed-length", "svg-like"));
     assert.equal(computed.kind, "length");
     assert.equal(computed.length, "Computed".length * 16 * 0.4);
+    assert.equal(body.children.length, 2);
+    assert.deepEqual(
+      body.children.map((probe) => probe.attributes.get("data-merman-text-measure-probe")),
+      ["html", "svg"]
+    );
 
     const raw = measure(request("Raw", null, "raw-bbox-width", "svg-like"));
     assert.equal(raw.kind, "length");
@@ -321,6 +330,15 @@ test("browser text measurer routes exact operations to their DOM primitives", ()
       measure(request("", null, "create-text-middle-bbox-y-offset", "svg-like")),
       { kind: "length", length: 0 }
     );
+
+    const attachedProbes = [...body.children];
+    session.dispose();
+    session.dispose();
+    assert.equal(body.children.length, 0);
+    assert.ok(attachedProbes.every((probe) => probe.removed));
+    assert.equal(measure(request("Disposed", null, "measure", "svg-like")), undefined);
+    assert.equal(body.children.length, 0);
+    assert.equal(canvasCreates, 1);
   } finally {
     if (originalDocument === undefined) {
       delete globalThis.document;
@@ -328,6 +346,144 @@ test("browser text measurer routes exact operations to their DOM primitives", ()
       globalThis.document = originalDocument;
     }
   }
+});
+
+test("browser text measurement session can be disposed before first use", () => {
+  const originalDocument = globalThis.document;
+  let elementCreates = 0;
+  globalThis.document = {
+    body: { appendChild() {} },
+    createElement() {
+      elementCreates += 1;
+      return new FakeMeasureElement("div");
+    },
+    createElementNS() {
+      elementCreates += 1;
+      return new FakeMeasureElement("svg");
+    },
+  };
+
+  try {
+    const session = createBrowserTextMeasurementSession();
+    session.dispose();
+    session.dispose();
+    assert.equal(session.measure(request("Disposed", null, "measure", "svg-like")), undefined);
+    assert.equal(elementCreates, 0);
+  } finally {
+    if (originalDocument === undefined) {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+  }
+});
+
+test("browser text measurement session rolls back partially constructed probes", () => {
+  const originalDocument = globalThis.document;
+  let svgCreates = 0;
+  let failConstruction = true;
+  const body = {
+    children: [],
+    appendChild(child) {
+      child.parentElement = this;
+      this.children.push(child);
+      return child;
+    },
+  };
+  globalThis.document = {
+    body,
+    createElement(tagName) {
+      return new FakeMeasureElement(tagName);
+    },
+    createElementNS(namespace, tagName) {
+      assert.equal(namespace, "http://www.w3.org/2000/svg");
+      svgCreates += 1;
+      if (failConstruction && svgCreates === 2) {
+        throw new Error("synthetic probe construction failure");
+      }
+      return new FakeMeasureElement(tagName);
+    },
+  };
+
+  try {
+    const session = createBrowserTextMeasurementSession();
+    assert.equal(session.measure(request("First", null, "measure", "svg-like")), undefined);
+    assert.equal(body.children.length, 0);
+
+    failConstruction = false;
+    const recovered = session.measure(request("Second", null, "measure", "svg-like"));
+    assert.equal(recovered.kind, "metrics");
+    assert.equal(body.children.length, 2);
+    session.dispose();
+    assert.equal(body.children.length, 0);
+  } finally {
+    if (originalDocument === undefined) {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+  }
+});
+
+test("browser text measurement session falls back without a DOM", () => {
+  const originalDocument = globalThis.document;
+  try {
+    delete globalThis.document;
+    const session = createBrowserTextMeasurementSession();
+    assert.equal(session.measure(request("Node", null, "measure", "svg-like")), undefined);
+    session.dispose();
+    assert.equal(session.measure(request("Node", null, "measure", "svg-like")), undefined);
+  } finally {
+    if (originalDocument !== undefined) {
+      globalThis.document = originalDocument;
+    }
+  }
+});
+
+test("browser text measurement session preserves fallback on browser primitive failure", () => {
+  const originalDocument = globalThis.document;
+  const body = {
+    children: [],
+    appendChild(child) {
+      child.parentElement = this;
+      this.children.push(child);
+      return child;
+    },
+  };
+  globalThis.document = {
+    body,
+    createElement(tagName) {
+      return new FakeMeasureElement(tagName);
+    },
+    createElementNS(namespace, tagName) {
+      assert.equal(namespace, "http://www.w3.org/2000/svg");
+      const element = new FakeMeasureElement(tagName);
+      if (tagName === "text") {
+        element.getBBox = () => {
+          throw new Error("synthetic getBBox failure");
+        };
+      }
+      return element;
+    },
+  };
+
+  try {
+    const session = createBrowserTextMeasurementSession();
+    assert.equal(session.measure(request("Node", null, "measure", "svg-like")), undefined);
+    assert.equal(body.children.length, 2);
+    session.dispose();
+    assert.equal(body.children.length, 0);
+  } finally {
+    if (originalDocument === undefined) {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+  }
+});
+
+test("the legacy browser text measurer factory is not exported", () => {
+  assert.equal("createBrowserTextMeasurer" in webApi, false);
 });
 
 function request(text, maxWidth, operation, wrapMode) {

@@ -1,8 +1,6 @@
 import type { editor, languages } from "monaco-editor";
-import type {
-  MermanWasm,
-  ValidationResult,
-} from "@/src/lib/wasm-loader";
+import type { ValidationResult } from "@mermanjs/web";
+import type { MermanEditorService } from "@/src/runtime/merman-core";
 import type {
   EditorCodeAction,
   EditorCompletionItem,
@@ -221,11 +219,13 @@ const snippetCompletions: CompletionSpec[] = [
 ];
 
 let hoverDocs: Record<string, string> = {};
-let editorService: MermanWasm | null = null;
+let editorService: MermanEditorService | null = null;
 
 let registered = false;
 
-export function setMermaidEditorService(service: MermanWasm | null): void {
+export function setMermaidEditorService(
+  service: MermanEditorService | null
+): void {
   editorService = service;
 }
 
@@ -256,7 +256,7 @@ export function registerMermaidLanguage(
       const service = editorService;
       if (service) {
         try {
-          const completions = service.editor_completions(model.getValue(), {
+          const completions = service.editorCompletions(model.getValue(), {
             line: position.lineNumber - 1,
             character: position.column - 1,
           });
@@ -294,7 +294,7 @@ export function registerMermaidLanguage(
       const service = editorService;
       if (service) {
         try {
-          const hover = service.editor_hover(model.getValue(), {
+          const hover = service.editorHover(model.getValue(), {
             line: position.lineNumber - 1,
             character: position.column - 1,
           });
@@ -346,7 +346,7 @@ export function registerMermaidLanguage(
       }
       try {
           const actions = service
-            .editor_code_actions(model.getValue())
+            .editorCodeActions(model.getValue())
             .filter((action) =>
               action.diagnostics.some((diagnostic) =>
                 context.markers.some((marker) =>
@@ -367,7 +367,7 @@ export function registerMermaidLanguage(
       if (!service) return [];
       try {
         return service
-          .editor_document_symbols(model.getValue())
+          .editorDocumentSymbols(model.getValue())
           .map((symbol) => toMonacoDocumentSymbol(monaco, symbol));
       } catch {
         return [];
@@ -379,7 +379,7 @@ export function registerMermaidLanguage(
       const service = editorService;
       if (!service) return null;
       try {
-        const location = service.editor_definition(model.getValue(), {
+        const location = service.editorDefinition(model.getValue(), {
           line: position.lineNumber - 1,
           character: position.column - 1,
         });
@@ -395,7 +395,7 @@ export function registerMermaidLanguage(
       if (!service) return [];
       try {
         return service
-          .editor_references(
+          .editorReferences(
             model.getValue(),
             {
               line: position.lineNumber - 1,
@@ -414,7 +414,7 @@ export function registerMermaidLanguage(
       const service = editorService;
       if (!service) return null;
       try {
-        const prepare = service.editor_prepare_rename(model.getValue(), {
+        const prepare = service.editorPrepareRename(model.getValue(), {
           line: position.lineNumber - 1,
           character: position.column - 1,
         });
@@ -435,7 +435,7 @@ export function registerMermaidLanguage(
         return { edits: [], rejectReason: "No Mermaid symbol at cursor." };
       }
       try {
-        const edit = service.editor_rename(
+        const edit = service.editorRename(
           model.getValue(),
           {
             line: position.lineNumber - 1,
@@ -467,7 +467,7 @@ export function registerMermaidLanguage(
       }
       try {
         const legend = semanticTokenLegendForService(service);
-        const tokens = service.editor_semantic_tokens(model.getValue());
+        const tokens = service.editorSemanticTokens(model.getValue());
         return {
           data: encodeSemanticTokensForLegend(tokens, legend),
           resultId: undefined,
@@ -734,10 +734,10 @@ function toMonacoDocumentSymbol(
 }
 
 export function semanticTokenLegendForService(
-  service: Pick<MermanWasm, "editor_semantic_token_legend"> | null,
+  service: Pick<MermanEditorService, "editorSemanticTokenLegend"> | null,
 ): MermaidSemanticTokenLegend {
   try {
-    return service?.editor_semantic_token_legend() ?? STATIC_SEMANTIC_TOKEN_LEGEND;
+    return service?.editorSemanticTokenLegend() ?? STATIC_SEMANTIC_TOKEN_LEGEND;
   } catch {
     return STATIC_SEMANTIC_TOKEN_LEGEND;
   }

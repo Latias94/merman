@@ -65,10 +65,10 @@ test("Monaco semantic tokens provider encodes with the advertised service legend
   };
 
   setMermaidEditorService({
-    editor_semantic_token_legend() {
+    editorSemanticTokenLegend() {
       return legend;
     },
-    editor_semantic_tokens() {
+    editorSemanticTokens() {
       return [
         {
           line: 0,

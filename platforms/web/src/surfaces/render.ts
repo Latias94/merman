@@ -18,7 +18,7 @@ export {
   normalizeHostThemePresetName,
   encodeOptions,
   assertSafeSvgForDom,
-  createBrowserTextMeasurer,
+  createBrowserTextMeasurementSession,
 } from "../index.js";
 
 function surfaceLoader(): Promise<MermanWasmModule> {

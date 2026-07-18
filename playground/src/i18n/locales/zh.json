@@ -319,7 +319,9 @@
   },
   "wasm": {
     "loading": "WASM 模块加载中...",
-    "notLoaded": "WASM 模块未加载"
+    "notLoaded": "WASM 模块未加载",
+    "retry": "重试",
+    "reload": "重新加载"
   },
   "diagramTypes": {
     "flowchart": "流程图",

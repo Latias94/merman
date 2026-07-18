@@ -30,6 +30,7 @@ import type {
   AnalysisFactsResult,
   AnalysisResult,
   AsciiBindingOptions,
+  BrowserTextMeasurementSession,
   CommonBindingOptions,
   EditorCodeAction,
   EditorCompletionList,
@@ -155,10 +156,15 @@ export function layoutJsonWithTextMeasurer(
   return layoutWithMeasurer(source, encodeOptions(options), measurer);
 }
 
-export function createBrowserTextMeasurer(): HostTextMeasurer {
+export function createBrowserTextMeasurementSession(): BrowserTextMeasurementSession {
   let probes: BrowserTextMeasureProbes | null = null;
+  let disposed = false;
 
-  return (request) => {
+  const measure: HostTextMeasurer = (request) => {
+    if (disposed) {
+      return undefined;
+    }
+
     try {
       probes ??= createTextMeasureProbes();
       if (!probes) {
@@ -168,6 +174,20 @@ export function createBrowserTextMeasurer(): HostTextMeasurer {
     } catch {
       return undefined;
     }
+  };
+
+  return {
+    measure,
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      if (probes) {
+        disposeTextMeasureProbes(probes);
+        probes = null;
+      }
+    },
   };
 }
 
@@ -628,57 +648,82 @@ function createTextMeasureProbes(): BrowserTextMeasureProbes | null {
     return null;
   }
 
-  const html = document.createElement("div");
-  html.setAttribute("aria-hidden", "true");
-  Object.assign(html.style, {
-    position: "fixed",
-    left: "-10000px",
-    top: "-10000px",
-    visibility: "hidden",
-    contain: "layout style paint",
-    boxSizing: "border-box",
-    padding: "0",
-    margin: "0",
-    border: "0",
-    display: "block",
-  });
-  document.body.appendChild(html);
+  let html: HTMLDivElement | null = null;
+  let svg: SVGSVGElement | null = null;
 
-  const svg = document.createElementNS(SVG_NAMESPACE, "svg") as SVGSVGElement;
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("width", "0");
-  svg.setAttribute("height", "0");
-  Object.assign(svg.style, {
-    position: "fixed",
-    left: "-10000px",
-    top: "-10000px",
-    visibility: "hidden",
-    overflow: "visible",
-  });
-  const directText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
-  const tspanText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
-  const tspan = document.createElementNS(SVG_NAMESPACE, "tspan") as SVGTSpanElement;
-  const wrappedText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
-  const formattedTextGroup = document.createElementNS(SVG_NAMESPACE, "g") as SVGGElement;
-  const formattedText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
-  formattedTextGroup.appendChild(formattedText);
-  tspanText.appendChild(tspan);
-  svg.appendChild(directText);
-  svg.appendChild(tspanText);
-  svg.appendChild(wrappedText);
-  svg.appendChild(formattedTextGroup);
-  document.body.appendChild(svg);
+  try {
+    html = document.createElement("div");
+    html.setAttribute("aria-hidden", "true");
+    html.setAttribute("data-merman-text-measure-probe", "html");
+    Object.assign(html.style, {
+      position: "fixed",
+      left: "-10000px",
+      top: "-10000px",
+      visibility: "hidden",
+      contain: "layout style paint",
+      boxSizing: "border-box",
+      padding: "0",
+      margin: "0",
+      border: "0",
+      display: "block",
+    });
+    document.body.appendChild(html);
 
-  return {
-    html,
-    svg,
-    directText,
-    tspanText,
-    tspan,
-    wrappedText,
-    formattedTextGroup,
-    formattedText,
-  };
+    svg = document.createElementNS(SVG_NAMESPACE, "svg") as SVGSVGElement;
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("data-merman-text-measure-probe", "svg");
+    svg.setAttribute("width", "0");
+    svg.setAttribute("height", "0");
+    Object.assign(svg.style, {
+      position: "fixed",
+      left: "-10000px",
+      top: "-10000px",
+      visibility: "hidden",
+      overflow: "visible",
+    });
+    const directText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+    const tspanText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+    const tspan = document.createElementNS(SVG_NAMESPACE, "tspan") as SVGTSpanElement;
+    const wrappedText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+    const formattedTextGroup = document.createElementNS(SVG_NAMESPACE, "g") as SVGGElement;
+    const formattedText = document.createElementNS(SVG_NAMESPACE, "text") as SVGTextElement;
+    formattedTextGroup.appendChild(formattedText);
+    tspanText.appendChild(tspan);
+    svg.appendChild(directText);
+    svg.appendChild(tspanText);
+    svg.appendChild(wrappedText);
+    svg.appendChild(formattedTextGroup);
+    document.body.appendChild(svg);
+
+    return {
+      html,
+      svg,
+      directText,
+      tspanText,
+      tspan,
+      wrappedText,
+      formattedTextGroup,
+      formattedText,
+    };
+  } catch (error) {
+    removeTextMeasureProbe(svg);
+    removeTextMeasureProbe(html);
+    throw error;
+  }
+}
+
+function disposeTextMeasureProbes(probes: BrowserTextMeasureProbes): void {
+  probes.canvasContext = null;
+  removeTextMeasureProbe(probes.svg);
+  removeTextMeasureProbe(probes.html);
+}
+
+function removeTextMeasureProbe(probe: Element | null): void {
+  try {
+    probe?.remove();
+  } catch {
+    // Disposal is best-effort for a realm that may already be tearing down.
+  }
 }
 
 export function renderSvgElement(

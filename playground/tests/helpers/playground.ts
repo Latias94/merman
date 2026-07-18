@@ -62,7 +62,7 @@ export async function previewSvgText(page: Page): Promise<string> {
 export async function replaceEditorSource(page: Page, source: string): Promise<void> {
   const input = page.getByRole("textbox", { name: "Editor content" }).first();
   await expect(input).toBeVisible();
-  await input.click();
+  await input.focus();
   await page.keyboard.press("Control+A");
   await page.keyboard.press("Backspace");
   await page.keyboard.insertText(source);

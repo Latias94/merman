@@ -319,7 +319,9 @@
   },
   "wasm": {
     "loading": "WASM module loading...",
-    "notLoaded": "WASM module not loaded"
+    "notLoaded": "WASM module not loaded",
+    "retry": "Retry",
+    "reload": "Reload"
   },
   "diagramTypes": {
     "flowchart": "Flowchart",
