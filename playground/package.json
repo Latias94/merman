@@ -9,7 +9,12 @@
     "postbuild": "node scripts/verify-dist-wasm.mjs",
     "preview": "vite preview",
     "verify:dist": "node scripts/verify-dist-wasm.mjs",
-    "test": "npm run test:semantic-tokens && npm run test:render-artifacts",
+    "test": "npm run test:browser:typecheck && npm run test:semantic-tokens && npm run test:render-artifacts",
+    "test:browser": "npm run build && npm run test:browser:chromium",
+    "test:browser:chromium": "playwright test --project=chromium-desktop --project=chromium-mobile",
+    "test:browser:smoke": "npm run build && npm run test:browser:smoke:built",
+    "test:browser:smoke:built": "playwright test --grep @smoke",
+    "test:browser:typecheck": "tsc --noEmit -p tsconfig.playwright.json",
     "test:render-artifacts": "node --test --experimental-strip-types src/lib/render-artifacts.test.ts",
     "test:semantic-tokens": "node --test scripts/semantic-tokens.test.mjs",
     "lint": "eslint ."
@@ -41,7 +46,9 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.61.1",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^22",
     "@types/react": "^19",

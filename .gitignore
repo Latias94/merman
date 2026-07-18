@@ -6,6 +6,8 @@
 /platforms/web/pkg/
 /playground/node_modules/
 /playground/dist/
+/playground/playwright-report/
+/playground/test-results/
 /playground/*.tsbuildinfo
 /playground/vite.config.d.ts
 /playground/vite.config.js

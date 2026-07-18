@@ -8,7 +8,7 @@ export default [
     ignores: ["dist/**", "node_modules/**", "components/ui/**"],
   },
   {
-    files: ["*.ts", "src/**/*.{ts,tsx}", "lib/**/*.ts"],
+    files: ["*.ts", "src/**/*.{ts,tsx}", "lib/**/*.ts", "tests/**/*.ts"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
