@@ -669,9 +669,9 @@ pub(crate) fn verify_playground_example_catalog(args: Vec<String>) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::{
-        build_committed_catalog, parse_paths, read_utf8, render_typescript, validate_manifest,
-        verify_output, ManifestEvidence, ManifestExample, PlaygroundManifest, VariantEvidenceKind,
-        DEFAULT_MANIFEST, DEFAULT_OUTPUT, MANIFEST_SCHEMA_VERSION,
+        DEFAULT_MANIFEST, DEFAULT_OUTPUT, MANIFEST_SCHEMA_VERSION, ManifestEvidence,
+        ManifestExample, PlaygroundManifest, VariantEvidenceKind, build_committed_catalog,
+        parse_paths, read_utf8, render_typescript, validate_manifest, verify_output,
     };
     use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
     use std::collections::{BTreeMap, BTreeSet};
@@ -732,9 +732,11 @@ mod tests {
                 ManifestEvidence::Variant { .. } => counts.1 += 1,
             }
         }
-        assert!(evidence_counts
-            .values()
-            .all(|(baselines, variants)| *baselines == 1 && *variants >= 1));
+        assert!(
+            evidence_counts
+                .values()
+                .all(|(baselines, variants)| *baselines == 1 && *variants >= 1)
+        );
         assert_eq!(
             catalog
                 .examples
@@ -748,10 +750,12 @@ mod tests {
             .copied()
             .collect::<BTreeSet<_>>()
         );
-        assert!(catalog
-            .examples
-            .windows(2)
-            .all(|pair| pair[0].order < pair[1].order));
+        assert!(
+            catalog
+                .examples
+                .windows(2)
+                .all(|pair| pair[0].order < pair[1].order)
+        );
         let typescript = render_typescript(&catalog).unwrap();
         assert!(typescript.contains("import type { DiagramType } from \"@mermanjs/web\";"));
         assert!(typescript.contains("diagramType: DiagramType;"));
@@ -798,10 +802,12 @@ mod tests {
         let catalog =
             validate_manifest(root.path(), &duplicate_path, &["flowchart"], false).unwrap();
         assert_eq!(catalog.examples.len(), 2);
-        assert!(catalog
-            .examples
-            .iter()
-            .all(|catalog_example| catalog_example.diagram_type == "flowchart"));
+        assert!(
+            catalog
+                .examples
+                .iter()
+                .all(|catalog_example| catalog_example.diagram_type == "flowchart")
+        );
     }
 
     #[test]
@@ -934,10 +940,12 @@ mod tests {
 
         let manifest = root.path().join("manifest.json");
         fs::write(&manifest, [0xff, 0xfe]).unwrap();
-        assert!(read_utf8(&manifest, "manifest")
-            .unwrap_err()
-            .to_string()
-            .contains("manifest"));
+        assert!(
+            read_utf8(&manifest, "manifest")
+                .unwrap_err()
+                .to_string()
+                .contains("manifest")
+        );
     }
 
     #[test]
@@ -959,12 +967,14 @@ mod tests {
             }
         );
         assert!(parse_paths(vec!["--manifest".into()]).is_err());
-        assert!(parse_paths(vec![
-            "--out".into(),
-            "first.ts".into(),
-            "--out".into(),
-            "second.ts".into(),
-        ])
-        .is_err());
+        assert!(
+            parse_paths(vec![
+                "--out".into(),
+                "first.ts".into(),
+                "--out".into(),
+                "second.ts".into(),
+            ])
+            .is_err()
+        );
     }
 }

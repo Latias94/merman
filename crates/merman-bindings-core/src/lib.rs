@@ -294,13 +294,12 @@ mod tests {
             "parser_complete"
         );
         assert_eq!(json["diagrams"][0]["syntax"]["source_mapped_spans"], true);
-        assert_eq!(
+        assert!(
             json["diagrams"][0]["syntax"]["node_ids"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|id| id == "A"),
-            true
+                .any(|id| id == "A")
         );
         assert!(
             json["diagrams"][0]["syntax"]["semantic_items"]
