@@ -10,7 +10,10 @@ use crate::{
 
 use super::db::{MindmapDb, MindmapParseConfig};
 use super::render_model::MindmapDiagramRenderModel;
-use super::utils::{NodeSpec, NodeSpecTrace, parse_node_spec, strip_inline_comment};
+use super::utils::{
+    NodeSpec, NodeSpecContinuation, NodeSpecError, NodeSpecTrace, parse_node_spec,
+    starts_node_spec, strip_inline_comment,
+};
 use crate::diagrams::scan::{split_indent, starts_with_case_insensitive};
 
 #[cfg(all(test, feature = "full"))]
@@ -386,15 +389,32 @@ fn record_mindmap_error(
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+struct MindmapContinuationState {
+    syntax: NodeSpecContinuation,
+    original_indent: usize,
+}
+
+struct MindmapPendingSyntax {
+    state: MindmapContinuationState,
+    statement_start: usize,
+    statement_span: SourceSpan,
+    error: Box<NodeSpecError>,
+}
+
 enum MindmapLineOutcome {
     Done,
-    NeedMoreInput,
+    NeedMoreInput(MindmapPendingSyntax),
+}
+
+struct PendingMindmapLine {
+    text: String,
+    start: usize,
+    syntax: MindmapPendingSyntax,
 }
 
 fn handle_mindmap_line(
     line: &str,
     line_start: usize,
-    allow_continuation: bool,
     parsed: &mut MindmapParsedLines,
     first_error: &mut Option<Error>,
     lexemes: &mut EditorLexemeJournal<'_>,
@@ -531,12 +551,128 @@ fn handle_mindmap_line(
                 }));
             MindmapLineOutcome::Done
         }
-        Err(error) if error.can_continue && allow_continuation => MindmapLineOutcome::NeedMoreInput,
+        Err(error) if error.continuation.is_some() => {
+            let continuation = error
+                .continuation
+                .expect("continuation branch requires typed syntax state");
+            MindmapLineOutcome::NeedMoreInput(MindmapPendingSyntax {
+                state: MindmapContinuationState {
+                    syntax: continuation,
+                    original_indent: indent,
+                },
+                statement_start,
+                statement_span,
+                error,
+            })
+        }
         Err(error) => {
             record_mindmap_node_trace(&error.trace, statement_start, lexemes);
             record_mindmap_error(first_error, meta, error.message, statement_span);
             MindmapLineOutcome::Done
         }
+    }
+}
+
+fn finish_pending_mindmap_line(
+    pending: PendingMindmapLine,
+    first_error: &mut Option<Error>,
+    lexemes: &mut EditorLexemeJournal<'_>,
+    meta: &ParseMetadata,
+) {
+    let MindmapPendingSyntax {
+        statement_start,
+        statement_span,
+        error,
+        ..
+    } = pending.syntax;
+    let NodeSpecError { message, trace, .. } = *error;
+    record_mindmap_node_trace(&trace, statement_start, lexemes);
+    record_mindmap_error(first_error, meta, message, statement_span);
+}
+
+fn is_safe_mindmap_statement(line: &str) -> bool {
+    let (_, rest) = split_indent(line);
+    let rest = strip_inline_comment(rest).trim();
+    if rest.is_empty() {
+        return false;
+    }
+    if starts_with_case_insensitive(rest, "::icon(") || rest.starts_with(":::") {
+        return true;
+    }
+
+    starts_node_spec(rest)
+}
+
+fn pending_mindmap_line_should_synchronize(
+    pending: &PendingMindmapLine,
+    physical_line: &str,
+) -> bool {
+    let (indent, rest) = split_indent(physical_line);
+    let rest = rest.trim_end();
+    if rest.is_empty()
+        || pending.syntax.state.syntax.has_open_text()
+        || indent > pending.syntax.state.original_indent
+    {
+        return false;
+    }
+    if indent == pending.syntax.state.original_indent
+        && rest.starts_with(pending.syntax.state.syntax.expected_closing())
+    {
+        return false;
+    }
+    indent <= pending.syntax.state.original_indent && is_safe_mindmap_statement(physical_line)
+}
+
+fn process_mindmap_physical_line(
+    physical_line: &str,
+    line_start: usize,
+    pending: &mut Option<PendingMindmapLine>,
+    parsed: &mut MindmapParsedLines,
+    first_error: &mut Option<Error>,
+    lexemes: &mut EditorLexemeJournal<'_>,
+    meta: &ParseMetadata,
+) {
+    if pending
+        .as_ref()
+        .is_some_and(|current| pending_mindmap_line_should_synchronize(current, physical_line))
+    {
+        let current = pending.take().expect("checked pending mindmap line");
+        finish_pending_mindmap_line(current, first_error, lexemes, meta);
+    }
+
+    if let Some(mut current) = pending.take() {
+        current.text.push('\n');
+        current.text.push_str(physical_line);
+        match handle_mindmap_line(
+            &current.text,
+            current.start,
+            parsed,
+            first_error,
+            lexemes,
+            meta,
+        ) {
+            MindmapLineOutcome::Done => {}
+            MindmapLineOutcome::NeedMoreInput(syntax) => {
+                current.syntax = syntax;
+                *pending = Some(current);
+            }
+        }
+        return;
+    }
+
+    if let MindmapLineOutcome::NeedMoreInput(syntax) = handle_mindmap_line(
+        physical_line,
+        line_start,
+        parsed,
+        first_error,
+        lexemes,
+        meta,
+    ) {
+        *pending = Some(PendingMindmapLine {
+            text: physical_line.to_string(),
+            start: line_start,
+            syntax,
+        });
     }
 }
 
@@ -606,78 +742,34 @@ fn parse_mindmap_lines(
         };
     }
 
-    struct PendingMindmapLine {
-        text: String,
-        start: usize,
-    }
-
     let mut pending = None;
-    let push_line = |physical_line: &str,
-                     line_start: usize,
-                     pending: &mut Option<PendingMindmapLine>,
-                     parsed: &mut MindmapParsedLines,
-                     first_error: &mut Option<Error>,
-                     lexemes: &mut EditorLexemeJournal<'_>| {
-        match pending.as_mut() {
-            Some(PendingMindmapLine { text, .. }) => {
-                text.push('\n');
-                text.push_str(physical_line);
-            }
-            None => {
-                *pending = Some(PendingMindmapLine {
-                    text: physical_line.to_string(),
-                    start: line_start,
-                });
-            }
-        }
-        let current = pending.as_ref().expect("pending line was initialized");
-        if handle_mindmap_line(
-            &current.text,
-            current.start,
-            true,
-            parsed,
-            first_error,
-            lexemes,
-            meta,
-        ) == MindmapLineOutcome::Done
-        {
-            *pending = None;
-        }
-    };
-
     if let Some((tail, tail_start)) = header_tail {
-        push_line(
+        process_mindmap_physical_line(
             tail,
             tail_start,
             &mut pending,
             &mut parsed,
             &mut first_error,
             lexemes,
+            meta,
         );
     }
     for segment in lines {
         let line_start = offset;
         offset += segment.len();
         let line = segment.strip_suffix('\n').unwrap_or(segment);
-        push_line(
+        process_mindmap_physical_line(
             line,
             line_start,
             &mut pending,
             &mut parsed,
             &mut first_error,
             lexemes,
-        );
-    }
-    if let Some(PendingMindmapLine { text, start }) = pending {
-        handle_mindmap_line(
-            &text,
-            start,
-            false,
-            &mut parsed,
-            &mut first_error,
-            lexemes,
             meta,
         );
+    }
+    if let Some(pending) = pending {
+        finish_pending_mindmap_line(pending, &mut first_error, lexemes, meta);
     }
 
     MindmapParseOutcome {

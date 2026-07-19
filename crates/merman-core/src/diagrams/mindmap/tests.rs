@@ -474,12 +474,115 @@ fn mindmap_parser_emits_exact_crlf_unicode_multiline_lexemes() {
 }
 
 #[test]
+fn mindmap_unquoted_multiline_nodes_continue_until_the_shape_delimiter() {
+    let source = concat!(
+        "mindmap\n",
+        "  root[\n",
+        "    Multi-line root\n",
+        "    with Unicode 🤓\n",
+        "  ]\n",
+        "    child[Later child]\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
+        .expect("unquoted multiline mindmap parses")
+        .expect("mindmap model");
+
+    assert_eq!(parsed.diagram.model["rootNode"]["nodeId"], "root");
+    assert_eq!(
+        parsed.diagram.model["rootNode"]["descr"],
+        "\n    Multi-line root\n    with Unicode 🤓\n  "
+    );
+    assert_eq!(
+        parsed.diagram.model["rootNode"]["children"][0]["nodeId"],
+        "child"
+    );
+    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        panic!("mindmap editor facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert_mindmap_lexeme(&facts, source, EditorLexemeKind::Delimiter, "[");
+    assert_mindmap_lexeme(&facts, source, EditorLexemeKind::Delimiter, "]");
+    assert_mindmap_lexeme(
+        &facts,
+        source,
+        EditorLexemeKind::String,
+        "\n    Multi-line root\n    with Unicode 🤓\n  ",
+    );
+    assert_mindmap_lexemes_are_exact(source, &facts);
+}
+
+#[test]
+fn mindmap_bare_markdown_continuation_stays_open_across_same_indent_content() {
+    let source = concat!(
+        "mindmap\n",
+        "    id1[`**Start** with\n",
+        "    a same-indent second line`]\n",
+        "      child[Later child]\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
+        .expect("bare markdown mindmap parses")
+        .expect("mindmap model");
+
+    assert_eq!(parsed.diagram.model["rootNode"]["nodeId"], "id1");
+    assert_eq!(
+        parsed.diagram.model["rootNode"]["descr"],
+        "`**Start** with\n    a same-indent second line`"
+    );
+    assert_eq!(
+        parsed.diagram.model["rootNode"]["children"][0]["nodeId"],
+        "child"
+    );
+    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        panic!("mindmap editor facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert_mindmap_lexeme(
+        &facts,
+        source,
+        EditorLexemeKind::String,
+        "`**Start** with\n    a same-indent second line`",
+    );
+    assert_mindmap_lexemes_are_exact(source, &facts);
+}
+
+#[test]
+fn mindmap_unmatched_bare_backtick_does_not_hide_the_shape_closing_delimiter() {
+    let source = "mindmap\n  root[Use ` unmatched marker]\n";
+    let parsed = Engine::new()
+        .parse_diagram_with_editor_facts_sync(source, ParseOptions::strict())
+        .expect("mindmap node with unmatched bare backtick parses")
+        .expect("mindmap model");
+
+    assert_eq!(parsed.diagram.model["rootNode"]["nodeId"], "root");
+    assert_eq!(
+        parsed.diagram.model["rootNode"]["descr"],
+        "Use ` unmatched marker"
+    );
+    let crate::ParsedEditorFacts::Available(facts) = parsed.editor_facts else {
+        panic!("mindmap editor facts");
+    };
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert_mindmap_lexeme(&facts, source, EditorLexemeKind::Delimiter, "]");
+    assert_mindmap_lexeme(
+        &facts,
+        source,
+        EditorLexemeKind::String,
+        "Use ` unmatched marker",
+    );
+    assert_mindmap_lexemes_are_exact(source, &facts);
+}
+
+#[test]
 fn mindmap_recovery_keeps_failed_prefix_and_later_node_lexemes() {
     let source = concat!(
         "mindmap\n",
         " root\n",
         "  broken[unterminated\n",
+        "  ::icon(lucide:home)\n",
         "  后续(After)\n",
+        "  another[unterminated\n",
         "  :::hot\n",
     );
     let engine = Engine::new();
@@ -498,8 +601,11 @@ fn mindmap_recovery_keeps_failed_prefix_and_later_node_lexemes() {
         (EditorLexemeKind::Identifier, "root"),
         (EditorLexemeKind::Identifier, "broken"),
         (EditorLexemeKind::Delimiter, "["),
+        (EditorLexemeKind::Keyword, "::icon"),
+        (EditorLexemeKind::Identifier, "lucide:home"),
         (EditorLexemeKind::Identifier, "后续"),
         (EditorLexemeKind::String, "After"),
+        (EditorLexemeKind::Identifier, "another"),
         (EditorLexemeKind::Identifier, "hot"),
     ] {
         assert_mindmap_lexeme(&facts, source, kind, text);

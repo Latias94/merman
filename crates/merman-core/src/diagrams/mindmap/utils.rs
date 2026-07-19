@@ -66,7 +66,36 @@ pub(super) struct NodeSpecTrace {
 pub(super) struct NodeSpecError {
     pub message: String,
     pub trace: NodeSpecTrace,
-    pub can_continue: bool,
+    pub continuation: Option<NodeSpecContinuation>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NodeSpecContinuation {
+    AwaitingClosingDelimiter {
+        expected: &'static str,
+        text: Option<NodeTextContinuation>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NodeTextContinuation {
+    Quoted,
+    QuotedMarkdown,
+    BareMarkdown,
+}
+
+impl NodeSpecContinuation {
+    pub fn expected_closing(self) -> &'static str {
+        match self {
+            Self::AwaitingClosingDelimiter { expected, .. } => expected,
+        }
+    }
+
+    pub fn has_open_text(self) -> bool {
+        match self {
+            Self::AwaitingClosingDelimiter { text, .. } => text.is_some(),
+        }
+    }
 }
 
 pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<NodeSpecError>> {
@@ -75,23 +104,23 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
         return Err(node_spec_error(
             "expected node",
             NodeSpecTrace::default(),
-            false,
+            None,
         ));
     }
 
     if let Some((start, end)) = node_delimiter_pair_at_start(input) {
         let opening = SourceSpan::new(0, start.len());
         let (inner, tail, closing_start) =
-            extract_delimited(input, start, end).map_err(|message| {
+            extract_delimited(input, start, end).map_err(|failure| {
                 let text_opening = text_opening_span(&input[start.len()..], start.len());
                 node_spec_error(
-                    message,
+                    failure.message(),
                     NodeSpecTrace {
                         shape_opening: Some(opening),
                         text_opening,
                         ..NodeSpecTrace::default()
                     },
-                    text_opening.is_some(),
+                    failure.continuation(),
                 )
             })?;
         let closing = SourceSpan::new(closing_start, closing_start + end.len());
@@ -106,7 +135,7 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
             explicit_id: false,
         };
         if !tail.trim().is_empty() {
-            return Err(node_spec_error("unexpected trailing input", trace, false));
+            return Err(node_spec_error("unexpected trailing input", trace, None));
         }
         let ty = node_type_for(start, end);
         return Ok(NodeSpec {
@@ -145,17 +174,17 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
                 explicit_id: true,
                 ..NodeSpecTrace::default()
             },
-            false,
+            None,
         ));
     };
 
     let rest_start = input.len() - rest.len();
     let opening = SourceSpan::new(rest_start, rest_start + start.len());
     let (inner, tail, closing_start_in_rest) =
-        extract_delimited(rest, start, end).map_err(|message| {
+        extract_delimited(rest, start, end).map_err(|failure| {
             let text_opening = text_opening_span(&rest[start.len()..], rest_start + start.len());
             node_spec_error(
-                message,
+                failure.message(),
                 NodeSpecTrace {
                     id_span: Some(SourceSpan::new(0, id_raw.trim_end().len())),
                     shape_opening: Some(opening),
@@ -163,7 +192,7 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
                     explicit_id: true,
                     ..NodeSpecTrace::default()
                 },
-                text_opening.is_some(),
+                failure.continuation(),
             )
         })?;
     let closing_start = rest_start + closing_start_in_rest;
@@ -179,7 +208,7 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
         explicit_id: true,
     };
     if !tail.trim().is_empty() {
-        return Err(node_spec_error("unexpected trailing input", trace, false));
+        return Err(node_spec_error("unexpected trailing input", trace, None));
     }
 
     let ty = node_type_for(start, end);
@@ -192,15 +221,24 @@ pub(super) fn parse_node_spec(input: &str) -> std::result::Result<NodeSpec, Box<
     })
 }
 
+pub(super) fn starts_node_spec(input: &str) -> bool {
+    let input = input.trim_end();
+    if input.is_empty() || node_delimiter_pair_at_start(input).is_some() {
+        return !input.is_empty();
+    }
+    let (id, _) = split_node_id(input);
+    !id.trim_end().is_empty()
+}
+
 fn node_spec_error(
     message: impl Into<String>,
     trace: NodeSpecTrace,
-    can_continue: bool,
+    continuation: Option<NodeSpecContinuation>,
 ) -> Box<NodeSpecError> {
     Box::new(NodeSpecError {
         message: message.into(),
         trace,
-        can_continue,
+        continuation,
     })
 }
 
@@ -235,45 +273,110 @@ fn node_delimiter_pair_at_start(input: &str) -> Option<(&'static str, &'static s
     None
 }
 
+enum DelimitedScanFailure {
+    ExpectedOpening,
+    AwaitingClosingDelimiter {
+        expected: &'static str,
+        text: Option<NodeTextContinuation>,
+    },
+}
+
+impl DelimitedScanFailure {
+    fn message(&self) -> &'static str {
+        match self {
+            Self::ExpectedOpening => "expected delimiter start",
+            Self::AwaitingClosingDelimiter { .. } => "unterminated node delimiter",
+        }
+    }
+
+    fn continuation(&self) -> Option<NodeSpecContinuation> {
+        match *self {
+            Self::ExpectedOpening => None,
+            Self::AwaitingClosingDelimiter { expected, text } => {
+                Some(NodeSpecContinuation::AwaitingClosingDelimiter { expected, text })
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NodeTextScanState {
+    Plain,
+    Quoted,
+    QuotedMarkdown,
+    BareMarkdown,
+}
+
+impl NodeTextScanState {
+    fn continuation(self) -> Option<NodeTextContinuation> {
+        match self {
+            Self::Plain => None,
+            Self::Quoted => Some(NodeTextContinuation::Quoted),
+            Self::QuotedMarkdown => Some(NodeTextContinuation::QuotedMarkdown),
+            Self::BareMarkdown => Some(NodeTextContinuation::BareMarkdown),
+        }
+    }
+}
+
 fn extract_delimited<'a>(
     input: &'a str,
-    start: &str,
-    end: &str,
-) -> std::result::Result<(&'a str, &'a str, usize), String> {
+    start: &'static str,
+    end: &'static str,
+) -> std::result::Result<(&'a str, &'a str, usize), DelimitedScanFailure> {
     if !input.starts_with(start) {
-        return Err("expected delimiter start".to_string());
+        return Err(DelimitedScanFailure::ExpectedOpening);
     }
-    let mut in_quote = false;
-    let mut in_backtick_quote = false;
+    let mut text_state = NodeTextScanState::Plain;
 
     let start_len = start.len();
     let mut it = input[start_len..].char_indices().peekable();
     while let Some((off, ch)) = it.next() {
         let idx = start_len + off;
 
-        if in_backtick_quote {
-            if ch == '`' && it.peek().is_some_and(|(_, next)| *next == '"') {
-                in_backtick_quote = false;
-                it.next();
+        match text_state {
+            NodeTextScanState::QuotedMarkdown => {
+                if ch == '`' && it.peek().is_some_and(|(_, next)| *next == '"') {
+                    text_state = NodeTextScanState::Plain;
+                    it.next();
+                }
+                continue;
             }
-            continue;
+            NodeTextScanState::Quoted => {
+                if ch == '"' {
+                    text_state = NodeTextScanState::Plain;
+                }
+                continue;
+            }
+            NodeTextScanState::BareMarkdown => {
+                if ch == '`' {
+                    text_state = NodeTextScanState::Plain;
+                    continue;
+                }
+                if input[idx..].starts_with(end) {
+                    let inner = &input[start_len..idx];
+                    let tail = &input[idx + end.len()..];
+                    return Ok((inner, tail, idx));
+                }
+                continue;
+            }
+            NodeTextScanState::Plain => {}
         }
 
-        if in_quote {
-            if ch == '"' {
-                in_quote = false;
-            }
-            continue;
-        }
-
-        if ch == '"' {
-            if it.peek().is_some_and(|(_, next)| *next == '`') {
-                in_backtick_quote = true;
+        match ch {
+            '"' if it.peek().is_some_and(|(_, next)| *next == '`') => {
+                text_state = NodeTextScanState::QuotedMarkdown;
                 it.next();
                 continue;
             }
-            in_quote = true;
-            continue;
+            '"' => {
+                text_state = NodeTextScanState::Quoted;
+                continue;
+            }
+            '`' => {
+                text_state = NodeTextScanState::BareMarkdown;
+                continue;
+            }
+            _ => {}
         }
 
         if input[idx..].starts_with(end) {
@@ -283,7 +386,10 @@ fn extract_delimited<'a>(
         }
     }
 
-    Err("unterminated node delimiter".to_string())
+    Err(DelimitedScanFailure::AwaitingClosingDelimiter {
+        expected: end,
+        text: text_state.continuation(),
+    })
 }
 
 struct ParsedNodeText {
