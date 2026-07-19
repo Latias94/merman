@@ -792,6 +792,49 @@ fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
 }
 
 #[test]
+fn font_only_public_themes_keep_upstream_palette_in_resvg_safe_output() {
+    let themes = [
+        ("default", "hsl(240, 100%, 76.2745098039%)"),
+        ("dark", "#1f2020"),
+        (
+            "forest",
+            "hsl(78.1578947368, 58.4615384615%, 64.5098039216%)",
+        ),
+        ("neutral", "#555"),
+        ("base", "hsl(40.5882352941, 100%, 68.3333333333%)"),
+    ];
+    let families = [
+        ("radar", "radar-beta\naxis A, B\ncurve sample{1, 2}\n"),
+        ("kanban", "kanban\n  Todo\n    item1\n"),
+        ("mindmap", "mindmap\n  root((Root))\n    child(Child)\n"),
+        (
+            "timeline",
+            "timeline\n  section Release\n    Plan : Build\n",
+        ),
+    ];
+
+    for (theme, expected_scale) in themes {
+        let site_config = MermaidConfig::from_value(serde_json::json!({
+            "theme": theme,
+            "themeVariables": {
+                "fontFamily": "Inter, sans-serif"
+            }
+        }));
+
+        for (family, source) in families {
+            let name = format!("font-only-{theme}-{family}");
+            let svg =
+                render_resvg_safe_with_options(&name, source, false, Some(site_config.clone()));
+            assert_resvg_safe_output(&name, source, &svg);
+            assert!(
+                svg.contains(expected_scale),
+                "{name}: resvg-safe output must preserve the pinned Mermaid cScale0 {expected_scale:?}: {svg}"
+            );
+        }
+    }
+}
+
+#[test]
 fn host_reported_diagrams_render_headless_resvg_safe() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (
