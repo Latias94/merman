@@ -96,8 +96,10 @@ Implement each admitted delta through the family-owned path appropriate to its k
   config/theme, layout, SVG, resource limits, editor facts, LSP features, Web bindings, Playground,
   fixtures, and provenance.
 - **External diagram**: typed runtime requirement, exact plugin graph, cold and reused loading,
-  semantic/headless behavior that Merman must own, safe-SVG or sandboxed-rich-artifact contract,
-  Playground and reference CLI registration, failure projection, and security tests.
+  semantic/headless behavior that Merman must own, source-observed closed artifact type and strict
+  validator, isolated execution when package code is untrusted, Playground and reference CLI
+  registration, failure projection, and security tests. A validation failure may not infer a second
+  artifact format; a genuinely new format requires separate admission before selection.
 - **Layout module**: typed selection and registration, config propagation, deterministic fallback,
   resource enforcement, reference CLI and Playground integration, and source-backed layout parity.
 - **Removed or changed syntax**: parser recovery, diagnostics, editor lexemes, semantic tokens,

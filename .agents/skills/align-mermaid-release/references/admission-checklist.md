@@ -39,8 +39,8 @@ Evidence table:
 
 - [ ] Built-in diagram registrations and aliases were diffed.
 - [ ] External diagram and layout registrations were diffed.
-- [ ] Grammar, preprocessing, model, config, theme, sanitizer, URL, resource, and DOM changes were
-      classified.
+- [ ] Grammar, preprocessing, model, config, theme, artifact validation, URL, resource, and DOM
+      changes were classified.
 - [ ] Removed syntax and changed recovery behavior were classified.
 - [ ] New and changed upstream fixtures were mapped to source provenance.
 - [ ] Browser-dependent residuals have an explicit artifact contract.
@@ -68,8 +68,10 @@ with a reason.
 | Positive, negative, recovery, resource, and security fixtures |  |
 | Generated catalogs, status, and provenance |  |
 
-Parser-only support does not close admission. External rich output must use its explicit sanitized,
-sandboxed artifact path; it must not weaken the canonical inline-SVG policy.
+Parser-only support does not close admission. External output must match a source-observed closed
+artifact type and pass its strict validator. A family name or validation failure cannot select an
+alternate format. A genuinely new format needs separate validation, presentation, resource, and
+security admission; it must not weaken the canonical inline-SVG policy.
 
 ## Feature Decision
 
@@ -108,7 +110,7 @@ closed decision for each without relying on a hardcoded release number:
 3. Higher compatible companion that fails one security or resource test and retains the oracle.
 4. Latest companion major outside the plugin range.
 5. New built-in diagram with parser and editor grammar.
-6. New external rich-output diagram.
+6. New external diagram whose observed output requires a previously unsupported artifact format.
 7. New layout module with a browser-only package.
 8. Heavy Rust layout dependency that may justify a feature.
 9. Removed syntax requiring recovery and editor changes.
