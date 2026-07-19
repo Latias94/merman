@@ -12,7 +12,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -27,7 +26,8 @@
             "start": 57,
             "end": 62
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "Bob",
@@ -35,7 +35,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -46,7 +45,8 @@
             "start": 32,
             "end": 35
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "John",
@@ -54,7 +54,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -65,14 +64,14 @@
             "start": 64,
             "end": 68
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 11,
@@ -87,15 +86,15 @@
             "statements": [
               {
                 "id": "zenuml-statement-1",
-                "number": "1.1.1",
                 "comment": null,
                 "span": {
                   "start": 25,
                   "end": 49
                 },
                 "kind": "message",
-                "from": "Alice",
-                "to": "Bob",
+                "explicit_from": "Alice",
+                "resolved_from": "Alice",
+                "resolved_to": "Bob",
                 "label": "Hello guys!",
                 "assignment": null,
                 "style": "asynchronous",
@@ -103,15 +102,15 @@
               },
               {
                 "id": "zenuml-statement-2",
-                "number": "1.1.2",
                 "comment": null,
                 "span": {
                   "start": 57,
                   "end": 82
                 },
                 "kind": "message",
-                "from": "Alice",
-                "to": "John",
+                "explicit_from": "Alice",
+                "resolved_from": "Alice",
+                "resolved_to": "John",
                 "label": "Hello guys!",
                 "assignment": null,
                 "style": "asynchronous",

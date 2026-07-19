@@ -12,7 +12,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -31,7 +30,8 @@
             "start": 99,
             "end": 104
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "Bob",
@@ -39,7 +39,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -58,22 +57,23 @@
             "start": 94,
             "end": 97
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 11,
           "end": 47
         },
         "kind": "message",
-        "from": "Alice",
-        "to": "Bob",
+        "explicit_from": "Alice",
+        "resolved_from": "Alice",
+        "resolved_to": "Bob",
         "label": "Hello Bob, how are you?",
         "assignment": null,
         "style": "asynchronous",
@@ -81,15 +81,15 @@
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": null,
         "span": {
           "start": 51,
           "end": 78
         },
         "kind": "message",
-        "from": "Bob",
-        "to": "Alice",
+        "explicit_from": "Bob",
+        "resolved_from": "Bob",
+        "resolved_to": "Alice",
         "label": "Not so good :(",
         "assignment": null,
         "style": "asynchronous",
@@ -97,7 +97,6 @@
       },
       {
         "id": "zenuml-statement-2",
-        "number": "3",
         "comment": null,
         "span": {
           "start": 82,
@@ -112,15 +111,15 @@
             "statements": [
               {
                 "id": "zenuml-statement-3",
-                "number": "3.1.1",
                 "comment": null,
                 "span": {
                   "start": 94,
                   "end": 124
                 },
                 "kind": "message",
-                "from": "Bob",
-                "to": "Alice",
+                "explicit_from": "Bob",
+                "resolved_from": "Bob",
+                "resolved_to": "Alice",
                 "label": "Thanks for asking",
                 "assignment": null,
                 "style": "asynchronous",

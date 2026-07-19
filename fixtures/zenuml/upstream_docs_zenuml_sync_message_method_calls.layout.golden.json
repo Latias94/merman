@@ -2,7 +2,7 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 450.44,
+      "width": 445.82,
       "height": 258.0,
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
@@ -26,7 +26,7 @@
         {
           "name": "A",
           "label": "A",
-          "x": 257.42,
+          "x": 252.8,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
@@ -42,7 +42,7 @@
         {
           "name": "B",
           "label": "B",
-          "x": 400.44,
+          "x": 395.82,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
@@ -65,13 +65,13 @@
         },
         {
           "participantName": "A",
-          "x": 257.42,
+          "x": 252.8,
           "topY": 68.0,
           "bottomY": 270.0
         },
         {
           "participantName": "B",
-          "x": 400.44,
+          "x": 395.82,
           "topY": 68.0,
           "bottomY": 270.0
         }
@@ -83,7 +83,7 @@
           "from": "_STARTER_",
           "to": "A",
           "fromX": 50.0,
-          "toX": 250.42,
+          "toX": 245.8,
           "y": 87.5,
           "label": "SyncMessage",
           "kind": "synchronous",
@@ -95,9 +95,9 @@
           "from": "_STARTER_",
           "to": "A",
           "fromX": 50.0,
-          "toX": 250.42,
+          "toX": 245.8,
           "y": 141.5,
-          "label": "SyncMessage(with, parameters)",
+          "label": "SyncMessage(with,parameters)",
           "kind": "synchronous",
           "isSelf": false
         },
@@ -106,8 +106,8 @@
           "number": "2.1",
           "from": "A",
           "to": "B",
-          "fromX": 264.42,
-          "toX": 393.44,
+          "fromX": 259.8,
+          "toX": 388.82,
           "y": 173.5,
           "label": "nestedSyncMessage()",
           "kind": "synchronous",
@@ -118,7 +118,7 @@
         {
           "statementId": "zenuml-statement-0",
           "participantName": "A",
-          "x": 250.42,
+          "x": 245.8,
           "y": 86.0,
           "width": 15.0,
           "height": 24.0
@@ -126,7 +126,7 @@
         {
           "statementId": "zenuml-statement-2",
           "participantName": "B",
-          "x": 393.44,
+          "x": 388.82,
           "y": 172.0,
           "width": 15.0,
           "height": 24.0
@@ -134,7 +134,7 @@
         {
           "statementId": "zenuml-statement-1",
           "participantName": "A",
-          "x": 250.42,
+          "x": 245.8,
           "y": 140.0,
           "width": 15.0,
           "height": 74.0
@@ -147,7 +147,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 450.44,
+        "max_x": 445.82,
         "max_y": 258.0
       }
     }

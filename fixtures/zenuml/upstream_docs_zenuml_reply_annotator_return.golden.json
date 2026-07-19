@@ -12,7 +12,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -23,7 +22,8 @@
             "start": 23,
             "end": 24
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "B",
@@ -31,7 +31,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -42,22 +41,24 @@
             "start": 26,
             "end": 27
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 11,
           "end": 36
         },
         "kind": "return",
-        "from": "A",
-        "to": "B",
+        "explicit_from": "A",
+        "resolved_from": "A",
+        "explicit_to": "B",
+        "resolved_to": "B",
         "label": "result"
       }
     ],

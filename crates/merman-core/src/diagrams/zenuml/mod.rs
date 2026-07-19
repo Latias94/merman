@@ -156,15 +156,28 @@ mod tests {
                 .and_then(|participant| participant.emoji.as_deref()),
             Some("rocket")
         );
-        let ZenumlStatementKind::Message { from, to, .. } = &model.statements[0].kind else {
+        let ZenumlStatementKind::Message {
+            resolved_from,
+            resolved_to,
+            ..
+        } = &model.statements[0].kind
+        else {
             panic!("expected message");
         };
-        assert_eq!((from.as_str(), to.as_str()), ("A", "B"));
-        let ZenumlStatementKind::Message { assignment, to, .. } = &model.statements[1].kind else {
+        assert_eq!(
+            (resolved_from.as_deref(), resolved_to.as_deref()),
+            (Some("A"), Some("B"))
+        );
+        let ZenumlStatementKind::Message {
+            assignment,
+            resolved_to,
+            ..
+        } = &model.statements[1].kind
+        else {
             panic!("expected message");
         };
         assert_eq!(assignment.as_deref(), Some("result"));
-        assert_eq!(to, "Service");
+        assert_eq!(resolved_to.as_deref(), Some("Service"));
     }
 
     #[test]
@@ -272,7 +285,8 @@ mod tests {
             .expect("dotted bare function");
         assert!(matches!(
             &dotted.statements[0].kind,
-            ZenumlStatementKind::Message { to, label, .. } if to == "A" && label == "B"
+            ZenumlStatementKind::Message { resolved_to, label, .. }
+                if resolved_to.as_deref() == Some("A") && label == "B"
         ));
 
         let grouped = parse_zenuml_model_for_render(
@@ -283,5 +297,184 @@ mod tests {
         assert!(grouped.starter.is_none());
         assert!(grouped.participant("_STARTER_").is_none());
         assert_eq!(grouped.groups[0].participant_names, ["A", "B"]);
+    }
+
+    #[test]
+    fn default_starter_materialization_matches_ordered_participants() {
+        for source in ["zenuml\n", "zenuml\n@Starter()"] {
+            let model =
+                parse_zenuml_model_for_render(source, &meta()).expect("valid empty diagram");
+            assert_eq!(
+                model
+                    .participants
+                    .iter()
+                    .map(|participant| participant.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["_STARTER_"]
+            );
+            assert!(model.participants[0].is_starter);
+        }
+
+        let declarations = parse_zenuml_model_for_render("zenuml\n@Actor A", &meta())
+            .expect("participant-only diagram");
+        assert!(declarations.participant("_STARTER_").is_none());
+
+        let explicit_from = parse_zenuml_model_for_render("zenuml\nA->B.m()", &meta())
+            .expect("message with sender");
+        assert!(explicit_from.participant("_STARTER_").is_none());
+
+        let implicit_from = parse_zenuml_model_for_render("zenuml\nB.m()", &meta())
+            .expect("message without sender");
+        assert_eq!(implicit_from.participants[0].name, "_STARTER_");
+        assert!(implicit_from.participants[0].is_starter);
+    }
+
+    #[test]
+    fn head_items_preserve_source_order_and_unnamed_groups_remain_unrendered() {
+        let named = parse_zenuml_model_for_render(
+            "zenuml\ngroup G { @Actor B } @Boundary A A->B.m()",
+            &meta(),
+        )
+        .expect("interleaved head");
+        assert_eq!(
+            named
+                .participants
+                .iter()
+                .map(|participant| participant.name.as_str())
+                .collect::<Vec<_>>(),
+            ["B", "A"]
+        );
+        assert_eq!(named.groups[0].id.as_deref(), Some("G"));
+        assert_eq!(
+            named.participant("B").unwrap().group_id.as_deref(),
+            Some("G")
+        );
+
+        let unnamed = parse_zenuml_model_for_render(
+            "zenuml\ngroup { @Actor B } @Boundary A A->B.m()",
+            &meta(),
+        )
+        .expect("unnamed group");
+        assert!(unnamed.groups[0].id.is_none());
+        assert!(unnamed.participant("B").unwrap().group_id.is_none());
+    }
+
+    #[test]
+    fn creation_signature_keeps_constructor_and_parameters_as_distinct_semantics() {
+        let model = parse_zenuml_model_for_render(
+            "zenuml\nnew A\nnew B(x=1, Type value, C.call())\nnew",
+            &meta(),
+        )
+        .expect("creation signatures");
+        for (statement, expected_constructor, expected_parameters, expected_label) in [
+            (&model.statements[0], "A", "", "«create»"),
+            (
+                &model.statements[1],
+                "B",
+                "x=1,Type value,C.call()",
+                "«x=1,Type value,C.call()»",
+            ),
+            (&model.statements[2], "Missing Constructor", "", "«create»"),
+        ] {
+            let ZenumlStatementKind::Creation {
+                constructor,
+                parameters,
+                label,
+                ..
+            } = &statement.kind
+            else {
+                panic!("expected creation");
+            };
+            assert_eq!(constructor, expected_constructor);
+            assert_eq!(parameters, expected_parameters);
+            assert_eq!(label, expected_label);
+        }
+    }
+
+    #[test]
+    fn unresolved_endpoints_survive_semantic_construction() {
+        let receiverless = parse_zenuml_model_for_render("zenuml\n@Starter(A)\nmethod()", &meta())
+            .expect("receiver-less root message");
+        let ZenumlStatementKind::Message {
+            explicit_from,
+            resolved_from,
+            resolved_to,
+            ..
+        } = &receiverless.statements[0].kind
+        else {
+            panic!("expected message");
+        };
+        assert!(explicit_from.is_none());
+        assert_eq!(resolved_from.as_deref(), Some("A"));
+        assert!(resolved_to.is_none());
+        assert_eq!(
+            receiverless
+                .participants
+                .iter()
+                .map(|participant| participant.name.as_str())
+                .collect::<Vec<_>>(),
+            ["A"]
+        );
+
+        let incomplete =
+            parse_zenuml_model_for_render("zenuml\nA ->", &meta()).expect("incomplete async");
+        let ZenumlStatementKind::Message {
+            explicit_from,
+            resolved_from,
+            resolved_to,
+            ..
+        } = &incomplete.statements[0].kind
+        else {
+            panic!("expected async message");
+        };
+        assert_eq!(explicit_from.as_deref(), Some("A"));
+        assert_eq!(resolved_from.as_deref(), Some("A"));
+        assert!(resolved_to.is_none());
+        assert!(incomplete.participant("_STARTER_").is_none());
+    }
+
+    #[test]
+    fn width_projection_matches_parse_int_without_saturating_to_u64() {
+        for (source_width, expected) in [
+            ("0", serde_json::Value::Null),
+            ("00042", serde_json::json!(42.0)),
+            (
+                "18446744073709551616",
+                serde_json::json!(18_446_744_073_709_552_000.0_f64),
+            ),
+            ("1000000000000000000000000", serde_json::json!(1e24_f64)),
+        ] {
+            let source = format!("zenuml\n@Actor A {source_width}");
+            let model = parse_zenuml_model_for_render(&source, &meta()).expect("participant width");
+            assert_eq!(
+                model.participant("A").unwrap().width_source.as_deref(),
+                Some(source_width)
+            );
+            let compat = parse_zenuml(&source, &meta()).expect("compat model");
+            assert_eq!(compat["participants"][0]["width"], expected);
+        }
+
+        let huge = "9".repeat(400);
+        let source = format!("zenuml\n@Actor A {huge}");
+        let model = parse_zenuml_model_for_render(&source, &meta()).expect("huge width");
+        assert_eq!(
+            model.participant("A").unwrap().width_source.as_deref(),
+            Some(huge.as_str())
+        );
+        let compat = parse_zenuml(&source, &meta()).expect("compat huge width");
+        assert!(compat["participants"][0]["width"].is_null());
+    }
+
+    #[test]
+    fn divider_keeps_its_source_lexeme_and_statements_have_no_semantic_number() {
+        let model =
+            parse_zenuml_model_for_render("zenuml\n== Wide label ==", &meta()).expect("divider");
+        let ZenumlStatementKind::Divider { label } = &model.statements[0].kind else {
+            panic!("expected divider");
+        };
+        assert_eq!(label, "== Wide label ==");
+
+        let compat = parse_zenuml("zenuml\nA.m()", &meta()).expect("compat model");
+        assert!(compat["statements"][0].get("number").is_none());
     }
 }

@@ -309,6 +309,7 @@ impl ZenumlComplexity {
                         participant.participant_type.as_deref(),
                         participant.stereotype.as_deref(),
                         participant.emoji.as_deref(),
+                        participant.width_source.as_deref(),
                         participant.color.as_deref(),
                         participant.group_id.as_deref(),
                     ]
@@ -319,12 +320,10 @@ impl ZenumlComplexity {
                     })
                 });
         let group_label_bytes = model.groups.iter().fold(0usize, |total, group| {
-            group
-                .participant_names
-                .iter()
-                .fold(total.saturating_add(group.id.len()), |subtotal, name| {
-                    subtotal.saturating_add(name.len())
-                })
+            group.participant_names.iter().fold(
+                total.saturating_add(group.id.as_deref().map_or(0, str::len)),
+                |subtotal, name| subtotal.saturating_add(name.len()),
+            )
         });
         let mut complexity = Self {
             participants: model.participants.len(),
@@ -343,8 +342,9 @@ impl ZenumlComplexity {
                     .saturating_add(statement.comment.as_deref().map_or(0, str::len));
                 match &statement.kind {
                     ZenumlStatementKind::Message {
-                        from,
-                        to,
+                        explicit_from,
+                        resolved_from,
+                        resolved_to,
                         label,
                         assignment,
                         body,
@@ -352,16 +352,18 @@ impl ZenumlComplexity {
                     } => {
                         complexity.label_bytes = complexity
                             .label_bytes
-                            .saturating_add(from.len())
-                            .saturating_add(to.len())
+                            .saturating_add(explicit_from.as_deref().map_or(0, str::len))
+                            .saturating_add(resolved_from.as_deref().map_or(0, str::len))
+                            .saturating_add(resolved_to.as_deref().map_or(0, str::len))
                             .saturating_add(label.len())
                             .saturating_add(assignment.as_deref().map_or(0, str::len));
                         pending.push(body);
                     }
                     ZenumlStatementKind::Creation {
-                        from,
-                        to,
+                        resolved_from,
+                        resolved_to,
                         constructor,
+                        parameters,
                         assignment,
                         label,
                         body,
@@ -369,18 +371,27 @@ impl ZenumlComplexity {
                     } => {
                         complexity.label_bytes = complexity
                             .label_bytes
-                            .saturating_add(from.len())
-                            .saturating_add(to.len())
+                            .saturating_add(resolved_from.as_deref().map_or(0, str::len))
+                            .saturating_add(resolved_to.len())
                             .saturating_add(constructor.len())
+                            .saturating_add(parameters.len())
                             .saturating_add(assignment.as_deref().map_or(0, str::len))
                             .saturating_add(label.len());
                         pending.push(body);
                     }
-                    ZenumlStatementKind::Return { from, to, label } => {
+                    ZenumlStatementKind::Return {
+                        explicit_from,
+                        resolved_from,
+                        explicit_to,
+                        resolved_to,
+                        label,
+                    } => {
                         complexity.label_bytes = complexity
                             .label_bytes
-                            .saturating_add(from.len())
-                            .saturating_add(to.len())
+                            .saturating_add(explicit_from.as_deref().map_or(0, str::len))
+                            .saturating_add(resolved_from.as_deref().map_or(0, str::len))
+                            .saturating_add(explicit_to.as_deref().map_or(0, str::len))
+                            .saturating_add(resolved_to.as_deref().map_or(0, str::len))
                             .saturating_add(label.len());
                     }
                     ZenumlStatementKind::Fragment {

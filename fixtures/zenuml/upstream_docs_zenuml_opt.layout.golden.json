@@ -81,7 +81,7 @@
         },
         {
           "statementId": "zenuml-statement-3",
-          "number": "3.1.1",
+          "number": "3.1",
           "from": "Bob",
           "to": "Alice",
           "fromX": 215.28,

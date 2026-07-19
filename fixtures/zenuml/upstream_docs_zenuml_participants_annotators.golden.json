@@ -12,7 +12,6 @@
         "participantType": "Actor",
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": true,
@@ -34,7 +33,8 @@
             "start": 95,
             "end": 100
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "Bob",
@@ -42,7 +42,6 @@
         "participantType": "Database",
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": true,
@@ -64,22 +63,23 @@
             "start": 90,
             "end": 93
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 67,
           "end": 86
         },
         "kind": "message",
-        "from": "Alice",
-        "to": "Bob",
+        "explicit_from": "Alice",
+        "resolved_from": "Alice",
+        "resolved_to": "Bob",
         "label": "Hi Bob",
         "assignment": null,
         "style": "asynchronous",
@@ -87,15 +87,15 @@
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": null,
         "span": {
           "start": 90,
           "end": 111
         },
         "kind": "message",
-        "from": "Bob",
-        "to": "Alice",
+        "explicit_from": "Bob",
+        "resolved_from": "Bob",
+        "resolved_to": "Alice",
         "label": "Hi Alice",
         "assignment": null,
         "style": "asynchronous",

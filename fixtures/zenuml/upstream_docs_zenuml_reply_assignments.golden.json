@@ -12,13 +12,13 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
-        "isStarter": false,
+        "isStarter": true,
         "declarationSpan": null,
-        "occurrences": []
+        "occurrences": [],
+        "width": null
       },
       {
         "name": "A",
@@ -26,7 +26,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -41,22 +40,23 @@
             "start": 146,
             "end": 147
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": " 1. assign a variable from a sync message.",
         "span": {
           "start": 60,
           "end": 79
         },
         "kind": "message",
-        "from": "_STARTER_",
-        "to": "A",
+        "explicit_from": null,
+        "resolved_from": null,
+        "resolved_to": "A",
         "label": "SyncMessage()",
         "assignment": "a",
         "style": "synchronous",
@@ -64,15 +64,15 @@
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": " 1.1. optionally give the variable a type",
         "span": {
           "start": 133,
           "end": 161
         },
         "kind": "message",
-        "from": "_STARTER_",
-        "to": "A",
+        "explicit_from": null,
+        "resolved_from": null,
+        "resolved_to": "A",
         "label": "SyncMessage()",
         "assignment": "a",
         "style": "synchronous",

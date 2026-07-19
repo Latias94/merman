@@ -12,13 +12,13 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
-        "isStarter": false,
+        "isStarter": true,
         "declarationSpan": null,
-        "occurrences": []
+        "occurrences": [],
+        "width": null
       },
       {
         "name": "A1",
@@ -26,7 +26,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -37,7 +36,8 @@
             "start": 15,
             "end": 17
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "A2",
@@ -45,7 +45,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -56,41 +55,42 @@
             "start": 26,
             "end": 28
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 11,
           "end": 17
         },
         "kind": "creation",
-        "from": "_STARTER_",
-        "to": "A1",
+        "resolved_from": null,
+        "resolved_to": "A1",
         "constructor": "A1",
+        "parameters": "",
         "assignment": null,
-        "label": "«create» A1",
+        "label": "«create»",
         "body": []
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": null,
         "span": {
           "start": 22,
           "end": 46
         },
         "kind": "creation",
-        "from": "_STARTER_",
-        "to": "A2",
+        "resolved_from": null,
+        "resolved_to": "A2",
         "constructor": "A2",
+        "parameters": "with,parameters",
         "assignment": null,
-        "label": "«create» A2(with,parameters)",
+        "label": "«with,parameters»",
         "body": []
       }
     ],

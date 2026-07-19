@@ -12,13 +12,13 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
-        "isStarter": false,
+        "isStarter": true,
         "declarationSpan": null,
-        "occurrences": []
+        "occurrences": [],
+        "width": null
       },
       {
         "name": "A",
@@ -26,7 +26,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -37,7 +36,8 @@
             "start": 11,
             "end": 12
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "B",
@@ -45,7 +45,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -60,7 +59,8 @@
             "start": 59,
             "end": 60
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "C",
@@ -68,7 +68,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -79,37 +78,38 @@
             "start": 62,
             "end": 63
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 11,
           "end": 91
         },
         "kind": "message",
-        "from": "_STARTER_",
-        "to": "A",
+        "explicit_from": null,
+        "resolved_from": null,
+        "resolved_to": "A",
         "label": "method()",
         "assignment": null,
         "style": "synchronous",
         "body": [
           {
             "id": "zenuml-statement-1",
-            "number": "1.1",
             "comment": null,
             "span": {
               "start": 30,
               "end": 52
             },
             "kind": "message",
-            "from": "A",
-            "to": "B",
+            "explicit_from": null,
+            "resolved_from": "A",
+            "resolved_to": "B",
             "label": "nested_sync_method()",
             "assignment": null,
             "style": "synchronous",
@@ -117,15 +117,15 @@
           },
           {
             "id": "zenuml-statement-2",
-            "number": "1.2",
             "comment": null,
             "span": {
               "start": 59,
               "end": 86
             },
             "kind": "message",
-            "from": "B",
-            "to": "C",
+            "explicit_from": "B",
+            "resolved_from": "B",
+            "resolved_to": "C",
             "label": "nested async message",
             "assignment": null,
             "style": "asynchronous",

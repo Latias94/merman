@@ -12,7 +12,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": true,
@@ -34,7 +33,8 @@
             "start": 96,
             "end": 97
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "J",
@@ -42,7 +42,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": true,
@@ -64,22 +63,23 @@
             "start": 93,
             "end": 94
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 58,
           "end": 89
         },
         "kind": "message",
-        "from": "A",
-        "to": "J",
+        "explicit_from": "A",
+        "resolved_from": "A",
+        "resolved_to": "J",
         "label": "Hello John, how are you?",
         "assignment": null,
         "style": "asynchronous",
@@ -87,15 +87,15 @@
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": null,
         "span": {
           "start": 93,
           "end": 106
         },
         "kind": "message",
-        "from": "J",
-        "to": "A",
+        "explicit_from": "J",
+        "resolved_from": "J",
+        "resolved_to": "A",
         "label": "Great!",
         "assignment": null,
         "style": "asynchronous",

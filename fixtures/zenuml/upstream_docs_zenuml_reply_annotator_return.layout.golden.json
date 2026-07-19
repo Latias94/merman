@@ -2,31 +2,15 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 300.0,
-      "height": 168.0,
+      "width": 200.0,
+      "height": 133.5,
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
       "participants": [
         {
-          "name": "_STARTER_",
-          "label": "",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": true,
-          "showBottom": false,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null,
-          "created": false
-        },
-        {
           "name": "A",
           "label": "A",
-          "x": 150.0,
+          "x": 50.0,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
@@ -42,7 +26,7 @@
         {
           "name": "B",
           "label": "B",
-          "x": 250.0,
+          "x": 150.0,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
@@ -58,47 +42,29 @@
       ],
       "lifelines": [
         {
-          "participantName": "_STARTER_",
+          "participantName": "A",
           "x": 50.0,
           "topY": 68.0,
-          "bottomY": 180.0
-        },
-        {
-          "participantName": "A",
-          "x": 150.0,
-          "topY": 68.0,
-          "bottomY": 180.0
+          "bottomY": 145.5
         },
         {
           "participantName": "B",
-          "x": 250.0,
+          "x": 150.0,
           "topY": 68.0,
-          "bottomY": 180.0
+          "bottomY": 145.5
         }
       ],
       "messages": [
         {
           "statementId": "zenuml-statement-0",
           "number": "1",
-          "from": "_STARTER_",
-          "to": "_STARTER_",
-          "fromX": 51.0,
-          "toX": 50.0,
-          "y": 92.0,
-          "label": "",
-          "kind": "return",
-          "isSelf": true
-        },
-        {
-          "statementId": "zenuml-statement-1",
-          "number": "2",
           "from": "A",
           "to": "B",
-          "fromX": 150.0,
-          "toX": 250.0,
-          "y": 123.5,
+          "fromX": 51.0,
+          "toX": 150.0,
+          "y": 87.5,
           "label": "result",
-          "kind": "asynchronous",
+          "kind": "return",
           "isSelf": false
         }
       ],
@@ -110,8 +76,8 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 300.0,
-        "max_y": 168.0
+        "max_x": 200.0,
+        "max_y": 133.5
       }
     }
   }

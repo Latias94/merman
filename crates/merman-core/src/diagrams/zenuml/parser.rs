@@ -18,7 +18,6 @@ struct Parser<'a> {
     comments: Vec<Option<SpannedText>>,
     cursor: usize,
     diagnostics: Vec<SyntaxDiagnostic>,
-    grammar_rule_spans: Vec<GrammarRuleSpanSyntax>,
 }
 
 impl<'a> Parser<'a> {
@@ -29,7 +28,6 @@ impl<'a> Parser<'a> {
             comments,
             cursor: 0,
             diagnostics: Vec::new(),
-            grammar_rule_spans: Vec::new(),
         }
     }
 
@@ -67,15 +65,14 @@ impl<'a> Parser<'a> {
             }
         }
 
-        let mut participants = Vec::new();
-        let mut groups = Vec::new();
+        let mut head = Vec::new();
         let mut starter = None;
         let mut pending_comment = None;
 
         loop {
             let comment = self.take_current_comment();
             if self.at_keyword(Keyword::Group) {
-                groups.push(self.parse_group(comment));
+                head.push(HeadItemSyntax::Group(self.parse_group(comment)));
                 continue;
             }
             if matches!(self.peek_kind(), TokenKind::StarterAnnotation) {
@@ -87,7 +84,9 @@ impl<'a> Parser<'a> {
                 grammar.select_head_participant(self.cursor)
             };
             if let Some(participant) = participant {
-                participants.push(self.consume_participant(participant, comment));
+                head.push(HeadItemSyntax::Participant(Box::new(
+                    self.consume_participant(participant, comment),
+                )));
                 continue;
             }
             pending_comment = comment;
@@ -99,21 +98,18 @@ impl<'a> Parser<'a> {
             title,
             acc_title,
             acc_descr,
-            participants,
-            groups,
+            head,
             starter,
             statements,
         };
         ParsedSyntax {
             document,
             diagnostics: self.diagnostics,
-            tokens: self.tokens,
-            grammar_rule_spans: self.grammar_rule_spans,
         }
     }
 
     fn parse_title(&mut self) -> SpannedText {
-        let start = self.bump().span.start;
+        self.bump();
         let value = match self.peek().clone() {
             Token {
                 kind: TokenKind::TitleContent(_),
@@ -129,10 +125,6 @@ impl<'a> Parser<'a> {
         if matches!(self.peek_kind(), TokenKind::TitleEnd) {
             self.bump();
         }
-        self.grammar_rule_spans.push(GrammarRuleSpanSyntax {
-            kind: GrammarRuleKindSyntax::Title,
-            span: SourceSpan::new(start, self.previous_end().max(start)),
-        });
         value
     }
 
@@ -196,10 +188,9 @@ impl<'a> Parser<'a> {
         comment: Option<SpannedText>,
     ) -> ParticipantSyntax {
         self.cursor = participant.end;
-        self.record_rule(&participant.rule);
         let name = participant
             .name
-            .unwrap_or_else(|| SpannedText::new(MISSING_PARTICIPANT, participant.rule.span));
+            .unwrap_or_else(|| SpannedText::new(MISSING_PARTICIPANT, participant.span));
         ParticipantSyntax {
             name,
             label: participant.label,
@@ -209,7 +200,7 @@ impl<'a> Parser<'a> {
             width: participant.width,
             color: participant.color,
             comment,
-            span: participant.rule.span,
+            span: participant.span,
         }
     }
 
@@ -340,7 +331,6 @@ impl<'a> Parser<'a> {
             };
             par.and_then(|par| {
                 self.cursor = par.end;
-                self.record_rule(&par.rule);
                 par.label
             })
         } else {
@@ -429,7 +419,6 @@ impl<'a> Parser<'a> {
         };
         if let Some(par) = par {
             self.cursor = par.end;
-            self.record_rule(&par.rule);
             par.label
         } else {
             self.error(diagnostic, self.insertion_span());
@@ -474,13 +463,12 @@ impl<'a> Parser<'a> {
                 };
                 invocation.map(|invocation| {
                     self.cursor = invocation.end;
-                    self.record_rule(&invocation.rule);
                     trimmed_text(
                         self.source,
-                        invocation.rule.span.start + 1,
-                        invocation.rule.span.end.saturating_sub(1),
+                        invocation.span.start + 1,
+                        invocation.span.end.saturating_sub(1),
                     )
-                    .unwrap_or_else(|| SpannedText::new(String::new(), invocation.rule.span))
+                    .unwrap_or_else(|| SpannedText::new(String::new(), invocation.span))
                 })
             } else {
                 None
@@ -589,9 +577,8 @@ impl<'a> Parser<'a> {
             };
             let value = expr.map(|expr| {
                 self.cursor = expr.end;
-                self.record_rule(&expr.rule);
-                trimmed_text(self.source, expr.rule.span.start, expr.rule.span.end)
-                    .unwrap_or_else(|| SpannedText::new(String::new(), expr.rule.span))
+                trimmed_text(self.source, expr.span.start, expr.span.end)
+                    .unwrap_or_else(|| SpannedText::new(String::new(), expr.span))
             });
             if matches!(self.peek_kind(), TokenKind::Semicolon) {
                 self.bump();
@@ -622,7 +609,6 @@ impl<'a> Parser<'a> {
             return None;
         };
         self.cursor = event.end;
-        self.record_rule(&event.rule);
         let end = self.previous_end().max(start);
         Some(StatementSyntax {
             kind: StatementKindSyntax::Return(ReturnSyntax {
@@ -642,12 +628,7 @@ impl<'a> Parser<'a> {
         let TokenKind::Divider(value) = token.kind else {
             return None;
         };
-        let label = SpannedText::new(
-            value
-                .trim_matches(|character: char| character == '=' || character.is_whitespace())
-                .to_string(),
-            token.span,
-        );
+        let label = SpannedText::new(value, token.span);
         Some(StatementSyntax {
             kind: StatementKindSyntax::Divider(label),
             comment,
@@ -700,9 +681,8 @@ impl<'a> Parser<'a> {
         comment: Option<SpannedText>,
         creation: CreationBodyMatch,
     ) -> Option<StatementSyntax> {
-        let start = creation.rule.span.start;
+        let start = creation.span.start;
         self.cursor = creation.end;
-        self.record_rule(&creation.rule);
         let body = self.consume_optional_statement_body(depth);
         let end = self.previous_end().max(start);
         let constructor = creation
@@ -712,7 +692,7 @@ impl<'a> Parser<'a> {
             kind: StatementKindSyntax::Creation(CreationSyntax {
                 constructor: constructor.clone(),
                 assignment: creation.assignment,
-                signature: SpannedText::new(creation.formatted, creation.signature_span),
+                parameters: creation.parameters,
                 body: body.statements,
                 body_comment: body.closing_comment,
             }),
@@ -727,9 +707,8 @@ impl<'a> Parser<'a> {
         comment: Option<SpannedText>,
         message: MessageBodyMatch,
     ) -> Option<StatementSyntax> {
-        let start = message.rule.span.start;
+        let start = message.span.start;
         self.cursor = message.end;
-        self.record_rule(&message.rule);
         let body = self.consume_optional_statement_body(depth);
         let end = self.previous_end().max(start);
         Some(StatementSyntax {
@@ -766,9 +745,8 @@ impl<'a> Parser<'a> {
         comment: Option<SpannedText>,
         event: AsyncMessageMatch,
     ) -> Option<StatementSyntax> {
-        let start = event.rule.span.start;
+        let start = event.span.start;
         self.cursor = event.end;
-        self.record_rule(&event.rule);
         let end = self.previous_end().max(start);
         let signature = event
             .content
@@ -796,9 +774,8 @@ impl<'a> Parser<'a> {
         comment: Option<SpannedText>,
         returned: ReturnAsyncMatch,
     ) -> StatementSyntax {
-        let start = returned.rule.span.start;
+        let start = returned.span.start;
         self.cursor = returned.end;
-        self.record_rule(&returned.rule);
         let end = self.previous_end().max(start);
         StatementSyntax {
             kind: StatementKindSyntax::Return(ReturnSyntax {
@@ -811,10 +788,6 @@ impl<'a> Parser<'a> {
             comment,
             span: SourceSpan::new(start, end),
         }
-    }
-
-    fn record_rule(&mut self, rule: &RuleNode) {
-        rule.record(&mut self.grammar_rule_spans);
     }
 
     fn take_current_comment(&mut self) -> Option<SpannedText> {
@@ -941,45 +914,6 @@ enum FragmentForm {
 }
 
 #[derive(Debug, Clone)]
-struct RuleNode {
-    kind: GrammarRuleKindSyntax,
-    span: SourceSpan,
-    children: Vec<RuleNode>,
-}
-
-impl RuleNode {
-    fn leaf(kind: GrammarRuleKindSyntax, span: SourceSpan) -> Self {
-        Self {
-            kind,
-            span,
-            children: Vec::new(),
-        }
-    }
-
-    fn with_children(
-        kind: GrammarRuleKindSyntax,
-        span: SourceSpan,
-        children: Vec<RuleNode>,
-    ) -> Self {
-        Self {
-            kind,
-            span,
-            children,
-        }
-    }
-
-    fn record(&self, out: &mut Vec<GrammarRuleSpanSyntax>) {
-        out.push(GrammarRuleSpanSyntax {
-            kind: self.kind,
-            span: self.span,
-        });
-        for child in &self.children {
-            child.record(out);
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 struct ParticipantMatch {
     end: usize,
     name: Option<SpannedText>,
@@ -989,7 +923,7 @@ struct ParticipantMatch {
     emoji: Option<SpannedText>,
     width: Option<SpannedText>,
     color: Option<SpannedText>,
-    rule: RuleNode,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -1009,14 +943,15 @@ struct EndpointMatch {
 struct AssignmentMatch {
     end: usize,
     assignee: Option<SpannedText>,
-    rule: RuleNode,
 }
 
 #[derive(Debug, Clone)]
 struct InvocationMatch {
     end: usize,
     formatted: String,
-    rule: RuleNode,
+    parameters: String,
+    parameters_span: SourceSpan,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -1024,7 +959,6 @@ struct SignatureMatch {
     end: usize,
     formatted: String,
     invoked: bool,
-    rule: RuleNode,
 }
 
 #[derive(Debug, Clone)]
@@ -1034,7 +968,6 @@ struct FuncMatch {
     span: SourceSpan,
     first_invoked: bool,
     first_emoji: bool,
-    rule: RuleNode,
 }
 
 #[derive(Debug, Clone)]
@@ -1045,7 +978,7 @@ struct MessageBodyMatch {
     to: Option<EndpointMatch>,
     formatted: String,
     signature_span: SourceSpan,
-    rule: RuleNode,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -1053,10 +986,9 @@ struct CreationBodyMatch {
     end: usize,
     assignment: Option<SpannedText>,
     constructor: Option<SpannedText>,
-    formatted: String,
-    signature_span: SourceSpan,
+    parameters: Option<SpannedText>,
     new_span: SourceSpan,
-    rule: RuleNode,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -1065,7 +997,7 @@ struct AsyncMessageMatch {
     from: Option<EndpointMatch>,
     to: Option<EndpointMatch>,
     content: Option<SpannedText>,
-    rule: RuleNode,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -1074,27 +1006,25 @@ struct ReturnAsyncMatch {
     from: EndpointMatch,
     to: Option<EndpointMatch>,
     content: Option<SpannedText>,
-    rule: RuleNode,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct ExprMatch {
     end: usize,
-    rule: RuleNode,
+    span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 struct ParameterMatch {
     end: usize,
     formatted: String,
-    rule: RuleNode,
 }
 
 #[derive(Debug, Clone)]
 struct ParExprMatch {
     end: usize,
     label: Option<SpannedText>,
-    rule: RuleNode,
 }
 
 struct Grammar<'a> {
@@ -1247,7 +1177,7 @@ impl<'a> Grammar<'a> {
             emoji,
             width,
             color,
-            rule: RuleNode::leaf(GrammarRuleKindSyntax::Participant, span),
+            span,
         })
     }
 
@@ -1268,7 +1198,7 @@ impl<'a> Grammar<'a> {
             emoji: None,
             width: None,
             color: None,
-            rule: RuleNode::leaf(GrammarRuleKindSyntax::Participant, span),
+            span,
         }
     }
 
@@ -1314,7 +1244,6 @@ impl<'a> Grammar<'a> {
 
     fn message_body(&self, start: usize) -> Option<MessageBodyMatch> {
         if let Some(assignment) = self.assignment(start) {
-            let mut children = vec![assignment.rule.clone()];
             let mut from = None;
             let mut to = None;
             let mut formatted = String::new();
@@ -1330,13 +1259,11 @@ impl<'a> Grammar<'a> {
                 if let Some(func) = self.func(end) {
                     formatted = func.formatted;
                     signature_span = func.span;
-                    children.push(func.rule);
                     end = func.end;
                 }
             } else if let Some(func) = self.bare_func(end) {
                 formatted = func.formatted;
                 signature_span = func.span;
-                children.push(func.rule);
                 end = func.end;
             }
             let span = self.span(start, end);
@@ -1347,18 +1274,15 @@ impl<'a> Grammar<'a> {
                 to,
                 formatted,
                 signature_span,
-                rule: RuleNode::with_children(GrammarRuleKindSyntax::MessageBody, span, children),
+                span,
             });
         }
 
         if let Some(from_to) = self.message_path(start) {
             let mut end = from_to.end;
-            let mut children = Vec::new();
             let (formatted, signature_span) = if let Some(func) = self.func(end) {
                 end = func.end;
-                let result = (func.formatted.clone(), func.span);
-                children.push(func.rule);
-                result
+                (func.formatted.clone(), func.span)
             } else {
                 let offset = self.token_end(end.saturating_sub(1));
                 (String::new(), SourceSpan::new(offset, offset))
@@ -1371,7 +1295,7 @@ impl<'a> Grammar<'a> {
                 to: Some(from_to.to),
                 formatted,
                 signature_span,
-                rule: RuleNode::with_children(GrammarRuleKindSyntax::MessageBody, span, children),
+                span,
             });
         }
 
@@ -1384,11 +1308,7 @@ impl<'a> Grammar<'a> {
             to: None,
             formatted: func.formatted.clone(),
             signature_span: func.span,
-            rule: RuleNode::with_children(
-                GrammarRuleKindSyntax::MessageBody,
-                span,
-                vec![func.rule],
-            ),
+            span,
         })
     }
 
@@ -1403,37 +1323,25 @@ impl<'a> Grammar<'a> {
         let new_span = self.tokens[cursor].span;
         let mut end = cursor + 1;
         let constructor = self.name(end);
-        let signature_start = constructor
-            .as_ref()
-            .map_or(new_span.end, |name| name.span.start);
-        let mut formatted = String::new();
-        let mut children = assignment
-            .as_ref()
-            .map(|assignment| vec![assignment.rule.clone()])
-            .unwrap_or_default();
-        if let Some(constructor) = &constructor {
-            formatted.push_str(&constructor.value);
+        let mut parameters = None;
+        if constructor.is_some() {
             end += 1;
             if let Some(invocation) = self.invocation(end) {
-                formatted.push_str(&invocation.formatted);
+                parameters = Some(SpannedText::new(
+                    invocation.parameters.clone(),
+                    invocation.parameters_span,
+                ));
                 end = invocation.end;
-                children.push(invocation.rule);
             }
         }
-        let signature_end = if constructor.is_some() {
-            self.token_end(end.saturating_sub(1))
-        } else {
-            new_span.end
-        };
         let span = self.span(start, end);
         Some(CreationBodyMatch {
             end,
             assignment: assignment.and_then(|assignment| assignment.assignee),
             constructor,
-            formatted,
-            signature_span: SourceSpan::new(signature_start, signature_end),
+            parameters,
             new_span,
-            rule: RuleNode::with_children(GrammarRuleKindSyntax::CreationBody, span, children),
+            span,
         })
     }
 
@@ -1451,7 +1359,7 @@ impl<'a> Grammar<'a> {
                     from: Some(first),
                     to: Some(to),
                     content: None,
-                    rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+                    span: self.span(start, end),
                 });
             }
             let end = first.end + 1;
@@ -1460,7 +1368,7 @@ impl<'a> Grammar<'a> {
                 from: Some(first),
                 to: None,
                 content: None,
-                rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+                span: self.span(start, end),
             });
         }
         if matches!(self.kind(first.end), Some(TokenKind::Colon)) {
@@ -1474,7 +1382,7 @@ impl<'a> Grammar<'a> {
                 from: Some(first),
                 to,
                 content: None,
-                rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+                span: self.span(start, end),
             });
         }
         None
@@ -1504,7 +1412,7 @@ impl<'a> Grammar<'a> {
             from,
             to,
             content,
-            rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+            span: self.span(start, end),
         }
     }
 
@@ -1541,7 +1449,7 @@ impl<'a> Grammar<'a> {
             from,
             to,
             content,
-            rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+            span: self.span(start, end),
         })
     }
 
@@ -1601,7 +1509,6 @@ impl<'a> Grammar<'a> {
         let first_emoji = matches!(self.kind(start), Some(TokenKind::OpenBracket));
         let mut end = first.end;
         let mut formatted = first.formatted.clone();
-        let mut children = vec![first.rule];
         while matches!(self.kind(end), Some(TokenKind::Dot)) {
             let Some(signature) = self.signature(end + 1) else {
                 break;
@@ -1609,7 +1516,6 @@ impl<'a> Grammar<'a> {
             formatted.push('.');
             formatted.push_str(&signature.formatted);
             end = signature.end;
-            children.push(signature.rule);
         }
         let span = self.span(start, end);
         Some(FuncMatch {
@@ -1618,7 +1524,6 @@ impl<'a> Grammar<'a> {
             span,
             first_invoked,
             first_emoji,
-            rule: RuleNode::with_children(GrammarRuleKindSyntax::Expression, span, children),
         })
     }
 
@@ -1636,21 +1541,17 @@ impl<'a> Grammar<'a> {
         }
         formatted.push_str(&endpoint.name.value);
         let mut end = endpoint.end;
-        let mut children = Vec::new();
         let invoked = if let Some(invocation) = self.invocation(end) {
             formatted.push_str(&invocation.formatted);
             end = invocation.end;
-            children.push(invocation.rule);
             true
         } else {
             false
         };
-        let span = self.span(start, end);
         Some(SignatureMatch {
             end,
             formatted,
             invoked,
-            rule: RuleNode::with_children(GrammarRuleKindSyntax::Expression, span, children),
         })
     }
 
@@ -1689,18 +1590,20 @@ impl<'a> Grammar<'a> {
                 .collect::<Vec<_>>()
                 .join(",")
         );
-        let children = parameters
-            .into_iter()
-            .map(|parameter| parameter.rule)
-            .collect();
+        let parameters_formatted = parameters
+            .iter()
+            .map(|parameter| parameter.formatted.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
         Some(InvocationMatch {
             end,
             formatted,
-            rule: RuleNode::with_children(
-                GrammarRuleKindSyntax::Invocation,
-                self.span(start, end),
-                children,
+            parameters: parameters_formatted,
+            parameters_span: SourceSpan::new(
+                self.tokens[start].span.end,
+                self.tokens[end - 1].span.start,
             ),
+            span: self.span(start, end),
         })
     }
 
@@ -1708,38 +1611,23 @@ impl<'a> Grammar<'a> {
         if self.is_identifier_name(start) && matches!(self.kind(start + 1), Some(TokenKind::Assign))
         {
             let mut end = start + 2;
-            let mut children = Vec::new();
             if let Some(expr) = self.expression(end) {
                 end = expr.end;
-                children.push(expr.rule);
             }
             let formatted = self.compact(start, end);
-            return Some(ParameterMatch {
-                end,
-                formatted,
-                rule: RuleNode::with_children(
-                    GrammarRuleKindSyntax::NamedParameter,
-                    self.span(start, end),
-                    children,
-                ),
-            });
+            return Some(ParameterMatch { end, formatted });
         }
 
         if self.name(start).is_some() && self.is_identifier_name(start + 1) {
             let end = start + 2;
             let formatted = format!("{} {}", self.token_text(start), self.token_text(start + 1));
-            return Some(ParameterMatch {
-                end,
-                formatted,
-                rule: RuleNode::leaf(GrammarRuleKindSyntax::Declaration, self.span(start, end)),
-            });
+            return Some(ParameterMatch { end, formatted });
         }
 
         let expr = self.expression(start)?;
         Some(ParameterMatch {
             end: expr.end,
             formatted: self.compact(start, expr.end),
-            rule: expr.rule,
         })
     }
 
@@ -1749,22 +1637,14 @@ impl<'a> Grammar<'a> {
             && matches!(self.kind(assignee_end), Some(TokenKind::Assign))
         {
             let end = assignee_end + 1;
-            return Some(AssignmentMatch {
-                end,
-                assignee,
-                rule: RuleNode::leaf(GrammarRuleKindSyntax::Expression, self.span(start, end)),
-            });
+            return Some(AssignmentMatch { end, assignee });
         }
         let (assignee, assignee_end) = self.assignee(start)?;
         if !matches!(self.kind(assignee_end), Some(TokenKind::Assign)) {
             return None;
         }
         let end = assignee_end + 1;
-        Some(AssignmentMatch {
-            end,
-            assignee,
-            rule: RuleNode::leaf(GrammarRuleKindSyntax::Expression, self.span(start, end)),
-        })
+        Some(AssignmentMatch { end, assignee })
     }
 
     fn assignee(&self, start: usize) -> Option<(Option<SpannedText>, usize)> {
@@ -1805,14 +1685,10 @@ impl<'a> Grammar<'a> {
             let Some(right) = self.expression_bp(left.end + 1, right_bp) else {
                 break;
             };
-            let span = SourceSpan::new(left.rule.span.start, right.rule.span.end);
+            let span = SourceSpan::new(left.span.start, right.span.end);
             left = ExprMatch {
                 end: right.end,
-                rule: RuleNode::with_children(
-                    GrammarRuleKindSyntax::Expression,
-                    span,
-                    vec![left.rule, right.rule],
-                ),
+                span,
             };
         }
         Some(left)
@@ -1825,11 +1701,7 @@ impl<'a> Grammar<'a> {
             let span = self.span(start, inner.end);
             return Some(ExprMatch {
                 end: inner.end,
-                rule: RuleNode::with_children(
-                    GrammarRuleKindSyntax::Expression,
-                    span,
-                    vec![inner.rule],
-                ),
+                span,
             });
         }
 
@@ -1839,11 +1711,7 @@ impl<'a> Grammar<'a> {
             let span = self.span(start, expr.end);
             return Some(ExprMatch {
                 end: expr.end,
-                rule: RuleNode::with_children(
-                    GrammarRuleKindSyntax::Expression,
-                    span,
-                    vec![assignment.rule, expr.rule],
-                ),
+                span,
             });
         }
 
@@ -1853,11 +1721,7 @@ impl<'a> Grammar<'a> {
                 let end = expr.end + 1;
                 return Some(ExprMatch {
                     end,
-                    rule: RuleNode::with_children(
-                        GrammarRuleKindSyntax::Expression,
-                        self.span(start, end),
-                        vec![expr.rule],
-                    ),
+                    span: self.span(start, end),
                 });
             }
         }
@@ -1865,11 +1729,7 @@ impl<'a> Grammar<'a> {
         if let Some(creation) = self.creation_body(start) {
             return Some(ExprMatch {
                 end: creation.end,
-                rule: RuleNode::with_children(
-                    GrammarRuleKindSyntax::Expression,
-                    creation.rule.span,
-                    vec![creation.rule],
-                ),
+                span: creation.span,
             });
         }
 
@@ -1878,11 +1738,7 @@ impl<'a> Grammar<'a> {
         {
             return Some(ExprMatch {
                 end: func.end,
-                rule: RuleNode::with_children(
-                    GrammarRuleKindSyntax::Expression,
-                    self.span(start, func.end),
-                    vec![func.rule],
-                ),
+                span: self.span(start, func.end),
             });
         }
 
@@ -1891,17 +1747,14 @@ impl<'a> Grammar<'a> {
         {
             return Some(ExprMatch {
                 end: func.end,
-                rule: func.rule,
+                span: func.span,
             });
         }
 
         if self.is_atom(start) {
             return Some(ExprMatch {
                 end: start + 1,
-                rule: RuleNode::leaf(
-                    GrammarRuleKindSyntax::Expression,
-                    self.span(start, start + 1),
-                ),
+                span: self.span(start, start + 1),
             });
         }
         None
@@ -1929,13 +1782,11 @@ impl<'a> Grammar<'a> {
             return None;
         }
         let mut end = start + 1;
-        let mut children = Vec::new();
         let label = if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
             None
         } else if let Some(condition) = self.condition(end) {
             end = condition.end;
-            let span = condition.rule.span;
-            children.push(condition.rule);
+            let span = condition.span;
             trimmed_text(self.source, span.start, span.end)
         } else {
             None
@@ -1943,15 +1794,7 @@ impl<'a> Grammar<'a> {
         if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
             end += 1;
         }
-        Some(ParExprMatch {
-            end,
-            label,
-            rule: RuleNode::with_children(
-                GrammarRuleKindSyntax::Expression,
-                self.span(start, end),
-                children,
-            ),
-        })
+        Some(ParExprMatch { end, label })
     }
 
     fn condition(&self, start: usize) -> Option<ExprMatch> {
@@ -1962,7 +1805,7 @@ impl<'a> Grammar<'a> {
             let end = start + 3;
             return Some(ExprMatch {
                 end,
-                rule: RuleNode::leaf(GrammarRuleKindSyntax::InExpression, self.span(start, end)),
+                span: self.span(start, end),
             });
         }
 
@@ -1979,7 +1822,7 @@ impl<'a> Grammar<'a> {
         if end >= start + 2 {
             return Some(ExprMatch {
                 end,
-                rule: RuleNode::leaf(GrammarRuleKindSyntax::TextExpression, self.span(start, end)),
+                span: self.span(start, end),
             });
         }
         self.expression(start)
@@ -2141,13 +1984,24 @@ mod tests {
         parse(source, &tokens)
     }
 
+    fn head_participants(document: &SyntaxDocument) -> Vec<&ParticipantSyntax> {
+        document
+            .head
+            .iter()
+            .filter_map(|item| match item {
+                HeadItemSyntax::Participant(participant) => Some(participant.as_ref()),
+                HeadItemSyntax::Group(_) => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn parses_nested_official_grammar_without_line_translation() {
         let parsed = parse_source(
             "zenuml\n@Actor Client #FFEBE6\n@Starter(Client)\nService.call(x) {\n  if(x != null) {\n    Worker.run(x)\n  }\n}\n",
         );
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.document.participants.len(), 1);
+        assert_eq!(head_participants(&parsed.document).len(), 1);
         assert_eq!(parsed.document.statements.len(), 1);
     }
 
@@ -2165,8 +2019,9 @@ mod tests {
         for source in ["zenuml\n@Actor A B.m()", "zenuml\nA B.m()"] {
             let parsed = parse_source(source);
             assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-            assert_eq!(parsed.document.participants.len(), 1);
-            assert_eq!(parsed.document.participants[0].name.value, "A");
+            let participants = head_participants(&parsed.document);
+            assert_eq!(participants.len(), 1);
+            assert_eq!(participants[0].name.value, "A");
             assert_eq!(parsed.document.statements.len(), 1);
         }
     }
@@ -2176,11 +2031,9 @@ mod tests {
         for source in ["zenuml\n@Actor\nA.m()", "zenuml\n<<Service>>\nA.m()"] {
             let parsed = parse_source(source);
             assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-            assert_eq!(parsed.document.participants.len(), 1);
-            assert_eq!(
-                parsed.document.participants[0].name.value,
-                MISSING_PARTICIPANT
-            );
+            let participants = head_participants(&parsed.document);
+            assert_eq!(participants.len(), 1);
+            assert_eq!(participants[0].name.value, MISSING_PARTICIPANT);
             assert_eq!(parsed.document.statements.len(), 1);
         }
     }
@@ -2189,8 +2042,9 @@ mod tests {
     fn participant_prediction_composes_type_stereotype_and_emoji() {
         let parsed = parse_source("zenuml\n@Actor <<Boundary>> [rocket] A A.m()");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert_eq!(parsed.document.participants.len(), 1);
-        let participant = &parsed.document.participants[0];
+        let participants = head_participants(&parsed.document);
+        assert_eq!(participants.len(), 1);
+        let participant = participants[0];
         assert_eq!(participant.name.value, "A");
         assert_eq!(
             participant
@@ -2230,33 +2084,34 @@ mod tests {
     }
 
     #[test]
-    fn parameter_and_condition_rules_retain_exact_spans() {
-        let parsed = parse_source(concat!(
+    fn parameter_and_condition_ast_nodes_retain_exact_spans() {
+        let source = concat!(
             "zenuml\n",
             "A.m(x=1, Type value, B.call(), 10ms) ",
             "if(item in items){A.m()} ",
             "if(status pending 10ms){A.m()}",
-        ));
+        );
+        let parsed = parse_source(source);
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        for kind in [
-            GrammarRuleKindSyntax::NamedParameter,
-            GrammarRuleKindSyntax::Declaration,
-            GrammarRuleKindSyntax::InExpression,
-            GrammarRuleKindSyntax::TextExpression,
-        ] {
-            assert!(
-                parsed
-                    .grammar_rule_spans
-                    .iter()
-                    .any(|rule| rule.kind == kind),
-                "missing {kind:?}: {:?}",
-                parsed.grammar_rule_spans
-            );
-        }
         let StatementKindSyntax::Message(message) = &parsed.document.statements[0].kind else {
             panic!("expected message");
         };
         assert_eq!(message.signature.value, "m(x=1,Type value,B.call(),10ms)");
+        assert_eq!(
+            &source[message.signature.span.start..message.signature.span.end],
+            "m(x=1, Type value, B.call(), 10ms)"
+        );
+        for (statement, expected) in parsed.document.statements[1..]
+            .iter()
+            .zip(["item in items", "status pending 10ms"])
+        {
+            let StatementKindSyntax::Fragment(fragment) = &statement.kind else {
+                panic!("expected fragment");
+            };
+            let label = fragment.label.as_ref().expect("condition label");
+            assert_eq!(label.value, expected);
+            assert_eq!(&source[label.span.start..label.span.end], expected);
+        }
     }
 
     #[test]
@@ -2271,18 +2126,17 @@ mod tests {
             Some("Order Service")
         );
         assert_eq!(parsed.document.statements.len(), 2);
-        assert!(
-            parsed
-                .grammar_rule_spans
-                .iter()
-                .any(|rule| rule.kind == GrammarRuleKindSyntax::Title)
+        assert_eq!(
+            parsed.document.title.as_ref().unwrap().value,
+            "Order Service"
         );
-        assert!(
-            parsed
-                .grammar_rule_spans
-                .iter()
-                .any(|rule| rule.kind == GrammarRuleKindSyntax::Event)
-        );
+        assert!(matches!(
+            parsed.document.statements[0].kind,
+            StatementKindSyntax::Message(MessageSyntax {
+                style: MessageStyleSyntax::Asynchronous,
+                ..
+            })
+        ));
 
         let method = parse_source("zenuml\ntitle.m()");
         assert!(method.document.title.is_none());

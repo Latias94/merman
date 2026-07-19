@@ -43,6 +43,7 @@ const DIVIDER_HEIGHT: f64 = 40.0;
 const SVG_CONTENT_BOTTOM_SPACE: f64 = 13.0;
 const RETURN_BOTTOM_SPACE: f64 = 46.0;
 const MESSAGE_LABEL_PADDING: f64 = 10.0;
+const DEFAULT_STARTER: &str = "_STARTER_";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -213,12 +214,9 @@ pub fn layout_zenuml_diagram_typed(
                 .width
                 + 8.0
         });
-        let explicit_width = participant.width.map_or(0.0, |width| width as f64);
         let visual_width = (label_width + PARTICIPANT_BOX_PADDING + icon_width + emoji_width)
             .max(stereotype_width)
-            .max(MIN_PARTICIPANT_WIDTH)
-            .max(explicit_width)
-            .min(PARTICIPANT_MAX_WIDTH);
+            .clamp(MIN_PARTICIPANT_WIDTH, PARTICIPANT_MAX_WIDTH);
         let internal_width = (label_width
             + participant.participant_type.as_ref().map_or(0.0, |_| 40.0)
             + participant.emoji.as_ref().map_or(0.0, |_| 24.0))
@@ -276,7 +274,11 @@ pub fn layout_zenuml_diagram_typed(
         active_occurrences: HashMap::new(),
         max_fragment_depth: 0,
     };
-    builder.cursor_y = builder.layout_block(&model.statements, ROOT_BLOCK_TOP, None, false, 0);
+    builder.cursor_y = builder.layout_block(
+        &model.statements,
+        ROOT_BLOCK_TOP,
+        BlockLayoutContext::root(),
+    );
 
     for participant in &mut participants {
         if let Some(y) = builder.creation_y.get(&participant.name).copied() {
@@ -432,26 +434,42 @@ fn collect_message_constraints<'a>(
     for statement in statements {
         match &statement.kind {
             ZenumlStatementKind::Message {
-                from,
-                to,
+                resolved_from,
+                resolved_to,
                 label,
+                style,
                 body,
                 ..
             } => {
+                let (from, to) = message_render_endpoints(
+                    *style,
+                    resolved_from.as_deref(),
+                    resolved_to.as_deref(),
+                );
                 out.push((from, to, label));
                 collect_message_constraints(body, out);
             }
             ZenumlStatementKind::Creation {
-                from,
-                to,
+                resolved_from,
+                resolved_to,
                 label,
                 body,
                 ..
             } => {
-                out.push((from, to, label));
+                let from = resolved_from.as_deref().unwrap_or(DEFAULT_STARTER);
+                out.push((from, resolved_to, label));
                 collect_message_constraints(body, out);
             }
-            ZenumlStatementKind::Return { from, to, label } => out.push((from, to, label)),
+            ZenumlStatementKind::Return {
+                resolved_from,
+                resolved_to,
+                label,
+                ..
+            } => out.push((
+                resolved_from.as_deref().unwrap_or(DEFAULT_STARTER),
+                resolved_to.as_deref().unwrap_or(DEFAULT_STARTER),
+                label,
+            )),
             ZenumlStatementKind::Fragment { sections, .. } => {
                 for section in sections {
                     collect_message_constraints(&section.statements, out);
@@ -460,6 +478,19 @@ fn collect_message_constraints<'a>(
             ZenumlStatementKind::Reference { .. } | ZenumlStatementKind::Divider { .. } => {}
         }
     }
+}
+
+fn message_render_endpoints<'a>(
+    style: ZenumlMessageStyle,
+    from: Option<&'a str>,
+    to: Option<&'a str>,
+) -> (&'a str, &'a str) {
+    let from = from.unwrap_or(DEFAULT_STARTER);
+    let to = match style {
+        ZenumlMessageStyle::Synchronous => to.unwrap_or(DEFAULT_STARTER),
+        ZenumlMessageStyle::Asynchronous => to.unwrap_or(from),
+    };
+    (from, to)
 }
 
 fn self_message_extra_width(
@@ -505,29 +536,55 @@ struct VerticalLayoutBuilder<'a> {
     max_fragment_depth: usize,
 }
 
+#[derive(Clone, Copy)]
+struct BlockLayoutContext<'a> {
+    parent_kind: Option<ZenumlFragmentKind>,
+    inside_occurrence: bool,
+    fragment_depth: usize,
+    parent_number: &'a str,
+    index_offset: usize,
+}
+
+impl BlockLayoutContext<'static> {
+    const fn root() -> Self {
+        Self {
+            parent_kind: None,
+            inside_occurrence: false,
+            fragment_depth: 0,
+            parent_number: "",
+            index_offset: 0,
+        }
+    }
+}
+
 impl VerticalLayoutBuilder<'_> {
     fn layout_block(
         &mut self,
         statements: &[ZenumlStatement],
         start_top: f64,
-        parent_kind: Option<ZenumlFragmentKind>,
-        inside_occurrence: bool,
-        fragment_depth: usize,
+        context: BlockLayoutContext<'_>,
     ) -> f64 {
         if statements.is_empty() {
             return start_top;
         }
         let mut cursor = start_top + STATEMENT_MARGIN;
         for (index, statement) in statements.iter().enumerate() {
-            if parent_kind == Some(ZenumlFragmentKind::Parallel) && index != 0 {
+            if context.parent_kind == Some(ZenumlFragmentKind::Parallel) && index != 0 {
                 cursor += PAR_CHILD_SEPARATOR;
             }
+            let ordinal = context.index_offset + index + 1;
+            let number = if context.parent_number.is_empty() {
+                ordinal.to_string()
+            } else {
+                format!("{}.{ordinal}", context.parent_number)
+            };
             cursor = self.layout_statement(
                 statement,
+                &number,
                 cursor,
-                inside_occurrence,
+                context.inside_occurrence,
                 index + 1 == statements.len(),
-                fragment_depth,
+                context.fragment_depth,
             ) + STATEMENT_MARGIN;
         }
         cursor
@@ -536,6 +593,7 @@ impl VerticalLayoutBuilder<'_> {
     fn layout_statement(
         &mut self,
         statement: &ZenumlStatement,
+        number: &str,
         top: f64,
         inside_occurrence: bool,
         is_last: bool,
@@ -558,42 +616,58 @@ impl VerticalLayoutBuilder<'_> {
 
         match &statement.kind {
             ZenumlStatementKind::Message {
-                from,
-                to,
+                resolved_from,
+                resolved_to,
                 label,
                 assignment,
                 style,
                 body,
                 ..
-            } => self.layout_message(
-                statement,
-                from,
-                to,
-                label,
-                assignment.as_deref(),
-                *style,
-                body,
-                content_top,
-                fragment_depth,
-            ),
+            } => {
+                let (from, to) = message_render_endpoints(
+                    *style,
+                    resolved_from.as_deref(),
+                    resolved_to.as_deref(),
+                );
+                self.layout_message(
+                    statement,
+                    number,
+                    from,
+                    to,
+                    label,
+                    assignment.as_deref(),
+                    *style,
+                    body,
+                    content_top,
+                    fragment_depth,
+                )
+            }
             ZenumlStatementKind::Creation {
-                from,
-                to,
+                resolved_from,
+                resolved_to,
                 label,
                 assignment,
                 body,
                 ..
             } => self.layout_creation(
                 statement,
-                from,
-                to,
+                number,
+                resolved_from.as_deref().unwrap_or(DEFAULT_STARTER),
+                resolved_to,
                 label,
                 assignment.as_deref(),
                 body,
                 content_top,
                 fragment_depth,
             ),
-            ZenumlStatementKind::Return { from, to, label } => {
+            ZenumlStatementKind::Return {
+                resolved_from,
+                resolved_to,
+                label,
+                ..
+            } => {
+                let from = resolved_from.as_deref().unwrap_or(DEFAULT_STARTER);
+                let to = resolved_to.as_deref().unwrap_or(DEFAULT_STARTER);
                 let is_self = from == to;
                 let collapsed = !is_self && inside_occurrence && is_last;
                 let (from_x, to_x) =
@@ -607,9 +681,9 @@ impl VerticalLayoutBuilder<'_> {
                 };
                 self.messages.push(ZenumlMessageLayout {
                     statement_id: statement.id.clone(),
-                    number: statement.number.clone(),
-                    from: from.clone(),
-                    to: to.clone(),
+                    number: number.to_string(),
+                    from: from.to_string(),
+                    to: to.to_string(),
                     from_x,
                     to_x,
                     y,
@@ -631,6 +705,7 @@ impl VerticalLayoutBuilder<'_> {
                 let mut section_y = Vec::with_capacity(sections.len());
                 let mut section_labels = Vec::with_capacity(sections.len());
                 let mut names = HashSet::new();
+                let mut section_offset = 0;
 
                 for (index, section) in sections.iter().enumerate() {
                     collect_participant_names(&section.statements, &mut names);
@@ -667,10 +742,15 @@ impl VerticalLayoutBuilder<'_> {
                     cursor = self.layout_block(
                         &section.statements,
                         cursor,
-                        parent_kind,
-                        inside_occurrence,
-                        fragment_depth + 1,
+                        BlockLayoutContext {
+                            parent_kind,
+                            inside_occurrence,
+                            fragment_depth: fragment_depth + 1,
+                            parent_number: number,
+                            index_offset: section_offset,
+                        },
                     );
+                    section_offset += section.statements.len();
                 }
                 cursor += FRAGMENT_PADDING_BOTTOM + FRAGMENT_BORDER_WIDTH;
                 let (x, width) = self.fragment_horizontal_bounds(&names, fragment_depth);
@@ -733,6 +813,7 @@ impl VerticalLayoutBuilder<'_> {
     fn layout_message(
         &mut self,
         statement: &ZenumlStatement,
+        number: &str,
         from: &str,
         to: &str,
         label: &str,
@@ -756,7 +837,7 @@ impl VerticalLayoutBuilder<'_> {
         };
         self.messages.push(ZenumlMessageLayout {
             statement_id: statement.id.clone(),
-            number: statement.number.clone(),
+            number: number.to_string(),
             from: from.to_string(),
             to: to.to_string(),
             from_x,
@@ -780,7 +861,17 @@ impl VerticalLayoutBuilder<'_> {
         cursor = if body.is_empty() {
             cursor + 22.0
         } else {
-            self.layout_block(body, cursor, None, true, fragment_depth) + OCCURRENCE_BORDER_BOTTOM
+            self.layout_block(
+                body,
+                cursor,
+                BlockLayoutContext {
+                    parent_kind: None,
+                    inside_occurrence: true,
+                    fragment_depth,
+                    parent_number: number,
+                    index_offset: 0,
+                },
+            ) + OCCURRENCE_BORDER_BOTTOM
         };
         self.leave_occurrence(to);
 
@@ -790,7 +881,7 @@ impl VerticalLayoutBuilder<'_> {
                 self.return_endpoints(to, from, target_depth + 1, self.active_depth(from));
             self.messages.push(ZenumlMessageLayout {
                 statement_id: format!("{}-assignment-return", statement.id),
-                number: format!("{}.{}", statement.number, body.len() + 1),
+                number: format!("{number}.{}", body.len() + 1),
                 from: to.to_string(),
                 to: from.to_string(),
                 from_x: return_from_x,
@@ -817,6 +908,7 @@ impl VerticalLayoutBuilder<'_> {
     fn layout_creation(
         &mut self,
         statement: &ZenumlStatement,
+        number: &str,
         from: &str,
         to: &str,
         label: &str,
@@ -831,7 +923,7 @@ impl VerticalLayoutBuilder<'_> {
         self.creation_y.entry(to.to_string()).or_insert(content_top);
         self.messages.push(ZenumlMessageLayout {
             statement_id: statement.id.clone(),
-            number: statement.number.clone(),
+            number: number.to_string(),
             from: from.to_string(),
             to: to.to_string(),
             from_x,
@@ -848,7 +940,17 @@ impl VerticalLayoutBuilder<'_> {
         cursor = if body.is_empty() {
             cursor + 22.0
         } else {
-            self.layout_block(body, cursor, None, true, fragment_depth) + OCCURRENCE_BORDER_BOTTOM
+            self.layout_block(
+                body,
+                cursor,
+                BlockLayoutContext {
+                    parent_kind: None,
+                    inside_occurrence: true,
+                    fragment_depth,
+                    parent_number: number,
+                    index_offset: 0,
+                },
+            ) + OCCURRENCE_BORDER_BOTTOM
         };
         self.leave_occurrence(to);
         if let Some(assignment) = assignment {
@@ -857,7 +959,7 @@ impl VerticalLayoutBuilder<'_> {
                 self.return_endpoints(to, from, target_depth + 1, self.active_depth(from));
             self.messages.push(ZenumlMessageLayout {
                 statement_id: format!("{}-assignment-return", statement.id),
-                number: format!("{}.{}", statement.number, body.len() + 1),
+                number: format!("{number}.{}", body.len() + 1),
                 from: to.to_string(),
                 to: from.to_string(),
                 from_x: return_from_x,
@@ -885,9 +987,11 @@ impl VerticalLayoutBuilder<'_> {
 
     fn statement_origin_x(&self, statement: &ZenumlStatement) -> f64 {
         match &statement.kind {
-            ZenumlStatementKind::Message { from, .. }
-            | ZenumlStatementKind::Creation { from, .. }
-            | ZenumlStatementKind::Return { from, .. } => self.position(from),
+            ZenumlStatementKind::Message { resolved_from, .. }
+            | ZenumlStatementKind::Creation { resolved_from, .. }
+            | ZenumlStatementKind::Return { resolved_from, .. } => {
+                self.position(resolved_from.as_deref().unwrap_or(DEFAULT_STARTER))
+            }
             _ => 1.0,
         }
     }
@@ -1039,15 +1143,54 @@ impl VerticalLayoutBuilder<'_> {
 fn collect_participant_names(statements: &[ZenumlStatement], names: &mut HashSet<String>) {
     for statement in statements {
         match &statement.kind {
-            ZenumlStatementKind::Message { from, to, body, .. }
-            | ZenumlStatementKind::Creation { from, to, body, .. } => {
-                names.insert(from.clone());
-                names.insert(to.clone());
+            ZenumlStatementKind::Message {
+                resolved_from,
+                resolved_to,
+                style,
+                body,
+                ..
+            } => {
+                let (from, to) = message_render_endpoints(
+                    *style,
+                    resolved_from.as_deref(),
+                    resolved_to.as_deref(),
+                );
+                names.insert(from.to_string());
+                names.insert(to.to_string());
                 collect_participant_names(body, names);
             }
-            ZenumlStatementKind::Return { from, to, .. } => {
-                names.insert(from.clone());
-                names.insert(to.clone());
+            ZenumlStatementKind::Creation {
+                resolved_from,
+                resolved_to,
+                body,
+                ..
+            } => {
+                names.insert(
+                    resolved_from
+                        .as_deref()
+                        .unwrap_or(DEFAULT_STARTER)
+                        .to_string(),
+                );
+                names.insert(resolved_to.clone());
+                collect_participant_names(body, names);
+            }
+            ZenumlStatementKind::Return {
+                resolved_from,
+                resolved_to,
+                ..
+            } => {
+                names.insert(
+                    resolved_from
+                        .as_deref()
+                        .unwrap_or(DEFAULT_STARTER)
+                        .to_string(),
+                );
+                names.insert(
+                    resolved_to
+                        .as_deref()
+                        .unwrap_or(DEFAULT_STARTER)
+                        .to_string(),
+                );
             }
             ZenumlStatementKind::Fragment { sections, .. } => {
                 for section in sections {
@@ -1174,5 +1317,75 @@ mod tests {
             },
         );
         assert_eq!(divider.label_width, expected.width);
+    }
+
+    #[test]
+    fn endpoint_fallbacks_are_statement_kind_specific() {
+        // Both selected @zenuml/core 3.47.8 and candidate 3.50.1 keep missing-target
+        // `_STARTER_` coordinates without adding it to OrderedParticipants.
+        let synchronous = layout("zenuml\n@Starter(A)\nmethod()\n");
+        assert_eq!(
+            synchronous
+                .participants
+                .iter()
+                .map(|participant| participant.name.as_str())
+                .collect::<Vec<_>>(),
+            ["A"]
+        );
+        assert_eq!(synchronous.messages[0].from, "A");
+        assert_eq!(synchronous.messages[0].to, DEFAULT_STARTER);
+        assert_eq!(synchronous.messages[0].to_x, 7.0);
+
+        let asynchronous = layout("zenuml\nA ->\n");
+        assert_eq!(
+            asynchronous
+                .participants
+                .iter()
+                .map(|participant| participant.name.as_str())
+                .collect::<Vec<_>>(),
+            ["A"]
+        );
+        assert_eq!(asynchronous.messages[0].from, "A");
+        assert_eq!(asynchronous.messages[0].to, "A");
+
+        let returned = layout("zenuml\nA -->\n");
+        assert_eq!(
+            returned
+                .participants
+                .iter()
+                .map(|participant| participant.name.as_str())
+                .collect::<Vec<_>>(),
+            ["A"]
+        );
+        assert_eq!(returned.messages[0].from, "A");
+        assert_eq!(returned.messages[0].to, DEFAULT_STARTER);
+        assert_eq!(returned.messages[0].to_x, 1.0);
+    }
+
+    #[test]
+    fn renderer_numbers_fragment_sections_with_one_cumulative_offset() {
+        let layout = layout("zenuml\nif(x) { A.m() } else if(y) { B.m() } else { C.m() }\n");
+        assert_eq!(
+            layout
+                .messages
+                .iter()
+                .map(|message| message.number.as_str())
+                .collect::<Vec<_>>(),
+            ["1.1", "1.2", "1.3"]
+        );
+    }
+
+    #[test]
+    fn source_width_is_not_a_native_svg_geometry_input() {
+        let without_width = layout("zenuml\n@Actor A\n@Boundary B\nA->B.m()\n");
+        let with_width = layout("zenuml\n@Actor A 400\n@Boundary B 1\nA->B.m()\n");
+        let geometry = |layout: &ZenumlDiagramLayout| {
+            layout
+                .participants
+                .iter()
+                .map(|participant| (participant.name.clone(), participant.x, participant.width))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(geometry(&without_width), geometry(&with_width));
     }
 }

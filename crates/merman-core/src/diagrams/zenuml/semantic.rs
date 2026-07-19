@@ -22,31 +22,33 @@ struct ParticipantAccumulator {
 
 struct SemanticBuilder {
     syntax: SyntaxDocument,
-    tokens: Vec<super::lexer::Token>,
     diagnostics: Vec<SyntaxDiagnostic>,
     participants: IndexMap<String, ParticipantAccumulator>,
     groups: Vec<ZenumlGroup>,
     facts: EditorSemanticFacts,
     generated_statement_id: usize,
+    ownable_statement_count: usize,
+    some_statement_misses_from: bool,
 }
 
 #[derive(Clone)]
 struct ResolveContext {
-    origin: String,
-    return_to: String,
+    origin: Option<String>,
+    owner: Option<String>,
+    return_to: Option<String>,
 }
 
 impl SemanticBuilder {
     fn new(parsed: ParsedSyntax) -> Self {
-        let _grammar_rule_spans = parsed.grammar_rule_spans;
         Self {
             syntax: parsed.document,
-            tokens: parsed.tokens,
             diagnostics: parsed.diagnostics,
             participants: IndexMap::new(),
             groups: Vec::new(),
             facts: EditorSemanticFacts::new(),
             generated_statement_id: 0,
+            ownable_statement_count: 0,
+            some_statement_misses_from: false,
         }
     }
 
@@ -72,31 +74,32 @@ impl SemanticBuilder {
             );
         }
 
-        for participant in self.syntax.participants.clone() {
-            self.declare_participant(&participant, None);
-        }
-        for (group_index, group) in self.syntax.groups.clone().into_iter().enumerate() {
-            let group_id = group
-                .name
-                .as_ref()
-                .map_or_else(|| format!("group-{group_index}"), |name| name.value.clone());
-            if let Some(name) = &group.name {
-                self.push_outline(
-                    name,
-                    "zenuml participant group",
-                    EditorSemanticKind::Namespace,
-                );
+        for item in self.syntax.head.clone() {
+            match item {
+                HeadItemSyntax::Participant(participant) => {
+                    self.declare_participant(&participant, None);
+                }
+                HeadItemSyntax::Group(group) => {
+                    let group_id = group.name.as_ref().map(|name| name.value.clone());
+                    if let Some(name) = &group.name {
+                        self.push_outline(
+                            name,
+                            "zenuml participant group",
+                            EditorSemanticKind::Namespace,
+                        );
+                    }
+                    let mut participant_names = Vec::new();
+                    for participant in &group.participants {
+                        participant_names.push(participant.name.value.clone());
+                        self.declare_participant(participant, group_id.clone());
+                    }
+                    self.groups.push(ZenumlGroup {
+                        id: group_id,
+                        participant_names,
+                        span: group.span,
+                    });
+                }
             }
-            let mut participant_names = Vec::new();
-            for participant in &group.participants {
-                participant_names.push(participant.name.value.clone());
-                self.declare_participant(participant, Some(group_id.clone()));
-            }
-            self.groups.push(ZenumlGroup {
-                id: group_id,
-                participant_names,
-                span: group.span,
-            });
         }
 
         let starter_name = self
@@ -113,12 +116,20 @@ impl SemanticBuilder {
         }
 
         let context = ResolveContext {
-            origin: starter.value.clone(),
-            return_to: starter.value.clone(),
+            origin: starter_name.as_ref().map(|starter| starter.value.clone()),
+            owner: None,
+            return_to: starter_name.as_ref().map(|starter| starter.value.clone()),
         };
-        let statements = self.resolve_statements(&self.syntax.statements.clone(), &context, "");
+        let statements = self.resolve_statements(&self.syntax.statements.clone(), &context);
 
-        if !has_explicit_starter && self.participants.contains_key("_STARTER_") {
+        let needs_default_starter = (self.ownable_statement_count == 0
+            && self.participants.is_empty())
+            || self.some_statement_misses_from;
+        if needs_default_starter {
+            self.reference_named_participant("_STARTER_", None, true, None);
+        }
+
+        if needs_default_starter && self.participants.contains_key("_STARTER_") {
             let starter = self
                 .participants
                 .shift_remove("_STARTER_")
@@ -162,7 +173,6 @@ impl SemanticBuilder {
             groups: self.groups,
             statements,
         };
-        let _ = self.tokens;
         SemanticBuild {
             model,
             editor_facts: self.facts,
@@ -182,7 +192,7 @@ impl SemanticBuilder {
                         participant_type: None,
                         stereotype: None,
                         emoji: None,
-                        width: None,
+                        width_source: None,
                         color: None,
                         comment: None,
                         group_id: None,
@@ -214,12 +224,10 @@ impl SemanticBuilder {
             .emoji
             .take()
             .or_else(|| syntax.emoji.as_ref().map(|value| value.value.clone()));
-        participant.width = participant.width.or_else(|| {
-            syntax.width.as_ref().and_then(|width| {
-                let parsed = width.value.parse::<u64>().unwrap_or(u64::MAX);
-                (parsed != 0).then_some(parsed)
-            })
-        });
+        participant.width_source = participant
+            .width_source
+            .take()
+            .or_else(|| syntax.width.as_ref().map(|width| width.value.clone()));
         participant.color = participant
             .color
             .take()
@@ -272,19 +280,10 @@ impl SemanticBuilder {
         &mut self,
         statements: &[StatementSyntax],
         context: &ResolveContext,
-        parent_number: &str,
     ) -> Vec<ZenumlStatement> {
         statements
             .iter()
-            .enumerate()
-            .map(|(index, statement)| {
-                let number = if parent_number.is_empty() {
-                    (index + 1).to_string()
-                } else {
-                    format!("{parent_number}.{}", index + 1)
-                };
-                self.resolve_statement(statement, context, number)
-            })
+            .map(|statement| self.resolve_statement(statement, context))
             .collect()
     }
 
@@ -292,32 +291,35 @@ impl SemanticBuilder {
         &mut self,
         statement: &StatementSyntax,
         context: &ResolveContext,
-        number: String,
     ) -> ZenumlStatement {
         let id = format!("zenuml-statement-{}", self.generated_statement_id);
         self.generated_statement_id += 1;
         let kind = match &statement.kind {
             StatementKindSyntax::Message(message) => {
-                let from = message
-                    .from
-                    .as_ref()
-                    .map_or_else(|| context.origin.clone(), |value| value.value.clone());
-                let to = message
+                let explicit_from = message.from.as_ref().map(|value| value.value.clone());
+                let resolved_from = explicit_from.clone().or_else(|| context.origin.clone());
+                let resolved_to = message
                     .to
                     .as_ref()
-                    .map_or_else(|| context.origin.clone(), |value| value.value.clone());
-                self.reference_named_participant(
-                    &from,
-                    message.from.as_ref().map(|v| v.span),
-                    false,
-                    message.from_emoji.as_ref(),
-                );
-                self.reference_named_participant(
-                    &to,
-                    message.to.as_ref().map(|v| v.span),
-                    false,
-                    message.to_emoji.as_ref(),
-                );
+                    .map(|value| value.value.clone())
+                    .or_else(|| context.owner.clone());
+                self.record_ownable_from(resolved_from.as_deref());
+                if let Some(from) = &resolved_from {
+                    self.reference_named_participant(
+                        from,
+                        message.from.as_ref().map(|v| v.span),
+                        false,
+                        message.from_emoji.as_ref(),
+                    );
+                }
+                if let Some(to) = &resolved_to {
+                    self.reference_named_participant(
+                        to,
+                        message.to.as_ref().map(|v| v.span),
+                        false,
+                        message.to_emoji.as_ref(),
+                    );
+                }
                 self.push_message_signature(&message.signature);
                 if let Some(assignment) = &message.assignment {
                     self.push_payload(
@@ -327,13 +329,15 @@ impl SemanticBuilder {
                     );
                 }
                 let nested_context = ResolveContext {
-                    origin: to.clone(),
-                    return_to: from.clone(),
+                    origin: resolved_to.clone().or_else(|| context.origin.clone()),
+                    owner: resolved_to.clone().or_else(|| context.owner.clone()),
+                    return_to: explicit_from.clone().or_else(|| context.origin.clone()),
                 };
-                let body = self.resolve_statements(&message.body, &nested_context, &number);
+                let body = self.resolve_statements(&message.body, &nested_context);
                 ZenumlStatementKind::Message {
-                    from,
-                    to,
+                    explicit_from,
+                    resolved_from,
+                    resolved_to,
                     label: message.signature.value.clone(),
                     assignment: message.assignment.as_ref().map(|value| value.value.clone()),
                     style: match message.style {
@@ -348,13 +352,21 @@ impl SemanticBuilder {
                 }
             }
             StatementKindSyntax::Creation(creation) => {
-                let from = context.origin.clone();
-                let to = creation.assignment.as_ref().map_or_else(
+                let resolved_from = context.origin.clone();
+                let resolved_to = creation.assignment.as_ref().map_or_else(
                     || creation.constructor.value.clone(),
                     |assignment| format!("{}:{}", assignment.value, creation.constructor.value),
                 );
-                self.reference_named_participant(&from, None, false, None);
-                self.reference_named_participant(&to, Some(creation.constructor.span), false, None);
+                self.record_ownable_from(resolved_from.as_deref());
+                if let Some(from) = &resolved_from {
+                    self.reference_named_participant(from, None, false, None);
+                }
+                self.reference_named_participant(
+                    &resolved_to,
+                    Some(creation.constructor.span),
+                    false,
+                    None,
+                );
                 self.push_payload(
                     &creation.constructor,
                     "zenuml constructor",
@@ -368,19 +380,29 @@ impl SemanticBuilder {
                     );
                 }
                 let nested_context = ResolveContext {
-                    origin: to.clone(),
-                    return_to: from.clone(),
+                    origin: Some(resolved_to.clone()),
+                    owner: Some(resolved_to.clone()),
+                    return_to: resolved_from.clone(),
                 };
-                let body = self.resolve_statements(&creation.body, &nested_context, &number);
+                let body = self.resolve_statements(&creation.body, &nested_context);
+                let parameters = creation
+                    .parameters
+                    .as_ref()
+                    .map_or_else(String::new, |parameters| parameters.value.clone());
                 ZenumlStatementKind::Creation {
-                    from,
-                    to,
+                    resolved_from,
+                    resolved_to,
                     constructor: creation.constructor.value.clone(),
+                    parameters: parameters.clone(),
                     assignment: creation
                         .assignment
                         .as_ref()
                         .map(|value| value.value.clone()),
-                    label: format!("«create» {}", creation.signature.value),
+                    label: if parameters.is_empty() {
+                        "«create»".to_string()
+                    } else {
+                        format!("«{parameters}»")
+                    },
                     body,
                     body_comment: creation
                         .body_comment
@@ -389,32 +411,35 @@ impl SemanticBuilder {
                 }
             }
             StatementKindSyntax::Return(ret) => {
-                let from = ret
-                    .from
-                    .as_ref()
-                    .map_or_else(|| context.origin.clone(), |value| value.value.clone());
-                let to = ret
-                    .to
-                    .as_ref()
-                    .map_or_else(|| context.return_to.clone(), |value| value.value.clone());
-                self.reference_named_participant(
-                    &from,
-                    ret.from.as_ref().map(|value| value.span),
-                    false,
-                    ret.from_emoji.as_ref(),
-                );
-                self.reference_named_participant(
-                    &to,
-                    ret.to.as_ref().map(|value| value.span),
-                    false,
-                    ret.to_emoji.as_ref(),
-                );
+                let explicit_from = ret.from.as_ref().map(|value| value.value.clone());
+                let resolved_from = explicit_from.clone().or_else(|| context.origin.clone());
+                let explicit_to = ret.to.as_ref().map(|value| value.value.clone());
+                let resolved_to = explicit_to.clone().or_else(|| context.return_to.clone());
+                self.record_ownable_from(resolved_from.as_deref());
+                if let Some(from) = &resolved_from {
+                    self.reference_named_participant(
+                        from,
+                        ret.from.as_ref().map(|value| value.span),
+                        false,
+                        ret.from_emoji.as_ref(),
+                    );
+                }
+                if let Some(to) = &resolved_to {
+                    self.reference_named_participant(
+                        to,
+                        ret.to.as_ref().map(|value| value.span),
+                        false,
+                        ret.to_emoji.as_ref(),
+                    );
+                }
                 if let Some(value) = &ret.value {
                     self.push_payload(value, "zenuml return value", EditorSemanticKind::String);
                 }
                 ZenumlStatementKind::Return {
-                    from,
-                    to,
+                    explicit_from,
+                    resolved_from,
+                    explicit_to,
+                    resolved_to,
                     label: ret
                         .value
                         .as_ref()
@@ -441,8 +466,7 @@ impl SemanticBuilder {
                 let sections = fragment
                     .sections
                     .iter()
-                    .enumerate()
-                    .map(|(section_index, section)| {
+                    .map(|section| {
                         if let Some(label) = &section.label {
                             self.push_payload(
                                 label,
@@ -452,11 +476,7 @@ impl SemanticBuilder {
                         }
                         ZenumlFragmentSection {
                             label: section.label.as_ref().map(|label| label.value.clone()),
-                            statements: self.resolve_statements(
-                                &section.statements,
-                                context,
-                                &format!("{number}.{}", section_index + 1),
-                            ),
+                            statements: self.resolve_statements(&section.statements, context),
                             body_comment: section
                                 .body_comment
                                 .as_ref()
@@ -499,7 +519,6 @@ impl SemanticBuilder {
         };
         ZenumlStatement {
             id,
-            number,
             comment: statement
                 .comment
                 .as_ref()
@@ -533,7 +552,7 @@ impl SemanticBuilder {
                     participant_type: None,
                     stereotype: None,
                     emoji: None,
-                    width: None,
+                    width_source: None,
                     color: None,
                     comment: None,
                     group_id: None,
@@ -564,6 +583,11 @@ impl SemanticBuilder {
                 EditorSemanticKind::String,
             );
         }
+    }
+
+    fn record_ownable_from(&mut self, from: Option<&str>) {
+        self.ownable_statement_count += 1;
+        self.some_statement_misses_from |= from.is_none();
     }
 
     fn push_message_signature(&mut self, signature: &SpannedText) {
@@ -638,14 +662,30 @@ mod tests {
         let tokens = super::super::lexer::lex(source);
         let parsed = super::super::parser::parse(source, &tokens);
         let built = build(parsed);
-        let ZenumlStatementKind::Message { from, to, body, .. } = &built.model.statements[0].kind
+        let ZenumlStatementKind::Message {
+            resolved_from,
+            resolved_to,
+            body,
+            ..
+        } = &built.model.statements[0].kind
         else {
             panic!("expected message");
         };
-        assert_eq!((from.as_str(), to.as_str()), ("Client", "A"));
-        let ZenumlStatementKind::Message { from, to, .. } = &body[0].kind else {
+        assert_eq!(
+            (resolved_from.as_deref(), resolved_to.as_deref()),
+            (Some("Client"), Some("A"))
+        );
+        let ZenumlStatementKind::Message {
+            resolved_from,
+            resolved_to,
+            ..
+        } = &body[0].kind
+        else {
             panic!("expected nested message");
         };
-        assert_eq!((from.as_str(), to.as_str()), ("A", "B"));
+        assert_eq!(
+            (resolved_from.as_deref(), resolved_to.as_deref()),
+            (Some("A"), Some("B"))
+        );
     }
 }

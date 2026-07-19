@@ -129,13 +129,13 @@
           "statementId": "zenuml-statement-0",
           "x": 50.0,
           "y": 87.0,
-          "text": "1. assign a variable from a sync message."
+          "text": " 1. assign a variable from a sync message."
         },
         {
           "statementId": "zenuml-statement-1",
           "x": 50.0,
           "y": 173.0,
-          "text": "1.1. optionally give the variable a type"
+          "text": " 1.1. optionally give the variable a type"
         }
       ],
       "groups": [],

@@ -12,7 +12,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -27,7 +26,8 @@
             "start": 35,
             "end": 40
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "Bob",
@@ -35,7 +35,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -50,22 +49,23 @@
             "start": 29,
             "end": 32
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 9,
           "end": 27
         },
         "kind": "message",
-        "from": "Alice",
-        "to": "Bob",
+        "explicit_from": "Alice",
+        "resolved_from": "Alice",
+        "resolved_to": "Bob",
         "label": "Hello",
         "assignment": null,
         "style": "asynchronous",
@@ -73,15 +73,16 @@
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": null,
         "span": {
           "start": 29,
           "end": 48
         },
         "kind": "return",
-        "from": "Bob",
-        "to": "Alice",
+        "explicit_from": "Bob",
+        "resolved_from": "Bob",
+        "explicit_to": "Alice",
+        "resolved_to": "Alice",
         "label": "Reply"
       }
     ],

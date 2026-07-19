@@ -12,7 +12,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -31,7 +30,8 @@
             "start": 92,
             "end": 97
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "John",
@@ -39,7 +39,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -58,22 +57,23 @@
             "start": 99,
             "end": 103
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 26,
           "end": 64
         },
         "kind": "message",
-        "from": "Alice",
-        "to": "John",
+        "explicit_from": "Alice",
+        "resolved_from": "Alice",
+        "resolved_to": "John",
         "label": "Hello John, how are you?",
         "assignment": null,
         "style": "asynchronous",
@@ -81,15 +81,15 @@
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": null,
         "span": {
           "start": 68,
           "end": 88
         },
         "kind": "message",
-        "from": "John",
-        "to": "Alice",
+        "explicit_from": "John",
+        "resolved_from": "John",
+        "resolved_to": "Alice",
         "label": "Great!",
         "assignment": null,
         "style": "asynchronous",
@@ -97,15 +97,15 @@
       },
       {
         "id": "zenuml-statement-2",
-        "number": "3",
         "comment": null,
         "span": {
           "start": 92,
           "end": 120
         },
         "kind": "message",
-        "from": "Alice",
-        "to": "John",
+        "explicit_from": "Alice",
+        "resolved_from": "Alice",
+        "resolved_to": "John",
         "label": "See you later!",
         "assignment": null,
         "style": "asynchronous",

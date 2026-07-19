@@ -12,13 +12,13 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
-        "isStarter": false,
+        "isStarter": true,
         "declarationSpan": null,
-        "occurrences": []
+        "occurrences": [],
+        "width": null
       },
       {
         "name": "A",
@@ -26,7 +26,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -41,7 +40,8 @@
             "start": 52,
             "end": 53
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "B",
@@ -49,7 +49,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -60,22 +59,23 @@
             "start": 92,
             "end": 93
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 34,
           "end": 47
         },
         "kind": "message",
-        "from": "_STARTER_",
-        "to": "A",
+        "explicit_from": null,
+        "resolved_from": null,
+        "resolved_to": "A",
         "label": "SyncMessage",
         "assignment": null,
         "style": "synchronous",
@@ -83,30 +83,30 @@
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": null,
         "span": {
           "start": 52,
           "end": 119
         },
         "kind": "message",
-        "from": "_STARTER_",
-        "to": "A",
+        "explicit_from": null,
+        "resolved_from": null,
+        "resolved_to": "A",
         "label": "SyncMessage(with,parameters)",
         "assignment": null,
         "style": "synchronous",
         "body": [
           {
             "id": "zenuml-statement-2",
-            "number": "2.1",
             "comment": null,
             "span": {
               "start": 92,
               "end": 113
             },
             "kind": "message",
-            "from": "A",
-            "to": "B",
+            "explicit_from": null,
+            "resolved_from": "A",
+            "resolved_to": "B",
             "label": "nestedSyncMessage()",
             "assignment": null,
             "style": "synchronous",

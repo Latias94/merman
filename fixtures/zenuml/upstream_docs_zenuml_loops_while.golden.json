@@ -12,7 +12,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -27,7 +26,8 @@
             "start": 79,
             "end": 84
           }
-        ]
+        ],
+        "width": null
       },
       {
         "name": "John",
@@ -35,7 +35,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
@@ -50,22 +49,23 @@
             "start": 73,
             "end": 77
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": null,
         "span": {
           "start": 11,
           "end": 49
         },
         "kind": "message",
-        "from": "Alice",
-        "to": "John",
+        "explicit_from": "Alice",
+        "resolved_from": "Alice",
+        "resolved_to": "John",
         "label": "Hello John, how are you?",
         "assignment": null,
         "style": "asynchronous",
@@ -73,7 +73,6 @@
       },
       {
         "id": "zenuml-statement-1",
-        "number": "2",
         "comment": null,
         "span": {
           "start": 53,
@@ -88,15 +87,15 @@
             "statements": [
               {
                 "id": "zenuml-statement-2",
-                "number": "2.1.1",
                 "comment": null,
                 "span": {
                   "start": 73,
                   "end": 93
                 },
                 "kind": "message",
-                "from": "John",
-                "to": "Alice",
+                "explicit_from": "John",
+                "resolved_from": "John",
+                "resolved_to": "Alice",
                 "label": "Great!",
                 "assignment": null,
                 "style": "asynchronous",

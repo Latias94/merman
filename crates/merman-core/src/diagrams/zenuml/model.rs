@@ -35,12 +35,15 @@ pub struct ZenumlParticipant {
     pub participant_type: Option<String>,
     pub stereotype: Option<String>,
     pub emoji: Option<String>,
-    pub width: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width_source: Option<String>,
     pub color: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub comment: Option<String>,
     pub group_id: Option<String>,
     pub explicit: bool,
+    /// True for an explicit starter or the renderer-owned default starter synthesized when the
+    /// selected ZenUML participant collector observes an empty context or a missing sender.
     pub is_starter: bool,
     pub declaration_span: Option<SourceSpan>,
     pub occurrences: Vec<SourceSpan>,
@@ -55,7 +58,7 @@ impl ZenumlParticipant {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZenumlGroup {
-    pub id: String,
+    pub id: Option<String>,
     pub participant_names: Vec<String>,
     pub span: SourceSpan,
 }
@@ -64,7 +67,6 @@ pub struct ZenumlGroup {
 #[serde(rename_all = "camelCase")]
 pub struct ZenumlStatement {
     pub id: String,
-    pub number: String,
     pub comment: Option<String>,
     pub span: SourceSpan,
     #[serde(flatten)]
@@ -75,8 +77,9 @@ pub struct ZenumlStatement {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ZenumlStatementKind {
     Message {
-        from: String,
-        to: String,
+        explicit_from: Option<String>,
+        resolved_from: Option<String>,
+        resolved_to: Option<String>,
         label: String,
         assignment: Option<String>,
         style: ZenumlMessageStyle,
@@ -85,9 +88,10 @@ pub enum ZenumlStatementKind {
         body_comment: Option<String>,
     },
     Creation {
-        from: String,
-        to: String,
+        resolved_from: Option<String>,
+        resolved_to: String,
         constructor: String,
+        parameters: String,
         assignment: Option<String>,
         label: String,
         body: Vec<ZenumlStatement>,
@@ -95,8 +99,10 @@ pub enum ZenumlStatementKind {
         body_comment: Option<String>,
     },
     Return {
-        from: String,
-        to: String,
+        explicit_from: Option<String>,
+        resolved_from: Option<String>,
+        explicit_to: Option<String>,
+        resolved_to: Option<String>,
         label: String,
     },
     Fragment {
@@ -166,6 +172,25 @@ pub(crate) fn render_model_to_compat_json(
         Value::Object(object) => object,
         _ => Map::new(),
     };
+    if let Some(Value::Array(participants)) = object.get_mut("participants") {
+        for participant in participants {
+            let Value::Object(participant) = participant else {
+                continue;
+            };
+            let width = participant
+                .remove("widthSource")
+                .and_then(|width| width.as_str().map(project_js_integer))
+                .flatten()
+                .and_then(serde_json::Number::from_f64)
+                .map_or(Value::Null, Value::Number);
+            participant.insert("width".to_string(), width);
+        }
+    }
     object.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     Ok(Value::Object(object))
+}
+
+fn project_js_integer(source: &str) -> Option<f64> {
+    let parsed = source.parse::<f64>().ok()?;
+    (parsed != 0.0).then_some(parsed)
 }

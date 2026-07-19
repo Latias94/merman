@@ -20,10 +20,15 @@ pub(super) struct SyntaxDocument {
     pub(super) title: Option<SpannedText>,
     pub(super) acc_title: Option<SpannedText>,
     pub(super) acc_descr: Option<SpannedText>,
-    pub(super) participants: Vec<ParticipantSyntax>,
-    pub(super) groups: Vec<GroupSyntax>,
+    pub(super) head: Vec<HeadItemSyntax>,
     pub(super) starter: Option<StarterSyntax>,
     pub(super) statements: Vec<StatementSyntax>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum HeadItemSyntax {
+    Participant(Box<ParticipantSyntax>),
+    Group(GroupSyntax),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,7 +97,7 @@ pub(super) struct MessageSyntax {
 pub(super) struct CreationSyntax {
     pub(super) constructor: SpannedText,
     pub(super) assignment: Option<SpannedText>,
-    pub(super) signature: SpannedText,
+    pub(super) parameters: Option<SpannedText>,
     pub(super) body: Vec<StatementSyntax>,
     pub(super) body_comment: Option<SpannedText>,
 }
@@ -144,31 +149,8 @@ pub(super) struct SyntaxDiagnostic {
     pub(super) span: SourceSpan,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum GrammarRuleKindSyntax {
-    Title,
-    Participant,
-    MessageBody,
-    CreationBody,
-    Event,
-    Invocation,
-    Expression,
-    NamedParameter,
-    Declaration,
-    InExpression,
-    TextExpression,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct GrammarRuleSpanSyntax {
-    pub(super) kind: GrammarRuleKindSyntax,
-    pub(super) span: SourceSpan,
-}
-
 #[derive(Debug, Clone)]
 pub(super) struct ParsedSyntax {
     pub(super) document: SyntaxDocument,
     pub(super) diagnostics: Vec<SyntaxDiagnostic>,
-    pub(super) tokens: Vec<super::lexer::Token>,
-    pub(super) grammar_rule_spans: Vec<GrammarRuleSpanSyntax>,
 }

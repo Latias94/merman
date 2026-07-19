@@ -79,7 +79,7 @@
       "messages": [
         {
           "statementId": "zenuml-statement-1",
-          "number": "1.1.1",
+          "number": "1.1",
           "from": "Alice",
           "to": "Bob",
           "fromX": 50.0,
@@ -91,7 +91,7 @@
         },
         {
           "statementId": "zenuml-statement-2",
-          "number": "1.1.2",
+          "number": "1.2",
           "from": "Alice",
           "to": "John",
           "fromX": 50.0,

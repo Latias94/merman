@@ -85,7 +85,7 @@
           "statementId": "zenuml-statement-0",
           "x": 50.0,
           "y": 87.0,
-          "text": "a comment on a message.\n**Markdown** is supported."
+          "text": " a comment on a message.\n **Markdown** is supported."
         }
       ],
       "groups": [],

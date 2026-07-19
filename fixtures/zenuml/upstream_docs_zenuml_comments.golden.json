@@ -12,13 +12,13 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "groupId": null,
         "explicit": false,
-        "isStarter": false,
+        "isStarter": true,
         "declarationSpan": null,
-        "occurrences": []
+        "occurrences": [],
+        "width": null
       },
       {
         "name": "BookService",
@@ -26,7 +26,6 @@
         "participantType": null,
         "stereotype": null,
         "emoji": null,
-        "width": null,
         "color": null,
         "comment": " a comment on a participant will not be rendered",
         "groupId": null,
@@ -45,22 +44,23 @@
             "start": 147,
             "end": 158
           }
-        ]
+        ],
+        "width": null
       }
     ],
     "groups": [],
     "statements": [
       {
         "id": "zenuml-statement-0",
-        "number": "1",
         "comment": " a comment on a message.\n **Markdown** is supported.",
         "span": {
           "start": 147,
           "end": 168
         },
         "kind": "message",
-        "from": "_STARTER_",
-        "to": "BookService",
+        "explicit_from": null,
+        "resolved_from": null,
+        "resolved_to": "BookService",
         "label": "getBook()",
         "assignment": null,
         "style": "synchronous",

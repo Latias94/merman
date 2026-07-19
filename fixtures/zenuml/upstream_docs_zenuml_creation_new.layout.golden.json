@@ -2,7 +2,7 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 308.54,
+      "width": 300.0,
       "height": 256.0,
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
@@ -42,7 +42,7 @@
         {
           "name": "A2",
           "label": "A2",
-          "x": 258.54,
+          "x": 250.0,
           "y": 150.0,
           "width": 80.0,
           "height": 40.0,
@@ -71,7 +71,7 @@
         },
         {
           "participantName": "A2",
-          "x": 258.54,
+          "x": 250.0,
           "topY": 190.0,
           "bottomY": 268.0
         }
@@ -85,7 +85,7 @@
           "fromX": 50.0,
           "toX": 150.0,
           "y": 92.0,
-          "label": "«create» A1",
+          "label": "«create»",
           "kind": "creation",
           "isSelf": false
         },
@@ -95,9 +95,9 @@
           "from": "_STARTER_",
           "to": "A2",
           "fromX": 50.0,
-          "toX": 258.54,
+          "toX": 250.0,
           "y": 170.0,
-          "label": "«create» A2(with, parameters)",
+          "label": "«with,parameters»",
           "kind": "creation",
           "isSelf": false
         }
@@ -114,7 +114,7 @@
         {
           "statementId": "zenuml-statement-1",
           "participantName": "A2",
-          "x": 251.54,
+          "x": 243.0,
           "y": 188.0,
           "width": 15.0,
           "height": 24.0
@@ -127,7 +127,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 308.54,
+        "max_x": 300.0,
         "max_y": 256.0
       }
     }
