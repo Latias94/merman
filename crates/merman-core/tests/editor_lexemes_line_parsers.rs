@@ -223,6 +223,78 @@ fn sankey_recovery_keeps_csv_lexemes_after_a_malformed_middle_record() {
     assert_valid_non_overlapping(source, &facts);
 }
 
+#[test]
+fn quadrant_emits_structural_point_class_and_style_lexemes_from_its_parser() {
+    let source = concat!(
+        "quadrantChart\n",
+        "%% family comment\n",
+        "title \"Portfolio\"\n",
+        "x-axis \"Low Reach\" --> High Reach\n",
+        "quadrant-1 Expand\n",
+        "classDef priority color: #109060, radius: 10\n",
+        "Campaign A:::priority: [0.2, 0.8] radius: 8, color: #ff0000\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", source, ParseOptions::strict())
+        .expect("quadrant editor parse")
+        .expect("quadrant editor facts");
+
+    assert_eq!(facts.lexeme_failure(), None);
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(facts.lexemes().iter().all(|lexeme| {
+        let producer = lexeme.producer();
+        producer.kind() == EditorLexemeProducerKind::GlobalPreprocess
+            || (producer.kind() == EditorLexemeProducerKind::FamilyParser
+                && producer.family().map(|family| family.as_str()) == Some("quadrantChart"))
+    }));
+    for (kind, text) in [
+        (EditorLexemeKind::Keyword, "quadrantChart"),
+        (EditorLexemeKind::Comment, "%% family comment\n"),
+        (EditorLexemeKind::Keyword, "x-axis"),
+        (EditorLexemeKind::Operator, "-->"),
+        (EditorLexemeKind::Keyword, "classDef"),
+        (EditorLexemeKind::Identifier, "priority"),
+        (EditorLexemeKind::Operator, ":::"),
+        (EditorLexemeKind::Delimiter, "["),
+        (EditorLexemeKind::Number, "0.2"),
+        (EditorLexemeKind::Style, "radius"),
+        (EditorLexemeKind::Color, "#ff0000"),
+    ] {
+        assert_source_lexeme(&facts, source, kind, text);
+    }
+    assert_valid_non_overlapping(source, &facts);
+}
+
+#[test]
+fn quadrant_recovery_keeps_point_lexemes_after_a_malformed_middle_statement() {
+    let source = concat!(
+        "quadrantChart\n",
+        "Before: [0.2, 0.8]\n",
+        "Broken: [1.2, 0.4]\n",
+        "After: [0.3, 0.7]\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("quadrantChart", source, ParseOptions::strict())
+        .expect("quadrant editor recovery")
+        .expect("quadrant recovery facts");
+
+    assert_eq!(facts.lexeme_failure(), None);
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.lexemes().iter().all(|lexeme| {
+        lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
+            && lexeme.producer().family().map(|family| family.as_str()) == Some("quadrantChart")
+    }));
+    assert_source_lexeme(&facts, source, EditorLexemeKind::String, "Before");
+    assert_source_lexeme(
+        &facts,
+        source,
+        EditorLexemeKind::Literal,
+        "Broken: [1.2, 0.4]",
+    );
+    assert_source_lexeme(&facts, source, EditorLexemeKind::String, "After");
+    assert_valid_non_overlapping(source, &facts);
+}
+
 fn assert_source_lexeme(
     facts: &merman_core::EditorSemanticFacts,
     source: &str,

@@ -1,8 +1,9 @@
-use crate::diagrams::scan::{leading_whitespace_len, strip_line_ending};
+use crate::diagrams::scan::strip_line_ending;
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    MermaidConfig, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -328,55 +329,127 @@ fn is_axis_delim_at(s: &str, idx: usize) -> Option<(usize, usize)> {
     }
 }
 
-fn split_axis_text(s: &str) -> Option<(String, Option<String>)> {
+#[derive(Debug, Clone, Copy)]
+struct SourceSlice<'source> {
+    text: &'source str,
+    start: usize,
+}
+
+impl<'source> SourceSlice<'source> {
+    fn new(text: &'source str, start: usize) -> Self {
+        Self { text, start }
+    }
+
+    fn end(self) -> usize {
+        self.start + self.text.len()
+    }
+
+    fn span(self) -> SourceSpan {
+        SourceSpan::new(self.start, self.end())
+    }
+
+    fn trim_start(self) -> Self {
+        let text = self.text.trim_start();
+        Self::new(text, self.end().saturating_sub(text.len()))
+    }
+
+    fn trim_end(self) -> Self {
+        Self::new(self.text.trim_end(), self.start)
+    }
+
+    fn trim(self) -> Self {
+        self.trim_start().trim_end()
+    }
+
+    fn subslice(self, start: usize, end: usize) -> Self {
+        Self::new(&self.text[start..end], self.start + start)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ParsedText<'source> {
+    value: String,
+    content: SourceSlice<'source>,
+    opening: Option<SourceSpan>,
+    closing: Option<SourceSpan>,
+}
+
+fn parse_text_slice(input: SourceSlice<'_>) -> Result<ParsedText<'_>> {
+    let input = input.trim();
+    if input.text.starts_with("\"`") {
+        if input.text.len() < 4 || !input.text.ends_with("`\"") {
+            return Err(Error::diagram_parse_fallback(
+                "quadrantChart".to_string(),
+                "unterminated markdown string".to_string(),
+            ));
+        }
+        let content = input.subslice(2, input.text.len() - 2);
+        return Ok(ParsedText {
+            value: content.text.to_string(),
+            content,
+            opening: Some(SourceSpan::new(input.start, input.start + 2)),
+            closing: Some(SourceSpan::new(input.end() - 2, input.end())),
+        });
+    }
+    if input.text.starts_with('"') {
+        if input.text.len() < 2 || !input.text.ends_with('"') {
+            return Err(Error::diagram_parse_fallback(
+                "quadrantChart".to_string(),
+                "unterminated string".to_string(),
+            ));
+        }
+        let content = input.subslice(1, input.text.len() - 1);
+        return Ok(ParsedText {
+            value: content.text.to_string(),
+            content,
+            opening: Some(SourceSpan::new(input.start, input.start + 1)),
+            closing: Some(SourceSpan::new(input.end() - 1, input.end())),
+        });
+    }
+    Ok(ParsedText {
+        value: input.text.to_string(),
+        content: input,
+        opening: None,
+        closing: None,
+    })
+}
+
+struct ParsedAxis<'source> {
+    left: ParsedText<'source>,
+    right: Option<ParsedText<'source>>,
+    operator: Option<SourceSpan>,
+}
+
+fn parse_axis_text(input: SourceSlice<'_>) -> Result<ParsedAxis<'_>> {
     let mut in_quotes = false;
-    let mut i = 0usize;
-    while i < s.len() {
-        let Some(ch) = next_char_at(s, i) else {
+    let mut index = 0usize;
+    while index < input.text.len() {
+        let Some(ch) = next_char_at(input.text, index) else {
             break;
         };
         if ch == '"' {
             in_quotes = !in_quotes;
-            i += 1;
+            index += ch.len_utf8();
             continue;
         }
-        if !in_quotes && let Some((start, end)) = is_axis_delim_at(s, i) {
-            let left = s[..start].trim().to_string();
-            let right = s[end..].trim().to_string();
-            return Some((left, if right.is_empty() { None } else { Some(right) }));
+        if !in_quotes && let Some((start, end)) = is_axis_delim_at(input.text, index) {
+            let left = parse_text_slice(input.subslice(0, start))?;
+            let right = input.subslice(end, input.text.len()).trim();
+            return Ok(ParsedAxis {
+                left,
+                right: (!right.text.is_empty())
+                    .then(|| parse_text_slice(right))
+                    .transpose()?,
+                operator: Some(SourceSpan::new(input.start + start, input.start + end)),
+            });
         }
-        i += ch.len_utf8();
+        index += ch.len_utf8();
     }
-    None
-}
-
-fn parse_text_value(raw: &str) -> Result<String> {
-    let t = raw.trim();
-    if t.starts_with("\"`") {
-        let inner = t
-            .strip_prefix("\"`")
-            .and_then(|v| v.strip_suffix("`\""))
-            .ok_or_else(|| {
-                Error::diagram_parse_fallback(
-                    "quadrantChart".to_string(),
-                    "unterminated markdown string".to_string(),
-                )
-            })?;
-        return Ok(inner.to_string());
-    }
-    if t.starts_with('"') {
-        let inner = t
-            .strip_prefix('"')
-            .and_then(|v| v.strip_suffix('"'))
-            .ok_or_else(|| {
-                Error::diagram_parse_fallback(
-                    "quadrantChart".to_string(),
-                    "unterminated string".to_string(),
-                )
-            })?;
-        return Ok(inner.to_string());
-    }
-    Ok(t.to_string())
+    Ok(ParsedAxis {
+        left: parse_text_slice(input)?,
+        right: None,
+        operator: None,
+    })
 }
 
 fn parse_unit_interval_token(raw: &str) -> Result<f64> {
@@ -401,11 +474,36 @@ fn parse_unit_interval_token(raw: &str) -> Result<f64> {
     ))
 }
 
-fn parse_style_list(rest: &str) -> Vec<String> {
-    rest.split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
+struct ParsedStyleList<'source> {
+    items: Vec<SourceSlice<'source>>,
+    commas: Vec<SourceSpan>,
+}
+
+fn split_style_slices(input: SourceSlice<'_>) -> ParsedStyleList<'_> {
+    let mut styles = Vec::new();
+    let mut commas = Vec::new();
+    let mut start = 0usize;
+    for (index, ch) in input.text.char_indices() {
+        if ch == ',' {
+            let style = input.subslice(start, index).trim();
+            if !style.text.is_empty() {
+                styles.push(style);
+            }
+            commas.push(SourceSpan::new(
+                input.start + index,
+                input.start + index + ch.len_utf8(),
+            ));
+            start = index + ch.len_utf8();
+        }
+    }
+    let style = input.subslice(start, input.text.len()).trim();
+    if !style.text.is_empty() {
+        styles.push(style);
+    }
+    ParsedStyleList {
+        items: styles,
+        commas,
+    }
 }
 
 fn find_point_colon(s: &str) -> Option<usize> {
@@ -441,85 +539,172 @@ fn find_point_colon(s: &str) -> Option<usize> {
     None
 }
 
-fn parse_point_statement(line: &str) -> Result<Option<PointStatement>> {
-    let Some(colon_idx) = find_point_colon(line) else {
+fn find_class_marker(input: &str) -> Option<usize> {
+    let mut in_quotes = false;
+    let mut last = None;
+    let mut index = 0usize;
+    while index < input.len() {
+        let Some(ch) = next_char_at(input, index) else {
+            break;
+        };
+        if ch == '"' {
+            in_quotes = !in_quotes;
+        } else if !in_quotes && input[index..].starts_with(":::") {
+            last = Some(index);
+            index += 3;
+            continue;
+        }
+        index += ch.len_utf8();
+    }
+    last
+}
+
+struct ParsedPoint<'source> {
+    label: ParsedText<'source>,
+    class_name: Option<SourceSlice<'source>>,
+    class_marker: Option<SourceSpan>,
+    colon: SourceSpan,
+    opening_bracket: SourceSpan,
+    closing_bracket: SourceSpan,
+    comma: SourceSpan,
+    x_token: SourceSlice<'source>,
+    y_token: SourceSlice<'source>,
+    x: f64,
+    y: f64,
+    styles: Vec<SourceSlice<'source>>,
+    style_commas: Vec<SourceSpan>,
+}
+
+fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoint<'_>>> {
+    let Some(colon_idx) = find_point_colon(statement.text) else {
         return Ok(None);
     };
-    let head = line[..colon_idx].trim_end().to_string();
-    let tail = &line[colon_idx + 1..];
+    let head = statement.subslice(0, colon_idx).trim_end();
+    let colon = SourceSpan::new(statement.start + colon_idx, statement.start + colon_idx + 1);
+    let tail = statement
+        .subslice(colon_idx + 1, statement.text.len())
+        .trim_start();
 
-    let (class_name, label_raw) = if let Some(pos) = head.rfind(":::") {
-        let (a, b) = head.split_at(pos);
-        let class = b.trim_start_matches(":::").trim();
-        if !class.is_empty() && class.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-            (Some(class.to_string()), a.to_string())
+    let (class_name, class_marker, label_input) = if let Some(marker) = find_class_marker(head.text)
+    {
+        let class = head.subslice(marker + 3, head.text.len()).trim();
+        if !class.text.is_empty()
+            && class
+                .text
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            (
+                Some(class),
+                Some(SourceSpan::new(
+                    head.start + marker,
+                    head.start + marker + 3,
+                )),
+                head.subslice(0, marker).trim_end(),
+            )
         } else {
-            (None, head.clone())
+            (None, None, head)
         }
     } else {
-        (None, head.clone())
+        (None, None, head)
     };
+    let label = parse_text_slice(label_input)?;
 
-    let label = parse_text_value(label_raw.trim())?;
-
-    let t = tail.trim_start();
-    let Some(after_bracket) = t.strip_prefix('[') else {
+    if !tail.text.starts_with('[') {
         return Err(Error::diagram_parse_fallback(
             "quadrantChart".to_string(),
             "expected '[' after ':'".to_string(),
         ));
-    };
-    let (inside, after) = after_bracket.split_once(']').ok_or_else(|| {
-        Error::diagram_parse_fallback(
+    }
+    let opening_bracket = SourceSpan::new(tail.start, tail.start + 1);
+    let after_bracket = tail.subslice(1, tail.text.len());
+    let Some(close_rel) = after_bracket.text.find(']') else {
+        return Err(Error::diagram_parse_fallback(
             "quadrantChart".to_string(),
             "unterminated point coordinate; missing ']'".to_string(),
-        )
-    })?;
-
-    let mut xy = inside.split(',');
-    let x_raw = xy.next().unwrap_or("").trim();
-    let y_raw = xy.next().unwrap_or("").trim();
-    if xy.next().is_some() {
+        ));
+    };
+    let inside = after_bracket.subslice(0, close_rel);
+    let closing_bracket = SourceSpan::new(
+        after_bracket.start + close_rel,
+        after_bracket.start + close_rel + 1,
+    );
+    let after = after_bracket.subslice(close_rel + 1, after_bracket.text.len());
+    let Some(comma_rel) = inside.text.find(',') else {
+        return Err(Error::diagram_parse_fallback(
+            "quadrantChart".to_string(),
+            "invalid point coordinate".to_string(),
+        ));
+    };
+    if inside.text[comma_rel + 1..].contains(',') {
         return Err(Error::diagram_parse_fallback(
             "quadrantChart".to_string(),
             "invalid point coordinate".to_string(),
         ));
     }
-    let x = parse_unit_interval_token(x_raw)?;
-    let y = parse_unit_interval_token(y_raw)?;
+    let x_token = inside.subslice(0, comma_rel).trim();
+    let y_token = inside.subslice(comma_rel + 1, inside.text.len()).trim();
+    let comma = SourceSpan::new(inside.start + comma_rel, inside.start + comma_rel + 1);
+    let x = parse_unit_interval_token(x_token.text)?;
+    let y = parse_unit_interval_token(y_token.text)?;
 
-    let styles = parse_style_list(after);
-    Ok(Some((label, class_name, x, y, styles)))
+    let styles = split_style_slices(after);
+    Ok(Some(ParsedPoint {
+        label,
+        class_name,
+        class_marker,
+        colon,
+        opening_bracket,
+        closing_bracket,
+        comma,
+        x_token,
+        y_token,
+        x,
+        y,
+        styles: styles.items,
+        style_commas: styles.commas,
+    }))
 }
 
-type PointStatement = (String, Option<String>, f64, f64, Vec<String>);
-
-fn parse_colon_value_ci(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t
-        .get(..key.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(key))
-    {
-        return None;
-    }
-    let mut rest = &t[key.len()..];
-    rest = rest.trim_start();
-    if !rest.starts_with(':') {
-        return None;
-    }
-    Some(rest[1..].trim().to_string())
+struct KeywordRest<'source> {
+    keyword: SourceSlice<'source>,
+    rest: SourceSlice<'source>,
 }
 
-fn parse_keyword_rest_ci(line: &str, key: &str) -> Option<String> {
-    let t = line.trim_start();
-    if !t
-        .get(..key.len())
-        .is_some_and(|head| head.eq_ignore_ascii_case(key))
-    {
+fn parse_keyword_rest_ci<'source>(
+    input: SourceSlice<'source>,
+    key: &str,
+) -> Option<KeywordRest<'source>> {
+    let input = input.trim_start();
+    let keyword = input.text.get(..key.len())?;
+    if !keyword.eq_ignore_ascii_case(key) {
         return None;
     }
-    let rest = &t[key.len()..];
-    Some(rest.trim_start().to_string())
+    Some(KeywordRest {
+        keyword: input.subslice(0, key.len()),
+        rest: input.subslice(key.len(), input.text.len()).trim_start(),
+    })
+}
+
+struct ColonDirective<'source> {
+    keyword: SourceSlice<'source>,
+    colon: SourceSpan,
+    value: SourceSlice<'source>,
+}
+
+fn parse_colon_value_ci<'source>(
+    input: SourceSlice<'source>,
+    key: &str,
+) -> Option<ColonDirective<'source>> {
+    let matched = parse_keyword_rest_ci(input, key)?;
+    if !matched.rest.text.starts_with(':') {
+        return None;
+    }
+    Some(ColonDirective {
+        keyword: matched.keyword,
+        colon: SourceSpan::new(matched.rest.start, matched.rest.start + 1),
+        value: matched.rest.subslice(1, matched.rest.text.len()).trim(),
+    })
 }
 
 pub fn parse_quadrant_chart_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
@@ -529,14 +714,19 @@ pub fn parse_quadrant_chart_editor_facts(code: &str, meta: &ParseMetadata) -> Ed
     }
 }
 
-fn split_semicolons_spanned(line: &str, line_start: usize) -> Vec<(usize, &str)> {
+struct QuadrantStatement<'source> {
+    source: SourceSlice<'source>,
+    terminator: Option<SourceSpan>,
+}
+
+fn split_semicolons_spanned(line: SourceSlice<'_>) -> Vec<QuadrantStatement<'_>> {
     let mut out = Vec::new();
     let mut in_quotes = false;
     let mut brace_depth = 0usize;
     let mut start = 0usize;
     let mut i = 0usize;
-    while i < line.len() {
-        let Some(ch) = next_char_at(line, i) else {
+    while i < line.text.len() {
+        let Some(ch) = next_char_at(line.text, i) else {
             break;
         };
         if ch == '"' {
@@ -546,37 +736,83 @@ fn split_semicolons_spanned(line: &str, line_start: usize) -> Vec<(usize, &str)>
         } else if !in_quotes && ch == '}' {
             brace_depth = brace_depth.saturating_sub(1);
         } else if !in_quotes && brace_depth == 0 && ch == ';' {
-            out.push((line_start + start, &line[start..i]));
+            out.push(QuadrantStatement {
+                source: line.subslice(start, i),
+                terminator: Some(SourceSpan::new(line.start + i, line.start + i + 1)),
+            });
             start = i + 1;
         }
         i += ch.len_utf8();
     }
-    out.push((line_start + start, &line[start..]));
+    out.push(QuadrantStatement {
+        source: line.subslice(start, line.text.len()),
+        terminator: None,
+    });
     out
 }
 
-#[derive(Debug, Clone)]
-struct SpannedText {
-    text: String,
-    start: usize,
-    end: usize,
+fn push_quadrant_lexeme(
+    lexemes: &mut EditorLexemeJournal<'_>,
+    kind: EditorLexemeKind,
+    span: SourceSpan,
+) {
+    push_quadrant_lexeme_with_modifiers(lexemes, kind, EditorLexemeModifiers::NONE, span);
 }
 
-impl SpannedText {
-    fn as_str(&self) -> &str {
-        &self.text
+fn push_quadrant_lexeme_with_modifiers(
+    lexemes: &mut EditorLexemeJournal<'_>,
+    kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
+    span: SourceSpan,
+) {
+    if span.start < span.end {
+        lexemes.push(kind, modifiers, span);
     }
 }
 
-fn parse_text_value_spanned(input: &str, stmt: &str, stmt_start: usize) -> Option<SpannedText> {
-    let value = parse_text_value(input).ok()?;
-    let value_rel = stmt.find(&value)?;
-    let start = stmt_start + value_rel;
-    Some(SpannedText {
-        text: value.clone(),
-        start,
-        end: start + value.len(),
-    })
+fn push_quadrant_slice_lexeme(
+    lexemes: &mut EditorLexemeJournal<'_>,
+    kind: EditorLexemeKind,
+    source: SourceSlice<'_>,
+) {
+    push_quadrant_lexeme(lexemes, kind, source.span());
+}
+
+fn record_quadrant_text(
+    lexemes: &mut EditorLexemeJournal<'_>,
+    text: &ParsedText<'_>,
+    kind: EditorLexemeKind,
+) {
+    if let Some(opening) = text.opening {
+        push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, opening);
+    }
+    push_quadrant_slice_lexeme(lexemes, kind, text.content);
+    if let Some(closing) = text.closing {
+        push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, closing);
+    }
+}
+
+fn record_quadrant_style(lexemes: &mut EditorLexemeJournal<'_>, style: SourceSlice<'_>) {
+    let Some(colon) = style.text.find(':') else {
+        push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Style, style);
+        return;
+    };
+    let key = style.subslice(0, colon).trim();
+    let value = style.subslice(colon + 1, style.text.len()).trim();
+    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Style, key);
+    push_quadrant_lexeme(
+        lexemes,
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(style.start + colon, style.start + colon + 1),
+    );
+    let kind = if value.text.starts_with('#') {
+        EditorLexemeKind::Color
+    } else if value.text.chars().all(|ch| ch.is_ascii_digit()) {
+        EditorLexemeKind::Number
+    } else {
+        EditorLexemeKind::Style
+    };
+    push_quadrant_slice_lexeme(lexemes, kind, value);
 }
 
 fn push_quadrant_payload_fact(
@@ -636,85 +872,87 @@ fn quadrant_error_at(error: Error, meta: &ParseMetadata, span: SourceSpan) -> Er
     Error::diagram_parse_exact(meta.diagram_type.clone(), message, span)
 }
 
-fn quadrant_failure_at(
-    error: Error,
-    meta: &ParseMetadata,
-    span: SourceSpan,
-    editor_facts: &EditorSemanticFacts,
-) -> QuadrantSemanticFailure {
-    QuadrantSemanticFailure::new(quadrant_error_at(error, meta, span), editor_facts.clone())
-}
-
 fn push_quadrant_class_fact(
     facts: &mut EditorSemanticFacts,
-    statement: &str,
-    statement_start: usize,
-    name: &str,
+    statement_span: SourceSpan,
+    name: SourceSlice<'_>,
 ) {
-    let keyword_start = leading_whitespace_len(statement);
-    let search_start = keyword_start + "classDef".len();
-    let Some(name_rel) = statement
-        .get(search_start..)
-        .and_then(|rest| rest.find(name))
-    else {
-        return;
-    };
-    let name_start = statement_start + search_start + name_rel;
-    let span = SourceSpan::new(name_start, name_start + name.len());
+    let span = name.span();
     facts.push_directive_prefix("classDef");
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::NodeIdentifier,
         span,
     ));
     facts.push_symbol(EditorSemanticSymbol::new(
-        name.to_string(),
+        name.text.to_string(),
         Some("quadrant chart class".to_string()),
         EditorSemanticKind::Class,
-        SourceSpan::new(statement_start, statement_start + statement.len()),
+        statement_span,
         span,
     ));
 }
 
 fn push_quadrant_point_facts(
     facts: &mut EditorSemanticFacts,
-    statement: &str,
-    statement_start: usize,
-    label: &str,
-    class_name: Option<&str>,
+    statement_span: SourceSpan,
+    point: &ParsedPoint<'_>,
 ) {
-    if let Some(label_span) = parse_text_value_spanned(label, statement, statement_start) {
-        let span = SourceSpan::new(label_span.start, label_span.end);
+    if !point.label.content.text.is_empty() {
+        let span = point.label.content.span();
         facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::Payload,
             span,
         ));
         facts.push_symbol(EditorSemanticSymbol::outline(
-            label_span.text,
+            point.label.value.clone(),
             Some("quadrant chart point".to_string()),
             EditorSemanticKind::Object,
-            SourceSpan::new(statement_start, statement_start + statement.len()),
+            statement_span,
             span,
         ));
     }
 
-    let Some(class_name) = class_name else {
+    let Some(class_name) = point.class_name else {
         return;
     };
-    let Some(marker) = statement.rfind(":::") else {
-        return;
-    };
-    let search_start = marker + ":::".len();
-    let Some(class_rel) = statement[search_start..].find(class_name) else {
-        return;
-    };
-    let class_start = statement_start + search_start + class_rel;
     facts.push_symbol(EditorSemanticSymbol::new(
-        class_name.to_string(),
+        class_name.text.to_string(),
         Some("quadrant chart class".to_string()),
         EditorSemanticKind::Class,
-        SourceSpan::new(statement_start, statement_start + statement.len()),
-        SourceSpan::new(class_start, class_start + class_name.len()),
+        statement_span,
+        class_name.span(),
     ));
+}
+
+fn record_quadrant_point(lexemes: &mut EditorLexemeJournal<'_>, point: &ParsedPoint<'_>) {
+    record_quadrant_text(lexemes, &point.label, EditorLexemeKind::String);
+    if let Some(marker) = point.class_marker {
+        push_quadrant_lexeme(lexemes, EditorLexemeKind::Operator, marker);
+    }
+    if let Some(class_name) = point.class_name {
+        push_quadrant_lexeme_with_modifiers(
+            lexemes,
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Reference),
+            class_name.span(),
+        );
+    }
+    for span in [
+        point.colon,
+        point.opening_bracket,
+        point.comma,
+        point.closing_bracket,
+    ] {
+        push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, span);
+    }
+    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Number, point.x_token);
+    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Number, point.y_token);
+    for comma in &point.style_commas {
+        push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, *comma);
+    }
+    for style in &point.styles {
+        record_quadrant_style(lexemes, *style);
+    }
 }
 
 fn construct_quadrant_chart_semantic_source(
@@ -724,6 +962,26 @@ fn construct_quadrant_chart_semantic_source(
     #[cfg(test)]
     QUADRANT_SYNTAX_CONSTRUCTION_COUNT.set(QUADRANT_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
+    let mut lexemes = EditorLexemeJournal::family_parser(code);
+    let result = parse_quadrant_chart_semantic_source(code, meta, &mut lexemes);
+    let lexemes = lexemes.finish();
+    match result {
+        Ok(mut source) => {
+            source.editor_facts.replace_family_lexemes(lexemes);
+            Ok(source)
+        }
+        Err(mut failure) => {
+            failure.editor_facts.replace_family_lexemes(lexemes);
+            Err(failure)
+        }
+    }
+}
+
+fn parse_quadrant_chart_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> std::result::Result<QuadrantSemanticSource, QuadrantSemanticFailure> {
     let mut db = QuadrantDb::default();
     db.clear();
     let mut editor_facts = EditorSemanticFacts::new();
@@ -732,106 +990,146 @@ fn construct_quadrant_chart_semantic_source(
     let mut acc_descr = None;
     let mut saw_header = false;
     let mut acc_descr_block: Option<QuadrantAccDescrBlock> = None;
+    let mut first_error = None;
     let mut offset = 0usize;
 
     for segment in code.split_inclusive('\n') {
         let line_start = offset;
         offset += segment.len();
-        let line = strip_line_ending(segment);
+        let line = SourceSlice::new(strip_line_ending(segment), line_start);
 
         if let Some(mut block) = acc_descr_block.take() {
-            if let Some(end) = line.find('}') {
-                block.text.push_str(&line[..end]);
+            if let Some(end) = line.text.find('}') {
+                block.text.push_str(&line.text[..end]);
                 let text = block.text.trim().to_string();
                 if !text.is_empty() {
                     push_quadrant_payload_fact(
                         &mut editor_facts,
                         &text,
                         block.source_start,
-                        line_start + end,
+                        line.start + end,
                         "quadrant chart accessibility description",
                         EditorSemanticKind::String,
                     );
+                    push_quadrant_lexeme(
+                        lexemes,
+                        EditorLexemeKind::String,
+                        SourceSpan::new(block.source_start, line.start + end),
+                    );
                 }
+                push_quadrant_lexeme(
+                    lexemes,
+                    EditorLexemeKind::Delimiter,
+                    SourceSpan::new(line.start + end, line.start + end + 1),
+                );
                 acc_descr = Some(text);
             } else {
-                block.text.push_str(line);
+                block.text.push_str(line.text);
                 block.text.push('\n');
                 acc_descr_block = Some(block);
             }
             continue;
         }
 
-        let stripped = strip_inline_comment(line);
+        let stripped_text = strip_inline_comment(line.text);
+        let stripped = line.subslice(0, stripped_text.len());
 
-        if stripped.trim().is_empty() {
+        if stripped.text.trim().is_empty() {
             continue;
         }
 
-        for (statement_start, statement) in split_semicolons_spanned(stripped, line_start) {
+        for statement in split_semicolons_spanned(stripped) {
+            if let Some(terminator) = statement.terminator {
+                push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, terminator);
+            }
+            let statement = statement.source;
             let statement_trimmed = statement.trim();
-            if statement_trimmed.is_empty() || statement_trimmed.starts_with("%%") {
+            if statement_trimmed.text.is_empty() || statement_trimmed.text.starts_with("%%") {
                 continue;
             }
-            let leading = leading_whitespace_len(statement);
-            let trailing = statement.len().saturating_sub(statement.trim_end().len());
-            let semantic_start = statement_start + leading;
-            let semantic_end = statement_start + statement.len().saturating_sub(trailing);
-            let statement_span = SourceSpan::new(semantic_start, semantic_end);
+            let statement_span = statement_trimmed.span();
+            let semantic_end = statement_span.end;
 
             if !saw_header {
-                if statement_trimmed.eq_ignore_ascii_case("quadrantChart") {
+                if statement_trimmed.text.eq_ignore_ascii_case("quadrantChart") {
                     saw_header = true;
+                    push_quadrant_slice_lexeme(
+                        lexemes,
+                        EditorLexemeKind::Keyword,
+                        statement_trimmed,
+                    );
                     continue;
                 }
-                return Err(QuadrantSemanticFailure::new(
+                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, statement_trimmed);
+                first_error.get_or_insert_with(|| {
                     Error::diagram_parse_exact(
                         meta.diagram_type.clone(),
                         "expected quadrantChart",
                         statement_span,
-                    ),
-                    editor_facts,
-                ));
-            }
-
-            if let Some(value) = parse_colon_value_ci(statement_trimmed, "accTitle") {
-                editor_facts.push_directive_prefix("accTitle");
-                if let Some(source) = parse_text_value_spanned(&value, statement, statement_start) {
-                    push_quadrant_payload_fact(
-                        &mut editor_facts,
-                        source.as_str(),
-                        source.start,
-                        source.end,
-                        "quadrant chart accessibility title",
-                        EditorSemanticKind::String,
-                    );
-                }
-                acc_title = Some(value);
+                    )
+                });
                 continue;
             }
 
-            if let Some(rest) = parse_keyword_rest_ci(statement_trimmed, "accDescr") {
-                let rest = rest.trim_start();
-                if rest.starts_with('{') {
+            if let Some(directive) = parse_colon_value_ci(statement_trimmed, "accTitle") {
+                editor_facts.push_directive_prefix("accTitle");
+                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
+                push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, directive.colon);
+                if let Ok(value) = parse_text_slice(directive.value) {
+                    record_quadrant_text(lexemes, &value, EditorLexemeKind::String);
+                    push_quadrant_payload_fact(
+                        &mut editor_facts,
+                        &value.value,
+                        value.content.start,
+                        value.content.end(),
+                        "quadrant chart accessibility title",
+                        EditorSemanticKind::String,
+                    );
+                } else {
+                    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, directive.value);
+                }
+                acc_title = Some(directive.value.text.to_string());
+                continue;
+            }
+
+            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "accDescr") {
+                let rest = directive.rest;
+                if rest.text.starts_with('{') {
                     editor_facts.push_directive_prefix("accDescr");
-                    let brace = statement.find('{').unwrap_or(statement.len());
-                    let content_start = statement_start + brace + 1;
-                    let after_brace = &statement[brace.saturating_add(1).min(statement.len())..];
-                    if let Some(end) = after_brace.find('}') {
-                        let text = after_brace[..end].trim().to_string();
+                    push_quadrant_slice_lexeme(
+                        lexemes,
+                        EditorLexemeKind::Keyword,
+                        directive.keyword,
+                    );
+                    push_quadrant_lexeme(
+                        lexemes,
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(rest.start, rest.start + 1),
+                    );
+                    let content_start = rest.start + 1;
+                    let after_brace = rest.subslice(1, rest.text.len());
+                    if let Some(end) = after_brace.text.find('}') {
+                        let content = after_brace.subslice(0, end);
+                        let text = content.text.trim().to_string();
                         if !text.is_empty() {
                             push_quadrant_payload_fact(
                                 &mut editor_facts,
                                 &text,
                                 content_start,
-                                content_start + end,
+                                content.end(),
                                 "quadrant chart accessibility description",
                                 EditorSemanticKind::String,
                             );
+                            push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::String, content);
                         }
+                        push_quadrant_lexeme(
+                            lexemes,
+                            EditorLexemeKind::Delimiter,
+                            SourceSpan::new(after_brace.start + end, after_brace.start + end + 1),
+                        );
                         acc_descr = Some(text);
                     } else {
-                        let mut text = after_brace.trim_start().to_string();
+                        let mut text = after_brace.text.trim_start().to_string();
                         if !text.is_empty() {
                             text.push('\n');
                         }
@@ -842,163 +1140,152 @@ fn construct_quadrant_chart_semantic_source(
                     }
                     continue;
                 }
-                if let Some(value) = rest.strip_prefix(':') {
-                    let value = value.trim().to_string();
+                if rest.text.starts_with(':') {
+                    let value = rest.subslice(1, rest.text.len()).trim();
                     editor_facts.push_directive_prefix("accDescr");
-                    if let Some(source) =
-                        parse_text_value_spanned(&value, statement, statement_start)
-                    {
+                    push_quadrant_slice_lexeme(
+                        lexemes,
+                        EditorLexemeKind::Keyword,
+                        directive.keyword,
+                    );
+                    push_quadrant_lexeme(
+                        lexemes,
+                        EditorLexemeKind::Delimiter,
+                        SourceSpan::new(rest.start, rest.start + 1),
+                    );
+                    if let Ok(parsed) = parse_text_slice(value) {
+                        record_quadrant_text(lexemes, &parsed, EditorLexemeKind::String);
                         push_quadrant_payload_fact(
                             &mut editor_facts,
-                            source.as_str(),
-                            source.start,
-                            source.end,
+                            &parsed.value,
+                            parsed.content.start,
+                            parsed.content.end(),
                             "quadrant chart accessibility description",
                             EditorSemanticKind::String,
                         );
+                    } else {
+                        push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, value);
                     }
-                    acc_descr = Some(value);
+                    acc_descr = Some(value.text.to_string());
                     continue;
                 }
             }
 
-            if let Some(rest) = parse_keyword_rest_ci(statement_trimmed, "title") {
-                let value = rest.trim().to_string();
+            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "title") {
+                let value = directive.rest;
                 editor_facts.push_directive_prefix("title");
-                if let Some(source) = parse_text_value_spanned(&value, statement, statement_start) {
+                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
+                if let Ok(parsed) = parse_text_slice(value) {
+                    record_quadrant_text(lexemes, &parsed, EditorLexemeKind::String);
                     push_quadrant_payload_fact(
                         &mut editor_facts,
-                        source.as_str(),
-                        source.start,
-                        source.end,
+                        &parsed.value,
+                        parsed.content.start,
+                        parsed.content.end(),
                         "quadrant chart title",
                         EditorSemanticKind::String,
                     );
+                } else {
+                    push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, value);
                 }
-                title = Some(value);
+                title = Some(value.text.to_string());
                 continue;
             }
 
-            if let Some(rest) = parse_keyword_rest_ci(statement_trimmed, "x-axis") {
-                let rest = rest.trim_start();
-                if let Some((left_raw, right_raw)) = split_axis_text(rest) {
-                    if let Some(left) =
-                        parse_text_value_spanned(&left_raw, statement, statement_start)
-                    {
-                        push_quadrant_outline_fact(
-                            &mut editor_facts,
-                            left.as_str(),
-                            left.start,
-                            left.end,
-                            "quadrant chart x-axis",
-                            EditorSemanticKind::String,
+            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "x-axis") {
+                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
+                let axis = match parse_axis_text(directive.rest) {
+                    Ok(axis) => axis,
+                    Err(error) => {
+                        push_quadrant_slice_lexeme(
+                            lexemes,
+                            EditorLexemeKind::Literal,
+                            directive.rest,
                         );
+                        first_error
+                            .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
+                        continue;
                     }
-                    if let Some(right_raw) = right_raw.as_ref()
-                        && let Some(right) =
-                            parse_text_value_spanned(right_raw, statement, statement_start)
-                    {
-                        push_quadrant_outline_fact(
-                            &mut editor_facts,
-                            right.as_str(),
-                            right.start,
-                            right.end,
-                            "quadrant chart x-axis",
-                            EditorSemanticKind::String,
-                        );
-                    }
-
-                    let mut left = parse_text_value(&left_raw).map_err(|error| {
-                        quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                    })?;
-                    if right_raw.is_none() {
-                        left.push_str(" ⟶");
-                    }
-                    db.set_x_axis_left(&left, &meta.effective_config);
-                    if let Some(right_raw) = right_raw {
-                        let right = parse_text_value(&right_raw).map_err(|error| {
-                            quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                        })?;
-                        db.set_x_axis_right(&right, &meta.effective_config);
-                    }
-                } else {
-                    if let Some(source) = parse_text_value_spanned(rest, statement, statement_start)
-                    {
-                        push_quadrant_outline_fact(
-                            &mut editor_facts,
-                            source.as_str(),
-                            source.start,
-                            source.end,
-                            "quadrant chart x-axis",
-                            EditorSemanticKind::String,
-                        );
-                    }
-                    let left = parse_text_value(rest).map_err(|error| {
-                        quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                    })?;
-                    db.set_x_axis_left(&left, &meta.effective_config);
+                };
+                record_quadrant_text(lexemes, &axis.left, EditorLexemeKind::String);
+                push_quadrant_outline_fact(
+                    &mut editor_facts,
+                    &axis.left.value,
+                    axis.left.content.start,
+                    axis.left.content.end(),
+                    "quadrant chart x-axis",
+                    EditorSemanticKind::String,
+                );
+                if let Some(operator) = axis.operator {
+                    push_quadrant_lexeme(lexemes, EditorLexemeKind::Operator, operator);
+                }
+                if let Some(right) = &axis.right {
+                    record_quadrant_text(lexemes, right, EditorLexemeKind::String);
+                    push_quadrant_outline_fact(
+                        &mut editor_facts,
+                        &right.value,
+                        right.content.start,
+                        right.content.end(),
+                        "quadrant chart x-axis",
+                        EditorSemanticKind::String,
+                    );
+                }
+                let mut left = axis.left.value;
+                if axis.operator.is_some() && axis.right.is_none() {
+                    left.push_str(" ⟶");
+                }
+                db.set_x_axis_left(&left, &meta.effective_config);
+                if let Some(right) = axis.right {
+                    db.set_x_axis_right(&right.value, &meta.effective_config);
                 }
                 continue;
             }
 
-            if let Some(rest) = parse_keyword_rest_ci(statement_trimmed, "y-axis") {
-                let rest = rest.trim_start();
-                if let Some((bottom_raw, top_raw)) = split_axis_text(rest) {
-                    if let Some(bottom) =
-                        parse_text_value_spanned(&bottom_raw, statement, statement_start)
-                    {
-                        push_quadrant_outline_fact(
-                            &mut editor_facts,
-                            bottom.as_str(),
-                            bottom.start,
-                            bottom.end,
-                            "quadrant chart y-axis",
-                            EditorSemanticKind::String,
+            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "y-axis") {
+                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
+                let axis = match parse_axis_text(directive.rest) {
+                    Ok(axis) => axis,
+                    Err(error) => {
+                        push_quadrant_slice_lexeme(
+                            lexemes,
+                            EditorLexemeKind::Literal,
+                            directive.rest,
                         );
+                        first_error
+                            .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
+                        continue;
                     }
-                    if let Some(top_raw) = top_raw.as_ref()
-                        && let Some(top) =
-                            parse_text_value_spanned(top_raw, statement, statement_start)
-                    {
-                        push_quadrant_outline_fact(
-                            &mut editor_facts,
-                            top.as_str(),
-                            top.start,
-                            top.end,
-                            "quadrant chart y-axis",
-                            EditorSemanticKind::String,
-                        );
-                    }
-
-                    let mut bottom = parse_text_value(&bottom_raw).map_err(|error| {
-                        quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                    })?;
-                    if top_raw.is_none() {
-                        bottom.push_str(" ⟶");
-                    }
-                    db.set_y_axis_bottom(&bottom, &meta.effective_config);
-                    if let Some(top_raw) = top_raw {
-                        let top = parse_text_value(&top_raw).map_err(|error| {
-                            quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                        })?;
-                        db.set_y_axis_top(&top, &meta.effective_config);
-                    }
-                } else {
-                    if let Some(source) = parse_text_value_spanned(rest, statement, statement_start)
-                    {
-                        push_quadrant_outline_fact(
-                            &mut editor_facts,
-                            source.as_str(),
-                            source.start,
-                            source.end,
-                            "quadrant chart y-axis",
-                            EditorSemanticKind::String,
-                        );
-                    }
-                    let bottom = parse_text_value(rest).map_err(|error| {
-                        quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                    })?;
-                    db.set_y_axis_bottom(&bottom, &meta.effective_config);
+                };
+                record_quadrant_text(lexemes, &axis.left, EditorLexemeKind::String);
+                push_quadrant_outline_fact(
+                    &mut editor_facts,
+                    &axis.left.value,
+                    axis.left.content.start,
+                    axis.left.content.end(),
+                    "quadrant chart y-axis",
+                    EditorSemanticKind::String,
+                );
+                if let Some(operator) = axis.operator {
+                    push_quadrant_lexeme(lexemes, EditorLexemeKind::Operator, operator);
+                }
+                if let Some(top) = &axis.right {
+                    record_quadrant_text(lexemes, top, EditorLexemeKind::String);
+                    push_quadrant_outline_fact(
+                        &mut editor_facts,
+                        &top.value,
+                        top.content.start,
+                        top.content.end(),
+                        "quadrant chart y-axis",
+                        EditorSemanticKind::String,
+                    );
+                }
+                let mut bottom = axis.left.value;
+                if axis.operator.is_some() && axis.right.is_none() {
+                    bottom.push_str(" ⟶");
+                }
+                db.set_y_axis_bottom(&bottom, &meta.effective_config);
+                if let Some(top) = axis.right {
+                    db.set_y_axis_top(&top.value, &meta.effective_config);
                 }
                 continue;
             }
@@ -1010,23 +1297,34 @@ fn construct_quadrant_chart_semantic_source(
                 (3, "quadrant-3"),
                 (4, "quadrant-4"),
             ] {
-                let Some(rest) = parse_keyword_rest_ci(statement_trimmed, keyword) else {
+                let Some(directive) = parse_keyword_rest_ci(statement_trimmed, keyword) else {
                     continue;
                 };
-                if let Some(source) = parse_text_value_spanned(&rest, statement, statement_start) {
-                    push_quadrant_outline_fact(
-                        &mut editor_facts,
-                        source.as_str(),
-                        source.start,
-                        source.end,
-                        "quadrant chart quadrant",
-                        EditorSemanticKind::String,
-                    );
-                }
-                let text = parse_text_value(&rest).map_err(|error| {
-                    quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                })?;
-                db.set_quadrant_text(index, &text, &meta.effective_config);
+                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
+                let text = match parse_text_slice(directive.rest) {
+                    Ok(text) => text,
+                    Err(error) => {
+                        push_quadrant_slice_lexeme(
+                            lexemes,
+                            EditorLexemeKind::Literal,
+                            directive.rest,
+                        );
+                        first_error
+                            .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
+                        matched_quadrant = true;
+                        break;
+                    }
+                };
+                record_quadrant_text(lexemes, &text, EditorLexemeKind::String);
+                push_quadrant_outline_fact(
+                    &mut editor_facts,
+                    &text.value,
+                    text.content.start,
+                    text.content.end(),
+                    "quadrant chart quadrant",
+                    EditorSemanticKind::String,
+                );
+                db.set_quadrant_text(index, &text.value, &meta.effective_config);
                 matched_quadrant = true;
                 break;
             }
@@ -1034,62 +1332,96 @@ fn construct_quadrant_chart_semantic_source(
                 continue;
             }
 
-            if let Some(rest) = parse_keyword_rest_ci(statement_trimmed, "classDef") {
-                let mut parts = rest.trim_start().splitn(2, char::is_whitespace);
-                let name = parts.next().unwrap_or("").trim();
-                let style_text = parts.next().unwrap_or("").trim();
-                if name.is_empty() {
-                    return Err(QuadrantSemanticFailure::new(
+            if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "classDef") {
+                let rest = directive.rest;
+                push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Keyword, directive.keyword);
+                let name_end = rest
+                    .text
+                    .char_indices()
+                    .find_map(|(index, ch)| ch.is_whitespace().then_some(index))
+                    .unwrap_or(rest.text.len());
+                let name = rest.subslice(0, name_end).trim();
+                if name.text.is_empty() {
+                    first_error.get_or_insert_with(|| {
                         Error::diagram_parse_insertion_point(
                             meta.diagram_type.clone(),
                             "expected classDef name",
                             semantic_end,
-                        ),
-                        editor_facts,
-                    ));
+                        )
+                    });
+                    continue;
                 }
-                push_quadrant_class_fact(&mut editor_facts, statement, statement_start, name);
-                let styles = parse_style_list(style_text);
-                db.add_class(name, &styles).map_err(|error| {
-                    quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                })?;
+                let style_text = rest.subslice(name_end, rest.text.len()).trim();
+                let styles = split_style_slices(style_text);
+                push_quadrant_lexeme_with_modifiers(
+                    lexemes,
+                    EditorLexemeKind::Identifier,
+                    EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Definition),
+                    name.span(),
+                );
+                for comma in &styles.commas {
+                    push_quadrant_lexeme(lexemes, EditorLexemeKind::Delimiter, *comma);
+                }
+                for style in &styles.items {
+                    record_quadrant_style(lexemes, *style);
+                }
+                push_quadrant_class_fact(&mut editor_facts, statement_span, name);
+                let style_values = styles
+                    .items
+                    .iter()
+                    .map(|style| style.text.to_string())
+                    .collect::<Vec<_>>();
+                if let Err(error) = db.add_class(name.text, &style_values) {
+                    first_error
+                        .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
+                }
                 continue;
             }
 
             match parse_point_statement(statement_trimmed) {
-                Ok(Some((label, class_name, x, y, styles))) => {
-                    push_quadrant_point_facts(
-                        &mut editor_facts,
-                        statement,
-                        statement_start,
-                        &label,
-                        class_name.as_deref(),
-                    );
-                    db.add_point(&label, class_name, x, y, &styles, &meta.effective_config)
-                        .map_err(|error| {
-                            quadrant_failure_at(error, meta, statement_span, &editor_facts)
-                        })?;
+                Ok(Some(point)) => {
+                    record_quadrant_point(lexemes, &point);
+                    push_quadrant_point_facts(&mut editor_facts, statement_span, &point);
+                    let class_name = point.class_name.map(|class| class.text.to_string());
+                    let styles = point
+                        .styles
+                        .iter()
+                        .map(|style| style.text.to_string())
+                        .collect::<Vec<_>>();
+                    if let Err(error) = db.add_point(
+                        &point.label.value,
+                        class_name,
+                        point.x,
+                        point.y,
+                        &styles,
+                        &meta.effective_config,
+                    ) {
+                        first_error
+                            .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
+                    }
                     continue;
                 }
                 Ok(None) => {}
                 Err(error) => {
-                    return Err(quadrant_failure_at(
-                        error,
-                        meta,
-                        statement_span,
-                        &editor_facts,
-                    ));
+                    push_quadrant_slice_lexeme(
+                        lexemes,
+                        EditorLexemeKind::Literal,
+                        statement_trimmed,
+                    );
+                    first_error
+                        .get_or_insert_with(|| quadrant_error_at(error, meta, statement_span));
+                    continue;
                 }
             }
 
-            return Err(QuadrantSemanticFailure::new(
+            push_quadrant_slice_lexeme(lexemes, EditorLexemeKind::Literal, statement_trimmed);
+            first_error.get_or_insert_with(|| {
                 Error::diagram_parse_exact(
                     meta.diagram_type.clone(),
-                    format!("Unrecognized statement: {statement_trimmed}"),
+                    format!("Unrecognized statement: {}", statement_trimmed.text),
                     statement_span,
-                ),
-                editor_facts,
-            ));
+                )
+            });
         }
     }
 
@@ -1104,19 +1436,27 @@ fn construct_quadrant_chart_semantic_source(
                 "quadrant chart accessibility description",
                 EditorSemanticKind::String,
             );
+            push_quadrant_lexeme(
+                lexemes,
+                EditorLexemeKind::String,
+                SourceSpan::new(block.source_start, code.len()),
+            );
         }
         acc_descr = Some(text);
     }
 
     if !saw_header {
-        return Err(QuadrantSemanticFailure::new(
+        first_error.get_or_insert_with(|| {
             Error::diagram_parse_insertion_point(
                 meta.diagram_type.clone(),
                 "expected quadrantChart",
                 code.len(),
-            ),
-            editor_facts,
-        ));
+            )
+        });
+    }
+
+    if let Some(error) = first_error {
+        return Err(QuadrantSemanticFailure::new(error, editor_facts));
     }
 
     Ok(QuadrantSemanticSource {

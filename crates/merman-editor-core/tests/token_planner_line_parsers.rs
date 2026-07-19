@@ -24,6 +24,15 @@ fn line_parser_families_produce_non_overlapping_semantic_token_plans() {
             "sankey-beta\n\"Source, A\",Target,12.5\n",
             PlannedTokenKind::Namespace,
         ),
+        (
+            "quadrantChart",
+            concat!(
+                "quadrantChart\n",
+                "classDef priority color: #109060\n",
+                "Campaign A:::priority: [0.2, 0.8]\n",
+            ),
+            PlannedTokenKind::Color,
+        ),
     ];
 
     for (family, source, distinctive_kind) in cases {
@@ -73,6 +82,15 @@ fn line_parser_recovery_plans_cover_tokens_before_and_after_the_error() {
             ),
         ),
         ("sankey", "sankey\nBefore,Middle,1\nbroken\nAfter,End,2\n"),
+        (
+            "quadrantChart",
+            concat!(
+                "quadrantChart\n",
+                "Before: [0.2, 0.8]\n",
+                "Broken: [1.2, 0.4]\n",
+                "After: [0.3, 0.7]\n",
+            ),
+        ),
     ];
 
     for (family, source) in cases {
