@@ -1,7 +1,7 @@
 use super::*;
 use crate::diagrams::langium_common::{
-    LangiumCommonFact, LangiumCommonField, LangiumCommonParse, parse_langium_common,
-    parse_langium_string,
+    LangiumCommonFact, LangiumCommonField, LangiumCommonParse, LangiumLexemeTrace,
+    parse_langium_common, parse_langium_string,
 };
 
 #[derive(Debug, Clone)]
@@ -62,17 +62,19 @@ struct ArchitectureTraceEntry {
     facts: Vec<ArchitectureTraceFact>,
     diagnostic: Option<crate::ParseDiagnostic>,
     directive_prefix: Option<&'static str>,
+    lexemes: LangiumLexemeTrace,
 }
 
 #[derive(Debug, Clone, Default)]
 struct ArchitectureTrace {
     entries: Vec<ArchitectureTraceEntry>,
+    lexemes: LangiumLexemeTrace,
 }
 
 #[derive(Debug)]
 pub(super) struct ArchitectureSemanticSource {
-    trace: ArchitectureTrace,
     db: ArchitectureDb,
+    editor_facts: EditorSemanticFacts,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,14 +87,16 @@ struct StatementFailure {
     error: Box<Error>,
     facts: Vec<ArchitectureTraceFact>,
     directive_prefix: Option<&'static str>,
+    lexemes: LangiumLexemeTrace,
 }
 
 impl StatementFailure {
-    fn new(error: Error, facts: Vec<ArchitectureTraceFact>) -> Self {
+    fn new(error: Error, facts: Vec<ArchitectureTraceFact>, lexemes: LangiumLexemeTrace) -> Self {
         Self {
             error: Box::new(error),
             facts,
             directive_prefix: None,
+            lexemes,
         }
     }
 
@@ -107,6 +111,7 @@ struct ArchitectureStatementParser<'a> {
     base_offset: usize,
     pos: usize,
     facts: Vec<ArchitectureTraceFact>,
+    lexemes: LangiumLexemeTrace,
 }
 
 impl<'a> ArchitectureStatementParser<'a> {
@@ -116,6 +121,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             base_offset,
             pos: 0,
             facts: Vec::new(),
+            lexemes: LangiumLexemeTrace::default(),
         }
     }
 
@@ -129,8 +135,9 @@ impl<'a> ArchitectureStatementParser<'a> {
                 facts: self.facts,
                 diagnostic: None,
                 directive_prefix: None,
+                lexemes: self.lexemes,
             }),
-            Err(error) => Err(StatementFailure::new(error, self.facts)),
+            Err(error) => Err(StatementFailure::new(error, self.facts, self.lexemes)),
         }
     }
 
@@ -272,6 +279,7 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn parse_alignment(&mut self) -> Result<ArchitectureStatement> {
         self.expect_keyword("align");
         let direction = self.parse_raw_id("invalid align direction")?;
+        self.lexemes.keyword(direction.selection);
         if ArchitectureLayoutDirection::parse(&direction.value).is_none() {
             return Err(Error::diagram_parse_exact(
                 "architecture",
@@ -312,7 +320,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             EditorSemanticKind::Variable,
         )?;
         let lhs_group = self.parse_group_modifier();
-        self.expect_literal(':', "expected ':' for lhs port")?;
+        self.expect_delimiter(':', "expected ':' for lhs port")?;
         let lhs_direction =
             self.parse_direction("expected lhs direction", "invalid lhs direction")?;
         self.push_payload(
@@ -324,10 +332,16 @@ impl<'a> ArchitectureStatementParser<'a> {
 
         self.skip_ws();
         let title = if self.remaining().starts_with("--") {
+            let start = self.base_offset + self.pos;
             self.pos += 2;
+            self.lexemes
+                .operator(SourceSpan::new(start, start + "--".len()));
             None
         } else if self.remaining().starts_with('-') {
+            let start = self.base_offset + self.pos;
             self.pos += 1;
+            self.lexemes
+                .operator(SourceSpan::new(start, start + '-'.len_utf8()));
             let title = self
                 .parse_title()?
                 .ok_or_else(|| self.insertion_error("expected edge title"))?;
@@ -336,7 +350,7 @@ impl<'a> ArchitectureStatementParser<'a> {
                 "architecture edge title",
                 EditorSemanticKind::String,
             );
-            self.expect_literal('-', "expected '-' after edge title")?;
+            self.expect_operator('-', "expected '-' after edge title")?;
             Some(title)
         } else {
             return Err(self.insertion_error("expected edge connector"));
@@ -350,7 +364,7 @@ impl<'a> ArchitectureStatementParser<'a> {
             "architecture edge rhs direction",
             EditorSemanticKind::String,
         );
-        self.expect_literal(':', "expected ':' for rhs port")?;
+        self.expect_delimiter(':', "expected ':' for rhs port")?;
         let rhs = self.parse_id(
             "invalid id",
             "architecture edge endpoint",
@@ -381,6 +395,7 @@ impl<'a> ArchitectureStatementParser<'a> {
         kind: EditorSemanticKind,
     ) -> Result<ArchitectureIdentifier> {
         let token = self.parse_raw_id(message)?;
+        self.lexemes.identifier(token.selection);
         if is_architecture_reserved_id(&token.value) {
             return Err(Error::diagram_parse_exact(
                 "architecture",
@@ -429,6 +444,10 @@ impl<'a> ArchitectureStatementParser<'a> {
         }
         let start = self.pos;
         self.bump();
+        self.lexemes.delimiter(SourceSpan::new(
+            self.base_offset + start,
+            self.base_offset + self.pos,
+        ));
         let selection_start = self.pos;
         while let Some(ch) = self.peek_char() {
             if ch == ')' {
@@ -443,7 +462,16 @@ impl<'a> ArchitectureStatementParser<'a> {
         if selection_end == selection_start || self.peek_char() != Some(')') {
             return Err(self.insertion_error("unterminated architecture icon"));
         }
+        self.lexemes.literal(SourceSpan::new(
+            self.base_offset + selection_start,
+            self.base_offset + selection_end,
+        ));
+        let closing_start = self.pos;
         self.bump();
+        self.lexemes.delimiter(SourceSpan::new(
+            self.base_offset + closing_start,
+            self.base_offset + self.pos,
+        ));
         Ok(Some(
             self.spanned(
                 self.input[selection_start..selection_end]
@@ -468,6 +496,10 @@ impl<'a> ArchitectureStatementParser<'a> {
             return Err(self.insertion_error("unterminated quoted service icon text"));
         };
         self.pos = start + parsed.consumed;
+        self.lexemes.string(SourceSpan::new(
+            self.base_offset + parsed.raw_span.start,
+            self.base_offset + parsed.raw_span.end,
+        ));
         Ok(self.spanned(
             parsed.value,
             parsed.raw_span.start,
@@ -484,6 +516,10 @@ impl<'a> ArchitectureStatementParser<'a> {
         }
         let start = self.pos;
         self.bump();
+        self.lexemes.delimiter(SourceSpan::new(
+            self.base_offset + start,
+            self.base_offset + self.pos,
+        ));
         let selection_start = self.pos;
         let quote = self.peek_char().filter(|ch| matches!(ch, '"' | '\''));
         if let Some(quote) = quote {
@@ -529,7 +565,18 @@ impl<'a> ArchitectureStatementParser<'a> {
         if self.peek_char() != Some(']') {
             return Err(self.insertion_error("unterminated architecture title"));
         }
+        if selection_start < selection_end {
+            self.lexemes.string(SourceSpan::new(
+                self.base_offset + selection_start,
+                self.base_offset + selection_end,
+            ));
+        }
+        let closing_start = self.pos;
         self.bump();
+        self.lexemes.delimiter(SourceSpan::new(
+            self.base_offset + closing_start,
+            self.base_offset + self.pos,
+        ));
         let raw = &self.input[selection_start..selection_end];
         Ok(Some(self.spanned(
             convert_architecture_title(raw),
@@ -557,13 +604,20 @@ impl<'a> ArchitectureStatementParser<'a> {
                 SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
             ));
         }
+        self.lexemes.literal(SourceSpan::new(
+            self.base_offset + start,
+            self.base_offset + self.pos,
+        ));
         Ok(self.spanned(ch.to_string(), start, self.pos, start, self.pos))
     }
 
     fn parse_arrow_into(&mut self) -> Option<bool> {
         self.skip_ws();
         if matches!(self.peek_char(), Some('<' | '>')) {
+            let start = self.base_offset + self.pos;
             self.bump();
+            self.lexemes
+                .operator(SourceSpan::new(start, self.base_offset + self.pos));
             Some(true)
         } else {
             None
@@ -573,7 +627,10 @@ impl<'a> ArchitectureStatementParser<'a> {
     fn parse_group_modifier(&mut self) -> Option<bool> {
         self.skip_ws();
         if self.remaining().starts_with("{group}") {
+            let start = self.base_offset + self.pos;
             self.pos += "{group}".len();
+            self.lexemes
+                .delimiter(SourceSpan::new(start, start + "{group}".len()));
             Some(true)
         } else {
             None
@@ -613,11 +670,13 @@ impl<'a> ArchitectureStatementParser<'a> {
         });
     }
 
-    fn next_is_keyword(&mut self, keyword: &str) -> bool {
-        let saved = self.pos;
-        let matched = self.consume_keyword(keyword);
-        self.pos = saved;
-        matched
+    fn next_is_keyword(&self, keyword: &str) -> bool {
+        let remaining = self.remaining().trim_start_matches([' ', '\t']);
+        remaining.starts_with(keyword)
+            && remaining[keyword.len()..]
+                .chars()
+                .next()
+                .is_none_or(|ch| matches!(ch, ' ' | '\t' | ':'))
     }
 
     fn expect_keyword(&mut self, keyword: &str) {
@@ -638,16 +697,39 @@ impl<'a> ArchitectureStatementParser<'a> {
         {
             return false;
         }
+        let start = self.base_offset + self.pos;
         self.pos += keyword.len();
+        self.lexemes
+            .keyword(SourceSpan::new(start, start + keyword.len()));
         true
     }
 
-    fn expect_literal(&mut self, expected: char, message: &str) -> Result<()> {
+    fn expect_delimiter(&mut self, expected: char, message: &str) -> Result<()> {
+        self.expect_syntax_char(expected, message, EditorLexemeKind::Delimiter)
+    }
+
+    fn expect_operator(&mut self, expected: char, message: &str) -> Result<()> {
+        self.expect_syntax_char(expected, message, EditorLexemeKind::Operator)
+    }
+
+    fn expect_syntax_char(
+        &mut self,
+        expected: char,
+        message: &str,
+        kind: EditorLexemeKind,
+    ) -> Result<()> {
         self.skip_ws();
         if self.peek_char() != Some(expected) {
             return Err(self.insertion_error(message));
         }
+        let start = self.base_offset + self.pos;
         self.bump();
+        let span = SourceSpan::new(start, self.base_offset + self.pos);
+        match kind {
+            EditorLexemeKind::Delimiter => self.lexemes.delimiter(span),
+            EditorLexemeKind::Operator => self.lexemes.operator(span),
+            _ => unreachable!("architecture syntax character has a closed lexical kind"),
+        }
         Ok(())
     }
 
@@ -745,7 +827,8 @@ pub(super) fn parse_semantic_source(
 ) -> Result<ArchitectureSemanticSource> {
     let trace = parse_trace(code, meta, ArchitectureParseMode::Strict)?;
     let db = trace.build_db()?;
-    Ok(ArchitectureSemanticSource { trace, db })
+    let editor_facts = trace.editor_facts(code, None);
+    Ok(ArchitectureSemanticSource { db, editor_facts })
 }
 
 pub(super) fn parse_recovering_editor_facts(
@@ -761,7 +844,7 @@ pub(super) fn parse_recovering_editor_facts(
         }
     };
     let validation_error = trace.build_db().err();
-    trace.editor_facts(validation_error)
+    trace.editor_facts(code, validation_error)
 }
 
 fn parse_trace(
@@ -789,6 +872,10 @@ fn parse_trace(
             return handle_header_error(&mut trace, mode, meta, trimmed_start, trimmed.len());
         }
         found_header = true;
+        trace.lexemes.keyword(SourceSpan::new(
+            trimmed_start,
+            trimmed_start + "architecture-beta".len(),
+        ));
         let leading = rest_with_ws.len() - rest_with_ws.trim_start().len();
         let rest = rest_with_ws.trim_start();
         if !rest.is_empty() {
@@ -859,6 +946,7 @@ fn handle_header_error(
         facts: Vec::new(),
         diagnostic: Some(take_parse_diagnostic(error)),
         directive_prefix: None,
+        lexemes: LangiumLexemeTrace::default(),
     });
     Ok(std::mem::take(trace))
 }
@@ -880,15 +968,22 @@ fn parse_trace_statement(
         ArchitectureStatementParser::new(statement, statement_start).parse()
     };
     match parsed {
-        Ok(entry) => trace.entries.push(entry),
+        Ok(entry) => {
+            trace.lexemes.extend(entry.lexemes.clone());
+            trace.entries.push(entry);
+        }
         Err(failure) if mode == ArchitectureParseMode::Strict => return Err(*failure.error),
-        Err(failure) => trace.entries.push(ArchitectureTraceEntry {
-            statement: None,
-            span: SourceSpan::new(statement_start, statement_start + statement.len()),
-            facts: failure.facts,
-            diagnostic: Some(take_parse_diagnostic(*failure.error)),
-            directive_prefix: failure.directive_prefix,
-        }),
+        Err(failure) => {
+            trace.lexemes.extend(failure.lexemes.clone());
+            trace.entries.push(ArchitectureTraceEntry {
+                statement: None,
+                span: SourceSpan::new(statement_start, statement_start + statement.len()),
+                facts: failure.facts,
+                diagnostic: Some(take_parse_diagnostic(*failure.error)),
+                directive_prefix: failure.directive_prefix,
+                lexemes: failure.lexemes,
+            });
+        }
     }
     Ok(())
 }
@@ -897,7 +992,10 @@ fn architecture_common_trace_entry(
     parsed: LangiumCommonParse,
 ) -> std::result::Result<ArchitectureTraceEntry, StatementFailure> {
     let LangiumCommonParse {
-        fact, diagnostic, ..
+        fact,
+        diagnostic,
+        lexemes,
+        ..
     } = parsed;
     let spanned = architecture_common_value(&fact);
     let (statement, detail) = match fact.field {
@@ -924,6 +1022,7 @@ fn architecture_common_trace_entry(
                 diagnostic.span.start,
             ),
             facts,
+            lexemes,
         )
         .with_directive_prefix(fact.field.directive()));
     }
@@ -934,6 +1033,7 @@ fn architecture_common_trace_entry(
         facts,
         diagnostic: None,
         directive_prefix: Some(fact.field.directive()),
+        lexemes,
     })
 }
 
@@ -1122,7 +1222,7 @@ impl ArchitectureTrace {
         Ok(db)
     }
 
-    fn editor_facts(&self, validation_error: Option<Error>) -> EditorSemanticFacts {
+    fn editor_facts(&self, source: &str, validation_error: Option<Error>) -> EditorSemanticFacts {
         let mut facts = EditorSemanticFacts::new();
         for entry in &self.entries {
             debug_assert!(entry.span.start <= entry.span.end);
@@ -1159,6 +1259,7 @@ impl ArchitectureTrace {
         if let Some(error) = validation_error {
             push_recovery_error(&mut facts, error);
         }
+        self.lexemes.clone().attach(source, &mut facts);
         facts
     }
 }
@@ -1174,6 +1275,6 @@ impl ArchitectureSemanticSource {
     }
 
     pub(super) fn editor_facts(&self) -> EditorSemanticFacts {
-        self.trace.editor_facts(None)
+        self.editor_facts.clone()
     }
 }

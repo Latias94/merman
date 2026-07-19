@@ -84,6 +84,10 @@ impl LangiumLexemeTrace {
         self.push(EditorLexemeKind::String, span);
     }
 
+    pub(crate) fn style(&mut self, span: SourceSpan) {
+        self.push(EditorLexemeKind::Style, span);
+    }
+
     pub(crate) fn literal(&mut self, span: SourceSpan) {
         self.push(EditorLexemeKind::Literal, span);
     }
@@ -217,6 +221,8 @@ pub(crate) struct LangiumCommonParse {
     pub(crate) lexemes: LangiumLexemeTrace,
     /// Bytes consumed from the supplied offset, including the required EOL or EOF.
     pub(crate) consumed: usize,
+    /// Last whitespace-only physical line consumed as trailing EOL trivia, if any.
+    pub(crate) trailing_whitespace_span: Option<SourceSpan>,
     pub(crate) diagnostic: Option<LangiumCommonDiagnostic>,
 }
 
@@ -384,6 +390,7 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
             },
             lexemes,
             consumed: raw_end - offset,
+            trailing_whitespace_span: None,
             diagnostic: Some(LangiumCommonDiagnostic {
                 message: "unterminated accDescr block; expected `}`".to_string(),
                 span: SourceSpan::new(raw_end, raw_end),
@@ -393,7 +400,7 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
 
     let close = content_start + relative_close;
     let raw_end = close + 1;
-    let consumed_end = consume_required_eol(source, raw_end)?;
+    let eol = consume_required_eol(source, raw_end)?;
     let (value, value_span) = normalized_block_value(source, content_start, close);
     lexemes.string(value_span);
     lexemes.delimiter(SourceSpan::new(close, close + 1));
@@ -405,7 +412,8 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
             value_span,
         },
         lexemes,
-        consumed: consumed_end - offset,
+        consumed: eol.end - offset,
+        trailing_whitespace_span: eol.trailing_whitespace_span,
         diagnostic: None,
     })
 }
@@ -418,7 +426,7 @@ fn parsed_inline(
     capture_start: usize,
     mut lexemes: LangiumLexemeTrace,
 ) -> Option<LangiumCommonParse> {
-    let consumed_end = consume_required_eol(source, raw_end)?;
+    let eol = consume_required_eol(source, raw_end)?;
     let capture = source.get(capture_start..raw_end)?;
     let trimmed = capture.trim();
     let leading = capture.len() - capture.trim_start().len();
@@ -433,7 +441,8 @@ fn parsed_inline(
             value_span,
         },
         lexemes,
-        consumed: consumed_end - offset,
+        consumed: eol.end - offset,
+        trailing_whitespace_span: eol.trailing_whitespace_span,
         diagnostic: None,
     })
 }
@@ -450,30 +459,50 @@ fn inline_terminal_end(source: &str, start: usize) -> usize {
     cursor
 }
 
-fn consume_required_eol(source: &str, raw_end: usize) -> Option<usize> {
+struct ConsumedEol {
+    end: usize,
+    trailing_whitespace_span: Option<SourceSpan>,
+}
+
+fn consume_required_eol(source: &str, raw_end: usize) -> Option<ConsumedEol> {
     let mut cursor = raw_end + horizontal_whitespace_len(source.get(raw_end..)?);
     if source.get(cursor..)?.starts_with("%%") {
         cursor = inline_terminal_end(source, cursor + 2);
     }
     if cursor == source.len() {
-        return Some(cursor);
+        return Some(ConsumedEol {
+            end: cursor,
+            trailing_whitespace_span: None,
+        });
     }
     cursor = consume_newline(source, cursor)?;
+    let mut trailing_whitespace_span = None;
 
     loop {
         let trivia_start = cursor;
         let mut next = cursor + horizontal_whitespace_len(source.get(cursor..)?);
-        if source.get(next..)?.starts_with("%%") {
+        let comment = source.get(next..)?.starts_with("%%");
+        if comment {
             next = inline_terminal_end(source, next + 2);
+        } else if next > trivia_start
+            && (next == source.len() || consume_newline(source, next).is_some())
+        {
+            trailing_whitespace_span = Some(SourceSpan::new(trivia_start, next));
         }
         if next == source.len() {
-            return Some(next);
+            return Some(ConsumedEol {
+                end: next,
+                trailing_whitespace_span,
+            });
         }
         if let Some(after_newline) = consume_newline(source, next) {
             cursor = after_newline;
             continue;
         }
-        return Some(trivia_start);
+        return Some(ConsumedEol {
+            end: trivia_start,
+            trailing_whitespace_span,
+        });
     }
 }
 

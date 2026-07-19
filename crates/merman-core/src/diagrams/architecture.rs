@@ -1,7 +1,7 @@
 use crate::diagrams::scan::strip_line_ending;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
