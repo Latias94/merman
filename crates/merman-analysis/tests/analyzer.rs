@@ -339,7 +339,7 @@ fn analyze_result_exposes_complete_parser_syntax_facts() {
 }
 
 #[test]
-fn analyze_result_marks_unmapped_parser_spans_as_degraded() {
+fn analyze_result_preserves_exact_spans_through_entity_normalization() {
     let source = concat!(
         "---\n",
         "title: quoted\n",
@@ -355,19 +355,23 @@ fn analyze_result_marks_unmapped_parser_spans_as_degraded() {
 
     let syntax = &facts.diagrams[0].syntax;
     assert_eq!(syntax.diagram_type.as_deref(), Some("sequence"));
-    assert_eq!(
-        syntax.fact_source,
-        FenceTextIndexSource::ParserCompleteDegradedSpans
-    );
+    assert_eq!(syntax.fact_source, FenceTextIndexSource::ParserComplete);
     assert!(syntax.parser_backed);
     assert!(!syntax.recovered);
-    assert!(!syntax.source_mapped_spans);
+    assert!(syntax.source_mapped_spans);
     assert!(syntax.node_ids.iter().any(|id| id == "Alice"));
     assert!(syntax.node_ids.iter().any(|id| id == "Bob"));
-    assert!(syntax.references.is_empty());
-    assert!(syntax.outline_items.is_empty());
-    assert!(syntax.semantic_items.is_empty());
-    assert!(syntax.expected_syntax.is_empty());
+    assert!(!syntax.references.is_empty());
+    assert!(!syntax.outline_items.is_empty());
+    assert!(!syntax.semantic_items.is_empty());
+    assert!(!syntax.expected_syntax.is_empty());
+    assert!(syntax.expected_syntax.iter().all(|expected| {
+        expected.span.document.as_ref().is_some_and(|span| {
+            span.byte_end <= source.len()
+                && source.is_char_boundary(span.byte_start)
+                && source.is_char_boundary(span.byte_end)
+        })
+    }));
 }
 
 #[test]
@@ -477,6 +481,67 @@ fn document_analysis_facts_payload_exposes_parser_backed_fence_facts() {
             .as_ref()
             .map(|span| span.byte_start),
         source.find("rou")
+    );
+}
+
+#[test]
+fn markdown_fence_facts_compose_crlf_preprocess_edits_and_utf16_positions() {
+    let source = concat!(
+        "😀 before\r\n",
+        "```mermaid\r\n",
+        "---\r\n",
+        "title: Demo\r\n",
+        "---\r\n",
+        "%%{wrap}%%\r\n",
+        "flowchart TD\r\n",
+        "classDef hot fill:#f00;\r\n",
+        "A[\"😀 #quot;\"]:::hot\r\n",
+        "```\r\n",
+    );
+    let facts = merman_analysis::analyze_document_facts(
+        source,
+        &Analyzer::new(),
+        source_descriptor_for_markdown_path(Some("doc.md")),
+    );
+
+    assert!(facts.valid, "{:#?}", facts.diagnostics);
+    let syntax = &facts.diagrams[0].syntax;
+    assert_eq!(syntax.fact_source, FenceTextIndexSource::ParserComplete);
+    assert!(syntax.source_mapped_spans);
+
+    let class_definition = syntax
+        .semantic_items
+        .iter()
+        .find(|item| item.detail.as_deref() == Some("flowchart class definition"))
+        .expect("class definition fact");
+    let class_selection = class_definition
+        .selection
+        .document
+        .as_ref()
+        .expect("class definition document span");
+    assert_eq!(
+        &source[class_selection.byte_start..class_selection.byte_end],
+        "hot"
+    );
+
+    let label = syntax
+        .semantic_items
+        .iter()
+        .find(|item| item.detail.as_deref() == Some("flowchart node label"))
+        .expect("node label fact");
+    let label_selection = label
+        .selection
+        .document
+        .as_ref()
+        .expect("node label document span");
+    assert_eq!(
+        &source[label_selection.byte_start..label_selection.byte_end],
+        "😀 #quot;"
+    );
+    assert_eq!(label_selection.lsp_range.start.character, 3);
+    assert_eq!(
+        label_selection.lsp_range.end.character,
+        3 + "😀 #quot;".encode_utf16().count()
     );
 }
 

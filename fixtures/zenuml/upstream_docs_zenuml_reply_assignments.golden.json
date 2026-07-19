@@ -1,92 +1,84 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "type": "zenuml",
     "title": null,
     "accTitle": null,
     "accDescr": null,
-    "actorOrder": [
-      "A"
-    ],
-    "actors": {
-      "A": {
+    "starter": null,
+    "participants": [
+      {
+        "name": "_STARTER_",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": []
+      },
+      {
         "name": "A",
-        "description": "A",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      }
-    },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "A",
-        "message": "1. assign a variable from a sync message.",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": "A",
-        "message": "SyncMessage() => a",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "A",
-        "to": "A",
-        "message": "1.1. optionally give the variable a type",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "3",
-        "from": "A",
-        "to": "A",
-        "message": "SyncMessage() => a",
-        "wrap": false,
-        "type": 0,
-        "activate": false
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 64,
+            "end": 65
+          },
+          {
+            "start": 146,
+            "end": 147
+          }
+        ]
       }
     ],
-    "notes": [
+    "groups": [],
+    "statements": [
       {
-        "actor": [
-          "A",
-          "A"
-        ],
-        "placement": 2,
-        "message": "1. assign a variable from a sync message.",
-        "wrap": false
+        "id": "zenuml-statement-0",
+        "number": "1",
+        "comment": "1. assign a variable from a sync message.",
+        "span": {
+          "start": 60,
+          "end": 80
+        },
+        "kind": "message",
+        "from": "_STARTER_",
+        "to": "A",
+        "label": "SyncMessage()",
+        "assignment": "a",
+        "style": "synchronous",
+        "body": []
       },
       {
-        "actor": [
-          "A",
-          "A"
-        ],
-        "placement": 2,
-        "message": "1.1. optionally give the variable a type",
-        "wrap": false
+        "id": "zenuml-statement-1",
+        "number": "2",
+        "comment": "1.1. optionally give the variable a type",
+        "span": {
+          "start": 133,
+          "end": 162
+        },
+        "kind": "message",
+        "from": "_STARTER_",
+        "to": "A",
+        "label": "SyncMessage()",
+        "assignment": "a",
+        "style": "synchronous",
+        "body": []
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "type": "zenuml"
   }
 }

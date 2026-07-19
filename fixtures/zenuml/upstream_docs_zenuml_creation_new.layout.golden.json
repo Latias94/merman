@@ -1,99 +1,134 @@
 {
   "diagramType": "zenuml",
   "layout": {
-    "SequenceDiagram": {
-      "nodes": [
+    "ZenumlDiagram": {
+      "width": 308.54,
+      "height": 256.0,
+      "frameBorderLeft": 0.0,
+      "frameBorderRight": 0.0,
+      "participants": [
         {
-          "id": "actor-top-A1",
+          "name": "_STARTER_",
+          "label": "",
+          "x": 50.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": true,
+          "showBottom": false,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
+        },
+        {
+          "name": "A1",
+          "label": "A1",
           "x": 150.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "y": 72.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": false,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": true
         },
         {
-          "id": "actor-top-A2",
-          "x": 439.0,
-          "y": 32.5,
-          "width": 164.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-A1",
-          "x": 150.0,
-          "y": 117.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-A2",
-          "x": 439.0,
-          "y": 117.5,
-          "width": 164.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "A2",
+          "label": "A2",
+          "x": 258.54,
+          "y": 150.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": false,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": true
         }
       ],
-      "edges": [
+      "lifelines": [
         {
-          "id": "lifeline-A1",
-          "from": "actor-top-A1",
-          "to": "actor-bottom-A1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 150.0,
-              "y": 65.0
-            },
-            {
-              "x": 150.0,
-              "y": 85.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "participantName": "_STARTER_",
+          "x": 50.0,
+          "topY": 68.0,
+          "bottomY": 268.0
         },
         {
-          "id": "lifeline-A2",
-          "from": "actor-top-A2",
-          "to": "actor-bottom-A2",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 439.0,
-              "y": 65.0
-            },
-            {
-              "x": 439.0,
-              "y": 85.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "participantName": "A1",
+          "x": 150.0,
+          "topY": 112.0,
+          "bottomY": 268.0
+        },
+        {
+          "participantName": "A2",
+          "x": 258.54,
+          "topY": 190.0,
+          "bottomY": 268.0
         }
       ],
-      "clusters": [],
+      "messages": [
+        {
+          "statementId": "zenuml-statement-0",
+          "number": "1",
+          "from": "_STARTER_",
+          "to": "A1",
+          "fromX": 50.0,
+          "toX": 150.0,
+          "y": 92.0,
+          "label": "«create» A1",
+          "kind": "creation",
+          "isSelf": false
+        },
+        {
+          "statementId": "zenuml-statement-1",
+          "number": "2",
+          "from": "_STARTER_",
+          "to": "A2",
+          "fromX": 50.0,
+          "toX": 258.54,
+          "y": 170.0,
+          "label": "«create» A2(with, parameters)",
+          "kind": "creation",
+          "isSelf": false
+        }
+      ],
+      "occurrences": [
+        {
+          "statementId": "zenuml-statement-0",
+          "participantName": "A1",
+          "x": 143.0,
+          "y": 110.0,
+          "width": 15.0,
+          "height": 24.0
+        },
+        {
+          "statementId": "zenuml-statement-1",
+          "participantName": "A2",
+          "x": 251.54,
+          "y": 188.0,
+          "width": 15.0,
+          "height": 24.0
+        }
+      ],
+      "fragments": [],
+      "dividers": [],
+      "comments": [],
+      "groups": [],
       "bounds": {
-        "min_x": 25.0,
-        "min_y": -10.0,
-        "max_x": 571.0,
-        "max_y": 161.0
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 308.54,
+        "max_y": 256.0
       }
     }
   }

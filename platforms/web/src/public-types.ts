@@ -52,6 +52,9 @@ export interface ResourceOptions {
   max_class_nodes?: number;
   max_class_edges?: number;
   max_class_namespaces?: number;
+  max_zenuml_participants?: number;
+  max_zenuml_statements?: number;
+  max_zenuml_fragments?: number;
   max_label_bytes?: number;
 }
 

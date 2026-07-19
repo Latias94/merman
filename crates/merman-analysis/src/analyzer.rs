@@ -357,13 +357,11 @@ impl Analyzer {
             return EditorFactsProjection::unavailable(Vec::new());
         };
 
-        let source_mapped_spans = facts.span_coordinate_space.is_original_source();
         let diagnostics = editor_recovery_diagnostics(
             facts.diagnostics.iter().cloned(),
             diagram_type,
             source_map,
             &self.options.rule_config,
-            source_mapped_spans,
         );
         EditorFactsProjection {
             text_index: match mode {

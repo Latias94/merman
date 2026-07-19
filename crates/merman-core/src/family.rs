@@ -671,7 +671,7 @@ render_parser!(
 render_parser!(
     render_zenuml,
     crate::diagrams::zenuml::parse_zenuml_model_for_render,
-    RenderSemanticModel::Sequence
+    RenderSemanticModel::Zenuml
 );
 render_parser!(
     render_sequence,
@@ -1287,7 +1287,7 @@ const ZENUML_VARIANTS: &[FamilyVariantDefinition] = &[variant! {
     editor: Some(ordered(38, editor_zenuml)),
     combined: Some(ordered(36, crate::diagrams::zenuml::parse_zenuml_json_and_editor_facts)),
     typed: Some(ordered(3, render_zenuml)),
-    render_kind: Some("sequence"),
+    render_kind: Some("zenuml"),
     metadata: Some(metadata("zenuml", Some(34))),
     headers: ZENUML_HEADERS,
     config_alias_order: None,

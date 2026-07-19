@@ -36,6 +36,9 @@ pub struct ResourceOptionsJson {
     pub max_class_nodes: Option<usize>,
     pub max_class_edges: Option<usize>,
     pub max_class_namespaces: Option<usize>,
+    pub max_zenuml_participants: Option<usize>,
+    pub max_zenuml_statements: Option<usize>,
+    pub max_zenuml_fragments: Option<usize>,
     pub max_label_bytes: Option<usize>,
 }
 

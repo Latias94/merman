@@ -127,7 +127,7 @@ fn analyze_parse_failure_remaps_crlf_frontmatter_spans_and_deduplicates_recovery
 }
 
 #[test]
-fn analyze_parse_failure_downgrades_unmapped_parser_input_spans_to_fallback() {
+fn analyze_parse_failure_remaps_length_changing_entity_normalization() {
     let source = "---\ntitle: quoted\n---\nflowchart TD\nA[unterminated #quot;\n";
     let analyzer = Analyzer::new();
     let payload = analyzer.analyze(source);
@@ -138,10 +138,11 @@ fn analyze_parse_failure_downgrades_unmapped_parser_input_spans_to_fallback() {
         .iter()
         .find(|diagnostic| diagnostic.id == crate::rules::DIAGRAM_PARSE_RULE_ID)
         .expect("parse error diagnostic");
-    let span = diagnostic.span.as_ref().expect("fallback parse span");
-    assert_eq!(span.byte_start, 0);
-    assert_eq!(span.byte_end, source.len());
-    assert!(diagnostic.related.iter().any(|related| {
+    let span = diagnostic.span.as_ref().expect("exact parse span");
+    assert_eq!(span.byte_start, source.find('[').unwrap());
+    assert!(span.byte_end <= source.len());
+    assert!(source[span.byte_start..span.byte_end].contains("#quot;"));
+    assert!(!diagnostic.related.iter().any(|related| {
         related
             .message
             .contains("Parser did not report a precise source location")
@@ -380,34 +381,6 @@ fn fallback_recovery_merge_uses_structured_location_metadata() {
 }
 
 #[test]
-fn degraded_editor_recovery_diagnostics_do_not_project_parser_input_spans() {
-    let source =
-        "---\ntitle: quoted\n---\nsequenceDiagram\nparticipant Alice\nAlice->>Bob: #quot;\n";
-    let source_map = SourceMap::new(source);
-    let diagnostics = crate::recovery::editor_recovery_diagnostics(
-        vec![EditorSemanticDiagnostic::parser_recovery(
-            "unexpected end of input",
-            Some(SourceSpan::new(16, 16)),
-        )],
-        "sequence",
-        &source_map,
-        &AnalysisRuleConfig::default(),
-        false,
-    );
-
-    assert_eq!(diagnostics.len(), 1);
-    assert_eq!(
-        diagnostics[0].diagnostic.id,
-        crate::rules::RECOVERED_EDITOR_FACTS_RULE_ID
-    );
-    assert_eq!(
-        diagnostics[0].diagnostic.diagram_type.as_deref(),
-        Some("sequence")
-    );
-    assert_eq!(diagnostics[0].diagnostic.span, None);
-}
-
-#[test]
 fn source_mapped_editor_recovery_diagnostics_keep_original_spans() {
     let source = "sequenceDiagram\nAlice->>Bob: Hello\nBob->>";
     let bob = source.rfind("Bob").expect("Bob reference");
@@ -420,7 +393,6 @@ fn source_mapped_editor_recovery_diagnostics_keep_original_spans() {
         "sequence",
         &source_map,
         &AnalysisRuleConfig::default(),
-        true,
     );
 
     let span = diagnostics[0]

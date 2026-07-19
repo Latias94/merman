@@ -1213,7 +1213,7 @@ fn catalog_declares_alias_ownership_and_capability_gaps_without_inheritance() {
 
     let zenuml = family_capability(full, "zenuml");
     assert_eq!(zenuml.logical_family_kind, "zenuml");
-    assert_eq!(zenuml.render_model_kind, Some("sequence"));
+    assert_eq!(zenuml.render_model_kind, Some("zenuml"));
 
     for id in ["railroad", "railroadEbnf", "railroadAbnf", "railroadPeg"] {
         let fact = family_capability(full, id);

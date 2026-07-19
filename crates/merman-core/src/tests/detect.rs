@@ -283,7 +283,7 @@ fn preprocess_strips_mermaid_comment_at_eof_without_regex() {
     let result = preprocess_diagram("flowchart TD\nA-->B\n%% This is a comment", &registry)
         .expect("preprocess succeeds");
 
-    assert_eq!(result.code, "flowchart TD\nA-->B\n");
+    assert_eq!(result.code(), "flowchart TD\nA-->B\n");
 }
 
 #[test]
@@ -292,7 +292,7 @@ fn preprocess_normalizes_crlf_without_regex() {
     let result = preprocess_diagram("flowchart TD\r\nA-->B\r%% This is a comment", &registry)
         .expect("preprocess succeeds");
 
-    assert_eq!(result.code, "flowchart TD\nA-->B\n");
+    assert_eq!(result.code(), "flowchart TD\nA-->B\n");
 }
 
 #[test]
@@ -301,8 +301,16 @@ fn preprocess_encodes_entities_without_entity_regex() {
     let result = preprocess_diagram("flowchart TD\nA[#there;]\nB[#77653;]", &registry)
         .expect("preprocess succeeds");
 
-    assert!(result.code.contains("A[ﬂ°there¶ß]"), "{:?}", result.code);
-    assert!(result.code.contains("B[ﬂ°°77653¶ß]"), "{:?}", result.code);
+    assert!(
+        result.code().contains("A[ﬂ°there¶ß]"),
+        "{:?}",
+        result.code()
+    );
+    assert!(
+        result.code().contains("B[ﬂ°°77653¶ß]"),
+        "{:?}",
+        result.code()
+    );
 }
 
 #[test]
@@ -318,17 +326,17 @@ B["<é title="unchanged">Local</é>"]"#,
 
     assert!(
         result
-            .code
+            .code()
             .contains(r#"A["<span title='alpha' data-empty=''>Label</span>"]"#),
         "{:?}",
-        result.code
+        result.code()
     );
     assert!(
         result
-            .code
+            .code()
             .contains(r#"B["<é title="unchanged">Local</é>"]"#),
         "{:?}",
-        result.code
+        result.code()
     );
 }
 

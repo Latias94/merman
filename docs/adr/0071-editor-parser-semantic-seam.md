@@ -60,16 +60,16 @@ failed projection. It does not turn the error into indistinguishable absence or 
 Every editor result that depends on semantic facts carries `FenceTextIndexSource`:
 
 - `ParserComplete`
-- `ParserCompleteDegradedSpans`
 - `ParserRecovered`
-- `ParserRecoveredDegradedSpans`
 - `Unavailable`
 
-The degraded variants remain parser-backed for identity and outline behavior, but their spans could
-not be proven as original-source coordinates after preprocessing. Serialized facts expose
-`source_mapped_spans=false`; precise edits, rename ranges, and diagnostic source positions must not
-use those spans. `Unavailable` produces no body completion, hover, symbols, navigation, rename, or
-semantic tokens.
+Preprocessing produces a composable edit map for every deletion, replacement, normalization, and
+entity placeholder. Facts are mapped independently to exact original-source coordinates. If a fact
+crosses a span that cannot be represented exactly, only that fact is omitted and a recovery
+diagnostic is attached; unrelated facts remain available. There is no parser-input coordinate mode
+or whole-document degraded fallback. Serialized facts keep `source_mapped_spans` for wire
+compatibility: it is true for parser-backed facts and false for `Unavailable`. `Unavailable`
+produces no body completion, hover, symbols, navigation, rename, or semantic tokens.
 
 ### Analysis facts v1 is the sole parser-only wire contract
 

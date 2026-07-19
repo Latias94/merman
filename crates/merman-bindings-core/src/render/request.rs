@@ -523,6 +523,21 @@ fn binding_resource_limits(
         "resources.max_class_namespaces",
     )?;
     apply_usize_override(
+        &mut limits.max_zenuml_participants,
+        resources.max_zenuml_participants,
+        "resources.max_zenuml_participants",
+    )?;
+    apply_usize_override(
+        &mut limits.max_zenuml_statements,
+        resources.max_zenuml_statements,
+        "resources.max_zenuml_statements",
+    )?;
+    apply_usize_override(
+        &mut limits.max_zenuml_fragments,
+        resources.max_zenuml_fragments,
+        "resources.max_zenuml_fragments",
+    )?;
+    apply_usize_override(
         &mut limits.max_label_bytes,
         resources.max_label_bytes,
         "resources.max_label_bytes",

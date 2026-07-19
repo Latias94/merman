@@ -48,7 +48,9 @@ consumers:
 - `fact_source: "text_scan"` is removed;
 - `fact_source: "unavailable"` means that no body semantic facts were produced;
 - every semantic item has a required family-owned `rename_policy`; and
-- parser-backed, recovered, and source-mapped-span flags remain explicit.
+- parser-backed and recovered provenance remain explicit; parser-backed facts always carry exact
+  original-source spans. The compatibility field `source_mapped_spans` is `true` for those facts
+  and `false` only when the body fact source is unavailable.
 
 The TextScan-capable alpha shape shipped with Merman `0.8.0-alpha.3` is deleted rather than retained
 behind a decoder, executor, alias, or dual projection path. Consumers of that serialized shape must
@@ -120,10 +122,13 @@ unavailability:
 | Provenance | Meaning | Product status |
 | --- | --- | --- |
 | `ParserComplete` | Semantic facts came from a successful family parser/editor-facts path. | Mature when covered by the family row and editor-core tests. |
-| `ParserCompleteDegradedSpans` | Semantic facts came from a successful parser path, but at least one fact span could not be proven as an original-source coordinate after preprocessing. | Parser-backed for identity and outline behavior, but not mature for precise range edits or source-position projection unless callers check `source_mapped_spans=false` and avoid those spans. |
 | `ParserRecovered` | Semantic facts came from parser recovery after an incomplete or invalid edit buffer. | Mature for incomplete-buffer editing when tests cover the family and feature. |
-| `ParserRecoveredDegradedSpans` | Semantic facts came from parser recovery, but spans are in degraded parser-input coordinates rather than trusted original-source ranges. | Mature only for non-range-dependent recovery behavior; precise edits, rename ranges, and diagnostics must treat exposed spans as unavailable. |
 | `Unavailable` | No parser-backed body facts are available. | No body completion, hover, symbols, navigation, rename, or semantic tokens are projected. |
+
+Preprocessing owns a composable edit map. Facts are mapped independently through it, so an
+unrepresentable span is omitted only for that fact and produces a recovery diagnostic; unrelated
+facts retain their exact original-source coordinates. There is no parser-input coordinate mode or
+whole-document degraded fallback.
 
 The matrix above requires parser-backed complete or recovered provenance for first-class feature
 claims. Source-start headers and templates come directly from the static Diagram Family catalog;

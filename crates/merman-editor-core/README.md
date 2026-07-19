@@ -13,17 +13,15 @@ server rather than depending on this crate directly.
 - Query parser-backed semantic facts for completion, hover, document symbols, workspace symbols,
   definition, references, prepare-rename, rename, and semantic tokens.
 - Preserve semantic fact provenance with `FenceTextIndexSource` so callers can tell
-  `ParserComplete`, `ParserCompleteDegradedSpans`, `ParserRecovered`,
-  `ParserRecoveredDegradedSpans`, and `Unavailable` results apart.
+  `ParserComplete`, `ParserRecovered`, and `Unavailable` results apart. Parser-backed facts carry
+  exact original-source spans; a fact that crosses an unrepresentable preprocessing edit is
+  omitted locally and recorded as a recovery diagnostic.
 - Keep language behavior protocol-neutral: no LSP `Url`, `Range`, `Diagnostic`, or VS Code
   ownership policy lives here.
 
-`ParserCompleteDegradedSpans` and `ParserRecoveredDegradedSpans` remain parser-backed for identity
-and outline facts, but callers must treat their spans as unavailable for precise source edits when
-analysis reports `source_mapped_spans=false`. `Unavailable` means no body semantics are projected;
-source-start headers and templates are read independently from the static family catalog. New
-editor behavior should deepen parser-backed semantic facts in `merman-core` / `merman-analysis`
-rather than adding protocol-layer scans.
+`Unavailable` means no body semantics are projected; source-start headers and templates are read
+independently from the static family catalog. New editor behavior should deepen parser-backed
+semantic facts in `merman-core` / `merman-analysis` rather than adding protocol-layer scans.
 
 Editor-core builds typed snapshots directly from `AnalysisResult` and `FenceTextIndex`; it does not
 serialize or deserialize an analysis payload internally. The separately exposed binding wire is

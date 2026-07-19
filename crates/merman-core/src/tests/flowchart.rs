@@ -2727,7 +2727,7 @@ fn parse_flowchart_editor_facts_recover_label_payload_spans() {
 #[test]
 fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
     let engine = Engine::new();
-    let text = "flowchart TD\nclassDef hot fill:#f00,stroke:#333\nA-->B\nstyle A fill:#fff\nclass A,B hot\n";
+    let text = "flowchart TD\nclassDef hot fill:#f00,stroke:#333;\nA-->B\nstyle A fill:#fff\nclass A,B hot\n";
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("flowchart-v2", text, ParseOptions::strict())
         .unwrap()
@@ -2760,6 +2760,13 @@ fn parse_flowchart_editor_facts_emit_directive_payload_spans() {
     );
     assert_eq!(class_def_style.role, EditorSemanticRole::Payload);
     assert_eq!(class_def_style.kind, EditorSemanticKind::String);
+    assert_eq!(
+        class_def_style.selection,
+        SourceSpan::new(
+            class_def_style_start,
+            class_def_style_start + "fill:#f00,stroke:#333".len(),
+        )
+    );
 
     let style_target_start = text.find("style A").unwrap() + "style ".len();
     let style_target = symbol_at("A", "flowchart style target", style_target_start);

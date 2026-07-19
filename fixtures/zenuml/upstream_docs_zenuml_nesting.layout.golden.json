@@ -1,230 +1,168 @@
 {
   "diagramType": "zenuml",
   "layout": {
-    "SequenceDiagram": {
-      "nodes": [
+    "ZenumlDiagram": {
+      "width": 495.56,
+      "height": 236.0,
+      "frameBorderLeft": 0.0,
+      "frameBorderRight": 0.0,
+      "participants": [
         {
-          "id": "actor-top-A",
-          "x": 75.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "_STARTER_",
+          "label": "",
+          "x": 50.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": true,
+          "showBottom": false,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "actor-top-B",
-          "x": 275.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "A",
+          "label": "A",
+          "x": 150.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "actor-top-C",
-          "x": 487.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "B",
+          "label": "B",
+          "x": 296.38,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "actor-bottom-A",
-          "x": 75.0,
-          "y": 315.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-B",
-          "x": 275.0,
-          "y": 315.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-C",
-          "x": 487.0,
-          "y": 315.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "C",
+          "label": "C",
+          "x": 445.56,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         }
       ],
-      "edges": [
+      "lifelines": [
         {
-          "id": "msg-0",
-          "from": "A",
+          "participantName": "_STARTER_",
+          "x": 50.0,
+          "topY": 68.0,
+          "bottomY": 248.0
+        },
+        {
+          "participantName": "A",
+          "x": 150.0,
+          "topY": 68.0,
+          "bottomY": 248.0
+        },
+        {
+          "participantName": "B",
+          "x": 296.38,
+          "topY": 68.0,
+          "bottomY": 248.0
+        },
+        {
+          "participantName": "C",
+          "x": 445.56,
+          "topY": 68.0,
+          "bottomY": 248.0
+        }
+      ],
+      "messages": [
+        {
+          "statementId": "zenuml-statement-0",
+          "number": "1",
+          "from": "_STARTER_",
           "to": "A",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 111.0
-            },
-            {
-              "x": 76.0,
-              "y": 111.0
-            }
-          ],
-          "label": {
-            "x": 76.0,
-            "y": 80.0,
-            "width": 57.44,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 50.0,
+          "toX": 143.0,
+          "y": 87.5,
+          "label": "method()",
+          "kind": "synchronous",
+          "isSelf": false
         },
         {
-          "id": "msg-2",
-          "from": "B",
+          "statementId": "zenuml-statement-1",
+          "number": "1.1",
+          "from": "A",
           "to": "B",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 276.0,
-              "y": 187.0
-            },
-            {
-              "x": 276.0,
-              "y": 187.0
-            }
-          ],
-          "label": {
-            "x": 276.0,
-            "y": 156.0,
-            "width": 138.72,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 157.0,
+          "toX": 289.38,
+          "y": 119.5,
+          "label": "nested_sync_method()",
+          "kind": "synchronous",
+          "isSelf": false
         },
         {
-          "id": "msg-3",
+          "statementId": "zenuml-statement-2",
+          "number": "1.2",
           "from": "B",
           "to": "C",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 276.0,
-              "y": 263.0
-            },
-            {
-              "x": 483.0,
-              "y": 263.0
-            }
-          ],
-          "label": {
-            "x": 380.0,
-            "y": 232.0,
-            "width": 141.92,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-A",
-          "from": "actor-top-A",
-          "to": "actor-bottom-A",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 65.0
-            },
-            {
-              "x": 75.0,
-              "y": 283.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-B",
-          "from": "actor-top-B",
-          "to": "actor-bottom-B",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 275.0,
-              "y": 65.0
-            },
-            {
-              "x": 275.0,
-              "y": 283.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-C",
-          "from": "actor-top-C",
-          "to": "actor-bottom-C",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 487.0,
-              "y": 65.0
-            },
-            {
-              "x": 487.0,
-              "y": 283.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 296.38,
+          "toX": 445.56,
+          "y": 173.5,
+          "label": "nested async message",
+          "kind": "asynchronous",
+          "isSelf": false
         }
       ],
-      "clusters": [],
+      "occurrences": [
+        {
+          "statementId": "zenuml-statement-1",
+          "participantName": "B",
+          "x": 289.38,
+          "y": 118.0,
+          "width": 15.0,
+          "height": 24.0
+        },
+        {
+          "statementId": "zenuml-statement-0",
+          "participantName": "A",
+          "x": 143.0,
+          "y": 86.0,
+          "width": 15.0,
+          "height": 106.0
+        }
+      ],
+      "fragments": [],
+      "dividers": [],
+      "comments": [],
+      "groups": [],
       "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 612.0,
-        "max_y": 359.0
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 495.56,
+        "max_y": 236.0
       }
     }
   }

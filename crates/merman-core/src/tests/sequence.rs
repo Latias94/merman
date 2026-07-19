@@ -385,7 +385,7 @@ fn parse_sequence_editor_facts_preserve_every_repeated_unicode_occurrence() {
 }
 
 #[test]
-fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap() {
+fn parse_sequence_editor_facts_remap_entity_normalization_without_losing_other_facts() {
     let engine = Engine::new();
     let text = concat!(
         "---\n",
@@ -402,10 +402,6 @@ fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap()
         .expect("sequence editor facts");
 
     assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
-    assert_eq!(
-        facts.span_coordinate_space,
-        EditorSpanCoordinateSpace::ParserInput
-    );
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
     }));
@@ -416,7 +412,7 @@ fn parse_sequence_editor_facts_parse_preprocessed_body_when_spans_cannot_remap()
             symbol.name == "Alice" && symbol.detail.as_deref() == Some("sequence participant")
         })
         .expect("Alice participant");
-    assert_eq!(alice.selection.start, "sequenceDiagram\nparticipant ".len());
+    assert_eq!(alice.selection.start, text.find("Alice").unwrap());
     assert!(facts.symbols.iter().any(|symbol| {
         symbol.name == "Bob" && symbol.detail.as_deref() == Some("sequence participant reference")
     }));
@@ -468,7 +464,7 @@ fn parse_sequence_editor_facts_stop_after_non_advancing_lexer_error() {
 #[test]
 fn parse_sequence_editor_facts_continue_after_advancing_lexer_error() {
     let engine = Engine::new();
-    let text = "sequenceDiagram\n<\nparticipant Alice\nAlice->>Bob: Hello\n";
+    let text = "sequenceDiagram\nparticipant Alice\n<\nparticipant Bob\nAlice->>Bob: Hello\n";
     crate::diagrams::sequence::reset_sequence_syntax_construction_count();
     let facts = engine
         .parse_editor_semantic_facts_with_type_sync("sequence", text, ParseOptions::strict())

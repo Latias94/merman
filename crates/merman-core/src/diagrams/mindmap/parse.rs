@@ -186,7 +186,6 @@ struct MindmapParsedLines {
 fn mindmap_editor_facts_from_parsed(parsed: &MindmapParsedLines) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts {
         completeness: parsed.completeness,
-        span_coordinate_space: Default::default(),
         symbols: Vec::new(),
         directive_prefixes: Vec::new(),
         diagnostics: parsed.diagnostics.clone(),

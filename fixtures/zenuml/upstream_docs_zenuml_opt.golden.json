@@ -1,89 +1,140 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "type": "zenuml",
     "title": null,
     "accTitle": null,
     "accDescr": null,
-    "actorOrder": [
-      "Alice",
-      "Bob"
-    ],
-    "actors": {
-      "Alice": {
-        "name": "Alice",
-        "description": "Alice",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "Bob": {
-        "name": "Bob",
-        "description": "Bob",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      }
-    },
-    "messages": [
+    "starter": null,
+    "participants": [
       {
-        "id": "0",
+        "name": "Alice",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 11,
+            "end": 16
+          },
+          {
+            "start": 56,
+            "end": 61
+          },
+          {
+            "start": 99,
+            "end": 104
+          }
+        ]
+      },
+      {
+        "name": "Bob",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 18,
+            "end": 21
+          },
+          {
+            "start": 51,
+            "end": 54
+          },
+          {
+            "start": 94,
+            "end": 97
+          }
+        ]
+      }
+    ],
+    "groups": [],
+    "statements": [
+      {
+        "id": "zenuml-statement-0",
+        "number": "1",
+        "comment": null,
+        "span": {
+          "start": 11,
+          "end": 47
+        },
+        "kind": "message",
         "from": "Alice",
         "to": "Bob",
-        "message": "Hello Bob, how are you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
+        "label": "Hello Bob, how are you?",
+        "assignment": null,
+        "style": "asynchronous",
+        "body": []
       },
       {
-        "id": "1",
+        "id": "zenuml-statement-1",
+        "number": "2",
+        "comment": null,
+        "span": {
+          "start": 51,
+          "end": 78
+        },
+        "kind": "message",
         "from": "Bob",
         "to": "Alice",
-        "message": "Not so good :(",
-        "wrap": false,
-        "type": 0,
-        "activate": false
+        "label": "Not so good :(",
+        "assignment": null,
+        "style": "asynchronous",
+        "body": []
       },
       {
-        "id": "2",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 15,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Thanks for asking",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 16,
-        "activate": false
+        "id": "zenuml-statement-2",
+        "number": "3",
+        "comment": null,
+        "span": {
+          "start": 82,
+          "end": 129
+        },
+        "kind": "fragment",
+        "fragment_kind": "optional",
+        "label": null,
+        "sections": [
+          {
+            "label": null,
+            "statements": [
+              {
+                "id": "zenuml-statement-3",
+                "number": "3.1.1",
+                "comment": null,
+                "span": {
+                  "start": 94,
+                  "end": 124
+                },
+                "kind": "message",
+                "from": "Bob",
+                "to": "Alice",
+                "label": "Thanks for asking",
+                "assignment": null,
+                "style": "asynchronous",
+                "body": []
+              }
+            ],
+            "span": {
+              "start": 82,
+              "end": 129
+            }
+          }
+        ]
       }
     ],
-    "notes": [],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "type": "zenuml"
   }
 }

@@ -17,6 +17,7 @@ pub enum RenderFamilyKind {
     Mindmap,
     State,
     Sequence,
+    Zenuml,
     Flowchart,
     Swimlane,
     Architecture,
@@ -54,6 +55,7 @@ impl RenderFamilyKind {
             Self::Mindmap => "mindmap",
             Self::State => "state",
             Self::Sequence => "sequence",
+            Self::Zenuml => "zenuml",
             Self::Flowchart => "flowchart",
             Self::Swimlane => "swimlane",
             Self::Architecture => "architecture",
@@ -129,6 +131,14 @@ pub(crate) enum BuiltinFamilyArtifact {
     State(Box<FamilyPair<diagrams::state::StateDiagramRenderModel, StateDiagramLayout>>),
     Sequence(
         Box<FamilyPair<diagrams::sequence::SequenceDiagramRenderModel, SequenceDiagramLayout>>,
+    ),
+    Zenuml(
+        Box<
+            FamilyPair<
+                diagrams::zenuml::ZenumlDiagramRenderModel,
+                crate::zenuml::ZenumlDiagramLayout,
+            >,
+        >,
     ),
     Flowchart(Box<FamilyPair<diagrams::flowchart::FlowchartModel, FlowchartLayout>>),
     Swimlane(Box<FamilyPair<diagrams::flowchart::FlowchartModel, SwimlaneLayout>>),
@@ -220,6 +230,7 @@ enum LayoutProjection<'a> {
     ClassDiagram(&'a ClassDiagramLayout),
     ErDiagram(&'a ErDiagramLayout),
     SequenceDiagram(&'a SequenceDiagramLayout),
+    ZenumlDiagram(&'a crate::zenuml::ZenumlDiagramLayout),
     InfoDiagram(&'a InfoDiagramLayout),
     PacketDiagram(&'a PacketDiagramLayout),
     TimelineDiagram(&'a TimelineDiagramLayout),
@@ -261,6 +272,7 @@ impl BuiltinFamilyArtifact {
             Self::Mindmap(_) => RenderFamilyKind::Mindmap,
             Self::State(_) => RenderFamilyKind::State,
             Self::Sequence(_) => RenderFamilyKind::Sequence,
+            Self::Zenuml(_) => RenderFamilyKind::Zenuml,
             Self::Flowchart(_) => RenderFamilyKind::Flowchart,
             Self::Swimlane(_) => RenderFamilyKind::Swimlane,
             #[cfg(feature = "cytoscape-layout")]
@@ -303,6 +315,7 @@ impl BuiltinFamilyArtifact {
             Self::Mindmap(pair) => pair.compatibility_json(metadata),
             Self::State(pair) => pair.compatibility_json(metadata),
             Self::Sequence(pair) => pair.compatibility_json(metadata),
+            Self::Zenuml(pair) => pair.compatibility_json(metadata),
             Self::Flowchart(pair) => pair.compatibility_json(metadata),
             Self::Swimlane(pair) => pair.compatibility_json(metadata),
             #[cfg(feature = "cytoscape-layout")]
@@ -342,6 +355,7 @@ impl BuiltinFamilyArtifact {
             Self::Mindmap(pair) => LayoutProjection::MindmapDiagram(pair.layout()),
             Self::State(pair) => LayoutProjection::StateDiagram(pair.layout()),
             Self::Sequence(pair) => LayoutProjection::SequenceDiagram(pair.layout()),
+            Self::Zenuml(pair) => LayoutProjection::ZenumlDiagram(pair.layout()),
             Self::Flowchart(pair) => LayoutProjection::Flowchart(pair.layout()),
             Self::Swimlane(pair) => LayoutProjection::SwimlaneDiagram(pair.layout()),
             #[cfg(feature = "cytoscape-layout")]
@@ -652,6 +666,9 @@ pub fn prepare(
             .resource_limits()
             .check_flowchart_complexity(model)?;
     }
+    if let RenderSemanticModel::Zenuml(model) = &model {
+        session.resource_limits().check_zenuml_complexity(model)?;
+    }
 
     let execution = LayoutExecution::new(options, &session);
     let effective_config = meta.effective_config.as_value();
@@ -700,6 +717,11 @@ pub fn prepare(
                     execution.text_measurer(),
                     execution.math_renderer(),
                 )
+            })?)
+        }
+        RenderSemanticModel::Zenuml(model) => {
+            BuiltinFamilyArtifact::Zenuml(prepare_pair(model, |model| {
+                crate::zenuml::layout_zenuml_diagram_typed(model, execution.text_measurer())
             })?)
         }
         RenderSemanticModel::Flowchart(model)

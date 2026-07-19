@@ -1,4 +1,5 @@
 use merman_core::diagrams::flowchart::FlowchartModel;
+use merman_core::diagrams::zenuml::{ZenumlDiagramRenderModel, ZenumlStatementKind};
 use merman_core::models::class_diagram::ClassDiagram;
 
 const KIB: usize = 1024;
@@ -22,6 +23,9 @@ pub struct RenderResourceLimits {
     pub max_class_nodes: Option<usize>,
     pub max_class_edges: Option<usize>,
     pub max_class_namespaces: Option<usize>,
+    pub max_zenuml_participants: Option<usize>,
+    pub max_zenuml_statements: Option<usize>,
+    pub max_zenuml_fragments: Option<usize>,
     pub max_label_bytes: Option<usize>,
 }
 
@@ -42,6 +46,9 @@ impl RenderResourceLimits {
             max_class_nodes: Some(8_000),
             max_class_edges: Some(16_000),
             max_class_namespaces: Some(2_000),
+            max_zenuml_participants: Some(8_000),
+            max_zenuml_statements: Some(16_000),
+            max_zenuml_fragments: Some(2_000),
             max_label_bytes: Some(2 * MIB),
         }
     }
@@ -56,6 +63,9 @@ impl RenderResourceLimits {
             max_class_nodes: Some(4_000),
             max_class_edges: Some(8_000),
             max_class_namespaces: Some(1_000),
+            max_zenuml_participants: Some(4_000),
+            max_zenuml_statements: Some(8_000),
+            max_zenuml_fragments: Some(1_000),
             max_label_bytes: Some(MIB),
         }
     }
@@ -70,6 +80,9 @@ impl RenderResourceLimits {
             max_class_nodes: Some(50_000),
             max_class_edges: Some(100_000),
             max_class_namespaces: Some(10_000),
+            max_zenuml_participants: Some(50_000),
+            max_zenuml_statements: Some(100_000),
+            max_zenuml_fragments: Some(10_000),
             max_label_bytes: Some(16 * MIB),
         }
     }
@@ -84,6 +97,9 @@ impl RenderResourceLimits {
             max_class_nodes: None,
             max_class_edges: None,
             max_class_namespaces: None,
+            max_zenuml_participants: None,
+            max_zenuml_statements: None,
+            max_zenuml_fragments: None,
             max_label_bytes: None,
         }
     }
@@ -177,6 +193,38 @@ impl RenderResourceLimits {
         )?;
         Ok(complexity)
     }
+
+    pub fn check_zenuml_complexity(
+        &self,
+        model: &ZenumlDiagramRenderModel,
+    ) -> Result<ZenumlComplexity, ResourceLimitExceeded> {
+        let complexity = ZenumlComplexity::from_model(model);
+        check_limit(
+            ResourceLimitPhase::LayoutModel,
+            "max_zenuml_participants",
+            complexity.participants,
+            self.max_zenuml_participants,
+        )?;
+        check_limit(
+            ResourceLimitPhase::LayoutModel,
+            "max_zenuml_statements",
+            complexity.statements,
+            self.max_zenuml_statements,
+        )?;
+        check_limit(
+            ResourceLimitPhase::LayoutModel,
+            "max_zenuml_fragments",
+            complexity.fragments,
+            self.max_zenuml_fragments,
+        )?;
+        check_limit(
+            ResourceLimitPhase::LayoutModel,
+            "max_label_bytes",
+            complexity.label_bytes,
+            self.max_label_bytes,
+        )?;
+        Ok(complexity)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -229,6 +277,142 @@ pub struct ClassComplexity {
     pub edges: usize,
     pub namespaces: usize,
     pub label_bytes: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ZenumlComplexity {
+    pub participants: usize,
+    pub statements: usize,
+    pub fragments: usize,
+    pub label_bytes: usize,
+}
+
+impl ZenumlComplexity {
+    pub fn from_model(model: &ZenumlDiagramRenderModel) -> Self {
+        let common_label_bytes = [
+            model.title.as_deref(),
+            model.acc_title.as_deref(),
+            model.acc_descr.as_deref(),
+            model.starter.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .fold(0usize, |total, value| total.saturating_add(value.len()));
+        let participant_label_bytes =
+            model
+                .participants
+                .iter()
+                .fold(0usize, |total, participant| {
+                    [
+                        Some(participant.name.as_str()),
+                        participant.label.as_deref(),
+                        participant.participant_type.as_deref(),
+                        participant.stereotype.as_deref(),
+                        participant.emoji.as_deref(),
+                        participant.color.as_deref(),
+                        participant.group_id.as_deref(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .fold(total, |subtotal, value| {
+                        subtotal.saturating_add(value.len())
+                    })
+                });
+        let group_label_bytes = model.groups.iter().fold(0usize, |total, group| {
+            group
+                .participant_names
+                .iter()
+                .fold(total.saturating_add(group.id.len()), |subtotal, name| {
+                    subtotal.saturating_add(name.len())
+                })
+        });
+        let mut complexity = Self {
+            participants: model.participants.len(),
+            statements: 0,
+            fragments: 0,
+            label_bytes: common_label_bytes
+                .saturating_add(participant_label_bytes)
+                .saturating_add(group_label_bytes),
+        };
+        let mut pending = vec![model.statements.as_slice()];
+        while let Some(statements) = pending.pop() {
+            for statement in statements {
+                complexity.statements = complexity.statements.saturating_add(1);
+                complexity.label_bytes = complexity
+                    .label_bytes
+                    .saturating_add(statement.comment.as_deref().map_or(0, str::len));
+                match &statement.kind {
+                    ZenumlStatementKind::Message {
+                        from,
+                        to,
+                        label,
+                        assignment,
+                        body,
+                        ..
+                    } => {
+                        complexity.label_bytes = complexity
+                            .label_bytes
+                            .saturating_add(from.len())
+                            .saturating_add(to.len())
+                            .saturating_add(label.len())
+                            .saturating_add(assignment.as_deref().map_or(0, str::len));
+                        pending.push(body);
+                    }
+                    ZenumlStatementKind::Creation {
+                        from,
+                        to,
+                        constructor,
+                        assignment,
+                        label,
+                        body,
+                    } => {
+                        complexity.label_bytes = complexity
+                            .label_bytes
+                            .saturating_add(from.len())
+                            .saturating_add(to.len())
+                            .saturating_add(constructor.len())
+                            .saturating_add(assignment.as_deref().map_or(0, str::len))
+                            .saturating_add(label.len());
+                        pending.push(body);
+                    }
+                    ZenumlStatementKind::Return { from, to, label } => {
+                        complexity.label_bytes = complexity
+                            .label_bytes
+                            .saturating_add(from.len())
+                            .saturating_add(to.len())
+                            .saturating_add(label.len());
+                    }
+                    ZenumlStatementKind::Fragment {
+                        label, sections, ..
+                    } => {
+                        complexity.fragments = complexity.fragments.saturating_add(1);
+                        complexity.label_bytes = complexity
+                            .label_bytes
+                            .saturating_add(label.as_deref().map_or(0, str::len));
+                        for section in sections {
+                            complexity.label_bytes = complexity
+                                .label_bytes
+                                .saturating_add(section.label.as_deref().map_or(0, str::len));
+                            pending.push(&section.statements);
+                        }
+                    }
+                    ZenumlStatementKind::Reference {
+                        participants,
+                        label,
+                    } => {
+                        complexity.label_bytes = participants.iter().fold(
+                            complexity.label_bytes.saturating_add(label.len()),
+                            |total, participant| total.saturating_add(participant.len()),
+                        );
+                    }
+                    ZenumlStatementKind::Divider { label } => {
+                        complexity.label_bytes = complexity.label_bytes.saturating_add(label.len());
+                    }
+                }
+            }
+        }
+        complexity
+    }
 }
 
 impl ClassComplexity {
@@ -395,6 +579,12 @@ fn check_limit(
 mod tests {
     use super::*;
     use merman_core::diagrams::flowchart::{FlowEdge, FlowNode, FlowSubgraph};
+    use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+    struct ZenumlLimitCase {
+        name: &'static str,
+        configure: fn(&mut RenderResourceLimits),
+    }
 
     #[test]
     fn source_limit_reports_structured_error() {
@@ -409,6 +599,65 @@ mod tests {
         assert_eq!(err.limit, "max_source_bytes");
         assert_eq!(err.actual, 5);
         assert_eq!(err.max, 4);
+    }
+
+    #[test]
+    fn zenuml_complexity_includes_common_and_inline_decorations() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "zenuml\naccTitle: Access title\naccDescr: Access description\nA->[rocket]B.call()\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Zenuml(model) = parsed.model else {
+            panic!("expected ZenUML model");
+        };
+        let complexity = ZenumlComplexity::from_model(&model);
+
+        assert_eq!(complexity.participants, 2);
+        assert_eq!(complexity.statements, 1);
+        let required = ["Access title", "Access description", "rocket", "call()"]
+            .into_iter()
+            .map(str::len)
+            .sum::<usize>();
+        assert!(complexity.label_bytes >= required);
+    }
+
+    #[test]
+    fn zenuml_structural_limits_are_owned_and_independent() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "zenuml\nA.call() {\n  if(ok) {\n    B.work()\n  }\n}\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Zenuml(model) = parsed.model else {
+            panic!("expected ZenUML model");
+        };
+
+        let cases = [
+            ZenumlLimitCase {
+                name: "max_zenuml_participants",
+                configure: |limits| limits.max_zenuml_participants = Some(1),
+            },
+            ZenumlLimitCase {
+                name: "max_zenuml_statements",
+                configure: |limits| limits.max_zenuml_statements = Some(1),
+            },
+            ZenumlLimitCase {
+                name: "max_zenuml_fragments",
+                configure: |limits| limits.max_zenuml_fragments = Some(0),
+            },
+        ];
+        for case in cases {
+            let mut limits = RenderResourceLimits::unbounded_for_trusted_input();
+            (case.configure)(&mut limits);
+            let error = limits.check_zenuml_complexity(&model).unwrap_err();
+            assert_eq!(error.phase, ResourceLimitPhase::LayoutModel);
+            assert_eq!(error.limit, case.name);
+        }
     }
 
     #[test]

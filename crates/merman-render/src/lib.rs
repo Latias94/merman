@@ -60,6 +60,7 @@ mod trig_tables;
 pub mod venn;
 pub mod wardley;
 pub mod xychart;
+pub mod zenuml;
 
 pub(crate) use host_time::{Duration, Instant};
 
@@ -69,7 +70,7 @@ use merman_core::models::class_diagram::ClassDiagram;
 
 pub use resources::{
     ClassComplexity, FlowchartComplexity, RenderResourceLimits, RenderResourceProfile,
-    ResourceLimitExceeded, ResourceLimitPhase,
+    ResourceLimitExceeded, ResourceLimitPhase, ZenumlComplexity,
 };
 
 #[derive(Debug, thiserror::Error)]

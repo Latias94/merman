@@ -1,12 +1,23 @@
+mod source_edit_map;
+
+pub use source_edit_map::PreprocessedSource;
+
 use crate::{DetectorRegistry, Error, MermaidConfig, Result};
 use serde_json::{Map, Value};
+use source_edit_map::{ReplacementMapping, SourceEdit};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
 pub struct PreprocessResult {
-    pub code: String,
+    pub source: PreprocessedSource,
     pub title: Option<String>,
     pub config: MermaidConfig,
+}
+
+impl PreprocessResult {
+    pub fn code(&self) -> &str {
+        self.source.text()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +46,8 @@ pub fn preprocess_diagram_with_known_type(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
-    preprocess_single_pass(input, registry, diagram_type).map(prepare_parser_code)
+    preprocess_single_pass(PreprocessedSource::new(input), registry, diagram_type)
+        .map(prepare_parser_code)
 }
 
 pub(crate) fn preprocess_mermaid_public_parse_pipeline(
@@ -43,87 +55,131 @@ pub(crate) fn preprocess_mermaid_public_parse_pipeline(
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
-    let outer = preprocess_single_pass(input, registry, diagram_type)?;
+    let outer = preprocess_single_pass(PreprocessedSource::new(input), registry, diagram_type)?;
     // Mermaid `parse()` calls `preprocessDiagram()` in `processAndSetConfigs()` and again in
     // `getDiagramFromText()`. Only `Diagram.fromText()` prepares entities for the family parser.
-    let inner = preprocess_single_pass(&outer.code, registry, diagram_type)?;
+    let inner = preprocess_single_pass(outer.source, registry, diagram_type)?;
     Ok(PreprocessResult {
-        code: prepare_parser_text(inner.code),
+        source: prepare_parser_text(inner.source),
         title: outer.title,
         config: outer.config,
     })
 }
 
 fn preprocess_single_pass(
-    input: &str,
+    mut source: PreprocessedSource,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
 ) -> Result<PreprocessResult> {
-    let cleaned = cleanup_text(input);
-    let (without_frontmatter, title, mut frontmatter_config) =
-        process_frontmatter(cleaned.as_ref())?;
-    let (without_directives, directive_config) =
-        process_directives(without_frontmatter, registry, diagram_type)?;
+    cleanup_text(&mut source);
+    let (frontmatter_len, title, mut frontmatter_config) = {
+        let (without_frontmatter, title, config) = process_frontmatter(source.text())?;
+        (
+            source.text().len() - without_frontmatter.len(),
+            title,
+            config,
+        )
+    };
+    if frontmatter_len > 0 {
+        source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)]);
+    }
+
+    let (directive_config, directive_removals) =
+        process_directives(source.text(), registry, diagram_type)?;
+    source.apply_edits(
+        directive_removals
+            .into_iter()
+            .map(SourceEdit::delete)
+            .collect(),
+    );
 
     frontmatter_config.deep_merge(directive_config.as_value());
 
-    let code = crate::utils::cleanup_mermaid_comments(without_directives.as_ref());
+    remove_mermaid_comments(&mut source);
     Ok(PreprocessResult {
-        code: code.into_owned(),
+        source,
         title,
         config: frontmatter_config,
     })
 }
 
 fn prepare_parser_code(mut preprocessed: PreprocessResult) -> PreprocessResult {
-    preprocessed.code = prepare_parser_text(preprocessed.code);
+    preprocessed.source = prepare_parser_text(preprocessed.source);
     preprocessed
 }
 
-fn prepare_parser_text(code: String) -> String {
-    if code.contains('#') {
-        encode_mermaid_entities_like_upstream(&code)
-    } else {
-        code
+fn prepare_parser_text(mut source: PreprocessedSource) -> PreprocessedSource {
+    if source.text().contains('#') {
+        encode_mermaid_entities_like_upstream(&mut source);
     }
+    source
 }
 
-fn cleanup_text(input: &str) -> Cow<'_, str> {
-    let mut s: Cow<'_, str> = if input.contains('\r') {
-        Cow::Owned(normalize_crlf(input))
-    } else {
-        Cow::Borrowed(input)
-    };
+fn cleanup_text(source: &mut PreprocessedSource) {
+    normalize_crlf(source);
 
     // Mermaid performs this HTML attribute rewrite as part of preprocessing.
-    if s.contains('<') && s.contains("=\"") {
-        s = Cow::Owned(normalize_html_tag_attributes_like_upstream(s.as_ref()));
+    if source.text().contains('<') && source.text().contains("=\"") {
+        normalize_html_tag_attributes_like_upstream(source);
     }
-
-    s
 }
 
-fn normalize_crlf(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\r' {
-            out.push('\n');
-            if chars.peek() == Some(&'\n') {
-                chars.next();
+fn remove_mermaid_comments(source: &mut PreprocessedSource) {
+    if source.text().contains("%%") {
+        let mut edits = Vec::new();
+        let mut line_start = 0usize;
+        for line in source.text().split_inclusive('\n') {
+            let trimmed = line.trim_start();
+            if let Some(after_marker) = trimmed.strip_prefix("%%") {
+                let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
+                if !after_marker.starts_with('{') && has_comment_body {
+                    edits.push(SourceEdit::delete(line_start..line_start + line.len()));
+                }
             }
+            line_start += line.len();
+        }
+        source.apply_edits(edits);
+    }
+
+    let trimmed_len = source.text().trim_start().len();
+    let leading_whitespace = source.text().len() - trimmed_len;
+    if leading_whitespace > 0 {
+        source.apply_edits(vec![SourceEdit::delete(0..leading_whitespace)]);
+    }
+}
+
+fn normalize_crlf(source: &mut PreprocessedSource) {
+    if !source.text().contains('\r') {
+        return;
+    }
+    let bytes = source.text().as_bytes();
+    let mut edits = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < bytes.len() {
+        if bytes[cursor] == b'\r' {
+            let end = cursor + usize::from(bytes.get(cursor + 1) == Some(&b'\n')) + 1;
+            edits.push(SourceEdit::replace(
+                cursor..end,
+                "\n",
+                if end - cursor == 1 {
+                    ReplacementMapping::ExactBytes
+                } else {
+                    ReplacementMapping::Boundaries
+                },
+            ));
+            cursor = end;
         } else {
-            out.push(ch);
+            cursor += 1;
         }
     }
-    out
+    source.apply_edits(edits);
 }
 
-fn normalize_html_tag_attributes_like_upstream(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
+fn normalize_html_tag_attributes_like_upstream(source: &mut PreprocessedSource) {
+    let text = source.text();
     let bytes = text.as_bytes();
-    let mut cursor = 0usize;
     let mut probe = 0usize;
+    let mut edits = Vec::new();
 
     while let Some(rel_start) = text[probe..].find('<') {
         let start = probe + rel_start;
@@ -144,25 +200,20 @@ fn normalize_html_tag_attributes_like_upstream(text: &str) -> String {
         };
         let end = tag_end + rel_end;
 
-        out.push_str(&text[cursor..start]);
-        out.push('<');
-        out.push_str(&text[tag_start..tag_end]);
-        out.push_str(&normalize_html_attributes_like_upstream(
-            &text[tag_end..end],
-        ));
-        out.push('>');
+        html_attribute_quote_edits(text, tag_end, end, &mut edits);
 
-        cursor = end + 1;
         probe = end + 1;
     }
-
-    out.push_str(&text[cursor..]);
-    out
+    source.apply_edits(edits);
 }
 
-fn normalize_html_attributes_like_upstream(attributes: &str) -> String {
-    let mut out = String::with_capacity(attributes.len());
-    let mut cursor = 0usize;
+fn html_attribute_quote_edits(
+    text: &str,
+    attributes_start: usize,
+    attributes_end: usize,
+    edits: &mut Vec<SourceEdit>,
+) {
+    let attributes = &text[attributes_start..attributes_end];
     let mut probe = 0usize;
 
     while let Some(rel_start) = attributes[probe..].find("=\"") {
@@ -174,22 +225,26 @@ fn normalize_html_attributes_like_upstream(attributes: &str) -> String {
         };
         let end = value_start + rel_end;
 
-        out.push_str(&attributes[cursor..start]);
-        out.push_str("='");
-        out.push_str(&attributes[value_start..end]);
-        out.push('\'');
+        let opening_quote = attributes_start + start + 1;
+        let closing_quote = attributes_start + end;
+        edits.push(SourceEdit::replace(
+            opening_quote..opening_quote + 1,
+            "'",
+            ReplacementMapping::ExactBytes,
+        ));
+        edits.push(SourceEdit::replace(
+            closing_quote..closing_quote + 1,
+            "'",
+            ReplacementMapping::ExactBytes,
+        ));
 
-        cursor = end + 1;
         probe = end + 1;
     }
-
-    out.push_str(&attributes[cursor..]);
-    out
 }
 
-fn encode_mermaid_entities_like_upstream(text: &str) -> String {
-    if !text.contains('#') {
-        return text.to_string();
+fn encode_mermaid_entities_like_upstream(source: &mut PreprocessedSource) {
+    if !source.text().contains('#') {
+        return;
     }
 
     // Mirrors Mermaid `encodeEntities` (Mermaid@11.12.2):
@@ -197,27 +252,24 @@ fn encode_mermaid_entities_like_upstream(text: &str) -> String {
     // 1) Protect `style...:#...;` and `classDef...:#...;` so color hex fragments are not mistaken
     //    as entities by the `/#\\w+;/g` pass.
     // 2) Encode `#<name>;` and `#<number>;` sequences into placeholders that do not contain `#`/`;`.
-    let mut txt = text.to_string();
-
-    if txt.contains("style") && txt.contains(';') {
-        txt = strip_hex_style_semicolons_like_upstream(&txt, "style");
+    if source.text().contains("style") && source.text().contains(';') {
+        strip_hex_style_semicolons_like_upstream(source, "style");
     }
 
-    if txt.contains("classDef") && txt.contains(';') {
-        txt = strip_hex_style_semicolons_like_upstream(&txt, "classDef");
+    if source.text().contains("classDef") && source.text().contains(';') {
+        strip_hex_style_semicolons_like_upstream(source, "classDef");
     }
 
-    if txt.contains(';') {
-        txt = encode_entity_placeholders_like_upstream(&txt);
+    if source.text().contains(';') {
+        encode_entity_placeholders_like_upstream(source);
     }
-
-    txt
 }
 
-fn encode_entity_placeholders_like_upstream(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
+fn encode_entity_placeholders_like_upstream(source: &mut PreprocessedSource) {
+    let text = source.text();
     let bytes = text.as_bytes();
     let mut cursor = 0usize;
+    let mut edits = Vec::new();
 
     while let Some(rel_hash) = text[cursor..].find('#') {
         let start = cursor + rel_hash;
@@ -227,53 +279,68 @@ fn encode_entity_placeholders_like_upstream(text: &str) -> String {
         }
 
         if end > start + 1 && bytes.get(end) == Some(&b';') {
-            out.push_str(&text[cursor..start]);
             let inner = &text[start + 1..end];
-            if inner.bytes().all(|b| b.is_ascii_digit()) {
-                out.push_str("ﬂ°°");
+            let prefix = if inner.bytes().all(|b| b.is_ascii_digit()) {
+                "ﬂ°°"
             } else {
-                out.push_str("ﬂ°");
-            }
-            out.push_str(inner);
-            out.push_str("¶ß");
+                "ﬂ°"
+            };
+            edits.push(SourceEdit::replace(
+                start..start + 1,
+                prefix,
+                ReplacementMapping::Boundaries,
+            ));
+            edits.push(SourceEdit::replace(
+                end..end + 1,
+                "¶ß",
+                ReplacementMapping::Boundaries,
+            ));
             cursor = end + 1;
         } else {
-            out.push_str(&text[cursor..=start]);
             cursor = start + 1;
         }
     }
-
-    out.push_str(&text[cursor..]);
-    out
+    source.apply_edits(edits);
 }
 
 fn is_mermaid_js_word_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
-fn strip_hex_style_semicolons_like_upstream(text: &str, keyword: &str) -> String {
-    let mut out = String::with_capacity(text.len());
+fn strip_hex_style_semicolons_like_upstream(source: &mut PreprocessedSource, keyword: &str) {
+    let text = source.text();
+    let mut edits = Vec::new();
     let mut line_start = 0usize;
 
     for (idx, ch) in text.char_indices() {
         if ch == '\n' {
-            strip_hex_style_semicolons_from_line(&text[line_start..idx], keyword, &mut out);
-            out.push('\n');
+            collect_hex_style_semicolon_edits(
+                &text[line_start..idx],
+                line_start,
+                keyword,
+                &mut edits,
+            );
             line_start = idx + ch.len_utf8();
         }
     }
 
-    strip_hex_style_semicolons_from_line(&text[line_start..], keyword, &mut out);
-    out
+    collect_hex_style_semicolon_edits(&text[line_start..], line_start, keyword, &mut edits);
+    source.apply_edits(edits);
 }
 
-fn strip_hex_style_semicolons_from_line(line: &str, keyword: &str, out: &mut String) {
+fn collect_hex_style_semicolon_edits(
+    line: &str,
+    line_start: usize,
+    keyword: &str,
+    edits: &mut Vec<SourceEdit>,
+) {
     let mut cursor = 0usize;
     while let Some(semicolon) = find_hex_style_match(line, keyword, cursor) {
-        out.push_str(&line[cursor..semicolon]);
+        edits.push(SourceEdit::delete(
+            line_start + semicolon..line_start + semicolon + 1,
+        ));
         cursor = semicolon + 1;
     }
-    out.push_str(&line[cursor..]);
 }
 
 fn find_hex_style_match(line: &str, keyword: &str, search_start: usize) -> Option<usize> {
@@ -524,14 +591,14 @@ fn merge_top_level_frontmatter_diagram_configs(
     }
 }
 
-fn process_directives<'a>(
-    input: &'a str,
+fn process_directives(
+    input: &str,
     registry: &DetectorRegistry,
     diagram_type: Option<&str>,
-) -> Result<(Cow<'a, str>, MermaidConfig)> {
+) -> Result<(MermaidConfig, Vec<std::ops::Range<usize>>)> {
     let directives = detect_directives(input)?;
     if directives.is_empty() {
-        return Ok((Cow::Borrowed(input), MermaidConfig::empty_object()));
+        return Ok((MermaidConfig::empty_object(), Vec::new()));
     }
     let init = detect_init(&directives, input, registry, diagram_type)?;
     let wrap = directives.iter().any(|d| d.ty == "wrap");
@@ -541,7 +608,7 @@ fn process_directives<'a>(
         merged.set_value("wrap", Value::Bool(true));
     }
 
-    Ok((Cow::Owned(remove_directives(input)), merged))
+    Ok((merged, directive_removal_ranges(input)))
 }
 
 fn detect_init(
@@ -877,22 +944,22 @@ fn directive_value_at_path_mut<'a>(
     Some(value)
 }
 
-fn remove_directives(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
+fn directive_removal_ranges(text: &str) -> Vec<std::ops::Range<usize>> {
+    let mut ranges = Vec::new();
     let mut pos = 0;
     while let Some(rel) = text[pos..].find("%%{") {
         let start = pos + rel;
-        out.push_str(&text[pos..start]);
         let after_start = start + 3;
         if let Some(rel_end) = text[after_start..].find("}%%") {
             let end = after_start + rel_end + 3;
+            ranges.push(start..end);
             pos = end;
         } else {
-            return out;
+            ranges.push(start..text.len());
+            return ranges;
         }
     }
-    out.push_str(&text[pos..]);
-    out
+    ranges
 }
 
 fn parse_directive(raw: &str) -> Result<Option<Directive>> {
@@ -1048,65 +1115,108 @@ mod tests {
     use super::*;
     use serde_json::{Map, json};
 
+    fn transformed(input: &str, transform: fn(&mut PreprocessedSource)) -> String {
+        let mut source = PreprocessedSource::new(input);
+        transform(&mut source);
+        source.into_text()
+    }
+
     #[test]
     fn normalize_crlf_matches_mermaid_line_ending_cleanup() {
         assert_eq!(
-            normalize_crlf("flowchart TD\r\nA-->B\rC-->D\n"),
+            transformed("flowchart TD\r\nA-->B\rC-->D\n", normalize_crlf),
             "flowchart TD\nA-->B\nC-->D\n"
         );
-        assert_eq!(normalize_crlf("\r\r\n\n"), "\n\n\n");
+        assert_eq!(transformed("\r\r\n\n", normalize_crlf), "\n\n\n");
     }
 
     #[test]
     fn normalize_html_tag_attributes_matches_mermaid_cleanup_shape() {
         assert_eq!(
-            normalize_html_tag_attributes_like_upstream(
-                r#"<span title="A" data-empty="">Label</span><br disabled="yes">"#
+            transformed(
+                r#"<span title="A" data-empty="">Label</span><br disabled="yes">"#,
+                normalize_html_tag_attributes_like_upstream,
             ),
             r#"<span title='A' data-empty=''>Label</span><br disabled='yes'>"#
         );
         assert_eq!(
-            normalize_html_tag_attributes_like_upstream(r#"<é title="A"><_x value="B"><1 n="C">"#),
+            transformed(
+                r#"<é title="A"><_x value="B"><1 n="C">"#,
+                normalize_html_tag_attributes_like_upstream,
+            ),
             r#"<é title="A"><_x value='B'><1 n='C'>"#
         );
         assert_eq!(
-            normalize_html_tag_attributes_like_upstream(r#"<span a="x" title="A>B">"#),
+            transformed(
+                r#"<span a="x" title="A>B">"#,
+                normalize_html_tag_attributes_like_upstream,
+            ),
             r#"<span a='x' title="A>B">"#
         );
         assert_eq!(
-            normalize_html_tag_attributes_like_upstream(r#"<<span title="A">"#),
+            transformed(
+                r#"<<span title="A">"#,
+                normalize_html_tag_attributes_like_upstream,
+            ),
             r#"<<span title='A'>"#
         );
     }
 
     #[test]
+    fn normalize_html_attribute_quotes_keep_exact_unicode_source_spans() {
+        let original = r#"flowchart TD
+A["<span title="😀">Label</span>"]
+"#;
+        let mut source = PreprocessedSource::new(original);
+        normalize_html_tag_attributes_like_upstream(&mut source);
+
+        assert!(source.text().contains("title='😀'"));
+        let emoji = source.text().find('😀').unwrap();
+        let mapped = source
+            .try_map_span(crate::SourceSpan::new(emoji, emoji + '😀'.len_utf8()))
+            .expect("normalized attribute value span");
+        assert_eq!(&original[mapped.start..mapped.end], "😀");
+    }
+
+    #[test]
     fn encode_entity_placeholders_matches_mermaid_ascii_word_shape() {
         assert_eq!(
-            encode_mermaid_entities_like_upstream("Hello #there; #andHere;#77653;"),
+            transformed(
+                "Hello #there; #andHere;#77653;",
+                encode_mermaid_entities_like_upstream,
+            ),
             "Hello ﬂ°there¶ß ﬂ°andHere¶ßﬂ°°77653¶ß"
         );
         assert_eq!(
-            encode_mermaid_entities_like_upstream(
-                "style this; is ; everything :something#not-nothing; and this too;"
+            transformed(
+                "style this; is ; everything :something#not-nothing; and this too;",
+                encode_mermaid_entities_like_upstream,
             ),
             "style this; is ; everything :something#not-nothing; and this too"
         );
         assert_eq!(
-            encode_mermaid_entities_like_upstream(
-                "classDef this; is ; everything :something#not-nothing; and this too;"
+            transformed(
+                "classDef this; is ; everything :something#not-nothing; and this too;",
+                encode_mermaid_entities_like_upstream,
             ),
             "classDef this; is ; everything :something#not-nothing; and this too"
         );
         assert_eq!(
-            encode_mermaid_entities_like_upstream("style a fill:#fff; style b fill:#000;"),
+            transformed(
+                "style a fill:#fff; style b fill:#000;",
+                encode_mermaid_entities_like_upstream,
+            ),
             "style a fill:ﬂ°fff¶ß style b fill:#000"
         );
         assert_eq!(
-            encode_mermaid_entities_like_upstream("style a fill: #fff;"),
+            transformed("style a fill: #fff;", encode_mermaid_entities_like_upstream,),
             "style a fill: ﬂ°fff¶ß"
         );
         assert_eq!(
-            encode_mermaid_entities_like_upstream("#é; #+123; #has-dash;"),
+            transformed(
+                "#é; #+123; #has-dash;",
+                encode_mermaid_entities_like_upstream,
+            ),
             "#é; #+123; #has-dash;"
         );
     }

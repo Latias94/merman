@@ -275,6 +275,7 @@ pub enum RenderSemanticModel {
     Mindmap(crate::diagrams::mindmap::MindmapDiagramRenderModel),
     State(crate::diagrams::state::StateDiagramRenderModel),
     Sequence(crate::diagrams::sequence::SequenceDiagramRenderModel),
+    Zenuml(crate::diagrams::zenuml::ZenumlDiagramRenderModel),
     Flowchart(crate::diagrams::flowchart::FlowchartModel),
     Architecture(crate::diagrams::architecture::ArchitectureDiagramRenderModel),
     Class(crate::models::class_diagram::ClassDiagram),
@@ -343,6 +344,10 @@ impl_builtin_render_semantic!(
 impl_builtin_render_semantic!(
     crate::diagrams::sequence::SequenceDiagramRenderModel,
     crate::diagrams::sequence::render_model_to_compat_json
+);
+impl_builtin_render_semantic!(
+    crate::diagrams::zenuml::ZenumlDiagramRenderModel,
+    crate::diagrams::zenuml::render_model_to_compat_json
 );
 impl_builtin_render_semantic!(
     crate::diagrams::flowchart::FlowchartModel,
@@ -464,6 +469,7 @@ impl RenderSemanticModel {
             Self::Mindmap(_) => {}
             Self::State(v) => v.sanitize_common_db_fields(config),
             Self::Sequence(v) => v.sanitize_common_db_fields(config),
+            Self::Zenuml(v) => v.sanitize_common_db_fields(config),
             Self::Flowchart(v) => v.sanitize_common_db_fields(config),
             Self::Architecture(v) => v.sanitize_common_db_fields(config),
             Self::Class(v) => v.sanitize_common_db_fields(config),
@@ -543,6 +549,7 @@ impl RenderSemanticModel {
             Self::Mindmap(_) => "mindmap",
             Self::State(_) => "state",
             Self::Sequence(_) => "sequence",
+            Self::Zenuml(_) => "zenuml",
             Self::Flowchart(_) => "flowchart",
             Self::Architecture(_) => "architecture",
             Self::Class(_) => "class",
@@ -584,6 +591,7 @@ impl RenderSemanticModel {
             Self::Mindmap(model) => model.compatibility_json(meta),
             Self::State(model) => model.compatibility_json(meta),
             Self::Sequence(model) => model.compatibility_json(meta),
+            Self::Zenuml(model) => model.compatibility_json(meta),
             Self::Flowchart(model) => model.compatibility_json(meta),
             Self::Architecture(model) => model.compatibility_json(meta),
             Self::Class(model) => model.compatibility_json(meta),

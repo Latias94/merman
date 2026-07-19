@@ -1,134 +1,149 @@
 {
   "diagramType": "zenuml",
   "layout": {
-    "SequenceDiagram": {
-      "nodes": [
+    "ZenumlDiagram": {
+      "width": 206.9,
+      "height": 272.0,
+      "frameBorderLeft": 0.0,
+      "frameBorderRight": 0.0,
+      "participants": [
         {
-          "id": "actor-top-A",
-          "x": 75.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "_STARTER_",
+          "label": "",
+          "x": 50.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": true,
+          "showBottom": false,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "note-0",
-          "x": 75.0,
-          "y": 94.5,
-          "width": 294.0,
-          "height": 39.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note-2",
-          "x": 75.0,
-          "y": 219.5,
-          "width": 274.0,
-          "height": 39.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-A",
-          "x": 75.0,
-          "y": 367.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "A",
+          "label": "A",
+          "x": 156.9,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         }
       ],
-      "edges": [
+      "lifelines": [
         {
-          "id": "msg-1",
-          "from": "A",
-          "to": "A",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 160.0
-            },
-            {
-              "x": 76.0,
-              "y": 160.0
-            }
-          ],
-          "label": {
-            "x": 76.0,
-            "y": 129.0,
-            "width": 127.84,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "participantName": "_STARTER_",
+          "x": 50.0,
+          "topY": 68.0,
+          "bottomY": 284.0
         },
         {
-          "id": "msg-3",
-          "from": "A",
-          "to": "A",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 285.0
-            },
-            {
-              "x": 76.0,
-              "y": 285.0
-            }
-          ],
-          "label": {
-            "x": 76.0,
-            "y": 254.0,
-            "width": 127.84,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-A",
-          "from": "actor-top-A",
-          "to": "actor-bottom-A",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 65.0
-            },
-            {
-              "x": 75.0,
-              "y": 335.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "participantName": "A",
+          "x": 156.9,
+          "topY": 68.0,
+          "bottomY": 284.0
         }
       ],
-      "clusters": [],
+      "messages": [
+        {
+          "statementId": "zenuml-statement-0",
+          "number": "1",
+          "from": "_STARTER_",
+          "to": "A",
+          "fromX": 50.0,
+          "toX": 149.9,
+          "y": 107.5,
+          "label": "SyncMessage()",
+          "kind": "synchronous",
+          "isSelf": false
+        },
+        {
+          "statementId": "zenuml-statement-0-assignment-return",
+          "number": "1.1",
+          "from": "A",
+          "to": "_STARTER_",
+          "fromX": 149.9,
+          "toX": 51.0,
+          "y": 140.0,
+          "label": "a",
+          "kind": "return",
+          "isSelf": false
+        },
+        {
+          "statementId": "zenuml-statement-1",
+          "number": "2",
+          "from": "_STARTER_",
+          "to": "A",
+          "fromX": 50.0,
+          "toX": 149.9,
+          "y": 193.5,
+          "label": "SyncMessage()",
+          "kind": "synchronous",
+          "isSelf": false
+        },
+        {
+          "statementId": "zenuml-statement-1-assignment-return",
+          "number": "2.1",
+          "from": "A",
+          "to": "_STARTER_",
+          "fromX": 149.9,
+          "toX": 51.0,
+          "y": 226.0,
+          "label": "a",
+          "kind": "return",
+          "isSelf": false
+        }
+      ],
+      "occurrences": [
+        {
+          "statementId": "zenuml-statement-0",
+          "participantName": "A",
+          "x": 149.9,
+          "y": 106.0,
+          "width": 15.0,
+          "height": 36.0
+        },
+        {
+          "statementId": "zenuml-statement-1",
+          "participantName": "A",
+          "x": 149.9,
+          "y": 192.0,
+          "width": 15.0,
+          "height": 36.0
+        }
+      ],
+      "fragments": [],
+      "dividers": [],
+      "comments": [
+        {
+          "statementId": "zenuml-statement-0",
+          "x": 50.0,
+          "y": 87.0,
+          "text": "1. assign a variable from a sync message."
+        },
+        {
+          "statementId": "zenuml-statement-1",
+          "x": 50.0,
+          "y": 173.0,
+          "text": "1.1. optionally give the variable a type"
+        }
+      ],
+      "groups": [],
       "bounds": {
-        "min_x": -122.0,
-        "min_y": -10.0,
-        "max_x": 272.0,
-        "max_y": 411.0
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 206.9,
+        "max_y": 272.0
       }
     }
   }

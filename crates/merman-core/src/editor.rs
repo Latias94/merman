@@ -15,23 +15,6 @@ impl SourceSpan {
     }
 }
 
-/// Coordinate space used by spans in parser-produced editor facts.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EditorSpanCoordinateSpace {
-    /// Spans are byte offsets in the original source supplied by the caller.
-    #[default]
-    OriginalSource,
-    /// Spans are byte offsets in the parser input after preprocessing.
-    ParserInput,
-}
-
-impl EditorSpanCoordinateSpace {
-    pub fn is_original_source(self) -> bool {
-        matches!(self, Self::OriginalSource)
-    }
-}
-
 /// Protocol-independent symbol classification for editor-facing consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorSemanticKind {
@@ -254,7 +237,6 @@ pub enum EditorSemanticCompleteness {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
-    pub span_coordinate_space: EditorSpanCoordinateSpace,
     pub symbols: Vec<EditorSemanticSymbol>,
     pub directive_prefixes: Vec<String>,
     pub diagnostics: Vec<EditorSemanticDiagnostic>,
@@ -437,63 +419,6 @@ where
     }
 }
 
-#[cfg(test)]
-#[allow(clippy::items_after_test_module)] // Diagnostics tests stay next to their parser adapter.
-mod tests {
-    use super::lalrpop_parse_diagnostic;
-    use crate::ParseDiagnosticSpanKind;
-
-    #[test]
-    fn lalrpop_parse_diagnostic_preserves_unrecognized_token_span() {
-        let error = lalrpop_util::ParseError::<usize, &str, String>::UnrecognizedToken {
-            token: (3, "bad", 6),
-            expected: vec!["ID".to_string()],
-        };
-
-        let diagnostic = lalrpop_parse_diagnostic(&error, 10);
-
-        let span = diagnostic.span().expect("diagnostic span");
-        assert_eq!(span.start, 3);
-        assert_eq!(span.end, 6);
-        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
-        assert!(diagnostic.message().contains("\"bad\""));
-    }
-
-    #[test]
-    fn lalrpop_parse_diagnostic_preserves_eof_insertion_point() {
-        let error = lalrpop_util::ParseError::<usize, &str, String>::UnrecognizedEof {
-            location: 12,
-            expected: vec!["]".to_string()],
-        };
-
-        let diagnostic = lalrpop_parse_diagnostic(&error, 99);
-
-        let span = diagnostic.span().expect("diagnostic span");
-        assert_eq!(span.start, 12);
-        assert_eq!(span.end, 12);
-        assert_eq!(
-            diagnostic.span_kind(),
-            ParseDiagnosticSpanKind::InsertionPoint
-        );
-        assert!(diagnostic.message().contains("unexpected end of input"));
-    }
-
-    #[test]
-    fn lalrpop_parse_diagnostic_marks_user_errors_as_fallback() {
-        let error = lalrpop_util::ParseError::<usize, &str, String>::User {
-            error: "custom parse failure".to_string(),
-        };
-
-        let diagnostic = lalrpop_parse_diagnostic(&error, 8);
-
-        let span = diagnostic.span().expect("diagnostic span");
-        assert_eq!(span.start, 8);
-        assert_eq!(span.end, 8);
-        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
-        assert_eq!(diagnostic.message(), "custom parse failure");
-    }
-}
-
 fn format_expected_tokens(expected: &[String]) -> String {
     expected
         .iter()
@@ -570,4 +495,60 @@ fn humanize_token_name(token: &str) -> String {
     }
 
     out.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::lalrpop_parse_diagnostic;
+    use crate::ParseDiagnosticSpanKind;
+
+    #[test]
+    fn lalrpop_parse_diagnostic_preserves_unrecognized_token_span() {
+        let error = lalrpop_util::ParseError::<usize, &str, String>::UnrecognizedToken {
+            token: (3, "bad", 6),
+            expected: vec!["ID".to_string()],
+        };
+
+        let diagnostic = lalrpop_parse_diagnostic(&error, 10);
+
+        let span = diagnostic.span().expect("diagnostic span");
+        assert_eq!(span.start, 3);
+        assert_eq!(span.end, 6);
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+        assert!(diagnostic.message().contains("\"bad\""));
+    }
+
+    #[test]
+    fn lalrpop_parse_diagnostic_preserves_eof_insertion_point() {
+        let error = lalrpop_util::ParseError::<usize, &str, String>::UnrecognizedEof {
+            location: 12,
+            expected: vec!["]".to_string()],
+        };
+
+        let diagnostic = lalrpop_parse_diagnostic(&error, 99);
+
+        let span = diagnostic.span().expect("diagnostic span");
+        assert_eq!(span.start, 12);
+        assert_eq!(span.end, 12);
+        assert_eq!(
+            diagnostic.span_kind(),
+            ParseDiagnosticSpanKind::InsertionPoint
+        );
+        assert!(diagnostic.message().contains("unexpected end of input"));
+    }
+
+    #[test]
+    fn lalrpop_parse_diagnostic_marks_user_errors_as_fallback() {
+        let error = lalrpop_util::ParseError::<usize, &str, String>::User {
+            error: "custom parse failure".to_string(),
+        };
+
+        let diagnostic = lalrpop_parse_diagnostic(&error, 8);
+
+        let span = diagnostic.span().expect("diagnostic span");
+        assert_eq!(span.start, 8);
+        assert_eq!(span.end, 8);
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
+        assert_eq!(diagnostic.message(), "custom parse failure");
+    }
 }

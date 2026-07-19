@@ -300,13 +300,13 @@ fn bench_frontmatter_preprocess(c: &mut Criterion) {
                     Ok(v) => v,
                     Err(_) => return,
                 };
-                black_box(pre.code.len());
+                black_box(pre.code().len());
                 black_box(pre.title.as_deref().map_or(0, str::len));
                 black_box(pre.config.as_value().as_object().map_or(0, |map| map.len()));
             })
         });
 
-        black_box(pre.code.len());
+        black_box(pre.code().len());
         black_box(pre.title.as_deref().map_or(0, str::len));
         black_box(pre.config.as_value().as_object().map_or(0, |map| map.len()));
     }
@@ -497,7 +497,7 @@ fn bench_parse_typed(c: &mut Criterion) {
             title,
         };
 
-        if merman_core::diagrams::class::parse_class_typed(&pre.code, &meta).is_err() {
+        if merman_core::diagrams::class::parse_class_typed(pre.code(), &meta).is_err() {
             eprintln!("[bench][skip][parse_typed] {name}: parse_class_typed error");
             continue;
         }
@@ -528,7 +528,7 @@ fn bench_parse_typed(c: &mut Criterion) {
                     title,
                 };
 
-                let parsed = merman_core::diagrams::class::parse_class_typed(&pre.code, &meta);
+                let parsed = merman_core::diagrams::class::parse_class_typed(pre.code(), &meta);
                 let parsed = match parsed {
                     Ok(v) => v,
                     Err(_) => return,
@@ -575,12 +575,12 @@ fn bench_parse_typed_only(c: &mut Criterion) {
         };
 
         // Pre-check typed parse viability once to keep the bench stable.
-        if merman_core::diagrams::class::parse_class_typed(&pre.code, &meta).is_err() {
+        if merman_core::diagrams::class::parse_class_typed(pre.code(), &meta).is_err() {
             eprintln!("[bench][skip][parse_typed_only] {name}: parse_class_typed error");
             continue;
         }
 
-        let code = pre.code;
+        let code = pre.source.into_text();
         let meta = meta;
         group.bench_function(BenchmarkId::from_parameter(name), move |b| {
             b.iter(|| {

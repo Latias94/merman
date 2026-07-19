@@ -9,8 +9,6 @@ lalrpop_util::lalrpop_mod!(
 );
 
 // Mermaid 11.15.x sequence diagram constants (SequenceDB.LINETYPE / PLACEMENT).
-const LINETYPE_SOLID: i32 = 0;
-const LINETYPE_DOTTED: i32 = 1;
 const LINETYPE_NOTE: i32 = 2;
 const LINETYPE_LOOP_START: i32 = 10;
 const LINETYPE_LOOP_END: i32 = 11;
@@ -48,9 +46,6 @@ mod parse;
 mod render_model;
 
 use ast::Action;
-pub(crate) use ast::{
-    SequenceActionBuilder, SequenceControlKind, SequenceMessageKind, SequenceParticipantKind,
-};
 pub(crate) use lexer::{LexError, Tok};
 
 pub(crate) use parse::parse_sequence_json_and_editor_facts;

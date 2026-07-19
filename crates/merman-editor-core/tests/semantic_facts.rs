@@ -223,8 +223,8 @@ fn product_families_are_parser_backed_and_role_aware() {
             snippet: concat!(
                 "zenuml\n",
                 "title Login Flow\n",
-                "accTitle Login accessibility title\n",
-                "accDescr Login accessibility description\n",
+                "accTitle: Login accessibility title\n",
+                "accDescr: Login accessibility description\n",
                 "Alice\n",
                 "Bob\n",
                 "A as API\n",

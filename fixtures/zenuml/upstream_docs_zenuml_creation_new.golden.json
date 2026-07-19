@@ -1,46 +1,99 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "type": "zenuml",
     "title": null,
     "accTitle": null,
     "accDescr": null,
-    "actorOrder": [
-      "A1",
-      "A2"
-    ],
-    "actors": {
-      "A1": {
-        "name": "A1",
-        "description": "A1",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+    "starter": null,
+    "participants": [
+      {
+        "name": "_STARTER_",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": []
       },
-      "A2": {
+      {
+        "name": "A1",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 15,
+            "end": 17
+          }
+        ]
+      },
+      {
         "name": "A2",
-        "description": "A2(with, parameters)",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 26,
+            "end": 28
+          }
+        ]
       }
-    },
-    "messages": [],
-    "notes": [],
-    "boxes": [],
-    "createdActors": {
-      "A1": 0,
-      "A2": 0
-    },
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    ],
+    "groups": [],
+    "statements": [
+      {
+        "id": "zenuml-statement-0",
+        "number": "1",
+        "comment": null,
+        "span": {
+          "start": 11,
+          "end": 18
+        },
+        "kind": "creation",
+        "from": "_STARTER_",
+        "to": "A1",
+        "constructor": "A1",
+        "assignment": null,
+        "label": "«create» A1",
+        "body": []
+      },
+      {
+        "id": "zenuml-statement-1",
+        "number": "2",
+        "comment": null,
+        "span": {
+          "start": 22,
+          "end": 47
+        },
+        "kind": "creation",
+        "from": "_STARTER_",
+        "to": "A2",
+        "constructor": "A2",
+        "assignment": null,
+        "label": "«create» A2(with, parameters)",
+        "body": []
       }
-    }
+    ],
+    "type": "zenuml"
   }
 }

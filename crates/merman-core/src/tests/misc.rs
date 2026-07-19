@@ -1300,8 +1300,12 @@ fn render_semantic_model_kind_reports_canonical_names() {
 fn render_semantic_model_supports_diagram_type_aliases() {
     let sequence = render_model_for("sequenceDiagram\nAlice->>Bob: Hi");
     assert!(sequence.supports_diagram_type("sequence"));
-    assert!(sequence.supports_diagram_type("zenuml"));
+    assert!(!sequence.supports_diagram_type("zenuml"));
     assert!(!sequence.supports_diagram_type("flowchart-v2"));
+
+    let zenuml = render_model_for("zenuml\n@Starter(A)\nB.call()\n");
+    assert!(zenuml.supports_diagram_type("zenuml"));
+    assert!(!zenuml.supports_diagram_type("sequence"));
 
     let flowchart = render_model_for("flowchart TD\nA-->B");
     assert!(flowchart.supports_diagram_type("flowchart-v2"));

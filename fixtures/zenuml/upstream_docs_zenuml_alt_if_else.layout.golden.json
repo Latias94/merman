@@ -1,189 +1,126 @@
 {
   "diagramType": "zenuml",
   "layout": {
-    "SequenceDiagram": {
-      "nodes": [
+    "ZenumlDiagram": {
+      "width": 271.16,
+      "height": 330.0,
+      "frameBorderLeft": 10.0,
+      "frameBorderRight": 10.0,
+      "participants": [
         {
-          "id": "actor-top-Alice",
-          "x": 75.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "Alice",
+          "label": "Alice",
+          "x": 50.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "actor-top-Bob",
-          "x": 312.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Alice",
-          "x": 75.0,
-          "y": 335.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Bob",
-          "x": 312.0,
-          "y": 335.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "Bob",
+          "label": "Bob",
+          "x": 221.16,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         }
       ],
-      "edges": [
+      "lifelines": [
         {
-          "id": "msg-0",
+          "participantName": "Alice",
+          "x": 50.0,
+          "topY": 68.0,
+          "bottomY": 342.0
+        },
+        {
+          "participantName": "Bob",
+          "x": 221.16,
+          "topY": 68.0,
+          "bottomY": 342.0
+        }
+      ],
+      "messages": [
+        {
+          "statementId": "zenuml-statement-0",
+          "number": "1",
           "from": "Alice",
           "to": "Bob",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 111.0
-            },
-            {
-              "x": 308.0,
-              "y": 111.0
-            }
-          ],
-          "label": {
-            "x": 192.0,
-            "y": 80.0,
-            "width": 160.32,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 50.0,
+          "toX": 221.16,
+          "y": 87.5,
+          "label": "Hello Bob, how are you?",
+          "kind": "asynchronous",
+          "isSelf": false
         },
         {
-          "id": "msg-2",
+          "statementId": "zenuml-statement-2",
+          "number": "2.1.1",
           "from": "Bob",
           "to": "Alice",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 311.0,
-              "y": 202.0
-            },
-            {
-              "x": 79.0,
-              "y": 202.0
-            }
-          ],
-          "label": {
-            "x": 195.0,
-            "y": 171.0,
-            "width": 90.24,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 221.16,
+          "toX": 50.0,
+          "y": 181.5,
+          "label": "Not so good :(",
+          "kind": "asynchronous",
+          "isSelf": false
         },
         {
-          "id": "msg-4",
+          "statementId": "zenuml-statement-3",
+          "number": "2.2.1",
           "from": "Bob",
           "to": "Alice",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 311.0,
-              "y": 273.0
-            },
-            {
-              "x": 79.0,
-              "y": 273.0
-            }
-          ],
-          "label": {
-            "x": 195.0,
-            "y": 242.0,
-            "width": 167.04,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-Alice",
-          "from": "actor-top-Alice",
-          "to": "actor-bottom-Alice",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 65.0
-            },
-            {
-              "x": 75.0,
-              "y": 303.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-Bob",
-          "from": "actor-top-Bob",
-          "to": "actor-bottom-Bob",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 312.0,
-              "y": 65.0
-            },
-            {
-              "x": 312.0,
-              "y": 303.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 221.16,
+          "toX": 50.0,
+          "y": 258.5,
+          "label": "Feeling fresh like a daisy",
+          "kind": "asynchronous",
+          "isSelf": false
         }
       ],
-      "clusters": [],
+      "occurrences": [],
+      "fragments": [
+        {
+          "statementId": "zenuml-statement-1",
+          "kind": "alternative",
+          "label": "is_sick",
+          "x": 0.0,
+          "y": 104.0,
+          "width": 271.16,
+          "height": 182.0,
+          "headerY": 105.0,
+          "sectionY": [
+            130.0,
+            198.0
+          ],
+          "sectionLabels": [
+            "is_sick",
+            "else"
+          ]
+        }
+      ],
+      "dividers": [],
+      "comments": [],
+      "groups": [],
       "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 437.0,
-        "max_y": 379.0
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 271.16,
+        "max_y": 330.0
       }
     }
   }

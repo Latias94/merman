@@ -1,65 +1,49 @@
-# ZenUML Upstream Coverage (Mermaid@11.16.0)
+# ZenUML Upstream Coverage (Mermaid 11.16)
 
-This document tracks which upstream ZenUML examples/tests are covered in `merman`.
+This file maps the local ZenUML corpus to the selected companion source. The selected graph is the
+3.47.8 oracle; 3.50.1 is recorded separately until admission.
 
-ZenUML is an external diagram upstream and is rendered via browser-only `@zenuml/core`, so `merman`
-does **not** maintain upstream SVG baselines for ZenUML. Coverage is snapshot-only:
+## Source mapping
 
-- semantic snapshots under `fixtures/zenuml/*.golden.json`
-- layout snapshots under `fixtures/zenuml/*.layout.golden.json`
+| Local coverage | Oracle source | Gate |
+| --- | --- | --- |
+| `fixtures/zenuml/basic.mmd` | `src/g4/sequenceParser.g4` message/return rules | semantic + layout |
+| participant annotators, aliases, colors | `src/parser/Participants.ts`, `src/parser/ToCollector.js` | participant topology |
+| creation and assignments | `src/parser/Owner.js`, `src/parser/From.ts`, creation grammar | owner/return topology |
+| nested calls and returns | `src/parser/Origin.js`, `src/svg/walkStatements.ts` | occurrence ownership |
+| loops, alternatives, optional, parallel, critical, sections | `src/svg/buildFragmentGeometry.ts`, fragment grammar | fragment sections |
+| try/catch/finally and references | `src/svg/walkStatements.ts`, `sequenceParser.g4` | fragment/ref topology |
+| Unicode, emoji, strings, incomplete input | `sequenceLexer.g4`, parser recovery tests | exact spans/recovery |
+| SVG participants/lifelines/messages | `src/svg/components/*.ts`, `src/svg/buildGeometry.ts` | structural SVG |
 
-Pinned baseline version: Mermaid `@11.16.0` (see `tools/upstreams/REPOS.lock.json`).
+## Mermaid documentation fixtures
 
-Pinned ZenUML implementation reference: `repo-ref/zenuml-core` (see `tools/upstreams/REPOS.lock.json`).
+The following fixtures are retained as source-backed examples from
+`repo-ref/mermaid/docs/syntax/zenuml.md`:
 
-## Mermaid syntax docs
+- `upstream_docs_zenuml_demo.mmd`
+- `upstream_docs_zenuml_participants_declare_optional.mmd`
+- `upstream_docs_zenuml_participants_annotators.mmd`
+- `upstream_docs_zenuml_participants_aliases.mmd`
+- `upstream_docs_zenuml_creation_new.mmd`
+- `upstream_docs_zenuml_sync_message_method_calls.mmd`
+- `upstream_docs_zenuml_nesting.mmd`
+- `upstream_docs_zenuml_comments.mmd`
+- `upstream_docs_zenuml_loops_while.mmd`
+- `upstream_docs_zenuml_alt_if_else.mmd`
+- `upstream_docs_zenuml_opt.mmd`
+- `upstream_docs_zenuml_parallel_par.mmd`
+- `upstream_docs_zenuml_try_catch_finally.mmd`
+- `upstream_docs_zenuml_reply_assignments.mmd`
+- `upstream_docs_zenuml_reply_return_keyword.mmd`
+- `upstream_docs_zenuml_reply_annotator_return.mmd`
 
-Source: `repo-ref/mermaid/docs/syntax/zenuml.md`
+Each fixture has a semantic and layout artifact. Refresh artifacts only through the repository
+snapshot command so generated provenance remains reproducible.
 
-Status: not fully imported yet. Phase-1 fixture coverage is intentionally small until the
-translator is expanded.
+## Admission rule
 
-Planned import strategy:
-
-- Import small, reviewable batches of examples from the docs file.
-- Each fixture name should encode the upstream section/topic and remain stable.
-- Extend the translator (`crates/merman-core/src/diagrams/zenuml.rs`) only when a new fixture is
-added, so regressions remain attributable.
-
-## Current fixtures
-
-- `fixtures/zenuml/basic.mmd`
-  - Scope: message arrows + titles/accessibility pass-through.
-  - Gate: semantic snapshot + layout snapshot.
-- `fixtures/zenuml/upstream_docs_zenuml_demo.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Demo”).
-- `fixtures/zenuml/upstream_docs_zenuml_participants_declare_optional.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Participants / Declare participant (optional)”).
-- `fixtures/zenuml/upstream_docs_zenuml_participants_annotators.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Participants / Annotators”).
-- `fixtures/zenuml/upstream_docs_zenuml_participants_aliases.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Participants / Aliases”).
-- `fixtures/zenuml/upstream_docs_zenuml_creation_new.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Messages / Creation message”).
-- `fixtures/zenuml/upstream_docs_zenuml_sync_message_method_calls.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Messages / Sync message”).
-- `fixtures/zenuml/upstream_docs_zenuml_nesting.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Nesting”).
-- `fixtures/zenuml/upstream_docs_zenuml_comments.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Comments”).
-- `fixtures/zenuml/upstream_docs_zenuml_loops_while.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Loops / while”).
-- `fixtures/zenuml/upstream_docs_zenuml_alt_if_else.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Alt / if-else”).
-- `fixtures/zenuml/upstream_docs_zenuml_opt.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Opt”).
-- `fixtures/zenuml/upstream_docs_zenuml_parallel_par.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Parallel / par”).
-- `fixtures/zenuml/upstream_docs_zenuml_try_catch_finally.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Try/Catch/Finally”).
-- `fixtures/zenuml/upstream_docs_zenuml_reply_assignments.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Reply message / assignment”).
-- `fixtures/zenuml/upstream_docs_zenuml_reply_return_keyword.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Reply message / return keyword”).
-- `fixtures/zenuml/upstream_docs_zenuml_reply_annotator_return.mmd`
-  - Source: `repo-ref/mermaid/docs/syntax/zenuml.md` (“Reply message / @return annotator”).
+Parser acceptance alone does not admit a version or claim browser parity. A companion update must
+run the oracle/candidate corpus, compare semantic topology and source ranges, render structural
+SVG, exercise invalid recovery and resource limits, and classify every delta from the pinned source.
+The candidate may replace the oracle only when all required U1 gates pass.

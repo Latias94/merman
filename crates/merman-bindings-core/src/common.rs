@@ -136,6 +136,9 @@ pub(crate) struct ResourceOptionsJson {
     pub(crate) max_class_nodes: Option<usize>,
     pub(crate) max_class_edges: Option<usize>,
     pub(crate) max_class_namespaces: Option<usize>,
+    pub(crate) max_zenuml_participants: Option<usize>,
+    pub(crate) max_zenuml_statements: Option<usize>,
+    pub(crate) max_zenuml_fragments: Option<usize>,
     pub(crate) max_label_bytes: Option<usize>,
 }
 
@@ -616,6 +619,9 @@ pub(crate) fn analysis_options(
                 max_class_nodes: resources.max_class_nodes,
                 max_class_edges: resources.max_class_edges,
                 max_class_namespaces: resources.max_class_namespaces,
+                max_zenuml_participants: resources.max_zenuml_participants,
+                max_zenuml_statements: resources.max_zenuml_statements,
+                max_zenuml_fragments: resources.max_zenuml_fragments,
                 max_label_bytes: resources.max_label_bytes,
             }
         }),

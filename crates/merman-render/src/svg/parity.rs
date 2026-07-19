@@ -61,6 +61,7 @@ mod util;
 mod venn;
 mod wardley;
 mod xychart;
+mod zenuml;
 use css::{
     er_css, gantt_css, info_css_parts_with_config, info_css_parts_with_theme_font_size_only,
     info_css_with_config, pie_css, push_xychart_css, requirement_css, sankey_css, treemap_css,
@@ -360,6 +361,13 @@ fn render_builtin_family_artifact_raw(
                 options,
             )
         }
+        BuiltinFamilyArtifact::Zenuml(pair) => zenuml::render_zenuml_diagram_svg_model(
+            pair.layout(),
+            pair.semantic(),
+            effective_config_value,
+            title,
+            options,
+        ),
         BuiltinFamilyArtifact::Kanban(pair) => {
             let text_measurer = options.text_measurer_for(TextMeasurementPhase::Wrap);
             kanban::render_kanban_diagram_svg(

@@ -205,16 +205,6 @@ fn build_sequence_db(
     Ok(db)
 }
 
-impl super::SequenceActionBuilder {
-    pub(crate) fn into_render_model(
-        self,
-        meta: &ParseMetadata,
-    ) -> std::result::Result<SequenceDiagramRenderModel, String> {
-        build_sequence_db(self.into_actions(), sequence_wrap_enabled(meta))
-            .map(SequenceDb::into_render_model)
-    }
-}
-
 fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {
     meta.effective_config
         .as_value()

@@ -1,6 +1,5 @@
 use crate::diagnostic_projection::{
     ParseDiagnosticLocation, core_error_diagnostic, rule_diagnostic,
-    rule_diagnostic_without_default_span,
 };
 use crate::rules::{DIAGRAM_PARSE_RULE_ID, RECOVERED_EDITOR_FACTS_RULE_ID};
 use crate::{AnalysisDiagnostic, AnalysisStatus, SourceMap};
@@ -155,18 +154,11 @@ pub(crate) fn editor_recovery_diagnostics(
     diagram_type: &str,
     source_map: &SourceMap,
     rule_config: &crate::rules::AnalysisRuleConfig,
-    source_mapped_spans: bool,
 ) -> Vec<AnalysisRecoveryDiagnostic> {
     diagnostics
         .into_iter()
         .filter_map(|diagnostic| {
-            recovered_editor_diagnostic(
-                diagnostic,
-                diagram_type,
-                source_map,
-                rule_config,
-                source_mapped_spans,
-            )
+            recovered_editor_diagnostic(diagnostic, diagram_type, source_map, rule_config)
         })
         .collect()
 }
@@ -176,31 +168,20 @@ fn recovered_editor_diagnostic(
     diagram_type: &str,
     source_map: &SourceMap,
     rule_config: &crate::rules::AnalysisRuleConfig,
-    source_mapped_spans: bool,
 ) -> Option<AnalysisRecoveryDiagnostic> {
     let kind = diagnostic.kind;
-    let mut out = if source_mapped_spans {
-        rule_diagnostic(
-            RECOVERED_EDITOR_FACTS_RULE_ID,
-            AnalysisStatus::ParseError,
-            diagnostic.message,
-            source_map,
-            rule_config,
-        )?
-    } else {
-        rule_diagnostic_without_default_span(
-            RECOVERED_EDITOR_FACTS_RULE_ID,
-            AnalysisStatus::ParseError,
-            diagnostic.message,
-            rule_config,
-        )?
-    }
+    let mut out = rule_diagnostic(
+        RECOVERED_EDITOR_FACTS_RULE_ID,
+        AnalysisStatus::ParseError,
+        diagnostic.message,
+        source_map,
+        rule_config,
+    )?
     .with_diagram_type(diagram_type);
 
-    if source_mapped_spans
-        && let Some(span) = diagnostic
-            .span
-            .and_then(|span| source_map.span(span.start, span.end).ok())
+    if let Some(span) = diagnostic
+        .span
+        .and_then(|span| source_map.span(span.start, span.end).ok())
     {
         out = out.with_span(span);
     }

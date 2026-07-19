@@ -1,47 +1,78 @@
-# ZenUML Minimum Slice (Headless Compatibility, Phase 1)
+# ZenUML Family Contract
 
-This document defines the initial, test-driven minimum slice for ZenUML support in `merman`.
+Merman implements ZenUML as a family-owned grammar and semantic model. It does not translate
+ZenUML into Mermaid Sequence actions or Sequence JSON.
 
-ZenUML is an upstream Mermaid “external diagram” rendered via browser-only `@zenuml/core`. `merman`
-is pure Rust and headless, so Phase 1 implements a conservative compatibility mode by translating a
-small ZenUML subset into Mermaid `sequenceDiagram` syntax.
+## Authority
 
-Baseline references:
+- Mermaid baseline: `mermaid@11.16.0`.
+- Normative companion oracle: `@zenuml/core@3.47.8`, commit `c81406671c0833baebb9fac08a0cbcdc99b3907d`.
+- Oracle grammar: `repo-ref/zenuml-core/src/g4/sequenceLexer.g4` and
+  `repo-ref/zenuml-core/src/g4/sequenceParser.g4`.
+- Candidate: `@zenuml/core@3.50.1`, commit `38404ccc14243ed54ab45b804b2eb6f2ca73af36`.
+  The candidate remains a separate admission until the U1 semantic, render, rich-artifact,
+  security, and resource gates pass. The latest major `4.2.0` is outside Mermaid's declared
+  plugin range and is not an implicit upgrade.
 
-- Mermaid: `@11.12.3` (`repo-ref/mermaid`, see `tools/upstreams/REPOS.lock.json`)
-- ZenUML core: `v3.45.4` (`repo-ref/zenuml-core`, see `tools/upstreams/REPOS.lock.json`)
+The machine-readable decision is `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`; companion gate
+evidence is `tools/upstreams/ZENUML_CORE_ADMISSION.json`.
 
-## Supported (current)
+## Owned pipeline
 
-- Header:
-  - `zenuml` (case-insensitive), optionally preceded by empty lines.
-- Empty lines and whitespace-only lines are ignored.
-- Metadata directives (passed through to the sequence parser):
-  - `title ...`
-  - `accTitle ...`
-  - `accDescr ...`
-- Messages (translated to Mermaid sequence arrows):
-  - `A->B: message` → `A->>B: message`
-  - `A-->B: message` → `A-->>B: message`
-  - label is optional (`A->B` is allowed)
+`crates/merman-core/src/diagrams/zenuml/` contains the lexer, recursive recovering parser, AST,
+semantic builder, editor projection, and typed render model. The family registration points every
+entry point at one construction pass:
 
-## Output shape (Phase 1)
+```text
+source -> ZenUML lexer/parser -> ZenUML semantic artifact
+                         |-> detection facts / editor facts / LSP
+                         |-> compatibility JSON projection
+                         `-> typed layout -> typed SVG
+```
 
-- Diagram type: `zenuml` (metadata stays `zenuml` for detection/UX).
-- Semantic model/layout/rendering: delegated to the `sequenceDiagram` pipeline after translation:
-  - semantic parser: `crates/merman-core/src/diagrams/sequence.rs`
-  - layout: `crates/merman-render/src/sequence.rs`
-  - SVG: `crates/merman-render/src/svg/parity/sequence.rs`
+The compatibility JSON is a projection for existing callers only. It is never parsed back into a
+different family model.
 
-## Not yet implemented (upstream-supported)
+The lexer is a Unicode-aware token scanner. It does not use regular expressions to infer nested
+syntax, and it removes the oracle's hidden modifier channel before parsing. The parser consumes
+tokens through explicit grammar rules and bounded recursive blocks. Shared Mermaid accessibility
+terminals use the common terminal parser, including multiline `accDescr`, so ZenUML does not grow a
+second line-oriented directive parser.
 
-- Full ZenUML grammar (participants, blocks, activation, loops/alt/opt, notes, annotations, etc.).
-- Upstream SVG parity-gating (ZenUML rendering is browser-only upstream).
+## Grammar surface
 
-## Alignment goal
+The oracle grammar and recovery behavior are represented for:
 
-Phase 1 is an incremental compatibility slice. The long-term goal is either:
+- title, accessibility title/description, comments, and divider notes;
+- participant annotations, colors, stereotypes, emoji, widths, aliases, groups, and starters;
+- synchronous and asynchronous calls, explicit/implicit owners, nested calls, creation, named
+  assignments, returns, return arrows, and expressions/parameters;
+- `par`, `opt`, `critical`, `section`, `if/else-if/else`, `while/for/foreach/loop`,
+  `try/catch/finally`, and `ref` fragments;
+- Unicode identifiers, closed and in-progress strings, exact byte spans, bounded nesting, and
+  local error recovery.
 
-1. A broader translation layer (still rendering via the existing Mermaid `sequenceDiagram` stack),
-   or
-2. A full headless ZenUML port (semantics + layout + rendering) behind an explicit feature flag.
+The parser keeps facts before and after an invalid statement. Strict semantic/render entry points
+return the first structured diagnostic; the editor entry point returns the recovered family facts.
+
+## Support levels
+
+| Surface | Level | Evidence |
+| --- | --- | --- |
+| Grammar parse and recovery | Implemented against oracle | `zenuml` parser tests and editor corpus |
+| Semantic topology and source ranges | Implemented | typed model and `EditorSemanticFacts` tests |
+| Headless SVG topology, labels, colors, fragments | Implemented source-derived port | `crates/merman/tests/zenuml_typed_render.rs` |
+| Pixel-identical browser geometry | Residual under measurement audit | `docs/alignment/ZENUML_GEOMETRY.md` |
+| Candidate 3.50.1 deltas | Pending admission | U1 descriptor/gate record |
+
+Pixel or browser-dependent differences must be recorded as evidence. They must not be hidden by
+fixture-specific comparator exceptions.
+
+## Resource contract
+
+ZenUML owns structural limits instead of borrowing Flowchart or Sequence limits. Interactive,
+Typst, trusted-native, and unbounded profiles populate `max_zenuml_participants`,
+`max_zenuml_statements`, and `max_zenuml_fragments`; `max_source_bytes`, `max_label_bytes`, nesting
+depth, and `max_svg_bytes` remain the shared outer bounds. All structural and label checks run on
+the typed semantic model before layout. The optional fields extend the existing ABI 2 JSON options
+without changing the ABI number.

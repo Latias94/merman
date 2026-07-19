@@ -1,71 +1,78 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "type": "zenuml",
     "title": null,
     "accTitle": null,
     "accDescr": null,
-    "actorOrder": [
-      "A"
-    ],
-    "actors": {
-      "A": {
+    "starter": null,
+    "participants": [
+      {
+        "name": "_STARTER_",
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": []
+      },
+      {
         "name": "A",
-        "description": "A",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      }
-    },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "A",
-        "message": "SyncMessage()",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "A",
-        "to": "A",
-        "message": "result",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "A",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
+        "label": null,
+        "participantType": null,
+        "stereotype": null,
+        "emoji": null,
+        "width": null,
+        "color": null,
+        "groupId": null,
+        "explicit": false,
+        "isStarter": false,
+        "declarationSpan": null,
+        "occurrences": [
+          {
+            "start": 11,
+            "end": 12
+          }
+        ]
       }
     ],
-    "notes": [],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    "groups": [],
+    "statements": [
+      {
+        "id": "zenuml-statement-0",
+        "number": "1",
+        "comment": null,
+        "span": {
+          "start": 11,
+          "end": 53
+        },
+        "kind": "message",
+        "from": "_STARTER_",
+        "to": "A",
+        "label": "SyncMessage()",
+        "assignment": null,
+        "style": "synchronous",
+        "body": [
+          {
+            "id": "zenuml-statement-1",
+            "number": "1.1",
+            "comment": null,
+            "span": {
+              "start": 33,
+              "end": 46
+            },
+            "kind": "return",
+            "from": "A",
+            "to": "_STARTER_",
+            "label": "result"
+          }
+        ]
       }
-    }
+    ],
+    "type": "zenuml"
   }
 }

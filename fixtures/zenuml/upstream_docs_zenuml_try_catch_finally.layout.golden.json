@@ -1,260 +1,162 @@
 {
   "diagramType": "zenuml",
   "layout": {
-    "SequenceDiagram": {
-      "nodes": [
+    "ZenumlDiagram": {
+      "width": 374.76,
+      "height": 387.0,
+      "frameBorderLeft": 10.0,
+      "frameBorderRight": 10.0,
+      "participants": [
         {
-          "id": "actor-top-Consumer",
-          "x": 75.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "Consumer",
+          "label": "Consumer",
+          "x": 50.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "actor-top-API",
-          "x": 275.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "API",
+          "label": "API",
+          "x": 164.74,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "actor-top-BookingService",
-          "x": 489.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Consumer",
-          "x": 75.0,
-          "y": 446.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-API",
-          "x": 275.0,
-          "y": 446.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-BookingService",
-          "x": 489.0,
-          "y": 446.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "BookingService",
+          "label": "BookingService",
+          "x": 315.32,
+          "y": 28.0,
+          "width": 114.88,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         }
       ],
-      "edges": [
+      "lifelines": [
         {
-          "id": "msg-1",
+          "participantName": "Consumer",
+          "x": 50.0,
+          "topY": 68.0,
+          "bottomY": 399.0
+        },
+        {
+          "participantName": "API",
+          "x": 164.74,
+          "topY": 68.0,
+          "bottomY": 399.0
+        },
+        {
+          "participantName": "BookingService",
+          "x": 315.32,
+          "topY": 68.0,
+          "bottomY": 399.0
+        }
+      ],
+      "messages": [
+        {
+          "statementId": "zenuml-statement-1",
+          "number": "1.1.1",
           "from": "Consumer",
           "to": "API",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 156.0
-            },
-            {
-              "x": 271.0,
-              "y": 156.0
-            }
-          ],
-          "label": {
-            "x": 174.0,
-            "y": 125.0,
-            "width": 102.56,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 50.0,
+          "toX": 164.74,
+          "y": 129.5,
+          "label": "Book something",
+          "kind": "asynchronous",
+          "isSelf": false
         },
         {
-          "id": "msg-2",
+          "statementId": "zenuml-statement-2",
+          "number": "1.1.2",
           "from": "API",
           "to": "BookingService",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 276.0,
-              "y": 202.0
-            },
-            {
-              "x": 485.0,
-              "y": 202.0
-            }
-          ],
-          "label": {
-            "x": 381.0,
-            "y": 171.0,
-            "width": 143.52,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 164.74,
+          "toX": 315.32,
+          "y": 161.5,
+          "label": "Start booking process",
+          "kind": "asynchronous",
+          "isSelf": false
         },
         {
-          "id": "msg-4",
+          "statementId": "zenuml-statement-3",
+          "number": "1.2.1",
           "from": "API",
           "to": "Consumer",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 274.0,
-              "y": 293.0
-            },
-            {
-              "x": 79.0,
-              "y": 293.0
-            }
-          ],
-          "label": {
-            "x": 177.0,
-            "y": 262.0,
-            "width": 81.76,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 164.74,
+          "toX": 50.0,
+          "y": 238.5,
+          "label": "show failure",
+          "kind": "asynchronous",
+          "isSelf": false
         },
         {
-          "id": "msg-6",
+          "statementId": "zenuml-statement-4",
+          "number": "1.3.1",
           "from": "API",
           "to": "BookingService",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 276.0,
-              "y": 384.0
-            },
-            {
-              "x": 485.0,
-              "y": 384.0
-            }
-          ],
-          "label": {
-            "x": 381.0,
-            "y": 353.0,
-            "width": 98.72,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-Consumer",
-          "from": "actor-top-Consumer",
-          "to": "actor-bottom-Consumer",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 65.0
-            },
-            {
-              "x": 75.0,
-              "y": 414.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-API",
-          "from": "actor-top-API",
-          "to": "actor-bottom-API",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 275.0,
-              "y": 65.0
-            },
-            {
-              "x": 275.0,
-              "y": 414.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-BookingService",
-          "from": "actor-top-BookingService",
-          "to": "actor-bottom-BookingService",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 489.0,
-              "y": 65.0
-            },
-            {
-              "x": 489.0,
-              "y": 414.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 164.74,
+          "toX": 315.32,
+          "y": 315.5,
+          "label": "rollback status",
+          "kind": "asynchronous",
+          "isSelf": false
         }
       ],
-      "clusters": [],
+      "occurrences": [],
+      "fragments": [
+        {
+          "statementId": "zenuml-statement-0",
+          "kind": "tryCatchFinally",
+          "label": null,
+          "x": 0.0,
+          "y": 72.0,
+          "width": 374.76,
+          "height": 271.0,
+          "headerY": 73.0,
+          "sectionY": [
+            98.0,
+            178.0,
+            255.0
+          ],
+          "sectionLabels": [
+            "try",
+            "catch",
+            "finally"
+          ]
+        }
+      ],
+      "dividers": [],
+      "comments": [],
+      "groups": [],
       "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 614.0,
-        "max_y": 490.0
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 374.76,
+        "max_y": 387.0
       }
     }
   }

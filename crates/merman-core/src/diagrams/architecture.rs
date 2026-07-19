@@ -1787,7 +1787,6 @@ group child(cloud)[Child] in root\n";
         let api_start = text.rfind("api").unwrap();
 
         assert_eq!(api.selection, SourceSpan::new(api_start, api_start + 3));
-        assert!(facts.span_coordinate_space.is_original_source());
     }
 
     #[test]
@@ -1827,7 +1826,6 @@ group child(cloud)[Child] in root\n";
             &text[payload.selection.start..payload.selection.end],
             raw_payload
         );
-        assert!(facts.span_coordinate_space.is_original_source());
     }
 
     #[test]
@@ -1859,7 +1857,6 @@ group child(cloud)[Child] in root\n";
             after.selection,
             SourceSpan::new(after_start, after_start + "after".len())
         );
-        assert!(facts.span_coordinate_space.is_original_source());
     }
 
     #[test]

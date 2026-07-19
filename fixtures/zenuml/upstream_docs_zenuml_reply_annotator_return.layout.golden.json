@@ -1,129 +1,117 @@
 {
   "diagramType": "zenuml",
   "layout": {
-    "SequenceDiagram": {
-      "nodes": [
+    "ZenumlDiagram": {
+      "width": 300.0,
+      "height": 168.0,
+      "frameBorderLeft": 0.0,
+      "frameBorderRight": 0.0,
+      "participants": [
         {
-          "id": "actor-top-A",
-          "x": 75.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "_STARTER_",
+          "label": "",
+          "x": 50.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": true,
+          "showBottom": false,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "actor-top-B",
-          "x": 275.0,
-          "y": 32.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "A",
+          "label": "A",
+          "x": 150.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         },
         {
-          "id": "actor-bottom-A",
-          "x": 75.0,
-          "y": 163.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-B",
-          "x": 275.0,
-          "y": 163.5,
-          "width": 150.0,
-          "height": 65.0,
-          "is_cluster": false
+          "name": "B",
+          "label": "B",
+          "x": 250.0,
+          "y": 28.0,
+          "width": 80.0,
+          "height": 40.0,
+          "isStarter": false,
+          "showBottom": true,
+          "participantType": null,
+          "stereotype": null,
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "created": false
         }
       ],
-      "edges": [
+      "lifelines": [
         {
-          "id": "msg-0",
+          "participantName": "_STARTER_",
+          "x": 50.0,
+          "topY": 68.0,
+          "bottomY": 180.0
+        },
+        {
+          "participantName": "A",
+          "x": 150.0,
+          "topY": 68.0,
+          "bottomY": 180.0
+        },
+        {
+          "participantName": "B",
+          "x": 250.0,
+          "topY": 68.0,
+          "bottomY": 180.0
+        }
+      ],
+      "messages": [
+        {
+          "statementId": "zenuml-statement-0",
+          "number": "1",
+          "from": "_STARTER_",
+          "to": "_STARTER_",
+          "fromX": 51.0,
+          "toX": 50.0,
+          "y": 92.0,
+          "label": "",
+          "kind": "return",
+          "isSelf": true
+        },
+        {
+          "statementId": "zenuml-statement-1",
+          "number": "2",
           "from": "A",
           "to": "B",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 111.0
-            },
-            {
-              "x": 271.0,
-              "y": 111.0
-            }
-          ],
-          "label": {
-            "x": 174.0,
-            "y": 80.0,
-            "width": 38.88,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-A",
-          "from": "actor-top-A",
-          "to": "actor-bottom-A",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 65.0
-            },
-            {
-              "x": 75.0,
-              "y": 131.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "lifeline-B",
-          "from": "actor-top-B",
-          "to": "actor-bottom-B",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 275.0,
-              "y": 65.0
-            },
-            {
-              "x": 275.0,
-              "y": 131.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "fromX": 150.0,
+          "toX": 250.0,
+          "y": 123.5,
+          "label": "result",
+          "kind": "asynchronous",
+          "isSelf": false
         }
       ],
-      "clusters": [],
+      "occurrences": [],
+      "fragments": [],
+      "dividers": [],
+      "comments": [],
+      "groups": [],
       "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 400.0,
-        "max_y": 207.0
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 300.0,
+        "max_y": 168.0
       }
     }
   }
