@@ -3,8 +3,9 @@ use crate::diagrams::scan::{
     starts_with_case_insensitive,
 };
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
+    SourceSpan, editor::EditorLexemeJournal,
 };
 use serde_json::{Value, json};
 #[cfg(test)]
@@ -222,6 +223,8 @@ fn parse_key_colon_value(line: &str, key: &str) -> Option<String> {
 struct JourneyBlockText {
     text: String,
     span: SourceSpan,
+    opening: SourceSpan,
+    closing: Option<SourceSpan>,
 }
 
 fn parse_acc_descr_block_spanned(
@@ -244,16 +247,23 @@ fn parse_acc_descr_block_spanned(
         return Some(JourneyBlockText {
             text: buf.trim().to_string(),
             span: SourceSpan::new(content_start, content_start + end),
+            opening: SourceSpan::new(content_start - 1, content_start),
+            closing: Some(SourceSpan::new(
+                content_start + end,
+                content_start + end + 1,
+            )),
         });
     }
     buf.push_str(rest);
     buf.push('\n');
 
     let mut content_end = lines.offset();
+    let mut closing = None;
     while let Some((line, line_start)) = lines.next_line() {
         if let Some(end) = line.find('}') {
             buf.push_str(&line[..end]);
             content_end = line_start + end;
+            closing = Some(SourceSpan::new(content_end, content_end + 1));
             break;
         }
         buf.push_str(line);
@@ -263,6 +273,8 @@ fn parse_acc_descr_block_spanned(
     Some(JourneyBlockText {
         text: buf.trim().to_string(),
         span: SourceSpan::new(content_start, content_end.max(content_start)),
+        opening: SourceSpan::new(content_start - 1, content_start),
+        closing,
     })
 }
 
@@ -275,6 +287,111 @@ fn strip_comment_prefix(line: &str) -> &str {
         return "";
     }
     split_statement_suffix_hash_or_semi(line)
+}
+
+fn push_journey_lexeme(
+    lexemes: &mut EditorLexemeJournal<'_>,
+    kind: EditorLexemeKind,
+    span: SourceSpan,
+) {
+    if span.start < span.end {
+        lexemes.push(kind, EditorLexemeModifiers::NONE, span);
+    }
+}
+
+fn record_journey_comment_or_terminator(
+    line: &str,
+    line_start: usize,
+    statement: &str,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) {
+    let trimmed = line.trim_start();
+    let leading = line.len().saturating_sub(trimmed.len());
+    if trimmed.starts_with('#') {
+        push_journey_lexeme(
+            lexemes,
+            EditorLexemeKind::Comment,
+            SourceSpan::new(line_start + leading, line_start + line.len()),
+        );
+        return;
+    }
+    if trimmed.starts_with("%%") {
+        return;
+    }
+    match line.as_bytes().get(statement.len()).copied() {
+        Some(b'#') => push_journey_lexeme(
+            lexemes,
+            EditorLexemeKind::Comment,
+            SourceSpan::new(line_start + statement.len(), line_start + line.len()),
+        ),
+        Some(b';') => push_journey_lexeme(
+            lexemes,
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(
+                line_start + statement.len(),
+                line_start + statement.len() + 1,
+            ),
+        ),
+        _ => {}
+    }
+}
+
+fn record_journey_keyword_value(
+    lexemes: &mut EditorLexemeJournal<'_>,
+    line: &str,
+    line_start: usize,
+    keyword: &str,
+    delimiter: Option<char>,
+    value: Option<SourceSpan>,
+) {
+    let trimmed = line.trim_start();
+    let leading = line.len().saturating_sub(trimmed.len());
+    let keyword_start = line_start + leading;
+    push_journey_lexeme(
+        lexemes,
+        EditorLexemeKind::Keyword,
+        SourceSpan::new(keyword_start, keyword_start + keyword.len()),
+    );
+    if let Some(delimiter) = delimiter {
+        let after_keyword = &trimmed[keyword.len()..];
+        if let Some(relative) = after_keyword.find(delimiter) {
+            let start = keyword_start + keyword.len() + relative;
+            push_journey_lexeme(
+                lexemes,
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(start, start + delimiter.len_utf8()),
+            );
+        }
+    }
+    if let Some(value) = value {
+        push_journey_lexeme(lexemes, EditorLexemeKind::String, value);
+    }
+}
+
+fn record_journey_people(lexemes: &mut EditorLexemeJournal<'_>, people: &str, people_start: usize) {
+    let mut cursor = 0usize;
+    for part in people.split_inclusive(',') {
+        let value = part.strip_suffix(',').unwrap_or(part);
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            let leading = value.len().saturating_sub(value.trim_start().len());
+            let start = people_start + cursor + leading;
+            push_journey_lexeme(
+                lexemes,
+                EditorLexemeKind::Identifier,
+                SourceSpan::new(start, start + trimmed.len()),
+            );
+        }
+        if part.ends_with(',') {
+            let comma = people_start + cursor + part.len() - 1;
+            push_journey_lexeme(
+                lexemes,
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(comma, comma + 1),
+            );
+        }
+        cursor += part.len();
+    }
 }
 
 pub fn parse_journey(code: &str, meta: &ParseMetadata) -> Result<Value> {
@@ -347,14 +464,36 @@ fn construct_journey_semantic_source(
     #[cfg(test)]
     JOURNEY_SYNTAX_CONSTRUCTION_COUNT.set(JOURNEY_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
+    let mut lexemes = EditorLexemeJournal::family_parser(code);
+    let result = parse_journey_semantic_source(code, meta, &mut lexemes);
+    let lexemes = lexemes.finish();
+    match result {
+        Ok(mut source) => {
+            source.editor_facts.replace_family_lexemes(lexemes);
+            Ok(source)
+        }
+        Err(mut failure) => {
+            failure.editor_facts.replace_family_lexemes(lexemes);
+            Err(failure)
+        }
+    }
+}
+
+fn parse_journey_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> std::result::Result<JourneySemanticSource, JourneySemanticFailure> {
     let mut db = JourneyDb::default();
     db.clear();
     let mut editor_facts = EditorSemanticFacts::new();
     let mut lines = LineCursor::new(code);
     let mut header_seen = false;
+    let mut first_error = None;
 
     while let Some((line, line_start)) = lines.next_line() {
         let stripped = strip_comment_prefix(line);
+        record_journey_comment_or_terminator(line, line_start, stripped, lexemes);
         let t = stripped.trim();
         if t.is_empty() {
             continue;
@@ -363,34 +502,64 @@ fn construct_journey_semantic_source(
         if !header_seen {
             if starts_with_case_insensitive(t, "journey") {
                 header_seen = true;
-                let rest = t["journey".len()..].trim_start();
+                let header_start = line_start + line.find(t).unwrap_or(0);
+                push_journey_lexeme(
+                    lexemes,
+                    EditorLexemeKind::Keyword,
+                    SourceSpan::new(header_start, header_start + "journey".len()),
+                );
+                let after_header = &t["journey".len()..];
+                let rest = after_header.trim_start();
                 if !rest.is_empty() {
-                    let start = line_start + line.find(rest).unwrap_or(line.len());
-                    return Err(JourneySemanticFailure::new(
+                    let start = header_start
+                        + "journey".len()
+                        + after_header.len().saturating_sub(rest.len());
+                    push_journey_lexeme(
+                        lexemes,
+                        EditorLexemeKind::Literal,
+                        SourceSpan::new(start, start + rest.len()),
+                    );
+                    first_error.get_or_insert_with(|| {
                         Error::diagram_parse_exact(
                             meta.diagram_type.clone(),
                             "unexpected content after journey header",
                             SourceSpan::new(start, start + rest.len()),
-                        ),
-                        editor_facts,
-                    ));
+                        )
+                    });
+                    continue;
                 }
                 continue;
             }
             let start = line_start + leading_whitespace_len(line);
-            return Err(JourneySemanticFailure::new(
+            push_journey_lexeme(
+                lexemes,
+                EditorLexemeKind::Literal,
+                SourceSpan::new(start, line_start + line.len()),
+            );
+            first_error.get_or_insert_with(|| {
                 Error::diagram_parse_exact(
                     meta.diagram_type.clone(),
                     "expected journey header",
                     SourceSpan::new(start, line_start + line.len()),
-                ),
-                editor_facts,
-            ));
+                )
+            });
+            continue;
         }
 
         if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
             editor_facts.push_directive_prefix("title");
-            if let Some(value) = spanned_keyword_value(line, line_start, "title") {
+            let value = spanned_keyword_value(line, line_start, "title");
+            record_journey_keyword_value(
+                lexemes,
+                line,
+                line_start,
+                "title",
+                None,
+                value
+                    .as_ref()
+                    .map(|value| SourceSpan::new(value.start, value.end)),
+            );
+            if let Some(value) = value {
                 push_journey_payload_fact(
                     &mut editor_facts,
                     value,
@@ -403,7 +572,18 @@ fn construct_journey_semantic_source(
         }
         if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
             editor_facts.push_directive_prefix("accTitle");
-            if let Some(value) = spanned_colon_value(line, line_start, "accTitle") {
+            let value = spanned_colon_value(line, line_start, "accTitle");
+            record_journey_keyword_value(
+                lexemes,
+                line,
+                line_start,
+                "accTitle",
+                Some(':'),
+                value
+                    .as_ref()
+                    .map(|value| SourceSpan::new(value.start, value.end)),
+            );
+            if let Some(value) = value {
                 push_journey_payload_fact(
                     &mut editor_facts,
                     value,
@@ -416,7 +596,18 @@ fn construct_journey_semantic_source(
         }
         if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
             editor_facts.push_directive_prefix("accDescr");
-            if let Some(value) = spanned_colon_value(line, line_start, "accDescr") {
+            let value = spanned_colon_value(line, line_start, "accDescr");
+            record_journey_keyword_value(
+                lexemes,
+                line,
+                line_start,
+                "accDescr",
+                Some(':'),
+                value
+                    .as_ref()
+                    .map(|value| SourceSpan::new(value.start, value.end)),
+            );
+            if let Some(value) = value {
                 push_journey_payload_fact(
                     &mut editor_facts,
                     value,
@@ -429,6 +620,11 @@ fn construct_journey_semantic_source(
         }
         if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start) {
             editor_facts.push_directive_prefix("accDescr");
+            record_journey_keyword_value(lexemes, line, line_start, "accDescr", None, Some(v.span));
+            push_journey_lexeme(lexemes, EditorLexemeKind::Delimiter, v.opening);
+            if let Some(closing) = v.closing {
+                push_journey_lexeme(lexemes, EditorLexemeKind::Delimiter, closing);
+            }
             push_journey_payload_fact_spanned(
                 &mut editor_facts,
                 &v.text,
@@ -441,10 +637,32 @@ fn construct_journey_semantic_source(
         }
         if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
             let v = v.split(':').next().unwrap_or("").to_string();
-            if let Some(value) = spanned_keyword_value(line, line_start, "section") {
+            let value = spanned_keyword_value(line, line_start, "section");
+            record_journey_keyword_value(
+                lexemes,
+                line,
+                line_start,
+                "section",
+                None,
+                value.as_ref().and_then(|value| {
+                    let section = value.text.split(':').next().unwrap_or("").trim();
+                    (!section.is_empty()).then(|| {
+                        let start = value.start + value.text.find(section).unwrap_or(0);
+                        SourceSpan::new(start, start + section.len())
+                    })
+                }),
+            );
+            if let Some(value) = value {
                 let section_text = value.text.split(':').next().unwrap_or("").trim();
                 if !section_text.is_empty() {
                     let section_start = value.start + value.text.find(section_text).unwrap_or(0);
+                    if let Some(colon) = value.text.find(':') {
+                        push_journey_lexeme(
+                            lexemes,
+                            EditorLexemeKind::Delimiter,
+                            SourceSpan::new(value.start + colon, value.start + colon + 1),
+                        );
+                    }
                     editor_facts.push_symbol(EditorSemanticSymbol::outline(
                         section_text.to_string(),
                         Some("journey section".to_string()),
@@ -463,17 +681,27 @@ fn construct_journey_semantic_source(
         let task_name = task_name_source.trim();
         if task_name.is_empty() {
             let start = line_start + line.find(t).unwrap_or(0);
-            return Err(JourneySemanticFailure::new(
+            push_journey_lexeme(
+                lexemes,
+                EditorLexemeKind::Literal,
+                SourceSpan::new(start, start + t.len()),
+            );
+            first_error.get_or_insert_with(|| {
                 Error::diagram_parse_exact(
                     meta.diagram_type.clone(),
                     "expected journey task name",
                     SourceSpan::new(start, start + t.len()),
-                ),
-                editor_facts,
-            ));
+                )
+            });
+            continue;
         }
         let task_start = line_start + task_name_source.find(task_name).unwrap_or(0);
         let task_end = task_start + task_name.len();
+        push_journey_lexeme(
+            lexemes,
+            EditorLexemeKind::String,
+            SourceSpan::new(task_start, task_end),
+        );
         editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::Payload,
             SourceSpan::new(task_start, task_end),
@@ -488,25 +716,30 @@ fn construct_journey_semantic_source(
 
         let Some(colon) = colon else {
             let insertion = line_start + stripped.trim_end().len();
-            return Err(JourneySemanticFailure::new(
+            first_error.get_or_insert_with(|| {
                 Error::diagram_parse_insertion_point(
                     meta.diagram_type.clone(),
                     "expected journey task data after ':'",
                     insertion,
-                ),
-                editor_facts,
-            ));
+                )
+            });
+            continue;
         };
+        push_journey_lexeme(
+            lexemes,
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(line_start + colon, line_start + colon + 1),
+        );
         let task_data = &stripped[colon..];
         if task_data.len() == ':'.len_utf8() {
-            return Err(JourneySemanticFailure::new(
+            first_error.get_or_insert_with(|| {
                 Error::diagram_parse_insertion_point(
                     meta.diagram_type.clone(),
                     "expected journey task data after ':'",
                     line_start + colon + ':'.len_utf8(),
-                ),
-                editor_facts,
-            ));
+                )
+            });
+            continue;
         }
 
         let rest_source = &stripped[colon + ':'.len_utf8()..];
@@ -515,7 +748,7 @@ fn construct_journey_semantic_source(
             line_start + colon + ':'.len_utf8() + rest_source.len().saturating_sub(rest.len());
         if rest.is_empty() {
             if let Err(error) = db.add_task(task_name_source, task_data) {
-                return Err(JourneySemanticFailure::new(error, editor_facts));
+                first_error.get_or_insert(error);
             }
             continue;
         }
@@ -523,6 +756,16 @@ fn construct_journey_semantic_source(
         let score_text = rest[..score_end].trim();
         if !score_text.is_empty() {
             let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
+            let score_kind = if score_text.parse::<f64>().is_ok() {
+                EditorLexemeKind::Number
+            } else {
+                EditorLexemeKind::Literal
+            };
+            push_journey_lexeme(
+                lexemes,
+                score_kind,
+                SourceSpan::new(score_start, score_start + score_text.len()),
+            );
             editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::Payload,
                 SourceSpan::new(score_start, score_start + score_text.len()),
@@ -537,6 +780,11 @@ fn construct_journey_semantic_source(
         }
 
         if score_end < rest.len() {
+            push_journey_lexeme(
+                lexemes,
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(rest_start + score_end, rest_start + score_end + 1),
+            );
             let people_source = &rest[score_end + ':'.len_utf8()..];
             let people = people_source.trim();
             if !people.is_empty() {
@@ -544,6 +792,7 @@ fn construct_journey_semantic_source(
                     + score_end
                     + ':'.len_utf8()
                     + people_source.find(people).unwrap_or(0);
+                record_journey_people(lexemes, people, people_start);
                 editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
                     EditorExpectedSyntaxKind::Payload,
                     SourceSpan::new(people_start, people_start + people.len()),
@@ -559,8 +808,12 @@ fn construct_journey_semantic_source(
         }
 
         if let Err(error) = db.add_task(task_name_source, task_data) {
-            return Err(JourneySemanticFailure::new(error, editor_facts));
+            first_error.get_or_insert(error);
         }
+    }
+
+    if let Some(error) = first_error {
+        return Err(JourneySemanticFailure::new(error, editor_facts));
     }
 
     let actors = db.actors_sorted();

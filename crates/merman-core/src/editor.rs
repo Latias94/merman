@@ -255,6 +255,10 @@ impl<'source> EditorLexemeJournal<'source> {
         Self::family_stage(source, EditorLexemeProducerKind::FamilyLexer)
     }
 
+    pub(crate) fn family_parser(source: &'source str) -> Self {
+        Self::family_stage(source, EditorLexemeProducerKind::FamilyParser)
+    }
+
     pub(crate) fn family_recovery(source: &'source str) -> Self {
         Self::family_stage(source, EditorLexemeProducerKind::FamilyRecovery)
     }
