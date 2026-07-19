@@ -584,6 +584,11 @@ impl EditorSemanticFacts {
         match batch {
             Ok(EditorLexemeBatch(lexemes)) => {
                 self.lexemes = lexemes;
+                if self.completeness == EditorSemanticCompleteness::Recovered {
+                    for lexeme in &mut self.lexemes {
+                        lexeme.producer.mark_recovered();
+                    }
+                }
             }
             Err(error) => {
                 self.lexemes.clear();
@@ -1043,6 +1048,26 @@ mod tests {
             lexeme.producer.kind == EditorLexemeProducerKind::FamilyRecovery
                 && lexeme.producer.family.is_none()
         }));
+    }
+
+    #[test]
+    fn attaching_a_batch_to_recovered_facts_preserves_recovery_provenance() {
+        let mut facts = EditorSemanticFacts::new();
+        facts.mark_recovered();
+        let mut journal = EditorLexemeJournal::family_parser("alpha");
+        journal.push(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifiers::NONE,
+            crate::SourceSpan::new(0, 5),
+        );
+
+        facts.replace_family_lexemes(journal.finish());
+
+        assert_eq!(
+            facts.lexemes()[0].producer.kind,
+            EditorLexemeProducerKind::FamilyRecovery
+        );
+        assert_eq!(facts.lexemes()[0].producer.family, None);
     }
 
     #[test]
