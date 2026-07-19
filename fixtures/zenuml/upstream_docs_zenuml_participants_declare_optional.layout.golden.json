@@ -15,13 +15,13 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 23.36,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "Alice",
@@ -31,13 +31,13 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 32.32,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -64,8 +64,9 @@
           "toX": 50.0,
           "y": 87.5,
           "label": "Hi Bob",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": true,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-1",
@@ -76,10 +77,14 @@
           "toX": 150.0,
           "y": 119.5,
           "label": "Hi Alice",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": false,
+          "style": {}
         }
       ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [],
       "occurrences": [],
       "fragments": [],
       "dividers": [],

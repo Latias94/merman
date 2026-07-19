@@ -2,8 +2,8 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 206.9,
-      "height": 272.0,
+      "width": 218.6,
+      "height": 280.0,
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
       "participants": [
@@ -15,29 +15,29 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": true,
-          "showBottom": false,
+          "labelWidth": 0.0,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "A",
           "label": "A",
-          "x": 156.9,
+          "x": 168.6,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 9.6,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -45,13 +45,13 @@
           "participantName": "_STARTER_",
           "x": 50.0,
           "topY": 68.0,
-          "bottomY": 284.0
+          "bottomY": 292.0
         },
         {
           "participantName": "A",
-          "x": 156.9,
+          "x": 168.6,
           "topY": 68.0,
-          "bottomY": 284.0
+          "bottomY": 292.0
         }
       ],
       "messages": [
@@ -61,23 +61,12 @@
           "from": "_STARTER_",
           "to": "A",
           "fromX": 50.0,
-          "toX": 149.9,
+          "toX": 161.6,
           "y": 107.5,
           "label": "SyncMessage()",
-          "kind": "synchronous",
-          "isSelf": false
-        },
-        {
-          "statementId": "zenuml-statement-0-assignment-return",
-          "number": "1.1",
-          "from": "A",
-          "to": "_STARTER_",
-          "fromX": 149.9,
-          "toX": 51.0,
-          "y": 140.0,
-          "label": "a",
-          "kind": "return",
-          "isSelf": false
+          "arrowStyle": "solid",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-1",
@@ -85,10 +74,27 @@
           "from": "_STARTER_",
           "to": "A",
           "fromX": 50.0,
-          "toX": 149.9,
-          "y": 193.5,
+          "toX": 161.6,
+          "y": 197.5,
           "label": "SyncMessage()",
-          "kind": "synchronous",
+          "arrowStyle": "solid",
+          "isReverse": false,
+          "style": {}
+        }
+      ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [
+        {
+          "statementId": "zenuml-statement-0-assignment-return",
+          "number": "1.1",
+          "from": "A",
+          "to": "_STARTER_",
+          "fromX": 162.6,
+          "toX": 52.0,
+          "y": 144.0,
+          "label": "a",
+          "isReverse": true,
           "isSelf": false
         },
         {
@@ -96,11 +102,11 @@
           "number": "2.1",
           "from": "A",
           "to": "_STARTER_",
-          "fromX": 149.9,
-          "toX": 51.0,
-          "y": 226.0,
+          "fromX": 162.6,
+          "toX": 52.0,
+          "y": 234.0,
           "label": "a",
-          "kind": "return",
+          "isReverse": true,
           "isSelf": false
         }
       ],
@@ -108,18 +114,18 @@
         {
           "statementId": "zenuml-statement-0",
           "participantName": "A",
-          "x": 149.9,
+          "x": 161.6,
           "y": 106.0,
           "width": 15.0,
-          "height": 36.0
+          "height": 40.0
         },
         {
           "statementId": "zenuml-statement-1",
           "participantName": "A",
-          "x": 149.9,
-          "y": 192.0,
+          "x": 161.6,
+          "y": 196.0,
           "width": 15.0,
-          "height": 36.0
+          "height": 40.0
         }
       ],
       "fragments": [],
@@ -127,23 +133,27 @@
       "comments": [
         {
           "statementId": "zenuml-statement-0",
-          "x": 50.0,
+          "x": 51.0,
           "y": 87.0,
-          "text": " 1. assign a variable from a sync message."
+          "text": "1. assign a variable from a sync message.",
+          "style": {},
+          "fragmentComment": false
         },
         {
           "statementId": "zenuml-statement-1",
-          "x": 50.0,
-          "y": 173.0,
-          "text": " 1.1. optionally give the variable a type"
+          "x": 51.0,
+          "y": 177.0,
+          "text": "1.1. optionally give the variable a type",
+          "style": {},
+          "fragmentComment": false
         }
       ],
       "groups": [],
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 206.9,
-        "max_y": 272.0
+        "max_x": 218.6,
+        "max_y": 280.0
       }
     }
   }

@@ -2,7 +2,7 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 445.82,
+      "width": 488.08,
       "height": 258.0,
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
@@ -15,45 +15,45 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": true,
-          "showBottom": false,
+          "labelWidth": 0.0,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "A",
           "label": "A",
-          "x": 252.8,
+          "x": 278.2,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 9.6,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "B",
           "label": "B",
-          "x": 395.82,
+          "x": 438.08,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 9.6,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -65,13 +65,13 @@
         },
         {
           "participantName": "A",
-          "x": 252.8,
+          "x": 278.2,
           "topY": 68.0,
           "bottomY": 270.0
         },
         {
           "participantName": "B",
-          "x": 395.82,
+          "x": 438.08,
           "topY": 68.0,
           "bottomY": 270.0
         }
@@ -83,11 +83,12 @@
           "from": "_STARTER_",
           "to": "A",
           "fromX": 50.0,
-          "toX": 245.8,
+          "toX": 271.2,
           "y": 87.5,
           "label": "SyncMessage",
-          "kind": "synchronous",
-          "isSelf": false
+          "arrowStyle": "solid",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-1",
@@ -95,30 +96,35 @@
           "from": "_STARTER_",
           "to": "A",
           "fromX": 50.0,
-          "toX": 245.8,
+          "toX": 271.2,
           "y": 141.5,
           "label": "SyncMessage(with,parameters)",
-          "kind": "synchronous",
-          "isSelf": false
+          "arrowStyle": "solid",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-2",
           "number": "2.1",
           "from": "A",
           "to": "B",
-          "fromX": 259.8,
-          "toX": 388.82,
+          "fromX": 285.2,
+          "toX": 431.08,
           "y": 173.5,
           "label": "nestedSyncMessage()",
-          "kind": "synchronous",
-          "isSelf": false
+          "arrowStyle": "solid",
+          "isReverse": false,
+          "style": {}
         }
       ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [],
       "occurrences": [
         {
           "statementId": "zenuml-statement-0",
           "participantName": "A",
-          "x": 245.8,
+          "x": 271.2,
           "y": 86.0,
           "width": 15.0,
           "height": 24.0
@@ -126,7 +132,7 @@
         {
           "statementId": "zenuml-statement-2",
           "participantName": "B",
-          "x": 388.82,
+          "x": 431.08,
           "y": 172.0,
           "width": 15.0,
           "height": 24.0
@@ -134,7 +140,7 @@
         {
           "statementId": "zenuml-statement-1",
           "participantName": "A",
-          "x": 245.8,
+          "x": 271.2,
           "y": 140.0,
           "width": 15.0,
           "height": 74.0
@@ -147,7 +153,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 445.82,
+        "max_x": 488.08,
         "max_y": 258.0
       }
     }

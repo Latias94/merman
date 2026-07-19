@@ -2,7 +2,7 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 300.0,
+      "width": 301.64,
       "height": 234.0,
       "frameBorderLeft": 10.0,
       "frameBorderRight": 10.0,
@@ -15,45 +15,45 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 32.32,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "Bob",
           "label": "Bob",
-          "x": 150.0,
+          "x": 151.64,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 23.36,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "John",
           "label": "John",
-          "x": 250.0,
+          "x": 251.64,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 30.24,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -65,13 +65,13 @@
         },
         {
           "participantName": "Bob",
-          "x": 150.0,
+          "x": 151.64,
           "topY": 68.0,
           "bottomY": 246.0
         },
         {
           "participantName": "John",
-          "x": 250.0,
+          "x": 251.64,
           "topY": 68.0,
           "bottomY": 246.0
         }
@@ -83,11 +83,12 @@
           "from": "Alice",
           "to": "Bob",
           "fromX": 50.0,
-          "toX": 150.0,
+          "toX": 151.64,
           "y": 129.5,
           "label": "Hello guys!",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-2",
@@ -95,30 +96,59 @@
           "from": "Alice",
           "to": "John",
           "fromX": 50.0,
-          "toX": 250.0,
+          "toX": 251.64,
           "y": 162.5,
           "label": "Hello guys!",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": false,
+          "style": {}
         }
       ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [],
       "occurrences": [],
       "fragments": [
         {
           "statementId": "zenuml-statement-0",
           "kind": "parallel",
-          "label": null,
-          "x": 0.0,
+          "label": "",
+          "labelWidth": null,
+          "x": -10.0,
           "y": 72.0,
-          "width": 300.0,
+          "width": 321.64,
           "height": 118.0,
           "headerY": 73.0,
-          "sectionY": [
-            98.0
+          "sections": [
+            {
+              "label": "",
+              "y": 72.0,
+              "height": 0.0,
+              "labelWidth": null,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "detail": null,
+              "detailWidth": null,
+              "contentInsetLeft": null
+            },
+            {
+              "label": "",
+              "y": 146.0,
+              "height": 0.0,
+              "labelWidth": null,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "detail": null,
+              "detailWidth": null,
+              "contentInsetLeft": 60.0
+            }
           ],
-          "sectionLabels": [
-            null
-          ]
+          "number": "1",
+          "depth": 0.0
         }
       ],
       "dividers": [],
@@ -127,7 +157,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 300.0,
+        "max_x": 301.64,
         "max_y": 234.0
       }
     }

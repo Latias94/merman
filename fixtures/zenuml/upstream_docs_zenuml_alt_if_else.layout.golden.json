@@ -2,7 +2,7 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 271.16,
+      "width": 292.04,
       "height": 330.0,
       "frameBorderLeft": 10.0,
       "frameBorderRight": 10.0,
@@ -15,29 +15,29 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 32.32,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "Bob",
           "label": "Bob",
-          "x": 221.16,
+          "x": 242.04,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 23.36,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -49,7 +49,7 @@
         },
         {
           "participantName": "Bob",
-          "x": 221.16,
+          "x": 242.04,
           "topY": 68.0,
           "bottomY": 342.0
         }
@@ -61,56 +61,85 @@
           "from": "Alice",
           "to": "Bob",
           "fromX": 50.0,
-          "toX": 221.16,
+          "toX": 242.04,
           "y": 87.5,
           "label": "Hello Bob, how are you?",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-2",
           "number": "2.1",
           "from": "Bob",
           "to": "Alice",
-          "fromX": 221.16,
+          "fromX": 242.04,
           "toX": 50.0,
           "y": 181.5,
           "label": "Not so good :(",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": true,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-3",
           "number": "2.2",
           "from": "Bob",
           "to": "Alice",
-          "fromX": 221.16,
+          "fromX": 242.04,
           "toX": 50.0,
           "y": 258.5,
           "label": "Feeling fresh like a daisy",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": true,
+          "style": {}
         }
       ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [],
       "occurrences": [],
       "fragments": [
         {
           "statementId": "zenuml-statement-1",
           "kind": "alternative",
           "label": "is_sick",
-          "x": 0.0,
+          "labelWidth": 38.22,
+          "x": -10.0,
           "y": 104.0,
-          "width": 271.16,
+          "width": 312.04,
           "height": 182.0,
           "headerY": 105.0,
-          "sectionY": [
-            130.0,
-            198.0
+          "sections": [
+            {
+              "label": "Alt",
+              "y": 130.0,
+              "height": 0.0,
+              "labelWidth": 18.34,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "detail": null,
+              "detailWidth": null,
+              "contentInsetLeft": null
+            },
+            {
+              "label": "[else]",
+              "y": 198.0,
+              "height": 0.0,
+              "labelWidth": 31.22,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "detail": null,
+              "detailWidth": null,
+              "contentInsetLeft": null
+            }
           ],
-          "sectionLabels": [
-            "is_sick",
-            "else"
-          ]
+          "number": "2",
+          "depth": 0.0
         }
       ],
       "dividers": [],
@@ -119,7 +148,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 271.16,
+        "max_x": 292.04,
         "max_y": 330.0
       }
     }

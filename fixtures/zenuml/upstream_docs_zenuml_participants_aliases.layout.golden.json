@@ -2,7 +2,7 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 271.3,
+      "width": 292.2,
       "height": 164.0,
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
@@ -15,29 +15,29 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 32.32,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "J",
           "label": "John",
-          "x": 221.3,
+          "x": 242.2,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 30.24,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -49,7 +49,7 @@
         },
         {
           "participantName": "J",
-          "x": 221.3,
+          "x": 242.2,
           "topY": 68.0,
           "bottomY": 176.0
         }
@@ -61,25 +61,30 @@
           "from": "A",
           "to": "J",
           "fromX": 50.0,
-          "toX": 221.3,
+          "toX": 242.2,
           "y": 87.5,
           "label": "Hello John, how are you?",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-1",
           "number": "2",
           "from": "J",
           "to": "A",
-          "fromX": 221.3,
+          "fromX": 242.2,
           "toX": 50.0,
           "y": 119.5,
           "label": "Great!",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": true,
+          "style": {}
         }
       ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [],
       "occurrences": [],
       "fragments": [],
       "dividers": [],
@@ -88,7 +93,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 271.3,
+        "max_x": 292.2,
         "max_y": 164.0
       }
     }

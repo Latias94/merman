@@ -2,7 +2,7 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 271.3,
+      "width": 292.2,
       "height": 253.0,
       "frameBorderLeft": 10.0,
       "frameBorderRight": 10.0,
@@ -15,29 +15,29 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 32.32,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "John",
           "label": "John",
-          "x": 221.3,
+          "x": 242.2,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 30.24,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -49,7 +49,7 @@
         },
         {
           "participantName": "John",
-          "x": 221.3,
+          "x": 242.2,
           "topY": 68.0,
           "bottomY": 265.0
         }
@@ -61,42 +61,59 @@
           "from": "Alice",
           "to": "John",
           "fromX": 50.0,
-          "toX": 221.3,
+          "toX": 242.2,
           "y": 87.5,
           "label": "Hello John, how are you?",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-2",
           "number": "2.1",
           "from": "John",
           "to": "Alice",
-          "fromX": 221.3,
+          "fromX": 242.2,
           "toX": 50.0,
           "y": 181.5,
           "label": "Great!",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": true,
+          "style": {}
         }
       ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [],
       "occurrences": [],
       "fragments": [
         {
           "statementId": "zenuml-statement-1",
           "kind": "loop",
           "label": "true",
-          "x": 0.0,
+          "labelWidth": 24.08,
+          "x": -10.0,
           "y": 104.0,
-          "width": 271.3,
+          "width": 312.2,
           "height": 105.0,
           "headerY": 105.0,
-          "sectionY": [
-            130.0
+          "sections": [
+            {
+              "label": "true",
+              "y": 130.0,
+              "height": 0.0,
+              "labelWidth": 24.08,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "detail": null,
+              "detailWidth": null,
+              "contentInsetLeft": null
+            }
           ],
-          "sectionLabels": [
-            "true"
-          ]
+          "number": "2",
+          "depth": 0.0
         }
       ],
       "dividers": [],
@@ -105,7 +122,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 271.3,
+        "max_x": 292.2,
         "max_y": 253.0
       }
     }

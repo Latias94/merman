@@ -15,13 +15,13 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": true,
-          "showBottom": false,
+          "labelWidth": 0.0,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "BookService",
@@ -31,13 +31,13 @@
           "width": 96.64,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 80.64,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -64,10 +64,14 @@
           "toX": 143.32,
           "y": 127.5,
           "label": "getBook()",
-          "kind": "synchronous",
-          "isSelf": false
+          "arrowStyle": "solid",
+          "isReverse": false,
+          "style": {}
         }
       ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [],
       "occurrences": [
         {
           "statementId": "zenuml-statement-0",
@@ -83,9 +87,11 @@
       "comments": [
         {
           "statementId": "zenuml-statement-0",
-          "x": 50.0,
+          "x": 51.0,
           "y": 87.0,
-          "text": " a comment on a message.\n **Markdown** is supported."
+          "text": "a comment on a message.\n **Markdown** is supported.",
+          "style": {},
+          "fragmentComment": false
         }
       ],
       "groups": [],

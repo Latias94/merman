@@ -2,7 +2,7 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 495.56,
+      "width": 530.64,
       "height": 236.0,
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
@@ -15,13 +15,13 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": true,
-          "showBottom": false,
+          "labelWidth": 0.0,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "A",
@@ -31,45 +31,45 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 9.6,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "B",
           "label": "B",
-          "x": 296.38,
+          "x": 313.72,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 9.6,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "C",
           "label": "C",
-          "x": 445.56,
+          "x": 480.64,
           "y": 28.0,
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": true,
+          "labelWidth": 9.6,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -87,13 +87,13 @@
         },
         {
           "participantName": "B",
-          "x": 296.38,
+          "x": 313.72,
           "topY": 68.0,
           "bottomY": 248.0
         },
         {
           "participantName": "C",
-          "x": 445.56,
+          "x": 480.64,
           "topY": 68.0,
           "bottomY": 248.0
         }
@@ -108,8 +108,9 @@
           "toX": 143.0,
           "y": 87.5,
           "label": "method()",
-          "kind": "synchronous",
-          "isSelf": false
+          "arrowStyle": "solid",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-1",
@@ -117,30 +118,35 @@
           "from": "A",
           "to": "B",
           "fromX": 157.0,
-          "toX": 289.38,
+          "toX": 306.72,
           "y": 119.5,
           "label": "nested_sync_method()",
-          "kind": "synchronous",
-          "isSelf": false
+          "arrowStyle": "solid",
+          "isReverse": false,
+          "style": {}
         },
         {
           "statementId": "zenuml-statement-2",
           "number": "1.2",
           "from": "B",
           "to": "C",
-          "fromX": 296.38,
-          "toX": 445.56,
+          "fromX": 313.72,
+          "toX": 480.64,
           "y": 173.5,
           "label": "nested async message",
-          "kind": "asynchronous",
-          "isSelf": false
+          "arrowStyle": "open",
+          "isReverse": false,
+          "style": {}
         }
       ],
+      "selfCalls": [],
+      "creations": [],
+      "returns": [],
       "occurrences": [
         {
           "statementId": "zenuml-statement-1",
           "participantName": "B",
-          "x": 289.38,
+          "x": 306.72,
           "y": 118.0,
           "width": 15.0,
           "height": 24.0
@@ -161,7 +167,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 495.56,
+        "max_x": 530.64,
         "max_y": 236.0
       }
     }

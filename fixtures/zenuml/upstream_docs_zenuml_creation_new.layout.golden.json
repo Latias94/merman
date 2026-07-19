@@ -15,13 +15,13 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": true,
-          "showBottom": false,
+          "labelWidth": 0.0,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": false
+          "groupId": null
         },
         {
           "name": "A1",
@@ -31,13 +31,13 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": false,
+          "labelWidth": 18.56,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": true
+          "groupId": null
         },
         {
           "name": "A2",
@@ -47,13 +47,13 @@
           "width": 80.0,
           "height": 40.0,
           "isStarter": false,
-          "showBottom": false,
+          "labelWidth": 18.56,
+          "stereotypeWidth": null,
           "participantType": null,
           "stereotype": null,
           "color": null,
           "emoji": null,
-          "groupId": null,
-          "created": true
+          "groupId": null
         }
       ],
       "lifelines": [
@@ -76,32 +76,75 @@
           "bottomY": 268.0
         }
       ],
-      "messages": [
+      "messages": [],
+      "selfCalls": [],
+      "creations": [
         {
           "statementId": "zenuml-statement-0",
-          "number": "1",
-          "from": "_STARTER_",
-          "to": "A1",
-          "fromX": 50.0,
-          "toX": 150.0,
-          "y": 92.0,
-          "label": "«create»",
-          "kind": "creation",
-          "isSelf": false
+          "participant": {
+            "name": "A1",
+            "label": "A1",
+            "x": 150.0,
+            "y": 72.0,
+            "width": 80.0,
+            "height": 40.0,
+            "isStarter": false,
+            "labelWidth": 18.56,
+            "stereotypeWidth": null,
+            "participantType": null,
+            "stereotype": null,
+            "color": null,
+            "emoji": null,
+            "groupId": null
+          },
+          "message": {
+            "statementId": "zenuml-statement-0",
+            "number": "1",
+            "from": "_STARTER_",
+            "to": "A1",
+            "fromX": 50.0,
+            "toX": 150.0,
+            "y": 92.0,
+            "label": "«create»",
+            "arrowStyle": "open",
+            "isReverse": false,
+            "style": {}
+          }
         },
         {
           "statementId": "zenuml-statement-1",
-          "number": "2",
-          "from": "_STARTER_",
-          "to": "A2",
-          "fromX": 50.0,
-          "toX": 250.0,
-          "y": 170.0,
-          "label": "«with,parameters»",
-          "kind": "creation",
-          "isSelf": false
+          "participant": {
+            "name": "A2",
+            "label": "A2",
+            "x": 250.0,
+            "y": 150.0,
+            "width": 80.0,
+            "height": 40.0,
+            "isStarter": false,
+            "labelWidth": 18.56,
+            "stereotypeWidth": null,
+            "participantType": null,
+            "stereotype": null,
+            "color": null,
+            "emoji": null,
+            "groupId": null
+          },
+          "message": {
+            "statementId": "zenuml-statement-1",
+            "number": "2",
+            "from": "_STARTER_",
+            "to": "A2",
+            "fromX": 50.0,
+            "toX": 250.0,
+            "y": 170.0,
+            "label": "«with,parameters»",
+            "arrowStyle": "open",
+            "isReverse": false,
+            "style": {}
+          }
         }
       ],
+      "returns": [],
       "occurrences": [
         {
           "statementId": "zenuml-statement-0",
