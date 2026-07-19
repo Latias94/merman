@@ -85,6 +85,7 @@ fn analysis_facts_payload_matches_v1_schema_shape() {
             end: 0,
             text: SharedTextSlice::whole(source),
             fence_delimiter: None,
+            fence_delimiter_spans: None,
             diagnostics: Vec::new(),
             syntax: AnalysisSyntaxFacts::unavailable(None),
         }],

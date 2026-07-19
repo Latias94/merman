@@ -118,6 +118,7 @@ impl DocumentWorkspace {
             end: diagram.end,
             text: diagram.text.clone(),
             fence_delimiter: diagram.fence_delimiter,
+            fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
             diagram_type: diagram.syntax.diagram_type.clone(),
             text_index: diagram.syntax.text_index.clone(),
         }

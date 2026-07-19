@@ -1,6 +1,7 @@
 use crate::types::{DocumentKind, DocumentUri, Position};
 use merman_analysis::{
-    FenceDelimiter, FenceTextIndex, SharedTextSlice, SourceDescriptor, SourceMap,
+    FenceDelimiter, FenceDelimiterSpans, FenceTextIndex, SharedTextSlice, SourceDescriptor,
+    SourceMap,
 };
 use std::sync::Arc;
 
@@ -26,6 +27,7 @@ pub struct FenceSnapshot {
     pub end: usize,
     pub text: SharedTextSlice,
     pub fence_delimiter: Option<FenceDelimiter>,
+    pub fence_delimiter_spans: Option<FenceDelimiterSpans>,
     pub diagram_type: Option<String>,
     pub text_index: FenceTextIndex,
 }

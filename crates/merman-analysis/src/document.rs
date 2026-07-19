@@ -92,6 +92,12 @@ pub struct FenceDelimiter {
     len: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FenceDelimiterSpans {
+    pub opening: std::ops::Range<usize>,
+    pub closing: Option<std::ops::Range<usize>>,
+}
+
 impl FenceDelimiter {
     pub const fn new(marker: FenceMarker, len: usize) -> Self {
         Self { marker, len }
@@ -126,6 +132,7 @@ pub struct DocumentDiagram {
     pub end: usize,
     pub text: SharedTextSlice,
     pub fence_delimiter: Option<FenceDelimiter>,
+    pub fence_delimiter_spans: Option<FenceDelimiterSpans>,
 }
 
 #[derive(Debug, Clone)]
@@ -380,6 +387,7 @@ pub(crate) fn whole_document_diagram(text: Arc<str>, source: &SourceDescriptor) 
         end: len,
         text: SharedTextSlice::new(text, 0, len),
         fence_delimiter: None,
+        fence_delimiter_spans: None,
     }
 }
 
@@ -406,7 +414,8 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
             while search_start < document_text.len() {
                 let closing_end = next_line_end(document_text, search_start);
                 let closing_line = trim_line_ending(&document_text[search_start..closing_end]);
-                if is_matching_closing_fence(closing_line, delimiter) {
+                if let Some(closing_marker) = matching_closing_fence_marker(closing_line, delimiter)
+                {
                     body_end = search_start;
                     push_markdown_diagram(
                         &mut diagrams,
@@ -415,6 +424,12 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
                         MarkdownFenceBounds {
                             fence: cursor..closing_end,
                             body: body_start..body_end,
+                            opening_marker: cursor + opening.marker_offset
+                                ..cursor + opening.marker_offset + delimiter.marker_len(),
+                            closing_marker: Some(
+                                search_start + closing_marker.start
+                                    ..search_start + closing_marker.end,
+                            ),
                         },
                         delimiter,
                     );
@@ -432,6 +447,9 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
                     MarkdownFenceBounds {
                         fence: cursor..document_text.len(),
                         body: body_start..body_end,
+                        opening_marker: cursor + opening.marker_offset
+                            ..cursor + opening.marker_offset + delimiter.marker_len(),
+                        closing_marker: None,
                     },
                     delimiter,
                 );
@@ -454,6 +472,8 @@ fn extract_markdown_diagrams(text: &Arc<str>, source: &SourceDescriptor) -> Vec<
 struct MarkdownFenceBounds {
     fence: std::ops::Range<usize>,
     body: std::ops::Range<usize>,
+    opening_marker: std::ops::Range<usize>,
+    closing_marker: Option<std::ops::Range<usize>>,
 }
 
 fn push_markdown_diagram(
@@ -478,6 +498,10 @@ fn push_markdown_diagram(
         end: bounds.fence.end,
         text: SharedTextSlice::new(text, bounds.body.start, bounds.body.end),
         fence_delimiter: Some(fence_delimiter),
+        fence_delimiter_spans: Some(FenceDelimiterSpans {
+            opening: bounds.opening_marker,
+            closing: bounds.closing_marker,
+        }),
     });
 }
 
@@ -485,10 +509,12 @@ fn push_markdown_diagram(
 struct MarkdownFenceOpening {
     delimiter: FenceDelimiter,
     is_mermaid: bool,
+    marker_offset: usize,
 }
 
 fn markdown_fence_opening(line: &str) -> Option<MarkdownFenceOpening> {
     let trimmed = trim_fence_indent(line)?;
+    let marker_offset = line.len() - trimmed.len();
     let first = trimmed.as_bytes().first().copied()?;
     let marker = match first {
         b'`' => FenceMarker::Backtick,
@@ -506,6 +532,7 @@ fn markdown_fence_opening(line: &str) -> Option<MarkdownFenceOpening> {
         return Some(MarkdownFenceOpening {
             delimiter: FenceDelimiter::new(marker, len),
             is_mermaid: false,
+            marker_offset,
         });
     }
 
@@ -519,6 +546,7 @@ fn markdown_fence_opening(line: &str) -> Option<MarkdownFenceOpening> {
         return Some(MarkdownFenceOpening {
             delimiter: FenceDelimiter::new(marker, len),
             is_mermaid: false,
+            marker_offset,
         });
     }
     let tail = &rest[language_len..];
@@ -526,26 +554,32 @@ fn markdown_fence_opening(line: &str) -> Option<MarkdownFenceOpening> {
     Some(MarkdownFenceOpening {
         delimiter: FenceDelimiter::new(marker, len),
         is_mermaid,
+        marker_offset,
     })
 }
 
-fn is_matching_closing_fence(line: &str, delimiter: FenceDelimiter) -> bool {
-    let Some(trimmed) = trim_fence_indent(line) else {
-        return false;
-    };
+fn matching_closing_fence_marker(
+    line: &str,
+    delimiter: FenceDelimiter,
+) -> Option<std::ops::Range<usize>> {
+    let trimmed = trim_fence_indent(line)?;
+    let marker_offset = line.len() - trimmed.len();
     let marker = delimiter.marker_byte();
     let len = repeated_marker_len(trimmed.as_bytes(), marker);
     if len < delimiter.marker_len() {
-        return false;
+        return None;
     }
-    trimmed[len..].chars().all(|ch| ch.is_whitespace())
+    trimmed[len..]
+        .chars()
+        .all(|ch| ch.is_whitespace())
+        .then_some(marker_offset..marker_offset + len)
 }
 
 fn skip_markdown_fence(text: &str, mut cursor: usize, delimiter: FenceDelimiter) -> usize {
     while cursor < text.len() {
         let line_end = next_line_end(text, cursor);
         let line = trim_line_ending(&text[cursor..line_end]);
-        if is_matching_closing_fence(line, delimiter) {
+        if matching_closing_fence_marker(line, delimiter).is_some() {
             return line_end;
         }
         cursor = line_end;
@@ -734,6 +768,50 @@ mod tests {
     }
 
     #[test]
+    fn markdown_fence_parser_records_exact_marker_spans() {
+        let text = concat!(
+            "  ````mermaid\n",
+            "flowchart LR\n",
+            "   ``````\n",
+            ":::MERMAID\n",
+            "pie title Work\n",
+            ":::::\n",
+            "~~~mermaid\n",
+            "sequenceDiagram\n",
+        );
+        let document = DocumentSource::new(
+            text,
+            source_descriptor_for_markdown_path(Some("file:///tmp/example.md")),
+        );
+
+        assert_eq!(document.diagrams().len(), 3);
+        let first = document.diagrams()[0]
+            .fence_delimiter_spans
+            .as_ref()
+            .expect("backtick marker spans");
+        assert_eq!(&text[first.opening.clone()], "````");
+        assert_eq!(
+            &text[first.closing.clone().expect("backtick closing")],
+            "``````"
+        );
+        let second = document.diagrams()[1]
+            .fence_delimiter_spans
+            .as_ref()
+            .expect("colon marker spans");
+        assert_eq!(&text[second.opening.clone()], ":::");
+        assert_eq!(
+            &text[second.closing.clone().expect("colon closing")],
+            ":::::"
+        );
+        let third = document.diagrams()[2]
+            .fence_delimiter_spans
+            .as_ref()
+            .expect("unclosed marker spans");
+        assert_eq!(&text[third.opening.clone()], "~~~");
+        assert_eq!(third.closing, None);
+    }
+
+    #[test]
     fn markdown_document_source_rejects_mermaid_prefix_without_language_boundary() {
         let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
         let document = DocumentSource::new("```mermaidx\nflowchart LR\n```\n", source);
@@ -775,6 +853,14 @@ mod tests {
     }
 
     #[test]
+    fn markdown_document_source_does_not_treat_tab_indent_as_fence_syntax() {
+        let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
+        let document = DocumentSource::new("\t```mermaid\nflowchart BT\n```\n", source);
+
+        assert!(document.diagrams().is_empty());
+    }
+
+    #[test]
     fn unclosed_fences_still_create_deterministic_sources() {
         let source = source_descriptor_for_markdown_path(Some("file:///tmp/example.md"));
         let document = DocumentSource::new("before\n```mermaid\nflowchart TD\nA-->B\n", source);
@@ -784,6 +870,12 @@ mod tests {
         assert_eq!(diagram.end, document.text().len());
         assert_eq!(diagram.body_end, document.text().len());
         assert!(diagram.text.contains("A-->B"));
+        let spans = diagram
+            .fence_delimiter_spans
+            .as_ref()
+            .expect("unclosed opening marker");
+        assert_eq!(&document.text()[spans.opening.clone()], "```");
+        assert_eq!(spans.closing, None);
     }
 
     #[test]

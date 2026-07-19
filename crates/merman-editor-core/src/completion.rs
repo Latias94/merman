@@ -873,6 +873,7 @@ mod tests {
                 end: text.len(),
                 text: SharedTextSlice::whole(Arc::clone(&shared_text)),
                 fence_delimiter: None,
+                fence_delimiter_spans: None,
                 diagram_type: diagram_type.map(str::to_string),
                 text_index: FenceTextIndex::from_core_facts(facts),
             }],

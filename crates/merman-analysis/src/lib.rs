@@ -23,16 +23,16 @@ mod status;
 
 pub use analyzer::{AnalysisOptions, Analyzer};
 pub use document::{
-    DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceMarker,
-    SharedTextSlice, analyze_document, analyze_document_facts, analyze_document_result,
-    analyze_document_result_shared, source_descriptor_for_kind,
+    DocumentDiagram, DocumentDiagramKind, DocumentSource, FenceDelimiter, FenceDelimiterSpans,
+    FenceMarker, SharedTextSlice, analyze_document, analyze_document_facts,
+    analyze_document_result, analyze_document_result_shared, source_descriptor_for_kind,
     source_descriptor_for_markdown_path, source_descriptor_for_uri, source_language,
 };
 pub use editor::{
     ByteSpan, EditorSymbolKind, FenceCursorCompletionKind, FenceCursorContext, FenceExpectedSyntax,
-    FenceExpectedSyntaxKind, FenceLineItem, FenceReferenceGroup, FenceRenamePolicy,
-    FenceSemanticItem, FenceSemanticRole, FenceTextIndex, FenceTextIndexSource,
-    ShapeObjectValuePrefix, shape_object_value_prefix,
+    FenceExpectedSyntaxKind, FenceLexeme, FenceLexemeFailure, FenceLexemeKind, FenceLexemeModifier,
+    FenceLineItem, FenceReferenceGroup, FenceRenamePolicy, FenceSemanticItem, FenceSemanticRole,
+    FenceTextIndex, FenceTextIndexSource, ShapeObjectValuePrefix, shape_object_value_prefix,
 };
 pub use options_json::{
     AnalysisOptionsJson, AnalysisOptionsJsonError, LintOptionsJson, LintRuleSeverityOverrideJson,

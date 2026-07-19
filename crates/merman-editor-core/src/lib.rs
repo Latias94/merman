@@ -12,6 +12,7 @@ mod diagnostics;
 mod semantic_tokens;
 mod snapshot;
 mod structure;
+mod token_planner;
 mod types;
 mod workspace;
 
@@ -41,6 +42,10 @@ pub use structure::{
     EditorTextEdit, EditorWorkspaceEdit, RenameError, document_symbols, folding_ranges,
     goto_definition, hover, prepare_rename, references, rename, selection_range, selection_ranges,
     workspace_symbols, workspace_symbols_for_snapshots,
+};
+pub use token_planner::{
+    PlannedToken, PlannedTokenKind, PlannedTokenModifier, SemanticTokenPlan, TokenPlanError,
+    plan_semantic_tokens_for_snapshot, planned_token_modifier_index, planned_token_type_index,
 };
 pub use types::{DocumentKind, DocumentUri, Position, Range};
 pub use workspace::DocumentWorkspace;

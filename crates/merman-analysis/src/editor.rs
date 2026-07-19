@@ -57,6 +57,54 @@ pub enum FenceSemanticRole {
     Payload,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FenceLexemeKind {
+    Keyword,
+    Comment,
+    Operator,
+    Delimiter,
+    Identifier,
+    Number,
+    Date,
+    Duration,
+    Boolean,
+    String,
+    Style,
+    Color,
+    Literal,
+    Frontmatter,
+    Directive,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FenceLexemeModifier {
+    Declaration,
+    Definition,
+    Reference,
+    Readonly,
+    Documentation,
+    DefaultLibrary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FenceLexeme {
+    pub kind: FenceLexemeKind,
+    pub modifiers: Vec<FenceLexemeModifier>,
+    pub span: ByteSpan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FenceLexemeFailure {
+    InvalidSpan { span: ByteSpan },
+    Overlap { left: ByteSpan, right: ByteSpan },
+    InvalidProvenance,
+    UnknownModifierBits { bits: u8 },
+    DuplicateModifiers { bits: u8 },
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FenceRenamePolicy {
@@ -278,6 +326,8 @@ pub struct FenceTextIndex {
     references: BTreeMap<FenceReferenceGroup, Vec<ByteSpan>>,
     outline_items: Vec<FenceLineItem>,
     semantic_items: Vec<FenceSemanticItem>,
+    lexemes: Vec<FenceLexeme>,
+    lexeme_failure: Option<FenceLexemeFailure>,
     expected_syntax: Vec<FenceExpectedSyntax>,
     source: FenceTextIndexSource,
 }
@@ -386,6 +436,14 @@ impl FenceTextIndex {
 
     pub fn semantic_items(&self) -> &[FenceSemanticItem] {
         &self.semantic_items
+    }
+
+    pub fn lexemes(&self) -> &[FenceLexeme] {
+        &self.lexemes
+    }
+
+    pub fn lexeme_failure(&self) -> Option<FenceLexemeFailure> {
+        self.lexeme_failure
     }
 
     pub fn expected_syntax(&self) -> &[FenceExpectedSyntax] {

@@ -1,9 +1,9 @@
 use crate::editor::FenceExpectedSyntax;
 use crate::{
     ANALYSIS_FACTS_PAYLOAD_VERSION, AnalysisDiagnostic, AnalysisPayload, DocumentDiagram,
-    DocumentDiagramKind, FenceDelimiter, FenceLineItem, FenceMarker, FenceReferenceGroup,
-    FenceSemanticItem, FenceTextIndex, FenceTextIndexSource, SharedTextSlice, SourceDescriptor,
-    SourceMap, Summary,
+    DocumentDiagramKind, FenceDelimiter, FenceDelimiterSpans, FenceLineItem, FenceMarker,
+    FenceReferenceGroup, FenceSemanticItem, FenceTextIndex, FenceTextIndexSource, SharedTextSlice,
+    SourceDescriptor, SourceMap, Summary,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -68,6 +68,7 @@ pub struct AnalyzedDiagram {
     pub end: usize,
     pub text: SharedTextSlice,
     pub fence_delimiter: Option<FenceDelimiter>,
+    pub fence_delimiter_spans: Option<FenceDelimiterSpans>,
     pub diagnostics: Vec<AnalysisDiagnostic>,
     pub syntax: AnalysisSyntaxFacts,
 }
@@ -89,6 +90,7 @@ impl AnalyzedDiagram {
             end: diagram.end,
             text: diagram.text.clone(),
             fence_delimiter: diagram.fence_delimiter,
+            fence_delimiter_spans: diagram.fence_delimiter_spans.clone(),
             diagnostics,
             syntax,
         }
