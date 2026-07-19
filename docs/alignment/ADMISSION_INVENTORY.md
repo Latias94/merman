@@ -2,7 +2,7 @@
 
 Status: Active
 Baseline: Mermaid `@11.16.0`
-Last updated: 2026-07-17
+Last updated: 2026-07-19
 
 The structured admission inventory lives in `crates/xtask/src/cmd/admission.rs`.
 
@@ -10,8 +10,9 @@ The executable inventory has two family-level states:
 
 - `PrimarySvgMatrix`: 35 families with semantic/layout goldens, typed rendering, pinned upstream
   SVGs, and executable compare facts;
-- `CompatibilityOnly`: `zenuml`, whose browser-only upstream engine is represented by a documented
-  Sequence-model compatibility adapter rather than an SVG parity claim.
+- `CompatibilityOnly`: `zenuml`, whose complete local grammar, semantic/editor model, typed layout,
+  and headless SVG are aligned to the admitted ZenUML Core behavior source, but whose external
+  browser renderer is not represented as a primary upstream-SVG parity claim.
 
 Every inventory record owns:
 

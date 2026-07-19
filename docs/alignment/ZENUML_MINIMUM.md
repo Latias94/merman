@@ -6,13 +6,14 @@ ZenUML into Mermaid Sequence actions or Sequence JSON.
 ## Authority
 
 - Mermaid baseline: `mermaid@11.16.0`.
-- Normative companion oracle: `@zenuml/core@3.47.8`, commit `c81406671c0833baebb9fac08a0cbcdc99b3907d`.
-- Oracle grammar: `repo-ref/zenuml-core/src/g4/sequenceLexer.g4` and
-  `repo-ref/zenuml-core/src/g4/sequenceParser.g4`.
-- Candidate: `@zenuml/core@3.50.1`, commit `38404ccc14243ed54ab45b804b2eb6f2ca73af36`.
-  The candidate remains a separate admission until the U1 semantic, render, rich-artifact,
-  security, and resource gates pass. The latest major `4.2.0` is outside Mermaid's declared
-  plugin range and is not an implicit upgrade.
+- Mermaid workspace oracle: `@zenuml/core@3.47.8`, commit
+  `c81406671c0833baebb9fac08a0cbcdc99b3907d`.
+- Selected compatible behavior source: `@zenuml/core@3.50.1`, commit
+  `38404ccc14243ed54ab45b804b2eb6f2ca73af36`.
+- Selected grammar: `repo-ref/zenuml-core-3.50.1/src/g4/sequenceLexer.g4` and
+  `repo-ref/zenuml-core-3.50.1/src/g4/sequenceParser.g4`.
+- Latest stable major `4.2.0` is outside Mermaid's declared plugin range and remains a separate
+  admission rather than an implicit upgrade.
 
 The machine-readable decision is `tools/upstreams/MERMAID_REFERENCE_BUNDLE.json`; companion gate
 evidence is `tools/upstreams/ZENUML_CORE_ADMISSION.json`.
@@ -59,11 +60,11 @@ return the first structured diagnostic; the editor entry point returns the recov
 
 | Surface | Level | Evidence |
 | --- | --- | --- |
-| Grammar parse and recovery | Implemented against oracle | `zenuml` parser tests and editor corpus |
+| Grammar parse and recovery | Implemented against selected source | `zenuml` parser tests and editor corpus |
 | Semantic topology and source ranges | Implemented | typed model and `EditorSemanticFacts` tests |
 | Headless SVG topology, labels, colors, fragments | Implemented source-derived port | `crates/merman/tests/zenuml_typed_render.rs` |
 | Pixel-identical browser geometry | Residual under measurement audit | `docs/alignment/ZENUML_GEOMETRY.md` |
-| Candidate 3.50.1 deltas | Pending admission | U1 descriptor/gate record |
+| Oracle-to-selected deltas | Admitted through all seven gates | `tools/upstreams/ZENUML_CORE_ADMISSION.json` |
 
 Pixel or browser-dependent differences must be recorded as evidence. They must not be hidden by
 fixture-specific comparator exceptions.
