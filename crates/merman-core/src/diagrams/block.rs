@@ -1,8 +1,9 @@
 use crate::diagram::{BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact, legacy_warning_messages};
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    MermaidConfig, ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
 };
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, hash_map::Entry};
@@ -708,7 +709,7 @@ fn construct_block_semantic_source(
         let (error, span) = block_error_with_fallback_span(error, parser.current_token_span());
         return Err(BlockParseFailure {
             error: Box::new(error),
-            editor_facts: Box::new(parser.editor_facts),
+            editor_facts: Box::new(parser.into_editor_facts()),
             span,
         });
     }
@@ -719,16 +720,17 @@ fn construct_block_semantic_source(
             let (error, span) = block_error_with_fallback_span(error, parser.current_token_span());
             return Err(BlockParseFailure {
                 error: Box::new(error),
-                editor_facts: Box::new(parser.editor_facts),
+                editor_facts: Box::new(parser.into_editor_facts()),
                 span,
             });
         }
     };
+    let editor_facts = parser.into_editor_facts();
 
     if let Some(failure) = document.failure {
         return Err(BlockParseFailure {
             error: Box::new(failure.error),
-            editor_facts: Box::new(parser.editor_facts),
+            editor_facts: Box::new(editor_facts),
             span: failure.span,
         });
     }
@@ -740,15 +742,12 @@ fn construct_block_semantic_source(
         let (error, span) = block_error_with_fallback_span(error, span);
         return Err(BlockParseFailure {
             error: Box::new(error),
-            editor_facts: Box::new(parser.editor_facts),
+            editor_facts: Box::new(editor_facts),
             span,
         });
     }
 
-    Ok(BlockSemanticSource {
-        db,
-        editor_facts: parser.editor_facts,
-    })
+    Ok(BlockSemanticSource { db, editor_facts })
 }
 
 pub fn parse_block_model_for_render(
@@ -1200,6 +1199,7 @@ struct Parser<'a> {
     pos: usize,
     gen_counter: i64,
     editor_facts: EditorSemanticFacts,
+    lexemes: EditorLexemeJournal<'a>,
 }
 
 impl<'a> Parser<'a> {
@@ -1209,6 +1209,59 @@ impl<'a> Parser<'a> {
             pos: 0,
             gen_counter: 0,
             editor_facts: EditorSemanticFacts::new(),
+            lexemes: EditorLexemeJournal::family_parser(input),
+        }
+    }
+
+    fn into_editor_facts(mut self) -> EditorSemanticFacts {
+        self.editor_facts
+            .replace_family_lexemes(self.lexemes.finish());
+        self.editor_facts
+    }
+
+    fn record_lexeme(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
+        self.record_lexeme_with_modifiers(kind, EditorLexemeModifiers::NONE, span);
+    }
+
+    fn record_lexeme_with_modifier(
+        &mut self,
+        kind: EditorLexemeKind,
+        modifier: EditorLexemeModifier,
+        span: SourceSpan,
+    ) {
+        self.record_lexeme_with_modifiers(
+            kind,
+            EditorLexemeModifiers::from_modifier(modifier),
+            span,
+        );
+    }
+
+    fn record_lexeme_with_modifiers(
+        &mut self,
+        kind: EditorLexemeKind,
+        modifiers: EditorLexemeModifiers,
+        span: SourceSpan,
+    ) {
+        if span.start < span.end {
+            self.lexemes.push(kind, modifiers, span);
+        }
+    }
+
+    fn record_keyword(&mut self, start: usize, keyword: &str) {
+        if let Some(keyword) = keyword.strip_suffix(':') {
+            self.record_lexeme(
+                EditorLexemeKind::Keyword,
+                SourceSpan::new(start, start + keyword.len()),
+            );
+            self.record_lexeme(
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(start + keyword.len(), start + keyword.len() + 1),
+            );
+        } else {
+            self.record_lexeme(
+                EditorLexemeKind::Keyword,
+                SourceSpan::new(start, start + keyword.len()),
+            );
         }
     }
 
@@ -1306,7 +1359,9 @@ impl<'a> Parser<'a> {
         if !self.peek_keyword(kw) {
             return false;
         }
+        let start = self.pos;
         self.pos += kw.len();
+        self.record_keyword(start, kw);
         true
     }
 
@@ -1324,7 +1379,9 @@ impl<'a> Parser<'a> {
             return false;
         }
         if kw.ends_with(':') {
+            let start = self.pos;
             self.pos += kw.len();
+            self.record_keyword(start, kw);
             return true;
         }
         let after = &self.input[self.pos + kw.len()..];
@@ -1333,7 +1390,9 @@ impl<'a> Parser<'a> {
             .next()
             .is_none_or(|c| c.is_whitespace() || c == ':')
         {
+            let start = self.pos;
             self.pos += kw.len();
+            self.record_keyword(start, kw);
             return true;
         }
         false
@@ -1344,7 +1403,12 @@ impl<'a> Parser<'a> {
         if !self.starts_with(s) {
             return false;
         }
+        let start = self.pos;
         self.pos += s.len();
+        self.record_lexeme(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(start, self.pos),
+        );
         true
     }
 
@@ -1572,6 +1636,16 @@ impl<'a> Parser<'a> {
         self.editor_facts.push_directive_prefix("classDef");
         let id = self.parse_identifier_like()?;
         let css = self.take_rest_of_line_trimmed();
+        if id.text == "default" {
+            self.record_lexeme(EditorLexemeKind::Keyword, id.span);
+        } else {
+            self.record_lexeme_with_modifier(
+                EditorLexemeKind::Identifier,
+                EditorLexemeModifier::Definition,
+                id.span,
+            );
+        }
+        self.record_lexeme(EditorLexemeKind::Style, css.span);
         push_block_outline(
             &mut self.editor_facts,
             id.clone(),
@@ -1599,8 +1673,13 @@ impl<'a> Parser<'a> {
             ));
         }
         self.editor_facts.push_directive_prefix("class");
-        let ids = self.parse_identifier_like()?;
+        let ids = self.parse_identifier_list(EditorLexemeModifier::Reference)?;
         let style_class = self.take_rest_of_line_trimmed();
+        self.record_lexeme_with_modifier(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifier::Reference,
+            style_class.span,
+        );
         push_block_id_list(
             &mut self.editor_facts,
             ids.clone(),
@@ -1628,8 +1707,9 @@ impl<'a> Parser<'a> {
             ));
         }
         self.editor_facts.push_directive_prefix("style");
-        let ids = self.parse_identifier_like()?;
+        let ids = self.parse_identifier_list(EditorLexemeModifier::Reference)?;
         let styles_str = self.take_rest_of_line_trimmed();
+        self.record_lexeme(EditorLexemeKind::Style, styles_str.span);
         push_block_id_list(
             &mut self.editor_facts,
             ids.clone(),
@@ -1677,7 +1757,12 @@ impl<'a> Parser<'a> {
                 self.bump();
             }
             if self.peek_char() == Some(':') {
+                let delimiter_start = self.pos;
                 self.bump();
+                self.record_lexeme(
+                    EditorLexemeKind::Delimiter,
+                    SourceSpan::new(delimiter_start, self.pos),
+                );
                 while self.peek_char().is_some_and(|c| c == ' ' || c == '\t') {
                     self.bump();
                 }
@@ -1693,6 +1778,7 @@ impl<'a> Parser<'a> {
                 }
                 let text = self.input[start..self.pos].to_string();
                 width = text.parse::<i64>().unwrap_or(1);
+                self.record_lexeme(EditorLexemeKind::Number, SourceSpan::new(start, self.pos));
                 push_block_payload(
                     &mut self.editor_facts,
                     BlockSpannedText {
@@ -1768,34 +1854,50 @@ impl<'a> Parser<'a> {
         }
 
         let snapshot = self.pos;
-        if self.try_read_link_start_marker().is_some() {
+        let mut partial_start_marker = None;
+        if let Some(start_marker) = self.try_read_link_start_marker() {
             self.skip_ws_and_comments();
             if self.peek_char() == Some('"') {
+                self.record_lexeme(EditorLexemeKind::Operator, start_marker.span);
                 let label = self.parse_string_literal()?;
                 self.skip_ws_and_comments();
                 if let Some(edge_marker) = self.try_read_link_full_marker() {
+                    self.record_lexeme(EditorLexemeKind::Operator, edge_marker.span);
                     push_block_payload(
                         &mut self.editor_facts,
                         label.clone(),
                         "block edge label",
                         EditorSemanticKind::String,
                     );
-                    return Ok(Some((label.text, edge_marker)));
+                    return Ok(Some((label.text, edge_marker.text)));
                 }
                 self.pos = snapshot;
-                return Ok(None);
+                return Err(Error::diagram_parse_fallback(
+                    "block".to_string(),
+                    "expected edge marker after block edge label".to_string(),
+                ));
             }
+            partial_start_marker = Some(start_marker);
             self.pos = snapshot;
         }
 
         if let Some(edge_marker) = self.try_read_link_full_marker() {
-            return Ok(Some(("".to_string(), edge_marker)));
+            self.record_lexeme(EditorLexemeKind::Operator, edge_marker.span);
+            return Ok(Some(("".to_string(), edge_marker.text)));
+        }
+        if let Some(start_marker) = partial_start_marker {
+            self.record_lexeme(EditorLexemeKind::Operator, start_marker.span);
+            self.pos = snapshot;
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected block edge label or complete edge marker".to_string(),
+            ));
         }
 
         Ok(None)
     }
 
-    fn try_read_link_start_marker(&mut self) -> Option<String> {
+    fn try_read_link_start_marker(&mut self) -> Option<BlockSpannedText> {
         self.skip_ws_and_comments();
         let start = self.pos;
         if self
@@ -1807,13 +1909,16 @@ impl<'a> Parser<'a> {
         if self.starts_with("--") || self.starts_with("==") || self.starts_with("-.") {
             self.bump()?;
             self.bump()?;
-            return Some(self.input[start..self.pos].to_string());
+            return Some(BlockSpannedText {
+                text: self.input[start..self.pos].to_string(),
+                span: SourceSpan::new(start, self.pos),
+            });
         }
         self.pos = start;
         None
     }
 
-    fn try_read_link_full_marker(&mut self) -> Option<String> {
+    fn try_read_link_full_marker(&mut self) -> Option<BlockSpannedText> {
         self.skip_ws_and_comments();
         let start = self.pos;
 
@@ -1839,7 +1944,10 @@ impl<'a> Parser<'a> {
             self.pos = start;
             return None;
         }
-        Some(token.to_string())
+        Some(BlockSpannedText {
+            text: token.to_string(),
+            span: SourceSpan::new(start, self.pos),
+        })
     }
 
     fn parse_node(&mut self, detail: &str, kind: EditorSemanticKind) -> Result<Block> {
@@ -1853,7 +1961,12 @@ impl<'a> Parser<'a> {
         self.skip_ws_and_comments();
 
         if self.starts_with("<[") {
+            let delimiter_start = self.pos;
             self.pos += 2;
+            self.record_lexeme(
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(delimiter_start, self.pos),
+            );
             self.skip_ws_and_comments();
             let label = self.parse_string_literal()?;
             push_block_payload(
@@ -1893,7 +2006,12 @@ impl<'a> Parser<'a> {
 
         if let Some(delims) = node_delims_at_start(&self.input[self.pos..]) {
             let start_delim = delims.start;
+            let delimiter_start = self.pos;
             self.pos += start_delim.len();
+            self.record_lexeme(
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(delimiter_start, self.pos),
+            );
             self.skip_ws_and_comments();
             let label = self.parse_string_literal_or_md()?;
             push_block_payload(
@@ -1979,15 +2097,21 @@ impl<'a> Parser<'a> {
         }
         let dir = self.input[start..self.pos].trim().to_string();
         match dir.as_str() {
-            "right" | "left" | "x" | "y" | "up" | "down" => Ok(BlockSpannedText {
-                text: dir,
-                span: SourceSpan::new(start, self.pos),
-            }),
-            _ => Err(Error::diagram_parse_exact(
-                "block",
-                format!("invalid direction: {dir}"),
-                SourceSpan::new(start, self.pos),
-            )),
+            "right" | "left" | "x" | "y" | "up" | "down" => {
+                self.record_lexeme(EditorLexemeKind::Keyword, SourceSpan::new(start, self.pos));
+                Ok(BlockSpannedText {
+                    text: dir,
+                    span: SourceSpan::new(start, self.pos),
+                })
+            }
+            _ => {
+                self.record_lexeme(EditorLexemeKind::Literal, SourceSpan::new(start, self.pos));
+                Err(Error::diagram_parse_exact(
+                    "block",
+                    format!("invalid direction: {dir}"),
+                    SourceSpan::new(start, self.pos),
+                ))
+            }
         }
     }
 
@@ -2011,10 +2135,16 @@ impl<'a> Parser<'a> {
                 "expected node id".to_string(),
             ));
         }
-        Ok(BlockSpannedText {
+        let id = BlockSpannedText {
             text: self.input[start..self.pos].to_string(),
             span: SourceSpan::new(start, self.pos),
-        })
+        };
+        self.record_lexeme_with_modifier(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifier::Definition,
+            id.span,
+        );
+        Ok(id)
     }
 
     fn parse_identifier_like(&mut self) -> Result<BlockSpannedText> {
@@ -2038,6 +2168,51 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_identifier_list(
+        &mut self,
+        modifier: EditorLexemeModifier,
+    ) -> Result<BlockSpannedText> {
+        self.skip_ws_and_comments();
+        let start = self.pos;
+        let mut identifier_start = self.pos;
+        while let Some(c) = self.peek_char() {
+            if c.is_whitespace() || c == '\n' || c == '\r' {
+                break;
+            }
+            if c == ',' {
+                self.record_lexeme_with_modifier(
+                    EditorLexemeKind::Identifier,
+                    modifier,
+                    SourceSpan::new(identifier_start, self.pos),
+                );
+                let delimiter_start = self.pos;
+                self.bump();
+                self.record_lexeme(
+                    EditorLexemeKind::Delimiter,
+                    SourceSpan::new(delimiter_start, self.pos),
+                );
+                identifier_start = self.pos;
+            } else {
+                self.bump();
+            }
+        }
+        if self.pos == start {
+            return Err(Error::diagram_parse_fallback(
+                "block".to_string(),
+                "expected identifier".to_string(),
+            ));
+        }
+        self.record_lexeme_with_modifier(
+            EditorLexemeKind::Identifier,
+            modifier,
+            SourceSpan::new(identifier_start, self.pos),
+        );
+        Ok(BlockSpannedText {
+            text: self.input[start..self.pos].to_string(),
+            span: SourceSpan::new(start, self.pos),
+        })
+    }
+
     fn parse_int(&mut self) -> Result<(i64, BlockSpannedText)> {
         self.skip_ws_and_comments();
         let start = self.pos;
@@ -2054,6 +2229,7 @@ impl<'a> Parser<'a> {
         let value = text
             .parse::<i64>()
             .map_err(|e| Error::diagram_parse_fallback("block".to_string(), e.to_string()))?;
+        self.record_lexeme(EditorLexemeKind::Number, SourceSpan::new(start, self.pos));
         Ok((
             value,
             BlockSpannedText {
@@ -2066,12 +2242,18 @@ impl<'a> Parser<'a> {
     fn parse_string_literal_or_md(&mut self) -> Result<BlockSpannedText> {
         self.skip_ws_and_comments();
         if self.starts_with("\"`") {
+            let opening_start = self.pos;
             self.pos += 2;
+            self.record_lexeme(
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(opening_start, self.pos),
+            );
             let start = self.pos;
             while self.pos < self.input.len() && !self.input[self.pos..].starts_with("`\"") {
                 self.bump();
             }
             if self.pos >= self.input.len() {
+                self.record_lexeme(EditorLexemeKind::String, SourceSpan::new(start, self.pos));
                 return Err(Error::diagram_parse_fallback(
                     "block".to_string(),
                     "unterminated markdown string".to_string(),
@@ -2080,6 +2262,8 @@ impl<'a> Parser<'a> {
             let end = self.pos;
             let inner = self.input[start..end].to_string();
             self.pos += 2;
+            self.record_lexeme(EditorLexemeKind::String, SourceSpan::new(start, end));
+            self.record_lexeme(EditorLexemeKind::Delimiter, SourceSpan::new(end, self.pos));
             return Ok(BlockSpannedText {
                 text: inner,
                 span: SourceSpan::new(start, end),
@@ -2096,7 +2280,12 @@ impl<'a> Parser<'a> {
                 "expected string literal".to_string(),
             ));
         }
+        let opening_start = self.pos;
         self.bump();
+        self.record_lexeme(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(opening_start, self.pos),
+        );
         let start = self.pos;
         while let Some(c) = self.peek_char() {
             if c == '"' {
@@ -2105,6 +2294,7 @@ impl<'a> Parser<'a> {
             self.bump();
         }
         if self.peek_char() != Some('"') {
+            self.record_lexeme(EditorLexemeKind::String, SourceSpan::new(start, self.pos));
             return Err(Error::diagram_parse_fallback(
                 "block".to_string(),
                 "unterminated string literal".to_string(),
@@ -2113,6 +2303,8 @@ impl<'a> Parser<'a> {
         let end = self.pos;
         let inner = self.input[start..end].to_string();
         self.bump();
+        self.record_lexeme(EditorLexemeKind::String, SourceSpan::new(start, end));
+        self.record_lexeme(EditorLexemeKind::Delimiter, SourceSpan::new(end, self.pos));
         Ok(BlockSpannedText {
             text: inner,
             span: SourceSpan::new(start, end),
@@ -2171,8 +2363,8 @@ pub fn parse_block(code: &str, meta: &ParseMetadata) -> Result<Value> {
 mod tests {
     use super::*;
     use crate::{
-        EditorSemanticCompleteness, Engine, ParseDiagnosticSpanKind, ParseOptions,
-        RenderSemanticModel,
+        EditorLexemeProducerKind, EditorSemanticCompleteness, Engine, ParseDiagnosticSpanKind,
+        ParseOptions, RenderSemanticModel,
     };
     use futures::executor::block_on;
 
@@ -2394,6 +2586,161 @@ C<["Route"]>(left,down)
             expected.kind == EditorExpectedSyntaxKind::IdList
                 && expected.span == SourceSpan::new(class_ids_start, class_ids_start + 3)
         }));
+    }
+
+    #[test]
+    fn block_parser_emits_exact_lexemes_for_the_complete_grammar_surface() {
+        let text = concat!(
+            "block-beta\r\n",
+            "  columns 3\r\n",
+            "  block:容器[\"组\"]\r\n",
+            "    columns auto\r\n",
+            "    user((\"用户\")):2\r\n",
+            "    route<[\"流\"]>(right, down)\r\n",
+            "    user -- \"发送\" --> api[\"接口\"]\r\n",
+            "  end\r\n",
+            "  classDef hot fill:#f00,stroke:#111\r\n",
+            "  class user,api hot\r\n",
+            "  style api fill:#0f0\r\n",
+            "  space:2\r\n",
+        );
+        parse_block(text, &meta()).expect("grammar-surface fixture must stay render-compatible");
+        let facts = parse_block_editor_facts(text, &meta());
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert_eq!(facts.lexeme_failure(), None);
+        assert!(!facts.lexemes().is_empty());
+        assert!(
+            facts.lexemes().iter().all(|lexeme| {
+                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
+            })
+        );
+        assert!(
+            facts
+                .lexemes()
+                .windows(2)
+                .all(|pair| pair[0].span().end <= pair[1].span().start)
+        );
+
+        let assert_lexeme = |needle: &str, kind: EditorLexemeKind| {
+            let start = text
+                .find(needle)
+                .unwrap_or_else(|| panic!("missing fixture slice {needle:?}"));
+            let span = SourceSpan::new(start, start + needle.len());
+            assert!(
+                facts
+                    .lexemes()
+                    .iter()
+                    .any(|lexeme| lexeme.kind() == kind && lexeme.span() == span),
+                "missing {kind:?} lexeme for {needle:?} at {span:?}"
+            );
+        };
+
+        assert_lexeme("block-beta", EditorLexemeKind::Keyword);
+        assert_lexeme("3", EditorLexemeKind::Number);
+        assert_lexeme("容器", EditorLexemeKind::Identifier);
+        assert_lexeme("组", EditorLexemeKind::String);
+        assert_lexeme("auto", EditorLexemeKind::Keyword);
+        assert_lexeme("<[", EditorLexemeKind::Delimiter);
+        assert_lexeme("流", EditorLexemeKind::String);
+        assert_lexeme("right", EditorLexemeKind::Keyword);
+        assert_lexeme(",", EditorLexemeKind::Delimiter);
+        assert_lexeme("--", EditorLexemeKind::Operator);
+        assert_lexeme("发送", EditorLexemeKind::String);
+        assert_lexeme("-->", EditorLexemeKind::Operator);
+        assert_lexeme("fill:#f00,stroke:#111", EditorLexemeKind::Style);
+
+        let class_targets = text.find("user,api hot").unwrap();
+        for (start, end) in [
+            (class_targets, class_targets + "user".len()),
+            (
+                class_targets + "user,".len(),
+                class_targets + "user,api".len(),
+            ),
+        ] {
+            let lexeme = facts
+                .lexemes()
+                .iter()
+                .find(|lexeme| {
+                    lexeme.kind() == EditorLexemeKind::Identifier
+                        && lexeme.span() == SourceSpan::new(start, end)
+                })
+                .expect("class target must be emitted as its own identifier");
+            assert!(lexeme.modifiers().contains(EditorLexemeModifier::Reference));
+        }
+
+        let unicode_span = facts
+            .lexemes()
+            .iter()
+            .find(|lexeme| {
+                lexeme.kind() == EditorLexemeKind::String
+                    && &text[lexeme.span().start..lexeme.span().end] == "接口"
+            })
+            .expect("Unicode label must retain caller-source byte coordinates")
+            .span();
+        assert_eq!(unicode_span.end - unicode_span.start, "接口".len());
+    }
+
+    #[test]
+    fn block_recovery_keeps_confirmed_prefix_and_later_parser_lexemes() {
+        let text = concat!(
+            "block-beta\r\n",
+            "  A<[\"方向\"]>(right, sideways)\r\n",
+            "  后续[\"完成\"]\r\n",
+        );
+        let invalid_start = text.find("sideways").unwrap();
+        let invalid_span = SourceSpan::new(invalid_start, invalid_start + "sideways".len());
+
+        let error =
+            parse_block(text, &meta()).expect_err("strict parsing must reject bad direction");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected structured Block parse error");
+        };
+        assert_eq!(diagnostic.span(), Some(invalid_span));
+
+        let facts = parse_block_editor_facts(text, &meta());
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(facts.lexeme_failure(), None);
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
+        }));
+
+        for (needle, kind) in [
+            ("A", EditorLexemeKind::Identifier),
+            ("方向", EditorLexemeKind::String),
+            ("right", EditorLexemeKind::Keyword),
+            ("sideways", EditorLexemeKind::Literal),
+            ("后续", EditorLexemeKind::Identifier),
+            ("完成", EditorLexemeKind::String),
+        ] {
+            let start = text.find(needle).unwrap();
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                lexeme.kind() == kind
+                    && lexeme.span() == SourceSpan::new(start, start + needle.len())
+            }));
+        }
+    }
+
+    #[test]
+    fn block_recovery_keeps_an_incomplete_labeled_edge_prefix() {
+        let text = "block\nA o-- \"label\"\nB[\"later\"]\n";
+        parse_block(text, &meta()).expect_err("strict parsing must reject incomplete labeled edge");
+        let facts = parse_block_editor_facts(text, &meta());
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(facts.lexeme_failure(), None);
+        for (needle, kind) in [
+            ("o--", EditorLexemeKind::Operator),
+            ("label", EditorLexemeKind::String),
+            ("B", EditorLexemeKind::Identifier),
+            ("later", EditorLexemeKind::String),
+        ] {
+            let start = text.find(needle).unwrap();
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                lexeme.kind() == kind
+                    && lexeme.span() == SourceSpan::new(start, start + needle.len())
+            }));
+        }
     }
 
     #[test]
