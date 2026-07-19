@@ -1,6 +1,6 @@
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string,
+    LangiumCommonFacts, LangiumLexemeTrace, parse_langium_common, parse_langium_string,
     push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
 };
 use crate::{
@@ -289,29 +289,50 @@ enum RadarStatementEvent {
     Options(Vec<OptionAst>),
 }
 
+struct RadarParsedStatement {
+    event: RadarStatementEvent,
+    lexemes: LangiumLexemeTrace,
+}
+
 fn parse_radar_statement(
     stmt: &str,
     stmt_start: usize,
-) -> std::result::Result<RadarStatementEvent, String> {
+) -> std::result::Result<RadarParsedStatement, String> {
+    let mut lexemes = LangiumLexemeTrace::default();
     let (trimmed, trimmed_start) = trim_start_with_source_offset(stmt, stmt_start);
     if let Some(rest) = trimmed.strip_prefix("axis") {
+        lexemes.keyword(SourceSpan::new(trimmed_start, trimmed_start + "axis".len()));
         let (rest, rest_start) = trim_start_with_source_offset(rest, trimmed_start + "axis".len());
         if rest.is_empty() {
             return Err("axis statement must include at least one axis".to_string());
         }
-        return parse_axes_list(rest, rest_start).map(RadarStatementEvent::Axes);
+        let axes = parse_axes_list(rest, rest_start, &mut lexemes)?;
+        return Ok(RadarParsedStatement {
+            event: RadarStatementEvent::Axes(axes),
+            lexemes,
+        });
     }
 
     if trimmed.starts_with("curve") {
-        return parse_curves_stmt(trimmed, trimmed_start).map(RadarStatementEvent::Curves);
+        let curves = parse_curves_stmt(trimmed, trimmed_start, &mut lexemes)?;
+        return Ok(RadarParsedStatement {
+            event: RadarStatementEvent::Curves(curves),
+            lexemes,
+        });
     }
 
-    if let Some(options) = parse_option_list_stmt(trimmed, trimmed_start)? {
-        return Ok(RadarStatementEvent::Options(options));
+    if let Some(options) = parse_option_list_stmt(trimmed, trimmed_start, &mut lexemes)? {
+        return Ok(RadarParsedStatement {
+            event: RadarStatementEvent::Options(options),
+            lexemes,
+        });
     }
 
-    if let Some(option) = parse_option_stmt(trimmed, trimmed_start)? {
-        return Ok(RadarStatementEvent::Options(vec![option]));
+    if let Some(option) = parse_option_stmt(trimmed, trimmed_start, &mut lexemes)? {
+        return Ok(RadarParsedStatement {
+            event: RadarStatementEvent::Options(vec![option]),
+            lexemes,
+        });
     }
 
     Err(format!("unexpected radar statement: {}", stmt.trim()))
@@ -409,14 +430,32 @@ fn apply_radar_statement(
     }
 }
 
-fn scan_radar_editor_facts(code: &str) -> EditorSemanticFacts {
+fn parse_radar_editor_source(code: &str) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let Ok(Some(mut offset)) = radar_body_start(code) else {
-        return facts;
+    let body = match radar_body_start(code) {
+        Ok(Some(body)) => body,
+        Ok(None) => return facts,
+        Err(error) => {
+            return ensure_editor_recovery_from_error(
+                facts,
+                &error,
+                editor_recovery_fallback_span(code),
+            );
+        }
     };
+    let mut offset = body.offset;
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.keyword(body.header_span);
+    if let Some(span) = body.colon_span {
+        lexemes.delimiter(span);
+    }
+    let mut axes = Vec::new();
+    let mut curves = Vec::new();
+    let mut options = Vec::new();
 
     while offset < code.len() {
         if let Some(parsed) = parse_langium_common(code, offset) {
+            lexemes.extend(parsed.lexemes.clone());
             push_langium_common_editor_fact(&mut facts, &parsed.fact, "radar");
             if let Some(diagnostic) = &parsed.diagnostic {
                 push_langium_common_recovery(&mut facts, diagnostic);
@@ -431,7 +470,11 @@ fn scan_radar_editor_facts(code: &str) -> EditorSemanticFacts {
             continue;
         }
         match parse_radar_statement(&stmt, stmt_start) {
-            Ok(event) => push_radar_statement_facts(&mut facts, &event),
+            Ok(parsed) => {
+                lexemes.extend(parsed.lexemes);
+                push_radar_statement_facts(&mut facts, &parsed.event);
+                apply_radar_statement(parsed.event, &mut axes, &mut curves, &mut options);
+            }
             Err(message) => {
                 let invalid = stmt.trim_end();
                 facts.mark_recovered_from_parse_error(
@@ -442,18 +485,19 @@ fn scan_radar_editor_facts(code: &str) -> EditorSemanticFacts {
         }
     }
 
+    lexemes.attach(code, &mut facts);
+    let mut db = RadarDb::new();
+    db.set_axes(axes);
+    if let Err(error) = db.set_curves(curves) {
+        facts =
+            ensure_editor_recovery_from_error(facts, &error, editor_recovery_fallback_span(code));
+    }
+    db.set_options(options);
     facts
 }
 
-pub fn parse_radar_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match parse_radar_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(error) => ensure_editor_recovery_from_error(
-            scan_radar_editor_facts(code),
-            &error,
-            editor_recovery_fallback_span(code),
-        ),
-    }
+pub fn parse_radar_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    parse_radar_editor_source(code)
 }
 
 fn compute_curve_entries(axes: &[RadarRenderAxis], entries: &[EntryAst]) -> Result<Vec<Value>> {
@@ -553,18 +597,24 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("radar");
 
-    let Some(mut offset) = radar_body_start(code)? else {
+    let Some(body) = radar_body_start(code)? else {
         return Ok(RadarSemanticSource {
             db: None,
             editor_facts: EditorSemanticFacts::new(),
         });
     };
+    let mut offset = body.offset;
 
     let mut common = LangiumCommonFacts::default();
     let mut editor_facts = EditorSemanticFacts::new();
     let mut axes: Vec<AxisAst> = Vec::new();
     let mut curves: Vec<CurveAst> = Vec::new();
     let mut options: Vec<OptionAst> = Vec::new();
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.keyword(body.header_span);
+    if let Some(span) = body.colon_span {
+        lexemes.delimiter(span);
+    }
 
     while offset < code.len() {
         if let Some(parsed) = parse_langium_common(code, offset) {
@@ -575,6 +625,7 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
                     diagnostic.span.start,
                 ));
             }
+            lexemes.extend(parsed.lexemes.clone());
             push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "radar");
             common.push(parsed.fact);
             offset += parsed.consumed;
@@ -587,10 +638,11 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
             continue;
         }
 
-        let event = parse_radar_statement(&statement, statement_start)
+        let parsed = parse_radar_statement(&statement, statement_start)
             .map_err(|message| Error::diagram_parse_fallback("radar".to_string(), message))?;
-        push_radar_statement_facts(&mut editor_facts, &event);
-        apply_radar_statement(event, &mut axes, &mut curves, &mut options);
+        lexemes.extend(parsed.lexemes);
+        push_radar_statement_facts(&mut editor_facts, &parsed.event);
+        apply_radar_statement(parsed.event, &mut axes, &mut curves, &mut options);
     }
 
     let common = LangiumCommonDbFields::from_facts(&common);
@@ -601,6 +653,7 @@ fn parse_radar_semantic_source(code: &str, meta: &ParseMetadata) -> Result<Radar
     db.set_axes(axes);
     db.set_curves(curves)?;
     db.set_options(options);
+    lexemes.attach(code, &mut editor_facts);
 
     Ok(RadarSemanticSource {
         db: Some(db),
@@ -612,7 +665,14 @@ fn strip_inline_comment(line: &str) -> &str {
     strip_langium_inline_comment(line)
 }
 
-fn radar_body_start(code: &str) -> Result<Option<usize>> {
+#[derive(Debug, Clone, Copy)]
+struct RadarBodyStart {
+    offset: usize,
+    header_span: SourceSpan,
+    colon_span: Option<SourceSpan>,
+}
+
+fn radar_body_start(code: &str) -> Result<Option<RadarBodyStart>> {
     let mut offset = 0usize;
     while offset < code.len() {
         let (line, next_offset) = physical_line(code, offset);
@@ -640,16 +700,24 @@ fn radar_body_start(code: &str) -> Result<Option<usize>> {
         }
 
         let leading = visible.len() - trimmed.len();
-        let mut body_start = offset + leading + "radar-beta".len();
+        let header_start = offset + leading;
+        let mut body_start = header_start + "radar-beta".len();
         let whitespace = code[body_start..]
             .chars()
             .take_while(|ch| matches!(ch, ' ' | '\t'))
             .map(char::len_utf8)
             .sum::<usize>();
-        if code.as_bytes().get(body_start + whitespace) == Some(&b':') {
-            body_start += whitespace + 1;
+        let colon_start = body_start + whitespace;
+        let colon_span = (code.as_bytes().get(colon_start) == Some(&b':'))
+            .then_some(SourceSpan::new(colon_start, colon_start + 1));
+        if colon_span.is_some() {
+            body_start = colon_start + 1;
         }
-        return Ok(Some(body_start));
+        return Ok(Some(RadarBodyStart {
+            offset: body_start,
+            header_span: SourceSpan::new(header_start, header_start + "radar-beta".len()),
+            colon_span,
+        }));
     }
     Ok(None)
 }
@@ -752,8 +820,12 @@ fn braces_balanced_outside_quotes(s: &str) -> bool {
     depth == 0
 }
 
-fn parse_axes_list(input: &str, input_start: usize) -> std::result::Result<Vec<AxisAst>, String> {
-    let mut p = TokenParser::new(input, input_start);
+fn parse_axes_list(
+    input: &str,
+    input_start: usize,
+    lexemes: &mut LangiumLexemeTrace,
+) -> std::result::Result<Vec<AxisAst>, String> {
+    let mut p = TokenParser::new(input, input_start, lexemes);
     let mut out = Vec::new();
     loop {
         p.skip_ws();
@@ -761,6 +833,7 @@ fn parse_axes_list(input: &str, input_start: usize) -> std::result::Result<Vec<A
             break;
         }
         let name = p.parse_id().ok_or_else(|| "expected axis id".to_string())?;
+        p.lexemes.identifier(name.span);
         p.skip_ws();
         let label = if p.try_consume('[') {
             p.skip_ws();
@@ -796,17 +869,19 @@ fn parse_axes_list(input: &str, input_start: usize) -> std::result::Result<Vec<A
 fn parse_curves_stmt(
     input: &str,
     input_start: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<Vec<CurveAst>, String> {
     let (input, input_start) = trim_start_with_source_offset(input, input_start);
     let rest = input
         .strip_prefix("curve")
         .ok_or_else(|| "expected curve".to_string())?;
+    lexemes.keyword(SourceSpan::new(input_start, input_start + "curve".len()));
     let (rest, rest_start) = trim_start_with_source_offset(rest, input_start + "curve".len());
     if rest.trim().is_empty() {
         return Err("expected curve id".to_string());
     }
 
-    let chunks = split_top_level(rest, ',');
+    let chunks = split_top_level(rest, ',', rest_start, lexemes);
     let mut curves = Vec::new();
     for (chunk_offset, chunk) in chunks {
         let (chunk, chunk_start) = trim_start_with_source_offset(chunk, rest_start + chunk_offset);
@@ -814,44 +889,52 @@ fn parse_curves_stmt(
         if chunk.is_empty() {
             return Err("expected curve after ','".to_string());
         }
-        curves.push(parse_curve(chunk, chunk_start)?);
+        curves.push(parse_curve(chunk, chunk_start, lexemes)?);
     }
     Ok(curves)
 }
 
-fn parse_curve(input: &str, input_start: usize) -> std::result::Result<CurveAst, String> {
-    let mut p = TokenParser::new(input, input_start);
-    p.skip_ws();
-    let name = p
-        .parse_id()
-        .ok_or_else(|| "expected curve id".to_string())?;
-    p.skip_ws();
-    let label = if p.try_consume('[') {
+fn parse_curve(
+    input: &str,
+    input_start: usize,
+    lexemes: &mut LangiumLexemeTrace,
+) -> std::result::Result<CurveAst, String> {
+    let (name, label, entries_str, entries_start) = {
+        let mut p = TokenParser::new(input, input_start, lexemes);
         p.skip_ws();
-        let s = p
-            .parse_quoted_string()
-            .ok_or_else(|| "expected quoted curve label".to_string())?;
+        let name = p
+            .parse_id()
+            .ok_or_else(|| "expected curve id".to_string())?;
+        p.lexemes.identifier(name.span);
         p.skip_ws();
-        if !p.try_consume(']') {
-            return Err("expected ']'".to_string());
+        let label = if p.try_consume('[') {
+            p.skip_ws();
+            let s = p
+                .parse_quoted_string()
+                .ok_or_else(|| "expected quoted curve label".to_string())?;
+            p.skip_ws();
+            if !p.try_consume(']') {
+                return Err("expected ']'".to_string());
+            }
+            p.skip_ws();
+            Some(s)
+        } else {
+            None
+        };
+
+        if !p.try_consume('{') {
+            return Err("expected '{'".to_string());
         }
+
+        let (entries_str, entries_start) = p.take_until_matching_brace()?;
+
         p.skip_ws();
-        Some(s)
-    } else {
-        None
+        if !p.eof() {
+            return Err("unexpected trailing tokens after curve".to_string());
+        }
+        (name, label, entries_str, entries_start)
     };
-
-    if !p.try_consume('{') {
-        return Err("expected '{'".to_string());
-    }
-
-    let (entries_str, entries_start) = p.take_until_matching_brace()?;
-    let entries = parse_entries(entries_str, entries_start)?;
-
-    p.skip_ws();
-    if !p.eof() {
-        return Err("unexpected trailing tokens after curve".to_string());
-    }
+    let entries = parse_entries(entries_str, entries_start, lexemes)?;
 
     let has_detailed = entries.iter().any(|e| e.axis.is_some());
     let has_numeric = entries.iter().any(|e| e.axis.is_none());
@@ -867,8 +950,12 @@ fn parse_curve(input: &str, input_start: usize) -> std::result::Result<CurveAst,
     })
 }
 
-fn parse_entries(input: &str, input_start: usize) -> std::result::Result<Vec<EntryAst>, String> {
-    let items = split_top_level(input, ',');
+fn parse_entries(
+    input: &str,
+    input_start: usize,
+    lexemes: &mut LangiumLexemeTrace,
+) -> std::result::Result<Vec<EntryAst>, String> {
+    let items = split_top_level(input, ',', input_start, lexemes);
     let mut out = Vec::new();
     for (item_offset, item) in items {
         let (item, item_start) = trim_start_with_source_offset(item, input_start + item_offset);
@@ -878,9 +965,9 @@ fn parse_entries(input: &str, input_start: usize) -> std::result::Result<Vec<Ent
         }
 
         // Try detailed first: <ID> ':'? <NUMBER>
-        let mut p = TokenParser::new(item, item_start);
+        let mut p = TokenParser::new(item, item_start, lexemes);
         p.skip_ws();
-        let start_pos = p.pos;
+        let checkpoint = p.checkpoint();
         if let Some(axis) = p.parse_id() {
             p.skip_ws();
             p.try_consume(':');
@@ -888,6 +975,7 @@ fn parse_entries(input: &str, input_start: usize) -> std::result::Result<Vec<Ent
             if let Some(num) = p.parse_number_value() {
                 p.skip_ws();
                 if p.eof() {
+                    p.lexemes.identifier(axis.span);
                     out.push(EntryAst {
                         axis: Some(axis),
                         value: num,
@@ -896,7 +984,7 @@ fn parse_entries(input: &str, input_start: usize) -> std::result::Result<Vec<Ent
                 }
             }
         }
-        p.pos = start_pos;
+        p.rollback(checkpoint);
 
         // Otherwise numeric: <NUMBER>
         p.skip_ws();
@@ -918,8 +1006,9 @@ fn parse_entries(input: &str, input_start: usize) -> std::result::Result<Vec<Ent
 fn parse_option_stmt(
     input: &str,
     input_start: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<Option<OptionAst>, String> {
-    let mut p = TokenParser::new(input, input_start);
+    let mut p = TokenParser::new(input, input_start, lexemes);
     p.skip_ws();
     let parsed_name = match p.parse_id() {
         Some(name) => name,
@@ -934,6 +1023,7 @@ fn parse_option_stmt(
         _ => return Ok(None),
     }
     .to_string();
+    p.lexemes.keyword(parsed_name.span);
     p.skip_ws();
 
     if name == "showLegend" {
@@ -958,6 +1048,7 @@ fn parse_option_stmt(
         if value.text != "circle" && value.text != "polygon" {
             return Err("expected graticule".to_string());
         }
+        p.lexemes.literal(value.span);
         p.skip_ws();
         if !p.eof() {
             return Err("unexpected trailing tokens after option".to_string());
@@ -986,11 +1077,14 @@ fn parse_option_stmt(
 fn parse_option_list_stmt(
     input: &str,
     input_start: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<Option<Vec<OptionAst>>, String> {
-    if !input.contains(',') {
+    let checkpoint = lexemes.checkpoint();
+    let chunks = split_top_level(input, ',', input_start, lexemes);
+    if chunks.len() == 1 {
+        lexemes.rollback(checkpoint);
         return Ok(None);
     }
-    let chunks = split_top_level(input, ',');
     let mut out = Vec::new();
     for (chunk_offset, chunk) in chunks {
         let (chunk, chunk_start) = trim_start_with_source_offset(chunk, input_start + chunk_offset);
@@ -998,7 +1092,8 @@ fn parse_option_list_stmt(
         if chunk.is_empty() {
             return Err("expected option after ','".to_string());
         }
-        let Some(opt) = parse_option_stmt(chunk, chunk_start)? else {
+        let Some(opt) = parse_option_stmt(chunk, chunk_start, lexemes)? else {
+            lexemes.rollback(checkpoint);
             return Ok(None);
         };
         out.push(opt);
@@ -1009,7 +1104,12 @@ fn parse_option_list_stmt(
     Ok(Some(out))
 }
 
-fn split_top_level(input: &str, delim: char) -> Vec<(usize, &str)> {
+fn split_top_level<'a>(
+    input: &'a str,
+    delim: char,
+    input_start: usize,
+    lexemes: &mut LangiumLexemeTrace,
+) -> Vec<(usize, &'a str)> {
     let mut out = Vec::new();
     let mut chunk_start = 0usize;
     let mut in_quote: Option<char> = None;
@@ -1043,6 +1143,10 @@ fn split_top_level(input: &str, delim: char) -> Vec<(usize, &str)> {
             _ => {}
         }
         if ch == delim && brace_depth == 0 && bracket_depth == 0 {
+            lexemes.delimiter(SourceSpan::new(
+                input_start + offset,
+                input_start + offset + ch.len_utf8(),
+            ));
             out.push((chunk_start, &input[chunk_start..offset]));
             chunk_start = offset + ch.len_utf8();
             continue;
@@ -1052,19 +1156,43 @@ fn split_top_level(input: &str, delim: char) -> Vec<(usize, &str)> {
     out
 }
 
-struct TokenParser<'a> {
-    input: &'a str,
+#[derive(Debug, Clone, Copy)]
+struct TokenParserCheckpoint {
     pos: usize,
-    base_offset: usize,
+    lexemes: usize,
 }
 
-impl<'a> TokenParser<'a> {
-    fn new(input: &'a str, base_offset: usize) -> Self {
+struct TokenParser<'input, 'lexemes> {
+    input: &'input str,
+    pos: usize,
+    base_offset: usize,
+    lexemes: &'lexemes mut LangiumLexemeTrace,
+}
+
+impl<'input, 'lexemes> TokenParser<'input, 'lexemes> {
+    fn new(
+        input: &'input str,
+        base_offset: usize,
+        lexemes: &'lexemes mut LangiumLexemeTrace,
+    ) -> Self {
         Self {
             input,
             pos: 0,
             base_offset,
+            lexemes,
         }
+    }
+
+    fn checkpoint(&self) -> TokenParserCheckpoint {
+        TokenParserCheckpoint {
+            pos: self.pos,
+            lexemes: self.lexemes.checkpoint(),
+        }
+    }
+
+    fn rollback(&mut self, checkpoint: TokenParserCheckpoint) {
+        self.pos = checkpoint.pos;
+        self.lexemes.rollback(checkpoint.lexemes);
     }
 
     fn eof(&self) -> bool {
@@ -1087,7 +1215,10 @@ impl<'a> TokenParser<'a> {
 
     fn try_consume(&mut self, ch: char) -> bool {
         if self.input[self.pos..].starts_with(ch) {
+            let start = self.base_offset + self.pos;
             self.pos += ch.len_utf8();
+            self.lexemes
+                .delimiter(SourceSpan::new(start, start + ch.len_utf8()));
             true
         } else {
             false
@@ -1127,17 +1258,15 @@ impl<'a> TokenParser<'a> {
         let start = self.pos;
         if self.input[self.pos..].starts_with("true") {
             self.pos += 4;
-            return Some((
-                true,
-                SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
-            ));
+            let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
+            self.lexemes.boolean(span);
+            return Some((true, span));
         }
         if self.input[self.pos..].starts_with("false") {
             self.pos += 5;
-            return Some((
-                false,
-                SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
-            ));
+            let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
+            self.lexemes.boolean(span);
+            return Some((false, span));
         }
         None
     }
@@ -1174,9 +1303,11 @@ impl<'a> TokenParser<'a> {
             let v: f64 = token.parse().ok()?;
             self.pos += idx;
             let n = serde_json::Number::from_f64(v)?;
+            let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
+            self.lexemes.number(span);
             return Some(SpannedRadarValue {
                 value: Value::Number(n),
-                span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+                span,
             });
         }
 
@@ -1185,22 +1316,25 @@ impl<'a> TokenParser<'a> {
         }
         let v: i64 = token.parse().ok()?;
         self.pos += idx;
+        let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
+        self.lexemes.number(span);
         Some(SpannedRadarValue {
             value: Value::Number(serde_json::Number::from(v)),
-            span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
+            span,
         })
     }
 
     fn parse_quoted_string(&mut self) -> Option<SpannedText> {
         let parsed = parse_langium_string(&self.input[self.pos..], self.base_offset + self.pos)?;
         self.pos += parsed.consumed;
+        self.lexemes.string(parsed.raw_span);
         Some(SpannedText {
             text: parsed.value,
             span: parsed.value_span,
         })
     }
 
-    fn take_until_matching_brace(&mut self) -> std::result::Result<(&'a str, usize), String> {
+    fn take_until_matching_brace(&mut self) -> std::result::Result<(&'input str, usize), String> {
         let mut depth = 1i64;
         let mut in_quote: Option<char> = None;
         let mut escaped = false;
@@ -1233,6 +1367,10 @@ impl<'a> TokenParser<'a> {
             if ch == '}' {
                 depth -= 1;
                 if depth == 0 {
+                    self.lexemes.delimiter(SourceSpan::new(
+                        self.base_offset + char_start,
+                        self.base_offset + self.pos,
+                    ));
                     return Ok((
                         &self.input[content_start..char_start],
                         self.base_offset + content_start,

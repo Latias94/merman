@@ -1,5 +1,5 @@
 use crate::diagrams::langium_common::{
-    LangiumCommonParse, parse_langium_common, push_langium_common_editor_fact,
+    LangiumCommonParse, LangiumLexemeTrace, parse_langium_common, push_langium_common_editor_fact,
     push_langium_common_recovery,
 };
 use crate::{
@@ -89,18 +89,18 @@ pub fn parse_info_model_for_render(
     ))
 }
 
-pub fn parse_info_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match parse_info_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(_) => recover_info_editor_facts(code),
-    }
+pub fn parse_info_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    parse_info_editor_source(code)
 }
 
-fn recover_info_editor_facts(code: &str) -> EditorSemanticFacts {
+fn parse_info_editor_source(code: &str) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
-    let InfoHeader::Body(mut offset) = info_body_start(code) else {
+    let InfoHeader::Body(body) = info_body_start(code) else {
         return facts;
     };
+    let mut offset = body.offset;
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.keyword(body.header_span);
     let mut show_info_seen = false;
     let mut common_seen = false;
 
@@ -108,6 +108,7 @@ fn recover_info_editor_facts(code: &str) -> EditorSemanticFacts {
         match parse_info_statement(code, offset, !show_info_seen && !common_seen) {
             InfoStatement::Common(parsed) => {
                 common_seen = true;
+                lexemes.extend(parsed.lexemes.clone());
                 push_langium_common_editor_fact(&mut facts, &parsed.fact, "info");
                 if let Some(diagnostic) = &parsed.diagnostic {
                     push_langium_common_recovery(&mut facts, diagnostic);
@@ -116,6 +117,7 @@ fn recover_info_editor_facts(code: &str) -> EditorSemanticFacts {
             }
             InfoStatement::ShowInfo { span, consumed } => {
                 show_info_seen = true;
+                lexemes.keyword(span);
                 push_show_info_editor_fact(&mut facts, span);
                 offset += consumed;
             }
@@ -129,6 +131,7 @@ fn recover_info_editor_facts(code: &str) -> EditorSemanticFacts {
         }
     }
 
+    lexemes.attach(code, &mut facts);
     facts
 }
 
@@ -136,7 +139,7 @@ fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSe
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("info");
 
-    let mut offset = match info_body_start(code) {
+    let body = match info_body_start(code) {
         InfoHeader::Empty => {
             return Ok(InfoSemanticSource {
                 output: InfoParseOutput::Empty,
@@ -149,8 +152,11 @@ fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSe
                 editor_facts: EditorSemanticFacts::new(),
             });
         }
-        InfoHeader::Body(offset) => offset,
+        InfoHeader::Body(body) => body,
     };
+    let mut offset = body.offset;
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.keyword(body.header_span);
     let mut editor_facts = EditorSemanticFacts::new();
     let mut show_info = false;
     let mut common_seen = false;
@@ -165,12 +171,14 @@ fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSe
                         diagnostic.span.start,
                     ));
                 }
+                lexemes.extend(parsed.lexemes.clone());
                 push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "info");
                 common_seen = true;
                 offset += parsed.consumed;
             }
             InfoStatement::ShowInfo { span, consumed } => {
                 show_info = true;
+                lexemes.keyword(span);
                 push_show_info_editor_fact(&mut editor_facts, span);
                 offset += consumed;
             }
@@ -190,6 +198,8 @@ fn parse_info_semantic_source(code: &str, meta: &ParseMetadata) -> Result<InfoSe
             }
         }
     }
+
+    lexemes.attach(code, &mut editor_facts);
 
     Ok(InfoSemanticSource {
         output: InfoParseOutput::Model(InfoDiagramRenderModel {
@@ -269,7 +279,13 @@ fn push_show_info_editor_fact(facts: &mut EditorSemanticFacts, span: SourceSpan)
 enum InfoHeader {
     Empty,
     ExpectedInfo,
-    Body(usize),
+    Body(InfoBodyStart),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct InfoBodyStart {
+    offset: usize,
+    header_span: SourceSpan,
 }
 
 fn info_body_start(code: &str) -> InfoHeader {
@@ -286,7 +302,11 @@ fn info_body_start(code: &str) -> InfoHeader {
             return InfoHeader::ExpectedInfo;
         };
         let leading = visible.len() - trimmed.len();
-        return InfoHeader::Body(offset + leading + header_len);
+        let header_start = offset + leading;
+        return InfoHeader::Body(InfoBodyStart {
+            offset: header_start + header_len,
+            header_span: SourceSpan::new(header_start, header_start + header_len),
+        });
     }
     InfoHeader::Empty
 }
