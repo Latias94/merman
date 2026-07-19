@@ -33,6 +33,15 @@ parity with the pinned upstream baseline.
   - prefer porting Mermaid’s existing tests/fixtures (e.g. `packages/mermaid/src/**.spec.*`,
     Cypress samples, demo sources) into Rust tests
   - add targeted regression tests for any discovered divergence
+- **Artifact evidence is separated by execution contract**:
+  - raw/source parity compares emitted SVG bytes or a declared SVG-DOM profile; it proves source
+    serialization or structure, not computed presentation
+  - browser-visible evidence inspects computed styles and geometry in the pinned browser after
+    build-freshness, viewport, font, and runtime preconditions pass
+  - resvg-safe evidence validates the explicit output pipeline and a `usvg` / `resvg` consumer; it
+    may materialize a documented browser fallback but is not raw parity evidence
+  - a structure/parity report for Theme, Block, Gantt, or any other family must never be reported as
+    browser-visible evidence
 - **Output model aligns to Mermaid DB semantics**:
   - headless parse results should match Mermaid’s DB-like structures and invariants where feasible
   - the internal AST may evolve, but the semantic output should converge to upstream expectations
@@ -43,4 +52,5 @@ parity with the pinned upstream baseline.
 - Any mismatch is treated as a bug and fixed with a test that demonstrates upstream behavior.
 - Documentation must clearly distinguish:
   - “Supported (implemented now)” vs “Supported in Mermaid but not implemented yet”.
-
+- Comparison reports must name their artifact lane. Browser-computed behavior cannot be waived by
+  an SVG comparator normalization, and resvg-safe cleanup cannot be used to make raw parity pass.

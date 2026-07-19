@@ -691,7 +691,7 @@ mod tests {
         );
         assert!(
             message.contains(
-                "--check-dom produced no DOM or raw SVG comparison evidence for sequence"
+                "--check-dom produced no raw/source SVG-DOM or SVG-byte comparison evidence for sequence"
             ),
             "{message}"
         );
@@ -700,7 +700,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("read {}: {error}", report_path.display()));
         assert!(report.contains("- Render operation: `not-observed`"));
         assert!(report.contains(
-            "Evidence counts: selected=`1` rendered=`0` skipped=`1` operation-reports=`0` measurement-routes=`0` DOM-comparisons=`0` raw-SVG-comparisons=`0`"
+            "Evidence counts: selected=`1` rendered=`0` skipped=`1` operation-reports=`0` measurement-routes=`0` raw/source-SVG-DOM=`0` raw/source-SVG-bytes=`0`"
         ));
     }
 

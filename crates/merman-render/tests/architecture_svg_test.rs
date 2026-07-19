@@ -9,7 +9,7 @@ use merman_render::environment::{
     TextMeasurementOperation, TextMeasurementPhase, TextMeasurementPolicy,
     TextMeasurementProfileIdentity,
 };
-use merman_render::family;
+use merman_render::family::{self, RenderFamilyKind};
 use merman_render::model::ArchitectureDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::TextMetrics;
@@ -560,7 +560,8 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render Architecture artifact");
-    let (host_svg, _, session) = rendered.into_parts();
+    let (host_svg, family_kind, _, session) = rendered.into_parts();
+    assert_eq!(family_kind, RenderFamilyKind::Architecture);
 
     assert!(
         host.calls.load(Ordering::Relaxed) > 0,
@@ -617,11 +618,11 @@ fn architecture_svg_uses_the_session_measurement_route() {
     let parity_session = RenderEnvironment::parity().begin_session().unwrap();
     let parity_artifact = family::prepare(parsed, &layout_options, parity_session)
         .expect("prepare parity Architecture artifact");
-    let parity_svg = parity_artifact
+    let parity_rendered = parity_artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .expect("render parity Architecture artifact")
-        .into_parts()
-        .0;
+        .expect("render parity Architecture artifact");
+    let (parity_svg, family_kind, _, _) = parity_rendered.into_parts();
+    assert_eq!(family_kind, RenderFamilyKind::Architecture);
     assert_ne!(
         host_svg, parity_svg,
         "host metrics must change observable geometry"
@@ -644,7 +645,7 @@ fn architecture_and_hand_drawn_zero_seeds_share_the_session_seed() {
         let layout = layout_architecture_typed(&parsed, &session);
         let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
             .expect("prepare Architecture artifact");
-        let svg = artifact
+        let rendered = artifact
             .render_svg(
                 &SvgRenderOptions {
                     diagram_id: Some("architecture-session-seed".to_string()),
@@ -652,9 +653,9 @@ fn architecture_and_hand_drawn_zero_seeds_share_the_session_seed() {
                 },
                 &SvgDebugOptions::default(),
             )
-            .expect("render Architecture artifact")
-            .into_parts()
-            .0;
+            .expect("render Architecture artifact");
+        let (svg, family_kind, _, _) = rendered.into_parts();
+        assert_eq!(family_kind, RenderFamilyKind::Architecture);
         (layout, svg)
     }
 

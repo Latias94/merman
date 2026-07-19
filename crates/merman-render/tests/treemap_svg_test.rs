@@ -5,7 +5,7 @@ use merman_render::environment::{
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
     TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
-use merman_render::family;
+use merman_render::family::{self, RenderFamilyKind};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, TextStyle};
 use merman_render::treemap::layout_treemap_diagram_typed;
@@ -363,7 +363,8 @@ title Routed title
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render SVG");
-    let (host_svg, _, host_session) = rendered.into_parts();
+    let (host_svg, family_kind, _, host_session) = rendered.into_parts();
+    assert_eq!(family_kind, RenderFamilyKind::Treemap);
 
     assert!(
         host.calls.load(Ordering::Relaxed) > 0,

@@ -26,6 +26,12 @@ checks in one shot and aggregates failures.
   - When `--dom-mode` is omitted, per-diagram compare tasks use their default report paths
     (typically `target/compare/<diagram>_report.md`).
 
+Every report labels its evidence as raw/source SVG bytes or raw/source SVG-DOM. It also records that
+browser-visible and resvg-safe evidence were not collected. In particular, a passing Theme, Block,
+or Gantt structure/parity comparison is not evidence about computed colors, edge contact, or tick
+overlap in a browser. Those claims belong to browser tests with their build-freshness and viewport
+preconditions; resvg-safe claims belong to output-pipeline and `usvg` / `resvg` gates.
+
 ## Flowchart-specific options
 
 `compare-all-svgs` forwards these only to the Flowchart compare task:

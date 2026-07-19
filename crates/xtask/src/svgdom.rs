@@ -2094,4 +2094,18 @@ mod tests {
         assert_eq!(rect.attrs.get("width").map(|s| s.as_str()), Some("<n>"));
         assert_eq!(rect.attrs.get("height").map(|s| s.as_str()), Some("<n>"));
     }
+
+    #[test]
+    fn parity_does_not_equate_invalid_quadrant_color_with_browser_computed_black() {
+        let raw_upstream = r#"<svg><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
+        let browser_materialized = r#"<svg><g class="data-points"><g class="data-point"><circle fill="rgb(0, 0, 0)" stroke="none"/></g></g></svg>"#;
+
+        let raw_dom = dom_signature(raw_upstream, DomMode::Parity, 3).unwrap();
+        let materialized_dom = dom_signature(browser_materialized, DomMode::Parity, 3).unwrap();
+
+        assert_ne!(
+            raw_dom, materialized_dom,
+            "raw/source parity must not use browser-computed color equivalence"
+        );
+    }
 }

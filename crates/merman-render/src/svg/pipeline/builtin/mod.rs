@@ -3,6 +3,7 @@ pub mod css_override;
 pub mod css_sanitize;
 pub mod foreign_object;
 pub(crate) mod gitgraph_label;
+pub(crate) mod presentation_fallback;
 pub mod root_background;
 pub mod scoped_css;
 pub(crate) mod util;

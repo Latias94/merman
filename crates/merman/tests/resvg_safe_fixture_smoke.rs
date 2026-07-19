@@ -756,6 +756,42 @@ fn default_svg_and_resvg_safe_svg_keep_separate_contracts() {
 }
 
 #[test]
+fn quadrant_raw_and_resvg_safe_outputs_keep_distinct_color_contracts() {
+    let source = r#"quadrantChart
+  title Reach and engagement
+  x-axis Low Reach --> High Reach
+  y-axis Low Engagement --> High Engagement
+  Campaign A: [0.3, 0.6]
+"#;
+    let renderer = HeadlessRenderer::new()
+        .with_vendored_text_measurer()
+        .with_diagram_id("quadrant-artifact-lanes");
+
+    let raw_svg = renderer
+        .render_svg_sync(source)
+        .expect("raw/source render should succeed")
+        .expect("quadrant should be detected");
+    assert!(
+        raw_svg.contains(r#"fill="hsl(240, 100%, NaN%)""#),
+        "raw/source output must preserve the pinned Mermaid token: {raw_svg}"
+    );
+
+    let resvg_safe_svg = renderer
+        .render_svg_resvg_safe_sync(source)
+        .expect("resvg-safe render should succeed")
+        .expect("quadrant should be detected");
+    assert_resvg_safe_output("quadrant-artifact-lanes", source, &resvg_safe_svg);
+
+    let document = roxmltree::Document::parse(&resvg_safe_svg).expect("valid resvg-safe XML");
+    let point = document
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("quadrant point circle");
+    assert_eq!(point.attribute("fill"), Some("#000000"));
+    assert_eq!(point.attribute("stroke"), Some("none"));
+}
+
+#[test]
 fn host_reported_diagrams_render_headless_resvg_safe() {
     let cases: &[(&str, &str, &[&str], &[&str])] = &[
         (

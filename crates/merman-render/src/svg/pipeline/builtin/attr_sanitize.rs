@@ -1,8 +1,10 @@
 use crate::Result;
+use cssparser::{Delimiter, Parser, ParserInput, Token};
 use std::borrow::Cow;
 
 use super::css_sanitize::strip_css_deg_units;
-use super::util::{SvgTagScanner, next_svg_quoted_attr};
+use super::presentation_fallback::is_mermaid_missing_amount_hsl;
+use super::util::{SvgTagScanner, escape_xml_attr, next_svg_quoted_attr, start_tag_name};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -145,34 +147,43 @@ fn should_drop_attribute(name: &str, value: &str) -> bool {
     }
 
     let normalized = name.to_ascii_lowercase();
-    if is_url_function_attribute(&normalized) && css_value_contains_unsafe_url_function(value) {
+    if is_url_function_attribute(&normalized) && css_value_violates_url_safety(value) {
         return true;
     }
 
-    let guarded = matches!(
-        normalized.as_str(),
-        "fill"
-            | "stroke"
-            | "width"
-            | "height"
-            | "x"
-            | "y"
-            | "x1"
-            | "x2"
-            | "y1"
-            | "y2"
-            | "r"
-            | "cx"
-            | "cy"
-            | "rx"
-            | "ry"
-            | "stroke-width"
-            | "transform"
-            | "d"
-            | "points"
-    );
+    if value.trim().is_empty() {
+        return matches!(
+            normalized.as_str(),
+            "fill"
+                | "stroke"
+                | "width"
+                | "height"
+                | "x"
+                | "y"
+                | "x1"
+                | "x2"
+                | "y1"
+                | "y2"
+                | "r"
+                | "cx"
+                | "cy"
+                | "rx"
+                | "ry"
+                | "stroke-width"
+                | "transform"
+                | "d"
+                | "points"
+        );
+    }
 
-    guarded && is_invalid_svg_value(value)
+    match normalized.as_str() {
+        "fill" | "stroke" => is_mermaid_missing_amount_hsl(value),
+        "width" | "height" | "x" | "y" | "x1" | "x2" | "y1" | "y2" | "r" | "cx" | "cy" | "rx"
+        | "ry" | "stroke-width" => is_provably_invalid_scalar(value),
+        "transform" => is_invalid_svg_transform(value),
+        "d" | "points" => contains_non_finite_numeric_token(value),
+        _ => false,
+    }
 }
 
 fn is_event_handler_attribute(name: &str) -> bool {
@@ -224,34 +235,44 @@ fn is_unsafe_url_value(value: &str) -> bool {
     !matches!(scheme, "http" | "https" | "mailto")
 }
 
-fn css_value_contains_unsafe_url_function(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    let mut cursor = 0usize;
-    while let Some(rel_start) = lower[cursor..].find("url(") {
-        let arg_start = cursor + rel_start + "url(".len();
-        let Some(rel_end) = lower[arg_start..].find(')') else {
-            return true;
-        };
-        let arg_end = arg_start + rel_end;
-        if is_unsafe_url_value(trim_css_url_argument(&value[arg_start..arg_end])) {
-            return true;
-        }
-        cursor = arg_end + 1;
-    }
-    false
+fn css_value_violates_url_safety(value: &str) -> bool {
+    let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    let mut input = ParserInput::new(&decoded);
+    let mut parser = Parser::new(&mut input);
+    validate_css_urls(&mut parser).is_err()
 }
 
-fn trim_css_url_argument(value: &str) -> &str {
-    let value = value.trim();
-    if value.len() >= 2 {
-        let bytes = value.as_bytes();
-        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
-            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
-        {
-            return &value[1..value.len() - 1];
+fn validate_css_urls<'i, 't>(
+    parser: &mut Parser<'i, 't>,
+) -> std::result::Result<(), cssparser::ParseError<'i, ()>> {
+    while !parser.is_exhausted() {
+        let token = parser.next_including_whitespace()?.clone();
+        match token {
+            Token::UnquotedUrl(url) if is_unsafe_url_value(&url) => {
+                return Err(parser.new_custom_error(()));
+            }
+            Token::Function(name) if name.eq_ignore_ascii_case("url") => {
+                parser.parse_nested_block(|nested| {
+                    let url = nested.expect_string_cloned()?;
+                    if is_unsafe_url_value(&url) {
+                        return Err(nested.new_custom_error(()));
+                    }
+                    Ok(())
+                })?;
+            }
+            Token::Function(_)
+            | Token::ParenthesisBlock
+            | Token::SquareBracketBlock
+            | Token::CurlyBracketBlock => {
+                parser.parse_nested_block(validate_css_urls)?;
+            }
+            Token::BadUrl(_) | Token::BadString(_) => {
+                return Err(parser.new_custom_error(()));
+            }
+            _ => {}
         }
     }
-    value
+    Ok(())
 }
 
 fn normalize_url_attr_for_scheme_check(value: &str) -> String {
@@ -321,25 +342,6 @@ fn is_start_or_empty_tag(tag: &str, expected: &str) -> bool {
         .take_while(|ch| !ch.is_whitespace() && *ch != '/' && *ch != '>')
         .collect::<String>();
     name.eq_ignore_ascii_case(expected)
-}
-
-fn start_tag_name(tag: &str) -> Option<&str> {
-    let tag = tag.trim_start();
-    if !tag.starts_with('<')
-        || tag.starts_with("</")
-        || tag.starts_with("<!--")
-        || tag.starts_with("<!")
-        || tag.starts_with("<?")
-    {
-        return None;
-    }
-
-    let start = 1;
-    let end = start
-        + tag[start..]
-            .find(|ch: char| ch.is_whitespace() || ch == '/' || ch == '>')
-            .unwrap_or(tag.len() - start);
-    (start < end).then_some(&tag[start..end])
 }
 
 fn active_svg_element_name(tag: &str) -> Option<&str> {
@@ -425,50 +427,170 @@ fn is_bad_rect_tag(tag: &str) -> bool {
 fn sanitize_style_attribute(value: &str) -> String {
     let mut out = Vec::new();
 
-    for decl in value.split(';') {
-        let trimmed = decl.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let Some((property, raw_value)) = trimmed.split_once(':') else {
-            if is_invalid_svg_value(trimmed) {
-                continue;
-            }
-            out.push(strip_css_deg_units(trimmed));
-            continue;
-        };
-
-        let property = property.trim();
-        let value = raw_value.trim();
-        if value.is_empty()
-            || is_invalid_svg_value(value)
-            || css_value_contains_unsafe_url_function(value)
+    for (property, value) in parse_css_declarations(value) {
+        let normalized_value = strip_css_deg_units(&value);
+        if normalized_value.is_empty()
+            || is_invalid_style_property_value(&property, &normalized_value)
+            || css_value_violates_url_safety(&normalized_value)
         {
             continue;
         }
-        if property
-            .trim()
-            .to_ascii_lowercase()
-            .starts_with("animation")
-        {
+        if property.to_ascii_lowercase().starts_with("animation") {
             continue;
         }
 
-        out.push(format!("{property}:{}", strip_css_deg_units(value)));
+        out.push(format!("{property}:{normalized_value}"));
     }
 
-    out.join(";")
+    escape_xml_attr(&out.join(";"))
 }
 
-fn is_invalid_svg_value(value: &str) -> bool {
+fn parse_css_declarations(value: &str) -> Vec<(String, String)> {
+    let decoded = merman_core::entities::decode_html_entities_to_unicode(value);
+    let mut input = ParserInput::new(&decoded);
+    let mut parser = Parser::new(&mut input);
+    let mut declarations = Vec::new();
+
+    while !parser.is_exhausted() {
+        let declaration = parser.parse_until_after(Delimiter::Semicolon, |declaration| {
+            let property = declaration.expect_ident_cloned()?.to_string();
+            declaration.expect_colon()?;
+            let value_start = declaration.position();
+            declaration.expect_no_error_token()?;
+            let value = declaration.slice_from(value_start).trim().to_string();
+            Ok::<_, cssparser::ParseError<'_, ()>>((property, value))
+        });
+        if let Ok(declaration) = declaration {
+            declarations.push(declaration);
+        }
+    }
+    declarations
+}
+
+fn is_invalid_style_property_value(property: &str, value: &str) -> bool {
+    match property.trim().to_ascii_lowercase().as_str() {
+        "fill" | "stroke" | "color" | "flood-color" | "lighting-color" | "stop-color" => {
+            is_mermaid_missing_amount_hsl(value)
+        }
+        "stroke-width" | "stroke-dashoffset" | "fill-opacity" | "stroke-opacity" | "opacity"
+        | "x" | "y" | "width" | "height" | "rx" | "ry" => is_provably_invalid_scalar(value),
+        "transform" => is_invalid_svg_transform(value),
+        "d" => contains_non_finite_numeric_token(value),
+        _ => false,
+    }
+}
+
+fn is_provably_invalid_scalar(value: &str) -> bool {
     let value = value.trim();
-    if value.is_empty() {
+    if value.eq_ignore_ascii_case("undefined") {
         return true;
     }
 
-    let lower = value.to_ascii_lowercase();
-    lower.contains("nan") || lower.contains("undefined") || lower.contains("infinity")
+    let number = ["rem", "px", "%", "em", "ex", "in", "cm", "mm", "pt", "pc"]
+        .into_iter()
+        .find_map(|unit| value.strip_suffix(unit))
+        .unwrap_or(value)
+        .trim();
+    number
+        .parse::<f64>()
+        .is_ok_and(|number| !number.is_finite())
+}
+
+fn is_invalid_svg_transform(value: &str) -> bool {
+    let mut remaining = value.trim();
+    if remaining.eq_ignore_ascii_case("none") {
+        return false;
+    }
+
+    while !remaining.is_empty() {
+        remaining = remaining.trim_start_matches(|ch: char| ch.is_whitespace() || ch == ',');
+        if remaining.is_empty() {
+            break;
+        }
+        let name_end = remaining
+            .find(|ch: char| !ch.is_ascii_alphabetic())
+            .unwrap_or(remaining.len());
+        let name = &remaining[..name_end];
+        let Some(expected) = transform_argument_counts(name) else {
+            return false;
+        };
+        remaining = &remaining[name_end..];
+        let Some(after_open) = remaining.strip_prefix('(') else {
+            return true;
+        };
+        let Some(close) = after_open.find(')') else {
+            return true;
+        };
+        let arguments_text = &after_open[..close];
+        let arguments = arguments_text
+            .split(|ch: char| ch.is_whitespace() || ch == ',')
+            .filter(|argument| !argument.is_empty())
+            .collect::<Vec<_>>();
+        if !expected.contains(&arguments.len())
+            || arguments.iter().any(|argument| {
+                argument
+                    .parse::<f64>()
+                    .map_or(true, |number| !number.is_finite())
+            })
+        {
+            return true;
+        }
+        remaining = &after_open[close + 1..];
+    }
+    false
+}
+
+fn transform_argument_counts(name: &str) -> Option<&'static [usize]> {
+    match name {
+        "matrix" => Some(&[6]),
+        "translate" | "scale" => Some(&[1, 2]),
+        "rotate" => Some(&[1, 3]),
+        "skewX" | "skewY" => Some(&[1]),
+        _ => None,
+    }
+}
+
+fn contains_non_finite_numeric_token(value: &str) -> bool {
+    ["NaN", "Infinity", "-Infinity", "+Infinity"]
+        .into_iter()
+        .any(|token| contains_delimited_numeric_token(value, token))
+}
+
+fn contains_delimited_numeric_token(value: &str, token: &str) -> bool {
+    value.match_indices(token).any(|(start, _)| {
+        let before = value[..start].chars().next_back();
+        let after = value[start + token.len()..].chars().next();
+        is_numeric_token_boundary(before) && is_numeric_token_boundary(after)
+    })
+}
+
+fn is_numeric_token_boundary(ch: Option<char>) -> bool {
+    ch.is_none_or(|ch| {
+        ch.is_whitespace()
+            || matches!(ch, ',' | '(' | ')')
+            || matches!(
+                ch,
+                'M' | 'm'
+                    | 'Z'
+                    | 'z'
+                    | 'L'
+                    | 'l'
+                    | 'H'
+                    | 'h'
+                    | 'V'
+                    | 'v'
+                    | 'C'
+                    | 'c'
+                    | 'S'
+                    | 's'
+                    | 'Q'
+                    | 'q'
+                    | 'T'
+                    | 't'
+                    | 'A'
+                    | 'a'
+            )
+    })
 }
 
 #[cfg(test)]
@@ -573,6 +695,66 @@ mod tests {
         assert!(!lower.contains("javascript"), "got: {out}");
         assert!(!lower.contains("data:text/html"), "got: {out}");
         assert!(!lower.contains("file:///"), "got: {out}");
+    }
+
+    #[test]
+    fn sanitize_element_attributes_preserves_safe_fragment_ids_with_invalid_token_prefixes() {
+        let svg = r##"<svg><defs><linearGradient id="undefined"/><linearGradient id="nan"/><linearGradient id="undefined-gradient"/><linearGradient id="nan-stroke"/></defs><circle fill="url(#undefined)" stroke="url(#nan)"/><circle fill="url(#undefined-gradient)" stroke="url(#nan-stroke)"/></svg>"##;
+
+        let out = sanitize_element_attributes(svg);
+
+        assert!(out.contains(r##"fill="url(#undefined)""##), "{out}");
+        assert!(out.contains(r##"stroke="url(#nan)""##), "{out}");
+        assert!(
+            out.contains(r##"fill="url(#undefined-gradient)""##),
+            "{out}"
+        );
+        assert!(out.contains(r##"stroke="url(#nan-stroke)""##), "{out}");
+    }
+
+    #[test]
+    fn sanitize_style_preserves_custom_property_identifier_values() {
+        let svg =
+            r#"<svg><path style="--state: undefined; --number-kind: NaN; stroke: #333"/></svg>"#;
+
+        let out = sanitize_element_attributes(svg);
+
+        assert!(out.contains("--state:undefined"), "{out}");
+        assert!(out.contains("--number-kind:NaN"), "{out}");
+        assert!(out.contains("stroke:#333"), "{out}");
+    }
+
+    #[test]
+    fn sanitize_style_keeps_xml_entities_and_nested_semicolons_inside_values() {
+        let svg = r#"<svg><text style="font-family:&quot;a;b&quot;,sans-serif;--data:url(data:image/png;base64,AAAA);stroke:#333"/></svg>"#;
+
+        let out = sanitize_element_attributes(svg);
+        roxmltree::Document::parse(&out).expect("sanitized style must remain valid XML");
+
+        assert!(
+            out.contains("font-family:&quot;a;b&quot;,sans-serif"),
+            "{out}"
+        );
+        assert!(
+            out.contains("--data:url(data:image/png;base64,AAAA)"),
+            "{out}"
+        );
+        assert!(out.contains("stroke:#333"), "{out}");
+    }
+
+    #[test]
+    fn css_url_tokens_handle_quoted_parentheses_escapes_and_nested_functions() {
+        let svg = r##"<svg><defs><linearGradient id="paint)close"/></defs><circle fill="url(&quot;#paint)close&quot;)" stroke="u\72l(&quot;j\61vascript:alert(1)&quot;)" filter="drop-shadow(0 0 2px u\72l(&quot;j\61vascript:alert(1)&quot;))"/></svg>"##;
+
+        let out = sanitize_element_attributes(svg);
+
+        assert!(
+            out.contains(r##"fill="url(&quot;#paint)close&quot;)""##),
+            "{out}"
+        );
+        assert!(!out.contains(" stroke="), "{out}");
+        assert!(!out.contains(" filter="), "{out}");
+        assert!(!out.contains(r"u\72l"), "{out}");
     }
 
     #[test]

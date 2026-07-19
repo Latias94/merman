@@ -72,7 +72,7 @@ use merman_render::{
     environment::RenderEnvironment, family, LayoutOptions,
 };
 use merman_render::svg::{
-    SvgDebugOptions, SvgPipeline, SvgRenderOptions,
+    SvgDebugOptions, SvgPipeline, SvgPostprocessMetadata, SvgRenderOptions,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -99,8 +99,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // SVG consumes the artifact, so its semantic model and layout cannot be recombined.
     let rendered = artifact.render_svg(&svg_options, &SvgDebugOptions::default())?;
-    let (svg, _metadata, session) = rendered.into_parts();
-    let svg = SvgPipeline::resvg_safe().process_to_string(&svg, &session)?;
+    let (svg, family_kind, metadata, session) = rendered.into_parts();
+    assert_eq!(family_kind, family::RenderFamilyKind::Flowchart);
+    let pipeline_metadata = SvgPostprocessMetadata::from_svg(&svg)
+        .with_family_kind(family_kind)
+        .with_diagram_type(metadata.diagram_type)
+        .with_optional_diagram_title(metadata.title);
+    let svg = SvgPipeline::resvg_safe()
+        .process_to_string_with_metadata(&svg, &pipeline_metadata, &session)?;
     println!("{svg}");
 
     Ok(())

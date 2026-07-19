@@ -1198,6 +1198,35 @@ B -->|No| D[Debug]
 }
 
 #[test]
+fn top_level_quadrant_pipeline_preserves_raw_token_and_materializes_resvg_fallback() {
+    let diagram = "quadrantChart\n  title Reach and engagement\n  x-axis Low --> High\n  y-axis Low --> High\n  Campaign A: [0.3, 0.6]\n";
+    let parity = run_with_stdin(&["-i", "-", "-o", "-"], diagram);
+    let resvg_safe = run_with_stdin(
+        &["-i", "-", "-o", "-", "--svg-pipeline", "resvg-safe"],
+        diagram,
+    );
+
+    assert!(parity.status.success(), "stderr: {:?}", parity.stderr);
+    assert!(
+        resvg_safe.status.success(),
+        "stderr: {:?}",
+        resvg_safe.stderr
+    );
+
+    let parity_svg = String::from_utf8(parity.stdout).expect("parity stdout should be utf8");
+    let safe_svg = String::from_utf8(resvg_safe.stdout).expect("resvg-safe stdout should be utf8");
+    assert!(
+        parity_svg.contains(r#"fill="hsl(240, 100%, NaN%)""#),
+        "raw/source output must preserve the pinned Mermaid token:\n{parity_svg}"
+    );
+    assert!(
+        safe_svg.contains(r##"fill="#000000" stroke="none""##),
+        "resvg-safe output must explicitly materialize the browser fallback:\n{safe_svg}"
+    );
+    assert!(!safe_svg.contains("NaN"), "resvg-safe output:\n{safe_svg}");
+}
+
+#[test]
 fn top_level_infers_png_from_output_extension() {
     let root = repo_root();
     let fixture = root.join("fixtures").join("flowchart").join("basic.mmd");

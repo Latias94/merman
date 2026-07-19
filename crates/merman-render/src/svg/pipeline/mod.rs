@@ -118,7 +118,7 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
     ) -> Result<Cow<'a, str>> {
-        let mut current = preset::apply_preset_cow(self.preset, svg, session);
+        let mut current = preset::apply_preset_cow(self.preset, svg, metadata, session);
 
         for (index, postprocessor) in self.postprocessors.iter().enumerate() {
             let ctx = SvgPostprocessContext::new(

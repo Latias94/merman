@@ -309,13 +309,12 @@ pub(crate) fn analyze_state_fixture(args: Vec<String>) -> Result<(), XtaskError>
         diagram_id: Some(fixture.to_string()),
         ..Default::default()
     };
-    let local_svg = artifact
+    let rendered = artifact
         .render_svg(&svg_opts, &merman_render::svg::SvgDebugOptions::default())
         .map_err(|e| {
             XtaskError::SvgCompareFailed(format!("render failed for {}: {e}", mmd_path.display()))
-        })?
-        .into_parts()
-        .0;
+        })?;
+    let (local_svg, _family_kind, _metadata, _session) = rendered.into_parts();
 
     let local_svg_path = out_svg_dir.join(format!("{fixture}.local.svg"));
     let upstream_svg_path = out_svg_dir.join(format!("{fixture}.upstream.svg"));

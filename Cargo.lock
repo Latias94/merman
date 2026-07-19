@@ -2338,6 +2338,7 @@ version = "0.8.0-alpha.3"
 dependencies = [
  "base64",
  "chrono",
+ "cssparser",
  "dugong",
  "futures",
  "indexmap",

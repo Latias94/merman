@@ -711,7 +711,7 @@ mod tests {
         );
         assert!(
             message.contains(
-                "--check-dom produced no DOM or raw SVG comparison evidence for compare-all selected families"
+                "--check-dom produced no raw/source SVG-DOM or SVG-byte comparison evidence for compare-all selected families"
             ),
             "{message}"
         );

@@ -4,7 +4,9 @@ use super::builtin::{
     foreign_object::{
         drop_switch_native_fallbacks, foreign_object_fallback_svg, strip_foreign_objects,
     },
+    presentation_fallback::resolve_resvg_presentation_fallbacks,
 };
+use super::context::SvgPostprocessMetadata;
 use crate::environment::{RenderSession, TextMeasurementPhase};
 use std::borrow::Cow;
 
@@ -32,11 +34,17 @@ pub(crate) enum BuiltinSvgStage {
     StripForeignObject,
     DropSwitchNativeFallbacks,
     SanitizeCss,
+    ResolvePresentationFallbacks,
     SanitizeAttributes,
 }
 
 impl BuiltinSvgStage {
-    fn apply<'a>(self, svg: Cow<'a, str>, session: &RenderSession) -> Cow<'a, str> {
+    fn apply<'a>(
+        self,
+        svg: Cow<'a, str>,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+    ) -> Cow<'a, str> {
         match self {
             Self::ForeignObjectFallback => {
                 let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
@@ -45,6 +53,9 @@ impl BuiltinSvgStage {
             Self::StripForeignObject => Cow::Owned(strip_foreign_objects(&svg)),
             Self::DropSwitchNativeFallbacks => Cow::Owned(drop_switch_native_fallbacks(&svg)),
             Self::SanitizeCss => Cow::Owned(sanitize_style_elements(&svg)),
+            Self::ResolvePresentationFallbacks => {
+                resolve_resvg_presentation_fallbacks(svg, metadata)
+            }
             Self::SanitizeAttributes => Cow::Owned(sanitize_element_attributes(&svg)),
         }
     }
@@ -59,6 +70,7 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
             BuiltinSvgStage::StripForeignObject,
             BuiltinSvgStage::DropSwitchNativeFallbacks,
             BuiltinSvgStage::SanitizeCss,
+            BuiltinSvgStage::ResolvePresentationFallbacks,
             BuiltinSvgStage::SanitizeAttributes,
         ],
     }
@@ -67,25 +79,32 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
 pub(crate) fn apply_preset<'a>(
     preset: SvgPipelinePreset,
     svg: &'a str,
+    metadata: &SvgPostprocessMetadata,
     session: &RenderSession,
 ) -> Cow<'a, str> {
-    apply_preset_cow(preset, Cow::Borrowed(svg), session)
+    apply_preset_cow(preset, Cow::Borrowed(svg), metadata, session)
 }
 
 pub(crate) fn apply_preset_cow<'a>(
     preset: SvgPipelinePreset,
     mut current: Cow<'a, str>,
+    metadata: &SvgPostprocessMetadata,
     session: &RenderSession,
 ) -> Cow<'a, str> {
     for stage in builtin_stages_for_preset(preset) {
-        current = stage.apply(current, session);
+        current = stage.apply(current, metadata, session);
     }
     current
 }
 
 /// Converts Mermaid-like SVG into a best-effort resvg/usvg compatible SVG string.
+///
+/// This source-string helper is deliberately family-agnostic. Call
+/// [`super::SvgPipeline::process_to_string_with_metadata`] with an explicitly typed family context
+/// when a family-specific fallback is required.
 pub fn resvg_safe_svg(svg: &str, session: &RenderSession) -> String {
-    apply_preset(SvgPipelinePreset::ResvgSafe, svg, session).into_owned()
+    let metadata = SvgPostprocessMetadata::from_svg(svg);
+    apply_preset(SvgPipelinePreset::ResvgSafe, svg, &metadata, session).into_owned()
 }
 
 #[cfg(test)]
@@ -106,6 +125,7 @@ mod tests {
                 BuiltinSvgStage::StripForeignObject,
                 BuiltinSvgStage::DropSwitchNativeFallbacks,
                 BuiltinSvgStage::SanitizeCss,
+                BuiltinSvgStage::ResolvePresentationFallbacks,
                 BuiltinSvgStage::SanitizeAttributes
             ]
         );
@@ -120,7 +140,65 @@ mod tests {
 
         assert_eq!(
             resvg_safe_svg(svg, &session),
-            apply_preset(SvgPipelinePreset::ResvgSafe, svg, &session).into_owned()
+            apply_preset(
+                SvgPipelinePreset::ResvgSafe,
+                svg,
+                &SvgPostprocessMetadata::from_svg(svg),
+                &session,
+            )
+            .into_owned()
         );
+    }
+
+    #[test]
+    fn direct_resvg_safe_helper_does_not_infer_family_from_root_role() {
+        let svg = r#"<svg id="quadrant" aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
+
+        let out = resvg_safe_svg(svg, &session);
+
+        assert!(!out.contains("NaN"), "{out}");
+        let document = roxmltree::Document::parse(&out).expect("valid generic resvg-safe SVG");
+        let point = document
+            .descendants()
+            .find(|node| node.has_tag_name("circle"))
+            .expect("point circle");
+        assert_eq!(point.attribute("fill"), None, "{out}");
+        assert_eq!(point.attribute("stroke"), None, "{out}");
+    }
+
+    #[test]
+    fn explicit_typed_family_metadata_enables_quadrant_presentation_fallback() {
+        let svg = r#"<svg id="quadrant" aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
+        let metadata = SvgPostprocessMetadata::from_svg(svg)
+            .with_family_kind(crate::family::RenderFamilyKind::QuadrantChart);
+
+        let out = apply_preset(SvgPipelinePreset::ResvgSafe, svg, &metadata, &session);
+
+        assert!(out.contains(r##"fill="#000000""##), "{out}");
+        assert!(out.contains(r#"stroke="none""#), "{out}");
+    }
+
+    #[test]
+    fn direct_generic_helper_preserves_legal_fragment_paints_with_similar_words() {
+        let svg = r##"<svg id="quadrant" aria-roledescription="quadrantChart"><defs><linearGradient id="undefined"/><linearGradient id="nan"/><linearGradient id="undefined-gradient"/><linearGradient id="nan-stroke"/></defs><g class="data-points"><g class="data-point"><circle fill="url(#undefined)" stroke="url(#nan)"/><circle fill="url(#undefined-gradient)" stroke="url(#nan-stroke)"/></g></g></svg>"##;
+        let session = crate::environment::RenderEnvironment::parity()
+            .begin_session()
+            .unwrap();
+
+        let out = resvg_safe_svg(svg, &session);
+
+        assert!(out.contains(r##"fill="url(#undefined)""##), "{out}");
+        assert!(out.contains(r##"stroke="url(#nan)""##), "{out}");
+        assert!(
+            out.contains(r##"fill="url(#undefined-gradient)""##),
+            "{out}"
+        );
+        assert!(out.contains(r##"stroke="url(#nan-stroke)""##), "{out}");
     }
 }

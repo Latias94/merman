@@ -397,8 +397,8 @@ pub(crate) struct CompareEvidence {
     skipped_fixtures: usize,
     observed_operation_reports: usize,
     observed_measurement_routes: usize,
-    dom_comparisons: usize,
-    raw_svg_comparisons: usize,
+    raw_source_svg_dom_comparisons: usize,
+    raw_source_svg_byte_comparisons: usize,
 }
 
 impl CompareEvidence {
@@ -423,7 +423,7 @@ impl CompareEvidence {
     }
 
     pub(crate) const fn comparisons(self) -> usize {
-        self.dom_comparisons + self.raw_svg_comparisons
+        self.raw_source_svg_dom_comparisons + self.raw_source_svg_byte_comparisons
     }
 
     pub(crate) fn gate_failures(self, subject: &str, check_dom: bool) -> Vec<String> {
@@ -448,7 +448,7 @@ impl CompareEvidence {
         }
         if check_dom && self.comparisons() == 0 {
             failures.push(format!(
-                "--check-dom produced no DOM or raw SVG comparison evidence for {subject}: rendered={} skipped={}",
+                "--check-dom produced no raw/source SVG-DOM or SVG-byte comparison evidence for {subject}: rendered={} skipped={}",
                 self.rendered_fixtures, self.skipped_fixtures
             ));
         }
@@ -458,14 +458,18 @@ impl CompareEvidence {
     fn write_report(self, report: &mut String) {
         let _ = writeln!(
             report,
-            "- Evidence counts: selected=`{}` rendered=`{}` skipped=`{}` operation-reports=`{}` measurement-routes=`{}` DOM-comparisons=`{}` raw-SVG-comparisons=`{}`",
+            "- Evidence counts: selected=`{}` rendered=`{}` skipped=`{}` operation-reports=`{}` measurement-routes=`{}` raw/source-SVG-DOM=`{}` raw/source-SVG-bytes=`{}`",
             self.selected_fixtures,
             self.rendered_fixtures,
             self.skipped_fixtures,
             self.observed_operation_reports,
             self.observed_measurement_routes,
-            self.dom_comparisons,
-            self.raw_svg_comparisons,
+            self.raw_source_svg_dom_comparisons,
+            self.raw_source_svg_byte_comparisons,
+        );
+        let _ = writeln!(
+            report,
+            "- Artifact evidence contract: this command may collect only `raw/source parity` (see counts); browser-visible=`not collected (requires browser computed-style/geometry evidence)`; resvg-safe=`not collected (requires output-pipeline and usvg/resvg evidence)`"
         );
     }
 
@@ -479,11 +483,11 @@ impl CompareEvidence {
         self.observed_measurement_routes += evidence.measurement_routes;
     }
 
-    fn record_comparison(&mut self, comparison: FixtureComparison) {
+    fn record_comparison(&mut self, comparison: RawSourceComparison) {
         match comparison {
-            FixtureComparison::None => {}
-            FixtureComparison::Dom => self.dom_comparisons += 1,
-            FixtureComparison::RawSvg => self.raw_svg_comparisons += 1,
+            RawSourceComparison::None => {}
+            RawSourceComparison::SvgDom => self.raw_source_svg_dom_comparisons += 1,
+            RawSourceComparison::SvgBytes => self.raw_source_svg_byte_comparisons += 1,
         }
     }
 }
@@ -495,8 +499,8 @@ impl AddAssign for CompareEvidence {
         self.skipped_fixtures += rhs.skipped_fixtures;
         self.observed_operation_reports += rhs.observed_operation_reports;
         self.observed_measurement_routes += rhs.observed_measurement_routes;
-        self.dom_comparisons += rhs.dom_comparisons;
-        self.raw_svg_comparisons += rhs.raw_svg_comparisons;
+        self.raw_source_svg_dom_comparisons += rhs.raw_source_svg_dom_comparisons;
+        self.raw_source_svg_byte_comparisons += rhs.raw_source_svg_byte_comparisons;
     }
 }
 
@@ -1150,10 +1154,14 @@ where
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FixtureComparison {
+/// Evidence produced by the source-SVG comparator.
+///
+/// Browser-computed presentation and resvg-safe output are deliberately not representable here;
+/// those lanes require their own execution environments and gates.
+enum RawSourceComparison {
     None,
-    Dom,
-    RawSvg,
+    SvgDom,
+    SvgBytes,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1173,7 +1181,7 @@ fn write_rendered_fixture(
     upstream_path: &Path,
     mode: svgdom::DomMode,
     dom_decimals: u32,
-) -> Result<FixtureComparison, XtaskError> {
+) -> Result<RawSourceComparison, XtaskError> {
     fs::write(local_out_path, local_svg).map_err(|source| XtaskError::WriteFile {
         path: local_out_path.display().to_string(),
         source,
@@ -1199,7 +1207,7 @@ fn write_rendered_fixture(
         }
         failures.extend(issues);
         notes.extend(fixture_notes);
-        return Ok(FixtureComparison::Dom);
+        return Ok(RawSourceComparison::SvgDom);
     } else if !check_dom && compare_svg_when_dom_disabled && upstream_svg != local_svg {
         failures.push(format!("svg mismatch for {stem}"));
     }
@@ -1207,9 +1215,9 @@ fn write_rendered_fixture(
     failures.extend(issues);
     notes.extend(fixture_notes);
     Ok(if !check_dom && compare_svg_when_dom_disabled {
-        FixtureComparison::RawSvg
+        RawSourceComparison::SvgBytes
     } else {
-        FixtureComparison::None
+        RawSourceComparison::None
     })
 }
 
@@ -1665,14 +1673,17 @@ mod tests {
                 skipped_fixtures: 1,
                 observed_operation_reports: 1,
                 observed_measurement_routes: 4,
-                dom_comparisons: 1,
-                raw_svg_comparisons: 0,
+                raw_source_svg_dom_comparisons: 1,
+                raw_source_svg_byte_comparisons: 0,
             }
         );
         let report = fs::read_to_string(&out_path).expect("report should be written");
         assert!(report.contains("All fixtures matched."));
         assert!(report.contains(
-            "Evidence counts: selected=`2` rendered=`1` skipped=`1` operation-reports=`1` measurement-routes=`4` DOM-comparisons=`1` raw-SVG-comparisons=`0`"
+            "Evidence counts: selected=`2` rendered=`1` skipped=`1` operation-reports=`1` measurement-routes=`4` raw/source-SVG-DOM=`1` raw/source-SVG-bytes=`0`"
+        ));
+        assert!(report.contains(
+            "Artifact evidence contract: this command may collect only `raw/source parity` (see counts); browser-visible=`not collected (requires browser computed-style/geometry evidence)`; resvg-safe=`not collected (requires output-pipeline and usvg/resvg evidence)`"
         ));
         assert!(report.contains("skipped skipped: parse-time admission policy"));
         let out_svg_dir = out_path
@@ -1745,8 +1756,8 @@ mod tests {
                 skipped_fixtures: 0,
                 observed_operation_reports: 1,
                 observed_measurement_routes: 4,
-                dom_comparisons: 0,
-                raw_svg_comparisons: 0,
+                raw_source_svg_dom_comparisons: 0,
+                raw_source_svg_byte_comparisons: 0,
             }
         );
         assert!(matches!(failure.into_error(), XtaskError::WriteFile { .. }));
@@ -1813,8 +1824,8 @@ mod tests {
                 skipped_fixtures: 0,
                 observed_operation_reports: 1,
                 observed_measurement_routes: 4,
-                dom_comparisons: 1,
-                raw_svg_comparisons: 0,
+                raw_source_svg_dom_comparisons: 1,
+                raw_source_svg_byte_comparisons: 0,
             }
         );
         assert!(matches!(failure.into_error(), XtaskError::WriteFile { .. }));

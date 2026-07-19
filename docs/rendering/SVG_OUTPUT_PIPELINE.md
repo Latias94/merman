@@ -11,6 +11,19 @@ surface for upstream Mermaid fixtures. Consumers that need renderer compatibilit
 a pipeline explicitly. Mermaid-parity SVG may contain `<foreignObject>` HTML labels; that is
 expected and should not be treated as the export-safe surface.
 
+## Artifact Evidence Lanes
+
+Output contracts and evidence contracts are related but not interchangeable:
+
+| Lane | Proves | Required gate | Does not prove |
+| --- | --- | --- | --- |
+| Raw/source SVG parity | Emitted bytes or the declared SVG-DOM comparison profile agree with the pinned upstream artifact. | `xtask` raw-byte or SVG-DOM compare. | Browser computed colors, label overlap, edge contact, or raster compatibility. |
+| Browser-visible | The pinned browser computes the expected styles and client geometry under the declared viewport, fonts, and runtime graph. | Build-freshness gate followed by browser computed-style/geometry tests. | Exact SVG serialization or `usvg` / `resvg` compatibility. |
+| Resvg-safe | The explicit pipeline emits valid consumer-oriented SVG that `usvg` / `resvg` can parse and render. | Pipeline tests plus raster-consumer tests. | Raw upstream serialization or browser presentation parity. |
+
+Theme SVG assertions, Block analytic geometry, and Gantt SVG-DOM comparisons are useful structural
+evidence, but they are not browser-visible evidence. Browser-visible claims require the browser lane.
+
 Typical choices:
 
 - Use `render_svg_sync` when the caller wants the closest Mermaid-compatible SVG string.
@@ -28,6 +41,12 @@ Typical choices:
 | `SvgPipeline::parity()` | No post-processing. This preserves the exact SVG string produced by the parity renderer. |
 | `SvgPipeline::readable()` | Adds best-effort SVG `<text>` overlays for labels emitted via `<foreignObject>`. |
 | `SvgPipeline::resvg_safe()` | Adds readable fallbacks, strips the original `<foreignObject>` elements, and removes common `usvg` / `resvg` hazards such as unsupported CSS blocks, animation declarations, CSS `deg` units, empty visual attributes, empty rectangle placeholders, and non-finite values. |
+
+For Mermaid 11.16 Quadrant, parity output intentionally retains upstream's invalid
+`hsl(..., NaN%)` point presentation attributes. A browser ignores them and uses the SVG initial
+black fill with no stroke. The typed Quadrant resvg-safe path explicitly emits
+`fill="#000000" stroke="none"`; this keeps the export visible without teaching the raw comparator
+that invalid HSL and RGB are equivalent.
 
 ## Rendering With A Pipeline
 
@@ -57,6 +76,14 @@ The compatibility helpers are wrappers around the same pipeline:
 - `render_svg_readable_sync(...)` uses `SvgPipeline::readable()`.
 - `render_svg_resvg_safe_sync(...)` uses `SvgPipeline::resvg_safe()`.
 - `svg_readable(svg)` and `svg_resvg_safe(svg)` apply the presets to an existing SVG string.
+
+The source-string helpers extract root SVG attributes only as descriptive metadata. They never
+promote `aria-roledescription` or any other SVG text into the closed `RenderFamilyKind` capability.
+Family-specific processing requires `SvgPipeline::process_to_string_with_metadata` (or
+`apply_svg_pipeline_with_metadata`) plus an explicit
+`SvgPostprocessMetadata::with_family_kind`, normally supplied by the typed render operation. A
+diagram-type string alone does not authorize a family-specific fallback, and the generic
+`resvg_safe_svg(svg, session)` helper deliberately performs only family-agnostic cleanup.
 
 ## Host Postprocessors
 

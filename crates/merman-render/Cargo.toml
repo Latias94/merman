@@ -37,6 +37,7 @@ ratex-math = [
 [dependencies]
 base64.workspace = true
 chrono.workspace = true
+cssparser.workspace = true
 dugong.workspace = true
 indexmap.workspace = true
 kurbo.workspace = true

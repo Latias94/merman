@@ -514,6 +514,7 @@ impl GanttTimeAxisDiagnostics {
 /// ```
 pub struct RenderedFamilySvg {
     svg: String,
+    family_kind: RenderFamilyKind,
     metadata: ParseMetadata,
     session: RenderSession,
 }
@@ -527,8 +528,12 @@ impl RenderedFamilySvg {
         &self.metadata
     }
 
-    pub fn into_parts(self) -> (String, ParseMetadata, RenderSession) {
-        (self.svg, self.metadata, self.session)
+    pub fn family_kind(&self) -> RenderFamilyKind {
+        self.family_kind
+    }
+
+    pub fn into_parts(self) -> (String, RenderFamilyKind, ParseMetadata, RenderSession) {
+        (self.svg, self.family_kind, self.metadata, self.session)
     }
 }
 
@@ -605,6 +610,7 @@ impl FamilyRenderArtifact {
 
         Ok(RenderedFamilySvg {
             svg,
+            family_kind: family.kind(),
             metadata,
             session,
         })

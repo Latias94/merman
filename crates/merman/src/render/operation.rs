@@ -5,6 +5,7 @@ use super::{
 use merman_render::{
     ResourceLimitExceeded, ResourceLimitPhase,
     environment::{RenderEnvironment, RenderLocalTimePolicy, RenderSession, RenderSessionReport},
+    family::RenderFamilyKind,
 };
 
 #[cfg(feature = "raster")]
@@ -294,10 +295,11 @@ impl PreparedRender {
         debug_options: &SvgDebugOptions,
     ) -> Result<RenderedSvgParts> {
         let rendered = self.artifact.render_svg(svg_options, debug_options)?;
-        let (svg, metadata, session) = rendered.into_parts();
+        let (svg, family_kind, metadata, session) = rendered.into_parts();
 
         Ok(RenderedSvgParts {
             svg,
+            family_kind,
             diagram_type: metadata.diagram_type,
             diagram_title: metadata.title,
             session,
@@ -466,6 +468,7 @@ impl<'a> HeadlessOperation<'a> {
 
 struct RenderedSvgParts {
     svg: String,
+    family_kind: RenderFamilyKind,
     diagram_type: String,
     diagram_title: Option<String>,
     session: RenderSession,
@@ -483,11 +486,13 @@ impl RenderedSvgParts {
     fn into_pipeline_svg(self, pipeline: &SvgPipeline) -> Result<RenderedSvg> {
         let Self {
             svg,
+            family_kind,
             diagram_type,
             diagram_title,
             session,
         } = self;
         let metadata = SvgPostprocessMetadata::from_svg(&svg)
+            .with_family_kind(family_kind)
             .with_diagram_type(diagram_type)
             .with_optional_diagram_title(diagram_title);
 

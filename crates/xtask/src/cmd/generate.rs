@@ -2671,7 +2671,10 @@ fn render_family_fixture_svg(
 
     artifact
         .render_svg(svg_options, debug_options)
-        .map(|rendered| rendered.into_parts().0)
+        .map(|rendered| {
+            let (svg, _family_kind, _metadata, _session) = rendered.into_parts();
+            svg
+        })
         .map_err(|err| format!("render failed for {}: {err}", mmd_path.display()))
 }
 

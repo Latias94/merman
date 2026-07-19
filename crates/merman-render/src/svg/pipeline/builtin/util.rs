@@ -100,6 +100,25 @@ pub(crate) fn next_svg_quoted_attr(tag: &str, from: usize) -> Option<SvgQuotedAt
     None
 }
 
+pub(crate) fn start_tag_name(tag: &str) -> Option<&str> {
+    let tag = tag.trim_start();
+    if !tag.starts_with('<')
+        || tag.starts_with("</")
+        || tag.starts_with("<!--")
+        || tag.starts_with("<!")
+        || tag.starts_with("<?")
+    {
+        return None;
+    }
+
+    let start = 1;
+    let end = start
+        + tag[start..]
+            .find(|ch: char| ch.is_whitespace() || ch == '/' || ch == '>')
+            .unwrap_or(tag.len() - start);
+    (start < end).then_some(&tag[start..end])
+}
+
 fn svg_quoted_attr_at(tag: &str, full_start: usize, name_start: usize) -> Option<SvgQuotedAttr> {
     let first = *tag.as_bytes().get(name_start)?;
     if !is_svg_attr_name_start_byte(first) {
@@ -159,11 +178,18 @@ fn is_svg_attr_name_continue_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.')
 }
 
-pub(crate) fn extract_root_svg_id(svg: &str) -> Option<String> {
-    let start = svg.find("<svg")?;
-    let end = find_tag_end(svg, start)?;
-    let tag = &svg[start..=end];
-    extract_quoted_attr(tag, "id").map(ToOwned::to_owned)
+pub(crate) fn root_svg_tag(svg: &str) -> Option<&str> {
+    let mut scanner = SvgTagScanner::new(svg);
+    while let Some(tag) = scanner.next() {
+        let Some(root_name) = start_tag_name(tag.raw()) else {
+            continue;
+        };
+        if root_name != "svg" {
+            return None;
+        }
+        return Some(tag.raw());
+    }
+    None
 }
 
 pub(crate) fn extract_quoted_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
