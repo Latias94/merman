@@ -67,7 +67,7 @@
         "comment": null,
         "span": {
           "start": 11,
-          "end": 18
+          "end": 17
         },
         "kind": "creation",
         "from": "_STARTER_",
@@ -83,14 +83,14 @@
         "comment": null,
         "span": {
           "start": 22,
-          "end": 47
+          "end": 46
         },
         "kind": "creation",
         "from": "_STARTER_",
         "to": "A2",
         "constructor": "A2",
         "assignment": null,
-        "label": "«create» A2(with, parameters)",
+        "label": "«create» A2(with,parameters)",
         "body": []
       }
     ],

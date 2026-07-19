@@ -1,6 +1,6 @@
 use super::{
-    ClassAssignStmt, ClassDefStmt, ClickStmt, LabeledText, LinkStyleStmt, LinkToken, StyleStmt,
-    SubgraphHeader,
+    ClassAssignStmt, ClassDefStmt, ClickStmt, FlowchartLexemeComponent, LabeledText, LinkStyleStmt,
+    LinkToken, StyleStmt, SubgraphHeader,
 };
 use crate::{SourceSpan, error::ParseErrorSourceSpan};
 
@@ -19,7 +19,7 @@ pub(crate) enum Tok {
     NodeLabel(NodeLabelToken),
 
     Direction(String),
-    DirectionStmt(String),
+    DirectionStmt(DirectionStatementToken),
     Id(String),
     Arrow(LinkToken),
     EdgeLabel(LabeledText),
@@ -40,6 +40,13 @@ pub(crate) struct NodeLabelToken {
     pub shape: String,
     pub text: LabeledText,
     pub trigger_span: Option<SourceSpan>,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DirectionStatementToken {
+    pub direction: String,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]

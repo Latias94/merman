@@ -70,7 +70,7 @@ struct StateSemanticSource {
 
 struct StateSemanticFailure {
     error: Box<StateGrammarError>,
-    editor_facts: EditorSemanticFacts,
+    editor_facts: Box<EditorSemanticFacts>,
 }
 
 impl StateSemanticFailure {
@@ -95,7 +95,7 @@ impl StateSemanticFailure {
             ),
             Some(span),
         );
-        self.editor_facts
+        *self.editor_facts
     }
 }
 
@@ -156,7 +156,7 @@ fn construct_state_semantic_source(
         Err(error) => {
             return Err(StateSemanticFailure {
                 error: Box::new(error),
-                editor_facts,
+                editor_facts: Box::new(editor_facts),
             });
         }
     };

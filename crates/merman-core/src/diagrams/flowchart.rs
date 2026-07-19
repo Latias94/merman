@@ -1,10 +1,14 @@
 use crate::diagram::legacy_warning_messages;
 use crate::sanitize::sanitize_text;
 use crate::{
-    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, Error,
-    FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig, ParseMetadata, Result, SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    DiagramWarningFact, EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticRole,
+    EditorSemanticSymbol, Error, FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, MermaidConfig,
+    ParseMetadata, Result, SourceSpan,
+    editor::{
+        EditorLexemeJournal, format_lalrpop_parse_error, lalrpop_parse_diagnostic,
+        lalrpop_recovery_span,
+    },
 };
 use indexmap::IndexMap;
 use serde_json::{Value, json};
@@ -25,6 +29,7 @@ mod accessibility;
 mod ast;
 mod build;
 mod lex;
+mod lexeme;
 mod lexer;
 mod lexer_iter;
 mod link;
@@ -50,7 +55,8 @@ pub(crate) use ast::{
     LinkStyleStmt, Stmt, StyleStmt, SubgraphBlock,
 };
 
-pub(crate) use tokens::{LexError, NodeLabelToken, Tok};
+pub(crate) use lexeme::FlowchartLexemeComponent;
+pub(crate) use tokens::{DirectionStatementToken, LexError, NodeLabelToken, Tok};
 
 use accessibility::extract_flowchart_accessibility_statements;
 use build::FlowchartBuildState;
@@ -101,8 +107,9 @@ pub(crate) fn parse_flowchart_json_and_editor_facts(
 ) -> Result<(Value, EditorSemanticFacts)> {
     let original_code = code;
     let (code, acc_title, acc_descr) = flowchart_parser_input_and_accessibility(code);
-    let ast = parse_flowchart_ast(&code, meta)?;
+    let (ast, lexemes) = parse_flowchart_ast_with_editor_lexemes(&code, meta)?;
     let mut facts = editor_facts_from_flowchart_ast(&ast);
+    facts.replace_family_lexemes(lexemes);
     collect_accessibility_directive_prefixes(original_code, &mut facts);
     collect_expected_syntax_from_tokens(&code, &mut facts);
     let model = parse_flowchart_semantic_source_from_ast(ast, acc_title, acc_descr, meta)?
@@ -157,21 +164,22 @@ pub fn parse_flowchart_editor_facts(
 ) -> Result<EditorSemanticFacts> {
     let original_code = code;
     let code = mask_flowchart_editor_parse_input(code);
-    match flowchart_grammar::FlowchartAstParser::new().parse(Lexer::new(&code)) {
-        Ok(ast) => {
+    match try_parse_flowchart_ast_with_editor_lexemes(&code) {
+        Ok((ast, lexemes)) => {
             let mut facts = editor_facts_from_flowchart_ast(&ast);
+            facts.replace_family_lexemes(lexemes);
             collect_accessibility_directive_prefixes(original_code, &mut facts);
             collect_expected_syntax_from_tokens(&code, &mut facts);
             Ok(facts)
         }
         Err(error) => {
-            let span = lalrpop_recovery_span(&error, code.len());
+            let span = lalrpop_recovery_span(error.as_ref(), code.len());
             let mut facts = recover_flowchart_editor_facts_from_tokens(&code);
             collect_accessibility_directive_prefixes(original_code, &mut facts);
             facts.mark_recovered_from_parse_error(
                 format!(
                     "flowchart parser recovered after parse error: {}",
-                    format_lalrpop_parse_error(&error)
+                    format_lalrpop_parse_error(error.as_ref())
                 ),
                 Some(span),
             );
@@ -298,6 +306,120 @@ fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst>
                 lalrpop_parse_diagnostic(&e, code.len()),
             )
         })
+}
+
+fn parse_flowchart_ast_with_editor_lexemes(
+    code: &str,
+    meta: &ParseMetadata,
+) -> Result<(FlowchartAst, crate::editor::EditorLexemeBatchResult)> {
+    try_parse_flowchart_ast_with_editor_lexemes(code).map_err(|error| {
+        Error::diagram_parse_diagnostic(
+            meta.diagram_type.clone(),
+            lalrpop_parse_diagnostic(error.as_ref(), code.len()),
+        )
+    })
+}
+
+type FlowchartAstParseError = lalrpop_util::ParseError<usize, Tok, LexError>;
+type FlowchartEditorParseResult = std::result::Result<
+    (FlowchartAst, crate::editor::EditorLexemeBatchResult),
+    Box<FlowchartAstParseError>,
+>;
+
+fn try_parse_flowchart_ast_with_editor_lexemes(code: &str) -> FlowchartEditorParseResult {
+    let mut journal = EditorLexemeJournal::family_lexer(code);
+    let lexer = FlowchartLexemeLexer {
+        inner: Lexer::new(code),
+        journal: &mut journal,
+    };
+    let parsed = flowchart_grammar::FlowchartAstParser::new()
+        .parse(lexer)
+        .map_err(Box::new);
+    let lexemes = journal.finish();
+    parsed.map(|ast| (ast, lexemes))
+}
+
+struct FlowchartLexemeLexer<'input, 'journal> {
+    inner: Lexer<'input>,
+    journal: &'journal mut EditorLexemeJournal<'input>,
+}
+
+impl Iterator for FlowchartLexemeLexer<'_, '_> {
+    type Item = std::result::Result<(usize, Tok, usize), LexError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self.inner.next()?;
+        if let Ok((start, token, end)) = &result {
+            record_flowchart_lexeme(self.journal, token, *start, *end);
+        }
+        Some(result)
+    }
+}
+
+fn record_flowchart_lexeme(
+    journal: &mut EditorLexemeJournal<'_>,
+    token: &Tok,
+    start: usize,
+    end: usize,
+) {
+    let components = match token {
+        Tok::DirectionStmt(token) => Some(token.lexeme_components.as_slice()),
+        Tok::NodeLabel(token) => Some(token.lexeme_components.as_slice()),
+        Tok::EdgeLabel(label) => Some(label.lexeme_components.as_slice()),
+        Tok::SubgraphHeader(header) => Some(header.lexeme_components.as_slice()),
+        Tok::StyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        Tok::ClassDefStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        Tok::ClassAssignStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        Tok::ClickStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        Tok::LinkStyleStmt(stmt) => Some(stmt.lexeme_components.as_slice()),
+        _ => None,
+    };
+    if let Some(components) = components {
+        for component in components {
+            journal.push(component.kind, EditorLexemeModifiers::NONE, component.span);
+        }
+        return;
+    }
+
+    let span = SourceSpan::new(start, end);
+    let kind = match token {
+        Tok::KwGraph
+        | Tok::KwFlowchart
+        | Tok::KwFlowchartElk
+        | Tok::KwSwimlane
+        | Tok::KwSubgraph
+        | Tok::KwEnd => EditorLexemeKind::Keyword,
+        Tok::Amp | Tok::StyleSep | Tok::Arrow(_) => EditorLexemeKind::Operator,
+        Tok::Direction(_) => EditorLexemeKind::Literal,
+        Tok::ShapeData(_) => EditorLexemeKind::Style,
+        Tok::Id(_) => EditorLexemeKind::Identifier,
+        Tok::EdgeId(_) => {
+            if start + 1 < end {
+                journal.push(
+                    EditorLexemeKind::Identifier,
+                    EditorLexemeModifiers::NONE,
+                    SourceSpan::new(start, end - 1),
+                );
+            }
+            journal.push(
+                EditorLexemeKind::Operator,
+                EditorLexemeModifiers::NONE,
+                SourceSpan::new(end - 1, end),
+            );
+            return;
+        }
+        Tok::DirectionStmt(_)
+        | Tok::NodeLabel(_)
+        | Tok::EdgeLabel(_)
+        | Tok::SubgraphHeader(_)
+        | Tok::StyleStmt(_)
+        | Tok::ClassDefStmt(_)
+        | Tok::ClassAssignStmt(_)
+        | Tok::ClickStmt(_)
+        | Tok::LinkStyleStmt(_) => unreachable!("compound tokens return above"),
+        Tok::Sep => return,
+    };
+    journal.push(kind, EditorLexemeModifiers::NONE, span);
 }
 
 fn flowchart_warning_facts(
@@ -460,11 +582,13 @@ fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
     let mut lexer = Lexer::recovering(code);
+    let mut journal = EditorLexemeJournal::family_recovery(code);
     let mut last_position = lexer.position();
 
     while let Some(result) = lexer.next() {
         let current_position = lexer.position();
         if let Ok((start, token, end)) = result {
+            record_flowchart_lexeme(&mut journal, &token, start, end);
             collector.accept(code, token, start, end, &mut facts);
         } else if current_position == last_position {
             break;
@@ -472,6 +596,7 @@ fn recover_flowchart_editor_facts_from_tokens(code: &str) -> EditorSemanticFacts
         last_position = current_position;
     }
     collector.finish(code.len(), &mut facts);
+    facts.replace_family_lexemes(journal.finish());
 
     facts
 }
@@ -498,9 +623,13 @@ fn collect_expected_syntax_from_tokens(code: &str, facts: &mut EditorSemanticFac
             Tok::ShapeData(_) => {
                 push_flowchart_shape_value_expected_syntax(code, start, end, facts)
             }
-            Tok::DirectionStmt(dir) => {
-                push_flowchart_direction_value_expected_syntax(code, start, end, &dir, facts)
-            }
+            Tok::DirectionStmt(stmt) => push_flowchart_direction_value_expected_syntax(
+                code,
+                start,
+                end,
+                &stmt.direction,
+                facts,
+            ),
             _ => {}
         }
         last_position = current_position;
@@ -642,8 +771,8 @@ fn collect_editor_fact_from_token(
         | Tok::Amp
         | Tok::StyleSep
         | Tok::Direction(_) => {}
-        Tok::DirectionStmt(dir) => {
-            push_flowchart_direction_value_expected_syntax(code, start, end, &dir, facts)
+        Tok::DirectionStmt(stmt) => {
+            push_flowchart_direction_value_expected_syntax(code, start, end, &stmt.direction, facts)
         }
         Tok::Arrow(_) | Tok::EdgeId(_) => {}
         Tok::ShapeData(_) => push_flowchart_shape_value_expected_syntax(code, start, end, facts),

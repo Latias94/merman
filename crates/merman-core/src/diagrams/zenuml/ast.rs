@@ -22,8 +22,14 @@ pub(super) struct SyntaxDocument {
     pub(super) acc_descr: Option<SpannedText>,
     pub(super) participants: Vec<ParticipantSyntax>,
     pub(super) groups: Vec<GroupSyntax>,
-    pub(super) starter: Option<SpannedText>,
+    pub(super) starter: Option<StarterSyntax>,
     pub(super) statements: Vec<StatementSyntax>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StarterSyntax {
+    pub(super) name: Option<SpannedText>,
+    pub(super) span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,7 +39,7 @@ pub(super) struct ParticipantSyntax {
     pub(super) participant_type: Option<SpannedText>,
     pub(super) stereotype: Option<SpannedText>,
     pub(super) emoji: Option<SpannedText>,
-    pub(super) width: Option<u32>,
+    pub(super) width: Option<SpannedText>,
     pub(super) color: Option<SpannedText>,
     pub(super) comment: Option<SpannedText>,
     pub(super) span: SourceSpan,
@@ -79,6 +85,7 @@ pub(super) struct MessageSyntax {
     pub(super) assignment: Option<SpannedText>,
     pub(super) style: MessageStyleSyntax,
     pub(super) body: Vec<StatementSyntax>,
+    pub(super) body_comment: Option<SpannedText>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +94,7 @@ pub(super) struct CreationSyntax {
     pub(super) assignment: Option<SpannedText>,
     pub(super) signature: SpannedText,
     pub(super) body: Vec<StatementSyntax>,
+    pub(super) body_comment: Option<SpannedText>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,6 +128,7 @@ pub(super) struct FragmentSyntax {
 pub(super) struct FragmentSectionSyntax {
     pub(super) label: Option<SpannedText>,
     pub(super) statements: Vec<StatementSyntax>,
+    pub(super) body_comment: Option<SpannedText>,
     pub(super) span: SourceSpan,
 }
 
@@ -135,9 +144,31 @@ pub(super) struct SyntaxDiagnostic {
     pub(super) span: SourceSpan,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GrammarRuleKindSyntax {
+    Title,
+    Participant,
+    MessageBody,
+    CreationBody,
+    Event,
+    Invocation,
+    Expression,
+    NamedParameter,
+    Declaration,
+    InExpression,
+    TextExpression,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct GrammarRuleSpanSyntax {
+    pub(super) kind: GrammarRuleKindSyntax,
+    pub(super) span: SourceSpan,
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct ParsedSyntax {
     pub(super) document: SyntaxDocument,
     pub(super) diagnostics: Vec<SyntaxDiagnostic>,
     pub(super) tokens: Vec<super::lexer::Token>,
+    pub(super) grammar_rule_spans: Vec<GrammarRuleSpanSyntax>,
 }

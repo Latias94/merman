@@ -184,13 +184,9 @@ struct MindmapParsedLines {
 }
 
 fn mindmap_editor_facts_from_parsed(parsed: &MindmapParsedLines) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts {
-        completeness: parsed.completeness,
-        symbols: Vec::new(),
-        directive_prefixes: Vec::new(),
-        diagnostics: parsed.diagnostics.clone(),
-        expected_syntax: Vec::new(),
-    };
+    let mut facts = EditorSemanticFacts::new();
+    facts.completeness = parsed.completeness;
+    facts.diagnostics = parsed.diagnostics.clone();
     for prefix in &parsed.directive_prefixes {
         facts.push_directive_prefix(prefix.clone());
     }

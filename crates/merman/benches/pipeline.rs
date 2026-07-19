@@ -523,7 +523,7 @@ fn bench_parse_typed(c: &mut Criterion) {
 
                 let meta = ParseMetadata {
                     diagram_type: "classDiagram".to_string(),
-                    config: pre.config,
+                    config: pre.config.clone(),
                     effective_config,
                     title,
                 };
@@ -566,6 +566,7 @@ fn bench_parse_typed_only(c: &mut Criterion) {
             .as_ref()
             .map(|t| merman_core::sanitize::sanitize_text(t, &effective_config))
             .filter(|t| !t.is_empty());
+        let code = pre.code().to_owned();
 
         let meta = ParseMetadata {
             diagram_type: "classDiagram".to_string(),
@@ -575,12 +576,11 @@ fn bench_parse_typed_only(c: &mut Criterion) {
         };
 
         // Pre-check typed parse viability once to keep the bench stable.
-        if merman_core::diagrams::class::parse_class_typed(pre.code(), &meta).is_err() {
+        if merman_core::diagrams::class::parse_class_typed(&code, &meta).is_err() {
             eprintln!("[bench][skip][parse_typed_only] {name}: parse_class_typed error");
             continue;
         }
 
-        let code = pre.source.into_text();
         let meta = meta;
         group.bench_function(BenchmarkId::from_parameter(name), move |b| {
             b.iter(|| {

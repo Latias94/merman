@@ -1,12 +1,311 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
-use crate::error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan};
+use crate::{
+    error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseErrorSourceSpan},
+    family::DiagramFamilyId,
+};
 
 /// Byte span in the parser input that produced an editor-visible semantic fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceSpan {
     pub start: usize,
     pub end: usize,
+}
+
+/// Grammar-domain lexical classification emitted by preprocessing or one diagram family.
+///
+/// These names describe Mermaid syntax, not editor colors or transport token names. The editor
+/// token descriptor owns the later projection into LSP/Monaco token types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorLexemeKind {
+    Keyword,
+    Comment,
+    Operator,
+    Delimiter,
+    Identifier,
+    Number,
+    Date,
+    Duration,
+    Boolean,
+    String,
+    Style,
+    Color,
+    Literal,
+    Frontmatter,
+    Directive,
+}
+
+/// Grammar meaning attached to a lexical fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorLexemeModifier {
+    Declaration,
+    Definition,
+    Reference,
+    Readonly,
+    Documentation,
+    DefaultLibrary,
+}
+
+/// Allocation-free set of grammar-level lexeme modifiers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
+pub struct EditorLexemeModifiers(u8);
+
+impl EditorLexemeModifiers {
+    pub const NONE: Self = Self(0);
+    const VALID_BITS: u8 = (1 << 6) - 1;
+
+    pub const fn from_modifier(modifier: EditorLexemeModifier) -> Self {
+        Self(modifier.bit())
+    }
+
+    pub fn union(self, other: Self) -> Result<Self, EditorLexemeFailure> {
+        let duplicate = self.0 & other.0;
+        if duplicate != 0 {
+            return Err(EditorLexemeFailure::DuplicateModifiers { bits: duplicate });
+        }
+        Self::try_from_bits(self.0 | other.0)
+    }
+
+    fn try_from_bits(bits: u8) -> Result<Self, EditorLexemeFailure> {
+        let unknown = bits & !Self::VALID_BITS;
+        if unknown != 0 {
+            return Err(EditorLexemeFailure::UnknownModifierBits { bits: unknown });
+        }
+        Ok(Self(bits))
+    }
+
+    pub fn contains(self, modifier: EditorLexemeModifier) -> bool {
+        self.0 & modifier.bit() != 0
+    }
+
+    pub fn iter(self) -> impl Iterator<Item = EditorLexemeModifier> {
+        [
+            EditorLexemeModifier::Declaration,
+            EditorLexemeModifier::Definition,
+            EditorLexemeModifier::Reference,
+            EditorLexemeModifier::Readonly,
+            EditorLexemeModifier::Documentation,
+            EditorLexemeModifier::DefaultLibrary,
+        ]
+        .into_iter()
+        .filter(move |modifier| self.contains(*modifier))
+    }
+}
+
+impl<'de> Deserialize<'de> for EditorLexemeModifiers {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bits = u8::deserialize(deserializer)?;
+        Self::try_from_bits(bits).map_err(D::Error::custom)
+    }
+}
+
+impl EditorLexemeModifier {
+    const fn bit(self) -> u8 {
+        match self {
+            Self::Declaration => 1 << 0,
+            Self::Definition => 1 << 1,
+            Self::Reference => 1 << 2,
+            Self::Readonly => 1 << 3,
+            Self::Documentation => 1 << 4,
+            Self::DefaultLibrary => 1 << 5,
+        }
+    }
+}
+
+/// The parser-owned stage that produced a lexical fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorLexemeProducerKind {
+    GlobalPreprocess,
+    FamilyLexer,
+    FamilyParser,
+    FamilyRecovery,
+}
+
+/// Provenance for a lexical fact. Family-owned facts always name their logical family.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct EditorLexemeProducer {
+    kind: EditorLexemeProducerKind,
+    family: Option<DiagramFamilyId>,
+}
+
+impl EditorLexemeProducer {
+    const fn global_preprocess() -> Self {
+        Self {
+            kind: EditorLexemeProducerKind::GlobalPreprocess,
+            family: None,
+        }
+    }
+
+    const fn unsealed_family(kind: EditorLexemeProducerKind) -> Self {
+        Self { kind, family: None }
+    }
+
+    pub fn kind(self) -> EditorLexemeProducerKind {
+        self.kind
+    }
+
+    pub fn family(self) -> Option<DiagramFamilyId> {
+        self.family
+    }
+
+    fn seal_family(&mut self, family: DiagramFamilyId) -> Result<(), EditorLexemeFailure> {
+        if self.kind == EditorLexemeProducerKind::GlobalPreprocess || self.family.is_some() {
+            return Err(EditorLexemeFailure::InvalidProvenance);
+        }
+        self.family = Some(family);
+        Ok(())
+    }
+}
+
+/// One parser/preprocessor-owned lexical fact in caller-source byte coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct EditorLexeme {
+    kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
+    span: SourceSpan,
+    producer: EditorLexemeProducer,
+}
+
+impl EditorLexeme {
+    pub(crate) fn global(kind: EditorLexemeKind, span: SourceSpan) -> Self {
+        Self {
+            kind,
+            modifiers: EditorLexemeModifiers::NONE,
+            span,
+            producer: EditorLexemeProducer::global_preprocess(),
+        }
+    }
+
+    fn unsealed_family(
+        kind: EditorLexemeKind,
+        modifiers: EditorLexemeModifiers,
+        span: SourceSpan,
+        producer: EditorLexemeProducerKind,
+    ) -> Self {
+        Self {
+            kind,
+            modifiers,
+            span,
+            producer: EditorLexemeProducer::unsealed_family(producer),
+        }
+    }
+
+    pub fn kind(&self) -> EditorLexemeKind {
+        self.kind
+    }
+
+    pub fn modifiers(&self) -> EditorLexemeModifiers {
+        self.modifiers
+    }
+
+    pub fn span(&self) -> SourceSpan {
+        self.span
+    }
+
+    pub fn producer(&self) -> EditorLexemeProducer {
+        self.producer
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, thiserror::Error)]
+pub enum EditorLexemeFailure {
+    #[error("family lexer emitted an invalid editor lexeme span {span:?}")]
+    InvalidSpan { span: SourceSpan },
+    #[error("family lexer emitted overlapping editor lexemes {left:?} and {right:?}")]
+    Overlap { left: SourceSpan, right: SourceSpan },
+    #[error("editor lexeme provenance was already sealed or used the global owner")]
+    InvalidProvenance,
+    #[error("editor lexeme modifiers contain unknown bits {bits:#010b}")]
+    UnknownModifierBits { bits: u8 },
+    #[error("editor lexeme modifiers contain duplicate bits {bits:#010b}")]
+    DuplicateModifiers { bits: u8 },
+}
+
+pub(crate) struct EditorLexemeBatch(Vec<EditorLexeme>);
+pub(crate) type EditorLexemeBatchResult = Result<EditorLexemeBatch, EditorLexemeFailure>;
+
+/// Validated sink used by a family lexer/parser while it consumes its real token stream.
+pub(crate) struct EditorLexemeJournal<'source> {
+    source: &'source str,
+    producer: EditorLexemeProducerKind,
+    lexemes: Vec<EditorLexeme>,
+    error: Option<EditorLexemeFailure>,
+}
+
+impl<'source> EditorLexemeJournal<'source> {
+    pub(crate) fn family_lexer(source: &'source str) -> Self {
+        Self::family_stage(source, EditorLexemeProducerKind::FamilyLexer)
+    }
+
+    pub(crate) fn family_recovery(source: &'source str) -> Self {
+        Self::family_stage(source, EditorLexemeProducerKind::FamilyRecovery)
+    }
+
+    fn family_stage(source: &'source str, producer: EditorLexemeProducerKind) -> Self {
+        Self {
+            source,
+            producer,
+            lexemes: Vec::new(),
+            error: None,
+        }
+    }
+
+    pub(crate) fn push(
+        &mut self,
+        kind: EditorLexemeKind,
+        modifiers: EditorLexemeModifiers,
+        span: SourceSpan,
+    ) {
+        if self.error.is_some() {
+            return;
+        }
+        if span.start >= span.end
+            || span.end > self.source.len()
+            || !self.source.is_char_boundary(span.start)
+            || !self.source.is_char_boundary(span.end)
+        {
+            self.error = Some(EditorLexemeFailure::InvalidSpan { span });
+            return;
+        }
+        self.lexemes.push(EditorLexeme::unsealed_family(
+            kind,
+            modifiers,
+            span,
+            self.producer,
+        ));
+    }
+
+    pub(crate) fn finish(mut self) -> EditorLexemeBatchResult {
+        if let Some(error) = self.error {
+            return Err(error);
+        }
+        self.lexemes.sort_by(|left, right| {
+            (left.span.start, left.span.end, left.kind).cmp(&(
+                right.span.start,
+                right.span.end,
+                right.kind,
+            ))
+        });
+        self.lexemes.dedup();
+        if let Some(pair) = self
+            .lexemes
+            .windows(2)
+            .find(|pair| pair[0].span.end > pair[1].span.start)
+        {
+            return Err(EditorLexemeFailure::Overlap {
+                left: pair[0].span,
+                right: pair[1].span,
+            });
+        }
+        Ok(EditorLexemeBatch(self.lexemes))
+    }
 }
 
 impl SourceSpan {
@@ -238,6 +537,8 @@ pub enum EditorSemanticCompleteness {
 pub struct EditorSemanticFacts {
     pub completeness: EditorSemanticCompleteness,
     pub symbols: Vec<EditorSemanticSymbol>,
+    lexemes: Vec<EditorLexeme>,
+    lexeme_failure: Option<EditorLexemeFailure>,
     pub directive_prefixes: Vec<String>,
     pub diagnostics: Vec<EditorSemanticDiagnostic>,
     pub expected_syntax: Vec<EditorExpectedSyntax>,
@@ -250,6 +551,89 @@ impl EditorSemanticFacts {
 
     pub fn push_symbol(&mut self, symbol: EditorSemanticSymbol) {
         self.symbols.push(symbol);
+    }
+
+    pub fn lexemes(&self) -> &[EditorLexeme] {
+        &self.lexemes
+    }
+
+    pub fn lexeme_failure(&self) -> Option<EditorLexemeFailure> {
+        self.lexeme_failure
+    }
+
+    pub(crate) fn replace_family_lexemes(&mut self, batch: EditorLexemeBatchResult) {
+        match batch {
+            Ok(EditorLexemeBatch(lexemes)) => {
+                self.lexemes = lexemes;
+                self.lexeme_failure = None;
+            }
+            Err(error) => {
+                self.lexemes.clear();
+                self.lexeme_failure = Some(error);
+            }
+        }
+    }
+
+    pub(crate) fn remap_lexemes(
+        &mut self,
+        mut remap: impl FnMut(SourceSpan) -> Option<SourceSpan>,
+    ) -> usize {
+        let original_count = self.lexemes.len();
+        self.lexemes = self
+            .lexemes
+            .drain(..)
+            .filter_map(|mut lexeme| {
+                lexeme.span = remap(lexeme.span)?;
+                Some(lexeme)
+            })
+            .collect();
+        original_count - self.lexemes.len()
+    }
+
+    pub(crate) fn finalize_lexemes(
+        &mut self,
+        family: DiagramFamilyId,
+        global_lexemes: &[EditorLexeme],
+    ) {
+        let result = self.try_finalize_lexemes(family, global_lexemes);
+        match result {
+            Ok(()) => self.lexeme_failure = None,
+            Err(error) => {
+                self.lexemes.clear();
+                self.lexeme_failure = Some(error);
+            }
+        }
+    }
+
+    fn try_finalize_lexemes(
+        &mut self,
+        family: DiagramFamilyId,
+        global_lexemes: &[EditorLexeme],
+    ) -> Result<(), EditorLexemeFailure> {
+        for lexeme in &mut self.lexemes {
+            lexeme.producer.seal_family(family)?;
+        }
+        self.lexemes.extend_from_slice(global_lexemes);
+        self.lexemes.sort_by(|left, right| {
+            (left.span.start, left.span.end, left.kind, left.modifiers).cmp(&(
+                right.span.start,
+                right.span.end,
+                right.kind,
+                right.modifiers,
+            ))
+        });
+        self.lexemes.dedup();
+        if let Some(pair) = self
+            .lexemes
+            .windows(2)
+            .find(|pair| pair[0].span.end > pair[1].span.start)
+        {
+            return Err(EditorLexemeFailure::Overlap {
+                left: pair[0].span,
+                right: pair[1].span,
+            });
+        }
+        Ok(())
     }
 
     pub fn mark_recovered(&mut self) {
@@ -499,7 +883,10 @@ fn humanize_token_name(token: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::lalrpop_parse_diagnostic;
+    use super::{
+        EditorLexemeFailure, EditorLexemeJournal, EditorLexemeKind, EditorLexemeModifier,
+        EditorLexemeModifiers, lalrpop_parse_diagnostic,
+    };
     use crate::ParseDiagnosticSpanKind;
 
     #[test]
@@ -550,5 +937,35 @@ mod tests {
         assert_eq!(span.end, 8);
         assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
         assert_eq!(diagnostic.message(), "custom parse failure");
+    }
+
+    #[test]
+    fn lexeme_journal_rejects_overlap_in_release_builds_too() {
+        let mut journal = EditorLexemeJournal::family_lexer("abcdef");
+        journal.push(
+            EditorLexemeKind::Keyword,
+            EditorLexemeModifiers::NONE,
+            crate::SourceSpan::new(0, 4),
+        );
+        journal.push(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifiers::NONE,
+            crate::SourceSpan::new(3, 6),
+        );
+
+        assert!(matches!(
+            journal.finish(),
+            Err(EditorLexemeFailure::Overlap { .. })
+        ));
+    }
+
+    #[test]
+    fn lexeme_modifier_sets_reject_duplicates_and_unknown_bits() {
+        let declaration = EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Declaration);
+        assert!(matches!(
+            declaration.union(declaration),
+            Err(EditorLexemeFailure::DuplicateModifiers { .. })
+        ));
+        assert!(serde_json::from_str::<EditorLexemeModifiers>("64").is_err());
     }
 }

@@ -37,6 +37,7 @@ serde_json.workspace = true
 granit-parser = { workspace = true, optional = true }
 json5 = { workspace = true, optional = true }
 thiserror.workspace = true
+unicode-general-category.workspace = true
 lol_html = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }

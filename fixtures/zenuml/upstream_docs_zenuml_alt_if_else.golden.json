@@ -85,7 +85,7 @@
         "comment": null,
         "span": {
           "start": 51,
-          "end": 163
+          "end": 161
         },
         "kind": "fragment",
         "fragment_kind": "alternative",
@@ -112,7 +112,7 @@
               }
             ],
             "span": {
-              "start": 54,
+              "start": 51,
               "end": 103
             }
           },

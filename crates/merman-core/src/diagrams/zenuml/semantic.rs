@@ -38,6 +38,7 @@ struct ResolveContext {
 
 impl SemanticBuilder {
     fn new(parsed: ParsedSyntax) -> Self {
+        let _grammar_rule_spans = parsed.grammar_rule_spans;
         Self {
             syntax: parsed.document,
             tokens: parsed.tokens,
@@ -98,12 +99,15 @@ impl SemanticBuilder {
             });
         }
 
-        let starter = self
+        let starter_name = self
             .syntax
             .starter
+            .as_ref()
+            .and_then(|starter| starter.name.clone());
+        let starter = starter_name
             .clone()
             .unwrap_or_else(|| SpannedText::new("_STARTER_", SourceSpan::new(0, 0)));
-        let has_explicit_starter = self.syntax.starter.is_some();
+        let has_explicit_starter = starter_name.is_some();
         if has_explicit_starter {
             self.reference_participant(&starter, true, "zenuml starter");
         }
@@ -180,6 +184,7 @@ impl SemanticBuilder {
                         emoji: None,
                         width: None,
                         color: None,
+                        comment: None,
                         group_id: None,
                         explicit: false,
                         is_starter: false,
@@ -209,11 +214,20 @@ impl SemanticBuilder {
             .emoji
             .take()
             .or_else(|| syntax.emoji.as_ref().map(|value| value.value.clone()));
-        participant.width = participant.width.or(syntax.width);
+        participant.width = participant.width.or_else(|| {
+            syntax.width.as_ref().and_then(|width| {
+                let parsed = width.value.parse::<u64>().unwrap_or(u64::MAX);
+                (parsed != 0).then_some(parsed)
+            })
+        });
         participant.color = participant
             .color
             .take()
             .or_else(|| syntax.color.as_ref().map(|value| value.value.clone()));
+        participant.comment = participant
+            .comment
+            .take()
+            .or_else(|| syntax.comment.as_ref().map(|value| value.value.clone()));
         participant.group_id = participant.group_id.take().or(group_id);
 
         self.push_entity(&syntax.name, "zenuml participant");
@@ -327,6 +341,10 @@ impl SemanticBuilder {
                         MessageStyleSyntax::Asynchronous => ZenumlMessageStyle::Asynchronous,
                     },
                     body,
+                    body_comment: message
+                        .body_comment
+                        .as_ref()
+                        .map(|comment| comment.value.clone()),
                 }
             }
             StatementKindSyntax::Creation(creation) => {
@@ -364,6 +382,10 @@ impl SemanticBuilder {
                         .map(|value| value.value.clone()),
                     label: format!("«create» {}", creation.signature.value),
                     body,
+                    body_comment: creation
+                        .body_comment
+                        .as_ref()
+                        .map(|comment| comment.value.clone()),
                 }
             }
             StatementKindSyntax::Return(ret) => {
@@ -435,6 +457,10 @@ impl SemanticBuilder {
                                 context,
                                 &format!("{number}.{}", section_index + 1),
                             ),
+                            body_comment: section
+                                .body_comment
+                                .as_ref()
+                                .map(|comment| comment.value.clone()),
                             span: section.span,
                         }
                     })
@@ -509,6 +535,7 @@ impl SemanticBuilder {
                     emoji: None,
                     width: None,
                     color: None,
+                    comment: None,
                     group_id: None,
                     explicit: false,
                     is_starter: false,
@@ -608,7 +635,8 @@ mod tests {
     #[test]
     fn nested_message_ownership_is_not_lowered_through_sequence() {
         let source = "zenuml\n@Starter(Client)\nA.one() {\n  B.two()\n}\n";
-        let parsed = super::super::parser::parse(source, super::super::lexer::lex(source));
+        let tokens = super::super::lexer::lex(source);
+        let parsed = super::super::parser::parse(source, &tokens);
         let built = build(parsed);
         let ZenumlStatementKind::Message { from, to, body, .. } = &built.model.statements[0].kind
         else {

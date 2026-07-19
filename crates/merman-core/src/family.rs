@@ -98,6 +98,21 @@ pub struct DiagramFamilyCapability {
     pub config_namespace: Option<&'static str>,
 }
 
+/// Closed, catalog-owned identity for one logical Mermaid diagram family.
+///
+/// The inner value is private so editor facts cannot invent family ownership from an arbitrary
+/// string. Instances only come from the admitted family catalog and are cheap to copy into
+/// lexical provenance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(transparent)]
+pub struct DiagramFamilyId(&'static str);
+
+impl DiagramFamilyId {
+    pub fn as_str(self) -> &'static str {
+        self.0
+    }
+}
+
 pub(crate) fn detector_facts(profile: BaselineRegistryProfile) -> &'static [DetectorFact] {
     fn build(profile: BaselineRegistryProfile) -> Vec<DetectorFact> {
         let mut facts: Vec<_> = variants_for_profile(profile)
@@ -484,7 +499,11 @@ pub(crate) fn render_model_kind_supports_diagram_type(
 }
 
 pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
-    find_variant(diagram_type).map(|(family, _)| family.logical_kind)
+    diagram_type_family_id(diagram_type).map(DiagramFamilyId::as_str)
+}
+
+pub(crate) fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
+    find_variant(diagram_type).map(|(family, _)| DiagramFamilyId(family.logical_kind))
 }
 
 pub fn diagram_type_render_model_kind(diagram_type: &str) -> Option<&'static str> {

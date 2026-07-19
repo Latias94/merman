@@ -2,7 +2,7 @@ mod source_edit_map;
 
 pub use source_edit_map::PreprocessedSource;
 
-use crate::{DetectorRegistry, Error, MermaidConfig, Result};
+use crate::{DetectorRegistry, EditorLexemeKind, Error, MermaidConfig, Result, SourceSpan};
 use serde_json::{Map, Value};
 use source_edit_map::{ReplacementMapping, SourceEdit};
 use std::borrow::Cow;
@@ -81,11 +81,21 @@ fn preprocess_single_pass(
         )
     };
     if frontmatter_len > 0 {
+        source.record_global_lexeme(
+            EditorLexemeKind::Frontmatter,
+            SourceSpan::new(0, frontmatter_len),
+        );
         source.apply_edits(vec![SourceEdit::delete(0..frontmatter_len)]);
     }
 
     let (directive_config, directive_removals) =
         process_directives(source.text(), registry, diagram_type)?;
+    for removal in &directive_removals {
+        source.record_global_lexeme(
+            EditorLexemeKind::Directive,
+            SourceSpan::new(removal.start, removal.end),
+        );
+    }
     source.apply_edits(
         directive_removals
             .into_iter()
@@ -127,16 +137,22 @@ fn cleanup_text(source: &mut PreprocessedSource) {
 fn remove_mermaid_comments(source: &mut PreprocessedSource) {
     if source.text().contains("%%") {
         let mut edits = Vec::new();
+        let mut comments = Vec::new();
         let mut line_start = 0usize;
         for line in source.text().split_inclusive('\n') {
             let trimmed = line.trim_start();
             if let Some(after_marker) = trimmed.strip_prefix("%%") {
                 let has_comment_body = after_marker.chars().next().is_some_and(|ch| ch != '\n');
                 if !after_marker.starts_with('{') && has_comment_body {
-                    edits.push(SourceEdit::delete(line_start..line_start + line.len()));
+                    let range = line_start..line_start + line.len();
+                    comments.push(SourceSpan::new(range.start, range.end));
+                    edits.push(SourceEdit::delete(range));
                 }
             }
             line_start += line.len();
+        }
+        for span in comments {
+            source.record_global_lexeme(EditorLexemeKind::Comment, span);
         }
         source.apply_edits(edits);
     }

@@ -1,8 +1,8 @@
 use super::{
-    ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LabeledText, LexError, LinkStylePos,
-    LinkStyleStmt, StyleStmt, TitleKind,
+    ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, FlowchartLexemeComponent, LabeledText,
+    LexError, LinkStylePos, LinkStyleStmt, StyleStmt, TitleKind,
 };
-use crate::SourceSpan;
+use crate::{EditorLexemeKind, SourceSpan};
 
 pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledText, LexError> {
     let trimmed = raw.trim();
@@ -67,6 +67,7 @@ pub(super) fn parse_node_label_text(raw: &str) -> std::result::Result<LabeledTex
         kind,
         span: None,
         selection: None,
+        lexeme_components: Vec::new(),
     })
 }
 
@@ -174,6 +175,7 @@ pub(super) fn parse_style_stmt(rest: &str) -> std::result::Result<StyleStmt, Lex
         styles,
         styles_text: None,
         styles_span: None,
+        lexeme_components: Vec::new(),
     })
 }
 
@@ -193,6 +195,7 @@ pub(super) fn parse_classdef_stmt(rest: &str) -> std::result::Result<ClassDefStm
         styles,
         styles_text: None,
         styles_span: None,
+        lexeme_components: Vec::new(),
     })
 }
 
@@ -216,6 +219,7 @@ pub(super) fn parse_class_assign_stmt(
         target_spans: Vec::new(),
         class_name,
         class_name_span: None,
+        lexeme_components: Vec::new(),
     })
 }
 
@@ -224,9 +228,17 @@ pub(super) fn attach_style_stmt_spans(stmt: &mut StyleStmt, rest: &str, rest_sta
         return;
     };
     stmt.target_span = Some(target.span);
+    stmt.lexeme_components.push(FlowchartLexemeComponent::new(
+        EditorLexemeKind::Identifier,
+        target.span,
+    ));
     if let Some(styles) = trim_spanned_slice(styles) {
         stmt.styles_text = Some(styles.text.to_string());
         stmt.styles_span = Some(styles.span);
+        stmt.lexeme_components.push(FlowchartLexemeComponent::new(
+            EditorLexemeKind::Style,
+            styles.span,
+        ));
     }
 }
 
@@ -235,9 +247,20 @@ pub(super) fn attach_classdef_stmt_spans(stmt: &mut ClassDefStmt, rest: &str, re
         return;
     };
     stmt.id_spans = split_comma_value_spans(ids.text, ids.span.start);
+    stmt.lexeme_components.extend(
+        stmt.id_spans
+            .iter()
+            .copied()
+            .map(|span| FlowchartLexemeComponent::new(EditorLexemeKind::Identifier, span)),
+    );
+    push_comma_components(&mut stmt.lexeme_components, ids.text, ids.span.start);
     if let Some(styles) = trim_spanned_slice(styles) {
         stmt.styles_text = Some(styles.text.to_string());
         stmt.styles_span = Some(styles.span);
+        stmt.lexeme_components.push(FlowchartLexemeComponent::new(
+            EditorLexemeKind::Style,
+            styles.span,
+        ));
     }
 }
 
@@ -250,7 +273,37 @@ pub(super) fn attach_class_assign_stmt_spans(
         return;
     };
     stmt.target_spans = split_comma_value_spans(targets.text, targets.span.start);
+    stmt.lexeme_components.extend(
+        stmt.target_spans
+            .iter()
+            .copied()
+            .map(|span| FlowchartLexemeComponent::new(EditorLexemeKind::Identifier, span)),
+    );
+    push_comma_components(
+        &mut stmt.lexeme_components,
+        targets.text,
+        targets.span.start,
+    );
     stmt.class_name_span = trim_spanned_slice(class_name).map(|class_name| class_name.span);
+    if let Some(span) = stmt.class_name_span {
+        stmt.lexeme_components.push(FlowchartLexemeComponent::new(
+            EditorLexemeKind::Identifier,
+            span,
+        ));
+    }
+}
+
+fn push_comma_components(
+    components: &mut Vec<FlowchartLexemeComponent>,
+    text: &str,
+    text_start: usize,
+) {
+    components.extend(text.match_indices(',').map(|(offset, comma)| {
+        FlowchartLexemeComponent::new(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(text_start + offset, text_start + offset + comma.len()),
+        )
+    }));
 }
 
 #[derive(Clone, Copy)]
@@ -328,15 +381,21 @@ fn split_comma_value_spans(text: &str, text_start: usize) -> Vec<SourceSpan> {
     out
 }
 
-#[derive(Clone)]
 struct ClickParse<'a> {
     s: &'a str,
+    base: usize,
     i: usize,
+    components: Vec<FlowchartLexemeComponent>,
 }
 
 impl<'a> ClickParse<'a> {
-    fn new(s: &'a str) -> Self {
-        Self { s, i: 0 }
+    fn new(s: &'a str, base: usize) -> Self {
+        Self {
+            s,
+            base,
+            i: 0,
+            components: Vec::new(),
+        }
     }
 
     fn skip_ws(&mut self) {
@@ -349,7 +408,7 @@ impl<'a> ClickParse<'a> {
         self.s.as_bytes().get(self.i).copied()
     }
 
-    fn take_word(&mut self) -> Option<String> {
+    fn take_word(&mut self, kind: EditorLexemeKind) -> Option<String> {
         self.skip_ws();
         let start = self.i;
         while self.i < self.s.len() && !self.s.as_bytes()[self.i].is_ascii_whitespace() {
@@ -358,6 +417,7 @@ impl<'a> ClickParse<'a> {
         if self.i == start {
             return None;
         }
+        self.push_component(kind, start, self.i);
         Some(self.s[start..self.i].to_string())
     }
 
@@ -366,6 +426,7 @@ impl<'a> ClickParse<'a> {
         if self.peek()? != b'"' {
             return None;
         }
+        let quoted_start = self.i;
         self.i += 1;
         let start = self.i;
         while self.i < self.s.len() && self.s.as_bytes()[self.i] != b'"' {
@@ -375,17 +436,34 @@ impl<'a> ClickParse<'a> {
         if self.i < self.s.len() && self.s.as_bytes()[self.i] == b'"' {
             self.i += 1;
         }
+        self.push_component(EditorLexemeKind::String, quoted_start, self.i);
         Some(out)
     }
 
     fn rest(&self) -> &str {
         &self.s[self.i..]
     }
+
+    fn push_component(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
+        if start < end {
+            self.components.push(FlowchartLexemeComponent::new(
+                kind,
+                SourceSpan::new(self.base + start, self.base + end),
+            ));
+        }
+    }
+
+    fn finish(self) -> Vec<FlowchartLexemeComponent> {
+        self.components
+    }
 }
 
-pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, LexError> {
-    let mut p = ClickParse::new(rest);
-    let Some(id) = p.take_word() else {
+pub(super) fn parse_click_stmt(
+    rest: &str,
+    rest_start: usize,
+) -> std::result::Result<ClickStmt, LexError> {
+    let mut p = ClickParse::new(rest, rest_start);
+    let Some(id) = p.take_word(EditorLexemeKind::Identifier) else {
         return Err(LexError::new("Invalid click statement".to_string()));
     };
     let ids = vec![id];
@@ -400,21 +478,25 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
             .get(4)
             .is_none_or(|b| b.is_ascii_whitespace())
     {
-        let _ = p.take_word();
+        let _ = p.take_word(EditorLexemeKind::Keyword);
         let Some(link) = p.take_quoted() else {
             return Err(LexError::new("Invalid click statement".to_string()));
         };
         let maybe_tt = p.take_quoted();
-        let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
+        let maybe_target = p
+            .take_word(EditorLexemeKind::Identifier)
+            .filter(|w| w.starts_with('_'));
         tooltip = maybe_tt;
         action = ClickAction::Link {
             href: link,
             target: maybe_target,
         };
+        let lexeme_components = p.finish();
         return Ok(ClickStmt {
             ids,
             tooltip,
             action,
+            lexeme_components,
         });
     }
 
@@ -424,7 +506,7 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
             .get(4)
             .is_none_or(|b| b.is_ascii_whitespace())
     {
-        let _ = p.take_word();
+        let _ = p.take_word(EditorLexemeKind::Keyword);
         p.skip_ws();
         let start = p.i;
         while p.i < p.s.len() {
@@ -437,62 +519,92 @@ pub(super) fn parse_click_stmt(rest: &str) -> std::result::Result<ClickStmt, Lex
         if p.i == start {
             return Err(LexError::new("Invalid click statement".to_string()));
         }
+        p.push_component(EditorLexemeKind::Identifier, start, p.i);
         p.skip_ws();
         if p.peek() == Some(b'(') {
+            let open = p.i;
             p.i += 1;
+            p.push_component(EditorLexemeKind::Delimiter, open, p.i);
+            let arguments_start = p.i;
             while p.i < p.s.len() && p.s.as_bytes()[p.i] != b')' {
                 p.i += 1;
             }
+            p.push_component(EditorLexemeKind::Literal, arguments_start, p.i);
             if p.peek() == Some(b')') {
+                let close = p.i;
                 p.i += 1;
+                p.push_component(EditorLexemeKind::Delimiter, close, p.i);
             }
         }
 
         tooltip = p.take_quoted();
         action = ClickAction::Callback;
+        let lexeme_components = p.finish();
         return Ok(ClickStmt {
             ids,
             tooltip,
             action,
+            lexeme_components,
         });
     }
 
     if let Some(link) = p.take_quoted() {
         let maybe_tt = p.take_quoted();
-        let maybe_target = p.take_word().filter(|w| w.starts_with('_'));
+        let maybe_target = p
+            .take_word(EditorLexemeKind::Identifier)
+            .filter(|w| w.starts_with('_'));
         tooltip = maybe_tt;
         action = ClickAction::Link {
             href: link,
             target: maybe_target,
         };
+        let lexeme_components = p.finish();
         return Ok(ClickStmt {
             ids,
             tooltip,
             action,
+            lexeme_components,
         });
     }
 
-    let Some(_function_name) = p.take_word() else {
+    let Some(_function_name) = p.take_word(EditorLexemeKind::Identifier) else {
         return Err(LexError::new("Invalid click statement".to_string()));
     };
     tooltip = p.take_quoted();
     action = ClickAction::Callback;
+    let lexeme_components = p.finish();
     Ok(ClickStmt {
         ids,
         tooltip,
         action,
+        lexeme_components,
     })
 }
 
-pub(super) fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyleStmt, LexError> {
-    let mut p = ClickParse::new(rest);
-    let Some(pos_raw) = p.take_word() else {
+pub(super) fn parse_link_style_stmt(
+    rest: &str,
+    rest_start: usize,
+) -> std::result::Result<LinkStyleStmt, LexError> {
+    let mut p = ClickParse::new(rest, rest_start);
+    p.skip_ws();
+    let position_start = p.i;
+    let Some(pos_raw) = p.take_word(EditorLexemeKind::Number) else {
         return Err(LexError::new("Invalid linkStyle statement".to_string()));
     };
+    p.components.pop();
+    let position_end = p.i;
 
     let positions = if pos_raw == "default" {
+        p.push_component(EditorLexemeKind::Keyword, position_start, position_end);
         vec![LinkStylePos::Default]
     } else {
+        for span in split_comma_value_spans(&pos_raw, p.base + position_start) {
+            p.components.push(FlowchartLexemeComponent::new(
+                EditorLexemeKind::Number,
+                span,
+            ));
+        }
+        push_comma_components(&mut p.components, &pos_raw, p.base + position_start);
         pos_raw
             .split(',')
             .map(|s| {
@@ -513,8 +625,8 @@ pub(super) fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyle
             .get("interpolate".len())
             .is_none_or(|b| b.is_ascii_whitespace())
     {
-        let _ = p.take_word();
-        interpolate = p.take_word();
+        let _ = p.take_word(EditorLexemeKind::Keyword);
+        interpolate = p.take_word(EditorLexemeKind::Literal);
     }
 
     // Mermaid's `linkStyle ... interpolate <curve> ...` still tokenizes the styles list without the
@@ -522,11 +634,16 @@ pub(super) fn parse_link_style_stmt(rest: &str) -> std::result::Result<LinkStyle
     // inside comma-separated tokens (handled by `parse_linkstyle_styles_list`), but drop the
     // leading separator spaces at the list boundary.
     p.skip_ws();
+    let styles_start = p.i;
     let styles = parse_linkstyle_styles_list(p.rest());
+    p.i = p.s.len();
+    p.push_component(EditorLexemeKind::Style, styles_start, p.i);
+    let lexeme_components = p.finish();
     Ok(LinkStyleStmt {
         positions,
         interpolate,
         styles,
+        lexeme_components,
     })
 }
 
@@ -536,7 +653,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_callback() {
-        let stmt = parse_click_stmt("A callback").unwrap();
+        let stmt = parse_click_stmt("A callback", 0).unwrap();
         assert_eq!(stmt.ids, vec!["A"]);
         assert!(stmt.tooltip.is_none());
         match stmt.action {
@@ -547,7 +664,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_call_callback_empty_args() {
-        let stmt = parse_click_stmt("A call callback()").unwrap();
+        let stmt = parse_click_stmt("A call callback()", 0).unwrap();
         assert_eq!(stmt.ids, vec!["A"]);
         assert!(stmt.tooltip.is_none());
         match stmt.action {
@@ -558,7 +675,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_call_callback_with_args() {
-        let stmt = parse_click_stmt("A call callback(\"test0\", test1, test2)").unwrap();
+        let stmt = parse_click_stmt("A call callback(\"test0\", test1, test2)", 0).unwrap();
         match stmt.action {
             ClickAction::Callback => {}
             _ => panic!("expected callback action"),
@@ -567,7 +684,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_link_and_tooltip_and_target() {
-        let stmt = parse_click_stmt("A \"click.html\" \"tooltip\" _blank").unwrap();
+        let stmt = parse_click_stmt("A \"click.html\" \"tooltip\" _blank", 0).unwrap();
         assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
         match stmt.action {
             ClickAction::Link { href, target } => {
@@ -580,7 +697,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_href_link_and_tooltip_and_target() {
-        let stmt = parse_click_stmt("A href \"click.html\" \"tooltip\" _blank").unwrap();
+        let stmt = parse_click_stmt("A href \"click.html\" \"tooltip\" _blank", 0).unwrap();
         assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
         match stmt.action {
             ClickAction::Link { href, target } => {

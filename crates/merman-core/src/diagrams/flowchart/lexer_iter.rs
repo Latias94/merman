@@ -77,10 +77,11 @@ impl<'input> Iterator for Lexer<'input> {
         }
         if self.starts_with_kw("subgraph") {
             self.pos += "subgraph".len();
+            let keyword_end = self.pos;
             if let Some(header) = self.lex_subgraph_header_after_keyword(start) {
                 self.pending.push_back(header);
             }
-            return Some(Ok((start, Tok::KwSubgraph, self.pos)));
+            return Some(Ok((start, Tok::KwSubgraph, keyword_end)));
         }
         if self.starts_with_kw("end") {
             self.pos += "end".len();

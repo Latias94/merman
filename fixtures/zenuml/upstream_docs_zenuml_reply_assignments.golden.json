@@ -49,10 +49,10 @@
       {
         "id": "zenuml-statement-0",
         "number": "1",
-        "comment": "1. assign a variable from a sync message.",
+        "comment": " 1. assign a variable from a sync message.",
         "span": {
           "start": 60,
-          "end": 80
+          "end": 79
         },
         "kind": "message",
         "from": "_STARTER_",
@@ -65,10 +65,10 @@
       {
         "id": "zenuml-statement-1",
         "number": "2",
-        "comment": "1.1. optionally give the variable a type",
+        "comment": " 1.1. optionally give the variable a type",
         "span": {
           "start": 133,
-          "end": 162
+          "end": 161
         },
         "kind": "message",
         "from": "_STARTER_",

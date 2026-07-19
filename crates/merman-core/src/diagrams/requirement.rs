@@ -370,7 +370,7 @@ struct RequirementSemanticSource {
 
 struct RequirementSemanticFailure {
     error: Box<Error>,
-    editor_facts: EditorSemanticFacts,
+    editor_facts: Box<EditorSemanticFacts>,
 }
 
 impl RequirementSemanticFailure {
@@ -385,7 +385,7 @@ impl RequirementSemanticFailure {
             format!("requirement parser recovered after parse error: {message}"),
             span,
         );
-        self.editor_facts
+        *self.editor_facts
     }
 }
 
@@ -908,7 +908,7 @@ fn requirement_failure(
 ) -> RequirementSemanticFailure {
     RequirementSemanticFailure {
         error: Box::new(error),
-        editor_facts,
+        editor_facts: Box::new(editor_facts),
     }
 }
 

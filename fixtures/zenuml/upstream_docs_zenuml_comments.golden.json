@@ -28,12 +28,13 @@
         "emoji": null,
         "width": null,
         "color": null,
+        "comment": " a comment on a participant will not be rendered",
         "groupId": null,
         "explicit": true,
         "isStarter": false,
         "declarationSpan": {
           "start": 66,
-          "end": 78
+          "end": 77
         },
         "occurrences": [
           {
@@ -52,10 +53,10 @@
       {
         "id": "zenuml-statement-0",
         "number": "1",
-        "comment": "a comment on a message.\n**Markdown** is supported.",
+        "comment": " a comment on a message.\n **Markdown** is supported.",
         "span": {
           "start": 147,
-          "end": 169
+          "end": 168
         },
         "kind": "message",
         "from": "_STARTER_",

@@ -35,8 +35,10 @@ pub struct ZenumlParticipant {
     pub participant_type: Option<String>,
     pub stereotype: Option<String>,
     pub emoji: Option<String>,
-    pub width: Option<u32>,
+    pub width: Option<u64>,
     pub color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
     pub group_id: Option<String>,
     pub explicit: bool,
     pub is_starter: bool,
@@ -79,6 +81,8 @@ pub enum ZenumlStatementKind {
         assignment: Option<String>,
         style: ZenumlMessageStyle,
         body: Vec<ZenumlStatement>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        body_comment: Option<String>,
     },
     Creation {
         from: String,
@@ -87,6 +91,8 @@ pub enum ZenumlStatementKind {
         assignment: Option<String>,
         label: String,
         body: Vec<ZenumlStatement>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        body_comment: Option<String>,
     },
     Return {
         from: String,
@@ -145,6 +151,8 @@ impl ZenumlFragmentKind {
 pub struct ZenumlFragmentSection {
     pub label: Option<String>,
     pub statements: Vec<ZenumlStatement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_comment: Option<String>,
     pub span: SourceSpan,
 }
 

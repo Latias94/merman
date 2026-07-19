@@ -90,7 +90,7 @@
         "comment": null,
         "span": {
           "start": 11,
-          "end": 92
+          "end": 91
         },
         "kind": "message",
         "from": "_STARTER_",
@@ -105,7 +105,7 @@
             "comment": null,
             "span": {
               "start": 30,
-              "end": 53
+              "end": 52
             },
             "kind": "message",
             "from": "A",

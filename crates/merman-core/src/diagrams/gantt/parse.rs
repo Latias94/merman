@@ -775,7 +775,7 @@ struct GanttSemanticSource {
 
 struct GanttSemanticFailure {
     error: Box<Error>,
-    editor_facts: EditorSemanticFacts,
+    editor_facts: Box<EditorSemanticFacts>,
 }
 
 impl GanttSemanticFailure {
@@ -790,7 +790,7 @@ impl GanttSemanticFailure {
             format!("gantt parser recovered after parse error: {message}"),
             span,
         );
-        self.editor_facts
+        *self.editor_facts
     }
 }
 
@@ -877,7 +877,7 @@ fn construct_gantt_semantic_source(
     if let Some(error) = first_error {
         return Err(GanttSemanticFailure {
             error: Box::new(error),
-            editor_facts,
+            editor_facts: Box::new(editor_facts),
         });
     }
 
@@ -891,7 +891,7 @@ fn construct_gantt_semantic_source(
     if let Err(error) = db.finalize_tasks() {
         return Err(GanttSemanticFailure {
             error: Box::new(error),
-            editor_facts,
+            editor_facts: Box::new(editor_facts),
         });
     }
     Ok(GanttSemanticSource {

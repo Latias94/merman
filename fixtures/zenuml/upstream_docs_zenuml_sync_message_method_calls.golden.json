@@ -71,7 +71,7 @@
         "comment": null,
         "span": {
           "start": 34,
-          "end": 48
+          "end": 47
         },
         "kind": "message",
         "from": "_STARTER_",
@@ -87,12 +87,12 @@
         "comment": null,
         "span": {
           "start": 52,
-          "end": 120
+          "end": 119
         },
         "kind": "message",
         "from": "_STARTER_",
         "to": "A",
-        "label": "SyncMessage(with, parameters)",
+        "label": "SyncMessage(with,parameters)",
         "assignment": null,
         "style": "synchronous",
         "body": [
@@ -102,7 +102,7 @@
             "comment": null,
             "span": {
               "start": 92,
-              "end": 114
+              "end": 113
             },
             "kind": "message",
             "from": "A",

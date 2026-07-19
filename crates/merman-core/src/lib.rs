@@ -43,13 +43,15 @@ pub use diagram::{
     RenderDiagramRegistry, RenderSemanticModel,
 };
 pub use editor::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticCompleteness,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexeme, EditorLexemeFailure,
+    EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducer,
+    EditorLexemeProducerKind, EditorRenamePolicy, EditorSemanticCompleteness,
     EditorSemanticDiagnostic, EditorSemanticDiagnosticKind, EditorSemanticFacts,
     EditorSemanticKind, EditorSemanticRole, EditorSemanticSymbol, SourceSpan,
 };
 pub use error::{Error, ParseDiagnostic, ParseDiagnosticSpanKind, Result};
 pub use family::{
-    DiagramFamilyCapability, DiagramHeaderFact, diagram_type_family_kind,
+    DiagramFamilyCapability, DiagramFamilyId, DiagramHeaderFact, diagram_type_family_kind,
     diagram_type_render_model_kind,
 };
 pub use preprocess::{

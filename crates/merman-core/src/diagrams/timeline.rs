@@ -128,14 +128,14 @@ struct TimelineSemanticSource {
 
 struct TimelineSemanticFailure {
     error: Box<Error>,
-    editor_facts: EditorSemanticFacts,
+    editor_facts: Box<EditorSemanticFacts>,
 }
 
 impl TimelineSemanticFailure {
     fn new(error: Error, editor_facts: EditorSemanticFacts) -> Self {
         Self {
             error: Box::new(error),
-            editor_facts,
+            editor_facts: Box::new(editor_facts),
         }
     }
 
@@ -154,7 +154,7 @@ impl TimelineSemanticFailure {
             format!("timeline parser recovered after parse error: {message}"),
             span,
         );
-        self.editor_facts
+        *self.editor_facts
     }
 }
 

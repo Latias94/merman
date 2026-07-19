@@ -1,4 +1,4 @@
-use crate::SourceSpan;
+use crate::{EditorLexeme, EditorLexemeKind, SourceSpan};
 use std::ops::Range;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +41,7 @@ impl SourceEdit {
 pub struct PreprocessedSource {
     text: String,
     edit_map: SourceEditMap,
+    global_lexemes: Vec<EditorLexeme>,
 }
 
 impl PreprocessedSource {
@@ -48,6 +49,7 @@ impl PreprocessedSource {
         Self {
             text: source.to_string(),
             edit_map: SourceEditMap::identity(source.len()),
+            global_lexemes: Vec::new(),
         }
     }
 
@@ -60,6 +62,19 @@ impl PreprocessedSource {
             return None;
         }
         self.edit_map.try_map_span(span)
+    }
+
+    pub(crate) fn global_lexemes(&self) -> &[EditorLexeme] {
+        &self.global_lexemes
+    }
+
+    pub(super) fn record_global_lexeme(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
+        let Some(span) = self.try_map_span(span) else {
+            return;
+        };
+        if span.start < span.end {
+            self.global_lexemes.push(EditorLexeme::global(kind, span));
+        }
     }
 
     pub fn into_text(self) -> String {

@@ -1,3 +1,4 @@
+use super::FlowchartLexemeComponent;
 use crate::{DiagramWarningFact, SourceSpan};
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
@@ -198,6 +199,7 @@ pub(crate) struct LabeledText {
     pub kind: TitleKind,
     pub span: Option<SourceSpan>,
     pub selection: Option<SourceSpan>,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,6 +210,7 @@ pub(crate) struct SubgraphHeader {
     pub raw_title: String,
     pub title_kind: TitleKind,
     pub id_equals_title: bool,
+    pub lexeme_components: Vec<FlowchartLexemeComponent>,
 }
 
 impl Default for SubgraphHeader {
@@ -219,6 +222,7 @@ impl Default for SubgraphHeader {
             raw_title: String::new(),
             title_kind: TitleKind::Text,
             id_equals_title: true,
+            lexeme_components: Vec::new(),
         }
     }
 }

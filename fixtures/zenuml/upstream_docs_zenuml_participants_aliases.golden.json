@@ -19,7 +19,7 @@
         "isStarter": false,
         "declarationSpan": {
           "start": 29,
-          "end": 40
+          "end": 39
         },
         "occurrences": [
           {
@@ -49,7 +49,7 @@
         "isStarter": false,
         "declarationSpan": {
           "start": 44,
-          "end": 54
+          "end": 53
         },
         "occurrences": [
           {

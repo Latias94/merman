@@ -365,6 +365,7 @@ impl ZenumlComplexity {
                         assignment,
                         label,
                         body,
+                        ..
                     } => {
                         complexity.label_bytes = complexity
                             .label_bytes

@@ -1,9 +1,21 @@
 use super::{
-    LabeledText, LexError, LinkToken, NodeLabelToken, SubgraphHeader, TitleKind, Tok,
-    destruct_end_link, destruct_start_link, lex, parse_edge_label_text, parse_label_text,
+    DirectionStatementToken, FlowchartLexemeComponent, LabeledText, LexError, LinkToken,
+    NodeLabelToken, SubgraphHeader, TitleKind, Tok, destruct_end_link, destruct_start_link, lex,
+    parse_edge_label_text, parse_label_text,
 };
-use crate::SourceSpan;
+use crate::{EditorLexemeKind, SourceSpan};
 use std::collections::VecDeque;
+
+fn prepend_statement_keyword(
+    components: &mut Vec<FlowchartLexemeComponent>,
+    start: usize,
+    end: usize,
+) {
+    components.insert(
+        0,
+        FlowchartLexemeComponent::new(EditorLexemeKind::Keyword, SourceSpan::new(start, end)),
+    );
+}
 
 pub(super) struct Lexer<'input> {
     pub(super) input: &'input str,
@@ -204,8 +216,10 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "direction".len();
+        let keyword_end = self.pos;
         self.skip_ws();
 
+        let direction_start = self.pos;
         let rest = &self.input[self.pos..];
         let mut dir: Option<&str> = None;
         for d in ["TB", "TD", "BT", "LR", "RL"] {
@@ -216,8 +230,19 @@ impl<'input> Lexer<'input> {
             }
         }
         let Some(dir) = dir else {
-            return Some((start, Tok::DirectionStmt("".to_string()), self.pos));
+            return Some((
+                start,
+                Tok::DirectionStmt(DirectionStatementToken {
+                    direction: String::new(),
+                    lexeme_components: vec![FlowchartLexemeComponent::new(
+                        EditorLexemeKind::Keyword,
+                        SourceSpan::new(start, keyword_end),
+                    )],
+                }),
+                self.pos,
+            ));
         };
+        let direction_end = self.pos;
         while let Some(b) = self.peek() {
             if b == b'\n' || b == b';' {
                 break;
@@ -225,7 +250,23 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
         }
 
-        Some((start, Tok::DirectionStmt(dir.to_string()), self.pos))
+        Some((
+            start,
+            Tok::DirectionStmt(DirectionStatementToken {
+                direction: dir.to_string(),
+                lexeme_components: vec![
+                    FlowchartLexemeComponent::new(
+                        EditorLexemeKind::Keyword,
+                        SourceSpan::new(start, keyword_end),
+                    ),
+                    FlowchartLexemeComponent::new(
+                        EditorLexemeKind::Literal,
+                        SourceSpan::new(direction_start, direction_end),
+                    ),
+                ],
+            }),
+            self.pos,
+        ))
     }
 
     pub(super) fn capture_to_stmt_end(&mut self) -> (usize, String, usize) {
@@ -280,6 +321,20 @@ impl<'input> Lexer<'input> {
     pub(super) fn capture_to_stmt_end_from(&mut self, start: usize) -> (usize, String, usize) {
         self.pos = start;
         self.capture_to_stmt_end()
+    }
+
+    pub(super) fn capture_recovery_to_stmt_end_from(
+        &mut self,
+        start: usize,
+    ) -> (usize, String, usize) {
+        self.pos = start;
+        while self.pos < self.input.len() {
+            match self.input.as_bytes()[self.pos] {
+                b'\n' | b';' => break,
+                _ => self.pos += 1,
+            }
+        }
+        (start, self.input[start..self.pos].to_string(), self.pos)
     }
 
     pub(super) fn lex_style_sep(&mut self) -> Option<(usize, Tok, usize)> {
@@ -395,11 +450,13 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "style".len();
+        let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
         match lex::parse_style_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_style_stmt_spans(&mut stmt, &rest, rest_start);
+                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
                 Some(Ok((start, Tok::StyleStmt(stmt), end)))
             }
             Err(e) => Some(Err(e)),
@@ -414,11 +471,13 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "classDef".len();
+        let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
         match lex::parse_classdef_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_classdef_stmt_spans(&mut stmt, &rest, rest_start);
+                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
                 Some(Ok((start, Tok::ClassDefStmt(stmt), end)))
             }
             Err(e) => Some(Err(e)),
@@ -433,11 +492,13 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "class".len();
+        let keyword_end = self.pos;
         self.skip_ws();
         let (rest_start, rest, end) = self.capture_to_stmt_end();
         match lex::parse_class_assign_stmt(&rest) {
             Ok(mut stmt) => {
                 lex::attach_class_assign_stmt_spans(&mut stmt, &rest, rest_start);
+                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
                 Some(Ok((start, Tok::ClassAssignStmt(stmt), end)))
             }
             Err(e) => Some(Err(e)),
@@ -452,10 +513,14 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "click".len();
+        let keyword_end = self.pos;
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
-        match lex::parse_click_stmt(&rest) {
-            Ok(stmt) => Some(Ok((start, Tok::ClickStmt(stmt), end))),
+        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        match lex::parse_click_stmt(&rest, rest_start) {
+            Ok(mut stmt) => {
+                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
+                Some(Ok((start, Tok::ClickStmt(stmt), end)))
+            }
             Err(e) => Some(Err(e)),
         }
     }
@@ -468,10 +533,14 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += "linkStyle".len();
+        let keyword_end = self.pos;
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
-        match lex::parse_link_style_stmt(&rest) {
-            Ok(stmt) => Some(Ok((start, Tok::LinkStyleStmt(stmt), end))),
+        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        match lex::parse_link_style_stmt(&rest, rest_start) {
+            Ok(mut stmt) => {
+                prepend_statement_keyword(&mut stmt.lexeme_components, start, keyword_end);
+                Some(Ok((start, Tok::LinkStyleStmt(stmt), end)))
+            }
             Err(e) => Some(Err(e)),
         }
     }
@@ -519,10 +588,23 @@ impl<'input> Lexer<'input> {
         let mut raw_title = raw_id.clone();
         let mut title_kind = TitleKind::Text;
         let mut id_equals_title = true;
+        let mut lexeme_components = Vec::new();
+        let (trimmed_id, trimmed_id_span) = trimmed_slice_with_span(self.input, start, raw_id_end);
+        if !trimmed_id.is_empty() {
+            lexeme_components.push(FlowchartLexemeComponent::new(
+                EditorLexemeKind::Identifier,
+                trimmed_id_span,
+            ));
+        }
 
         if self.pos < self.input.len() && self.input.as_bytes()[self.pos] == b'[' {
             id_equals_title = false;
+            let open_start = self.pos;
             self.pos += 1;
+            lexeme_components.push(FlowchartLexemeComponent::new(
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(open_start, self.pos),
+            ));
             let title_start = self.pos;
             while self.pos < self.input.len() && self.input.as_bytes()[self.pos] != b']' {
                 if self.input.as_bytes()[self.pos] == b'\n'
@@ -534,11 +616,24 @@ impl<'input> Lexer<'input> {
             }
             raw_title = self.input[title_start..self.pos].to_string();
             let trimmed = raw_title.trim();
+            let (trimmed_title, trimmed_title_span) =
+                trimmed_slice_with_span(self.input, title_start, self.pos);
+            if !trimmed_title.is_empty() {
+                lexeme_components.push(FlowchartLexemeComponent::new(
+                    EditorLexemeKind::String,
+                    trimmed_title_span,
+                ));
+            }
             if trimmed.starts_with('"') && trimmed.ends_with('"') {
                 title_kind = TitleKind::String;
             }
             if self.pos < self.input.len() && self.input.as_bytes()[self.pos] == b']' {
+                let close_start = self.pos;
                 self.pos += 1;
+                lexeme_components.push(FlowchartLexemeComponent::new(
+                    EditorLexemeKind::Delimiter,
+                    SourceSpan::new(close_start, self.pos),
+                ));
             }
         }
 
@@ -551,6 +646,7 @@ impl<'input> Lexer<'input> {
                 raw_title,
                 title_kind,
                 id_equals_title,
+                lexeme_components,
             }),
             self.pos,
         ))
@@ -825,20 +921,27 @@ impl<'input> Lexer<'input> {
                         self.pos += 1;
                     }
                     if self.pos < self.input.len() && bytes[self.pos] == b'|' {
+                        let label_end = self.pos;
                         let (raw, raw_span) =
                             trimmed_slice_with_span(self.input, label_start, self.pos);
                         let (text, kind) = parse_edge_label_text(raw);
                         self.pos += 1;
                         let token_span = SourceSpan::new(pipe_pos, self.pos);
-                        let label = labeled_text_with_spans(
+                        let mut label = labeled_text_with_spans(
                             self.input,
                             LabeledText {
                                 text,
                                 kind,
                                 span: None,
                                 selection: None,
+                                lexeme_components: Vec::new(),
                             },
                             token_span,
+                            raw_span,
+                        );
+                        label.lexeme_components = label_lexeme_components(
+                            token_span,
+                            SourceSpan::new(label_start, label_end),
                             raw_span,
                         );
                         self.pending
@@ -913,6 +1016,7 @@ impl<'input> Lexer<'input> {
                             kind,
                             span: None,
                             selection: None,
+                            lexeme_components: Vec::new(),
                         },
                         SourceSpan::new(edge_text_start, match_start),
                         raw_span,
@@ -951,11 +1055,12 @@ impl<'input> Lexer<'input> {
                 (None, None) => {
                     if self.recover_partial_node_labels {
                         let (raw_start, raw, token_end) =
-                            self.capture_to_stmt_end_from(content_start);
+                            self.capture_recovery_to_stmt_end_from(content_start);
                         let token = build_partial_node_label_token_from_raw(
                             self.input,
                             "inv_trapezoid",
                             SourceSpan::new(start, token_end),
+                            SourceSpan::new(content_start, token_end),
                             &raw,
                             SourceSpan::new(raw_start, token_end),
                             Some(SourceSpan::new(start, content_start)),
@@ -1009,11 +1114,12 @@ impl<'input> Lexer<'input> {
                 (None, None) => {
                     if self.recover_partial_node_labels {
                         let (raw_start, raw, token_end) =
-                            self.capture_to_stmt_end_from(content_start);
+                            self.capture_recovery_to_stmt_end_from(content_start);
                         let token = build_partial_node_label_token_from_raw(
                             self.input,
                             "lean_right",
                             SourceSpan::new(start, token_end),
+                            SourceSpan::new(content_start, token_end),
                             &raw,
                             SourceSpan::new(raw_start, token_end),
                             Some(SourceSpan::new(start, content_start)),
@@ -1101,11 +1207,13 @@ impl<'input> Lexer<'input> {
                         SourceSpan::new(start, token_end),
                     )));
                 }
-                let (raw_start, raw, token_end) = self.capture_to_stmt_end_from(content_start);
+                let (raw_start, raw, token_end) =
+                    self.capture_recovery_to_stmt_end_from(content_start);
                 let token = build_partial_node_label_token_from_raw(
                     self.input,
                     shape,
                     SourceSpan::new(start, token_end),
+                    SourceSpan::new(content_start, token_end),
                     &raw,
                     SourceSpan::new(raw_start, token_end),
                     Some(SourceSpan::new(start, content_start)),
@@ -1132,6 +1240,7 @@ impl<'input> Lexer<'input> {
                     self.input,
                     shape,
                     SourceSpan::new(start, token_end),
+                    SourceSpan::new(content_start, end_start),
                     label_raw,
                     label_span,
                     None,
@@ -1153,7 +1262,8 @@ impl<'input> Lexer<'input> {
                         SourceSpan::new(start, token_end),
                     )));
                 }
-                let (raw_start, raw, token_end) = self.capture_to_stmt_end_from(content_start);
+                let (raw_start, raw, token_end) =
+                    self.capture_recovery_to_stmt_end_from(content_start);
                 let (shape, label_raw, label_offset) = lex::parse_rect_border_label(&raw);
                 let label_span = SourceSpan::new(
                     raw_start + label_offset,
@@ -1163,6 +1273,7 @@ impl<'input> Lexer<'input> {
                     self.input,
                     shape,
                     SourceSpan::new(start, token_end),
+                    SourceSpan::new(content_start, token_end),
                     label_raw,
                     label_span,
                     Some(SourceSpan::new(start, content_start)),
@@ -1202,11 +1313,13 @@ impl<'input> Lexer<'input> {
                             SourceSpan::new(start, token_end),
                         )));
                     }
-                    let (raw_start, raw, token_end) = self.capture_to_stmt_end_from(content_start);
+                    let (raw_start, raw, token_end) =
+                        self.capture_recovery_to_stmt_end_from(content_start);
                     let token = build_partial_node_label_token_from_raw(
                         self.input,
                         "diamond",
                         SourceSpan::new(start, token_end),
+                        SourceSpan::new(content_start, token_end),
                         &raw,
                         SourceSpan::new(raw_start, token_end),
                         Some(SourceSpan::new(start, content_start)),
@@ -1246,11 +1359,13 @@ impl<'input> Lexer<'input> {
                             SourceSpan::new(start, token_end),
                         )));
                     }
-                    let (raw_start, raw, token_end) = self.capture_to_stmt_end_from(content_start);
+                    let (raw_start, raw, token_end) =
+                        self.capture_recovery_to_stmt_end_from(content_start);
                     let token = build_partial_node_label_token_from_raw(
                         self.input,
                         "round",
                         SourceSpan::new(start, token_end),
+                        SourceSpan::new(content_start, token_end),
                         &raw,
                         SourceSpan::new(raw_start, token_end),
                         Some(SourceSpan::new(start, content_start)),
@@ -1273,13 +1388,22 @@ fn build_node_label_token(
     trigger_span: Option<SourceSpan>,
 ) -> std::result::Result<Tok, LexError> {
     let (raw, raw_span) = trimmed_slice_with_span(input, content_span.start, content_span.end);
-    build_node_label_token_from_raw(input, shape, token_span, raw, raw_span, trigger_span)
+    build_node_label_token_from_raw(
+        input,
+        shape,
+        token_span,
+        content_span,
+        raw,
+        raw_span,
+        trigger_span,
+    )
 }
 
 fn build_node_label_token_from_raw(
     input: &str,
     shape: &str,
     token_span: SourceSpan,
+    content_span: SourceSpan,
     raw: &str,
     raw_span: SourceSpan,
     trigger_span: Option<SourceSpan>,
@@ -1289,6 +1413,7 @@ fn build_node_label_token_from_raw(
         shape: shape.to_string(),
         text: labeled_text_with_spans(input, text, token_span, raw_span),
         trigger_span,
+        lexeme_components: label_lexeme_components(token_span, content_span, raw_span),
     }))
 }
 
@@ -1296,6 +1421,7 @@ fn build_partial_node_label_token_from_raw(
     input: &str,
     shape: &str,
     token_span: SourceSpan,
+    content_span: SourceSpan,
     raw: &str,
     raw_span: SourceSpan,
     trigger_span: Option<SourceSpan>,
@@ -1310,12 +1436,41 @@ fn build_partial_node_label_token_from_raw(
                 kind,
                 span: None,
                 selection: None,
+                lexeme_components: Vec::new(),
             },
             token_span,
             raw_span,
         ),
         trigger_span,
+        lexeme_components: label_lexeme_components(token_span, content_span, raw_span),
     })
+}
+
+fn label_lexeme_components(
+    token_span: SourceSpan,
+    content_span: SourceSpan,
+    value_span: SourceSpan,
+) -> Vec<FlowchartLexemeComponent> {
+    let mut components = Vec::with_capacity(3);
+    if token_span.start < content_span.start {
+        components.push(FlowchartLexemeComponent::new(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(token_span.start, content_span.start),
+        ));
+    }
+    if value_span.start < value_span.end {
+        components.push(FlowchartLexemeComponent::new(
+            EditorLexemeKind::String,
+            value_span,
+        ));
+    }
+    if content_span.end < token_span.end {
+        components.push(FlowchartLexemeComponent::new(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(content_span.end, token_span.end),
+        ));
+    }
+    components
 }
 
 fn labeled_text_with_spans(
@@ -1326,6 +1481,12 @@ fn labeled_text_with_spans(
 ) -> LabeledText {
     text.span = Some(token_span);
     text.selection = label_value_selection(input, content_span, &text.text).or(Some(content_span));
+    if text.lexeme_components.is_empty() && content_span.start < content_span.end {
+        text.lexeme_components.push(FlowchartLexemeComponent::new(
+            EditorLexemeKind::String,
+            content_span,
+        ));
+    }
     text
 }
 

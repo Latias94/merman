@@ -1,6 +1,6 @@
 //! Grammar-derived ZenUML parser and family-owned semantic model.
 //!
-//! The selected Mermaid 11.16 companion oracle is ZenUML Core 3.47.8. Its
+//! The Mermaid 11.16 companion matrix currently evaluates ZenUML Core 3.50.1 behavior. Its
 //! `sequenceLexer.g4` and `sequenceParser.g4` define the rules implemented by this module. The
 //! lexer, recovering recursive parser, semantic builder, editor facts, and render model form one
 //! owned pipeline; ZenUML is never translated through Mermaid Sequence JSON or actions.
@@ -47,7 +47,7 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
     Ok((value, source.editor_facts))
 }
 
-pub fn parse_zenuml_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+pub(crate) fn parse_zenuml_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
     construct_semantic_source(code).editor_facts
 }
 
@@ -68,12 +68,14 @@ fn construct_semantic_source(code: &str) -> ZenumlSemanticSource {
     crate::diagrams::langium_common::record_family_syntax_construction("zenuml");
 
     let tokens = lexer::lex(code);
-    let parsed = parser::parse(code, tokens);
+    let parsed = parser::parse(code, &tokens);
+    let lexemes = lexer::editor_lexemes(code, &tokens, !parsed.diagnostics.is_empty());
     let semantic::SemanticBuild {
         model,
-        editor_facts,
+        mut editor_facts,
         diagnostics,
     } = semantic::build(parsed);
+    editor_facts.replace_family_lexemes(lexemes);
     ZenumlSemanticSource {
         model,
         editor_facts,
@@ -163,5 +165,123 @@ mod tests {
         };
         assert_eq!(assignment.as_deref(), Some("result"));
         assert_eq!(to, "Service");
+    }
+
+    #[test]
+    fn companion_matrix_supports_digit_names_units_emoji_and_optional_if_blocks() {
+        let source = concat!(
+            "zenuml\n",
+            "[rocket] 2FAService\n",
+            "[rocket]2FAService->[lock]3DSecure.call(10ms)\n",
+            "if(5xx_error)\n",
+            "3DSecure.next()\n",
+        );
+        let model =
+            parse_zenuml_model_for_render(source, &meta()).expect("matrix candidate syntax");
+
+        let service = model
+            .participant("2FAService")
+            .expect("digit-leading participant");
+        assert_eq!(service.emoji.as_deref(), Some("rocket"));
+        let secure = model
+            .participant("3DSecure")
+            .expect("digit-leading endpoint");
+        assert_eq!(secure.emoji.as_deref(), Some("lock"));
+        assert!(matches!(
+            &model.statements[0].kind,
+            ZenumlStatementKind::Message { label, .. } if label == "call(10ms)"
+        ));
+        assert!(matches!(
+            &model.statements[1].kind,
+            ZenumlStatementKind::Fragment { sections, .. }
+                if sections.len() == 1 && sections[0].statements.is_empty()
+        ));
+        assert!(matches!(
+            &model.statements[2].kind,
+            ZenumlStatementKind::Message { label, .. } if label == "next()"
+        ));
+    }
+
+    #[test]
+    fn comments_preserve_whitespace_and_typed_owner_boundaries() {
+        let source = concat!(
+            "zenuml\n",
+            "// participant comment \n",
+            "@Actor A\n",
+            "// statement comment  \n",
+            "A.m() {\n",
+            "// block close comment \n",
+            "}\n",
+        );
+        let model = parse_zenuml_model_for_render(source, &meta()).expect("comment ownership");
+        assert_eq!(
+            model
+                .participant("A")
+                .and_then(|participant| participant.comment.as_deref()),
+            Some(" participant comment ")
+        );
+        assert_eq!(
+            model.statements[0].comment.as_deref(),
+            Some(" statement comment  ")
+        );
+        let ZenumlStatementKind::Message { body_comment, .. } = &model.statements[0].kind else {
+            panic!("expected message");
+        };
+        assert_eq!(body_comment.as_deref(), Some(" block close comment "));
+    }
+
+    #[test]
+    fn parameters_and_conditions_preserve_oracle_semantics_without_symbol_leaks() {
+        let source = concat!(
+            "zenuml\n",
+            "A.m(x=1, Type value, B.call(), 10ms) ",
+            "if(item in items){A.m()} ",
+            "if(status pending 10ms){A.m()}",
+        );
+        let model = parse_zenuml_model_for_render(source, &meta()).expect("rule semantics");
+        assert_eq!(
+            model
+                .participants
+                .iter()
+                .map(|participant| participant.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["_STARTER_", "A"]
+        );
+        let ZenumlStatementKind::Message { label, .. } = &model.statements[0].kind else {
+            panic!("expected message");
+        };
+        assert_eq!(label, "m(x=1,Type value,B.call(),10ms)");
+        for (statement, expected) in model.statements[1..]
+            .iter()
+            .zip(["item in items", "status pending 10ms"])
+        {
+            let ZenumlStatementKind::Fragment { label, .. } = &statement.kind else {
+                panic!("expected conditional fragment");
+            };
+            assert_eq!(label.as_deref(), Some(expected));
+        }
+    }
+
+    #[test]
+    fn starter_and_group_prediction_match_the_companion_runtime() {
+        let unnamed = parse_zenuml_model_for_render("zenuml\n@Starter() A.m()", &meta())
+            .expect("optional starter name");
+        assert!(unnamed.starter.is_none());
+
+        let dotted = parse_zenuml_model_for_render("zenuml\n@Starter(S) A.B", &meta())
+            .expect("dotted bare function");
+        assert!(matches!(
+            &dotted.statements[0].kind,
+            ZenumlStatementKind::Message { to, label, .. } if to == "A" && label == "B"
+        ));
+
+        let grouped = parse_zenuml_model_for_render(
+            "zenuml\ngroup Business { @Actor A @Boundary B } A->B.m()",
+            &meta(),
+        )
+        .expect("group head");
+        assert!(grouped.starter.is_none());
+        assert!(grouped.participant("_STARTER_").is_none());
+        assert_eq!(grouped.groups[0].participant_names, ["A", "B"]);
     }
 }

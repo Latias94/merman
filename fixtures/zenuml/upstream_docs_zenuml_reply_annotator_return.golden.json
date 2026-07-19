@@ -7,20 +7,6 @@
     "starter": null,
     "participants": [
       {
-        "name": "_STARTER_",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
-        "width": null,
-        "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
-        "declarationSpan": null,
-        "occurrences": []
-      },
-      {
         "name": "A",
         "label": null,
         "participantType": null,
@@ -67,28 +53,12 @@
         "comment": null,
         "span": {
           "start": 11,
-          "end": 18
-        },
-        "kind": "return",
-        "from": "_STARTER_",
-        "to": "_STARTER_",
-        "label": ""
-      },
-      {
-        "id": "zenuml-statement-1",
-        "number": "2",
-        "comment": null,
-        "span": {
-          "start": 23,
           "end": 36
         },
-        "kind": "message",
+        "kind": "return",
         "from": "A",
         "to": "B",
-        "label": "result",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "label": "result"
       }
     ],
     "type": "zenuml"

@@ -1,50 +1,55 @@
 use super::ast::*;
-use super::lexer::{Keyword, Token, TokenKind};
+use super::lexer::{self, Keyword, Token, TokenChannel, TokenKind};
 use crate::diagrams::langium_common::{LangiumCommonField, parse_langium_common};
 use crate::{MAX_DIAGRAM_NESTING_DEPTH, SourceSpan};
 
-pub(super) fn parse(source: &str, tokens: Vec<Token>) -> ParsedSyntax {
-    Parser::new(source, tokens).parse()
+const MISSING_PARTICIPANT: &str = "Missing `Participant`";
+const MISSING_CONSTRUCTOR: &str = "Missing Constructor";
+
+pub(super) fn parse(source: &str, raw_tokens: &[Token]) -> ParsedSyntax {
+    let tokens = lexer::parser_tokens(raw_tokens);
+    let comments = comments_before_default_tokens(raw_tokens);
+    Parser::new(source, tokens, comments).parse()
 }
 
 struct Parser<'a> {
     source: &'a str,
     tokens: Vec<Token>,
+    comments: Vec<Option<SpannedText>>,
     cursor: usize,
     diagnostics: Vec<SyntaxDiagnostic>,
+    grammar_rule_spans: Vec<GrammarRuleSpanSyntax>,
 }
 
 impl<'a> Parser<'a> {
-    fn new(source: &'a str, tokens: Vec<Token>) -> Self {
+    fn new(source: &'a str, tokens: Vec<Token>, comments: Vec<Option<SpannedText>>) -> Self {
         Self {
             source,
             tokens,
+            comments,
             cursor: 0,
             diagnostics: Vec::new(),
+            grammar_rule_spans: Vec::new(),
         }
     }
 
     fn parse(mut self) -> ParsedSyntax {
-        self.skip_newlines();
-        let header = self.take_name();
-        match header {
+        match self.take_name() {
             Some(header) if header.value.eq_ignore_ascii_case("zenuml") => {}
             Some(header) => self.error("expected `zenuml` header", header.span),
             None => self.error("expected `zenuml` header", self.insertion_span()),
         }
-        self.finish_header_line();
 
-        let mut leading_comment = self.take_leading_comments();
         let title = if self.at_keyword(Keyword::Title) {
-            leading_comment = None;
+            self.discard_current_comment();
             Some(self.parse_title())
         } else {
             None
         };
+
         let mut acc_title = None;
         let mut acc_descr = None;
         loop {
-            self.skip_newlines();
             let offset = self.peek().span.start;
             let Some(common) = parse_langium_common(self.source, offset) else {
                 break;
@@ -55,7 +60,8 @@ impl<'a> Parser<'a> {
                 LangiumCommonField::AccDescr => acc_descr = Some(value),
                 LangiumCommonField::Title => break,
             }
-            self.advance_to_offset(offset + common.consumed);
+            let end = offset + common.consumed;
+            self.advance_to_offset(end);
             if let Some(diagnostic) = common.diagnostic {
                 self.error(diagnostic.message, diagnostic.span);
             }
@@ -64,31 +70,31 @@ impl<'a> Parser<'a> {
         let mut participants = Vec::new();
         let mut groups = Vec::new();
         let mut starter = None;
+        let mut pending_comment = None;
 
         loop {
-            self.skip_newlines();
-            if leading_comment.is_none() {
-                leading_comment = self.take_leading_comments();
-            }
+            let comment = self.take_current_comment();
             if self.at_keyword(Keyword::Group) {
-                groups.push(self.parse_group(leading_comment.take()));
+                groups.push(self.parse_group(comment));
                 continue;
             }
             if matches!(self.peek_kind(), TokenKind::StarterAnnotation) {
                 starter = Some(self.parse_starter());
-                leading_comment = None;
                 break;
             }
-            if self.looks_like_participant_line() {
-                if let Some(participant) = self.parse_participant(leading_comment.take()) {
-                    participants.push(participant);
-                }
+            let participant = {
+                let grammar = Grammar::new(self.source, &self.tokens);
+                grammar.select_head_participant(self.cursor)
+            };
+            if let Some(participant) = participant {
+                participants.push(self.consume_participant(participant, comment));
                 continue;
             }
+            pending_comment = comment;
             break;
         }
 
-        let statements = self.parse_block(0, false, leading_comment.take());
+        let statements = self.parse_block(0, false, pending_comment, None).statements;
         let document = SyntaxDocument {
             title,
             acc_title,
@@ -102,185 +108,109 @@ impl<'a> Parser<'a> {
             document,
             diagnostics: self.diagnostics,
             tokens: self.tokens,
+            grammar_rule_spans: self.grammar_rule_spans,
         }
     }
 
     fn parse_title(&mut self) -> SpannedText {
-        let keyword = self.bump().clone();
-        let start = keyword.span.end;
-        let end = self.line_end_offset();
-        self.consume_to_line_end();
-        trimmed_text(self.source, start, end)
-            .unwrap_or_else(|| SpannedText::new(String::new(), SourceSpan::new(end, end)))
-    }
-
-    fn advance_to_offset(&mut self, offset: usize) {
-        while !self.at_eof() && self.peek().span.start < offset {
+        let start = self.bump().span.start;
+        let value = match self.peek().clone() {
+            Token {
+                kind: TokenKind::TitleContent(_),
+                span,
+                ..
+            } => {
+                self.bump();
+                trimmed_text(self.source, span.start, span.end)
+                    .unwrap_or_else(|| SpannedText::new(String::new(), span))
+            }
+            _ => SpannedText::new(String::new(), self.insertion_span()),
+        };
+        if matches!(self.peek_kind(), TokenKind::TitleEnd) {
             self.bump();
         }
+        self.grammar_rule_spans.push(GrammarRuleSpanSyntax {
+            kind: GrammarRuleKindSyntax::Title,
+            span: SourceSpan::new(start, self.previous_end().max(start)),
+        });
+        value
     }
 
     fn parse_group(&mut self, _comment: Option<SpannedText>) -> GroupSyntax {
         let start = self.bump().span.start;
         let name = self.take_name();
         let mut participants = Vec::new();
-        if self
-            .consume_simple(TokenKindDiscriminant::OpenBrace)
-            .is_some()
-        {
-            loop {
-                self.skip_newlines();
-                let comment = self.take_leading_comments();
-                if self
-                    .consume_simple(TokenKindDiscriminant::CloseBrace)
-                    .is_some()
-                {
-                    break;
-                }
-                if self.at_eof() {
-                    self.error(
-                        "unterminated ZenUML group; expected `}`",
-                        self.insertion_span(),
-                    );
-                    break;
-                }
-                if self.looks_like_participant_line() {
-                    if let Some(participant) = self.parse_participant(comment) {
-                        participants.push(participant);
-                    }
+        if matches!(self.peek_kind(), TokenKind::OpenBrace) {
+            self.bump();
+            while !self.at_eof() && !matches!(self.peek_kind(), TokenKind::CloseBrace) {
+                let comment = self.take_current_comment();
+                let candidate = {
+                    let grammar = Grammar::new(self.source, &self.tokens);
+                    grammar
+                        .participant_candidates(self.cursor)
+                        .into_iter()
+                        .next()
+                };
+                if let Some(candidate) = candidate {
+                    participants.push(self.consume_participant(candidate, comment));
                 } else {
-                    let span = self.current_line_span();
+                    let span = self.bump().span;
                     self.error("expected participant declaration in ZenUML group", span);
-                    self.synchronize_statement();
                 }
             }
-        } else {
-            self.consume_to_line_end();
+            if matches!(self.peek_kind(), TokenKind::CloseBrace) {
+                self.bump();
+            }
         }
-        let end = self.previous_end().max(start);
         GroupSyntax {
             name,
             participants,
-            span: SourceSpan::new(start, end),
+            span: SourceSpan::new(start, self.previous_end().max(start)),
         }
     }
 
-    fn parse_starter(&mut self) -> SpannedText {
+    fn parse_starter(&mut self) -> StarterSyntax {
         let annotation = self.bump().clone();
-        if self
-            .consume_simple(TokenKindDiscriminant::OpenParen)
-            .is_none()
-        {
-            self.consume_to_line_end();
-            return SpannedText::new("_STARTER_", annotation.span);
+        if !matches!(self.peek_kind(), TokenKind::OpenParen) {
+            return StarterSyntax {
+                name: None,
+                span: annotation.span,
+            };
         }
-        let starter = self.take_name().unwrap_or_else(|| {
-            self.error(
-                "expected participant name in `@Starter(...)`",
-                self.insertion_span(),
-            );
-            SpannedText::new("_STARTER_", self.insertion_span())
-        });
-        if self
-            .consume_simple(TokenKindDiscriminant::CloseParen)
-            .is_none()
-        {
+        self.bump();
+        let name = self.take_name();
+        if matches!(self.peek_kind(), TokenKind::CloseParen) {
+            self.bump();
+        } else {
             self.error("expected `)` after ZenUML starter", self.insertion_span());
         }
-        self.consume_to_line_end();
-        starter
+        StarterSyntax {
+            name,
+            span: SourceSpan::new(annotation.span.start, self.previous_end()),
+        }
     }
 
-    fn parse_participant(&mut self, comment: Option<SpannedText>) -> Option<ParticipantSyntax> {
-        let start = self.peek().span.start;
-        let participant_type = match self.peek().clone() {
-            Token {
-                kind: TokenKind::Annotation(value),
-                span,
-            } => {
-                self.bump();
-                Some(SpannedText::new(value, span))
-            }
-            _ => None,
-        };
-        let stereotype = if matches!(self.peek_kind(), TokenKind::StereotypeOpen) {
-            self.bump();
-            let value = self.take_name();
-            if matches!(self.peek_kind(), TokenKind::StereotypeClose)
-                || matches!(self.peek_kind(), TokenKind::Operator(value) if value == ">")
-            {
-                self.bump();
-            }
-            value
-        } else {
-            None
-        };
-        let emoji = if self
-            .consume_simple(TokenKindDiscriminant::OpenBracket)
-            .is_some()
-        {
-            let value = self.take_name();
-            if self
-                .consume_simple(TokenKindDiscriminant::CloseBracket)
-                .is_none()
-            {
-                self.error(
-                    "expected `]` after ZenUML participant emoji",
-                    self.insertion_span(),
-                );
-            }
-            value
-        } else {
-            None
-        };
-        let Some(name) = self.take_name() else {
-            let span = self.current_line_span();
-            self.error("expected ZenUML participant name", span);
-            self.synchronize_statement();
-            return None;
-        };
-        let width = match self.peek_kind() {
-            TokenKind::Integer(value) => {
-                let parsed = value.parse().ok();
-                self.bump();
-                parsed
-            }
-            _ => None,
-        };
-        let label = if self.at_keyword(Keyword::As) {
-            self.bump();
-            self.take_name()
-        } else {
-            None
-        };
-        let color = match self.peek().clone() {
-            Token {
-                kind: TokenKind::Color(value),
-                span,
-            } => {
-                self.bump();
-                Some(SpannedText::new(value, span))
-            }
-            _ => None,
-        };
-        if !self.at_line_end() && !matches!(self.peek_kind(), TokenKind::CloseBrace) {
-            self.error(
-                "unexpected token after ZenUML participant declaration",
-                self.peek().span,
-            );
-        }
-        self.consume_to_line_end();
-        Some(ParticipantSyntax {
+    fn consume_participant(
+        &mut self,
+        participant: ParticipantMatch,
+        comment: Option<SpannedText>,
+    ) -> ParticipantSyntax {
+        self.cursor = participant.end;
+        self.record_rule(&participant.rule);
+        let name = participant
+            .name
+            .unwrap_or_else(|| SpannedText::new(MISSING_PARTICIPANT, participant.rule.span));
+        ParticipantSyntax {
             name,
-            label,
-            participant_type,
-            stereotype,
-            emoji,
-            width,
-            color,
+            label: participant.label,
+            participant_type: participant.participant_type,
+            stereotype: participant.stereotype,
+            emoji: participant.emoji,
+            width: participant.width,
+            color: participant.color,
             comment,
-            span: SourceSpan::new(start, self.previous_end().max(start)),
-        })
+            span: participant.rule.span,
+        }
     }
 
     fn parse_block(
@@ -288,52 +218,58 @@ impl<'a> Parser<'a> {
         depth: usize,
         stop_at_close: bool,
         mut pending_comment: Option<SpannedText>,
-    ) -> Vec<StatementSyntax> {
+        statement_limit: Option<usize>,
+    ) -> ParsedBlock {
         if depth > MAX_DIAGRAM_NESTING_DEPTH {
             self.error(
                 format!("ZenUML nesting depth exceeds {MAX_DIAGRAM_NESTING_DEPTH}"),
                 self.peek().span,
             );
             self.skip_balanced_block();
-            return Vec::new();
+            return ParsedBlock::default();
         }
 
         let mut statements = Vec::new();
-        loop {
-            self.skip_newlines();
-            if pending_comment.is_none() {
-                pending_comment = self.take_leading_comments();
+        while !self.at_eof() {
+            if statement_limit.is_some_and(|limit| statements.len() >= limit) {
+                break;
             }
             if stop_at_close && matches!(self.peek_kind(), TokenKind::CloseBrace) {
+                let closing_comment = self.take_current_comment();
                 self.bump();
-                break;
-            }
-            if self.at_eof() {
-                if stop_at_close {
-                    self.error(
-                        "unterminated ZenUML block; expected `}`",
-                        self.insertion_span(),
-                    );
-                }
-                break;
+                return ParsedBlock {
+                    statements,
+                    closing_comment,
+                };
             }
             if matches!(self.peek_kind(), TokenKind::CloseBrace) {
                 let span = self.bump().span;
                 self.error("unexpected `}` in ZenUML document", span);
                 continue;
             }
-            let statement_start = self.cursor;
+            if pending_comment.is_none() {
+                pending_comment = self.take_current_comment();
+            }
+            let start = self.cursor;
             if let Some(statement) = self.parse_statement(depth, pending_comment.take()) {
                 statements.push(statement);
-            } else if self.cursor == statement_start
-                || !self.tokens[..self.cursor].last().is_some_and(|token| {
-                    matches!(token.kind, TokenKind::Newline | TokenKind::Semicolon)
-                })
-            {
-                self.synchronize_statement();
+                continue;
+            }
+            if self.cursor == start {
+                let span = self.bump().span;
+                self.error("unsupported ZenUML statement", span);
             }
         }
-        statements
+        if stop_at_close {
+            self.error(
+                "unterminated ZenUML block; expected `}`",
+                self.insertion_span(),
+            );
+        }
+        ParsedBlock {
+            statements,
+            closing_comment: None,
+        }
     }
 
     fn parse_statement(
@@ -344,27 +280,43 @@ impl<'a> Parser<'a> {
         match self.peek_kind() {
             TokenKind::Keyword(Keyword::If) => self.parse_alternative(depth, comment),
             TokenKind::Keyword(Keyword::Try) => self.parse_try(depth, comment),
-            TokenKind::Keyword(Keyword::Par) => {
-                self.parse_single_fragment(depth, comment, FragmentKindSyntax::Parallel, true)
-            }
-            TokenKind::Keyword(Keyword::Opt) => {
-                self.parse_single_fragment(depth, comment, FragmentKindSyntax::Optional, true)
-            }
-            TokenKind::Keyword(Keyword::Critical) => {
-                self.parse_single_fragment(depth, comment, FragmentKindSyntax::Critical, true)
-            }
-            TokenKind::Keyword(Keyword::Section) | TokenKind::OpenBrace => {
-                self.parse_single_fragment(depth, comment, FragmentKindSyntax::Section, true)
-            }
-            TokenKind::Keyword(Keyword::While) => {
-                self.parse_single_fragment(depth, comment, FragmentKindSyntax::Loop, true)
-            }
+            TokenKind::Keyword(Keyword::Par) => self.parse_single_fragment(
+                depth,
+                comment,
+                FragmentKindSyntax::Parallel,
+                FragmentForm::RecoverRequiredBlock,
+            ),
+            TokenKind::Keyword(Keyword::Opt) => self.parse_single_fragment(
+                depth,
+                comment,
+                FragmentKindSyntax::Optional,
+                FragmentForm::RecoverRequiredBlock,
+            ),
+            TokenKind::Keyword(Keyword::Critical) => self.parse_single_fragment(
+                depth,
+                comment,
+                FragmentKindSyntax::Critical,
+                FragmentForm::RecoverRequiredBlock,
+            ),
+            TokenKind::Keyword(Keyword::Section) | TokenKind::OpenBrace => self
+                .parse_single_fragment(
+                    depth,
+                    comment,
+                    FragmentKindSyntax::Section,
+                    FragmentForm::Section,
+                ),
+            TokenKind::Keyword(Keyword::While) => self.parse_single_fragment(
+                depth,
+                comment,
+                FragmentKindSyntax::Loop,
+                FragmentForm::OptionalBlock,
+            ),
             TokenKind::Keyword(Keyword::Ref) => self.parse_reference(comment),
             TokenKind::Keyword(Keyword::Return) | TokenKind::ReturnAnnotation => {
                 self.parse_return_statement(comment)
             }
             TokenKind::Divider(_) => self.parse_divider(comment),
-            _ => self.parse_message_or_creation(depth, comment),
+            _ => self.parse_creation_message_async_or_return(depth, comment),
         }
     }
 
@@ -373,34 +325,54 @@ impl<'a> Parser<'a> {
         depth: usize,
         comment: Option<SpannedText>,
         kind: FragmentKindSyntax,
-        block_optional: bool,
+        form: FragmentForm,
     ) -> Option<StatementSyntax> {
         let start = self.peek().span.start;
         let anonymous = matches!(self.peek_kind(), TokenKind::OpenBrace);
         if !anonymous {
             self.bump();
         }
-        let label = if matches!(self.peek_kind(), TokenKind::OpenParen) {
-            self.take_parenthesized_text()
+        let had_par_expr = !anonymous && matches!(self.peek_kind(), TokenKind::OpenParen);
+        let label = if had_par_expr {
+            let par = {
+                let grammar = Grammar::new(self.source, &self.tokens);
+                grammar.par_expr(self.cursor)
+            };
+            par.and_then(|par| {
+                self.cursor = par.end;
+                self.record_rule(&par.rule);
+                par.label
+            })
         } else {
             None
         };
-        let statements = if self
-            .consume_simple(TokenKindDiscriminant::OpenBrace)
-            .is_some()
-        {
-            self.parse_block(depth + 1, true, None)
-        } else if block_optional {
-            self.consume_to_line_end();
-            Vec::new()
+
+        let block = if matches!(self.peek_kind(), TokenKind::OpenBrace) {
+            self.bump();
+            self.parse_block(depth + 1, true, None, None)
         } else {
-            self.error("expected `{` after ZenUML fragment", self.insertion_span());
-            Vec::new()
+            let recover_missing_block = had_par_expr
+                && matches!(
+                    form,
+                    FragmentForm::RecoverRequiredBlock | FragmentForm::Section
+                );
+            if anonymous || recover_missing_block {
+                self.error("expected `{` after ZenUML fragment", self.insertion_span());
+            }
+            if recover_missing_block && {
+                let grammar = Grammar::new(self.source, &self.tokens);
+                grammar.can_start_statement(self.cursor)
+            } {
+                self.parse_block(depth + 1, false, None, Some(1))
+            } else {
+                ParsedBlock::default()
+            }
         };
         let end = self.previous_end().max(start);
         let section = FragmentSectionSyntax {
             label: label.clone(),
-            statements,
+            statements: block.statements,
+            body_comment: block.closing_comment,
             span: SourceSpan::new(start, end),
         };
         Some(StatementSyntax {
@@ -420,31 +392,24 @@ impl<'a> Parser<'a> {
         comment: Option<SpannedText>,
     ) -> Option<StatementSyntax> {
         let start = self.bump().span.start;
-        let label = self.take_parenthesized_text();
-        let first = self.parse_fragment_section(depth, label.clone(), "if")?;
+        let label = self.parse_required_par_expr("expected `(condition)` after ZenUML `if`");
+        let first = self.parse_optional_alt_section(depth, label.clone(), start);
         let mut sections = vec![first];
 
-        loop {
-            self.skip_newlines();
-            if !self.at_keyword(Keyword::Else) {
-                break;
-            }
+        while self.at_keyword(Keyword::Else) {
             let branch_start = self.bump().span.start;
             let branch_label = if self.at_keyword(Keyword::If) {
                 self.bump();
-                self.take_parenthesized_text()
+                self.parse_required_par_expr("expected `(condition)` after ZenUML `else if`")
             } else {
                 Some(SpannedText::new(
                     "else",
                     SourceSpan::new(branch_start, self.previous_end()),
                 ))
             };
-            let Some(mut section) = self.parse_fragment_section(depth, branch_label, "else") else {
-                break;
-            };
-            section.span.start = branch_start;
-            sections.push(section);
+            sections.push(self.parse_optional_alt_section(depth, branch_label, branch_start));
         }
+
         let end = self.previous_end().max(start);
         Some(StatementSyntax {
             kind: StatementKindSyntax::Fragment(FragmentSyntax {
@@ -457,22 +422,66 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_required_par_expr(&mut self, diagnostic: &str) -> Option<SpannedText> {
+        let par = {
+            let grammar = Grammar::new(self.source, &self.tokens);
+            grammar.par_expr(self.cursor)
+        };
+        if let Some(par) = par {
+            self.cursor = par.end;
+            self.record_rule(&par.rule);
+            par.label
+        } else {
+            self.error(diagnostic, self.insertion_span());
+            None
+        }
+    }
+
+    fn parse_optional_alt_section(
+        &mut self,
+        depth: usize,
+        label: Option<SpannedText>,
+        start: usize,
+    ) -> FragmentSectionSyntax {
+        let block = if matches!(self.peek_kind(), TokenKind::OpenBrace) {
+            self.bump();
+            self.parse_block(depth + 1, true, None, None)
+        } else {
+            ParsedBlock::default()
+        };
+        FragmentSectionSyntax {
+            label,
+            statements: block.statements,
+            body_comment: block.closing_comment,
+            span: SourceSpan::new(start, self.previous_end().max(start)),
+        }
+    }
+
     fn parse_try(&mut self, depth: usize, comment: Option<SpannedText>) -> Option<StatementSyntax> {
         let start = self.bump().span.start;
         let try_label = SpannedText::new("try", SourceSpan::new(start, self.previous_end()));
-        let first = self.parse_fragment_section(depth, Some(try_label), "try")?;
+        let first = self.parse_required_fragment_section(depth, Some(try_label), "try", start);
         let mut sections = vec![first];
-        loop {
-            self.skip_newlines();
-            let (name, branch_start) = if self.at_keyword(Keyword::Catch) {
-                ("catch", self.bump().span.start)
-            } else if self.at_keyword(Keyword::Finally) {
-                ("finally", self.bump().span.start)
-            } else {
-                break;
-            };
-            let details = if name == "catch" && matches!(self.peek_kind(), TokenKind::OpenParen) {
-                self.take_parenthesized_text()
+
+        while self.at_keyword(Keyword::Catch) || self.at_keyword(Keyword::Finally) {
+            let is_catch = self.at_keyword(Keyword::Catch);
+            let name = if is_catch { "catch" } else { "finally" };
+            let branch_start = self.bump().span.start;
+            let details = if is_catch && matches!(self.peek_kind(), TokenKind::OpenParen) {
+                let invocation = {
+                    let grammar = Grammar::new(self.source, &self.tokens);
+                    grammar.invocation(self.cursor)
+                };
+                invocation.map(|invocation| {
+                    self.cursor = invocation.end;
+                    self.record_rule(&invocation.rule);
+                    trimmed_text(
+                        self.source,
+                        invocation.rule.span.start + 1,
+                        invocation.rule.span.end.saturating_sub(1),
+                    )
+                    .unwrap_or_else(|| SpannedText::new(String::new(), invocation.rule.span))
+                })
             } else {
                 None
             };
@@ -485,12 +494,13 @@ impl<'a> Parser<'a> {
                     )
                 },
             );
-            let Some(mut section) = self.parse_fragment_section(depth, Some(label), name) else {
-                break;
-            };
-            section.span.start = branch_start;
-            sections.push(section);
-            if name == "finally" {
+            sections.push(self.parse_required_fragment_section(
+                depth,
+                Some(label),
+                name,
+                branch_start,
+            ));
+            if !is_catch {
                 break;
             }
         }
@@ -506,67 +516,56 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_fragment_section(
+    fn parse_required_fragment_section(
         &mut self,
         depth: usize,
         label: Option<SpannedText>,
         context: &str,
-    ) -> Option<FragmentSectionSyntax> {
-        let start = label
-            .as_ref()
-            .map_or(self.peek().span.start, |label| label.span.start);
-        if self
-            .consume_simple(TokenKindDiscriminant::OpenBrace)
-            .is_none()
-        {
-            // The selected 3.47.8 grammar requires a block for if/else/tcf. Keep editor recovery
-            // local so later top-level statements still produce facts.
+        start: usize,
+    ) -> FragmentSectionSyntax {
+        let block = if matches!(self.peek_kind(), TokenKind::OpenBrace) {
+            self.bump();
+            self.parse_block(depth + 1, true, None, None)
+        } else {
             self.error(
                 format!("expected `{{` after ZenUML {context}"),
                 self.insertion_span(),
             );
-            self.consume_to_line_end();
-            return Some(FragmentSectionSyntax {
-                label,
-                statements: Vec::new(),
-                span: SourceSpan::new(start, self.previous_end().max(start)),
-            });
-        }
-        let statements = self.parse_block(depth + 1, true, None);
-        Some(FragmentSectionSyntax {
+            ParsedBlock::default()
+        };
+        FragmentSectionSyntax {
             label,
-            statements,
+            statements: block.statements,
+            body_comment: block.closing_comment,
             span: SourceSpan::new(start, self.previous_end().max(start)),
-        })
+        }
     }
 
     fn parse_reference(&mut self, comment: Option<SpannedText>) -> Option<StatementSyntax> {
         let start = self.bump().span.start;
         let mut participants = Vec::new();
-        if self
-            .consume_simple(TokenKindDiscriminant::OpenParen)
-            .is_none()
-        {
-            self.error("expected `(` after ZenUML `ref`", self.insertion_span());
-        } else {
-            loop {
-                if let Some(name) = self.take_name() {
-                    participants.push(name);
+        if matches!(self.peek_kind(), TokenKind::OpenParen) {
+            self.bump();
+            if let Some(name) = self.take_name() {
+                participants.push(name);
+                while matches!(self.peek_kind(), TokenKind::Comma) {
+                    self.bump();
+                    while let Some(name) = self.take_name() {
+                        participants.push(name);
+                    }
                 }
-                if self.consume_simple(TokenKindDiscriminant::Comma).is_some() {
-                    continue;
-                }
-                break;
             }
-            if self
-                .consume_simple(TokenKindDiscriminant::CloseParen)
-                .is_none()
-            {
+            if matches!(self.peek_kind(), TokenKind::CloseParen) {
+                self.bump();
+            } else {
                 self.error("expected `)` after ZenUML reference", self.insertion_span());
             }
+        } else {
+            self.error("expected `(` after ZenUML `ref`", self.insertion_span());
         }
-        self.consume_simple(TokenKindDiscriminant::Semicolon);
-        self.consume_to_line_end();
+        if matches!(self.peek_kind(), TokenKind::Semicolon) {
+            self.bump();
+        }
         let end = self.previous_end().max(start);
         Some(StatementSyntax {
             kind: StatementKindSyntax::Reference(ReferenceSyntax {
@@ -580,71 +579,62 @@ impl<'a> Parser<'a> {
 
     fn parse_return_statement(&mut self, comment: Option<SpannedText>) -> Option<StatementSyntax> {
         let start = self.bump().span.start;
-        let return_annotation = matches!(
+        if matches!(
             self.tokens[self.cursor.saturating_sub(1)].kind,
-            TokenKind::ReturnAnnotation
-        );
-        let head = self.take_statement_head();
-        let end = head
-            .last()
-            .map_or(self.previous_end(), |token| token.span.end);
-        let has_return_arrow = head
-            .iter()
-            .any(|token| matches!(token.kind, TokenKind::ReturnArrow));
-        let return_syntax = if return_annotation || has_return_arrow {
-            self.classify_return_head(&head)
-        } else {
-            ReturnSyntax {
-                from: None,
-                from_emoji: None,
-                to: None,
-                to_emoji: None,
-                value: spanned_from_tokens(self.source, &head),
-            }
-        };
-        self.consume_statement_terminator();
-        Some(StatementSyntax {
-            kind: StatementKindSyntax::Return(return_syntax),
-            comment,
-            span: SourceSpan::new(start, end.max(start)),
-        })
-    }
-
-    fn classify_return_head(&mut self, head: &[Token]) -> ReturnSyntax {
-        let arrow = head
-            .iter()
-            .position(|token| matches!(token.kind, TokenKind::ReturnArrow | TokenKind::Arrow));
-        let colon = head
-            .iter()
-            .position(|token| matches!(token.kind, TokenKind::Colon));
-        let to_end = colon.unwrap_or(head.len());
-        let (from, from_emoji, to, to_emoji) = if let Some(arrow) = arrow {
-            let (from, from_emoji) = last_endpoint(&head[..arrow]);
-            let (to, to_emoji) = first_endpoint(&head[arrow + 1..to_end]);
-            (from, from_emoji, to, to_emoji)
-        } else if colon.is_some() {
-            let (to, to_emoji) = first_endpoint(&head[..to_end]);
-            (None, None, to, to_emoji)
-        } else {
-            (None, None, None, None)
-        };
-        let value = colon.and_then(|colon| spanned_from_tokens(self.source, &head[colon + 1..]));
-        if arrow.is_none() && colon.is_none() {
-            return ReturnSyntax {
-                from: None,
-                from_emoji: None,
-                to: None,
-                to_emoji: None,
-                value: spanned_from_tokens(self.source, head),
+            TokenKind::Keyword(Keyword::Return)
+        ) {
+            let expr = {
+                let grammar = Grammar::new(self.source, &self.tokens);
+                grammar.expression(self.cursor)
             };
+            let value = expr.map(|expr| {
+                self.cursor = expr.end;
+                self.record_rule(&expr.rule);
+                trimmed_text(self.source, expr.rule.span.start, expr.rule.span.end)
+                    .unwrap_or_else(|| SpannedText::new(String::new(), expr.rule.span))
+            });
+            if matches!(self.peek_kind(), TokenKind::Semicolon) {
+                self.bump();
+            }
+            let end = self.previous_end().max(start);
+            return Some(StatementSyntax {
+                kind: StatementKindSyntax::Return(ReturnSyntax {
+                    from: None,
+                    from_emoji: None,
+                    to: None,
+                    to_emoji: None,
+                    value,
+                }),
+                comment,
+                span: SourceSpan::new(start, end),
+            });
         }
-        ReturnSyntax {
-            from,
-            from_emoji,
-            to,
-            to_emoji,
-            value,
-        }
+
+        let event = {
+            let grammar = Grammar::new(self.source, &self.tokens);
+            grammar.async_message(self.cursor)
+        };
+        let Some(event) = event else {
+            self.error(
+                "expected async message after ZenUML return annotation",
+                self.insertion_span(),
+            );
+            return None;
+        };
+        self.cursor = event.end;
+        self.record_rule(&event.rule);
+        let end = self.previous_end().max(start);
+        Some(StatementSyntax {
+            kind: StatementKindSyntax::Return(ReturnSyntax {
+                from: event.from.as_ref().map(|endpoint| endpoint.name.clone()),
+                from_emoji: event.from.and_then(|endpoint| endpoint.emoji),
+                to: event.to.as_ref().map(|endpoint| endpoint.name.clone()),
+                to_emoji: event.to.and_then(|endpoint| endpoint.emoji),
+                value: event.content,
+            }),
+            comment,
+            span: SourceSpan::new(start, end),
+        })
     }
 
     fn parse_divider(&mut self, comment: Option<SpannedText>) -> Option<StatementSyntax> {
@@ -652,11 +642,12 @@ impl<'a> Parser<'a> {
         let TokenKind::Divider(value) = token.kind else {
             return None;
         };
-        let label_value = value
-            .trim_matches(|character: char| character == '=' || character.is_whitespace())
-            .to_string();
-        let label = SpannedText::new(label_value, token.span);
-        self.consume_to_line_end();
+        let label = SpannedText::new(
+            value
+                .trim_matches(|character: char| character == '=' || character.is_whitespace())
+                .to_string(),
+            token.span,
+        );
         Some(StatementSyntax {
             kind: StatementKindSyntax::Divider(label),
             comment,
@@ -664,355 +655,189 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_message_or_creation(
+    fn parse_creation_message_async_or_return(
         &mut self,
         depth: usize,
         comment: Option<SpannedText>,
     ) -> Option<StatementSyntax> {
-        let start = self.peek().span.start;
-        let head = self.take_statement_head();
-        if head.is_empty() {
-            self.error("expected ZenUML statement", self.peek().span);
-            return None;
-        }
-        let body = if self
-            .consume_simple(TokenKindDiscriminant::OpenBrace)
-            .is_some()
-        {
-            self.parse_block(depth + 1, true, None)
-        } else {
-            Vec::new()
+        let creation = {
+            let grammar = Grammar::new(self.source, &self.tokens);
+            grammar.creation_body(self.cursor)
         };
-        self.consume_statement_terminator();
-        let end = self.previous_end().max(start);
-
-        let assignment_index = top_level_position(&head, |kind| matches!(kind, TokenKind::Assign));
-        let assignment = assignment_index.and_then(|index| last_name(&head[..index]));
-        let body_start = assignment_index.map_or(0, |index| index + 1);
-        if head
-            .get(body_start)
-            .is_some_and(|token| matches!(token.kind, TokenKind::Keyword(Keyword::New)))
-        {
-            return self.creation_statement(
-                start,
-                end,
-                comment,
-                assignment,
-                &head[body_start..],
-                body,
-            );
+        if let Some(creation) = creation {
+            return self.consume_creation(depth, comment, creation);
         }
 
-        if top_level_position(&head, |kind| matches!(kind, TokenKind::ReturnArrow)).is_some() {
-            return Some(StatementSyntax {
-                kind: StatementKindSyntax::Return(self.classify_return_head(&head[body_start..])),
-                comment,
-                span: SourceSpan::new(start, end),
-            });
-        }
-
-        let arrow = top_level_position(&head, |kind| matches!(kind, TokenKind::Arrow));
-        let colon = top_level_position(&head, |kind| matches!(kind, TokenKind::Colon));
-        if let Some(colon) = colon {
-            let to_start = arrow.map_or(body_start, |index| index + 1);
-            let (from, from_emoji) = arrow
-                .map(|index| last_endpoint(&head[body_start..index]))
-                .unwrap_or_default();
-            let (to, to_emoji) = first_endpoint(&head[to_start..colon]);
-            let signature =
-                spanned_from_tokens(self.source, &head[colon + 1..]).unwrap_or_else(|| {
-                    SpannedText::new(
-                        String::new(),
-                        SourceSpan::new(head[colon].span.end, head[colon].span.end),
-                    )
-                });
-            return Some(StatementSyntax {
-                kind: StatementKindSyntax::Message(MessageSyntax {
-                    from,
-                    from_emoji,
-                    to,
-                    to_emoji,
-                    signature,
-                    assignment,
-                    style: MessageStyleSyntax::Asynchronous,
-                    body,
-                }),
-                comment,
-                span: SourceSpan::new(start, end),
-            });
-        }
-
-        let dot = top_level_position(&head[body_start..], |kind| matches!(kind, TokenKind::Dot))
-            .map(|index| body_start + index);
-        let (from, from_emoji, to, to_emoji, signature) = if let Some(dot) = dot {
-            let arrow = arrow.filter(|arrow| *arrow < dot);
-            let to_start = arrow.map_or(body_start, |arrow| arrow + 1);
-            let (from, from_emoji) = arrow
-                .map(|arrow| last_endpoint(&head[body_start..arrow]))
-                .unwrap_or_default();
-            let (to, to_emoji) = last_endpoint(&head[to_start..dot]);
-            let signature = spanned_from_tokens(self.source, &head[dot + 1..]);
-            (from, from_emoji, to, to_emoji, signature)
-        } else if is_function_like(&head[body_start..]) {
-            (
-                None,
-                None,
-                None,
-                None,
-                spanned_from_tokens(self.source, &head[body_start..]),
-            )
-        } else if let Some(arrow) = arrow {
-            let (from, from_emoji) = last_endpoint(&head[body_start..arrow]);
-            let (to, to_emoji) = first_endpoint(&head[arrow + 1..]);
-            (
-                from,
-                from_emoji,
-                to,
-                to_emoji,
-                Some(SpannedText::new(
-                    String::new(),
-                    SourceSpan::new(head[arrow].span.end, head[arrow].span.end),
-                )),
-            )
-        } else {
-            self.error("unsupported ZenUML statement", SourceSpan::new(start, end));
-            return None;
+        let message = {
+            let grammar = Grammar::new(self.source, &self.tokens);
+            grammar.message_body(self.cursor)
         };
-        let Some(signature) = signature else {
-            self.error(
-                "expected ZenUML message signature",
-                SourceSpan::new(start, end),
-            );
-            return None;
+        if let Some(message) = message.filter(|message| {
+            let grammar = Grammar::new(self.source, &self.tokens);
+            grammar.message_candidate_is_complete(message.end)
+        }) {
+            return self.consume_message(depth, comment, message);
+        }
+
+        let event = {
+            let grammar = Grammar::new(self.source, &self.tokens);
+            grammar.async_message(self.cursor)
         };
-        Some(StatementSyntax {
-            kind: StatementKindSyntax::Message(MessageSyntax {
-                from,
-                from_emoji,
-                to,
-                to_emoji,
-                signature,
-                assignment,
-                style: MessageStyleSyntax::Synchronous,
-                body,
-            }),
-            comment,
-            span: SourceSpan::new(start, end),
-        })
+        if let Some(event) = event {
+            return self.consume_async_message(comment, event);
+        }
+
+        let returned = {
+            let grammar = Grammar::new(self.source, &self.tokens);
+            grammar.return_async_message(self.cursor)
+        };
+        returned.map(|returned| self.consume_return_async(comment, returned))
     }
 
-    fn creation_statement(
+    fn consume_creation(
         &mut self,
-        start: usize,
-        end: usize,
+        depth: usize,
         comment: Option<SpannedText>,
-        assignment: Option<SpannedText>,
-        creation: &[Token],
-        body: Vec<StatementSyntax>,
+        creation: CreationBodyMatch,
     ) -> Option<StatementSyntax> {
-        let Some(constructor) = first_name(&creation[1..]) else {
-            self.error(
-                "expected constructor after ZenUML `new`",
-                SourceSpan::new(start, end),
-            );
-            return None;
-        };
-        let signature =
-            spanned_from_tokens(self.source, &creation[1..]).unwrap_or_else(|| constructor.clone());
+        let start = creation.rule.span.start;
+        self.cursor = creation.end;
+        self.record_rule(&creation.rule);
+        let body = self.consume_optional_statement_body(depth);
+        let end = self.previous_end().max(start);
+        let constructor = creation
+            .constructor
+            .unwrap_or_else(|| SpannedText::new(MISSING_CONSTRUCTOR, creation.new_span));
         Some(StatementSyntax {
             kind: StatementKindSyntax::Creation(CreationSyntax {
-                constructor,
-                assignment,
-                signature,
-                body,
+                constructor: constructor.clone(),
+                assignment: creation.assignment,
+                signature: SpannedText::new(creation.formatted, creation.signature_span),
+                body: body.statements,
+                body_comment: body.closing_comment,
             }),
             comment,
             span: SourceSpan::new(start, end),
         })
     }
 
-    fn take_statement_head(&mut self) -> Vec<Token> {
-        let mut out = Vec::new();
-        let mut parens = 0usize;
-        let mut brackets = 0usize;
-        while !self.at_eof() {
-            match self.peek_kind() {
-                TokenKind::OpenParen => parens += 1,
-                TokenKind::CloseParen => parens = parens.saturating_sub(1),
-                TokenKind::OpenBracket => brackets += 1,
-                TokenKind::CloseBracket => brackets = brackets.saturating_sub(1),
-                TokenKind::OpenBrace if parens == 0 && brackets == 0 => break,
-                TokenKind::CloseBrace if parens == 0 && brackets == 0 => break,
-                TokenKind::Semicolon | TokenKind::Newline if parens == 0 && brackets == 0 => break,
-                _ => {}
-            }
-            out.push(self.bump().clone());
-        }
-        if parens > 0 {
-            self.error(
-                "unterminated ZenUML invocation; expected `)`",
-                self.insertion_span(),
-            );
-        }
-        if brackets > 0 {
-            self.error(
-                "unterminated ZenUML emoji; expected `]`",
-                self.insertion_span(),
-            );
-        }
-        out
+    fn consume_message(
+        &mut self,
+        depth: usize,
+        comment: Option<SpannedText>,
+        message: MessageBodyMatch,
+    ) -> Option<StatementSyntax> {
+        let start = message.rule.span.start;
+        self.cursor = message.end;
+        self.record_rule(&message.rule);
+        let body = self.consume_optional_statement_body(depth);
+        let end = self.previous_end().max(start);
+        Some(StatementSyntax {
+            kind: StatementKindSyntax::Message(MessageSyntax {
+                from: message.from.as_ref().map(|endpoint| endpoint.name.clone()),
+                from_emoji: message.from.and_then(|endpoint| endpoint.emoji),
+                to: message.to.as_ref().map(|endpoint| endpoint.name.clone()),
+                to_emoji: message.to.and_then(|endpoint| endpoint.emoji),
+                signature: SpannedText::new(message.formatted, message.signature_span),
+                assignment: message.assignment,
+                style: MessageStyleSyntax::Synchronous,
+                body: body.statements,
+                body_comment: body.closing_comment,
+            }),
+            comment,
+            span: SourceSpan::new(start, end),
+        })
     }
 
-    fn take_parenthesized_text(&mut self) -> Option<SpannedText> {
-        let open = self.consume_simple(TokenKindDiscriminant::OpenParen)?;
-        let content_start = open.span.end;
-        let mut depth = 1usize;
-        let mut content_end = content_start;
-        while !self.at_eof() {
-            match self.peek_kind() {
-                TokenKind::OpenParen => {
-                    depth += 1;
-                    content_end = self.bump().span.end;
-                }
-                TokenKind::CloseParen => {
-                    depth -= 1;
-                    if depth == 0 {
-                        let close_start = self.bump().span.start;
-                        return trimmed_text(self.source, content_start, close_start).or_else(
-                            || {
-                                Some(SpannedText::new(
-                                    String::new(),
-                                    SourceSpan::new(content_start, content_start),
-                                ))
-                            },
-                        );
-                    }
-                    content_end = self.bump().span.end;
-                }
-                TokenKind::OpenBrace | TokenKind::Newline if depth == 1 => {
-                    // 3.47.8 accepts a missing closing parenthesis during editor recovery.
-                    return trimmed_text(self.source, content_start, content_end).or_else(|| {
-                        Some(SpannedText::new(
-                            String::new(),
-                            SourceSpan::new(content_start, content_start),
-                        ))
-                    });
-                }
-                _ => content_end = self.bump().span.end,
-            }
+    fn consume_optional_statement_body(&mut self, depth: usize) -> ParsedBlock {
+        if matches!(self.peek_kind(), TokenKind::Semicolon) {
+            self.bump();
+            ParsedBlock::default()
+        } else if matches!(self.peek_kind(), TokenKind::OpenBrace) {
+            self.bump();
+            self.parse_block(depth + 1, true, None, None)
+        } else {
+            ParsedBlock::default()
         }
-        self.error(
-            "unterminated ZenUML expression; expected `)`",
-            self.insertion_span(),
-        );
-        trimmed_text(self.source, content_start, content_end)
     }
 
-    fn take_leading_comments(&mut self) -> Option<SpannedText> {
-        self.skip_newlines();
-        let mut values = Vec::new();
-        let mut start = None;
-        let mut end = 0usize;
-        while let Token {
-            kind: TokenKind::Comment(value),
-            ..
-        } = self.peek().clone()
-        {
-            let token = self.bump().clone();
-            start.get_or_insert(token.span.start);
-            end = token.span.end;
-            values.push(value);
-            self.skip_newlines();
+    fn consume_async_message(
+        &mut self,
+        comment: Option<SpannedText>,
+        event: AsyncMessageMatch,
+    ) -> Option<StatementSyntax> {
+        let start = event.rule.span.start;
+        self.cursor = event.end;
+        self.record_rule(&event.rule);
+        let end = self.previous_end().max(start);
+        let signature = event
+            .content
+            .clone()
+            .unwrap_or_else(|| SpannedText::new(String::new(), SourceSpan::new(end, end)));
+        Some(StatementSyntax {
+            kind: StatementKindSyntax::Message(MessageSyntax {
+                from: event.from.as_ref().map(|endpoint| endpoint.name.clone()),
+                from_emoji: event.from.and_then(|endpoint| endpoint.emoji),
+                to: event.to.as_ref().map(|endpoint| endpoint.name.clone()),
+                to_emoji: event.to.and_then(|endpoint| endpoint.emoji),
+                signature,
+                assignment: None,
+                style: MessageStyleSyntax::Asynchronous,
+                body: Vec::new(),
+                body_comment: None,
+            }),
+            comment,
+            span: SourceSpan::new(start, end),
+        })
+    }
+
+    fn consume_return_async(
+        &mut self,
+        comment: Option<SpannedText>,
+        returned: ReturnAsyncMatch,
+    ) -> StatementSyntax {
+        let start = returned.rule.span.start;
+        self.cursor = returned.end;
+        self.record_rule(&returned.rule);
+        let end = self.previous_end().max(start);
+        StatementSyntax {
+            kind: StatementKindSyntax::Return(ReturnSyntax {
+                from: Some(returned.from.name),
+                from_emoji: returned.from.emoji,
+                to: returned.to.as_ref().map(|endpoint| endpoint.name.clone()),
+                to_emoji: returned.to.and_then(|endpoint| endpoint.emoji),
+                value: returned.content,
+            }),
+            comment,
+            span: SourceSpan::new(start, end),
         }
-        start.map(|start| SpannedText::new(values.join("\n"), SourceSpan::new(start, end)))
+    }
+
+    fn record_rule(&mut self, rule: &RuleNode) {
+        rule.record(&mut self.grammar_rule_spans);
+    }
+
+    fn take_current_comment(&mut self) -> Option<SpannedText> {
+        self.comments.get_mut(self.cursor).and_then(Option::take)
+    }
+
+    fn discard_current_comment(&mut self) {
+        if let Some(comment) = self.comments.get_mut(self.cursor) {
+            *comment = None;
+        }
+    }
+
+    fn advance_to_offset(&mut self, offset: usize) {
+        while !self.at_eof() && self.peek().span.start < offset {
+            self.discard_current_comment();
+            self.bump();
+        }
     }
 
     fn take_name(&mut self) -> Option<SpannedText> {
-        let token = self.peek().clone();
-        let value = match token.kind {
-            TokenKind::Identifier(value) => value,
-            TokenKind::StringLiteral { value, .. } => value,
-            _ => return None,
-        };
-        self.cursor += 1;
-        Some(SpannedText::new(value, token.span))
-    }
-
-    fn looks_like_participant_line(&self) -> bool {
-        if !matches!(
-            self.peek_kind(),
-            TokenKind::Annotation(_)
-                | TokenKind::StereotypeOpen
-                | TokenKind::OpenBracket
-                | TokenKind::Identifier(_)
-                | TokenKind::StringLiteral { .. }
-        ) {
-            return false;
-        }
-        let mut cursor = self.cursor;
-        while cursor < self.tokens.len() {
-            match &self.tokens[cursor].kind {
-                TokenKind::Newline | TokenKind::Eof | TokenKind::CloseBrace => return true,
-                TokenKind::Dot
-                | TokenKind::Arrow
-                | TokenKind::ReturnArrow
-                | TokenKind::Colon
-                | TokenKind::Assign
-                | TokenKind::OpenParen => return false,
-                _ => cursor += 1,
-            }
-        }
-        true
-    }
-
-    fn finish_header_line(&mut self) {
-        if !self.at_line_end() {
-            self.error(
-                "unexpected content after `zenuml` header",
-                self.current_line_span(),
-            );
-        }
-        self.consume_to_line_end();
-    }
-
-    fn consume_statement_terminator(&mut self) {
-        self.consume_simple(TokenKindDiscriminant::Semicolon);
-        if matches!(self.peek_kind(), TokenKind::Newline) {
-            self.bump();
-        }
-    }
-
-    fn consume_to_line_end(&mut self) {
-        while !self.at_line_end() && !self.at_eof() {
-            self.bump();
-        }
-        if matches!(self.peek_kind(), TokenKind::Newline) {
-            self.bump();
-        }
-    }
-
-    fn synchronize_statement(&mut self) {
-        let mut braces = 0usize;
-        while !self.at_eof() {
-            match self.peek_kind() {
-                TokenKind::OpenBrace => {
-                    braces += 1;
-                    self.bump();
-                }
-                TokenKind::CloseBrace if braces > 0 => {
-                    braces -= 1;
-                    self.bump();
-                }
-                TokenKind::CloseBrace => break,
-                TokenKind::Newline | TokenKind::Semicolon if braces == 0 => {
-                    self.bump();
-                    break;
-                }
-                _ => {
-                    self.bump();
-                }
-            }
-        }
+        let name = token_name(self.peek())?;
+        self.bump();
+        Some(name)
     }
 
     fn skip_balanced_block(&mut self) {
@@ -1031,33 +856,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn skip_newlines(&mut self) {
-        while matches!(self.peek_kind(), TokenKind::Newline) {
-            self.bump();
-        }
-    }
-
-    fn at_line_end(&self) -> bool {
-        matches!(
-            self.peek_kind(),
-            TokenKind::Newline | TokenKind::Eof | TokenKind::CloseBrace
-        )
-    }
-
     fn at_keyword(&self, keyword: Keyword) -> bool {
         matches!(self.peek_kind(), TokenKind::Keyword(found) if *found == keyword)
     }
 
     fn at_eof(&self) -> bool {
         matches!(self.peek_kind(), TokenKind::Eof)
-    }
-
-    fn consume_simple(&mut self, expected: TokenKindDiscriminant) -> Option<Token> {
-        if expected.matches(self.peek_kind()) {
-            Some(self.bump().clone())
-        } else {
-            None
-        }
     }
 
     fn peek(&self) -> &Token {
@@ -1086,18 +890,6 @@ impl<'a> Parser<'a> {
         SourceSpan::new(self.peek().span.start, self.peek().span.start)
     }
 
-    fn current_line_span(&self) -> SourceSpan {
-        let start = self.peek().span.start;
-        SourceSpan::new(start, self.line_end_offset().max(start))
-    }
-
-    fn line_end_offset(&self) -> usize {
-        self.tokens[self.cursor..]
-            .iter()
-            .find(|token| matches!(token.kind, TokenKind::Newline | TokenKind::Eof))
-            .map_or(self.source.len(), |token| token.span.start)
-    }
-
     fn error(&mut self, message: impl Into<String>, span: SourceSpan) {
         self.diagnostics.push(SyntaxDiagnostic {
             message: message.into(),
@@ -1106,116 +898,1226 @@ impl<'a> Parser<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
-enum TokenKindDiscriminant {
-    OpenParen,
-    CloseParen,
-    OpenBrace,
-    CloseBrace,
-    OpenBracket,
-    CloseBracket,
-    Comma,
-    Semicolon,
+fn comments_before_default_tokens(raw_tokens: &[Token]) -> Vec<Option<SpannedText>> {
+    let mut slots = Vec::new();
+    let mut pending = Vec::new();
+    for token in raw_tokens {
+        match (&token.kind, token.channel) {
+            (TokenKind::Comment(value), TokenChannel::Comment) => {
+                pending.push(SpannedText::new(value.clone(), token.span));
+            }
+            (_, TokenChannel::Default) => {
+                let comment = pending.first().map(|first| {
+                    let end = pending.last().map_or(first.span.end, |last| last.span.end);
+                    SpannedText::new(
+                        pending
+                            .iter()
+                            .map(|comment| comment.value.as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                        SourceSpan::new(first.span.start, end),
+                    )
+                });
+                slots.push(comment);
+                pending.clear();
+            }
+            _ => {}
+        }
+    }
+    slots
 }
 
-impl TokenKindDiscriminant {
-    fn matches(self, kind: &TokenKind) -> bool {
-        matches!(
-            (self, kind),
-            (Self::OpenParen, TokenKind::OpenParen)
-                | (Self::CloseParen, TokenKind::CloseParen)
-                | (Self::OpenBrace, TokenKind::OpenBrace)
-                | (Self::CloseBrace, TokenKind::CloseBrace)
-                | (Self::OpenBracket, TokenKind::OpenBracket)
-                | (Self::CloseBracket, TokenKind::CloseBracket)
-                | (Self::Comma, TokenKind::Comma)
-                | (Self::Semicolon, TokenKind::Semicolon)
-        )
+#[derive(Debug, Default)]
+struct ParsedBlock {
+    statements: Vec<StatementSyntax>,
+    closing_comment: Option<SpannedText>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FragmentForm {
+    OptionalBlock,
+    RecoverRequiredBlock,
+    Section,
+}
+
+#[derive(Debug, Clone)]
+struct RuleNode {
+    kind: GrammarRuleKindSyntax,
+    span: SourceSpan,
+    children: Vec<RuleNode>,
+}
+
+impl RuleNode {
+    fn leaf(kind: GrammarRuleKindSyntax, span: SourceSpan) -> Self {
+        Self {
+            kind,
+            span,
+            children: Vec::new(),
+        }
+    }
+
+    fn with_children(
+        kind: GrammarRuleKindSyntax,
+        span: SourceSpan,
+        children: Vec<RuleNode>,
+    ) -> Self {
+        Self {
+            kind,
+            span,
+            children,
+        }
+    }
+
+    fn record(&self, out: &mut Vec<GrammarRuleSpanSyntax>) {
+        out.push(GrammarRuleSpanSyntax {
+            kind: self.kind,
+            span: self.span,
+        });
+        for child in &self.children {
+            child.record(out);
+        }
     }
 }
 
-fn first_name(tokens: &[Token]) -> Option<SpannedText> {
-    tokens.iter().find_map(token_name)
+#[derive(Debug, Clone)]
+struct ParticipantMatch {
+    end: usize,
+    name: Option<SpannedText>,
+    label: Option<SpannedText>,
+    participant_type: Option<SpannedText>,
+    stereotype: Option<SpannedText>,
+    emoji: Option<SpannedText>,
+    width: Option<SpannedText>,
+    color: Option<SpannedText>,
+    rule: RuleNode,
 }
 
-fn last_name(tokens: &[Token]) -> Option<SpannedText> {
-    tokens.iter().rev().find_map(token_name)
+#[derive(Debug, Clone)]
+struct StereotypeMatch {
+    end: usize,
+    value: Option<SpannedText>,
 }
 
-fn first_endpoint(tokens: &[Token]) -> (Option<SpannedText>, Option<SpannedText>) {
-    let (emoji, after_emoji) = bracket_emoji(tokens);
-    let name = after_emoji
-        .and_then(|index| first_name(&tokens[index..]))
-        .or_else(|| first_name(tokens));
-    (name, emoji)
+#[derive(Debug, Clone)]
+struct EndpointMatch {
+    end: usize,
+    name: SpannedText,
+    emoji: Option<SpannedText>,
 }
 
-fn last_endpoint(tokens: &[Token]) -> (Option<SpannedText>, Option<SpannedText>) {
-    let (emoji, after_emoji) = bracket_emoji(tokens);
-    let name = after_emoji
-        .and_then(|index| last_name(&tokens[index..]))
-        .or_else(|| last_name(tokens));
-    (name, emoji)
+#[derive(Debug, Clone)]
+struct AssignmentMatch {
+    end: usize,
+    assignee: Option<SpannedText>,
+    rule: RuleNode,
 }
 
-fn bracket_emoji(tokens: &[Token]) -> (Option<SpannedText>, Option<usize>) {
-    let Some(open) = tokens
-        .iter()
-        .position(|token| matches!(token.kind, TokenKind::OpenBracket))
-    else {
-        return (None, None);
-    };
-    let Some(relative_close) = tokens[open + 1..]
-        .iter()
-        .position(|token| matches!(token.kind, TokenKind::CloseBracket))
-    else {
-        return (None, None);
-    };
-    let close = open + 1 + relative_close;
-    (first_name(&tokens[open + 1..close]), Some(close + 1))
+#[derive(Debug, Clone)]
+struct InvocationMatch {
+    end: usize,
+    formatted: String,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct SignatureMatch {
+    end: usize,
+    formatted: String,
+    invoked: bool,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct FuncMatch {
+    end: usize,
+    formatted: String,
+    span: SourceSpan,
+    first_invoked: bool,
+    first_emoji: bool,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct MessageBodyMatch {
+    end: usize,
+    assignment: Option<SpannedText>,
+    from: Option<EndpointMatch>,
+    to: Option<EndpointMatch>,
+    formatted: String,
+    signature_span: SourceSpan,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct CreationBodyMatch {
+    end: usize,
+    assignment: Option<SpannedText>,
+    constructor: Option<SpannedText>,
+    formatted: String,
+    signature_span: SourceSpan,
+    new_span: SourceSpan,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct AsyncMessageMatch {
+    end: usize,
+    from: Option<EndpointMatch>,
+    to: Option<EndpointMatch>,
+    content: Option<SpannedText>,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct ReturnAsyncMatch {
+    end: usize,
+    from: EndpointMatch,
+    to: Option<EndpointMatch>,
+    content: Option<SpannedText>,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct ExprMatch {
+    end: usize,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct ParameterMatch {
+    end: usize,
+    formatted: String,
+    rule: RuleNode,
+}
+
+#[derive(Debug, Clone)]
+struct ParExprMatch {
+    end: usize,
+    label: Option<SpannedText>,
+    rule: RuleNode,
+}
+
+struct Grammar<'a> {
+    source: &'a str,
+    tokens: &'a [Token],
+}
+
+impl<'a> Grammar<'a> {
+    fn new(source: &'a str, tokens: &'a [Token]) -> Self {
+        Self { source, tokens }
+    }
+
+    fn select_head_participant(&self, start: usize) -> Option<ParticipantMatch> {
+        self.participant_candidates(start)
+            .into_iter()
+            .find(|candidate| self.head_suffix_viable(candidate.end, 0))
+    }
+
+    fn head_suffix_viable(&self, start: usize, depth: usize) -> bool {
+        if depth > self.tokens.len() || self.is_eof(start) {
+            return self.is_eof(start);
+        }
+        if matches!(self.kind(start), Some(TokenKind::StarterAnnotation)) {
+            return true;
+        }
+        if matches!(self.kind(start), Some(TokenKind::Keyword(Keyword::Group))) {
+            return true;
+        }
+        if self.can_start_statement(start) {
+            return true;
+        }
+        self.participant_candidates(start)
+            .into_iter()
+            .any(|candidate| {
+                candidate.end > start && self.head_suffix_viable(candidate.end, depth + 1)
+            })
+    }
+
+    fn participant_candidates(&self, start: usize) -> Vec<ParticipantMatch> {
+        let mut out = Vec::new();
+        match self.kind(start) {
+            Some(TokenKind::Annotation(value)) => {
+                let participant_type =
+                    Some(SpannedText::new(value.clone(), self.tokens[start].span));
+                for stereotype in self.stereotype_candidates(start + 1) {
+                    self.push_decorated_participant_candidates(
+                        start,
+                        stereotype.end,
+                        participant_type.clone(),
+                        stereotype.value,
+                        &mut out,
+                    );
+                }
+                self.push_decorated_participant_candidates(
+                    start,
+                    start + 1,
+                    participant_type.clone(),
+                    None,
+                    &mut out,
+                );
+                out.push(self.decorator_only(start, start + 1, participant_type, None));
+            }
+            kind if matches!(kind, Some(TokenKind::StereotypeOpen))
+                || matches!(kind, Some(TokenKind::Operator(value)) if value == "<") =>
+            {
+                for stereotype in self.stereotype_candidates(start) {
+                    self.push_decorated_participant_candidates(
+                        start,
+                        stereotype.end,
+                        None,
+                        stereotype.value.clone(),
+                        &mut out,
+                    );
+                    out.push(self.decorator_only(start, stereotype.end, None, stereotype.value));
+                }
+            }
+            _ => {
+                if let Some(candidate) = self.finish_participant(start, start, None, None) {
+                    out.push(candidate);
+                }
+            }
+        }
+        out.sort_by_key(|candidate| std::cmp::Reverse(candidate.end));
+        out.dedup_by(|left, right| left.end == right.end && left.name == right.name);
+        out
+    }
+
+    fn push_decorated_participant_candidates(
+        &self,
+        start: usize,
+        cursor: usize,
+        participant_type: Option<SpannedText>,
+        stereotype: Option<SpannedText>,
+        out: &mut Vec<ParticipantMatch>,
+    ) {
+        if let Some(candidate) =
+            self.finish_participant(start, cursor, participant_type, stereotype)
+        {
+            out.push(candidate);
+        }
+    }
+
+    fn finish_participant(
+        &self,
+        start: usize,
+        mut cursor: usize,
+        participant_type: Option<SpannedText>,
+        stereotype: Option<SpannedText>,
+    ) -> Option<ParticipantMatch> {
+        let (emoji, after_emoji) = self.emoji(cursor).map_or((None, cursor), |emoji| {
+            let end = emoji.end;
+            (Some(emoji.name), end)
+        });
+        cursor = after_emoji;
+        let name = self.name(cursor)?;
+        cursor += 1;
+        let width = match self.kind(cursor) {
+            Some(TokenKind::Integer(value)) => {
+                let width = SpannedText::new(value.clone(), self.tokens[cursor].span);
+                cursor += 1;
+                Some(width)
+            }
+            _ => None,
+        };
+        let label = if matches!(self.kind(cursor), Some(TokenKind::Keyword(Keyword::As))) {
+            cursor += 1;
+            let label = self.name(cursor);
+            if label.is_some() {
+                cursor += 1;
+            }
+            label
+        } else {
+            None
+        };
+        let color = match self.kind(cursor) {
+            Some(TokenKind::Color(value)) => {
+                let color = SpannedText::new(value.clone(), self.tokens[cursor].span);
+                cursor += 1;
+                Some(color)
+            }
+            _ => None,
+        };
+        let span = self.span(start, cursor);
+        Some(ParticipantMatch {
+            end: cursor,
+            name: Some(name),
+            label,
+            participant_type,
+            stereotype,
+            emoji,
+            width,
+            color,
+            rule: RuleNode::leaf(GrammarRuleKindSyntax::Participant, span),
+        })
+    }
+
+    fn decorator_only(
+        &self,
+        start: usize,
+        end: usize,
+        participant_type: Option<SpannedText>,
+        stereotype: Option<SpannedText>,
+    ) -> ParticipantMatch {
+        let span = self.span(start, end);
+        ParticipantMatch {
+            end,
+            name: None,
+            label: None,
+            participant_type,
+            stereotype,
+            emoji: None,
+            width: None,
+            color: None,
+            rule: RuleNode::leaf(GrammarRuleKindSyntax::Participant, span),
+        }
+    }
+
+    fn stereotype_candidates(&self, start: usize) -> Vec<StereotypeMatch> {
+        let mut out = Vec::new();
+        let Some(open) = self.kind(start) else {
+            return out;
+        };
+        if !matches!(open, TokenKind::StereotypeOpen)
+            && !matches!(open, TokenKind::Operator(value) if value == "<")
+        {
+            return out;
+        }
+
+        if matches!(open, TokenKind::StereotypeOpen)
+            && let Some(name) = self.name(start + 1)
+        {
+            let mut end = start + 2;
+            if matches!(self.kind(end), Some(TokenKind::StereotypeClose))
+                || matches!(self.kind(end), Some(TokenKind::Operator(value)) if value == ">")
+            {
+                end += 1;
+            }
+            out.push(StereotypeMatch {
+                end,
+                value: Some(name),
+            });
+        }
+
+        let mut bare_end = start + 1;
+        if matches!(self.kind(bare_end), Some(TokenKind::StereotypeClose))
+            || matches!(self.kind(bare_end), Some(TokenKind::Operator(value)) if value == ">")
+        {
+            bare_end += 1;
+        }
+        out.push(StereotypeMatch {
+            end: bare_end,
+            value: None,
+        });
+        out.sort_by_key(|candidate| std::cmp::Reverse(candidate.end));
+        out
+    }
+
+    fn message_body(&self, start: usize) -> Option<MessageBodyMatch> {
+        if let Some(assignment) = self.assignment(start) {
+            let mut children = vec![assignment.rule.clone()];
+            let mut from = None;
+            let mut to = None;
+            let mut formatted = String::new();
+            let mut signature_span = SourceSpan::new(
+                self.token_end(assignment.end.saturating_sub(1)),
+                self.token_end(assignment.end.saturating_sub(1)),
+            );
+            let mut end = assignment.end;
+            if let Some(from_to) = self.message_path(end) {
+                from = from_to.from;
+                to = Some(from_to.to);
+                end = from_to.end;
+                if let Some(func) = self.func(end) {
+                    formatted = func.formatted;
+                    signature_span = func.span;
+                    children.push(func.rule);
+                    end = func.end;
+                }
+            } else if let Some(func) = self.bare_func(end) {
+                formatted = func.formatted;
+                signature_span = func.span;
+                children.push(func.rule);
+                end = func.end;
+            }
+            let span = self.span(start, end);
+            return Some(MessageBodyMatch {
+                end,
+                assignment: assignment.assignee,
+                from,
+                to,
+                formatted,
+                signature_span,
+                rule: RuleNode::with_children(GrammarRuleKindSyntax::MessageBody, span, children),
+            });
+        }
+
+        if let Some(from_to) = self.message_path(start) {
+            let mut end = from_to.end;
+            let mut children = Vec::new();
+            let (formatted, signature_span) = if let Some(func) = self.func(end) {
+                end = func.end;
+                let result = (func.formatted.clone(), func.span);
+                children.push(func.rule);
+                result
+            } else {
+                let offset = self.token_end(end.saturating_sub(1));
+                (String::new(), SourceSpan::new(offset, offset))
+            };
+            let span = self.span(start, end);
+            return Some(MessageBodyMatch {
+                end,
+                assignment: None,
+                from: from_to.from,
+                to: Some(from_to.to),
+                formatted,
+                signature_span,
+                rule: RuleNode::with_children(GrammarRuleKindSyntax::MessageBody, span, children),
+            });
+        }
+
+        let func = self.bare_func(start)?;
+        let span = self.span(start, func.end);
+        Some(MessageBodyMatch {
+            end: func.end,
+            assignment: None,
+            from: None,
+            to: None,
+            formatted: func.formatted.clone(),
+            signature_span: func.span,
+            rule: RuleNode::with_children(
+                GrammarRuleKindSyntax::MessageBody,
+                span,
+                vec![func.rule],
+            ),
+        })
+    }
+
+    fn creation_body(&self, start: usize) -> Option<CreationBodyMatch> {
+        let assignment = self.assignment(start);
+        let cursor = assignment
+            .as_ref()
+            .map_or(start, |assignment| assignment.end);
+        if !matches!(self.kind(cursor), Some(TokenKind::Keyword(Keyword::New))) {
+            return None;
+        }
+        let new_span = self.tokens[cursor].span;
+        let mut end = cursor + 1;
+        let constructor = self.name(end);
+        let signature_start = constructor
+            .as_ref()
+            .map_or(new_span.end, |name| name.span.start);
+        let mut formatted = String::new();
+        let mut children = assignment
+            .as_ref()
+            .map(|assignment| vec![assignment.rule.clone()])
+            .unwrap_or_default();
+        if let Some(constructor) = &constructor {
+            formatted.push_str(&constructor.value);
+            end += 1;
+            if let Some(invocation) = self.invocation(end) {
+                formatted.push_str(&invocation.formatted);
+                end = invocation.end;
+                children.push(invocation.rule);
+            }
+        }
+        let signature_end = if constructor.is_some() {
+            self.token_end(end.saturating_sub(1))
+        } else {
+            new_span.end
+        };
+        let span = self.span(start, end);
+        Some(CreationBodyMatch {
+            end,
+            assignment: assignment.and_then(|assignment| assignment.assignee),
+            constructor,
+            formatted,
+            signature_span: SourceSpan::new(signature_start, signature_end),
+            new_span,
+            rule: RuleNode::with_children(GrammarRuleKindSyntax::CreationBody, span, children),
+        })
+    }
+
+    fn async_message(&self, start: usize) -> Option<AsyncMessageMatch> {
+        let first = self.endpoint(start)?;
+        if matches!(self.kind(first.end), Some(TokenKind::Arrow)) {
+            if let Some(to) = self.endpoint(first.end + 1) {
+                if matches!(self.kind(to.end), Some(TokenKind::Colon)) {
+                    let event_start = to.end + 1;
+                    return Some(self.finish_event(start, Some(first), Some(to), event_start));
+                }
+                let end = to.end;
+                return Some(AsyncMessageMatch {
+                    end,
+                    from: Some(first),
+                    to: Some(to),
+                    content: None,
+                    rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+                });
+            }
+            let end = first.end + 1;
+            return Some(AsyncMessageMatch {
+                end,
+                from: Some(first),
+                to: None,
+                content: None,
+                rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+            });
+        }
+        if matches!(self.kind(first.end), Some(TokenKind::Colon)) {
+            return Some(self.finish_event(start, None, Some(first.clone()), first.end + 1));
+        }
+        if matches!(self.kind(first.end), Some(TokenKind::Operator(value)) if value == "-") {
+            let to = self.endpoint(first.end + 1);
+            let end = to.as_ref().map_or(first.end + 1, |to| to.end);
+            return Some(AsyncMessageMatch {
+                end,
+                from: Some(first),
+                to,
+                content: None,
+                rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+            });
+        }
+        None
+    }
+
+    fn finish_event(
+        &self,
+        start: usize,
+        from: Option<EndpointMatch>,
+        to: Option<EndpointMatch>,
+        mut end: usize,
+    ) -> AsyncMessageMatch {
+        let content = match self.kind(end) {
+            Some(TokenKind::EventPayload(value)) => {
+                let token = &self.tokens[end];
+                end += 1;
+                trimmed_text(self.source, token.span.start, token.span.end)
+                    .or_else(|| Some(SpannedText::new(value.clone(), token.span)))
+            }
+            _ => None,
+        };
+        if matches!(self.kind(end), Some(TokenKind::EventEnd)) {
+            end += 1;
+        }
+        AsyncMessageMatch {
+            end,
+            from,
+            to,
+            content,
+            rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+        }
+    }
+
+    fn return_async_message(&self, start: usize) -> Option<ReturnAsyncMatch> {
+        let from = self.endpoint(start)?;
+        if !matches!(self.kind(from.end), Some(TokenKind::ReturnArrow)) {
+            return None;
+        }
+        let mut end = from.end + 1;
+        let to = self.endpoint(end);
+        if let Some(to) = &to {
+            end = to.end;
+        }
+        let content = if matches!(self.kind(end), Some(TokenKind::Colon)) {
+            end += 1;
+            let value = match self.kind(end) {
+                Some(TokenKind::EventPayload(value)) => {
+                    let token = &self.tokens[end];
+                    end += 1;
+                    trimmed_text(self.source, token.span.start, token.span.end)
+                        .or_else(|| Some(SpannedText::new(value.clone(), token.span)))
+                }
+                _ => None,
+            };
+            if matches!(self.kind(end), Some(TokenKind::EventEnd)) {
+                end += 1;
+            }
+            value
+        } else {
+            None
+        };
+        Some(ReturnAsyncMatch {
+            end,
+            from,
+            to,
+            content,
+            rule: RuleNode::leaf(GrammarRuleKindSyntax::Event, self.span(start, end)),
+        })
+    }
+
+    fn message_path(&self, start: usize) -> Option<FromToMatch> {
+        let first = self.endpoint(start)?;
+        if matches!(self.kind(first.end), Some(TokenKind::Arrow)) {
+            let to = self.endpoint(first.end + 1)?;
+            if !matches!(self.kind(to.end), Some(TokenKind::Dot)) {
+                return None;
+            }
+            return Some(FromToMatch {
+                end: to.end + 1,
+                from: Some(first),
+                to,
+            });
+        }
+        if matches!(self.kind(first.end), Some(TokenKind::Dot)) {
+            return Some(FromToMatch {
+                end: first.end + 1,
+                from: None,
+                to: first,
+            });
+        }
+        None
+    }
+
+    fn endpoint(&self, start: usize) -> Option<EndpointMatch> {
+        let (emoji, cursor) = self.emoji(start).map_or((None, start), |emoji| {
+            let end = emoji.end;
+            (Some(emoji.name), end)
+        });
+        let name = self.name(cursor)?;
+        Some(EndpointMatch {
+            end: cursor + 1,
+            name,
+            emoji,
+        })
+    }
+
+    fn emoji(&self, start: usize) -> Option<EmojiMatch> {
+        if !matches!(self.kind(start), Some(TokenKind::OpenBracket)) {
+            return None;
+        }
+        let name = self.name(start + 1)?;
+        if !matches!(self.kind(start + 2), Some(TokenKind::CloseBracket)) {
+            return None;
+        }
+        Some(EmojiMatch {
+            end: start + 3,
+            name,
+        })
+    }
+
+    fn func(&self, start: usize) -> Option<FuncMatch> {
+        let first = self.signature(start)?;
+        let first_invoked = first.invoked;
+        let first_emoji = matches!(self.kind(start), Some(TokenKind::OpenBracket));
+        let mut end = first.end;
+        let mut formatted = first.formatted.clone();
+        let mut children = vec![first.rule];
+        while matches!(self.kind(end), Some(TokenKind::Dot)) {
+            let Some(signature) = self.signature(end + 1) else {
+                break;
+            };
+            formatted.push('.');
+            formatted.push_str(&signature.formatted);
+            end = signature.end;
+            children.push(signature.rule);
+        }
+        let span = self.span(start, end);
+        Some(FuncMatch {
+            end,
+            formatted,
+            span,
+            first_invoked,
+            first_emoji,
+            rule: RuleNode::with_children(GrammarRuleKindSyntax::Expression, span, children),
+        })
+    }
+
+    fn bare_func(&self, start: usize) -> Option<FuncMatch> {
+        self.func(start)
+    }
+
+    fn signature(&self, start: usize) -> Option<SignatureMatch> {
+        let endpoint = self.endpoint(start)?;
+        let mut formatted = String::new();
+        if let Some(emoji) = &endpoint.emoji {
+            formatted.push('[');
+            formatted.push_str(&emoji.value);
+            formatted.push(']');
+        }
+        formatted.push_str(&endpoint.name.value);
+        let mut end = endpoint.end;
+        let mut children = Vec::new();
+        let invoked = if let Some(invocation) = self.invocation(end) {
+            formatted.push_str(&invocation.formatted);
+            end = invocation.end;
+            children.push(invocation.rule);
+            true
+        } else {
+            false
+        };
+        let span = self.span(start, end);
+        Some(SignatureMatch {
+            end,
+            formatted,
+            invoked,
+            rule: RuleNode::with_children(GrammarRuleKindSyntax::Expression, span, children),
+        })
+    }
+
+    fn invocation(&self, start: usize) -> Option<InvocationMatch> {
+        if !matches!(self.kind(start), Some(TokenKind::OpenParen)) {
+            return None;
+        }
+        let mut end = start + 1;
+        let mut parameters = Vec::new();
+        if !matches!(self.kind(end), Some(TokenKind::CloseParen)) {
+            loop {
+                let parameter = self.parameter(end)?;
+                if parameter.end == end {
+                    return None;
+                }
+                end = parameter.end;
+                parameters.push(parameter);
+                if !matches!(self.kind(end), Some(TokenKind::Comma)) {
+                    break;
+                }
+                end += 1;
+                if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
+                    break;
+                }
+            }
+        }
+        if !matches!(self.kind(end), Some(TokenKind::CloseParen)) {
+            return None;
+        }
+        end += 1;
+        let formatted = format!(
+            "({})",
+            parameters
+                .iter()
+                .map(|parameter| parameter.formatted.as_str())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+        let children = parameters
+            .into_iter()
+            .map(|parameter| parameter.rule)
+            .collect();
+        Some(InvocationMatch {
+            end,
+            formatted,
+            rule: RuleNode::with_children(
+                GrammarRuleKindSyntax::Invocation,
+                self.span(start, end),
+                children,
+            ),
+        })
+    }
+
+    fn parameter(&self, start: usize) -> Option<ParameterMatch> {
+        if self.is_identifier_name(start) && matches!(self.kind(start + 1), Some(TokenKind::Assign))
+        {
+            let mut end = start + 2;
+            let mut children = Vec::new();
+            if let Some(expr) = self.expression(end) {
+                end = expr.end;
+                children.push(expr.rule);
+            }
+            let formatted = self.compact(start, end);
+            return Some(ParameterMatch {
+                end,
+                formatted,
+                rule: RuleNode::with_children(
+                    GrammarRuleKindSyntax::NamedParameter,
+                    self.span(start, end),
+                    children,
+                ),
+            });
+        }
+
+        if self.name(start).is_some() && self.is_identifier_name(start + 1) {
+            let end = start + 2;
+            let formatted = format!("{} {}", self.token_text(start), self.token_text(start + 1));
+            return Some(ParameterMatch {
+                end,
+                formatted,
+                rule: RuleNode::leaf(GrammarRuleKindSyntax::Declaration, self.span(start, end)),
+            });
+        }
+
+        let expr = self.expression(start)?;
+        Some(ParameterMatch {
+            end: expr.end,
+            formatted: self.compact(start, expr.end),
+            rule: expr.rule,
+        })
+    }
+
+    fn assignment(&self, start: usize) -> Option<AssignmentMatch> {
+        if self.name(start).is_some()
+            && let Some((assignee, assignee_end)) = self.assignee(start + 1)
+            && matches!(self.kind(assignee_end), Some(TokenKind::Assign))
+        {
+            let end = assignee_end + 1;
+            return Some(AssignmentMatch {
+                end,
+                assignee,
+                rule: RuleNode::leaf(GrammarRuleKindSyntax::Expression, self.span(start, end)),
+            });
+        }
+        let (assignee, assignee_end) = self.assignee(start)?;
+        if !matches!(self.kind(assignee_end), Some(TokenKind::Assign)) {
+            return None;
+        }
+        let end = assignee_end + 1;
+        Some(AssignmentMatch {
+            end,
+            assignee,
+            rule: RuleNode::leaf(GrammarRuleKindSyntax::Expression, self.span(start, end)),
+        })
+    }
+
+    fn assignee(&self, start: usize) -> Option<(Option<SpannedText>, usize)> {
+        if self.is_identifier_name(start) && matches!(self.kind(start + 1), Some(TokenKind::Comma))
+        {
+            let mut end = start + 1;
+            let mut last = self.name(start);
+            while matches!(self.kind(end), Some(TokenKind::Comma))
+                && self.is_identifier_name(end + 1)
+            {
+                last = self.name(end + 1);
+                end += 2;
+            }
+            return Some((last, end));
+        }
+        if matches!(self.kind(start), Some(TokenKind::Keyword(Keyword::New))) {
+            return Some((
+                Some(SpannedText::new("new", self.tokens[start].span)),
+                start + 1,
+            ));
+        }
+        if self.is_atom(start) {
+            return Some((self.name(start), start + 1));
+        }
+        None
+    }
+
+    fn expression(&self, start: usize) -> Option<ExprMatch> {
+        self.expression_bp(start, 0)
+    }
+
+    fn expression_bp(&self, start: usize, min_bp: u8) -> Option<ExprMatch> {
+        let mut left = self.expression_prefix(start)?;
+        while let Some((left_bp, right_bp)) = self.binary_binding_power(left.end) {
+            if left_bp < min_bp {
+                break;
+            }
+            let Some(right) = self.expression_bp(left.end + 1, right_bp) else {
+                break;
+            };
+            let span = SourceSpan::new(left.rule.span.start, right.rule.span.end);
+            left = ExprMatch {
+                end: right.end,
+                rule: RuleNode::with_children(
+                    GrammarRuleKindSyntax::Expression,
+                    span,
+                    vec![left.rule, right.rule],
+                ),
+            };
+        }
+        Some(left)
+    }
+
+    fn expression_prefix(&self, start: usize) -> Option<ExprMatch> {
+        if matches!(self.kind(start), Some(TokenKind::Operator(value)) if value == "-" || value == "!")
+        {
+            let inner = self.expression_bp(start + 1, 13)?;
+            let span = self.span(start, inner.end);
+            return Some(ExprMatch {
+                end: inner.end,
+                rule: RuleNode::with_children(
+                    GrammarRuleKindSyntax::Expression,
+                    span,
+                    vec![inner.rule],
+                ),
+            });
+        }
+
+        if let Some(assignment) = self.assignment(start)
+            && let Some(expr) = self.expression(assignment.end)
+        {
+            let span = self.span(start, expr.end);
+            return Some(ExprMatch {
+                end: expr.end,
+                rule: RuleNode::with_children(
+                    GrammarRuleKindSyntax::Expression,
+                    span,
+                    vec![assignment.rule, expr.rule],
+                ),
+            });
+        }
+
+        if matches!(self.kind(start), Some(TokenKind::OpenParen)) {
+            let expr = self.expression(start + 1)?;
+            if matches!(self.kind(expr.end), Some(TokenKind::CloseParen)) {
+                let end = expr.end + 1;
+                return Some(ExprMatch {
+                    end,
+                    rule: RuleNode::with_children(
+                        GrammarRuleKindSyntax::Expression,
+                        self.span(start, end),
+                        vec![expr.rule],
+                    ),
+                });
+            }
+        }
+
+        if let Some(creation) = self.creation_body(start) {
+            return Some(ExprMatch {
+                end: creation.end,
+                rule: RuleNode::with_children(
+                    GrammarRuleKindSyntax::Expression,
+                    creation.rule.span,
+                    vec![creation.rule],
+                ),
+            });
+        }
+
+        if let Some(from_to) = self.message_path(start)
+            && let Some(func) = self.func(from_to.end)
+        {
+            return Some(ExprMatch {
+                end: func.end,
+                rule: RuleNode::with_children(
+                    GrammarRuleKindSyntax::Expression,
+                    self.span(start, func.end),
+                    vec![func.rule],
+                ),
+            });
+        }
+
+        if let Some(func) = self.func(start)
+            && (func.first_invoked || func.first_emoji)
+        {
+            return Some(ExprMatch {
+                end: func.end,
+                rule: func.rule,
+            });
+        }
+
+        if self.is_atom(start) {
+            return Some(ExprMatch {
+                end: start + 1,
+                rule: RuleNode::leaf(
+                    GrammarRuleKindSyntax::Expression,
+                    self.span(start, start + 1),
+                ),
+            });
+        }
+        None
+    }
+
+    fn binary_binding_power(&self, index: usize) -> Option<(u8, u8)> {
+        let precedence = match self.kind(index) {
+            Some(TokenKind::Operator(value)) if value == "||" => 1,
+            Some(TokenKind::Operator(value)) if value == "&&" => 3,
+            Some(TokenKind::Operator(value)) if value == "==" || value == "!=" => 5,
+            Some(TokenKind::Operator(value))
+                if matches!(value.as_str(), "<" | ">" | "<=" | ">=") =>
+            {
+                7
+            }
+            Some(TokenKind::Operator(value)) if value == "+" || value == "-" => 9,
+            Some(TokenKind::Operator(value)) if matches!(value.as_str(), "*" | "/" | "%") => 11,
+            _ => return None,
+        };
+        Some((precedence, precedence + 1))
+    }
+
+    fn par_expr(&self, start: usize) -> Option<ParExprMatch> {
+        if !matches!(self.kind(start), Some(TokenKind::OpenParen)) {
+            return None;
+        }
+        let mut end = start + 1;
+        let mut children = Vec::new();
+        let label = if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
+            None
+        } else if let Some(condition) = self.condition(end) {
+            end = condition.end;
+            let span = condition.rule.span;
+            children.push(condition.rule);
+            trimmed_text(self.source, span.start, span.end)
+        } else {
+            None
+        };
+        if matches!(self.kind(end), Some(TokenKind::CloseParen)) {
+            end += 1;
+        }
+        Some(ParExprMatch {
+            end,
+            label,
+            rule: RuleNode::with_children(
+                GrammarRuleKindSyntax::Expression,
+                self.span(start, end),
+                children,
+            ),
+        })
+    }
+
+    fn condition(&self, start: usize) -> Option<ExprMatch> {
+        if self.is_identifier_name(start)
+            && matches!(self.kind(start + 1), Some(TokenKind::Keyword(Keyword::In)))
+            && self.is_identifier_name(start + 2)
+        {
+            let end = start + 3;
+            return Some(ExprMatch {
+                end,
+                rule: RuleNode::leaf(GrammarRuleKindSyntax::InExpression, self.span(start, end)),
+            });
+        }
+
+        if let Some(expr) = self.expression(start)
+            && matches!(self.kind(expr.end), Some(TokenKind::CloseParen))
+        {
+            return Some(expr);
+        }
+
+        let mut end = start;
+        while self.is_text_word(end) {
+            end += 1;
+        }
+        if end >= start + 2 {
+            return Some(ExprMatch {
+                end,
+                rule: RuleNode::leaf(GrammarRuleKindSyntax::TextExpression, self.span(start, end)),
+            });
+        }
+        self.expression(start)
+    }
+
+    fn can_start_statement(&self, start: usize) -> bool {
+        match self.kind(start) {
+            Some(TokenKind::Keyword(
+                Keyword::If
+                | Keyword::Try
+                | Keyword::Par
+                | Keyword::Opt
+                | Keyword::Critical
+                | Keyword::Section
+                | Keyword::While
+                | Keyword::Ref
+                | Keyword::Return,
+            ))
+            | Some(TokenKind::ReturnAnnotation)
+            | Some(TokenKind::Divider(_))
+            | Some(TokenKind::OpenBrace) => true,
+            _ => {
+                self.creation_body(start).is_some()
+                    || self.message_body(start).is_some()
+                    || self.async_message(start).is_some()
+                    || self.return_async_message(start).is_some()
+            }
+        }
+    }
+
+    fn message_candidate_is_complete(&self, end: usize) -> bool {
+        !matches!(
+            self.kind(end),
+            Some(TokenKind::Colon | TokenKind::Arrow | TokenKind::ReturnArrow)
+        ) && !matches!(self.kind(end), Some(TokenKind::Operator(value)) if value == "-")
+    }
+
+    fn is_atom(&self, index: usize) -> bool {
+        matches!(
+            self.kind(index),
+            Some(
+                TokenKind::Integer(_)
+                    | TokenKind::Float(_)
+                    | TokenKind::NumberUnit(_)
+                    | TokenKind::Money(_)
+                    | TokenKind::Identifier(_)
+                    | TokenKind::DigitLeadingName(_)
+                    | TokenKind::StringLiteral { .. }
+                    | TokenKind::Keyword(Keyword::True | Keyword::False | Keyword::Nil)
+            )
+        )
+    }
+
+    fn is_identifier_name(&self, index: usize) -> bool {
+        matches!(
+            self.kind(index),
+            Some(TokenKind::Identifier(_) | TokenKind::DigitLeadingName(_))
+        )
+    }
+
+    fn is_text_word(&self, index: usize) -> bool {
+        matches!(
+            self.kind(index),
+            Some(
+                TokenKind::Identifier(_)
+                    | TokenKind::DigitLeadingName(_)
+                    | TokenKind::NumberUnit(_)
+            )
+        )
+    }
+
+    fn name(&self, index: usize) -> Option<SpannedText> {
+        token_name(self.tokens.get(index)?)
+    }
+
+    fn kind(&self, index: usize) -> Option<&TokenKind> {
+        self.tokens.get(index).map(|token| &token.kind)
+    }
+
+    fn is_eof(&self, index: usize) -> bool {
+        matches!(self.kind(index), Some(TokenKind::Eof) | None)
+    }
+
+    fn span(&self, start: usize, end: usize) -> SourceSpan {
+        let start_offset = self
+            .tokens
+            .get(start)
+            .map_or(self.source.len(), |token| token.span.start);
+        let end_offset = if end > start {
+            self.tokens
+                .get(end - 1)
+                .map_or(start_offset, |token| token.span.end)
+        } else {
+            start_offset
+        };
+        SourceSpan::new(start_offset, end_offset)
+    }
+
+    fn token_end(&self, index: usize) -> usize {
+        self.tokens
+            .get(index)
+            .map_or(self.source.len(), |token| token.span.end)
+    }
+
+    fn token_text(&self, index: usize) -> &str {
+        self.tokens
+            .get(index)
+            .and_then(|token| self.source.get(token.span.start..token.span.end))
+            .unwrap_or("")
+    }
+
+    fn compact(&self, start: usize, end: usize) -> String {
+        (start..end).map(|index| self.token_text(index)).collect()
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FromToMatch {
+    end: usize,
+    from: Option<EndpointMatch>,
+    to: EndpointMatch,
+}
+
+#[derive(Debug, Clone)]
+struct EmojiMatch {
+    end: usize,
+    name: SpannedText,
 }
 
 fn token_name(token: &Token) -> Option<SpannedText> {
     match &token.kind {
-        TokenKind::Identifier(value) | TokenKind::StringLiteral { value, .. } => {
+        TokenKind::Identifier(value)
+        | TokenKind::DigitLeadingName(value)
+        | TokenKind::StringLiteral { value, .. } => {
             Some(SpannedText::new(value.clone(), token.span))
         }
         _ => None,
     }
-}
-
-fn is_function_like(tokens: &[Token]) -> bool {
-    first_name(tokens).is_some()
-        && tokens
-            .iter()
-            .any(|token| matches!(token.kind, TokenKind::OpenParen))
-}
-
-fn top_level_position(
-    tokens: &[Token],
-    mut predicate: impl FnMut(&TokenKind) -> bool,
-) -> Option<usize> {
-    let mut parens = 0usize;
-    let mut brackets = 0usize;
-    for (index, token) in tokens.iter().enumerate() {
-        if parens == 0 && brackets == 0 && predicate(&token.kind) {
-            return Some(index);
-        }
-        match token.kind {
-            TokenKind::OpenParen => parens += 1,
-            TokenKind::CloseParen => parens = parens.saturating_sub(1),
-            TokenKind::OpenBracket => brackets += 1,
-            TokenKind::CloseBracket => brackets = brackets.saturating_sub(1),
-            _ => {}
-        }
-    }
-    None
-}
-
-fn spanned_from_tokens(source: &str, tokens: &[Token]) -> Option<SpannedText> {
-    let first = tokens.first()?;
-    let last = tokens.last()?;
-    trimmed_text(source, first.span.start, last.span.end)
 }
 
 fn trimmed_text(source: &str, start: usize, end: usize) -> Option<SpannedText> {
@@ -1235,7 +2137,8 @@ mod tests {
     use super::*;
 
     fn parse_source(source: &str) -> ParsedSyntax {
-        parse(source, super::super::lexer::lex(source))
+        let tokens = super::super::lexer::lex(source);
+        parse(source, &tokens)
     }
 
     #[test]
@@ -1249,9 +2152,249 @@ mod tests {
     }
 
     #[test]
-    fn recovers_after_invalid_statement() {
-        let parsed = parse_source("zenuml\n@Starter(A)\nA.call()\n?\nB.call()\n");
+    fn same_line_statements_are_delimited_by_grammar_rules() {
+        for source in ["zenuml\nA.m() B.m()", "zenuml\nA.m();B.m()"] {
+            let parsed = parse_source(source);
+            assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+            assert_eq!(parsed.document.statements.len(), 2);
+        }
+    }
+
+    #[test]
+    fn head_prediction_rolls_back_before_message_receivers() {
+        for source in ["zenuml\n@Actor A B.m()", "zenuml\nA B.m()"] {
+            let parsed = parse_source(source);
+            assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+            assert_eq!(parsed.document.participants.len(), 1);
+            assert_eq!(parsed.document.participants[0].name.value, "A");
+            assert_eq!(parsed.document.statements.len(), 1);
+        }
+    }
+
+    #[test]
+    fn decorator_only_participants_keep_the_upstream_synthetic_name() {
+        for source in ["zenuml\n@Actor\nA.m()", "zenuml\n<<Service>>\nA.m()"] {
+            let parsed = parse_source(source);
+            assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+            assert_eq!(parsed.document.participants.len(), 1);
+            assert_eq!(
+                parsed.document.participants[0].name.value,
+                MISSING_PARTICIPANT
+            );
+            assert_eq!(parsed.document.statements.len(), 1);
+        }
+    }
+
+    #[test]
+    fn participant_prediction_composes_type_stereotype_and_emoji() {
+        let parsed = parse_source("zenuml\n@Actor <<Boundary>> [rocket] A A.m()");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.document.participants.len(), 1);
+        let participant = &parsed.document.participants[0];
+        assert_eq!(participant.name.value, "A");
+        assert_eq!(
+            participant
+                .participant_type
+                .as_ref()
+                .map(|value| value.value.as_str()),
+            Some("Actor")
+        );
+        assert_eq!(
+            participant
+                .stereotype
+                .as_ref()
+                .map(|value| value.value.as_str()),
+            Some("Boundary")
+        );
+        assert_eq!(
+            participant.emoji.as_ref().map(|value| value.value.as_str()),
+            Some("rocket")
+        );
+        assert_eq!(parsed.document.statements.len(), 1);
+    }
+
+    #[test]
+    fn optional_if_block_does_not_capture_the_following_statement() {
+        let optional = parse_source("zenuml\nif(x) A.m()");
+        let StatementKindSyntax::Fragment(fragment) = &optional.document.statements[0].kind else {
+            panic!("expected alternative");
+        };
+        assert!(fragment.sections[0].statements.is_empty());
+        assert_eq!(optional.document.statements.len(), 2);
+
+        let braced = parse_source("zenuml\nif(x){A.m() B.m()}");
+        let StatementKindSyntax::Fragment(fragment) = &braced.document.statements[0].kind else {
+            panic!("expected alternative");
+        };
+        assert_eq!(fragment.sections[0].statements.len(), 2);
+    }
+
+    #[test]
+    fn parameter_and_condition_rules_retain_exact_spans() {
+        let parsed = parse_source(concat!(
+            "zenuml\n",
+            "A.m(x=1, Type value, B.call(), 10ms) ",
+            "if(item in items){A.m()} ",
+            "if(status pending 10ms){A.m()}",
+        ));
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        for kind in [
+            GrammarRuleKindSyntax::NamedParameter,
+            GrammarRuleKindSyntax::Declaration,
+            GrammarRuleKindSyntax::InExpression,
+            GrammarRuleKindSyntax::TextExpression,
+        ] {
+            assert!(
+                parsed
+                    .grammar_rule_spans
+                    .iter()
+                    .any(|rule| rule.kind == kind),
+                "missing {kind:?}: {:?}",
+                parsed.grammar_rule_spans
+            );
+        }
+        let StatementKindSyntax::Message(message) = &parsed.document.statements[0].kind else {
+            panic!("expected message");
+        };
+        assert_eq!(message.signature.value, "m(x=1,Type value,B.call(),10ms)");
+    }
+
+    #[test]
+    fn title_and_event_modes_have_independent_grammar_boundaries() {
+        let parsed = parse_source("zenuml\ntitle Order Service\nA: ready\nB.m()");
+        assert_eq!(
+            parsed
+                .document
+                .title
+                .as_ref()
+                .map(|title| title.value.as_str()),
+            Some("Order Service")
+        );
+        assert_eq!(parsed.document.statements.len(), 2);
+        assert!(
+            parsed
+                .grammar_rule_spans
+                .iter()
+                .any(|rule| rule.kind == GrammarRuleKindSyntax::Title)
+        );
+        assert!(
+            parsed
+                .grammar_rule_spans
+                .iter()
+                .any(|rule| rule.kind == GrammarRuleKindSyntax::Event)
+        );
+
+        let method = parse_source("zenuml\ntitle.m()");
+        assert!(method.document.title.is_none());
+        assert_eq!(method.document.statements.len(), 1);
+    }
+
+    #[test]
+    fn empty_starter_parentheses_are_valid_and_remain_name_optional() {
+        let parsed = parse_source("zenuml\n@Starter() A.m()");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let starter = parsed.document.starter.as_ref().expect("starter syntax");
+        assert!(starter.name.is_none());
+        assert_eq!(parsed.document.statements.len(), 1);
+    }
+
+    #[test]
+    fn message_context_accepts_dotted_func_without_invocation() {
+        let parsed = parse_source("zenuml\n@Starter(S) A.B");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.document.statements.len(), 1);
+        let StatementKindSyntax::Message(message) = &parsed.document.statements[0].kind else {
+            panic!("expected message");
+        };
+        assert_eq!(
+            message
+                .to
+                .as_ref()
+                .map(|participant| participant.value.as_str()),
+            Some("A")
+        );
+        assert_eq!(message.signature.value, "B");
+    }
+
+    #[test]
+    fn missing_required_fragment_braces_recover_without_changing_optional_rules() {
+        for source in ["zenuml\nif(x) A.m()", "zenuml\nwhile(x) A.m()"] {
+            let parsed = parse_source(source);
+            assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+            let StatementKindSyntax::Fragment(fragment) = &parsed.document.statements[0].kind
+            else {
+                panic!("expected fragment");
+            };
+            assert!(fragment.sections[0].statements.is_empty());
+            assert_eq!(parsed.document.statements.len(), 2);
+        }
+
+        for source in [
+            "zenuml\npar(x) A.m()",
+            "zenuml\nopt(x) A.m()",
+            "zenuml\ncritical(x) A.m()",
+            "zenuml\nsection(x) A.m()",
+        ] {
+            let parsed = parse_source(source);
+            assert!(!parsed.diagnostics.is_empty(), "{source}");
+            let StatementKindSyntax::Fragment(fragment) = &parsed.document.statements[0].kind
+            else {
+                panic!("expected fragment: {source}");
+            };
+            assert_eq!(fragment.sections[0].statements.len(), 1, "{source}");
+            assert_eq!(parsed.document.statements.len(), 1, "{source}");
+        }
+    }
+
+    #[test]
+    fn recovers_after_invalid_token_without_line_synchronization() {
+        let parsed = parse_source("zenuml\n@Starter(A) A.call() ? B.call()");
         assert!(!parsed.diagnostics.is_empty());
         assert_eq!(parsed.document.statements.len(), 2);
+    }
+
+    #[test]
+    fn comment_channel_preserves_text_and_binds_to_the_next_default_token() {
+        let parsed = parse_source(concat!(
+            "zenuml\n",
+            "// first comment \n",
+            "// second comment  \n",
+            "const A.m() ",
+            "// next message \n",
+            "B.m()",
+        ));
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        assert_eq!(parsed.document.statements.len(), 2);
+        assert_eq!(
+            parsed.document.statements[0]
+                .comment
+                .as_ref()
+                .map(|comment| comment.value.as_str()),
+            Some(" first comment \n second comment  ")
+        );
+        assert_eq!(
+            parsed.document.statements[1]
+                .comment
+                .as_ref()
+                .map(|comment| comment.value.as_str()),
+            Some(" next message ")
+        );
+    }
+
+    #[test]
+    fn block_close_comment_is_owned_by_the_brace_block() {
+        let parsed = parse_source("zenuml\nA.m() { internal()\n// block close \n}");
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let StatementKindSyntax::Message(message) = &parsed.document.statements[0].kind else {
+            panic!("expected message");
+        };
+        assert_eq!(message.body.len(), 1);
+        assert_eq!(
+            message
+                .body_comment
+                .as_ref()
+                .map(|comment| comment.value.as_str()),
+            Some(" block close ")
+        );
     }
 }

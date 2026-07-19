@@ -53,6 +53,7 @@ impl<'a> EditorParseSourceMap<'a> {
                 Some(symbol)
             })
             .collect();
+        let dropped_lexemes = facts.remap_lexemes(|span| self.try_remap_source_span(span));
 
         let mut dropped_diagnostic_spans = 0usize;
         for diagnostic in &mut facts.diagnostics {
@@ -73,7 +74,8 @@ impl<'a> EditorParseSourceMap<'a> {
 
         let dropped_symbols = original_symbol_count - facts.symbols.len();
         let dropped_expected = original_expected_count - facts.expected_syntax.len();
-        let dropped_spans = dropped_symbols + dropped_expected + dropped_diagnostic_spans;
+        let dropped_spans =
+            dropped_symbols + dropped_lexemes + dropped_expected + dropped_diagnostic_spans;
         if dropped_spans > 0 {
             facts.mark_recovered_with_diagnostic(
                 format!(
@@ -234,7 +236,7 @@ impl<'a> ParsePipeline<'a> {
         let editor_facts = match (owner, combined_facts) {
             (RegistryOwner::Custom, _) => ParsedEditorFacts::Unavailable,
             (RegistryOwner::BuiltIn, Some(facts)) => ParsedEditorFacts::Available(
-                self.finish_editor_semantic_facts(facts, &source_map, directive_prefixes),
+                self.finish_editor_semantic_facts(facts, &meta, &source_map, directive_prefixes),
             ),
             (RegistryOwner::BuiltIn, None) => {
                 debug_assert!(
@@ -318,32 +320,23 @@ impl<'a> ParsePipeline<'a> {
         let facts = parser(editor_input, meta)?;
         Ok(Some(self.finish_editor_semantic_facts(
             facts,
+            meta,
             source_map,
             directive_prefixes,
         )))
     }
     fn finish_editor_semantic_facts(
         &self,
-        facts: EditorSemanticFacts,
+        mut facts: EditorSemanticFacts,
+        meta: &ParseMetadata,
         source_map: &EditorParseSourceMap<'_>,
         mut directive_prefixes: Vec<String>,
     ) -> EditorSemanticFacts {
-        let EditorSemanticFacts {
-            completeness,
-            symbols,
-            directive_prefixes: family_directive_prefixes,
-            diagnostics,
-            expected_syntax,
-        } = facts;
-        directive_prefixes.extend(family_directive_prefixes);
-        let mut facts = EditorSemanticFacts {
-            completeness,
-            symbols,
-            directive_prefixes: Vec::new(),
-            diagnostics,
-            expected_syntax,
-        };
+        directive_prefixes.append(&mut facts.directive_prefixes);
         source_map.remap_facts(&mut facts);
+        let family = family::diagram_type_family_id(&meta.diagram_type)
+            .expect("built-in editor parsers belong to a catalog family");
+        facts.finalize_lexemes(family, source_map.source.global_lexemes());
         for prefix in directive_prefixes {
             facts.push_directive_prefix(prefix);
         }

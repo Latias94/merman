@@ -213,7 +213,7 @@ pub fn layout_zenuml_diagram_typed(
                 .width
                 + 8.0
         });
-        let explicit_width = participant.width.map_or(0.0, f64::from);
+        let explicit_width = participant.width.map_or(0.0, |width| width as f64);
         let visual_width = (label_width + PARTICIPANT_BOX_PADDING + icon_width + emoji_width)
             .max(stereotype_width)
             .max(MIN_PARTICIPANT_WIDTH)
@@ -564,6 +564,7 @@ impl VerticalLayoutBuilder<'_> {
                 assignment,
                 style,
                 body,
+                ..
             } => self.layout_message(
                 statement,
                 from,
