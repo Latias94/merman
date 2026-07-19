@@ -32,7 +32,6 @@ euclid.workspace = true
 htmlize.workspace = true
 indexmap.workspace = true
 lalrpop-util.workspace = true
-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 granit-parser = { workspace = true, optional = true }
@@ -54,3 +53,4 @@ lalrpop.workspace = true
 [dev-dependencies]
 futures.workspace = true
 merman-fixture-render-context = { path = "../merman-fixture-render-context" }
+regex.workspace = true
