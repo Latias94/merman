@@ -33,6 +33,7 @@ type ClassGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
 struct ClassSyntax {
     events: Vec<ClassLexicalEvent>,
+    lexemes: crate::editor::EditorLexemeBatchResult,
 }
 
 impl ClassSyntax {
@@ -52,16 +53,22 @@ impl ClassSyntax {
             }
             last_position = current_position;
         }
+        let lexemes = lexer.finish_lexemes();
 
-        Self { events }
+        Self { events, lexemes }
     }
 
-    fn editor_facts(&self, code: &str) -> EditorSemanticFacts {
-        collect_class_editor_facts_from_events(&self.events, code)
-    }
-
-    fn into_actions(self) -> std::result::Result<Vec<super::Action>, ClassGrammarError> {
-        class_grammar::ActionsParser::new().parse(self.events)
+    fn into_editor_facts_and_actions(
+        self,
+        code: &str,
+    ) -> (
+        EditorSemanticFacts,
+        std::result::Result<Vec<super::Action>, ClassGrammarError>,
+    ) {
+        let Self { events, lexemes } = self;
+        let editor_facts = collect_class_editor_facts_from_events(&events, code, lexemes);
+        let actions = class_grammar::ActionsParser::new().parse(events);
+        (editor_facts, actions)
     }
 }
 
@@ -132,8 +139,8 @@ fn construct_class_semantic_source<'a>(
     meta: &'a ParseMetadata,
 ) -> std::result::Result<ClassSemanticSource<'a>, Box<ClassSemanticFailure>> {
     let syntax = ClassSyntax::lex(code);
-    let editor_facts = syntax.editor_facts(code);
-    let actions = match syntax.into_actions() {
+    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code);
+    let actions = match actions {
         Ok(actions) => actions,
         Err(error) => {
             return Err(Box::new(ClassSemanticFailure::Grammar {
@@ -192,8 +199,10 @@ pub fn parse_class_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSeman
 fn collect_class_editor_facts_from_events(
     events: &[ClassLexicalEvent],
     code: &str,
+    lexemes: crate::editor::EditorLexemeBatchResult,
 ) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
+    facts.replace_family_lexemes(lexemes);
     let mut collector = ClassEditorFactCollector::new(code);
 
     for event in events {

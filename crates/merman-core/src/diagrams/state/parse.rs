@@ -2,7 +2,10 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, Error, ParseDiagnostic, ParseDiagnosticSpanKind, ParseMetadata, Result,
     SourceSpan,
-    editor::{format_lalrpop_parse_error, lalrpop_parse_diagnostic, lalrpop_recovery_span},
+    editor::{
+        EditorLexemeBatchResult, EditorLexemeJournal, format_lalrpop_parse_error,
+        lalrpop_parse_diagnostic, lalrpop_recovery_span,
+    },
 };
 use serde_json::Value;
 #[cfg(test)]
@@ -31,6 +34,7 @@ type StateGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
 struct StateSyntax {
     events: Vec<StateLexicalEvent>,
+    lexemes: EditorLexemeBatchResult,
 }
 
 impl StateSyntax {
@@ -39,27 +43,38 @@ impl StateSyntax {
         STATE_SYNTAX_CONSTRUCTION_COUNT.set(STATE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
         let mut events = Vec::new();
-        let mut lexer = Lexer::new(code);
-        let mut last_position = lexer.position();
-        while let Some(event) = lexer.next() {
-            let current_position = lexer.position();
-            let must_stop = event.is_err() && current_position == last_position;
-            events.push(event);
-            if must_stop {
-                break;
+        let mut lexeme_journal = EditorLexemeJournal::family_lexer(code);
+        {
+            let mut lexer = Lexer::new(code, &mut lexeme_journal);
+            let mut last_position = lexer.position();
+            while let Some(event) = lexer.next() {
+                let current_position = lexer.position();
+                let must_stop = event.is_err() && current_position == last_position;
+                events.push(event);
+                if must_stop {
+                    break;
+                }
+                last_position = current_position;
             }
-            last_position = current_position;
         }
 
-        Self { events }
+        Self {
+            events,
+            lexemes: lexeme_journal.finish(),
+        }
     }
 
-    fn editor_facts(&self, code: &str) -> EditorSemanticFacts {
-        collect_state_editor_facts_from_events(&self.events, code)
-    }
-
-    fn into_document(self) -> std::result::Result<Vec<Stmt>, StateGrammarError> {
-        super::state_grammar::RootParser::new().parse(self.events)
+    fn into_editor_facts_and_document(
+        self,
+        code: &str,
+    ) -> (
+        EditorSemanticFacts,
+        std::result::Result<Vec<Stmt>, StateGrammarError>,
+    ) {
+        let mut editor_facts = collect_state_editor_facts_from_events(&self.events, code);
+        editor_facts.replace_family_lexemes(self.lexemes);
+        let document = super::state_grammar::RootParser::new().parse(self.events);
+        (editor_facts, document)
     }
 }
 
@@ -150,8 +165,8 @@ fn construct_state_semantic_source(
     code: &str,
 ) -> std::result::Result<StateSemanticSource, StateSemanticFailure> {
     let syntax = StateSyntax::lex(code);
-    let editor_facts = syntax.editor_facts(code);
-    let mut doc = match syntax.into_document() {
+    let (editor_facts, document) = syntax.into_editor_facts_and_document(code);
+    let mut doc = match document {
         Ok(doc) => doc,
         Err(error) => {
             return Err(StateSemanticFailure {

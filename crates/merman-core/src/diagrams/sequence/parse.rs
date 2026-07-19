@@ -33,6 +33,7 @@ type SequenceGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError
 
 struct SequenceSyntax {
     events: Vec<SequenceLexicalEvent>,
+    lexemes: crate::editor::EditorLexemeBatchResult,
 }
 
 impl SequenceSyntax {
@@ -52,16 +53,22 @@ impl SequenceSyntax {
             }
             last_position = current_position;
         }
+        let lexemes = lexer.finish_lexemes();
 
-        Self { events }
+        Self { events, lexemes }
     }
 
-    fn editor_facts(&self, code: &str) -> EditorSemanticFacts {
-        collect_sequence_editor_facts_from_events(&self.events, code)
-    }
-
-    fn into_actions(self) -> std::result::Result<Vec<super::Action>, SequenceGrammarError> {
-        sequence_grammar::ActionsParser::new().parse(self.events)
+    fn into_editor_facts_and_actions(
+        self,
+        code: &str,
+    ) -> (
+        EditorSemanticFacts,
+        std::result::Result<Vec<super::Action>, SequenceGrammarError>,
+    ) {
+        let Self { events, lexemes } = self;
+        let editor_facts = collect_sequence_editor_facts_from_events(&events, code, lexemes);
+        let actions = sequence_grammar::ActionsParser::new().parse(events);
+        (editor_facts, actions)
     }
 }
 
@@ -170,8 +177,8 @@ fn construct_sequence_semantic_source(
     wrap_enabled: Option<bool>,
 ) -> std::result::Result<SequenceSemanticSource, Box<SequenceSemanticFailure>> {
     let syntax = SequenceSyntax::lex(code);
-    let editor_facts = syntax.editor_facts(code);
-    let actions = match syntax.into_actions() {
+    let (editor_facts, actions) = syntax.into_editor_facts_and_actions(code);
+    let actions = match actions {
         Ok(actions) => actions,
         Err(error) => {
             return Err(Box::new(SequenceSemanticFailure::Grammar {
@@ -222,8 +229,10 @@ fn sequence_wrap_enabled(meta: &ParseMetadata) -> Option<bool> {
 fn collect_sequence_editor_facts_from_events(
     events: &[SequenceLexicalEvent],
     code: &str,
+    lexemes: crate::editor::EditorLexemeBatchResult,
 ) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
+    facts.replace_family_lexemes(lexemes);
     let mut collector = SequenceEditorFactCollector::default();
 
     for event in events {

@@ -1,4 +1,9 @@
-use crate::SourceSpan;
+use crate::{
+    SourceSpan,
+    editor::{
+        EditorLexemeBatchResult, EditorLexemeJournal, EditorLexemeKind, EditorLexemeModifiers,
+    },
+};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
@@ -82,6 +87,13 @@ enum Mode {
     AccDescrMultiline,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LineLexemeKind {
+    String,
+    Color,
+    Style,
+}
+
 pub(super) struct Lexer<'input> {
     input: &'input str,
     pos: usize,
@@ -91,6 +103,8 @@ pub(super) struct Lexer<'input> {
     // keyword lexing for positions that must be actor ids.
     force_actor_id: bool,
     after_signal_type: bool,
+    line_lexeme_kind: Option<LineLexemeKind>,
+    lexemes: EditorLexemeJournal<'input>,
 }
 
 impl<'input> Lexer<'input> {
@@ -102,11 +116,37 @@ impl<'input> Lexer<'input> {
             mode: Mode::Default,
             force_actor_id: false,
             after_signal_type: false,
+            line_lexeme_kind: None,
+            lexemes: EditorLexemeJournal::family_lexer(input),
         }
     }
 
     pub(super) fn position(&self) -> usize {
         self.pos
+    }
+
+    pub(super) fn finish_lexemes(self) -> EditorLexemeBatchResult {
+        self.lexemes.finish()
+    }
+
+    fn push_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
+        self.lexemes.push(
+            kind,
+            EditorLexemeModifiers::NONE,
+            SourceSpan::new(start, end),
+        );
+    }
+
+    fn push_trimmed_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
+        let Some(raw) = self.input.get(start..end) else {
+            self.push_lexeme(kind, start, end);
+            return;
+        };
+        let leading = raw.len() - raw.trim_start().len();
+        let trailing = raw.trim_end().len();
+        if leading < trailing {
+            self.push_lexeme(kind, start + leading, start + trailing);
+        }
     }
 
     fn peek(&self) -> Option<u8> {
@@ -207,6 +247,7 @@ impl<'input> Lexer<'input> {
                 self.mode = Mode::Default;
                 self.force_actor_id = false;
                 self.after_signal_type = false;
+                self.line_lexeme_kind = None;
                 Some((start, Tok::Newline, self.pos))
             }
             _ => None,
@@ -218,24 +259,28 @@ impl<'input> Lexer<'input> {
             return false;
         };
         if b == b'#' {
+            let start = self.pos;
             while let Some(b2) = self.peek() {
                 if b2 == b'\n' {
                     break;
                 }
                 self.pos += 1;
             }
+            self.push_lexeme(EditorLexemeKind::Comment, start, self.pos);
             return true;
         }
         let Some([b'%', b'%']) = self.peek2() else {
             return false;
         };
         // Mermaid directives are removed earlier in preprocess, so `%%` is always a comment here.
+        let start = self.pos;
         while let Some(b2) = self.peek() {
             if b2 == b'\n' {
                 break;
             }
             self.pos += 1;
         }
+        self.push_lexeme(EditorLexemeKind::Comment, start, self.pos);
         true
     }
 
@@ -247,11 +292,14 @@ impl<'input> Lexer<'input> {
         let Some(rel_end) = self.input[self.pos..].find('}') else {
             let s = self.input[self.pos..].to_string();
             self.pos = self.input.len();
+            self.push_trimmed_lexeme(EditorLexemeKind::String, start, self.pos);
             return Some((start, Tok::AccDescrMultiline(s), self.pos));
         };
         let end = self.pos + rel_end;
         let s = self.input[self.pos..end].to_string();
         self.pos = end + 1;
+        self.push_trimmed_lexeme(EditorLexemeKind::String, start, end);
+        self.push_lexeme(EditorLexemeKind::Delimiter, end, end + 1);
         self.mode = Mode::Default;
         Some((start, Tok::AccDescrMultiline(s), self.pos))
     }
@@ -260,9 +308,14 @@ impl<'input> Lexer<'input> {
         let start = self.pos;
 
         if self.starts_with_ci_word("title:") {
+            let keyword_end = start + "title".len();
             self.pos += "title:".len();
             self.skip_ws();
+            let value_start = self.pos;
             let s = self.read_to_line_end();
+            self.push_lexeme(EditorLexemeKind::Keyword, start, keyword_end);
+            self.push_lexeme(EditorLexemeKind::Delimiter, keyword_end, keyword_end + 1);
+            self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
             return Some((start, Tok::CompatTitle(s.trim().to_string()), self.pos));
         }
 
@@ -271,7 +324,10 @@ impl<'input> Lexer<'input> {
             if after < self.input.len() && self.input.as_bytes()[after].is_ascii_whitespace() {
                 self.pos = after;
                 self.skip_ws();
+                let value_start = self.pos;
                 let s = self.read_to_line_end();
+                self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+                self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
                 return Some((start, Tok::Title(s.trim().to_string()), self.pos));
             }
         }
@@ -283,9 +339,14 @@ impl<'input> Lexer<'input> {
             if rest[..colon_pos].chars().any(|c| c == '\n' || c == ';') {
                 return None;
             }
-            self.pos = after + colon_pos + 1;
+            let colon = after + colon_pos;
+            self.pos = colon + 1;
             self.skip_ws();
+            let value_start = self.pos;
             let s = self.read_to_line_end();
+            self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+            self.push_lexeme(EditorLexemeKind::Delimiter, colon, colon + 1);
+            self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
             return Some((start, Tok::AccTitle(s.trim().to_string()), self.pos));
         }
 
@@ -295,13 +356,21 @@ impl<'input> Lexer<'input> {
             let non_ws = rest.find(|c: char| !c.is_whitespace())?;
             match rest[non_ws..].chars().next() {
                 Some(':') => {
-                    self.pos = after + non_ws + 1;
+                    let colon = after + non_ws;
+                    self.pos = colon + 1;
                     self.skip_ws();
+                    let value_start = self.pos;
                     let s = self.read_to_line_end();
+                    self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+                    self.push_lexeme(EditorLexemeKind::Delimiter, colon, colon + 1);
+                    self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
                     return Some((start, Tok::AccDescr(s.trim().to_string()), self.pos));
                 }
                 Some('{') => {
-                    self.pos = after + non_ws + 1;
+                    let opening = after + non_ws;
+                    self.pos = opening + 1;
+                    self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+                    self.push_lexeme(EditorLexemeKind::Delimiter, opening, opening + 1);
                     self.mode = Mode::AccDescrMultiline;
                     return self.lex_multiline_acc_descr();
                 }
@@ -348,6 +417,7 @@ impl<'input> Lexer<'input> {
         if self.starts_with_ci_word("box") {
             self.pos += "box".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::Style);
             return Some((start, Tok::Box, self.pos));
         }
         if self.starts_with_ci_word("end") {
@@ -357,56 +427,67 @@ impl<'input> Lexer<'input> {
         if self.starts_with_ci_word("loop") {
             self.pos += "loop".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::Loop, self.pos));
         }
         if self.starts_with_ci_word("rect") {
             self.pos += "rect".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::Color);
             return Some((start, Tok::Rect, self.pos));
         }
         if self.starts_with_ci_word("opt") {
             self.pos += "opt".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::Opt, self.pos));
         }
         if self.starts_with_ci_word("alt") {
             self.pos += "alt".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::Alt, self.pos));
         }
         if self.starts_with_ci_word("else") {
             self.pos += "else".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::Else, self.pos));
         }
         if self.starts_with_ci_word("par_over") {
             self.pos += "par_over".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::ParOver, self.pos));
         }
         if self.starts_with_ci_word("par") {
             self.pos += "par".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::Par, self.pos));
         }
         if self.starts_with_ci_word("and") {
             self.pos += "and".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::And, self.pos));
         }
         if self.starts_with_ci_word("critical") {
             self.pos += "critical".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::Critical, self.pos));
         }
         if self.starts_with_ci_word("option") {
             self.pos += "option".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::Option, self.pos));
         }
         if self.starts_with_ci_word("break") {
             self.pos += "break".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::Break, self.pos));
         }
         if self.starts_with_ci_word("create") {
@@ -420,6 +501,7 @@ impl<'input> Lexer<'input> {
         if self.starts_with_ci_word("as") {
             self.pos += "as".len();
             self.mode = Mode::Line;
+            self.line_lexeme_kind = Some(LineLexemeKind::String);
             return Some((start, Tok::As, self.pos));
         }
         if self.starts_with_ci_word("note") {
@@ -594,6 +676,12 @@ impl<'input> Lexer<'input> {
         }
         let start = self.pos;
         let s = self.read_to_line_end();
+        let kind = match self.line_lexeme_kind.take() {
+            Some(LineLexemeKind::Color) => EditorLexemeKind::Color,
+            Some(LineLexemeKind::Style) => EditorLexemeKind::Style,
+            Some(LineLexemeKind::String) | None => EditorLexemeKind::String,
+        };
+        self.push_trimmed_lexeme(kind, start, self.pos);
         self.mode = Mode::Default;
         Some((start, Tok::RestOfLine(s.trim().to_string()), self.pos))
     }
@@ -620,6 +708,7 @@ impl<'input> Lexer<'input> {
         let end = self.pos + rel_end;
         let s = self.input[self.pos..end].trim().to_string();
         self.pos = end + 1;
+        self.push_lexeme(EditorLexemeKind::Style, start, self.pos);
         Some(Ok((start, Tok::Config(s), self.pos)))
     }
 
@@ -629,7 +718,10 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += 1;
+        let value_start = self.pos;
         let s = self.read_to_line_end();
+        self.push_lexeme(EditorLexemeKind::Delimiter, start, start + 1);
+        self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
         Some((start, Tok::Text(s.trim().to_string()), self.pos))
     }
 
@@ -778,7 +870,21 @@ impl<'input> Lexer<'input> {
         tok: (usize, Tok, usize),
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         self.note_emitted_token(&tok.1);
+        record_sequence_token(&mut self.lexemes, &tok.1, tok.0, tok.2);
         Some(Ok(tok))
+    }
+
+    fn emit_result(
+        &mut self,
+        token: std::result::Result<(usize, Tok, usize), LexError>,
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+        if let Ok((start, token, end)) = &token {
+            self.note_emitted_token(token);
+            record_sequence_token(&mut self.lexemes, token, *start, *end);
+        } else {
+            self.force_actor_id = false;
+        }
+        Some(token)
     }
 }
 
@@ -787,8 +893,7 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(tok) = self.pending.pop_front() {
-            self.note_emitted_token(&tok.1);
-            return Some(Ok(tok));
+            return self.emit(tok);
         }
 
         loop {
@@ -857,12 +962,7 @@ impl<'input> Iterator for Lexer<'input> {
             }
 
             if let Some(tok) = self.lex_config() {
-                if let Ok((_, ref tok, _)) = tok {
-                    self.note_emitted_token(tok);
-                } else {
-                    self.force_actor_id = false;
-                }
-                return Some(tok);
+                return self.emit_result(tok);
             }
 
             if let Some(tok) = self.lex_text() {
@@ -896,4 +996,63 @@ impl<'input> Iterator for Lexer<'input> {
             }));
         }
     }
+}
+
+fn record_sequence_token(
+    journal: &mut EditorLexemeJournal<'_>,
+    token: &Tok,
+    start: usize,
+    end: usize,
+) {
+    let kind = match token {
+        Tok::Newline
+        | Tok::Text(_)
+        | Tok::RestOfLine(_)
+        | Tok::Config(_)
+        | Tok::Title(_)
+        | Tok::CompatTitle(_)
+        | Tok::AccTitle(_)
+        | Tok::AccDescr(_)
+        | Tok::AccDescrMultiline(_) => return,
+        Tok::SequenceDiagram
+        | Tok::Participant
+        | Tok::ActorKw
+        | Tok::Create
+        | Tok::Destroy
+        | Tok::As
+        | Tok::Box
+        | Tok::End
+        | Tok::Loop
+        | Tok::Rect
+        | Tok::Opt
+        | Tok::Alt
+        | Tok::Else
+        | Tok::Par
+        | Tok::ParOver
+        | Tok::And
+        | Tok::Critical
+        | Tok::Option
+        | Tok::Break
+        | Tok::Note
+        | Tok::LeftOf
+        | Tok::RightOf
+        | Tok::Over
+        | Tok::Links
+        | Tok::Link
+        | Tok::Properties
+        | Tok::Details
+        | Tok::Autonumber
+        | Tok::Off
+        | Tok::Activate
+        | Tok::Deactivate => EditorLexemeKind::Keyword,
+        Tok::Comma => EditorLexemeKind::Delimiter,
+        Tok::Plus | Tok::Minus | Tok::Central | Tok::SignalType(_) => EditorLexemeKind::Operator,
+        Tok::Num(_) => EditorLexemeKind::Number,
+        Tok::Actor(_) => EditorLexemeKind::Identifier,
+    };
+    journal.push(
+        kind,
+        EditorLexemeModifiers::NONE,
+        SourceSpan::new(start, end),
+    );
 }

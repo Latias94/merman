@@ -162,6 +162,17 @@ impl EditorLexemeProducer {
         self.family = Some(family);
         Ok(())
     }
+
+    fn mark_recovered(&mut self) {
+        if self.family.is_none()
+            && matches!(
+                self.kind,
+                EditorLexemeProducerKind::FamilyLexer | EditorLexemeProducerKind::FamilyParser
+            )
+        {
+            self.kind = EditorLexemeProducerKind::FamilyRecovery;
+        }
+    }
 }
 
 /// One parser/preprocessor-owned lexical fact in caller-source byte coordinates.
@@ -642,6 +653,9 @@ impl EditorSemanticFacts {
 
     pub fn mark_recovered(&mut self) {
         self.completeness = EditorSemanticCompleteness::Recovered;
+        for lexeme in &mut self.lexemes {
+            lexeme.producer.mark_recovered();
+        }
     }
 
     pub fn mark_recovered_with_diagnostic(
@@ -888,8 +902,9 @@ fn humanize_token_name(token: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        EditorLexemeFailure, EditorLexemeJournal, EditorLexemeKind, EditorLexemeModifier,
-        EditorLexemeModifiers, EditorSemanticFacts, lalrpop_parse_diagnostic,
+        EditorLexeme, EditorLexemeFailure, EditorLexemeJournal, EditorLexemeKind,
+        EditorLexemeModifier, EditorLexemeModifiers, EditorLexemeProducerKind, EditorSemanticFacts,
+        lalrpop_parse_diagnostic,
     };
     use crate::ParseDiagnosticSpanKind;
 
@@ -992,11 +1007,66 @@ mod tests {
             crate::SourceSpan::new(0, 3),
         );
         facts.replace_family_lexemes(valid.finish());
+        facts.mark_recovered();
         let family =
             crate::family::diagram_type_family_id("flowchart").expect("flowchart family identity");
         facts.finalize_lexemes(family, &[]);
 
         assert_eq!(facts.lexeme_failure(), Some(failure));
         assert!(facts.lexemes().is_empty());
+    }
+
+    #[test]
+    fn recovery_promotes_the_complete_unsealed_family_batch_once() {
+        let mut journal = EditorLexemeJournal::family_lexer("alpha beta");
+        journal.push(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifiers::NONE,
+            crate::SourceSpan::new(0, 5),
+        );
+        journal.push(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifiers::NONE,
+            crate::SourceSpan::new(6, 10),
+        );
+        let mut facts = EditorSemanticFacts::new();
+        facts.replace_family_lexemes(journal.finish());
+
+        facts.mark_recovered();
+        facts.mark_recovered();
+
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer.kind == EditorLexemeProducerKind::FamilyRecovery
+                && lexeme.producer.family.is_none()
+        }));
+    }
+
+    #[test]
+    fn recovery_after_family_sealing_does_not_rewrite_provenance() {
+        let mut journal = EditorLexemeJournal::family_lexer("alpha");
+        journal.push(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifiers::NONE,
+            crate::SourceSpan::new(0, 5),
+        );
+        let mut facts = EditorSemanticFacts::new();
+        facts.replace_family_lexemes(journal.finish());
+        let family =
+            crate::family::diagram_type_family_id("flowchart").expect("flowchart family identity");
+        let global = EditorLexeme::global(EditorLexemeKind::Comment, crate::SourceSpan::new(6, 12));
+        facts.finalize_lexemes(family, &[global]);
+
+        facts.mark_recovered();
+
+        assert_eq!(
+            facts.lexemes()[0].producer.kind,
+            EditorLexemeProducerKind::FamilyLexer
+        );
+        assert_eq!(facts.lexemes()[0].producer.family, Some(family));
+        assert_eq!(
+            facts.lexemes()[1].producer.kind,
+            EditorLexemeProducerKind::GlobalPreprocess
+        );
+        assert_eq!(facts.lexemes()[1].producer.family, None);
     }
 }

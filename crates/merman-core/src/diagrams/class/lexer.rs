@@ -1,6 +1,10 @@
 use std::collections::VecDeque;
 
 use super::MERMAID_DOM_ID_PREFIX;
+use crate::SourceSpan;
+use crate::editor::{
+    EditorLexemeBatchResult, EditorLexemeJournal, EditorLexemeKind, EditorLexemeModifiers,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Tok {
@@ -88,6 +92,7 @@ pub(super) struct Lexer<'input> {
     pos: usize,
     pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
+    lexemes: EditorLexemeJournal<'input>,
 }
 
 impl<'input> Lexer<'input> {
@@ -97,11 +102,36 @@ impl<'input> Lexer<'input> {
             pos: 0,
             pending: VecDeque::new(),
             mode: Mode::Default,
+            lexemes: EditorLexemeJournal::family_lexer(input),
         }
     }
 
     pub(super) fn position(&self) -> usize {
         self.pos
+    }
+
+    pub(super) fn finish_lexemes(self) -> EditorLexemeBatchResult {
+        self.lexemes.finish()
+    }
+
+    fn push_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
+        self.lexemes.push(
+            kind,
+            EditorLexemeModifiers::NONE,
+            SourceSpan::new(start, end),
+        );
+    }
+
+    fn push_trimmed_lexeme(&mut self, kind: EditorLexemeKind, start: usize, end: usize) {
+        let Some(raw) = self.input.get(start..end) else {
+            self.push_lexeme(kind, start, end);
+            return;
+        };
+        let leading = raw.len() - raw.trim_start().len();
+        let trailing = raw.trim_end().len();
+        if leading < trailing {
+            self.push_lexeme(kind, start + leading, start + trailing);
+        }
     }
 
     fn peek(&self) -> Option<u8> {
@@ -167,7 +197,9 @@ impl<'input> Lexer<'input> {
 
     fn lex_comment(&mut self) -> bool {
         if self.starts_with("%%") {
+            let start = self.pos;
             let _ = self.read_to_newline();
+            self.push_lexeme(EditorLexemeKind::Comment, start, self.pos);
             return true;
         }
         false
@@ -181,8 +213,13 @@ impl<'input> Lexer<'input> {
         let after = self.pos + "accTitle".len();
         let rest = &self.input[after..];
         let colon = rest.find(':')?;
-        self.pos = after + colon + 1;
+        let colon = after + colon;
+        self.pos = colon + 1;
+        let value_start = self.pos;
         let value = self.read_to_newline();
+        self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+        self.push_lexeme(EditorLexemeKind::Delimiter, colon, colon + 1);
+        self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
         Some((start, Tok::AccTitle(value.trim().to_string()), self.pos))
     }
 
@@ -196,15 +233,25 @@ impl<'input> Lexer<'input> {
         let rest_trim = rest.trim_start();
         if rest_trim.starts_with('{') {
             let consumed_ws = rest.len() - rest_trim.len();
-            self.pos = after + consumed_ws + 1;
+            let opening = after + consumed_ws;
+            self.pos = opening + 1;
             let Some(end_rel) = self.input[self.pos..].find('}') else {
+                self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+                self.push_lexeme(EditorLexemeKind::Delimiter, opening, opening + 1);
+                self.push_trimmed_lexeme(EditorLexemeKind::String, self.pos, self.input.len());
                 return Some(Err(LexError {
                     message: "Unterminated accDescr block; missing '}'".to_string(),
                     span: crate::SourceSpan::new(self.pos - 1, self.pos),
                 }));
             };
+            let body_start = self.pos;
+            let closing = self.pos + end_rel;
             let body = self.input[self.pos..self.pos + end_rel].to_string();
-            self.pos = self.pos + end_rel + 1;
+            self.pos = closing + 1;
+            self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+            self.push_lexeme(EditorLexemeKind::Delimiter, opening, opening + 1);
+            self.push_trimmed_lexeme(EditorLexemeKind::String, body_start, closing);
+            self.push_lexeme(EditorLexemeKind::Delimiter, closing, closing + 1);
             return Some(Ok((
                 start,
                 Tok::AccDescrMultiline(body.trim().to_string()),
@@ -212,8 +259,13 @@ impl<'input> Lexer<'input> {
             )));
         }
         let colon = rest.find(':')?;
-        self.pos = after + colon + 1;
+        let colon = after + colon;
+        self.pos = colon + 1;
+        let value_start = self.pos;
         let value = self.read_to_newline();
+        self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+        self.push_lexeme(EditorLexemeKind::Delimiter, colon, colon + 1);
+        self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
         Some(Ok((
             start,
             Tok::AccDescr(value.trim().to_string()),
@@ -236,6 +288,7 @@ impl<'input> Lexer<'input> {
             let after = self.pos + "direction".len();
             self.pos = after;
             self.skip_ws();
+            let direction_start = self.pos;
             let dir = if self.input[self.pos..].starts_with("TB") {
                 self.pos += 2;
                 "TB"
@@ -251,7 +304,10 @@ impl<'input> Lexer<'input> {
             } else {
                 return None;
             };
+            let direction_end = self.pos;
             let _ = self.read_to_newline();
+            self.push_lexeme(EditorLexemeKind::Keyword, start, after);
+            self.push_lexeme(EditorLexemeKind::Literal, direction_start, direction_end);
             return Some((start, Tok::Direction(dir.to_string()), self.pos));
         }
 
@@ -325,7 +381,9 @@ impl<'input> Lexer<'input> {
             return false;
         }
         if self.starts_with_word("call") {
+            let start = self.pos;
             self.pos += "call".len();
+            self.push_lexeme(EditorLexemeKind::Keyword, start, self.pos);
             self.mode = Mode::ClickNeedCallbackName;
             return true;
         }
@@ -496,7 +554,10 @@ impl<'input> Lexer<'input> {
             return None;
         }
         self.pos += 1;
+        let value_start = self.pos;
         let s = self.read_to_newline();
+        self.push_lexeme(EditorLexemeKind::Delimiter, start, start + 1);
+        self.push_trimmed_lexeme(EditorLexemeKind::String, value_start, self.pos);
         Some((start, Tok::Label(format!(":{}", s)), self.pos))
     }
 
@@ -620,6 +681,24 @@ impl<'input> Lexer<'input> {
         let s = self.read_to_newline();
         Some(Ok((start, Tok::Member(s.trim_end().to_string()), self.pos)))
     }
+
+    fn emit(
+        &mut self,
+        token: (usize, Tok, usize),
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+        record_class_token(&mut self.lexemes, &token.1, token.0, token.2);
+        Some(Ok(token))
+    }
+
+    fn emit_result(
+        &mut self,
+        token: std::result::Result<(usize, Tok, usize), LexError>,
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+        if let Ok((start, token, end)) = &token {
+            record_class_token(&mut self.lexemes, token, *start, *end);
+        }
+        Some(token)
+    }
 }
 
 impl<'input> Iterator for Lexer<'input> {
@@ -627,7 +706,7 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(tok) = self.pending.pop_front() {
-            return Some(Ok(tok));
+            return self.emit(tok);
         }
 
         loop {
@@ -647,7 +726,7 @@ impl<'input> Iterator for Lexer<'input> {
             }
 
             if let Some(tok) = self.lex_rest_of_line() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if self.lex_click_call() {
@@ -660,51 +739,51 @@ impl<'input> Iterator for Lexer<'input> {
             }
 
             if let Some(tok) = self.lex_callback_name() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_link_target() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_member() {
-                return Some(tok);
+                return self.emit_result(tok);
             }
 
             if let Some(tok) = self.lex_newline() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_acc_title() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_acc_descr() {
-                return Some(tok);
+                return self.emit_result(tok);
             }
 
             if let Some(tok) = self.lex_keyword() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_callback_args() {
-                return Some(tok);
+                return self.emit_result(tok);
             }
 
             if let Some(tok) = self.lex_punct() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_label() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             if let Some(tok) = self.lex_str() {
-                return Some(tok);
+                return self.emit_result(tok);
             }
 
             if let Some(tok) = self.lex_name() {
-                return Some(Ok(tok));
+                return self.emit(tok);
             }
 
             let start = self.pos;
@@ -715,4 +794,55 @@ impl<'input> Iterator for Lexer<'input> {
             }));
         }
     }
+}
+
+fn record_class_token(
+    journal: &mut EditorLexemeJournal<'_>,
+    token: &Tok,
+    start: usize,
+    end: usize,
+) {
+    let kind = match token {
+        Tok::Newline
+        | Tok::Direction(_)
+        | Tok::Label(_)
+        | Tok::AccTitle(_)
+        | Tok::AccDescr(_)
+        | Tok::AccDescrMultiline(_) => return,
+        Tok::ClassDiagram
+        | Tok::ClassKw
+        | Tok::NamespaceKw
+        | Tok::Note
+        | Tok::NoteFor
+        | Tok::CssClass
+        | Tok::StyleKw
+        | Tok::ClassDefKw
+        | Tok::ClickKw
+        | Tok::LinkKw
+        | Tok::CallbackKw
+        | Tok::HrefKw => EditorLexemeKind::Keyword,
+        Tok::StructStart
+        | Tok::StructStop
+        | Tok::SquareStart
+        | Tok::SquareStop
+        | Tok::AnnotationStart
+        | Tok::AnnotationStop
+        | Tok::StyleSeparator => EditorLexemeKind::Delimiter,
+        Tok::Ext
+        | Tok::Dep
+        | Tok::Comp
+        | Tok::Agg
+        | Tok::Lollipop
+        | Tok::Line
+        | Tok::DottedLine => EditorLexemeKind::Operator,
+        Tok::Str(_) => EditorLexemeKind::String,
+        Tok::Name(_) | Tok::CallbackName(_) => EditorLexemeKind::Identifier,
+        Tok::Member(_) | Tok::CallbackArgs(_) | Tok::LinkTarget(_) => EditorLexemeKind::Literal,
+        Tok::RestOfLine(_) => EditorLexemeKind::Style,
+    };
+    journal.push(
+        kind,
+        EditorLexemeModifiers::NONE,
+        SourceSpan::new(start, end),
+    );
 }

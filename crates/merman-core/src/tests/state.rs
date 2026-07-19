@@ -685,9 +685,12 @@ fn state_combined_projection_constructs_once_and_matches_standalone_entrypoints(
         .expect("standalone State editor parse returns facts");
 
     crate::diagrams::state::reset_state_syntax_construction_count();
-    let (combined_json, combined_editor) =
+    let (combined_json, mut combined_editor) =
         crate::diagrams::state::parse_state_json_and_editor_facts(input, &standalone.meta)
             .expect("combined State parse succeeds");
+    let family = crate::family::diagram_type_family_id(&standalone.meta.diagram_type)
+        .expect("State belongs to a catalog family");
+    combined_editor.finalize_lexemes(family, &[]);
 
     assert_eq!(
         crate::diagrams::state::state_syntax_construction_count(),
