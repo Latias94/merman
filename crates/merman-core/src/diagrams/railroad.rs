@@ -1,7 +1,9 @@
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error,
+    ParseMetadata, Result, SourceSpan,
+    editor::{EditorLexemeBatchResult, EditorLexemeJournal},
 };
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -389,7 +391,7 @@ enum TokenKind {
     NumVal(String),
     Repeat(String),
     Number(String),
-    Common(CommonFieldKind, String),
+    Common(ParsedCommonField),
     Symbol(char),
     ColonColonEq,
     LeftArrow,
@@ -492,12 +494,12 @@ pub(crate) fn parse_railroad_peg_json_and_editor_facts(
 
 struct RailroadSemanticSource {
     model: RailroadDiagramModel,
-    dialect: RailroadDialect,
+    editor_facts: EditorSemanticFacts,
 }
 
 impl RailroadSemanticSource {
     fn editor_facts(&self) -> EditorSemanticFacts {
-        editor_facts_from_model(&self.model, self.dialect)
+        self.editor_facts.clone()
     }
 
     fn into_compat_json(mut self, meta: &ParseMetadata) -> Result<Value> {
@@ -509,6 +511,41 @@ impl RailroadSemanticSource {
         self.model.sanitize_common_db_fields(&meta.effective_config);
         self.model
     }
+}
+
+struct RailroadParseFailure {
+    error: Box<Error>,
+    editor_facts: Box<EditorSemanticFacts>,
+}
+
+struct RailroadLexerOutcome {
+    tokens: Vec<Token>,
+    comments: Vec<SourceSpan>,
+    recovery_lexemes: Vec<RailroadLexemeEvent>,
+    first_error: Option<Error>,
+}
+
+struct RailroadParserOutcome {
+    model: RailroadDiagramModel,
+    trace: RailroadParserTrace,
+    first_error: Option<Error>,
+}
+
+#[derive(Default)]
+struct RailroadParserTrace {
+    peg_predicates: Vec<RailroadPegPredicateTrace>,
+}
+
+struct RailroadPegPredicateTrace {
+    span: SourceSpan,
+    inner: RailroadAstNode,
+}
+
+#[derive(Clone, Copy)]
+struct RailroadLexemeEvent {
+    kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
+    span: SourceSpan,
 }
 
 fn parse_railroad_for_dialect(
@@ -532,19 +569,9 @@ fn parse_railroad_editor_facts_for_dialect(
     meta: &ParseMetadata,
     dialect: RailroadDialect,
 ) -> EditorSemanticFacts {
-    match parse_railroad_semantic_source(code, meta, dialect) {
+    match construct_railroad_semantic_source(code, meta, dialect) {
         Ok(source) => source.editor_facts(),
-        Err(err) => {
-            let mut facts = scan_editor_facts_lossy(code, dialect);
-            facts.mark_recovered_from_parse_error(
-                format!(
-                    "{} parser recovered after parse error: {err}",
-                    dialect.diagram_type()
-                ),
-                Some(SourceSpan::new(0, code.len())),
-            );
-            facts
-        }
+        Err(failure) => *failure.editor_facts,
     }
 }
 
@@ -577,13 +604,290 @@ fn parse_railroad_semantic_source(
     meta: &ParseMetadata,
     dialect: RailroadDialect,
 ) -> Result<RailroadSemanticSource> {
+    construct_railroad_semantic_source(code, meta, dialect).map_err(|failure| *failure.error)
+}
+
+fn construct_railroad_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+    dialect: RailroadDialect,
+) -> std::result::Result<RailroadSemanticSource, RailroadParseFailure> {
     #[cfg(test)]
     RAILROAD_SYNTAX_CONSTRUCTION_COUNT.set(RAILROAD_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let tokens = Lexer::new(code, dialect, meta.diagram_type.as_str()).tokenize()?;
-    let model =
-        RailroadParser::new(tokens, code.len(), meta.diagram_type.as_str(), dialect).parse()?;
-    Ok(RailroadSemanticSource { model, dialect })
+    let lexer = Lexer::new(code, dialect, meta.diagram_type.as_str()).tokenize_recovering();
+    let lexemes = build_railroad_lexemes(
+        code,
+        dialect,
+        &lexer.tokens,
+        &lexer.comments,
+        &lexer.recovery_lexemes,
+    );
+    let parser = RailroadParser::new(
+        lexer.tokens,
+        code.len(),
+        meta.diagram_type.as_str(),
+        dialect,
+    )
+    .parse_recovering();
+    let mut editor_facts = editor_facts_from_model(&parser.model, dialect, &parser.trace);
+    editor_facts.replace_family_lexemes(lexemes);
+
+    if let Some(error) = earliest_railroad_error(lexer.first_error, parser.first_error) {
+        let span = railroad_error_span(&error, SourceSpan::new(0, code.len()));
+        editor_facts.mark_recovered_from_parse_error(
+            format!(
+                "{} parser recovered after parse error: {error}",
+                dialect.diagram_type()
+            ),
+            Some(span),
+        );
+        return Err(RailroadParseFailure {
+            error: Box::new(error),
+            editor_facts: Box::new(editor_facts),
+        });
+    }
+
+    Ok(RailroadSemanticSource {
+        model: parser.model,
+        editor_facts,
+    })
+}
+
+fn earliest_railroad_error(left: Option<Error>, right: Option<Error>) -> Option<Error> {
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            if railroad_error_span(&left, SourceSpan::new(usize::MAX, usize::MAX)).start
+                <= railroad_error_span(&right, SourceSpan::new(usize::MAX, usize::MAX)).start
+            {
+                Some(left)
+            } else {
+                Some(right)
+            }
+        }
+        (Some(error), None) | (None, Some(error)) => Some(error),
+        (None, None) => None,
+    }
+}
+
+fn railroad_error_span(error: &Error, fallback: SourceSpan) -> SourceSpan {
+    match error {
+        Error::DiagramParse { diagnostic, .. } => diagnostic.span().unwrap_or(fallback),
+        _ => fallback,
+    }
+}
+
+fn build_railroad_lexemes(
+    code: &str,
+    dialect: RailroadDialect,
+    tokens: &[Token],
+    comments: &[SourceSpan],
+    recovery_lexemes: &[RailroadLexemeEvent],
+) -> EditorLexemeBatchResult {
+    let mut events = Vec::with_capacity(tokens.len() * 2 + comments.len() + recovery_lexemes.len());
+    events.extend_from_slice(recovery_lexemes);
+    for span in comments {
+        events.push(RailroadLexemeEvent {
+            kind: EditorLexemeKind::Comment,
+            modifiers: EditorLexemeModifiers::NONE,
+            span: *span,
+        });
+    }
+
+    for (index, token) in tokens.iter().enumerate() {
+        match &token.kind {
+            TokenKind::Common(field) => {
+                push_railroad_lexeme(
+                    &mut events,
+                    EditorLexemeKind::Keyword,
+                    EditorLexemeModifiers::NONE,
+                    field.keyword_span,
+                );
+                for span in &field.delimiter_spans {
+                    push_railroad_lexeme(
+                        &mut events,
+                        EditorLexemeKind::Delimiter,
+                        EditorLexemeModifiers::NONE,
+                        *span,
+                    );
+                }
+                push_railroad_lexeme(
+                    &mut events,
+                    EditorLexemeKind::String,
+                    EditorLexemeModifiers::NONE,
+                    field.value.selection,
+                );
+            }
+            TokenKind::Ident(value) if value == dialect.header() => push_railroad_lexeme(
+                &mut events,
+                EditorLexemeKind::Keyword,
+                EditorLexemeModifiers::NONE,
+                token.span,
+            ),
+            TokenKind::Ident(value)
+                if dialect == RailroadDialect::Ir && is_railroad_ir_keyword(value) =>
+            {
+                push_railroad_lexeme(
+                    &mut events,
+                    EditorLexemeKind::Keyword,
+                    EditorLexemeModifiers::NONE,
+                    token.span,
+                );
+            }
+            TokenKind::Ident(_) => {
+                let modifier = if railroad_assignment_token(tokens.get(index + 1), dialect) {
+                    EditorLexemeModifier::Definition
+                } else {
+                    EditorLexemeModifier::Reference
+                };
+                push_railroad_lexeme(
+                    &mut events,
+                    EditorLexemeKind::Identifier,
+                    EditorLexemeModifiers::from_modifier(modifier),
+                    token.selection,
+                );
+            }
+            TokenKind::String(_) => {
+                let modifiers = if dialect == RailroadDialect::Ir
+                    && is_railroad_nonterminal_string(tokens, index)
+                {
+                    EditorLexemeModifiers::from_modifier(EditorLexemeModifier::Reference)
+                } else {
+                    EditorLexemeModifiers::NONE
+                };
+                push_railroad_quoted_lexemes(
+                    &mut events,
+                    token,
+                    EditorLexemeKind::String,
+                    modifiers,
+                );
+            }
+            TokenKind::SpecialSequence(_) => {
+                push_railroad_quoted_lexemes(
+                    &mut events,
+                    token,
+                    EditorLexemeKind::String,
+                    EditorLexemeModifiers::NONE,
+                );
+            }
+            TokenKind::NumVal(_) => push_railroad_lexeme(
+                &mut events,
+                EditorLexemeKind::Literal,
+                EditorLexemeModifiers::NONE,
+                token.span,
+            ),
+            TokenKind::Repeat(_) | TokenKind::Number(_) => push_railroad_lexeme(
+                &mut events,
+                EditorLexemeKind::Number,
+                EditorLexemeModifiers::NONE,
+                token.span,
+            ),
+            TokenKind::Symbol(symbol) => push_railroad_lexeme(
+                &mut events,
+                if matches!(symbol, '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';') {
+                    EditorLexemeKind::Delimiter
+                } else {
+                    EditorLexemeKind::Operator
+                },
+                EditorLexemeModifiers::NONE,
+                token.span,
+            ),
+            TokenKind::ColonColonEq | TokenKind::LeftArrow => push_railroad_lexeme(
+                &mut events,
+                EditorLexemeKind::Operator,
+                EditorLexemeModifiers::NONE,
+                token.span,
+            ),
+        }
+    }
+
+    events.sort_by_key(|event| (event.span.start, event.span.end));
+    let mut journal = EditorLexemeJournal::family_parser(code);
+    for event in events {
+        journal.push(event.kind, event.modifiers, event.span);
+    }
+    journal.finish()
+}
+
+fn push_railroad_quoted_lexemes(
+    events: &mut Vec<RailroadLexemeEvent>,
+    token: &Token,
+    kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
+) {
+    push_railroad_lexeme(
+        events,
+        EditorLexemeKind::Delimiter,
+        EditorLexemeModifiers::NONE,
+        SourceSpan::new(token.span.start, token.selection.start),
+    );
+    push_railroad_lexeme(events, kind, modifiers, token.selection);
+    push_railroad_lexeme(
+        events,
+        EditorLexemeKind::Delimiter,
+        EditorLexemeModifiers::NONE,
+        SourceSpan::new(token.selection.end, token.span.end),
+    );
+}
+
+fn is_railroad_nonterminal_string(tokens: &[Token], string_index: usize) -> bool {
+    let Some(function_index) = string_index.checked_sub(2) else {
+        return false;
+    };
+    matches!(
+        tokens.get(function_index),
+        Some(Token {
+            kind: TokenKind::Ident(value),
+            ..
+        }) if value == "nonterminal"
+    ) && matches!(
+        tokens.get(function_index + 1),
+        Some(Token {
+            kind: TokenKind::Symbol('('),
+            ..
+        })
+    )
+}
+
+fn push_railroad_lexeme(
+    events: &mut Vec<RailroadLexemeEvent>,
+    kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
+    span: SourceSpan,
+) {
+    if span.start < span.end {
+        events.push(RailroadLexemeEvent {
+            kind,
+            modifiers,
+            span,
+        });
+    }
+}
+
+fn railroad_assignment_token(token: Option<&Token>, dialect: RailroadDialect) -> bool {
+    token.is_some_and(|token| match dialect {
+        RailroadDialect::Peg => matches!(token.kind, TokenKind::LeftArrow),
+        RailroadDialect::Ebnf => {
+            matches!(token.kind, TokenKind::Symbol('=') | TokenKind::ColonColonEq)
+        }
+        RailroadDialect::Ir | RailroadDialect::Abnf => {
+            matches!(token.kind, TokenKind::Symbol('='))
+        }
+    })
+}
+
+fn is_railroad_ir_keyword(value: &str) -> bool {
+    matches!(
+        value,
+        "sequence"
+            | "choice"
+            | "optional"
+            | "oneOrMore"
+            | "zeroOrMore"
+            | "terminal"
+            | "nonterminal"
+            | "special"
+    )
 }
 
 fn sanitize_ast_node(node: &mut RailroadAstNode, config: &crate::MermaidConfig) {
@@ -619,6 +923,7 @@ struct RailroadParser<'a> {
     input_len: usize,
     diagram_type: &'a str,
     dialect: RailroadDialect,
+    trace: RailroadParserTrace,
 }
 
 impl<'a> RailroadParser<'a> {
@@ -634,14 +939,22 @@ impl<'a> RailroadParser<'a> {
             input_len,
             diagram_type,
             dialect,
+            trace: RailroadParserTrace::default(),
         }
     }
 
-    fn parse(mut self) -> Result<RailroadDiagramModel> {
+    fn parse_recovering(mut self) -> RailroadParserOutcome {
         let mut model = RailroadDiagramModel::new();
-        self.expect_header()?;
+        let mut first_error = None;
+        if let Err(error) = self.expect_header() {
+            return RailroadParserOutcome {
+                model,
+                trace: self.trace,
+                first_error: Some(error),
+            };
+        }
 
-        while let Some(field) = self.take_common_field()? {
+        while let Ok(Some(field)) = self.take_common_field() {
             match field.kind {
                 CommonFieldKind::Title => {
                     model.title = Some(field.value);
@@ -659,10 +972,48 @@ impl<'a> RailroadParser<'a> {
         }
 
         while !self.is_eof() {
-            model.rules.push(self.parse_rule()?);
+            let checkpoint = self.pos;
+            match self.parse_rule() {
+                Ok(rule) => model.rules.push(rule),
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                    self.recover_to_next_rule(checkpoint);
+                }
+            }
         }
 
-        Ok(model)
+        RailroadParserOutcome {
+            model,
+            trace: self.trace,
+            first_error,
+        }
+    }
+
+    fn recover_to_next_rule(&mut self, checkpoint: usize) {
+        let start = checkpoint.saturating_add(1).min(self.tokens.len());
+        for index in start..self.tokens.len().saturating_sub(1) {
+            if matches!(self.tokens[index].kind, TokenKind::Ident(_))
+                && self.assignment_follows(index + 1)
+            {
+                self.pos = index;
+                return;
+            }
+        }
+        self.pos = self.tokens.len();
+    }
+
+    fn assignment_follows(&self, index: usize) -> bool {
+        self.tokens
+            .get(index)
+            .is_some_and(|token| match self.dialect {
+                RailroadDialect::Peg => matches!(token.kind, TokenKind::LeftArrow),
+                RailroadDialect::Ebnf => {
+                    matches!(token.kind, TokenKind::Symbol('=') | TokenKind::ColonColonEq)
+                }
+                RailroadDialect::Ir | RailroadDialect::Abnf => {
+                    matches!(token.kind, TokenKind::Symbol('='))
+                }
+            })
     }
 
     fn expect_header(&mut self) -> Result<()> {
@@ -686,13 +1037,13 @@ impl<'a> RailroadParser<'a> {
         let Some(token) = self.peek() else {
             return Ok(None);
         };
-        let TokenKind::Common(kind, value) = &token.kind else {
+        let TokenKind::Common(field) = &token.kind else {
             return Ok(None);
         };
         let out = SpannedCommonField {
-            kind: *kind,
-            value: value.clone(),
-            span: token.selection,
+            kind: field.kind,
+            value: field.value.text.clone(),
+            span: field.value.selection,
         };
         self.pos += 1;
         Ok(Some(out))
@@ -1127,9 +1478,14 @@ impl<'a> RailroadParser<'a> {
         };
 
         let label = format!("{operator}{}", node_to_label(&suffix));
+        let predicate_span = SourceSpan::new(span.start, suffix.span().end);
+        self.trace.peg_predicates.push(RailroadPegPredicateTrace {
+            span: predicate_span,
+            inner: suffix.clone(),
+        });
         Ok(RailroadAstNode::Special {
             text: label,
-            span: SourceSpan::new(span.start, suffix.span().end),
+            span: predicate_span,
             selection: SourceSpan::new(span.start, suffix.selection().end),
         })
     }
@@ -1411,7 +1767,7 @@ struct SpannedCommonField {
     span: SourceSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct SpannedText {
     text: String,
     span: SourceSpan,
@@ -1423,6 +1779,8 @@ struct Lexer<'a> {
     dialect: RailroadDialect,
     diagram_type: &'a str,
     pos: usize,
+    comments: Vec<SourceSpan>,
+    recovery_lexemes: Vec<RailroadLexemeEvent>,
 }
 
 impl<'a> Lexer<'a> {
@@ -1432,22 +1790,59 @@ impl<'a> Lexer<'a> {
             dialect,
             diagram_type,
             pos: 0,
+            comments: Vec::new(),
+            recovery_lexemes: Vec::new(),
         }
     }
 
-    fn tokenize(mut self) -> Result<Vec<Token>> {
+    fn tokenize_recovering(mut self) -> RailroadLexerOutcome {
         let mut tokens = Vec::new();
-        while self.skip_trivia()? {
+        let mut first_error = None;
+        loop {
+            match self.skip_trivia() {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                    if self.is_eof() {
+                        break;
+                    }
+                    self.advance_char();
+                    continue;
+                }
+            }
             if self.is_eof() {
                 break;
             }
-            if let Some(token) = self.take_common_field()? {
-                tokens.push(token);
-                continue;
+            match self.take_common_field() {
+                Ok(Some(token)) => {
+                    tokens.push(token);
+                    continue;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                    if self.is_eof() {
+                        break;
+                    }
+                    self.advance_char();
+                    continue;
+                }
             }
-            if let Some(token) = self.take_string()? {
-                tokens.push(token);
-                continue;
+            match self.take_string() {
+                Ok(Some(token)) => {
+                    tokens.push(token);
+                    continue;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    first_error.get_or_insert(error);
+                    if self.is_eof() {
+                        break;
+                    }
+                    self.advance_char();
+                    continue;
+                }
             }
             if self.dialect == RailroadDialect::Ebnf
                 && let Some(token) = self.take_ebnf_special_sequence()
@@ -1480,14 +1875,27 @@ impl<'a> Lexer<'a> {
 
             let start = self.pos;
             let ch = self.current_char().expect("not eof");
-            return Err(Error::diagram_parse_exact(
-                self.diagram_type,
-                format!("unexpected railroad token `{ch}`"),
-                SourceSpan::new(start, start + ch.len_utf8()),
-            ));
+            first_error.get_or_insert_with(|| {
+                Error::diagram_parse_exact(
+                    self.diagram_type,
+                    format!("unexpected railroad token `{ch}`"),
+                    SourceSpan::new(start, start + ch.len_utf8()),
+                )
+            });
+            self.recovery_lexemes.push(RailroadLexemeEvent {
+                kind: EditorLexemeKind::Literal,
+                modifiers: EditorLexemeModifiers::NONE,
+                span: SourceSpan::new(start, start + ch.len_utf8()),
+            });
+            self.advance_char();
         }
 
-        Ok(tokens)
+        RailroadLexerOutcome {
+            tokens,
+            comments: self.comments,
+            recovery_lexemes: self.recovery_lexemes,
+            first_error,
+        }
     }
 
     fn skip_trivia(&mut self) -> Result<bool> {
@@ -1512,19 +1920,29 @@ impl<'a> Lexer<'a> {
             if matches!(self.dialect, RailroadDialect::Ir | RailroadDialect::Ebnf)
                 && self.starts_with("/*")
             {
-                self.skip_until("*/", "unterminated railroad block comment")?;
+                let start = self.pos;
+                let result = self.skip_until("*/", "unterminated railroad block comment");
+                self.comments.push(SourceSpan::new(start, self.pos));
+                result?;
                 continue;
             }
             if self.dialect == RailroadDialect::Ebnf && self.starts_with("(*") {
-                self.skip_until("*)", "unterminated EBNF comment")?;
+                let start = self.pos;
+                let result = self.skip_until("*)", "unterminated EBNF comment");
+                self.comments.push(SourceSpan::new(start, self.pos));
+                result?;
                 continue;
             }
             if self.dialect == RailroadDialect::Peg && self.starts_with("#") {
+                let start = self.pos;
                 self.skip_to_line_end();
+                self.comments.push(SourceSpan::new(start, self.pos));
                 continue;
             }
             if self.dialect == RailroadDialect::Abnf && self.abnf_semicolon_starts_comment() {
+                let start = self.pos;
                 self.skip_to_line_end();
+                self.comments.push(SourceSpan::new(start, self.pos));
                 continue;
             }
             if self.starts_with("---")
@@ -1559,10 +1977,11 @@ impl<'a> Lexer<'a> {
 
         if let Some(field) = parse_common_field_line(line, token_start, self.dialect) {
             self.pos = line_end;
+            let selection = field.value.selection;
             return Ok(Some(Token {
-                kind: TokenKind::Common(field.kind, field.value.text),
+                kind: TokenKind::Common(field),
                 span: SourceSpan::new(token_start, line_end),
-                selection: field.value.selection,
+                selection,
             }));
         }
 
@@ -1575,10 +1994,11 @@ impl<'a> Lexer<'a> {
             let full = &self.input[token_start..end];
             if let Some(field) = parse_common_field_block(full, token_start) {
                 self.pos = end;
+                let selection = field.value.selection;
                 return Ok(Some(Token {
-                    kind: TokenKind::Common(field.kind, field.value.text),
+                    kind: TokenKind::Common(field),
                     span: SourceSpan::new(token_start, end),
-                    selection: field.value.selection,
+                    selection,
                 }));
             }
         }
@@ -1627,6 +2047,19 @@ impl<'a> Lexer<'a> {
                 }));
             }
             value.push(ch);
+        }
+
+        self.recovery_lexemes.push(RailroadLexemeEvent {
+            kind: EditorLexemeKind::Delimiter,
+            modifiers: EditorLexemeModifiers::NONE,
+            span: SourceSpan::new(start, content_start),
+        });
+        if content_start < self.pos {
+            self.recovery_lexemes.push(RailroadLexemeEvent {
+                kind: EditorLexemeKind::String,
+                modifiers: EditorLexemeModifiers::NONE,
+                span: SourceSpan::new(content_start, self.pos),
+            });
         }
 
         Err(Error::diagram_parse_insertion_point(
@@ -1816,6 +2249,7 @@ impl<'a> Lexer<'a> {
     fn skip_until(&mut self, needle: &str, message: &'static str) -> Result<()> {
         let start = self.pos;
         let Some(end) = self.remaining().find(needle) else {
+            self.pos = self.input.len();
             return Err(Error::diagram_parse_insertion_point(
                 self.diagram_type,
                 message,
@@ -1876,10 +2310,12 @@ impl<'a> Lexer<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedCommonField {
     kind: CommonFieldKind,
     value: SpannedText,
+    keyword_span: SourceSpan,
+    delimiter_spans: Vec<SourceSpan>,
 }
 
 fn parse_common_field_line(
@@ -1896,28 +2332,26 @@ fn parse_common_field_line(
 fn parse_common_field_block(block: &str, block_start: usize) -> Option<ParsedCommonField> {
     let trimmed = block.trim_start();
     let leading = block.len() - trimmed.len();
-    let rest = trimmed.strip_prefix("accDescr")?.trim_start();
-    let rest_start = block_start
-        + leading
-        + "accDescr".len()
-        + (trimmed.strip_prefix("accDescr")?.len() - rest.len());
+    let keyword_start = block_start + leading;
+    let keyword_end = keyword_start + "accDescr".len();
+    let after_keyword = trimmed.strip_prefix("accDescr")?;
+    let rest = after_keyword.trim_start();
+    let rest_start = keyword_end + (after_keyword.len() - rest.len());
     let body = rest.strip_prefix('{')?;
-    let end = body.find('}')?;
-    let raw = &body[..end];
-    let value = normalize_multiline_common(raw);
-    let raw_trimmed = raw.trim();
-    let value_rel = if raw_trimmed.is_empty() {
-        rest_start + rest.find('{')? + 1
-    } else {
-        block_start + block.find(raw_trimmed)?
-    };
+    let opening = SourceSpan::new(rest_start, rest_start + 1);
+    let close_rel = body.find('}')?;
+    let closing_start = opening.end + close_rel;
+    let raw = &body[..close_rel];
+    let (_, value_span) = trimmed_value_span(raw, opening.end);
     Some(ParsedCommonField {
         kind: CommonFieldKind::AccDescr,
         value: SpannedText {
-            text: value,
-            span: SourceSpan::new(value_rel, value_rel + raw_trimmed.len()),
-            selection: SourceSpan::new(value_rel, value_rel + raw_trimmed.len()),
+            text: normalize_multiline_common(raw),
+            span: value_span,
+            selection: value_span,
         },
+        keyword_span: SourceSpan::new(keyword_start, keyword_end),
+        delimiter_spans: vec![opening, SourceSpan::new(closing_start, closing_start + 1)],
     })
 }
 
@@ -1928,86 +2362,124 @@ fn parse_title_spanned(
 ) -> Option<ParsedCommonField> {
     let trimmed = line.trim_start();
     let leading = line.len() - trimmed.len();
+    let keyword_start = line_start + leading;
+    let keyword_end = keyword_start + "title".len();
     if trimmed == "title" {
-        let offset = line_start + leading + "title".len();
         return Some(ParsedCommonField {
             kind: CommonFieldKind::Title,
             value: SpannedText {
                 text: String::new(),
-                span: SourceSpan::new(offset, offset),
-                selection: SourceSpan::new(offset, offset),
+                span: SourceSpan::new(keyword_end, keyword_end),
+                selection: SourceSpan::new(keyword_end, keyword_end),
             },
+            keyword_span: SourceSpan::new(keyword_start, keyword_end),
+            delimiter_spans: Vec::new(),
         });
     }
     let rest = trimmed.strip_prefix("title")?;
     let ws = rest.chars().next()?;
-    if !ws.is_whitespace() {
+    if !matches!(ws, ' ' | '\t') {
         return None;
     }
-    let raw = rest.trim();
+    let (raw, raw_span) = trimmed_value_span(rest, keyword_end);
     let collapsed = collapse_common_spaces(raw);
-    let value = decode_wrapped_quoted_title(&collapsed, dialect).unwrap_or(collapsed);
-    let value_rel = line.find(raw)?;
+    let decoded = decode_wrapped_quoted_title(&collapsed, dialect);
+    let (value, selection, delimiter_spans) = if let Some(value) = decoded {
+        let opening = SourceSpan::new(raw_span.start, raw_span.start + 1);
+        let closing = SourceSpan::new(raw_span.end - 1, raw_span.end);
+        (
+            value,
+            SourceSpan::new(opening.end, closing.start),
+            vec![opening, closing],
+        )
+    } else {
+        (collapsed, raw_span, Vec::new())
+    };
     Some(ParsedCommonField {
         kind: CommonFieldKind::Title,
         value: SpannedText {
             text: value,
-            span: SourceSpan::new(line_start + value_rel, line_start + value_rel + raw.len()),
-            selection: SourceSpan::new(line_start + value_rel, line_start + value_rel + raw.len()),
+            span: raw_span,
+            selection,
         },
+        keyword_span: SourceSpan::new(keyword_start, keyword_end),
+        delimiter_spans,
     })
 }
 
 fn parse_acc_title_spanned(line: &str, line_start: usize) -> Option<ParsedCommonField> {
     let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("accTitle")?.trim_start();
-    let raw = rest.strip_prefix(':')?.trim();
-    let value = collapse_common_spaces(raw);
-    let value_rel = if raw.is_empty() {
-        line.len()
-    } else {
-        line.find(raw)?
-    };
+    let leading = line.len() - trimmed.len();
+    let keyword_start = line_start + leading;
+    let keyword_end = keyword_start + "accTitle".len();
+    let after_keyword = trimmed.strip_prefix("accTitle")?;
+    let rest = after_keyword.trim_start_matches([' ', '\t']);
+    let colon_start = keyword_end + (after_keyword.len() - rest.len());
+    let value_region = rest.strip_prefix(':')?;
+    let (raw, value_span) = trimmed_value_span(value_region, colon_start + 1);
     Some(ParsedCommonField {
         kind: CommonFieldKind::AccTitle,
         value: SpannedText {
-            text: value,
-            span: SourceSpan::new(line_start + value_rel, line_start + value_rel + raw.len()),
-            selection: SourceSpan::new(line_start + value_rel, line_start + value_rel + raw.len()),
+            text: collapse_common_spaces(raw),
+            span: value_span,
+            selection: value_span,
         },
+        keyword_span: SourceSpan::new(keyword_start, keyword_end),
+        delimiter_spans: vec![SourceSpan::new(colon_start, colon_start + 1)],
     })
 }
 
 fn parse_acc_descr_spanned(line: &str, line_start: usize) -> Option<ParsedCommonField> {
     let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("accDescr")?.trim_start();
-    let (raw, value_rel) = if let Some(value) = rest.strip_prefix(':') {
-        let raw = value.trim();
-        let rel = if raw.is_empty() {
-            line.len()
-        } else {
-            line.find(raw)?
-        };
-        (raw, rel)
+    let leading = line.len() - trimmed.len();
+    let keyword_start = line_start + leading;
+    let keyword_end = keyword_start + "accDescr".len();
+    let after_keyword = trimmed.strip_prefix("accDescr")?;
+    let rest = after_keyword.trim_start_matches([' ', '\t']);
+    let delimiter_start = keyword_end + (after_keyword.len() - rest.len());
+    let (raw, value_span, delimiter_spans) = if let Some(value_region) = rest.strip_prefix(':') {
+        let (raw, value_span) = trimmed_value_span(value_region, delimiter_start + 1);
+        (
+            raw,
+            value_span,
+            vec![SourceSpan::new(delimiter_start, delimiter_start + 1)],
+        )
     } else {
         let body = rest.strip_prefix('{')?;
-        let end = body.find('}')?;
-        let raw = body[..end].trim();
-        let rel = if raw.is_empty() {
-            line.find('{')? + 1
-        } else {
-            line.find(raw)?
-        };
-        (raw, rel)
+        let close_rel = body.find('}')?;
+        let closing_start = delimiter_start + 1 + close_rel;
+        let (raw, value_span) = trimmed_value_span(&body[..close_rel], delimiter_start + 1);
+        (
+            raw,
+            value_span,
+            vec![
+                SourceSpan::new(delimiter_start, delimiter_start + 1),
+                SourceSpan::new(closing_start, closing_start + 1),
+            ],
+        )
     };
     Some(ParsedCommonField {
         kind: CommonFieldKind::AccDescr,
         value: SpannedText {
             text: collapse_common_spaces(raw),
-            span: SourceSpan::new(line_start + value_rel, line_start + value_rel + raw.len()),
-            selection: SourceSpan::new(line_start + value_rel, line_start + value_rel + raw.len()),
+            span: value_span,
+            selection: value_span,
         },
+        keyword_span: SourceSpan::new(keyword_start, keyword_end),
+        delimiter_spans,
     })
+}
+
+fn trimmed_value_span(value: &str, base_offset: usize) -> (&str, SourceSpan) {
+    let trimmed_start = value.trim_start();
+    if trimmed_start.is_empty() {
+        let insertion = base_offset + value.len();
+        return ("", SourceSpan::new(insertion, insertion));
+    }
+    let leading = value.len() - trimmed_start.len();
+    let trimmed = trimmed_start.trim_end();
+    let start = base_offset + leading;
+    (trimmed, SourceSpan::new(start, start + trimmed.len()))
 }
 
 fn collapse_common_spaces(value: &str) -> String {
@@ -2201,6 +2673,7 @@ fn node_to_label(node: &RailroadAstNode) -> String {
 fn editor_facts_from_model(
     model: &RailroadDiagramModel,
     dialect: RailroadDialect,
+    trace: &RailroadParserTrace,
 ) -> EditorSemanticFacts {
     let mut facts = EditorSemanticFacts::new();
     let detail_prefix = dialect.common_detail_prefix();
@@ -2245,13 +2718,18 @@ fn editor_facts_from_model(
             rule.name_span,
             rule.name_span,
         ));
-        push_ast_facts(&mut facts, &rule.definition, detail_prefix);
+        push_ast_facts(&mut facts, &rule.definition, detail_prefix, trace);
     }
 
     facts
 }
 
-fn push_ast_facts(facts: &mut EditorSemanticFacts, node: &RailroadAstNode, detail_prefix: &str) {
+fn push_ast_facts(
+    facts: &mut EditorSemanticFacts,
+    node: &RailroadAstNode,
+    detail_prefix: &str,
+    trace: &RailroadParserTrace,
+) {
     match node {
         RailroadAstNode::Terminal {
             value, selection, ..
@@ -2281,32 +2759,44 @@ fn push_ast_facts(facts: &mut EditorSemanticFacts, node: &RailroadAstNode, detai
             ));
         }
         RailroadAstNode::Special {
-            text, selection, ..
+            text,
+            span,
+            selection,
         } => {
-            push_payload_fact(
-                facts,
-                text.clone(),
-                *selection,
-                format!("{detail_prefix} special"),
-            );
+            if let Some(predicate) = trace
+                .peg_predicates
+                .iter()
+                .find(|predicate| predicate.span == *span)
+            {
+                push_ast_facts(facts, &predicate.inner, detail_prefix, trace);
+            } else {
+                push_payload_fact(
+                    facts,
+                    text.clone(),
+                    *selection,
+                    format!("{detail_prefix} special"),
+                );
+            }
         }
         RailroadAstNode::Sequence { elements, .. } => {
             for element in elements {
-                push_ast_facts(facts, element, detail_prefix);
+                push_ast_facts(facts, element, detail_prefix, trace);
             }
         }
         RailroadAstNode::Choice { alternatives, .. } => {
             for alternative in alternatives {
-                push_ast_facts(facts, alternative, detail_prefix);
+                push_ast_facts(facts, alternative, detail_prefix, trace);
             }
         }
-        RailroadAstNode::Optional { element, .. } => push_ast_facts(facts, element, detail_prefix),
+        RailroadAstNode::Optional { element, .. } => {
+            push_ast_facts(facts, element, detail_prefix, trace);
+        }
         RailroadAstNode::Repetition {
             element, separator, ..
         } => {
-            push_ast_facts(facts, element, detail_prefix);
+            push_ast_facts(facts, element, detail_prefix, trace);
             if let Some(separator) = separator {
-                push_ast_facts(facts, separator, detail_prefix);
+                push_ast_facts(facts, separator, detail_prefix, trace);
             }
         }
     }
@@ -2331,78 +2821,41 @@ fn push_payload_fact(
     ));
 }
 
-fn scan_editor_facts_lossy(code: &str, dialect: RailroadDialect) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let Ok(tokens) = Lexer::new(code, dialect, dialect.diagram_type()).tokenize() else {
-        return facts;
-    };
-    let detail_prefix = dialect.common_detail_prefix();
-
-    let mut after_header = false;
-    let mut prev_ident: Option<Token> = None;
-    for token in tokens {
-        match &token.kind {
-            TokenKind::Ident(value) if value.eq_ignore_ascii_case(dialect.header()) => {
-                after_header = true;
-                prev_ident = None;
-            }
-            TokenKind::Common(kind, value) => {
-                let prefix = match kind {
-                    CommonFieldKind::Title => "title",
-                    CommonFieldKind::AccTitle => "accTitle",
-                    CommonFieldKind::AccDescr => "accDescr",
-                };
-                facts.push_directive_prefix(prefix);
-                push_payload_fact(
-                    &mut facts,
-                    value.clone(),
-                    token.selection,
-                    format!("{detail_prefix} {prefix}"),
-                );
-                prev_ident = None;
-            }
-            TokenKind::Ident(_) if after_header => {
-                prev_ident = Some(token);
-            }
-            TokenKind::Symbol('=') | TokenKind::ColonColonEq | TokenKind::LeftArrow => {
-                if let Some(name) = prev_ident.take()
-                    && let TokenKind::Ident(value) = name.kind
-                {
-                    facts.push_expected_syntax(EditorExpectedSyntax::new(
-                        EditorExpectedSyntaxKind::NodeIdentifier,
-                        name.selection,
-                    ));
-                    facts.push_symbol(EditorSemanticSymbol::new(
-                        value,
-                        Some(format!("{detail_prefix} rule")),
-                        EditorSemanticKind::Function,
-                        name.span,
-                        name.selection,
-                    ));
-                }
-            }
-            TokenKind::String(value)
-            | TokenKind::SpecialSequence(value)
-            | TokenKind::NumVal(value) => {
-                push_payload_fact(
-                    &mut facts,
-                    value.clone(),
-                    token.selection,
-                    format!("{detail_prefix} literal"),
-                );
-                prev_ident = None;
-            }
-            _ => prev_ident = None,
-        }
-    }
-
-    facts.mark_recovered();
-    facts
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        EditorLexemeProducerKind, EditorSemanticCompleteness, MermaidConfig, ParseMetadata,
+    };
+
+    fn meta(dialect: RailroadDialect) -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: dialect.diagram_type().to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
+
+    fn exact_lexeme<'a>(
+        facts: &'a EditorSemanticFacts,
+        source: &str,
+        needle: &str,
+        occurrence: usize,
+        kind: EditorLexemeKind,
+    ) -> &'a crate::EditorLexeme {
+        let start = source
+            .match_indices(needle)
+            .nth(occurrence)
+            .map(|(start, _)| start)
+            .unwrap_or_else(|| panic!("missing occurrence {occurrence} of {needle:?}"));
+        let span = SourceSpan::new(start, start + needle.len());
+        facts
+            .lexemes()
+            .iter()
+            .find(|lexeme| lexeme.kind() == kind && lexeme.span() == span)
+            .unwrap_or_else(|| panic!("missing {kind:?} lexeme for {needle:?} at {span:?}"))
+    }
 
     #[test]
     fn decodes_escaped_strings_for_non_abnf_dialects() {
@@ -2488,5 +2941,184 @@ mod tests {
                 compat.model
             );
         }
+    }
+
+    #[test]
+    fn parser_emits_exact_lexemes_for_every_railroad_dialect() {
+        let cases = [
+            (
+                RailroadDialect::Ir,
+                concat!(
+                    "railroad-beta\r\n",
+                    "/* 家族注释 🤓 */\r\n",
+                    "entry = sequence(terminal(\"值\"), nonterminal(\"next\")) ;\r\n",
+                ),
+                "/* 家族注释 🤓 */",
+                "=",
+            ),
+            (
+                RailroadDialect::Ebnf,
+                concat!(
+                    "railroad-ebnf-beta\r\n",
+                    "(* 家族注释 🤓 *)\r\n",
+                    "entry ::= \"值\", [ next ] ;\r\n",
+                ),
+                "(* 家族注释 🤓 *)",
+                "::=",
+            ),
+            (
+                RailroadDialect::Abnf,
+                concat!(
+                    "railroad-abnf-beta\r\n",
+                    "; 家族注释 🤓\r\n",
+                    "entry = 1*2\"值\" / next ;\r\n",
+                ),
+                "; 家族注释 🤓",
+                "=",
+            ),
+            (
+                RailroadDialect::Peg,
+                concat!(
+                    "railroad-peg-beta\r\n",
+                    "# 家族注释 🤓\r\n",
+                    "entry <- &next / \"值\"+ ;\r\n",
+                ),
+                "# 家族注释 🤓",
+                "<-",
+            ),
+        ];
+
+        for (dialect, source, comment, assignment) in cases {
+            parse_railroad_semantic_source(source, &meta(dialect), dialect).unwrap_or_else(
+                |error| panic!("{} fixture failed: {error}", dialect.diagram_type()),
+            );
+            let facts = parse_railroad_editor_facts_for_dialect(source, &meta(dialect), dialect);
+
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert_eq!(facts.lexeme_failure(), None);
+            assert!(!facts.lexemes().is_empty());
+            assert!(facts.lexemes().iter().all(|lexeme| {
+                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
+            }));
+            assert!(
+                facts
+                    .lexemes()
+                    .windows(2)
+                    .all(|pair| pair[0].span().end <= pair[1].span().start)
+            );
+
+            exact_lexeme(
+                &facts,
+                source,
+                dialect.header(),
+                0,
+                EditorLexemeKind::Keyword,
+            );
+            exact_lexeme(&facts, source, comment, 0, EditorLexemeKind::Comment);
+            exact_lexeme(&facts, source, assignment, 0, EditorLexemeKind::Operator);
+            exact_lexeme(&facts, source, "值", 0, EditorLexemeKind::String);
+
+            let definition = exact_lexeme(&facts, source, "entry", 0, EditorLexemeKind::Identifier);
+            assert!(
+                definition
+                    .modifiers()
+                    .contains(EditorLexemeModifier::Definition)
+            );
+            let reference_kind = if dialect == RailroadDialect::Ir {
+                EditorLexemeKind::String
+            } else {
+                EditorLexemeKind::Identifier
+            };
+            let reference = exact_lexeme(&facts, source, "next", 0, reference_kind);
+            assert!(
+                reference
+                    .modifiers()
+                    .contains(EditorLexemeModifier::Reference)
+            );
+
+            if dialect == RailroadDialect::Abnf {
+                exact_lexeme(&facts, source, "1*2", 0, EditorLexemeKind::Number);
+            }
+            if dialect == RailroadDialect::Ir {
+                exact_lexeme(&facts, source, "sequence", 0, EditorLexemeKind::Keyword);
+            }
+        }
+    }
+
+    #[test]
+    fn recovery_keeps_later_rules_for_parser_and_lexer_errors() {
+        let cases = [
+            (
+                RailroadDialect::Ebnf,
+                concat!(
+                    "railroad-ebnf-beta\r\n",
+                    "before = \"ok\" ;\r\n",
+                    "broken = ( \"x\" ;\r\n",
+                    "after = \"later\" ;\r\n",
+                ),
+                ";",
+                EditorLexemeKind::Delimiter,
+            ),
+            (
+                RailroadDialect::Peg,
+                concat!(
+                    "railroad-peg-beta\r\n",
+                    "before <- \"ok\" ;\r\n",
+                    "@\r\n",
+                    "after <- \"later\" ;\r\n",
+                ),
+                "@",
+                EditorLexemeKind::Literal,
+            ),
+        ];
+
+        for (dialect, source, error_needle, error_kind) in cases {
+            assert!(parse_railroad_semantic_source(source, &meta(dialect), dialect).is_err());
+
+            reset_railroad_syntax_construction_count();
+            let facts = parse_railroad_editor_facts_for_dialect(source, &meta(dialect), dialect);
+            assert_eq!(railroad_syntax_construction_count(), 1);
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+            assert_eq!(facts.lexeme_failure(), None);
+            assert!(facts.lexemes().iter().all(|lexeme| {
+                lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
+            }));
+            assert!(
+                facts
+                    .lexemes()
+                    .windows(2)
+                    .all(|pair| pair[0].span().end <= pair[1].span().start)
+            );
+
+            exact_lexeme(&facts, source, error_needle, 0, error_kind);
+            let later_definition =
+                exact_lexeme(&facts, source, "after", 0, EditorLexemeKind::Identifier);
+            assert!(
+                later_definition
+                    .modifiers()
+                    .contains(EditorLexemeModifier::Definition)
+            );
+            exact_lexeme(&facts, source, "later", 0, EditorLexemeKind::String);
+            assert!(facts.symbols.iter().any(|symbol| symbol.name == "after"));
+        }
+    }
+
+    #[test]
+    fn unterminated_string_keeps_confirmed_delimiter_and_unicode_content() {
+        let source = concat!("railroad-beta\r\n", "entry = terminal(\"未闭合 🤓",);
+        let facts = parse_railroad_editor_facts_for_dialect(
+            source,
+            &meta(RailroadDialect::Ir),
+            RailroadDialect::Ir,
+        );
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(facts.lexeme_failure(), None);
+        let opening = source.rfind('"').expect("opening quote");
+        assert!(facts.lexemes().iter().any(|lexeme| {
+            lexeme.kind() == EditorLexemeKind::Delimiter
+                && lexeme.span() == SourceSpan::new(opening, opening + 1)
+        }));
+        exact_lexeme(&facts, source, "未闭合 🤓", 0, EditorLexemeKind::String);
     }
 }
