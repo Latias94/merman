@@ -8,11 +8,48 @@ import {
   type ExampleFilter,
 } from "./examples.ts";
 
-test("generated catalog covers every full-profile diagram exactly once", () => {
-  assert.equal(examples.length, 35);
+test("generated catalog covers every full-profile diagram with teaching variants", () => {
   assert.equal(new Set(examples.map((example) => example.diagramType)).size, 35);
+  assert.equal(new Set(examples.map((example) => example.id)).size, examples.length);
+  assert.equal(
+    new Set(examples.map((example) => example.order)).size,
+    examples.length
+  );
+  assert.equal(
+    new Set(examples.map((example) => example.fixture)).size,
+    examples.length
+  );
+  const examplesPerFamily = new Map<string, ExampleEvidenceCounts>();
+  for (const example of examples) {
+    const counts = examplesPerFamily.get(example.diagramType) ?? {
+      baselines: 0,
+      variants: 0,
+      claims: new Set<string>(),
+    };
+    counts.claims.add(example.evidence.claim.toLowerCase());
+    if (example.evidence.role === "family-baseline") {
+      counts.baselines += 1;
+    } else {
+      counts.variants += 1;
+    }
+    examplesPerFamily.set(example.diagramType, counts);
+  }
+  assert.ok(
+    Array.from(examplesPerFamily.values()).every(
+      (counts) =>
+        counts.baselines === 1 &&
+        counts.variants >= 1 &&
+        counts.claims.size === counts.baselines + counts.variants
+    )
+  );
   assert.ok(examples.every((example) => example.fixture.startsWith("fixtures/")));
 });
+
+interface ExampleEvidenceCounts {
+  baselines: number;
+  variants: number;
+  claims: Set<string>;
+}
 
 test("empty projection preserves generated manifest order", () => {
   assert.deepEqual(

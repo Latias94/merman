@@ -43,6 +43,7 @@ export function filterExamples(
       example.title,
       example.category,
       example.diagramType,
+      example.evidence.claim,
       ...example.aliases,
       example.source,
     ].some((value) => value.toLowerCase().includes(query));

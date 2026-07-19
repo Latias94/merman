@@ -3,13 +3,13 @@ use merman::render::HeadlessRenderer;
 use merman_core::baseline::{BaselineRegistryProfile, PINNED_MERMAID_BASELINE_TAG};
 use merman_core::{Engine, ParseOptions};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ffi::OsStr;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-const MANIFEST_SCHEMA_VERSION: u32 = 1;
+const MANIFEST_SCHEMA_VERSION: u32 = 2;
 const DEFAULT_MANIFEST: &str = "playground/examples/manifest.json";
 const DEFAULT_OUTPUT: &str = "playground/src/generated/examples.ts";
 
@@ -46,6 +46,27 @@ struct ManifestExample {
     order: u32,
     aliases: Vec<String>,
     fixture: String,
+    evidence: ManifestEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "role", rename_all = "kebab-case", deny_unknown_fields)]
+enum ManifestEvidence {
+    FamilyBaseline {
+        claim: String,
+    },
+    Variant {
+        kind: VariantEvidenceKind,
+        claim: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum VariantEvidenceKind {
+    Syntax,
+    Behavior,
+    Workflow,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +79,7 @@ struct CatalogExample {
     order: u32,
     aliases: Vec<String>,
     fixture: String,
+    evidence: ManifestEvidence,
     source: String,
 }
 
@@ -246,6 +268,17 @@ fn validate_entry_text(entry: &ManifestExample) -> Result<(), XtaskError> {
             )));
         }
     }
+    let claim = match &entry.evidence {
+        ManifestEvidence::FamilyBaseline { claim } | ManifestEvidence::Variant { claim, .. } => {
+            claim
+        }
+    };
+    if claim.trim().is_empty() || claim.trim() != claim || claim.contains(['\r', '\n']) {
+        return Err(catalog_error(format!(
+            "example `{}` has an empty, untrimmed, or multiline evidence claim",
+            entry.id
+        )));
+    }
     Ok(())
 }
 
@@ -278,6 +311,8 @@ fn validate_manifest(
     let mut ids = HashSet::new();
     let mut orders = HashSet::new();
     let mut fixtures = HashSet::new();
+    let mut evidence_by_family = BTreeMap::<String, Vec<(u32, ManifestEvidence)>>::new();
+    let mut evidence_claims = HashSet::new();
     let fixtures_path = workspace_root.join("fixtures");
     let canonical_fixtures_root =
         fixtures_path
@@ -292,12 +327,7 @@ fn validate_manifest(
 
     for entry in manifest.examples {
         validate_entry_text(&entry)?;
-        if !diagram_types.insert(entry.diagram_type.clone()) {
-            return Err(catalog_error(format!(
-                "manifest duplicates diagramType `{}`",
-                entry.diagram_type
-            )));
-        }
+        diagram_types.insert(entry.diagram_type.clone());
         if !ids.insert(entry.id.clone()) {
             return Err(catalog_error(format!(
                 "manifest duplicates example id `{}`",
@@ -316,6 +346,20 @@ fn validate_manifest(
                 entry.fixture
             )));
         }
+        let claim = match &entry.evidence {
+            ManifestEvidence::FamilyBaseline { claim }
+            | ManifestEvidence::Variant { claim, .. } => claim,
+        };
+        if !evidence_claims.insert((entry.diagram_type.clone(), claim.to_lowercase())) {
+            return Err(catalog_error(format!(
+                "family `{}` repeats evidence claim `{claim}`",
+                entry.diagram_type
+            )));
+        }
+        evidence_by_family
+            .entry(entry.diagram_type.clone())
+            .or_default()
+            .push((entry.order, entry.evidence.clone()));
 
         let fixture_path = validate_fixture_path(workspace_root, &canonical_fixtures_root, &entry)?;
         let source = read_utf8(&fixture_path, "fixture")?;
@@ -410,6 +454,7 @@ fn validate_manifest(
             order: entry.order,
             aliases: entry.aliases,
             fixture: entry.fixture,
+            evidence: entry.evidence,
             source,
         });
     }
@@ -422,14 +467,41 @@ fn validate_manifest(
             "manifest diagram set does not match the canonical full-profile catalog; missing={missing:?}, unexpected={unexpected:?}"
         )));
     }
-    if examples.len() != expected_diagrams.len() {
-        return Err(catalog_error(format!(
-            "manifest contains {} examples for {} canonical diagrams",
-            examples.len(),
-            expected_diagrams.len()
-        )));
+    for diagram_type in &expected {
+        let family_evidence = evidence_by_family
+            .get(*diagram_type)
+            .expect("the exact family-set check guarantees evidence entries");
+        let baseline_orders = family_evidence
+            .iter()
+            .filter_map(|(order, evidence)| {
+                matches!(evidence, ManifestEvidence::FamilyBaseline { .. }).then_some(*order)
+            })
+            .collect::<Vec<_>>();
+        if baseline_orders.len() != 1 {
+            return Err(catalog_error(format!(
+                "family `{diagram_type}` must declare exactly one family-baseline example, found {}",
+                baseline_orders.len()
+            )));
+        }
+        let first_order = family_evidence
+            .iter()
+            .map(|(order, _)| *order)
+            .min()
+            .expect("a present family has at least one example");
+        if baseline_orders[0] != first_order {
+            return Err(catalog_error(format!(
+                "family `{diagram_type}` baseline must be its first ordered example"
+            )));
+        }
+        if !family_evidence
+            .iter()
+            .any(|(_, evidence)| matches!(evidence, ManifestEvidence::Variant { .. }))
+        {
+            return Err(catalog_error(format!(
+                "family `{diagram_type}` must retain at least one admitted syntax, behavior, or workflow variant"
+            )));
+        }
     }
-
     examples.sort_by_key(|example| example.order);
     Ok(PlaygroundCatalog {
         mermaid_baseline: manifest.mermaid_baseline,
@@ -453,9 +525,18 @@ export interface GeneratedExample {
   readonly syntaxId: string;
   readonly aliases: readonly string[];
   readonly fixture: string;
+  readonly evidence: ExampleEvidence;
   readonly mermaidBaseline: string;
   readonly source: string;
 }
+
+export type ExampleEvidence =
+  | { readonly role: "family-baseline"; readonly claim: string }
+  | {
+      readonly role: "variant";
+      readonly kind: "syntax" | "behavior" | "workflow";
+      readonly claim: string;
+    };
 
 "#,
     );
@@ -505,6 +586,12 @@ export interface GeneratedExample {
             &mut output,
             "    fixture: {},",
             serde_json::to_string(&example.fixture)?
+        )
+        .expect("writing to a String cannot fail");
+        writeln!(
+            &mut output,
+            "    evidence: {},",
+            serde_json::to_string(&example.evidence)?
         )
         .expect("writing to a String cannot fail");
         output.push_str("    mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,\n");
@@ -582,12 +669,12 @@ pub(crate) fn verify_playground_example_catalog(args: Vec<String>) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_MANIFEST, DEFAULT_OUTPUT, MANIFEST_SCHEMA_VERSION, ManifestExample,
-        PlaygroundManifest, build_committed_catalog, parse_paths, read_utf8, render_typescript,
-        validate_manifest, verify_output,
+        build_committed_catalog, parse_paths, read_utf8, render_typescript, validate_manifest,
+        verify_output, ManifestEvidence, ManifestExample, PlaygroundManifest, VariantEvidenceKind,
+        DEFAULT_MANIFEST, DEFAULT_OUTPUT, MANIFEST_SCHEMA_VERSION,
     };
     use merman_core::baseline::PINNED_MERMAID_BASELINE_TAG;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
@@ -609,6 +696,9 @@ mod tests {
             order: 10,
             aliases: vec!["test alias".to_string()],
             fixture: fixture.to_string(),
+            evidence: ManifestEvidence::FamilyBaseline {
+                claim: format!("Canonical {diagram_type} test syntax and rendering."),
+            },
         }
     }
 
@@ -632,7 +722,19 @@ mod tests {
         let manifest = workspace_root.join(DEFAULT_MANIFEST);
         let catalog = build_committed_catalog(&workspace_root, &manifest, true).unwrap();
 
-        assert_eq!(catalog.examples.len(), 35);
+        let mut evidence_counts = BTreeMap::<&str, (usize, usize)>::new();
+        for example in &catalog.examples {
+            let counts = evidence_counts
+                .entry(example.diagram_type.as_str())
+                .or_default();
+            match &example.evidence {
+                ManifestEvidence::FamilyBaseline { .. } => counts.0 += 1,
+                ManifestEvidence::Variant { .. } => counts.1 += 1,
+            }
+        }
+        assert!(evidence_counts
+            .values()
+            .all(|(baselines, variants)| *baselines == 1 && *variants >= 1));
         assert_eq!(
             catalog
                 .examples
@@ -646,20 +748,19 @@ mod tests {
             .copied()
             .collect::<BTreeSet<_>>()
         );
-        assert!(
-            catalog
-                .examples
-                .windows(2)
-                .all(|pair| pair[0].order < pair[1].order)
-        );
+        assert!(catalog
+            .examples
+            .windows(2)
+            .all(|pair| pair[0].order < pair[1].order));
         let typescript = render_typescript(&catalog).unwrap();
         assert!(typescript.contains("import type { DiagramType } from \"@mermanjs/web\";"));
         assert!(typescript.contains("diagramType: DiagramType;"));
+        assert!(typescript.contains("readonly evidence: ExampleEvidence;"));
         assert!(!typescript.contains("export type DiagramType"));
     }
 
     #[test]
-    fn missing_and_duplicate_family_coverage_fail_closed() {
+    fn missing_family_fails_closed_and_multiple_family_examples_are_allowed() {
         let root = TempDir::new().unwrap();
         write_fixture(
             root.path(),
@@ -683,14 +784,83 @@ mod tests {
         repeated.id = "flowchart-second".to_string();
         repeated.order = 20;
         repeated.fixture = "fixtures/flowchart/second.mmd".to_string();
+        repeated.evidence = ManifestEvidence::Variant {
+            kind: VariantEvidenceKind::Behavior,
+            claim: "A second flowchart fixture exercises a distinct edge layout.".to_string(),
+        };
+        write_fixture(
+            root.path(),
+            "fixtures/flowchart/second.mmd",
+            b"flowchart LR\nStart --> Finish\n",
+        );
         duplicate.examples.push(repeated);
         let duplicate_path = write_manifest(root.path(), &duplicate);
-        let error =
-            validate_manifest(root.path(), &duplicate_path, &["flowchart"], false).unwrap_err();
+        let catalog =
+            validate_manifest(root.path(), &duplicate_path, &["flowchart"], false).unwrap();
+        assert_eq!(catalog.examples.len(), 2);
+        assert!(catalog
+            .examples
+            .iter()
+            .all(|catalog_example| catalog_example.diagram_type == "flowchart"));
+    }
+
+    #[test]
+    fn family_evidence_contract_rejects_unearned_variants() {
+        let root = TempDir::new().unwrap();
+        write_fixture(
+            root.path(),
+            "fixtures/flowchart/example.mmd",
+            b"flowchart TD\nA --> B\n",
+        );
+        write_fixture(
+            root.path(),
+            "fixtures/flowchart/second.mmd",
+            b"flowchart LR\nStart --> Finish\n",
+        );
+        let baseline = test_example("flowchart", "fixtures/flowchart/example.mmd");
+
+        let no_variant_path = write_manifest(root.path(), &test_manifest(baseline.clone()));
         assert!(
-            error
+            validate_manifest(root.path(), &no_variant_path, &["flowchart"], false)
+                .unwrap_err()
                 .to_string()
-                .contains("duplicates diagramType `flowchart`")
+                .contains("at least one admitted")
+        );
+
+        let mut second = test_example("flowchart", "fixtures/flowchart/second.mmd");
+        second.id = "flowchart-second".to_string();
+        second.order = 20;
+        second.evidence = ManifestEvidence::FamilyBaseline {
+            claim: "A second baseline must be rejected even with a distinct claim.".to_string(),
+        };
+        let duplicate_baseline = PlaygroundManifest {
+            schema_version: MANIFEST_SCHEMA_VERSION,
+            mermaid_baseline: PINNED_MERMAID_BASELINE_TAG.to_string(),
+            examples: vec![baseline.clone(), second.clone()],
+        };
+        let duplicate_baseline_path = write_manifest(root.path(), &duplicate_baseline);
+        assert!(
+            validate_manifest(root.path(), &duplicate_baseline_path, &["flowchart"], false)
+                .unwrap_err()
+                .to_string()
+                .contains("exactly one family-baseline")
+        );
+
+        second.evidence = ManifestEvidence::Variant {
+            kind: VariantEvidenceKind::Behavior,
+            claim: "canonical flowchart test syntax and rendering.".to_string(),
+        };
+        let repeated_claim = PlaygroundManifest {
+            schema_version: MANIFEST_SCHEMA_VERSION,
+            mermaid_baseline: PINNED_MERMAID_BASELINE_TAG.to_string(),
+            examples: vec![baseline, second],
+        };
+        let repeated_claim_path = write_manifest(root.path(), &repeated_claim);
+        assert!(
+            validate_manifest(root.path(), &repeated_claim_path, &["flowchart"], false)
+                .unwrap_err()
+                .to_string()
+                .contains("repeats evidence claim")
         );
     }
 
@@ -764,12 +934,10 @@ mod tests {
 
         let manifest = root.path().join("manifest.json");
         fs::write(&manifest, [0xff, 0xfe]).unwrap();
-        assert!(
-            read_utf8(&manifest, "manifest")
-                .unwrap_err()
-                .to_string()
-                .contains("manifest")
-        );
+        assert!(read_utf8(&manifest, "manifest")
+            .unwrap_err()
+            .to_string()
+            .contains("manifest"));
     }
 
     #[test]
@@ -791,14 +959,12 @@ mod tests {
             }
         );
         assert!(parse_paths(vec!["--manifest".into()]).is_err());
-        assert!(
-            parse_paths(vec![
-                "--out".into(),
-                "first.ts".into(),
-                "--out".into(),
-                "second.ts".into(),
-            ])
-            .is_err()
-        );
+        assert!(parse_paths(vec![
+            "--out".into(),
+            "first.ts".into(),
+            "--out".into(),
+            "second.ts".into(),
+        ])
+        .is_err());
     }
 }

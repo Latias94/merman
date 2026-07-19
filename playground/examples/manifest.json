@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "mermaidBaseline": "mermaid@11.16.0",
   "examples": [
     {
@@ -8,8 +8,34 @@
       "title": "Architecture Services",
       "category": "Software",
       "order": 10,
-      "aliases": ["architecture-beta", "services", "systems"],
-      "fixture": "fixtures/architecture/upstream_architecture_docs_example.mmd"
+      "aliases": [
+        "architecture-beta",
+        "services",
+        "systems"
+      ],
+      "fixture": "fixtures/architecture/upstream_architecture_docs_example.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical architecture syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "architecture",
+      "id": "architecture-junction-fanout",
+      "title": "Architecture Junction Fanout",
+      "category": "Software",
+      "order": 11,
+      "aliases": [
+        "junctions",
+        "fanout",
+        "service routing"
+      ],
+      "fixture": "fixtures/architecture/upstream_architecture_docs_junctions.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates architecture junction fanout."
+      }
     },
     {
       "diagramType": "block",
@@ -17,8 +43,51 @@
       "title": "Block Layout",
       "category": "Software",
       "order": 20,
-      "aliases": ["block-beta", "block diagram"],
-      "fixture": "fixtures/block/upstream_examples_block_basic_block_layout_001.mmd"
+      "aliases": [
+        "block-beta",
+        "block diagram"
+      ],
+      "fixture": "fixtures/block/upstream_examples_block_basic_block_layout_001.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical block syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "block",
+      "id": "block-business-process",
+      "title": "Block Business Process",
+      "category": "Software",
+      "order": 21,
+      "aliases": [
+        "decision flow",
+        "process arrows",
+        "block styles"
+      ],
+      "fixture": "fixtures/block/upstream_docs_block_example_business_process_flow_053.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "workflow",
+        "claim": "Fixture demonstrates block business process."
+      }
+    },
+    {
+      "diagramType": "block",
+      "id": "block-system-architecture",
+      "title": "Block System Architecture",
+      "category": "Software",
+      "order": 22,
+      "aliases": [
+        "columns",
+        "classDef",
+        "frontend backend"
+      ],
+      "fixture": "fixtures/block/upstream_docs_block_example_system_architecture_051.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "workflow",
+        "claim": "Fixture demonstrates block system architecture."
+      }
     },
     {
       "diagramType": "c4",
@@ -26,8 +95,53 @@
       "title": "C4 System Context",
       "category": "Software",
       "order": 30,
-      "aliases": ["C4Context", "C4Container", "C4Component", "C4Dynamic"],
-      "fixture": "fixtures/c4/basic.mmd"
+      "aliases": [
+        "C4Context",
+        "C4Container",
+        "C4Component",
+        "C4Dynamic"
+      ],
+      "fixture": "fixtures/c4/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical c4 syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "c4",
+      "id": "c4-container-banking",
+      "title": "C4 Container View",
+      "category": "Software",
+      "order": 31,
+      "aliases": [
+        "C4Container",
+        "container boundary",
+        "banking system"
+      ],
+      "fixture": "fixtures/c4/upstream_docs_c4_c4_container_diagram_c4container_006.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates c4 container view."
+      }
+    },
+    {
+      "diagramType": "c4",
+      "id": "c4-dynamic-banking",
+      "title": "C4 Dynamic Flow",
+      "category": "Software",
+      "order": 32,
+      "aliases": [
+        "C4Dynamic",
+        "components",
+        "request flow"
+      ],
+      "fixture": "fixtures/c4/upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates c4 dynamic flow."
+      }
     },
     {
       "diagramType": "class",
@@ -35,8 +149,52 @@
       "title": "Class Relationships",
       "category": "Software",
       "order": 40,
-      "aliases": ["classDiagram", "types", "inheritance"],
-      "fixture": "fixtures/class/basic.mmd"
+      "aliases": [
+        "classDiagram",
+        "types",
+        "inheritance"
+      ],
+      "fixture": "fixtures/class/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical class syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "class",
+      "id": "class-namespaces-generics",
+      "title": "Class Namespaces and Generics",
+      "category": "Software",
+      "order": 41,
+      "aliases": [
+        "nested namespaces",
+        "generic types",
+        "direction LR"
+      ],
+      "fixture": "fixtures/class/upstream_namespaces_and_generics.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates class namespaces and generics."
+      }
+    },
+    {
+      "diagramType": "class",
+      "id": "class-styling",
+      "title": "Class Styling",
+      "category": "Software",
+      "order": 42,
+      "aliases": [
+        "classDef",
+        "cssClass",
+        "inline style"
+      ],
+      "fixture": "fixtures/class/upstream_styles_spec.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates class styling."
+      }
     },
     {
       "diagramType": "cynefin",
@@ -44,8 +202,34 @@
       "title": "Cynefin Domains",
       "category": "Strategy",
       "order": 50,
-      "aliases": ["cynefin-beta", "sense making", "domains"],
-      "fixture": "fixtures/cynefin/basic_domains_transitions.mmd"
+      "aliases": [
+        "cynefin-beta",
+        "sense making",
+        "domains"
+      ],
+      "fixture": "fixtures/cynefin/basic_domains_transitions.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical cynefin syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "cynefin",
+      "id": "cynefin-five-domains",
+      "title": "Cynefin Five Domains",
+      "category": "Strategy",
+      "order": 51,
+      "aliases": [
+        "clear complicated complex chaotic",
+        "confusion",
+        "incident response"
+      ],
+      "fixture": "fixtures/cynefin/upstream_cypress_cynefin_spec_should_render_a_simple_cynefin_diagram_with_all_five_domains_001.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "workflow",
+        "claim": "Fixture demonstrates cynefin five domains."
+      }
     },
     {
       "diagramType": "er",
@@ -53,8 +237,34 @@
       "title": "Entity Relationships",
       "category": "Data",
       "order": 60,
-      "aliases": ["erDiagram", "entity relationship", "database"],
-      "fixture": "fixtures/er/basic.mmd"
+      "aliases": [
+        "erDiagram",
+        "entity relationship",
+        "database"
+      ],
+      "fixture": "fixtures/er/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical er syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "er",
+      "id": "er-attributes-styles",
+      "title": "ER Attributes and Styles",
+      "category": "Data",
+      "order": 61,
+      "aliases": [
+        "attribute keys",
+        "classDef",
+        "entity styling"
+      ],
+      "fixture": "fixtures/er/upstream_attributes_styles_classes.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates er attributes and styles."
+      }
     },
     {
       "diagramType": "eventmodeling",
@@ -62,8 +272,34 @@
       "title": "Event Model",
       "category": "Flow",
       "order": 70,
-      "aliases": ["event modeling", "eventmodeling", "state change"],
-      "fixture": "fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd"
+      "aliases": [
+        "event modeling",
+        "eventmodeling",
+        "state change"
+      ],
+      "fixture": "fixtures/eventmodeling/upstream_docs_eventmodeling_minimum.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical eventmodeling syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "eventmodeling",
+      "id": "event-model-state-change",
+      "title": "Event Model State Change",
+      "category": "Flow",
+      "order": 71,
+      "aliases": [
+        "commands and events",
+        "state change pattern",
+        "cart"
+      ],
+      "fixture": "fixtures/eventmodeling/upstream_cypress_eventmodeling_spec_renders_a_state_change_pattern_002.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "workflow",
+        "claim": "Fixture demonstrates event model state change."
+      }
     },
     {
       "diagramType": "flowchart",
@@ -71,8 +307,70 @@
       "title": "Basic Flowchart",
       "category": "Flow",
       "order": 80,
-      "aliases": ["graph", "flowchart-v2", "dagre"],
-      "fixture": "fixtures/flowchart/basic.mmd"
+      "aliases": [
+        "graph",
+        "flowchart-v2",
+        "dagre"
+      ],
+      "fixture": "fixtures/flowchart/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical flowchart syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "flowchart",
+      "id": "flowchart-network-subgraphs",
+      "title": "Flowchart Network Subgraphs",
+      "category": "Flow",
+      "order": 81,
+      "aliases": [
+        "nested subgraphs",
+        "network topology",
+        "cross edges"
+      ],
+      "fixture": "fixtures/flowchart/upstream_cypress_flowchart_v2_spec_53_handle_nested_subgraphs_with_edges_in_and_out_012.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates flowchart network subgraphs."
+      }
+    },
+    {
+      "diagramType": "flowchart",
+      "id": "flowchart-classes-styling",
+      "title": "Flowchart Classes and Styling",
+      "category": "Flow",
+      "order": 82,
+      "aliases": [
+        "classDef",
+        "node style",
+        "markdown label"
+      ],
+      "fixture": "fixtures/flowchart/upstream_cypress_flowchart_v2_spec_with_styling_and_classes_048.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates flowchart classes and styling."
+      }
+    },
+    {
+      "diagramType": "flowchart",
+      "id": "flowchart-markdown-labels",
+      "title": "Flowchart Markdown Labels",
+      "category": "Flow",
+      "order": 83,
+      "aliases": [
+        "multiline labels",
+        "markdown formatting",
+        "htmlLabels false"
+      ],
+      "fixture": "fixtures/flowchart/upstream_docs_flowchart_markdown_formatting_008.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates flowchart markdown labels."
+      }
     },
     {
       "diagramType": "gantt",
@@ -80,8 +378,34 @@
       "title": "Project Gantt",
       "category": "Planning",
       "order": 90,
-      "aliases": ["schedule", "project plan", "tasks"],
-      "fixture": "fixtures/gantt/basic.mmd"
+      "aliases": [
+        "schedule",
+        "project plan",
+        "tasks"
+      ],
+      "fixture": "fixtures/gantt/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical gantt syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "gantt",
+      "id": "gantt-task-statuses",
+      "title": "Gantt Task Statuses",
+      "category": "Planning",
+      "order": 91,
+      "aliases": [
+        "done active",
+        "after dependency",
+        "task tags"
+      ],
+      "fixture": "fixtures/gantt/task_order_and_tags.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates gantt task statuses."
+      }
     },
     {
       "diagramType": "gitgraph",
@@ -89,8 +413,34 @@
       "title": "Git Commit Flow",
       "category": "Planning",
       "order": 100,
-      "aliases": ["gitGraph", "branch", "commit"],
-      "fixture": "fixtures/gitgraph/upstream_cypress_appli_spec_1_should_render_a_simple_gitgraph_with_commit_on_main_branch_001.mmd"
+      "aliases": [
+        "gitGraph",
+        "branch",
+        "commit"
+      ],
+      "fixture": "fixtures/gitgraph/upstream_cypress_appli_spec_1_should_render_a_simple_gitgraph_with_commit_on_main_branch_001.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical gitgraph syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "gitgraph",
+      "id": "gitgraph-cherry-pick",
+      "title": "GitGraph Cherry-pick",
+      "category": "Planning",
+      "order": 101,
+      "aliases": [
+        "branches",
+        "merge parent",
+        "release backport"
+      ],
+      "fixture": "fixtures/gitgraph/upstream_docs_gitgraph_cherry_pick_commit_from_another_branch_010.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "workflow",
+        "claim": "Fixture demonstrates gitgraph cherry-pick."
+      }
     },
     {
       "diagramType": "info",
@@ -98,8 +448,34 @@
       "title": "Mermaid Version",
       "category": "Reference",
       "order": 110,
-      "aliases": ["info diagram", "showInfo", "version"],
-      "fixture": "fixtures/info/upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_info_001.mmd"
+      "aliases": [
+        "info diagram",
+        "showInfo",
+        "version"
+      ],
+      "fixture": "fixtures/info/upstream_cypress_statediagram_v2_spec_v2_should_render_a_simple_info_001.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical info syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "info",
+      "id": "info-multiline",
+      "title": "Info Multiline Details",
+      "category": "Reference",
+      "order": 111,
+      "aliases": [
+        "showInfo",
+        "multiline info",
+        "configuration details"
+      ],
+      "fixture": "fixtures/info/upstream_info_show_info_multiline_spec.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Multiline showInfo content and indentation are preserved."
+      }
     },
     {
       "diagramType": "ishikawa",
@@ -107,8 +483,34 @@
       "title": "Cause and Effect",
       "category": "Strategy",
       "order": 120,
-      "aliases": ["ishikawa-beta", "fishbone", "root cause"],
-      "fixture": "fixtures/ishikawa/upstream_docs_ishikawa_basic.mmd"
+      "aliases": [
+        "ishikawa-beta",
+        "fishbone",
+        "root cause"
+      ],
+      "fixture": "fixtures/ishikawa/upstream_docs_ishikawa_basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical ishikawa syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "ishikawa",
+      "id": "ishikawa-nested-causes",
+      "title": "Nested Root Causes",
+      "category": "Strategy",
+      "order": 121,
+      "aliases": [
+        "nested causes",
+        "fishbone",
+        "root cause analysis"
+      ],
+      "fixture": "fixtures/ishikawa/upstream_cypress_ishikawa_spec_3_should_render_with_deeply_nested_causes_003.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Deeply nested causes retain their fishbone topology."
+      }
     },
     {
       "diagramType": "journey",
@@ -116,8 +518,34 @@
       "title": "Working Day Journey",
       "category": "Planning",
       "order": 130,
-      "aliases": ["user journey", "experience", "satisfaction"],
-      "fixture": "fixtures/journey/upstream_examples_user_journey_my_working_day_001.mmd"
+      "aliases": [
+        "user journey",
+        "experience",
+        "satisfaction"
+      ],
+      "fixture": "fixtures/journey/upstream_examples_user_journey_my_working_day_001.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical journey syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "journey",
+      "id": "online-grocery-journey",
+      "title": "Online Grocery Journey",
+      "category": "Planning",
+      "order": 131,
+      "aliases": [
+        "customer experience",
+        "checkout delivery",
+        "multiple actors"
+      ],
+      "fixture": "fixtures/journey/zed_pr_57644_journey.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "workflow",
+        "claim": "Fixture demonstrates online grocery journey."
+      }
     },
     {
       "diagramType": "kanban",
@@ -125,8 +553,34 @@
       "title": "Kanban Board",
       "category": "Planning",
       "order": 140,
-      "aliases": ["board", "cards", "workflow"],
-      "fixture": "fixtures/kanban/basic.mmd"
+      "aliases": [
+        "board",
+        "cards",
+        "workflow"
+      ],
+      "fixture": "fixtures/kanban/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical kanban syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "kanban",
+      "id": "kanban-ticket-metadata",
+      "title": "Kanban Ticket Metadata",
+      "category": "Planning",
+      "order": 141,
+      "aliases": [
+        "assigned priority",
+        "ticketBaseUrl",
+        "full board"
+      ],
+      "fixture": "fixtures/kanban/upstream_docs_kanban_full_example_012.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates kanban ticket metadata."
+      }
     },
     {
       "diagramType": "mindmap",
@@ -134,8 +588,34 @@
       "title": "Mind Map",
       "category": "Strategy",
       "order": 150,
-      "aliases": ["mindmap", "concept map", "tree"],
-      "fixture": "fixtures/mindmap/basic.mmd"
+      "aliases": [
+        "mindmap",
+        "concept map",
+        "tree"
+      ],
+      "fixture": "fixtures/mindmap/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical mindmap syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "mindmap",
+      "id": "mindmap-shapes-icons",
+      "title": "Mindmap Shapes and Icons",
+      "category": "Strategy",
+      "order": 151,
+      "aliases": [
+        "circle square",
+        "icon decorator",
+        "nested branches"
+      ],
+      "fixture": "fixtures/mindmap/upstream_cypress_mindmap_spec_braches_with_shapes_and_labels_009.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates mindmap shapes and icons."
+      }
     },
     {
       "diagramType": "packet",
@@ -143,8 +623,34 @@
       "title": "Packet Layout",
       "category": "Data",
       "order": 160,
-      "aliases": ["packet-beta", "protocol", "bits"],
-      "fixture": "fixtures/packet/upstream_cypress_packet_spec_should_render_a_simple_packet_diagram_002.mmd"
+      "aliases": [
+        "packet-beta",
+        "protocol",
+        "bits"
+      ],
+      "fixture": "fixtures/packet/upstream_cypress_packet_spec_should_render_a_simple_packet_diagram_002.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical packet syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "packet",
+      "id": "tcp-packet-header",
+      "title": "TCP Packet Header",
+      "category": "Data",
+      "order": 161,
+      "aliases": [
+        "TCP flags",
+        "bit ranges",
+        "protocol header"
+      ],
+      "fixture": "fixtures/packet/upstream_packet_docs_tcp_packet_example.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates tcp packet header."
+      }
     },
     {
       "diagramType": "pie",
@@ -152,8 +658,34 @@
       "title": "Pie Distribution",
       "category": "Data",
       "order": 170,
-      "aliases": ["pie chart", "proportion", "share"],
-      "fixture": "fixtures/pie/upstream_docs_examples_basic_pie_chart_001.mmd"
+      "aliases": [
+        "pie chart",
+        "proportion",
+        "share"
+      ],
+      "fixture": "fixtures/pie/upstream_docs_examples_basic_pie_chart_001.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical pie syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "pie",
+      "id": "pie-decimal-values",
+      "title": "Pie Decimal Values",
+      "category": "Data",
+      "order": 171,
+      "aliases": [
+        "fractional values",
+        "positive decimals",
+        "proportions"
+      ],
+      "fixture": "fixtures/pie/upstream_pie_positive_decimal_spec.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates pie decimal values."
+      }
     },
     {
       "diagramType": "quadrantchart",
@@ -161,8 +693,34 @@
       "title": "Quadrant Priorities",
       "category": "Strategy",
       "order": 180,
-      "aliases": ["quadrantChart", "matrix", "priority"],
-      "fixture": "fixtures/quadrantchart/upstream_quadrant_docs_example_reach_engagement.mmd"
+      "aliases": [
+        "quadrantChart",
+        "matrix",
+        "priority"
+      ],
+      "fixture": "fixtures/quadrantchart/upstream_quadrant_docs_example_reach_engagement.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical quadrantchart syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "quadrantchart",
+      "id": "quadrant-styled-points",
+      "title": "Quadrant Styled Points",
+      "category": "Strategy",
+      "order": 181,
+      "aliases": [
+        "classDef",
+        "point radius",
+        "stroke color"
+      ],
+      "fixture": "fixtures/quadrantchart/upstream_cypress_quadrantchart_spec_it_should_render_data_points_with_styles_classes_014.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates quadrant styled points."
+      }
     },
     {
       "diagramType": "radar",
@@ -170,8 +728,34 @@
       "title": "Radar Comparison",
       "category": "Strategy",
       "order": 190,
-      "aliases": ["radar-beta", "spider chart", "axes"],
-      "fixture": "fixtures/radar/upstream_docs_radar_examples_003.mmd"
+      "aliases": [
+        "radar-beta",
+        "spider chart",
+        "axes"
+      ],
+      "fixture": "fixtures/radar/upstream_docs_radar_examples_003.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical radar syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "radar",
+      "id": "radar-ninja-comparison",
+      "title": "Radar Named-axis Comparison",
+      "category": "Strategy",
+      "order": 191,
+      "aliases": [
+        "named values",
+        "legend ticks",
+        "polygon graticule"
+      ],
+      "fixture": "fixtures/radar/upstream_cypress_radar_spec_should_render_a_complex_radar_diagram_003.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates radar named-axis comparison."
+      }
     },
     {
       "diagramType": "railroad",
@@ -179,8 +763,34 @@
       "title": "Railroad Grammar",
       "category": "Grammar",
       "order": 200,
-      "aliases": ["railroad-beta", "syntax diagram", "grammar"],
-      "fixture": "fixtures/railroad/basic_ir.mmd"
+      "aliases": [
+        "railroad-beta",
+        "syntax diagram",
+        "grammar"
+      ],
+      "fixture": "fixtures/railroad/basic_ir.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical railroad syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "railroad",
+      "id": "railroad-optional-repetition",
+      "title": "Railroad Optional Repetition",
+      "category": "Reference",
+      "order": 201,
+      "aliases": [
+        "optional",
+        "repetition",
+        "grammar operators"
+      ],
+      "fixture": "fixtures/railroad/upstream_cypress_railroad_spec_renders_optional_and_repetition_operators_003.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Optional and repetition operators produce distinct grammar nodes."
+      }
     },
     {
       "diagramType": "railroadAbnf",
@@ -188,8 +798,34 @@
       "title": "ABNF Grammar",
       "category": "Grammar",
       "order": 210,
-      "aliases": ["railroad-abnf-beta", "ABNF", "grammar"],
-      "fixture": "fixtures/railroadAbnf/repetition_optional_numval.mmd"
+      "aliases": [
+        "railroad-abnf-beta",
+        "ABNF",
+        "grammar"
+      ],
+      "fixture": "fixtures/railroadAbnf/repetition_optional_numval.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical railroadAbnf syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "railroadAbnf",
+      "id": "abnf-alternation-repetition",
+      "title": "ABNF Alternation and Repetition",
+      "category": "Reference",
+      "order": 211,
+      "aliases": [
+        "ABNF alternation",
+        "ABNF repetition",
+        "grammar choices"
+      ],
+      "fixture": "fixtures/railroadAbnf/upstream_cypress_railroad_spec_renders_alternation_and_repetition_008.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "ABNF alternation and repetition remain separate production branches."
+      }
     },
     {
       "diagramType": "railroadEbnf",
@@ -197,8 +833,34 @@
       "title": "EBNF Grammar",
       "category": "Grammar",
       "order": 220,
-      "aliases": ["railroad-ebnf-beta", "EBNF", "grammar"],
-      "fixture": "fixtures/railroadEbnf/choice_optional_repetition.mmd"
+      "aliases": [
+        "railroad-ebnf-beta",
+        "EBNF",
+        "grammar"
+      ],
+      "fixture": "fixtures/railroadEbnf/choice_optional_repetition.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical railroadEbnf syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "railroadEbnf",
+      "id": "ebnf-iso-notation",
+      "title": "EBNF ISO Notation",
+      "category": "Reference",
+      "order": 221,
+      "aliases": [
+        "ISO 14977",
+        "EBNF notation",
+        "grammar repetition"
+      ],
+      "fixture": "fixtures/railroadEbnf/upstream_cypress_railroad_spec_renders_iso_14977_notation_007.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "ISO 14977 EBNF notation is parsed and rendered as authored."
+      }
     },
     {
       "diagramType": "railroadPeg",
@@ -206,8 +868,34 @@
       "title": "PEG Grammar",
       "category": "Grammar",
       "order": 230,
-      "aliases": ["railroad-peg-beta", "PEG", "grammar"],
-      "fixture": "fixtures/railroadPeg/prefix_suffix_any.mmd"
+      "aliases": [
+        "railroad-peg-beta",
+        "PEG",
+        "grammar"
+      ],
+      "fixture": "fixtures/railroadPeg/prefix_suffix_any.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical railroadPeg syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "railroadPeg",
+      "id": "peg-ordered-choice",
+      "title": "PEG Ordered Choice",
+      "category": "Reference",
+      "order": 231,
+      "aliases": [
+        "ordered choice",
+        "PEG suffixes",
+        "expression grammar"
+      ],
+      "fixture": "fixtures/railroadPeg/upstream_cypress_railroad_spec_renders_ordered_choice_and_suffixes_009.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "PEG ordered choice and suffix operators retain their precedence."
+      }
     },
     {
       "diagramType": "requirement",
@@ -215,8 +903,34 @@
       "title": "Requirement Trace",
       "category": "Planning",
       "order": 240,
-      "aliases": ["requirementDiagram", "traceability", "verification"],
-      "fixture": "fixtures/requirement/basic.mmd"
+      "aliases": [
+        "requirementDiagram",
+        "traceability",
+        "verification"
+      ],
+      "fixture": "fixtures/requirement/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical requirement syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "requirement",
+      "id": "requirement-styled-elements",
+      "title": "Requirement Styled Elements",
+      "category": "Planning",
+      "order": 241,
+      "aliases": [
+        "classDef",
+        "simulation element",
+        "verification method"
+      ],
+      "fixture": "fixtures/requirement/upstream_docs_requirementdiagram_combined_example_022.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates requirement styled elements."
+      }
     },
     {
       "diagramType": "sankey",
@@ -224,8 +938,34 @@
       "title": "Sankey Energy Flow",
       "category": "Data",
       "order": 250,
-      "aliases": ["flow distribution", "links", "energy"],
-      "fixture": "fixtures/sankey/upstream_docs_sankey_basic_004.mmd"
+      "aliases": [
+        "flow distribution",
+        "links",
+        "energy"
+      ],
+      "fixture": "fixtures/sankey/upstream_docs_sankey_basic_004.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical sankey syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "sankey",
+      "id": "sankey-shared-nodes",
+      "title": "Sankey Shared Nodes",
+      "category": "Data",
+      "order": 251,
+      "aliases": [
+        "dense flow",
+        "multiple outputs",
+        "linkColor source"
+      ],
+      "fixture": "fixtures/sankey/stress_sankey_batch1_dense_shared_nodes_007.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates sankey shared nodes."
+      }
     },
     {
       "diagramType": "sequence",
@@ -233,8 +973,70 @@
       "title": "Sequence Interaction",
       "category": "Flow",
       "order": 260,
-      "aliases": ["sequenceDiagram", "messages", "actors"],
-      "fixture": "fixtures/sequence/basic.mmd"
+      "aliases": [
+        "sequenceDiagram",
+        "messages",
+        "actors"
+      ],
+      "fixture": "fixtures/sequence/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical sequence syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "sequence",
+      "id": "sequence-autonumber-variants",
+      "title": "Sequence Autonumber Variants",
+      "category": "Flow",
+      "order": 261,
+      "aliases": [
+        "number reset",
+        "number step",
+        "autonumber off"
+      ],
+      "fixture": "fixtures/sequence/autonumber_variants.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates sequence autonumber variants."
+      }
+    },
+    {
+      "diagramType": "sequence",
+      "id": "sequence-participant-boxes",
+      "title": "Sequence Participant Boxes",
+      "category": "Flow",
+      "order": 262,
+      "aliases": [
+        "box groups",
+        "participants",
+        "group color"
+      ],
+      "fixture": "fixtures/sequence/upstream_docs_sequence_box_groups_example.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates sequence participant boxes."
+      }
+    },
+    {
+      "diagramType": "sequence",
+      "id": "sequence-critical-region",
+      "title": "Sequence Critical Region",
+      "category": "Flow",
+      "order": 263,
+      "aliases": [
+        "critical options",
+        "error branches",
+        "database connection"
+      ],
+      "fixture": "fixtures/sequence/upstream_critical_with_options_spec.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates sequence critical region."
+      }
     },
     {
       "diagramType": "state",
@@ -242,8 +1044,52 @@
       "title": "State Machine",
       "category": "Flow",
       "order": 270,
-      "aliases": ["stateDiagram-v2", "states", "transitions"],
-      "fixture": "fixtures/state/basic.mmd"
+      "aliases": [
+        "stateDiagram-v2",
+        "states",
+        "transitions"
+      ],
+      "fixture": "fixtures/state/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical state syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "state",
+      "id": "state-composite",
+      "title": "State Composite States",
+      "category": "Flow",
+      "order": 271,
+      "aliases": [
+        "nested state",
+        "composite",
+        "initial final"
+      ],
+      "fixture": "fixtures/state/upstream_docs_statediagram_composite_states_022.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates state composite states."
+      }
+    },
+    {
+      "diagramType": "state",
+      "id": "state-fork-join",
+      "title": "State Fork and Join",
+      "category": "Flow",
+      "order": 272,
+      "aliases": [
+        "parallel branches",
+        "fork state",
+        "join state"
+      ],
+      "fixture": "fixtures/state/upstream_stateDiagram_fork_join_spec.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates state fork and join."
+      }
     },
     {
       "diagramType": "swimlane",
@@ -251,8 +1097,34 @@
       "title": "Customer Support Swimlane",
       "category": "Flow",
       "order": 280,
-      "aliases": ["swimlane-beta", "lanes", "responsibilities"],
-      "fixture": "fixtures/swimlane/upstream_docs_basic.mmd"
+      "aliases": [
+        "swimlane-beta",
+        "lanes",
+        "responsibilities"
+      ],
+      "fixture": "fixtures/swimlane/upstream_docs_basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical swimlane syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "swimlane",
+      "id": "car-sales-swimlane",
+      "title": "Car Sales Swimlane",
+      "category": "Flow",
+      "order": 281,
+      "aliases": [
+        "cross-lane routing",
+        "decision labels",
+        "rank optimization"
+      ],
+      "fixture": "fixtures/swimlane/upstream_7_car_sales_constr.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates car sales swimlane."
+      }
     },
     {
       "diagramType": "timeline",
@@ -260,8 +1132,34 @@
       "title": "Project Timeline",
       "category": "Planning",
       "order": 290,
-      "aliases": ["chronology", "milestones", "periods"],
-      "fixture": "fixtures/timeline/upstream_docs_timeline_an_example_of_a_timeline_002.mmd"
+      "aliases": [
+        "chronology",
+        "milestones",
+        "periods"
+      ],
+      "fixture": "fixtures/timeline/upstream_docs_timeline_an_example_of_a_timeline_002.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical timeline syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "timeline",
+      "id": "timeline-stacked-events",
+      "title": "Timeline Stacked Events",
+      "category": "Planning",
+      "order": 291,
+      "aliases": [
+        "multiple sections",
+        "events per period",
+        "project phases"
+      ],
+      "fixture": "fixtures/timeline/timeline_stress_multiple_sections_and_stacked_tasks.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "workflow",
+        "claim": "Fixture demonstrates timeline stacked events."
+      }
     },
     {
       "diagramType": "treeView",
@@ -269,8 +1167,34 @@
       "title": "Project Tree",
       "category": "Software",
       "order": 300,
-      "aliases": ["treeView-beta", "directory tree", "filesystem"],
-      "fixture": "fixtures/treeView/upstream_docs_treeview_basic.mmd"
+      "aliases": [
+        "treeView-beta",
+        "directory tree",
+        "filesystem"
+      ],
+      "fixture": "fixtures/treeView/upstream_docs_treeview_basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical treeView syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "treeView",
+      "id": "project-tree-annotations",
+      "title": "Project Tree Annotations",
+      "category": "Software",
+      "order": 301,
+      "aliases": [
+        "file icons",
+        "descriptions",
+        "highlight class"
+      ],
+      "fixture": "fixtures/treeView/upstream_cypress_treeview_spec_should_render_combined_annotations_015.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates project tree annotations."
+      }
     },
     {
       "diagramType": "treemap",
@@ -278,8 +1202,34 @@
       "title": "Treemap Hierarchy",
       "category": "Data",
       "order": 310,
-      "aliases": ["treemap-beta", "hierarchy", "area"],
-      "fixture": "fixtures/treemap/upstream_docs_treemap_syntax_001.mmd"
+      "aliases": [
+        "treemap-beta",
+        "hierarchy",
+        "area"
+      ],
+      "fixture": "fixtures/treemap/upstream_docs_treemap_syntax_001.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical treemap syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "treemap",
+      "id": "treemap-budget-styling",
+      "title": "Treemap Budget Styling",
+      "category": "Data",
+      "order": 311,
+      "aliases": [
+        "nested budget",
+        "currency format",
+        "classDef theme"
+      ],
+      "fixture": "fixtures/treemap/upstream_cypress_treemap_spec_9_should_handle_a_complex_example_with_multiple_features_016.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Fixture demonstrates treemap budget styling."
+      }
     },
     {
       "diagramType": "venn",
@@ -287,8 +1237,34 @@
       "title": "Team Overlap",
       "category": "Data",
       "order": 320,
-      "aliases": ["venn-beta", "sets", "overlap"],
-      "fixture": "fixtures/venn/upstream_docs_venn_team_overlap_001.mmd"
+      "aliases": [
+        "venn-beta",
+        "sets",
+        "overlap"
+      ],
+      "fixture": "fixtures/venn/upstream_docs_venn_team_overlap_001.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical venn syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "venn",
+      "id": "venn-text-nodes",
+      "title": "Venn Text Nodes",
+      "category": "Data",
+      "order": 321,
+      "aliases": [
+        "text nodes",
+        "set labels",
+        "venn styling"
+      ],
+      "fixture": "fixtures/venn/upstream_docs_venn_text_nodes_and_style_003.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Text nodes and per-set styles are visible in the overlap diagram."
+      }
     },
     {
       "diagramType": "wardley",
@@ -296,8 +1272,34 @@
       "title": "Tea Shop Wardley Map",
       "category": "Strategy",
       "order": 330,
-      "aliases": ["wardley-beta", "value chain", "evolution"],
-      "fixture": "fixtures/wardley/upstream_cypress_wardley_spec_1_should_render_tea_shop_001.mmd"
+      "aliases": [
+        "wardley-beta",
+        "value chain",
+        "evolution"
+      ],
+      "fixture": "fixtures/wardley/upstream_cypress_wardley_spec_1_should_render_tea_shop_001.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical wardley syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "wardley",
+      "id": "wardley-link-annotations",
+      "title": "Wardley Link Annotations",
+      "category": "Strategy",
+      "order": 331,
+      "aliases": [
+        "link types",
+        "constraints",
+        "wardley annotations"
+      ],
+      "fixture": "fixtures/wardley/upstream_cypress_wardley_spec_4_should_render_link_types_and_annotations_004.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Link types, constraints, and named annotations affect the map."
+      }
     },
     {
       "diagramType": "xychart",
@@ -305,8 +1307,34 @@
       "title": "XY Series",
       "category": "Data",
       "order": 340,
-      "aliases": ["xychart-beta", "bar chart", "line chart"],
-      "fixture": "fixtures/xychart/upstream_cypress_xychart_spec_should_render_the_simplest_possible_xy_chart_002.mmd"
+      "aliases": [
+        "xychart-beta",
+        "bar chart",
+        "line chart"
+      ],
+      "fixture": "fixtures/xychart/upstream_cypress_xychart_spec_should_render_the_simplest_possible_xy_chart_002.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical xychart syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "xychart",
+      "id": "xy-negative-values",
+      "title": "XY Negative Values",
+      "category": "Data",
+      "order": 341,
+      "aliases": [
+        "decimal axis",
+        "signed values",
+        "line series"
+      ],
+      "fixture": "fixtures/xychart/upstream_cypress_xychart_spec_decimals_and_negative_numbers_are_supported_009.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates xy negative values."
+      }
     },
     {
       "diagramType": "zenuml",
@@ -314,8 +1342,34 @@
       "title": "ZenUML Interaction",
       "category": "Flow",
       "order": 350,
-      "aliases": ["ZenUML", "sequence syntax", "interaction"],
-      "fixture": "fixtures/zenuml/basic.mmd"
+      "aliases": [
+        "ZenUML",
+        "sequence syntax",
+        "interaction"
+      ],
+      "fixture": "fixtures/zenuml/basic.mmd",
+      "evidence": {
+        "role": "family-baseline",
+        "claim": "Canonical zenuml syntax and default rendering."
+      }
+    },
+    {
+      "diagramType": "zenuml",
+      "id": "zenuml-conditional-flow",
+      "title": "ZenUML Conditional Flow",
+      "category": "Flow",
+      "order": 351,
+      "aliases": [
+        "if else",
+        "conditional interaction",
+        "reply"
+      ],
+      "fixture": "fixtures/zenuml/upstream_docs_zenuml_alt_if_else.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "syntax",
+        "claim": "Fixture demonstrates zenuml conditional flow."
+      }
     }
   ]
 }
