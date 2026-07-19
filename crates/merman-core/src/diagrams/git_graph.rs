@@ -3,14 +3,14 @@ use crate::diagram::{
     DiagramWarningFact, GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID, legacy_warning_messages,
 };
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string,
-    push_langium_common_editor_fact, push_langium_common_recovery, strip_langium_inline_comment,
+    LangiumCommonFacts, LangiumLexemeTrace, parse_langium_common, parse_langium_string,
+    push_langium_common_editor_fact, strip_langium_inline_comment,
 };
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
-    ParseMetadata, Result, SourceSpan,
-    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
+    EditorLexemeKind, EditorLexemeModifier, EditorLexemeModifiers, EditorSemanticFacts,
+    EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result,
+    SourceSpan,
 };
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
@@ -141,6 +141,7 @@ struct GitGraphDb {
 #[derive(Debug, Clone)]
 struct SpannedValue {
     text: String,
+    raw_span: SourceSpan,
     span: SourceSpan,
 }
 
@@ -171,18 +172,38 @@ enum GitGraphOperation {
 struct GitGraphCommand {
     operation: GitGraphOperation,
     editor_facts: Vec<GitGraphEditorFact>,
+    lexemes: LangiumLexemeTrace,
     statement_span: SourceSpan,
 }
 
 struct GitGraphCommandParseError {
     error: Box<Error>,
     editor_facts: Vec<GitGraphEditorFact>,
+    lexemes: LangiumLexemeTrace,
     recovery_span: SourceSpan,
 }
 
 struct GitGraphSemanticSource {
     model: GitGraphRenderModel,
     editor_facts: EditorSemanticFacts,
+}
+
+struct GitGraphParseFailure {
+    error: Box<Error>,
+    editor_facts: Box<EditorSemanticFacts>,
+}
+
+struct GitGraphHeader {
+    direction: Option<String>,
+    body_start: usize,
+    lexemes: LangiumLexemeTrace,
+}
+
+struct GitGraphSyntaxOutcome {
+    commands: Vec<GitGraphCommand>,
+    common: LangiumCommonFacts,
+    editor_facts: EditorSemanticFacts,
+    first_error: Option<Error>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -743,17 +764,24 @@ impl<'a> LineParser<'a> {
         }
         Some(SpannedValue {
             text: self.input[start..self.pos].to_string(),
+            raw_span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
             span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
         })
     }
 
-    fn consume_literal(&mut self, literal: &str) -> bool {
+    fn consume_argument_name(&mut self, name: &str) -> Option<(SourceSpan, SourceSpan)> {
         self.skip_ws();
-        if !self.remaining().starts_with(literal) {
-            return false;
+        let rest = self.remaining();
+        let after_name = rest.strip_prefix(name)?;
+        if !after_name.starts_with(':') {
+            return None;
         }
-        self.pos += literal.len();
-        true
+        let keyword_start = self.base_offset + self.pos;
+        self.pos += name.len();
+        let keyword = SourceSpan::new(keyword_start, keyword_start + name.len());
+        let colon = SourceSpan::new(keyword.end, keyword.end + 1);
+        self.pos += 1;
+        Some((keyword, colon))
     }
 
     fn parse_quoted_spanned(&mut self) -> Result<SpannedValue> {
@@ -768,6 +796,7 @@ impl<'a> LineParser<'a> {
         self.pos += parsed.consumed;
         Ok(SpannedValue {
             text: parsed.value,
+            raw_span: parsed.raw_span,
             span: parsed.value_span,
         })
     }
@@ -799,6 +828,7 @@ impl<'a> LineParser<'a> {
         }
         Ok(SpannedValue {
             text: text.to_string(),
+            raw_span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
             span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
         })
     }
@@ -817,6 +847,7 @@ impl<'a> LineParser<'a> {
         }
         Ok(SpannedValue {
             text: self.input[start..self.pos].to_string(),
+            raw_span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
             span: SourceSpan::new(self.base_offset + start, self.base_offset + self.pos),
         })
     }
@@ -916,14 +947,40 @@ fn gitgraph_editor_fact(
     }
 }
 
+fn record_gitgraph_argument(lexemes: &mut LangiumLexemeTrace, argument: (SourceSpan, SourceSpan)) {
+    lexemes.keyword(argument.0);
+    lexemes.delimiter(argument.1);
+}
+
+fn record_gitgraph_value(
+    lexemes: &mut LangiumLexemeTrace,
+    value: &SpannedValue,
+    kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
+) {
+    if value.raw_span.start < value.span.start {
+        lexemes.delimiter(SourceSpan::new(value.raw_span.start, value.span.start));
+    }
+    lexemes.push_with_modifiers(kind, modifiers, value.span);
+    if value.span.end < value.raw_span.end {
+        lexemes.delimiter(SourceSpan::new(value.span.end, value.raw_span.end));
+    }
+}
+
+fn gitgraph_modifier(modifier: EditorLexemeModifier) -> EditorLexemeModifiers {
+    EditorLexemeModifiers::from_modifier(modifier)
+}
+
 fn command_parse_result<T>(
     result: Result<T>,
     editor_facts: &[GitGraphEditorFact],
+    lexemes: &LangiumLexemeTrace,
     recovery_span: SourceSpan,
 ) -> std::result::Result<T, GitGraphCommandParseError> {
     result.map_err(|error| GitGraphCommandParseError {
         error: Box::new(error),
         editor_facts: editor_facts.to_vec(),
+        lexemes: lexemes.clone(),
         recovery_span,
     })
 }
@@ -932,6 +989,7 @@ fn unexpected_gitgraph_argument(
     command: &str,
     parser: &LineParser<'_>,
     editor_facts: Vec<GitGraphEditorFact>,
+    lexemes: LangiumLexemeTrace,
     statement_span: SourceSpan,
 ) -> GitGraphCommandParseError {
     GitGraphCommandParseError {
@@ -941,6 +999,7 @@ fn unexpected_gitgraph_argument(
             statement_span,
         )),
         editor_facts,
+        lexemes,
         recovery_span: statement_span,
     }
 }
@@ -966,6 +1025,8 @@ fn parse_git_graph_command(
         return Ok(None);
     };
     let mut editor_facts = Vec::new();
+    let mut lexemes = LangiumLexemeTrace::default();
+    lexemes.keyword(command.span);
 
     let operation = match command.text.as_str() {
         "commit" => {
@@ -985,8 +1046,15 @@ fn parse_git_graph_command(
                     let message = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &message,
+                        EditorLexemeKind::String,
+                        EditorLexemeModifiers::NONE,
+                    );
                     commit.msg = message.text.clone();
                     editor_facts.push(gitgraph_editor_fact(
                         message,
@@ -996,12 +1064,20 @@ fn parse_git_graph_command(
                     ));
                     continue;
                 }
-                if parser.consume_literal("id:") {
+                if let Some(argument) = parser.consume_argument_name("id") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::Identifier,
+                        gitgraph_modifier(EditorLexemeModifier::Definition),
+                    );
                     commit.id = value.text.clone();
                     editor_facts.push(gitgraph_editor_fact(
                         value,
@@ -1011,12 +1087,20 @@ fn parse_git_graph_command(
                     ));
                     continue;
                 }
-                if parser.consume_literal("msg:") {
+                if let Some(argument) = parser.consume_argument_name("msg") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::String,
+                        EditorLexemeModifiers::NONE,
+                    );
                     commit.msg = value.text.clone();
                     editor_facts.push(gitgraph_editor_fact(
                         value,
@@ -1026,12 +1110,20 @@ fn parse_git_graph_command(
                     ));
                     continue;
                 }
-                if parser.consume_literal("tag:") {
+                if let Some(argument) = parser.consume_argument_name("tag") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::String,
+                        EditorLexemeModifiers::NONE,
+                    );
                     commit.tags.push(value.text.clone());
                     editor_facts.push(gitgraph_editor_fact(
                         value,
@@ -1041,12 +1133,20 @@ fn parse_git_graph_command(
                     ));
                     continue;
                 }
-                if parser.consume_literal("type:") {
+                if let Some(argument) = parser.consume_argument_name("type") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_bare_token_spanned("commit type"),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::Literal,
+                        EditorLexemeModifiers::NONE,
+                    );
                     editor_facts.push(gitgraph_editor_fact(
                         value.clone(),
                         "gitGraph commit type",
@@ -1056,6 +1156,7 @@ fn parse_git_graph_command(
                     commit.commit_type = command_parse_result(
                         parse_commit_type(&value.text),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
                     continue;
@@ -1064,6 +1165,7 @@ fn parse_git_graph_command(
                     "commit",
                     &parser,
                     editor_facts,
+                    lexemes,
                     statement_span,
                 ));
             }
@@ -1073,8 +1175,15 @@ fn parse_git_graph_command(
             let name = command_parse_result(
                 parser.parse_name_token_spanned(),
                 &editor_facts,
+                &lexemes,
                 statement_span,
             )?;
+            record_gitgraph_value(
+                &mut lexemes,
+                &name,
+                EditorLexemeKind::Identifier,
+                gitgraph_modifier(EditorLexemeModifier::Definition),
+            );
             editor_facts.push(gitgraph_editor_fact(
                 name.clone(),
                 "gitGraph branch",
@@ -1084,19 +1193,28 @@ fn parse_git_graph_command(
             let mut order = 0i64;
             parser.skip_ws();
             if !parser.is_eof() {
-                if !parser.consume_literal("order:") {
+                let Some(argument) = parser.consume_argument_name("order") else {
                     return Err(unexpected_gitgraph_argument(
                         "branch",
                         &parser,
                         editor_facts,
+                        lexemes,
                         statement_span,
                     ));
-                }
+                };
+                record_gitgraph_argument(&mut lexemes, argument);
                 let value = command_parse_result(
                     parser.parse_bare_token_spanned("branch order"),
                     &editor_facts,
+                    &lexemes,
                     statement_span,
                 )?;
+                record_gitgraph_value(
+                    &mut lexemes,
+                    &value,
+                    EditorLexemeKind::Number,
+                    EditorLexemeModifiers::NONE,
+                );
                 editor_facts.push(gitgraph_editor_fact(
                     value.clone(),
                     "gitGraph branch order",
@@ -1106,10 +1224,16 @@ fn parse_git_graph_command(
                 order = command_parse_result(
                     parse_gitgraph_int(&value),
                     &editor_facts,
+                    &lexemes,
                     statement_span,
                 )?;
             }
-            command_parse_result(parser.expect_eof("branch"), &editor_facts, statement_span)?;
+            command_parse_result(
+                parser.expect_eof("branch"),
+                &editor_facts,
+                &lexemes,
+                statement_span,
+            )?;
             GitGraphOperation::Branch(BranchDb {
                 name: name.text,
                 order,
@@ -1119,8 +1243,15 @@ fn parse_git_graph_command(
             let name = command_parse_result(
                 parser.parse_name_token_spanned(),
                 &editor_facts,
+                &lexemes,
                 statement_span,
             )?;
+            record_gitgraph_value(
+                &mut lexemes,
+                &name,
+                EditorLexemeKind::Identifier,
+                gitgraph_modifier(EditorLexemeModifier::Reference),
+            );
             editor_facts.push(gitgraph_editor_fact(
                 name.clone(),
                 "gitGraph branch",
@@ -1130,6 +1261,7 @@ fn parse_git_graph_command(
             command_parse_result(
                 parser.expect_eof(command.text.as_str()),
                 &editor_facts,
+                &lexemes,
                 statement_span,
             )?;
             GitGraphOperation::Checkout(name.text)
@@ -1138,8 +1270,15 @@ fn parse_git_graph_command(
             let branch = command_parse_result(
                 parser.parse_name_token_spanned(),
                 &editor_facts,
+                &lexemes,
                 statement_span,
             )?;
+            record_gitgraph_value(
+                &mut lexemes,
+                &branch,
+                EditorLexemeKind::Identifier,
+                gitgraph_modifier(EditorLexemeModifier::Reference),
+            );
             editor_facts.push(gitgraph_editor_fact(
                 branch.clone(),
                 "gitGraph merge branch",
@@ -1157,12 +1296,20 @@ fn parse_git_graph_command(
                 if parser.is_eof() {
                     break;
                 }
-                if parser.consume_literal("id:") {
+                if let Some(argument) = parser.consume_argument_name("id") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::Identifier,
+                        gitgraph_modifier(EditorLexemeModifier::Definition),
+                    );
                     merge.id = Some(value.text.clone());
                     editor_facts.push(gitgraph_editor_fact(
                         value,
@@ -1172,12 +1319,20 @@ fn parse_git_graph_command(
                     ));
                     continue;
                 }
-                if parser.consume_literal("tag:") {
+                if let Some(argument) = parser.consume_argument_name("tag") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::String,
+                        EditorLexemeModifiers::NONE,
+                    );
                     merge.tags.push(value.text.clone());
                     editor_facts.push(gitgraph_editor_fact(
                         value,
@@ -1187,12 +1342,20 @@ fn parse_git_graph_command(
                     ));
                     continue;
                 }
-                if parser.consume_literal("type:") {
+                if let Some(argument) = parser.consume_argument_name("type") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_bare_token_spanned("merge type"),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::Literal,
+                        EditorLexemeModifiers::NONE,
+                    );
                     editor_facts.push(gitgraph_editor_fact(
                         value.clone(),
                         "gitGraph merge type",
@@ -1202,6 +1365,7 @@ fn parse_git_graph_command(
                     merge.commit_type = Some(command_parse_result(
                         parse_commit_type(&value.text),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?);
                     continue;
@@ -1210,6 +1374,7 @@ fn parse_git_graph_command(
                     "merge",
                     &parser,
                     editor_facts,
+                    lexemes,
                     statement_span,
                 ));
             }
@@ -1227,12 +1392,20 @@ fn parse_git_graph_command(
                 if parser.is_eof() {
                     break;
                 }
-                if parser.consume_literal("id:") {
+                if let Some(argument) = parser.consume_argument_name("id") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::Identifier,
+                        gitgraph_modifier(EditorLexemeModifier::Reference),
+                    );
                     cherry_pick.id = value.text.clone();
                     editor_facts.push(gitgraph_editor_fact(
                         value,
@@ -1242,12 +1415,20 @@ fn parse_git_graph_command(
                     ));
                     continue;
                 }
-                if parser.consume_literal("parent:") {
+                if let Some(argument) = parser.consume_argument_name("parent") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::Identifier,
+                        gitgraph_modifier(EditorLexemeModifier::Reference),
+                    );
                     cherry_pick.parent = value.text.clone();
                     editor_facts.push(gitgraph_editor_fact(
                         value,
@@ -1257,12 +1438,20 @@ fn parse_git_graph_command(
                     ));
                     continue;
                 }
-                if parser.consume_literal("tag:") {
+                if let Some(argument) = parser.consume_argument_name("tag") {
+                    record_gitgraph_argument(&mut lexemes, argument);
                     let value = command_parse_result(
                         parser.parse_quoted_spanned(),
                         &editor_facts,
+                        &lexemes,
                         statement_span,
                     )?;
+                    record_gitgraph_value(
+                        &mut lexemes,
+                        &value,
+                        EditorLexemeKind::String,
+                        EditorLexemeModifiers::NONE,
+                    );
                     cherry_pick
                         .tags
                         .get_or_insert_with(Vec::new)
@@ -1279,6 +1468,7 @@ fn parse_git_graph_command(
                     "cherry-pick",
                     &parser,
                     editor_facts,
+                    lexemes,
                     statement_span,
                 ));
             }
@@ -1292,6 +1482,7 @@ fn parse_git_graph_command(
                     command.span,
                 )),
                 editor_facts,
+                lexemes,
                 recovery_span: statement_span,
             });
         }
@@ -1300,6 +1491,7 @@ fn parse_git_graph_command(
     Ok(Some(GitGraphCommand {
         operation,
         editor_facts,
+        lexemes,
         statement_span,
     }))
 }
@@ -1392,67 +1584,48 @@ fn push_gitgraph_payload_fact(
 }
 
 pub fn parse_git_graph_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match parse_git_graph_semantic_source(code, meta) {
+    match construct_git_graph_semantic_source(code, meta) {
         Ok(source) => source.editor_facts,
-        Err(error) => ensure_editor_recovery_from_error(
-            scan_git_graph_editor_facts(code),
-            &error,
-            editor_recovery_fallback_span(code),
-        ),
+        Err(failure) => *failure.editor_facts,
     }
-}
-
-fn scan_git_graph_editor_facts(code: &str) -> EditorSemanticFacts {
-    let mut facts = EditorSemanticFacts::new();
-    let Ok((_direction, mut offset)) = parse_gitgraph_header(code) else {
-        return facts;
-    };
-
-    while offset < code.len() {
-        if let Some(parsed) = parse_langium_common(code, offset) {
-            push_langium_common_editor_fact(&mut facts, &parsed.fact, "gitGraph");
-            if let Some(diagnostic) = &parsed.diagnostic {
-                push_langium_common_recovery(&mut facts, diagnostic);
-            }
-            offset += parsed.consumed;
-            continue;
-        }
-
-        let line_start = offset;
-        let (line, next_offset) = physical_line(code, offset);
-        offset = next_offset;
-        match parse_git_graph_command(line, line_start) {
-            Ok(Some(command)) => command.push_editor_facts(&mut facts),
-            Ok(None) => {}
-            Err(error) => {
-                let (message, span) = match error.error.as_ref() {
-                    Error::DiagramParse { diagnostic, .. } => (
-                        diagnostic.message().to_string(),
-                        diagnostic.span().or(Some(error.recovery_span)),
-                    ),
-                    other => (other.to_string(), Some(error.recovery_span)),
-                };
-                for fact in error.editor_facts {
-                    fact.push_to(&mut facts);
-                }
-                facts.mark_recovered_from_parse_error(message, span);
-            }
-        }
-    }
-
-    facts
 }
 
 fn parse_git_graph_semantic_source(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<GitGraphSemanticSource> {
+    construct_git_graph_semantic_source(code, meta).map_err(|failure| *failure.error)
+}
+
+fn construct_git_graph_semantic_source(
+    code: &str,
+    meta: &ParseMetadata,
+) -> std::result::Result<GitGraphSemanticSource, GitGraphParseFailure> {
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("gitGraph");
 
-    let (direction, body_start) = parse_gitgraph_header(code)?;
-    let (commands, common, editor_facts) = collect_gitgraph_commands(code, body_start, meta)?;
+    let header = parse_gitgraph_header(code).map_err(|error| {
+        gitgraph_parse_failure(
+            error,
+            EditorSemanticFacts::new(),
+            SourceSpan::new(0, code.len()),
+        )
+    })?;
+    let GitGraphSyntaxOutcome {
+        commands,
+        common,
+        editor_facts,
+        first_error,
+    } = collect_gitgraph_commands(code, header.body_start, header.lexemes, meta);
+    if let Some(error) = first_error {
+        return Err(gitgraph_parse_failure(
+            error,
+            editor_facts,
+            SourceSpan::new(0, code.len()),
+        ));
+    }
     let common = LangiumCommonDbFields::from_facts(&common);
+    let direction = header.direction;
 
     let effective_config = &meta.effective_config;
     let prng_override = if seeded_gitgraph_prng(effective_config).is_some() {
@@ -1466,7 +1639,13 @@ fn parse_git_graph_semantic_source(
         if let Some(d) = direction.as_deref() {
             warmup.set_direction(d);
         }
-        apply_git_graph_commands(&commands, &mut warmup, effective_config)?;
+        if let Err(error) = apply_git_graph_commands(&commands, &mut warmup, effective_config) {
+            return Err(gitgraph_parse_failure(
+                error,
+                editor_facts,
+                SourceSpan::new(0, code.len()),
+            ));
+        }
         warmup.prng
     } else {
         None
@@ -1478,7 +1657,13 @@ fn parse_git_graph_semantic_source(
     if let Some(d) = direction {
         db.set_direction(&d);
     }
-    apply_git_graph_commands(&commands, &mut db, effective_config)?;
+    if let Err(error) = apply_git_graph_commands(&commands, &mut db, effective_config) {
+        return Err(gitgraph_parse_failure(
+            error,
+            editor_facts,
+            SourceSpan::new(0, code.len()),
+        ));
+    }
 
     let commits = db
         .commits_in_seq_order()
@@ -1514,7 +1699,26 @@ fn parse_git_graph_semantic_source(
     })
 }
 
-fn parse_gitgraph_header(code: &str) -> Result<(Option<String>, usize)> {
+fn gitgraph_parse_failure(
+    error: Error,
+    mut editor_facts: EditorSemanticFacts,
+    fallback_span: SourceSpan,
+) -> GitGraphParseFailure {
+    let (message, span) = match &error {
+        Error::DiagramParse { diagnostic, .. } => (
+            diagnostic.message().to_string(),
+            diagnostic.span().or(Some(fallback_span)),
+        ),
+        other => (other.to_string(), Some(fallback_span)),
+    };
+    editor_facts.mark_recovered_from_parse_error(message, span);
+    GitGraphParseFailure {
+        error: Box::new(error),
+        editor_facts: Box::new(editor_facts),
+    }
+}
+
+fn parse_gitgraph_header(code: &str) -> Result<GitGraphHeader> {
     let mut offset = 0usize;
     while offset < code.len() {
         let (line, next_offset) = physical_line(code, offset);
@@ -1542,7 +1746,11 @@ fn parse_gitgraph_header(code: &str) -> Result<(Option<String>, usize)> {
         }
 
         let leading = visible.len() - trimmed.len();
-        let mut body_start = offset + leading + "gitGraph".len();
+        let keyword_start = offset + leading;
+        let keyword_end = keyword_start + "gitGraph".len();
+        let mut lexemes = LangiumLexemeTrace::default();
+        lexemes.keyword(SourceSpan::new(keyword_start, keyword_end));
+        let body_start = keyword_end;
         let mut rest = &code[body_start..];
         let whitespace = rest
             .chars()
@@ -1552,7 +1760,13 @@ fn parse_gitgraph_header(code: &str) -> Result<(Option<String>, usize)> {
         rest = &rest[whitespace..];
 
         if rest.starts_with(':') {
-            return Ok((None, body_start + whitespace + 1));
+            let colon = body_start + whitespace;
+            lexemes.delimiter(SourceSpan::new(colon, colon + 1));
+            return Ok(GitGraphHeader {
+                direction: None,
+                body_start: colon + 1,
+                lexemes,
+            });
         }
         for direction in ["LR", "TB", "BT"] {
             let Some(after_direction) = rest.strip_prefix(direction) else {
@@ -1571,11 +1785,23 @@ fn parse_gitgraph_header(code: &str) -> Result<(Option<String>, usize)> {
                 .map(char::len_utf8)
                 .sum::<usize>();
             if after_direction.as_bytes().get(direction_ws) == Some(&b':') {
-                body_start += whitespace + direction.len() + direction_ws + 1;
-                return Ok((Some(direction.to_string()), body_start));
+                let direction_start = body_start + whitespace;
+                let direction_end = direction_start + direction.len();
+                let colon = direction_end + direction_ws;
+                lexemes.literal(SourceSpan::new(direction_start, direction_end));
+                lexemes.delimiter(SourceSpan::new(colon, colon + 1));
+                return Ok(GitGraphHeader {
+                    direction: Some(direction.to_string()),
+                    body_start: colon + 1,
+                    lexemes,
+                });
             }
         }
-        return Ok((None, body_start));
+        return Ok(GitGraphHeader {
+            direction: None,
+            body_start,
+            lexemes,
+        });
     }
 
     Err(Error::diagram_parse_fallback(
@@ -1587,25 +1813,26 @@ fn parse_gitgraph_header(code: &str) -> Result<(Option<String>, usize)> {
 fn collect_gitgraph_commands(
     code: &str,
     mut offset: usize,
+    mut lexemes: LangiumLexemeTrace,
     meta: &ParseMetadata,
-) -> Result<(
-    Vec<GitGraphCommand>,
-    LangiumCommonFacts,
-    EditorSemanticFacts,
-)> {
+) -> GitGraphSyntaxOutcome {
     let mut commands = Vec::new();
     let mut common = LangiumCommonFacts::default();
     let mut editor_facts = EditorSemanticFacts::new();
+    let mut first_error = None;
     while offset < code.len() {
         if let Some(parsed) = parse_langium_common(code, offset) {
-            if let Some(diagnostic) = parsed.diagnostic {
-                return Err(Error::diagram_parse_insertion_point(
-                    meta.diagram_type.clone(),
-                    diagnostic.message,
-                    diagnostic.span.start,
-                ));
-            }
+            lexemes.extend(parsed.lexemes);
             push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "gitGraph");
+            if let Some(diagnostic) = parsed.diagnostic {
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        meta.diagram_type.clone(),
+                        diagnostic.message,
+                        diagnostic.span.start,
+                    )
+                });
+            }
             common.push(parsed.fact);
             offset += parsed.consumed;
             continue;
@@ -1616,13 +1843,28 @@ fn collect_gitgraph_commands(
         match parse_git_graph_command(line, line_start) {
             Ok(Some(command)) => {
                 command.push_editor_facts(&mut editor_facts);
+                lexemes.extend(command.lexemes.clone());
                 commands.push(command);
             }
             Ok(None) => {}
-            Err(error) => return Err(*error.error),
+            Err(error) => {
+                for fact in error.editor_facts {
+                    fact.push_to(&mut editor_facts);
+                }
+                lexemes.extend(error.lexemes);
+                first_error.get_or_insert_with(|| {
+                    (*error.error).with_exact_span_if_missing(error.recovery_span)
+                });
+            }
         }
     }
-    Ok((commands, common, editor_facts))
+    lexemes.attach(code, &mut editor_facts);
+    GitGraphSyntaxOutcome {
+        commands,
+        common,
+        editor_facts,
+        first_error,
+    }
 }
 
 fn apply_gitgraph_common_fields(db: &mut GitGraphDb, common: &LangiumCommonDbFields) {
@@ -1686,6 +1928,15 @@ mod tests {
             .unwrap()
             .unwrap()
             .model
+    }
+
+    fn test_meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "gitGraph".to_string(),
+            config: MermaidConfig::default(),
+            effective_config: MermaidConfig::default(),
+            title: None,
+        }
     }
 
     fn parse_err(text: &str) -> String {
@@ -1812,6 +2063,118 @@ merge feature id:"M1"
                 .iter()
                 .any(|symbol| symbol.name == "commit message")
         );
+    }
+
+    #[test]
+    fn gitgraph_parser_emits_exact_lexemes_for_the_complete_grammar_surface() {
+        let text = concat!(
+            "gitGraph TB:\r\n",
+            "title Git 历史\r\n",
+            "commit id:\"ROOT\" msg:\"开始\" tag:\"v1\" type:HIGHLIGHT\r\n",
+            "branch \"功能\" order:2\r\n",
+            "commit id:\"F1\"\r\n",
+            "switch main\r\n",
+            "commit id:\"M0\"\r\n",
+            "merge \"功能\" id:\"M1\" tag:\"合并\" type:REVERSE\r\n",
+            "cherry-pick id:\"F1\" tag:\"摘取\"\r\n",
+        );
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("gitGraph", text, ParseOptions::strict())
+            .unwrap()
+            .expect("gitGraph editor facts");
+
+        assert_eq!(facts.lexeme_failure(), None);
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Complete
+        );
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == crate::EditorLexemeProducerKind::FamilyParser
+                && lexeme.producer().family().map(|family| family.as_str()) == Some("gitGraph")
+        }));
+        assert!(
+            facts
+                .lexemes()
+                .windows(2)
+                .all(|pair| pair[0].span().end <= pair[1].span().start)
+        );
+
+        for (kind, expected) in [
+            (EditorLexemeKind::Keyword, "gitGraph"),
+            (EditorLexemeKind::Literal, "TB"),
+            (EditorLexemeKind::Delimiter, ":"),
+            (EditorLexemeKind::Keyword, "commit"),
+            (EditorLexemeKind::Keyword, "id"),
+            (EditorLexemeKind::String, "开始"),
+            (EditorLexemeKind::Number, "2"),
+            (EditorLexemeKind::Literal, "HIGHLIGHT"),
+            (EditorLexemeKind::Keyword, "switch"),
+            (EditorLexemeKind::Keyword, "merge"),
+            (EditorLexemeKind::Keyword, "cherry-pick"),
+        ] {
+            assert!(
+                facts.lexemes().iter().any(|lexeme| {
+                    let span = lexeme.span();
+                    lexeme.kind() == kind && &text[span.start..span.end] == expected
+                }),
+                "missing {kind:?} lexeme for {expected:?}: {:?}",
+                facts.lexemes()
+            );
+        }
+
+        let branch_definition = text.find("功能").unwrap();
+        let branch_reference = text.rfind("功能").unwrap();
+        for (start, modifier) in [
+            (branch_definition, EditorLexemeModifier::Definition),
+            (branch_reference, EditorLexemeModifier::Reference),
+        ] {
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                lexeme.kind() == EditorLexemeKind::Identifier
+                    && lexeme.span() == SourceSpan::new(start, start + "功能".len())
+                    && lexeme.modifiers().contains(modifier)
+            }));
+        }
+    }
+
+    #[test]
+    fn gitgraph_parser_recovery_keeps_later_lexemes_without_rescanning() {
+        let text = concat!(
+            "gitGraph\r\n",
+            "commit id:\"C1\"\r\n",
+            "checkout main trailing\r\n",
+            "commit id:\"C2\" msg:\"后来\"\r\n",
+        );
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("gitGraph");
+        let facts = parse_git_graph_editor_facts(text, &test_meta());
+
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("gitGraph"),
+            1
+        );
+        assert_eq!(facts.lexeme_failure(), None);
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == crate::EditorLexemeProducerKind::FamilyRecovery
+        }));
+        for (kind, expected) in [
+            (EditorLexemeKind::Identifier, "C1"),
+            (EditorLexemeKind::Keyword, "checkout"),
+            (EditorLexemeKind::Identifier, "main"),
+            (EditorLexemeKind::Identifier, "C2"),
+            (EditorLexemeKind::String, "后来"),
+        ] {
+            assert!(
+                facts.lexemes().iter().any(|lexeme| {
+                    let span = lexeme.span();
+                    lexeme.kind() == kind && &text[span.start..span.end] == expected
+                }),
+                "recovery lost {kind:?} lexeme for {expected:?}: {:?}",
+                facts.lexemes()
+            );
+        }
     }
 
     #[test]

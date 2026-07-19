@@ -43,6 +43,7 @@ pub(crate) struct LangiumString {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LangiumLexeme {
     kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
     span: SourceSpan,
 }
 
@@ -107,14 +108,27 @@ impl LangiumLexemeTrace {
     pub(crate) fn attach(self, source: &str, facts: &mut EditorSemanticFacts) {
         let mut journal = EditorLexemeJournal::family_parser(source);
         for lexeme in self.lexemes {
-            journal.push(lexeme.kind, EditorLexemeModifiers::NONE, lexeme.span);
+            journal.push(lexeme.kind, lexeme.modifiers, lexeme.span);
         }
         facts.replace_family_lexemes(journal.finish());
     }
 
     fn push(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
+        self.push_with_modifiers(kind, EditorLexemeModifiers::NONE, span);
+    }
+
+    pub(crate) fn push_with_modifiers(
+        &mut self,
+        kind: EditorLexemeKind,
+        modifiers: EditorLexemeModifiers,
+        span: SourceSpan,
+    ) {
         if span.start < span.end {
-            self.lexemes.push(LangiumLexeme { kind, span });
+            self.lexemes.push(LangiumLexeme {
+                kind,
+                modifiers,
+                span,
+            });
         }
     }
 }
