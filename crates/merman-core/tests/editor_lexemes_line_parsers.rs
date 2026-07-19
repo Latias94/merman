@@ -170,6 +170,59 @@ fn gantt_unterminated_accessibility_block_upgrades_late_attached_lexemes_to_reco
     assert_valid_non_overlapping(source, &facts);
 }
 
+#[test]
+fn sankey_emits_csv_fields_quotes_delimiters_and_values_from_its_parser() {
+    let source = concat!(
+        "  sankey-beta\r\n",
+        "\"Source, 源\",Target,12.5\r\n",
+        "Target,End,NaN\r\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("sankey", source, ParseOptions::strict())
+        .expect("sankey editor parse")
+        .expect("sankey editor facts");
+
+    assert_eq!(facts.lexeme_failure(), None);
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    assert!(facts.lexemes().iter().all(|lexeme| {
+        lexeme.producer().kind() == EditorLexemeProducerKind::FamilyParser
+            && lexeme.producer().family().map(|family| family.as_str()) == Some("sankey")
+    }));
+    for (kind, text) in [
+        (EditorLexemeKind::Keyword, "sankey-beta"),
+        (EditorLexemeKind::Delimiter, "\""),
+        (EditorLexemeKind::String, "Source, 源"),
+        (EditorLexemeKind::Delimiter, ","),
+        (EditorLexemeKind::Identifier, "Target"),
+        (EditorLexemeKind::Number, "12.5"),
+        (EditorLexemeKind::Identifier, "End"),
+        (EditorLexemeKind::Literal, "NaN"),
+    ] {
+        assert_source_lexeme(&facts, source, kind, text);
+    }
+    assert_valid_non_overlapping(source, &facts);
+}
+
+#[test]
+fn sankey_recovery_keeps_csv_lexemes_after_a_malformed_middle_record() {
+    let source = concat!("sankey\n", "Before,Middle,1\n", "broken\n", "After,End,2\n",);
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("sankey", source, ParseOptions::strict())
+        .expect("sankey editor recovery")
+        .expect("sankey recovery facts");
+
+    assert_eq!(facts.lexeme_failure(), None);
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+    assert!(facts.lexemes().iter().all(|lexeme| {
+        lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
+            && lexeme.producer().family().map(|family| family.as_str()) == Some("sankey")
+    }));
+    for text in ["Before", "broken", "After", "End"] {
+        assert_source_lexeme(&facts, source, EditorLexemeKind::Identifier, text);
+    }
+    assert_valid_non_overlapping(source, &facts);
+}
+
 fn assert_source_lexeme(
     facts: &merman_core::EditorSemanticFacts,
     source: &str,

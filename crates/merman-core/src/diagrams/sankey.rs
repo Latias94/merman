@@ -1,8 +1,8 @@
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
-    editor::{editor_recovery_fallback_span, ensure_editor_recovery_from_error},
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result,
+    SourceSpan, editor::EditorLexemeJournal,
 };
 use serde_json::{Map, Value, json};
 #[cfg(test)]
@@ -92,6 +92,7 @@ impl SankeyDb {
 struct SankeyField {
     text: String,
     span: SourceSpan,
+    quotes: Option<[SourceSpan; 2]>,
 }
 
 #[derive(Debug, Clone)]
@@ -102,20 +103,13 @@ struct SankeyRecord {
 }
 
 struct SankeySemanticSource {
-    header: SankeyField,
     records: Vec<SankeyRecord>,
+    lexemes: Vec<SankeyLexeme>,
 }
 
 impl SankeySemanticSource {
-    fn editor_facts(&self) -> EditorSemanticFacts {
+    fn editor_facts(&self, source: &str) -> EditorSemanticFacts {
         let mut facts = EditorSemanticFacts::new();
-        push_sankey_payload(
-            &mut facts,
-            &self.header,
-            "sankey header",
-            EditorSemanticKind::String,
-            true,
-        );
         for record in &self.records {
             push_sankey_payload(
                 &mut facts,
@@ -139,6 +133,7 @@ impl SankeySemanticSource {
                 true,
             );
         }
+        attach_sankey_lexemes(source, &self.lexemes, &mut facts);
         facts
     }
 
@@ -184,7 +179,7 @@ pub(crate) fn parse_sankey_json_and_editor_facts(
     meta: &ParseMetadata,
 ) -> Result<(Value, EditorSemanticFacts)> {
     let source = parse_sankey_semantic_source(code, meta)?;
-    let editor_facts = source.editor_facts();
+    let editor_facts = source.editor_facts(code);
     Ok((source.into_compat_json(meta)?, editor_facts))
 }
 
@@ -197,15 +192,8 @@ pub fn parse_sankey_model_for_render(
         .into_render_model())
 }
 
-pub fn parse_sankey_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match parse_sankey_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts(),
-        Err(error) => ensure_editor_recovery_from_error(
-            recover_sankey_editor_facts(code, meta),
-            &error,
-            editor_recovery_fallback_span(code),
-        ),
-    }
+pub fn parse_sankey_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+    parse_sankey_editor_source(code)
 }
 
 fn parse_sankey_semantic_source(code: &str, meta: &ParseMetadata) -> Result<SankeySemanticSource> {
@@ -323,6 +311,20 @@ struct SankeySyntaxError {
     span: SourceSpan,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SankeyLexeme {
+    kind: EditorLexemeKind,
+    span: SourceSpan,
+}
+
+fn attach_sankey_lexemes(source: &str, lexemes: &[SankeyLexeme], facts: &mut EditorSemanticFacts) {
+    let mut journal = EditorLexemeJournal::family_parser(source);
+    for lexeme in lexemes {
+        journal.push(lexeme.kind, EditorLexemeModifiers::NONE, lexeme.span);
+    }
+    facts.replace_family_lexemes(journal.finish());
+}
+
 struct PreparedSankeyText {
     text: String,
     source_bytes: Vec<SourceSpan>,
@@ -414,7 +416,15 @@ impl PreparedSankeyText {
 
     fn map_field(&self, mut field: SankeyField) -> SankeyField {
         field.span = self.map_span(field.span);
+        field.quotes = field
+            .quotes
+            .map(|quotes| [self.map_span(quotes[0]), self.map_span(quotes[1])]);
         field
+    }
+
+    fn map_lexeme(&self, mut lexeme: SankeyLexeme) -> SankeyLexeme {
+        lexeme.span = self.map_span(lexeme.span);
+        lexeme
     }
 
     fn map_error(&self, mut error: SankeySyntaxError) -> SankeySyntaxError {
@@ -433,7 +443,9 @@ fn parse_sankey_syntax(code: &str) -> std::result::Result<SankeySemanticSource, 
     };
     let header_raw = &prepared.text[..header_end];
     let header = header_raw.trim();
-    let header_start = header_raw.find(header).unwrap_or(0);
+    let header_start = header_raw
+        .len()
+        .saturating_sub(header_raw.trim_start().len());
     let header_span = SourceSpan::new(header_start, header_start + header.len());
     if !is_sankey_header(header) {
         return Err(SankeySyntaxError {
@@ -453,11 +465,18 @@ fn parse_sankey_syntax(code: &str) -> std::result::Result<SankeySemanticSource, 
         });
     }
 
+    let mut lexemes = vec![SankeyLexeme {
+        kind: EditorLexemeKind::Keyword,
+        span: prepared.map_span(header_span),
+    }];
+    lexemes.extend(
+        parser
+            .take_lexemes()
+            .into_iter()
+            .map(|lexeme| prepared.map_lexeme(lexeme)),
+    );
+
     Ok(SankeySemanticSource {
-        header: SankeyField {
-            text: header.to_string(),
-            span: prepared.map_span(header_span),
-        },
         records: records
             .into_iter()
             .map(|record| SankeyRecord {
@@ -466,37 +485,57 @@ fn parse_sankey_syntax(code: &str) -> std::result::Result<SankeySemanticSource, 
                 value: prepared.map_field(record.value),
             })
             .collect(),
+        lexemes,
     })
 }
 
-fn recover_sankey_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSemanticFacts {
+fn parse_sankey_editor_source(code: &str) -> EditorSemanticFacts {
     let prepared = PreparedSankeyText::new(code);
     let mut facts = EditorSemanticFacts::new();
     let Some(header_end) = prepared.text.find('\n') else {
+        if !prepared.text.is_empty() {
+            let span = prepared.map_span(SourceSpan::new(0, prepared.text.len()));
+            let kind = if is_sankey_header(prepared.text.trim()) {
+                EditorLexemeKind::Keyword
+            } else {
+                EditorLexemeKind::Literal
+            };
+            attach_sankey_lexemes(code, &[SankeyLexeme { kind, span }], &mut facts);
+            facts.mark_recovered_from_parse_error(
+                "expected sankey header followed by csv",
+                Some(span),
+            );
+        }
         return facts;
     };
     let header_raw = &prepared.text[..header_end];
     let header = header_raw.trim();
+    let header_start = header_raw.find(header).unwrap_or(0);
+    let header_span = SourceSpan::new(header_start, header_start + header.len());
     if !is_sankey_header(header) {
+        let span = prepared.map_span(header_span);
+        attach_sankey_lexemes(
+            code,
+            &[SankeyLexeme {
+                kind: EditorLexemeKind::Literal,
+                span,
+            }],
+            &mut facts,
+        );
+        facts.mark_recovered_from_parse_error("expected sankey", Some(span));
         return facts;
     }
-    let header_start = header_raw.find(header).unwrap_or(0);
-    push_sankey_payload(
-        &mut facts,
-        &SankeyField {
-            text: header.to_string(),
-            span: prepared.map_span(SourceSpan::new(header_start, header_start + header.len())),
-        },
-        "sankey header",
-        EditorSemanticKind::String,
-        true,
-    );
-
+    let mut lexemes = vec![SankeyLexeme {
+        kind: EditorLexemeKind::Keyword,
+        span: prepared.map_span(header_span),
+    }];
     let mut parser = CsvParser::new(&prepared.text, header_end + 1);
+    let mut record_count = 0usize;
     while !parser.eof() {
         let record_start = parser.pos;
         match parser.parse_record() {
             Ok(record) => {
+                record_count += 1;
                 let source = prepared.map_field(record.source);
                 let target = prepared.map_field(record.target);
                 let value = prepared.map_field(record.value);
@@ -529,17 +568,56 @@ fn recover_sankey_editor_facts(code: &str, _meta: &ParseMetadata) -> EditorSeman
             }
         }
     }
+    if record_count == 0 && facts.completeness == crate::EditorSemanticCompleteness::Complete {
+        let span = prepared.map_span(SourceSpan::new(header_end + 1, header_end + 1));
+        facts.mark_recovered_from_parse_error("expected at least one csv record", Some(span));
+    }
+    lexemes.extend(
+        parser
+            .take_lexemes()
+            .into_iter()
+            .map(|lexeme| prepared.map_lexeme(lexeme)),
+    );
+    attach_sankey_lexemes(code, &lexemes, &mut facts);
     facts
+}
+
+#[derive(Debug, Clone, Copy)]
+enum SankeyFieldRole {
+    Node,
+    Value,
+}
+
+fn sankey_value_lexeme_kind(value: &str) -> EditorLexemeKind {
+    match value.trim().parse::<f64>() {
+        Ok(number) if number.is_finite() => EditorLexemeKind::Number,
+        _ => EditorLexemeKind::Literal,
+    }
 }
 
 struct CsvParser<'a> {
     input: &'a str,
     pos: usize,
+    lexemes: Vec<SankeyLexeme>,
 }
 
 impl<'a> CsvParser<'a> {
     fn new(input: &'a str, pos: usize) -> Self {
-        Self { input, pos }
+        Self {
+            input,
+            pos,
+            lexemes: Vec::new(),
+        }
+    }
+
+    fn take_lexemes(&mut self) -> Vec<SankeyLexeme> {
+        std::mem::take(&mut self.lexemes)
+    }
+
+    fn push_lexeme(&mut self, kind: EditorLexemeKind, span: SourceSpan) {
+        if span.start < span.end {
+            self.lexemes.push(SankeyLexeme { kind, span });
+        }
     }
 
     fn eof(&self) -> bool {
@@ -592,10 +670,13 @@ impl<'a> CsvParser<'a> {
 
     fn parse_record(&mut self) -> std::result::Result<SankeyRecord, SankeySyntaxError> {
         let source = self.parse_field()?;
-        self.consume_char(',')?;
+        self.record_field(&source, SankeyFieldRole::Node);
+        self.consume_comma()?;
         let target = self.parse_field()?;
-        self.consume_char(',')?;
+        self.record_field(&target, SankeyFieldRole::Node);
+        self.consume_comma()?;
         let value = self.parse_field()?;
+        self.record_field(&value, SankeyFieldRole::Value);
         if !self.try_consume_newline() && !self.eof() {
             let end = self
                 .rest()
@@ -610,12 +691,41 @@ impl<'a> CsvParser<'a> {
         })
     }
 
+    fn consume_comma(&mut self) -> std::result::Result<(), SankeySyntaxError> {
+        let start = self.pos;
+        self.consume_char(',')?;
+        self.push_lexeme(
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(start, self.pos),
+        );
+        Ok(())
+    }
+
+    fn record_field(&mut self, field: &SankeyField, role: SankeyFieldRole) {
+        if let Some([opening, closing]) = field.quotes {
+            self.push_lexeme(EditorLexemeKind::Delimiter, opening);
+            let kind = match role {
+                SankeyFieldRole::Node => EditorLexemeKind::String,
+                SankeyFieldRole::Value => sankey_value_lexeme_kind(&field.text),
+            };
+            self.push_lexeme(kind, field.span);
+            self.push_lexeme(EditorLexemeKind::Delimiter, closing);
+            return;
+        }
+        let kind = match role {
+            SankeyFieldRole::Node => EditorLexemeKind::Identifier,
+            SankeyFieldRole::Value => sankey_value_lexeme_kind(&field.text),
+        };
+        self.push_lexeme(kind, field.span);
+    }
+
     fn parse_field(&mut self) -> std::result::Result<SankeyField, SankeySyntaxError> {
         match self.peek_char() {
             Some('"') => self.parse_quoted_field(),
             Some('\n') | None => Ok(SankeyField {
                 text: String::new(),
                 span: SourceSpan::new(self.pos, self.pos),
+                quotes: None,
             }),
             _ => self.parse_unquoted_field(),
         }
@@ -635,6 +745,7 @@ impl<'a> CsvParser<'a> {
         Ok(SankeyField {
             text: text.to_string(),
             span: SourceSpan::new(start + leading, start + leading + text.len()),
+            quotes: None,
         })
     }
 
@@ -661,6 +772,10 @@ impl<'a> CsvParser<'a> {
                         content_start + leading,
                         content_start + leading + trimmed.len(),
                     ),
+                    quotes: Some([
+                        SourceSpan::new(quote_start, quote_start + 1),
+                        SourceSpan::new(char_start, char_start + 1),
+                    ]),
                 });
             }
             out.push(ch);
