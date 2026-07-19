@@ -1,8 +1,9 @@
 use crate::diagrams::scan::leading_whitespace_len;
 use crate::sanitize::sanitize_text;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
-    EditorSemanticSymbol, Error, MermaidConfig, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifiers,
+    EditorSemanticFacts, EditorSemanticKind, EditorSemanticSymbol, Error, MermaidConfig,
+    ParseMetadata, Result, SourceSpan, editor::EditorLexemeJournal,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
@@ -318,6 +319,31 @@ struct XyChartSemanticSource {
     editor_facts: EditorSemanticFacts,
 }
 
+struct XyChartParseOutcome {
+    source: XyChartSemanticSource,
+    first_error: Option<Error>,
+}
+
+impl XyChartParseOutcome {
+    fn into_strict_result(
+        self,
+    ) -> std::result::Result<XyChartSemanticSource, XyChartSemanticFailure> {
+        match self.first_error {
+            Some(error) => Err(XyChartSemanticFailure::new(error, self.source.editor_facts)),
+            None => Ok(self.source),
+        }
+    }
+
+    fn into_editor_facts(mut self) -> EditorSemanticFacts {
+        match self.first_error.take() {
+            Some(error) => {
+                XyChartSemanticFailure::new(error, self.source.editor_facts).into_editor_facts()
+            }
+            None => self.source.editor_facts,
+        }
+    }
+}
+
 struct XyChartSemanticFailure {
     error: Box<Error>,
     editor_facts: Box<EditorSemanticFacts>,
@@ -372,6 +398,16 @@ struct ParsedPlotStatement {
     title: Option<SpannedText>,
     data: Vec<ParsedDataPoint>,
     data_source: SpannedText,
+}
+
+enum ParsedXyChartStatement {
+    Title(SpannedText),
+    AccessibilityTitle(SpannedText),
+    AccessibilityDescription(SpannedText),
+    XAxis(ParsedAxisStatement),
+    YAxis(ParsedAxisStatement),
+    Line(ParsedPlotStatement),
+    Bar(ParsedPlotStatement),
 }
 
 #[derive(Debug, Clone)]
@@ -605,13 +641,8 @@ impl XyChartState {
     }
 }
 
-fn xychart_failure(
-    error: Error,
-    meta: &ParseMetadata,
-    fallback_span: SourceSpan,
-    editor_facts: &EditorSemanticFacts,
-) -> XyChartSemanticFailure {
-    let error = match error {
+fn normalize_xychart_error(error: Error, meta: &ParseMetadata, fallback_span: SourceSpan) -> Error {
+    match error {
         Error::DiagramParse {
             diagram_type,
             diagnostic,
@@ -627,8 +658,36 @@ fn xychart_failure(
         error => {
             Error::diagram_parse_exact(meta.diagram_type.clone(), error.to_string(), fallback_span)
         }
+    }
+}
+
+fn push_xychart_lexeme(
+    lexemes: &mut EditorLexemeJournal<'_>,
+    kind: EditorLexemeKind,
+    span: SourceSpan,
+) {
+    lexemes.push(kind, EditorLexemeModifiers::NONE, span);
+}
+
+fn push_xychart_error_lexeme(lexemes: &mut EditorLexemeJournal<'_>, error: &Error) {
+    let Error::DiagramParse { diagnostic, .. } = error else {
+        return;
     };
-    XyChartSemanticFailure::new(error, editor_facts.clone())
+    let Some(span) = diagnostic.span() else {
+        return;
+    };
+    if span.start < span.end {
+        push_xychart_lexeme(lexemes, EditorLexemeKind::Literal, span);
+    }
+}
+
+fn record_xychart_error(
+    first_error: &mut Option<Error>,
+    lexemes: &mut EditorLexemeJournal<'_>,
+    error: Error,
+) {
+    push_xychart_error_lexeme(lexemes, &error);
+    first_error.get_or_insert(error);
 }
 
 fn push_xychart_axis_facts(
@@ -650,13 +709,10 @@ fn push_xychart_axis_facts(
         ParsedAxisData::Band { source, .. } | ParsedAxisData::Range { source, .. } => Some(source),
     };
     if let Some(source) = source {
-        push_xychart_payload_fact(
-            facts,
-            source.as_str(),
+        facts.push_expected_syntax(EditorExpectedSyntax::new(
+            EditorExpectedSyntaxKind::Payload,
             SourceSpan::new(source.start, source.end),
-            detail,
-            EditorSemanticKind::String,
-        );
+        ));
     }
 }
 
@@ -698,13 +754,10 @@ fn push_xychart_plot_statement_facts(
             EditorSemanticKind::String,
         );
     }
-    push_xychart_payload_fact(
-        facts,
-        plot.data_source.as_str(),
+    facts.push_expected_syntax(EditorExpectedSyntax::new(
+        EditorExpectedSyntaxKind::Payload,
         SourceSpan::new(plot.data_source.start, plot.data_source.end),
-        detail,
-        EditorSemanticKind::String,
-    );
+    ));
     for point in &plot.data {
         let Some(span) = point.label_span else {
             continue;
@@ -723,31 +776,95 @@ fn push_xychart_plot_statement_facts(
     }
 }
 
-fn construct_xychart_semantic_source(
-    code: &str,
-    meta: &ParseMetadata,
-) -> std::result::Result<XyChartSemanticSource, XyChartSemanticFailure> {
+fn parse_xychart_statement(
+    statement_text: &str,
+    statement_start: usize,
+    diagram_type: &str,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<ParsedXyChartStatement> {
+    let statement_span = SourceSpan::new(statement_start, statement_start + statement_text.len());
+
+    macro_rules! parse_keyword {
+        ($keyword:literal, $parse:expr, $variant:path) => {
+            if let Some(rest) = strip_keyword(statement_text, $keyword) {
+                push_xychart_lexeme(
+                    lexemes,
+                    EditorLexemeKind::Keyword,
+                    SourceSpan::new(statement_start, statement_start + $keyword.len()),
+                );
+                let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+                return $parse(rest, rest_start, lexemes).map($variant);
+            }
+        };
+    }
+
+    parse_keyword!("title", parse_text_source, ParsedXyChartStatement::Title);
+    if let Some(rest) = strip_keyword(statement_text, "accTitle") {
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Keyword,
+            SourceSpan::new(statement_start, statement_start + "accTitle".len()),
+        );
+        let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
+        return parse_colon_value_source(rest, rest_start, "accTitle", lexemes)
+            .map(ParsedXyChartStatement::AccessibilityTitle);
+    }
+    parse_keyword!(
+        "accDescr",
+        parse_acc_descr_source,
+        ParsedXyChartStatement::AccessibilityDescription
+    );
+    parse_keyword!("x-axis", parse_x_axis_source, ParsedXyChartStatement::XAxis);
+    parse_keyword!("y-axis", parse_y_axis_source, ParsedXyChartStatement::YAxis);
+    parse_keyword!("line", parse_plot_stmt_source, ParsedXyChartStatement::Line);
+    parse_keyword!("bar", parse_plot_stmt_source, ParsedXyChartStatement::Bar);
+
+    Err(Error::diagram_parse_exact(
+        diagram_type.to_string(),
+        format!("unexpected xychart statement: {statement_text}"),
+        statement_span,
+    ))
+}
+
+fn construct_xychart_semantic_source(code: &str, meta: &ParseMetadata) -> XyChartParseOutcome {
     #[cfg(test)]
     XYCHART_SYNTAX_CONSTRUCTION_COUNT.set(XYCHART_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-    let statements = split_statements_spanned(code);
-    let mut statements = statements
+    let syntax = split_statements_spanned(code);
+    let mut lexemes = EditorLexemeJournal::family_parser(code);
+    for comment in syntax.comments {
+        push_xychart_lexeme(&mut lexemes, EditorLexemeKind::Comment, comment);
+    }
+    for delimiter in syntax.delimiters {
+        push_xychart_lexeme(&mut lexemes, EditorLexemeKind::Delimiter, delimiter);
+    }
+    let mut statements = syntax
+        .statements
         .into_iter()
         .filter(|statement| !statement.text.trim().is_empty());
     let Some(header) = statements.next() else {
-        return Ok(XyChartSemanticSource {
-            model: None,
-            editor_facts: EditorSemanticFacts::new(),
-        });
+        let mut editor_facts = EditorSemanticFacts::new();
+        editor_facts.replace_family_lexemes(lexemes.finish());
+        return XyChartParseOutcome {
+            source: XyChartSemanticSource {
+                model: None,
+                editor_facts,
+            },
+            first_error: None,
+        };
     };
 
     let mut editor_facts = EditorSemanticFacts::new();
+    let mut first_error = None;
     let mut state = XyChartState::new(meta);
     let header_trimmed = header.text.trim();
     let header_start = header.trimmed_start();
     let header_span = SourceSpan::new(header_start, header_start + header_trimmed.len());
-    parse_header(&header.text, &mut state)
-        .map_err(|error| xychart_failure(error, meta, header_span, &editor_facts))?;
+    if let Err(error) = parse_header(&header.text, header_start, &mut state, &mut lexemes) {
+        let error = normalize_xychart_error(error, meta, header_span);
+        push_xychart_error_lexeme(&mut lexemes, &error);
+        first_error = Some(error);
+    }
     if let Some((prefix_len, _)) = header_token_len_and_rest(header_trimmed) {
         editor_facts.push_expected_syntax(EditorExpectedSyntax::new(
             EditorExpectedSyntaxKind::Payload,
@@ -767,124 +884,104 @@ fn construct_xychart_semantic_source(
         }
         let statement_span =
             SourceSpan::new(statement_start, statement_start + statement_text.len());
+        let parsed = match parse_xychart_statement(
+            statement_text,
+            statement_start,
+            &meta.diagram_type,
+            &mut lexemes,
+        ) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                record_xychart_error(
+                    &mut first_error,
+                    &mut lexemes,
+                    normalize_xychart_error(error, meta, statement_span),
+                );
+                continue;
+            }
+        };
 
-        if let Some(rest) = strip_keyword(statement_text, "title") {
-            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-            let value = parse_text_source(rest, rest_start)
-                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
-            editor_facts.push_directive_prefix("title");
-            push_xychart_payload_fact(
-                &mut editor_facts,
-                value.as_str(),
-                SourceSpan::new(value.start, value.end),
-                "xychart title",
-                EditorSemanticKind::String,
-            );
-            title = Some(value.text.trim().to_string());
-            continue;
-        }
-
-        if let Some(rest) = strip_keyword(statement_text, "accTitle") {
-            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-            let value = parse_colon_value_source(rest, rest_start, "accTitle")
-                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
-            editor_facts.push_directive_prefix("accTitle");
-            if !value.text.is_empty() {
+        match parsed {
+            ParsedXyChartStatement::Title(value) => {
+                editor_facts.push_directive_prefix("title");
                 push_xychart_payload_fact(
                     &mut editor_facts,
                     value.as_str(),
                     SourceSpan::new(value.start, value.end),
-                    "xychart accessibility title",
+                    "xychart title",
                     EditorSemanticKind::String,
                 );
+                title = Some(value.text.trim().to_string());
             }
-            acc_title = Some(value.text);
-            continue;
-        }
-
-        if let Some(rest) = strip_keyword(statement_text, "accDescr") {
-            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-            let value = parse_acc_descr_source(rest, rest_start)
-                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
-            editor_facts.push_directive_prefix("accDescr");
-            if !value.text.is_empty() {
-                push_xychart_payload_fact(
-                    &mut editor_facts,
-                    value.as_str(),
-                    SourceSpan::new(value.start, value.end),
-                    "xychart accessibility description",
-                    EditorSemanticKind::String,
+            ParsedXyChartStatement::AccessibilityTitle(value) => {
+                editor_facts.push_directive_prefix("accTitle");
+                if !value.text.is_empty() {
+                    push_xychart_payload_fact(
+                        &mut editor_facts,
+                        value.as_str(),
+                        SourceSpan::new(value.start, value.end),
+                        "xychart accessibility title",
+                        EditorSemanticKind::String,
+                    );
+                }
+                acc_title = Some(value.text);
+            }
+            ParsedXyChartStatement::AccessibilityDescription(value) => {
+                editor_facts.push_directive_prefix("accDescr");
+                if !value.text.is_empty() {
+                    push_xychart_payload_fact(
+                        &mut editor_facts,
+                        value.as_str(),
+                        SourceSpan::new(value.start, value.end),
+                        "xychart accessibility description",
+                        EditorSemanticKind::String,
+                    );
+                }
+                acc_descr = Some(value.text);
+            }
+            ParsedXyChartStatement::XAxis(axis) => {
+                push_xychart_axis_facts(&mut editor_facts, &axis, "xychart x-axis");
+                apply_x_axis_statement(axis, &mut state, meta);
+            }
+            ParsedXyChartStatement::YAxis(axis) => {
+                push_xychart_axis_facts(&mut editor_facts, &axis, "xychart y-axis");
+                apply_y_axis_statement(axis, &mut state, meta);
+            }
+            ParsedXyChartStatement::Line(plot) => {
+                push_xychart_plot_statement_facts(&mut editor_facts, &plot, "xychart line");
+                state.add_line_data(
+                    plot.title
+                        .as_ref()
+                        .and_then(|title| plot_title_value(title.as_str(), meta)),
+                    plot.data,
+                    meta,
                 );
             }
-            acc_descr = Some(value.text);
-            continue;
+            ParsedXyChartStatement::Bar(plot) => {
+                push_xychart_plot_statement_facts(&mut editor_facts, &plot, "xychart bar");
+                state.add_bar_data(
+                    plot.title
+                        .as_ref()
+                        .and_then(|title| plot_title_value(title.as_str(), meta)),
+                    plot.data,
+                );
+            }
         }
-
-        if let Some(rest) = strip_keyword(statement_text, "x-axis") {
-            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-            let axis = parse_x_axis_source(rest, rest_start)
-                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
-            push_xychart_axis_facts(&mut editor_facts, &axis, "xychart x-axis");
-            apply_x_axis_statement(axis, &mut state, meta);
-            continue;
-        }
-
-        if let Some(rest) = strip_keyword(statement_text, "y-axis") {
-            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-            let axis = parse_y_axis_source(rest, rest_start)
-                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
-            push_xychart_axis_facts(&mut editor_facts, &axis, "xychart y-axis");
-            apply_y_axis_statement(axis, &mut state, meta);
-            continue;
-        }
-
-        if let Some(rest) = strip_keyword(statement_text, "line") {
-            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-            let plot = parse_plot_stmt_source(rest, rest_start)
-                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
-            push_xychart_plot_statement_facts(&mut editor_facts, &plot, "xychart line");
-            state.add_line_data(
-                plot.title
-                    .as_ref()
-                    .and_then(|title| plot_title_value(title.as_str(), meta)),
-                plot.data,
-                meta,
-            );
-            continue;
-        }
-
-        if let Some(rest) = strip_keyword(statement_text, "bar") {
-            let rest_start = statement_start + statement_text.len().saturating_sub(rest.len());
-            let plot = parse_plot_stmt_source(rest, rest_start)
-                .map_err(|error| xychart_failure(error, meta, statement_span, &editor_facts))?;
-            push_xychart_plot_statement_facts(&mut editor_facts, &plot, "xychart bar");
-            state.add_bar_data(
-                plot.title
-                    .as_ref()
-                    .and_then(|title| plot_title_value(title.as_str(), meta)),
-                plot.data,
-            );
-            continue;
-        }
-
-        return Err(XyChartSemanticFailure::new(
-            Error::diagram_parse_exact(
-                meta.diagram_type.clone(),
-                format!("unexpected xychart statement: {statement_text}"),
-                statement_span,
-            ),
-            editor_facts,
-        ));
     }
 
-    Ok(XyChartSemanticSource {
-        model: Some(state.into_render_model(title, acc_title, acc_descr, meta)),
-        editor_facts,
-    })
+    editor_facts.replace_family_lexemes(lexemes.finish());
+    XyChartParseOutcome {
+        source: XyChartSemanticSource {
+            model: Some(state.into_render_model(title, acc_title, acc_descr, meta)),
+            editor_facts,
+        },
+        first_error,
+    }
 }
 
 pub fn parse_xychart(code: &str, meta: &ParseMetadata) -> Result<Value> {
     let source = construct_xychart_semantic_source(code, meta)
+        .into_strict_result()
         .map_err(XyChartSemanticFailure::into_error)?;
     let Some(model) = source.model else {
         return Ok(json!({}));
@@ -900,6 +997,7 @@ pub(crate) fn parse_xychart_json_and_editor_facts(
         model,
         editor_facts,
     } = construct_xychart_semantic_source(code, meta)
+        .into_strict_result()
         .map_err(XyChartSemanticFailure::into_error)?;
     let model = match model {
         Some(model) => render_model_to_compat_json(&model, meta)?,
@@ -913,6 +1011,7 @@ pub fn parse_xychart_model_for_render(
     meta: &ParseMetadata,
 ) -> Result<XyChartDiagramRenderModel> {
     construct_xychart_semantic_source(code, meta)
+        .into_strict_result()
         .map(|source| source.model.unwrap_or_else(empty_render_model))
         .map_err(XyChartSemanticFailure::into_error)
 }
@@ -925,10 +1024,7 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 pub fn parse_xychart_editor_facts(code: &str, meta: &ParseMetadata) -> EditorSemanticFacts {
-    match construct_xychart_semantic_source(code, meta) {
-        Ok(source) => source.editor_facts,
-        Err(failure) => failure.into_editor_facts(),
-    }
+    construct_xychart_semantic_source(code, meta).into_editor_facts()
 }
 
 fn plot_title_value(title: &str, meta: &ParseMetadata) -> Option<String> {
@@ -967,8 +1063,14 @@ fn axis_data_to_render_model(axis: AxisData) -> XyChartAxisRenderModel {
     }
 }
 
-fn parse_header(stmt: &str, state: &mut XyChartState) -> Result<()> {
+fn parse_header(
+    stmt: &str,
+    statement_start: usize,
+    state: &mut XyChartState,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<()> {
     let t = stmt.trim();
+    let trimmed_start = statement_start;
     let lower = t.to_ascii_lowercase();
     let (prefix, rest) = if lower.starts_with("xychart-beta") {
         ("xychart-beta", &t["xychart-beta".len()..])
@@ -980,26 +1082,41 @@ fn parse_header(stmt: &str, state: &mut XyChartState) -> Result<()> {
             "expected xychart".to_string(),
         ));
     };
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Keyword,
+        SourceSpan::new(trimmed_start, trimmed_start + prefix.len()),
+    );
 
     let rem = rest.trim();
     if rem.is_empty() {
         return Ok(());
     }
     if !rest.starts_with(char::is_whitespace) {
-        return Err(Error::diagram_parse_fallback(
+        let rem_start = trimmed_start + prefix.len();
+        return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
             format!("unexpected token after {prefix}: {rem}"),
+            SourceSpan::new(rem_start, trimmed_start + t.len()),
         ));
     }
 
     if rem.eq_ignore_ascii_case("vertical") || rem.eq_ignore_ascii_case("horizontal") {
+        let rem_start = trimmed_start + t.len().saturating_sub(rem.len());
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Literal,
+            SourceSpan::new(rem_start, rem_start + rem.len()),
+        );
         state.set_orientation(rem);
         return Ok(());
     }
 
-    Err(Error::diagram_parse_fallback(
+    let rem_start = trimmed_start + t.len().saturating_sub(rem.len());
+    Err(Error::diagram_parse_exact(
         "xychart".to_string(),
         format!("invalid chart orientation: {rem}"),
+        SourceSpan::new(rem_start, rem_start + rem.len()),
     ))
 }
 
@@ -1090,8 +1207,12 @@ impl<'a> SpannedSlice<'a> {
     }
 }
 
-fn parse_text_source(input: &str, input_start: usize) -> Result<SpannedText> {
-    let (value, tail) = parse_text_prefix_source(input, input_start)?;
+fn parse_text_source(
+    input: &str,
+    input_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<SpannedText> {
+    let (value, tail) = parse_text_prefix_source(input, input_start, lexemes)?;
     let trailing = tail.trim();
     if !trailing.text.is_empty() {
         return Err(Error::diagram_parse_exact(
@@ -1106,6 +1227,7 @@ fn parse_text_source(input: &str, input_start: usize) -> Result<SpannedText> {
 fn parse_text_prefix_source<'a>(
     input: &'a str,
     input_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
 ) -> Result<(SpannedText, SpannedSlice<'a>)> {
     let leading = leading_whitespace_len(input);
     let text = &input[leading..];
@@ -1119,7 +1241,19 @@ fn parse_text_prefix_source<'a>(
     }
 
     if let Some(body) = text.strip_prefix("\"`") {
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(text_start, text_start + 2),
+        );
         let Some(end) = body.find("`\"") else {
+            if !body.is_empty() {
+                push_xychart_lexeme(
+                    lexemes,
+                    EditorLexemeKind::String,
+                    SourceSpan::new(text_start + 2, input_start + input.len()),
+                );
+            }
             return Err(Error::diagram_parse_insertion_point(
                 "xychart".to_string(),
                 "unterminated markdown string".to_string(),
@@ -1128,6 +1262,18 @@ fn parse_text_prefix_source<'a>(
         };
         let value_start = text_start + 2;
         let tail_start = 2 + end + 2;
+        if end > 0 {
+            push_xychart_lexeme(
+                lexemes,
+                EditorLexemeKind::String,
+                SourceSpan::new(value_start, value_start + end),
+            );
+        }
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(value_start + end, value_start + end + 2),
+        );
         return Ok((
             SpannedText {
                 text: body[..end].to_string(),
@@ -1143,7 +1289,19 @@ fn parse_text_prefix_source<'a>(
     }
 
     if let Some(body) = text.strip_prefix('"') {
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(text_start, text_start + 1),
+        );
         let Some(end) = body.find('"') else {
+            if !body.is_empty() {
+                push_xychart_lexeme(
+                    lexemes,
+                    EditorLexemeKind::String,
+                    SourceSpan::new(text_start + 1, input_start + input.len()),
+                );
+            }
             return Err(Error::diagram_parse_insertion_point(
                 "xychart".to_string(),
                 "unterminated string".to_string(),
@@ -1152,6 +1310,18 @@ fn parse_text_prefix_source<'a>(
         };
         let value_start = text_start + 1;
         let tail_start = 1 + end + 1;
+        if end > 0 {
+            push_xychart_lexeme(
+                lexemes,
+                EditorLexemeKind::String,
+                SourceSpan::new(value_start, value_start + end),
+            );
+        }
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(value_start + end, value_start + end + 1),
+        );
         return Ok((
             SpannedText {
                 text: body[..end].to_string(),
@@ -1212,6 +1382,7 @@ fn parse_text_prefix_source<'a>(
             text_start,
         ));
     }
+    push_xychart_unquoted_text_lexemes(lexemes, raw_value, text_start);
 
     Ok((
         SpannedText {
@@ -1225,6 +1396,34 @@ fn parse_text_prefix_source<'a>(
             input_start + input.len(),
         ),
     ))
+}
+
+fn push_xychart_unquoted_text_lexemes(
+    lexemes: &mut EditorLexemeJournal<'_>,
+    text: &str,
+    text_start: usize,
+) {
+    let mut token_start = None;
+    for (offset, ch) in text.char_indices() {
+        if ch.is_whitespace() {
+            if let Some(start) = token_start.take() {
+                push_xychart_lexeme(
+                    lexemes,
+                    EditorLexemeKind::String,
+                    SourceSpan::new(text_start + start, text_start + offset),
+                );
+            }
+        } else if token_start.is_none() {
+            token_start = Some(offset);
+        }
+    }
+    if let Some(start) = token_start {
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::String,
+            SourceSpan::new(text_start + start, text_start + text.len()),
+        );
+    }
 }
 
 fn is_text_token_char(ch: char) -> bool {
@@ -1246,7 +1445,12 @@ fn range_suffix_start(input: &str) -> Option<usize> {
     })
 }
 
-fn parse_colon_value_source(input: &str, input_start: usize, keyword: &str) -> Result<SpannedText> {
+fn parse_colon_value_source(
+    input: &str,
+    input_start: usize,
+    keyword: &str,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<SpannedText> {
     let input = SpannedSlice::new(input, input_start, input_start + input.len()).trim();
     let Some(value) = input.text.strip_prefix(':') else {
         return Err(Error::diagram_parse_insertion_point(
@@ -1255,19 +1459,47 @@ fn parse_colon_value_source(input: &str, input_start: usize, keyword: &str) -> R
             input.start,
         ));
     };
-    Ok(SpannedSlice::new(value, input.start + 1, input.end)
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(input.start, input.start + 1),
+    );
+    let value = SpannedSlice::new(value, input.start + 1, input.end)
         .trim()
-        .to_text())
+        .to_text();
+    if value.start < value.end {
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::String,
+            SourceSpan::new(value.start, value.end),
+        );
+    }
+    Ok(value)
 }
 
-fn parse_acc_descr_source(input: &str, input_start: usize) -> Result<SpannedText> {
+fn parse_acc_descr_source(
+    input: &str,
+    input_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<SpannedText> {
     let input = SpannedSlice::new(input, input_start, input_start + input.len()).trim();
     if input.text.starts_with(':') {
-        return Ok(
-            SpannedSlice::new(&input.text[1..], input.start + 1, input.end)
-                .trim()
-                .to_text(),
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(input.start, input.start + 1),
         );
+        let value = SpannedSlice::new(&input.text[1..], input.start + 1, input.end)
+            .trim()
+            .to_text();
+        if value.start < value.end {
+            push_xychart_lexeme(
+                lexemes,
+                EditorLexemeKind::String,
+                SourceSpan::new(value.start, value.end),
+            );
+        }
+        return Ok(value);
     }
 
     let Some(body) = input.text.strip_prefix('{') else {
@@ -1277,13 +1509,40 @@ fn parse_acc_descr_source(input: &str, input_start: usize) -> Result<SpannedText
             input.start,
         ));
     };
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(input.start, input.start + 1),
+    );
     let Some(close) = body.find('}') else {
+        let body = SpannedSlice::new(body, input.start + 1, input.end).trim();
+        if body.start < body.end {
+            push_xychart_lexeme(
+                lexemes,
+                EditorLexemeKind::String,
+                SourceSpan::new(body.start, body.end),
+            );
+        }
         return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
             "unterminated accDescr block".to_string(),
             input.end,
         ));
     };
+    let body_source =
+        SpannedSlice::new(&body[..close], input.start + 1, input.start + 1 + close).trim();
+    if body_source.start < body_source.end {
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::String,
+            SourceSpan::new(body_source.start, body_source.end),
+        );
+    }
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(input.start + 1 + close, input.start + 1 + close + 1),
+    );
     let trailing =
         SpannedSlice::new(&body[close + 1..], input.start + 1 + close + 1, input.end).trim();
     if !trailing.text.is_empty() {
@@ -1293,11 +1552,7 @@ fn parse_acc_descr_source(input: &str, input_start: usize) -> Result<SpannedText
             SourceSpan::new(trailing.start, trailing.end),
         ));
     }
-    Ok(
-        SpannedSlice::new(&body[..close], input.start + 1, input.start + 1 + close)
-            .trim()
-            .to_text(),
-    )
+    Ok(body_source.to_text())
 }
 
 fn parse_number(s: &str) -> Option<f64> {
@@ -1325,7 +1580,11 @@ fn parse_number(s: &str) -> Option<f64> {
     t.parse::<f64>().ok()
 }
 
-fn parse_x_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatement> {
+fn parse_x_axis_source(
+    rest: &str,
+    rest_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<ParsedAxisStatement> {
     let input = SpannedSlice::new(rest, rest_start, rest_start + rest.len()).trim();
     if input.text.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
@@ -1336,20 +1595,20 @@ fn parse_x_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
     }
 
     if input.text.starts_with('[') {
-        let (categories, source) = parse_text_list_source(input.text, input.start)?;
+        let (categories, source) = parse_text_list_source(input.text, input.start, lexemes)?;
         return Ok(ParsedAxisStatement {
             title: None,
             data: ParsedAxisData::Band { categories, source },
         });
     }
-    if let Some((min, max, source)) = try_parse_range_source(input.text, input.start)? {
+    if let Some((min, max, source)) = try_parse_range_source(input.text, input.start, lexemes)? {
         return Ok(ParsedAxisStatement {
             title: None,
             data: ParsedAxisData::Range { min, max, source },
         });
     }
 
-    let (title, tail) = parse_text_prefix_source(input.text, input.start)?;
+    let (title, tail) = parse_text_prefix_source(input.text, input.start, lexemes)?;
     let tail = tail.trim();
     if tail.text.is_empty() {
         return Ok(ParsedAxisStatement {
@@ -1358,13 +1617,13 @@ fn parse_x_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
         });
     }
     if tail.text.starts_with('[') {
-        let (categories, source) = parse_text_list_source(tail.text, tail.start)?;
+        let (categories, source) = parse_text_list_source(tail.text, tail.start, lexemes)?;
         return Ok(ParsedAxisStatement {
             title: Some(title),
             data: ParsedAxisData::Band { categories, source },
         });
     }
-    if let Some((min, max, source)) = try_parse_range_source(tail.text, tail.start)? {
+    if let Some((min, max, source)) = try_parse_range_source(tail.text, tail.start, lexemes)? {
         return Ok(ParsedAxisStatement {
             title: Some(title),
             data: ParsedAxisData::Range { min, max, source },
@@ -1377,7 +1636,11 @@ fn parse_x_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
     ))
 }
 
-fn parse_y_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatement> {
+fn parse_y_axis_source(
+    rest: &str,
+    rest_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<ParsedAxisStatement> {
     let input = SpannedSlice::new(rest, rest_start, rest_start + rest.len()).trim();
     if input.text.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
@@ -1393,14 +1656,14 @@ fn parse_y_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
             SourceSpan::new(input.start, input.end),
         ));
     }
-    if let Some((min, max, source)) = try_parse_range_source(input.text, input.start)? {
+    if let Some((min, max, source)) = try_parse_range_source(input.text, input.start, lexemes)? {
         return Ok(ParsedAxisStatement {
             title: None,
             data: ParsedAxisData::Range { min, max, source },
         });
     }
 
-    let (title, tail) = parse_text_prefix_source(input.text, input.start)?;
+    let (title, tail) = parse_text_prefix_source(input.text, input.start, lexemes)?;
     let tail = tail.trim();
     if tail.text.is_empty() {
         return Ok(ParsedAxisStatement {
@@ -1415,7 +1678,7 @@ fn parse_y_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
             SourceSpan::new(tail.start, tail.end),
         ));
     }
-    if let Some((min, max, source)) = try_parse_range_source(tail.text, tail.start)? {
+    if let Some((min, max, source)) = try_parse_range_source(tail.text, tail.start, lexemes)? {
         return Ok(ParsedAxisStatement {
             title: Some(title),
             data: ParsedAxisData::Range { min, max, source },
@@ -1428,7 +1691,11 @@ fn parse_y_axis_source(rest: &str, rest_start: usize) -> Result<ParsedAxisStatem
     ))
 }
 
-fn parse_plot_stmt_source(rest: &str, rest_start: usize) -> Result<ParsedPlotStatement> {
+fn parse_plot_stmt_source(
+    rest: &str,
+    rest_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<ParsedPlotStatement> {
     let input = SpannedSlice::new(rest, rest_start, rest_start + rest.len()).trim();
     if input.text.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
@@ -1441,7 +1708,7 @@ fn parse_plot_stmt_source(rest: &str, rest_start: usize) -> Result<ParsedPlotSta
     let (title, data_input) = if input.text.starts_with('[') {
         (None, input)
     } else {
-        let (title, tail) = parse_text_prefix_source(input.text, input.start)?;
+        let (title, tail) = parse_text_prefix_source(input.text, input.start, lexemes)?;
         let tail = tail.trim();
         if tail.text.is_empty() {
             return Err(Error::diagram_parse_insertion_point(
@@ -1460,7 +1727,7 @@ fn parse_plot_stmt_source(rest: &str, rest_start: usize) -> Result<ParsedPlotSta
         (Some(title), tail)
     };
     let (data, data_source) =
-        parse_data_point_list_in_brackets_spanned(data_input.text, data_input.start)?;
+        parse_data_point_list_in_brackets_spanned(data_input.text, data_input.start, lexemes)?;
     Ok(ParsedPlotStatement {
         title,
         data,
@@ -1471,6 +1738,7 @@ fn parse_plot_stmt_source(rest: &str, rest_start: usize) -> Result<ParsedPlotSta
 fn try_parse_range_source(
     input: &str,
     input_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
 ) -> Result<Option<(f64, f64, SpannedText)>> {
     let input = SpannedSlice::new(input, input_start, input_start + input.len()).trim();
     let Some((first, after_first)) = take_number_token(input.text) else {
@@ -1481,6 +1749,24 @@ fn try_parse_range_source(
     if !after_first.text.starts_with("-->") {
         return Ok(None);
     }
+
+    let first_value = parse_number(first).ok_or_else(|| {
+        Error::diagram_parse_exact(
+            "xychart".to_string(),
+            format!("invalid number: {first}"),
+            SourceSpan::new(input.start, input.start + first.len()),
+        )
+    })?;
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Number,
+        SourceSpan::new(input.start, input.start + first.len()),
+    );
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Operator,
+        SourceSpan::new(after_first.start, after_first.start + 3),
+    );
 
     let second_input = SpannedSlice::new(
         &after_first.text[3..],
@@ -1516,13 +1802,6 @@ fn try_parse_range_source(
         ));
     }
 
-    let first_value = parse_number(first).ok_or_else(|| {
-        Error::diagram_parse_exact(
-            "xychart".to_string(),
-            format!("invalid number: {first}"),
-            SourceSpan::new(input.start, input.start + first.len()),
-        )
-    })?;
     let second_value = parse_number(second).ok_or_else(|| {
         Error::diagram_parse_exact(
             "xychart".to_string(),
@@ -1530,6 +1809,11 @@ fn try_parse_range_source(
             SourceSpan::new(second_input.start, second_input.start + second.len()),
         )
     })?;
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Number,
+        SourceSpan::new(second_input.start, second_input.start + second.len()),
+    );
     let source_end = second_input.start + second.len();
     Ok(Some((
         first_value,
@@ -1561,8 +1845,12 @@ fn take_number_token(input: &str) -> Option<(&str, &str)> {
     Some((&input[..idx], &input[idx..]))
 }
 
-fn parse_text_list_source(input: &str, input_start: usize) -> Result<(Vec<String>, SpannedText)> {
-    let (inner, inner_start) = extract_bracket_inner_spanned(input, input_start)?;
+fn parse_text_list_source(
+    input: &str,
+    input_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<(Vec<String>, SpannedText)> {
+    let (inner, inner_start) = extract_bracket_inner_spanned(input, input_start, lexemes)?;
     let source = SpannedSlice::new(inner, inner_start, inner_start + inner.len()).trim();
     if source.text.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
@@ -1573,7 +1861,9 @@ fn parse_text_list_source(input: &str, input_start: usize) -> Result<(Vec<String
     }
 
     let mut categories = Vec::new();
-    for part in split_top_level_commas_spanned(inner, inner_start) {
+    let parts = split_top_level_commas_spanned(inner, inner_start);
+    push_xychart_comma_lexemes(lexemes, &parts);
+    for part in parts {
         let part = part.trim();
         if part.text.is_empty() {
             return Err(Error::diagram_parse_insertion_point(
@@ -1582,7 +1872,7 @@ fn parse_text_list_source(input: &str, input_start: usize) -> Result<(Vec<String
                 part.start,
             ));
         }
-        categories.push(parse_text_source(part.text, part.start)?.text);
+        categories.push(parse_text_source(part.text, part.start, lexemes)?.text);
     }
     Ok((categories, source.to_text()))
 }
@@ -1590,11 +1880,12 @@ fn parse_text_list_source(input: &str, input_start: usize) -> Result<(Vec<String
 fn parse_data_point_list_in_brackets_spanned(
     input: &str,
     input_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
 ) -> Result<(Vec<ParsedDataPoint>, SpannedText)> {
     let leading = input.len().saturating_sub(input.trim_start().len());
     let t = input.trim_start();
     let t_start = input_start + leading;
-    let (inner, inner_start) = extract_bracket_inner_spanned(t, t_start)?;
+    let (inner, inner_start) = extract_bracket_inner_spanned(t, t_start, lexemes)?;
     let source = SpannedSlice::new(inner, inner_start, inner_start + inner.len()).trim();
     if source.text.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
@@ -1604,6 +1895,7 @@ fn parse_data_point_list_in_brackets_spanned(
         ));
     }
     let parts = split_top_level_commas_spanned(inner, inner_start);
+    push_xychart_comma_lexemes(lexemes, &parts);
     let mut out = Vec::new();
     for part in parts {
         let trimmed = part.trim();
@@ -1614,14 +1906,19 @@ fn parse_data_point_list_in_brackets_spanned(
                 trimmed.start,
             ));
         }
-        out.push(parse_data_point_spanned(trimmed)?);
+        out.push(parse_data_point_spanned(trimmed, lexemes)?);
     }
     Ok((out, source.to_text()))
 }
 
-fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
+fn parse_data_point_spanned(
+    part: SpannedSlice<'_>,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<ParsedDataPoint> {
     if let Some(quote_rel) = part.text.find('"') {
-        let number_part = part.text[..quote_rel].trim();
+        let number_source =
+            SpannedSlice::new(&part.text[..quote_rel], part.start, part.start + quote_rel).trim();
+        let number_part = number_source.text;
         if number_part.is_empty() {
             return Err(Error::diagram_parse_insertion_point(
                 "xychart".to_string(),
@@ -1629,8 +1926,7 @@ fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
                 part.start,
             ));
         }
-        let number_rel = part.text[..quote_rel].find(number_part).unwrap_or(0);
-        let number_start = part.start + number_rel;
+        let number_start = number_source.start;
         let value = parse_number(number_part).ok_or_else(|| {
             Error::diagram_parse_exact(
                 "xychart".to_string(),
@@ -1638,8 +1934,16 @@ fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
                 SourceSpan::new(number_start, number_start + number_part.len()),
             )
         })?;
-        let label =
-            parse_data_point_label_spanned(&part.text[quote_rel..], part.start + quote_rel)?;
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Number,
+            SourceSpan::new(number_start, number_start + number_part.len()),
+        );
+        let label = parse_data_point_label_spanned(
+            &part.text[quote_rel..],
+            part.start + quote_rel,
+            lexemes,
+        )?;
         return Ok(ParsedDataPoint {
             value,
             label: label.text,
@@ -1654,6 +1958,11 @@ fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
             SourceSpan::new(part.start, part.end),
         )
     })?;
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Number,
+        SourceSpan::new(part.start, part.end),
+    );
     Ok(ParsedDataPoint {
         value,
         label: String::new(),
@@ -1661,7 +1970,11 @@ fn parse_data_point_spanned(part: SpannedSlice<'_>) -> Result<ParsedDataPoint> {
     })
 }
 
-fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<SpannedText> {
+fn parse_data_point_label_spanned(
+    input: &str,
+    input_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<SpannedText> {
     let Some(body) = input.strip_prefix('"') else {
         return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
@@ -1669,13 +1982,37 @@ fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<Spa
             input_start,
         ));
     };
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(input_start, input_start + 1),
+    );
     let Some(end) = body.find('"') else {
+        if !body.is_empty() {
+            push_xychart_lexeme(
+                lexemes,
+                EditorLexemeKind::String,
+                SourceSpan::new(input_start + 1, input_start + input.len()),
+            );
+        }
         return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
             "unterminated data label".to_string(),
             input_start,
         ));
     };
+    if end > 0 {
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::String,
+            SourceSpan::new(input_start + 1, input_start + 1 + end),
+        );
+    }
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(input_start + 1 + end, input_start + 1 + end + 1),
+    );
     let rest = &body[end + 1..];
     if !rest.trim().is_empty() {
         let leading = rest.len().saturating_sub(rest.trim_start().len());
@@ -1695,7 +2032,11 @@ fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<Spa
     })
 }
 
-fn extract_bracket_inner_spanned(input: &str, input_start: usize) -> Result<(&str, usize)> {
+fn extract_bracket_inner_spanned<'a>(
+    input: &'a str,
+    input_start: usize,
+    lexemes: &mut EditorLexemeJournal<'_>,
+) -> Result<(&'a str, usize)> {
     let t = input.trim_start();
     let t_start = input_start + input.len().saturating_sub(t.len());
     if !t.starts_with('[') {
@@ -1705,6 +2046,11 @@ fn extract_bracket_inner_spanned(input: &str, input_start: usize) -> Result<(&st
             t_start,
         ));
     }
+    push_xychart_lexeme(
+        lexemes,
+        EditorLexemeKind::Delimiter,
+        SourceSpan::new(t_start, t_start + 1),
+    );
     let mut in_quote = false;
     let mut in_md = false;
     let mut idx = 1usize;
@@ -1745,6 +2091,11 @@ fn extract_bracket_inner_spanned(input: &str, input_start: usize) -> Result<(&st
             ));
         }
         if ch == ']' {
+            push_xychart_lexeme(
+                lexemes,
+                EditorLexemeKind::Delimiter,
+                SourceSpan::new(t_start + idx, t_start + idx + 1),
+            );
             let inner = &t[1..idx];
             let rest = &t[idx + 1..];
             if !rest.trim().is_empty() {
@@ -1824,10 +2175,26 @@ fn split_top_level_commas_spanned(input: &str, input_start: usize) -> Vec<Spanne
     out
 }
 
+fn push_xychart_comma_lexemes(lexemes: &mut EditorLexemeJournal<'_>, parts: &[SpannedSlice<'_>]) {
+    for part in parts.iter().take(parts.len().saturating_sub(1)) {
+        push_xychart_lexeme(
+            lexemes,
+            EditorLexemeKind::Delimiter,
+            SourceSpan::new(part.end, part.end + 1),
+        );
+    }
+}
+
 #[derive(Debug, Clone)]
 struct SpannedStatement {
     text: String,
     start: usize,
+}
+
+struct XyChartSyntaxFragments {
+    statements: Vec<SpannedStatement>,
+    comments: Vec<SourceSpan>,
+    delimiters: Vec<SourceSpan>,
 }
 
 impl SpannedStatement {
@@ -1836,14 +2203,15 @@ impl SpannedStatement {
     }
 }
 
-fn split_statements_spanned(input: &str) -> Vec<SpannedStatement> {
+fn split_statements_spanned(input: &str) -> XyChartSyntaxFragments {
     let mut out = Vec::new();
+    let mut comments = Vec::new();
+    let mut delimiters = Vec::new();
     let mut cur = String::new();
     let mut cur_start = 0usize;
     let mut in_quote = false;
     let mut in_md = false;
-    let mut bracket_depth = 0i64;
-    let mut brace_depth = 0i64;
+    let mut in_acc_descr_block = false;
     let mut iter = input.char_indices().peekable();
 
     while let Some((idx, ch)) = iter.next() {
@@ -1885,14 +2253,21 @@ fn split_statements_spanned(input: &str) -> Vec<SpannedStatement> {
             continue;
         }
 
-        if brace_depth == 0 && ch == '%' && iter.peek().is_some_and(|(_, next)| *next == '%') {
+        if !in_acc_descr_block
+            && ch == '%'
+            && iter.peek().is_some_and(|(_, next)| *next == '%')
+            && !input[idx..].starts_with("%%{")
+        {
             let mut next_statement_start = input.len();
+            let mut comment_end = input.len();
             for (comment_idx, comment_ch) in iter.by_ref() {
                 if comment_ch == '\n' {
+                    comment_end = comment_idx;
                     next_statement_start = comment_idx + comment_ch.len_utf8();
                     break;
                 }
             }
+            comments.push(SourceSpan::new(idx, comment_end));
             if !cur.trim().is_empty() {
                 out.push(SpannedStatement {
                     text: std::mem::take(&mut cur),
@@ -1906,18 +2281,21 @@ fn split_statements_spanned(input: &str) -> Vec<SpannedStatement> {
         }
 
         match ch {
-            '[' => bracket_depth += 1,
-            ']' => bracket_depth -= 1,
-            '{' => brace_depth += 1,
-            '}' => brace_depth -= 1,
+            '{' if !in_acc_descr_block && starts_with_xychart_keyword(&cur, "accDescr") => {
+                in_acc_descr_block = true;
+            }
+            '}' if in_acc_descr_block => in_acc_descr_block = false,
             _ => {}
         }
 
-        if (ch == '\n' || ch == ';') && bracket_depth == 0 && brace_depth == 0 {
+        if (ch == '\n' || ch == ';') && !in_acc_descr_block {
             out.push(SpannedStatement {
                 text: std::mem::take(&mut cur),
                 start: cur_start,
             });
+            if ch == ';' {
+                delimiters.push(SourceSpan::new(idx, idx + ch.len_utf8()));
+            }
             cur_start = idx + ch.len_utf8();
             continue;
         }
@@ -1931,15 +2309,30 @@ fn split_statements_spanned(input: &str) -> Vec<SpannedStatement> {
             start: cur_start,
         });
     }
-    out
+    XyChartSyntaxFragments {
+        statements: out,
+        comments,
+        delimiters,
+    }
+}
+
+fn starts_with_xychart_keyword(statement: &str, keyword: &str) -> bool {
+    let statement = statement.trim_start();
+    statement
+        .get(..keyword.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(keyword))
+        && statement[keyword.len()..]
+            .chars()
+            .next()
+            .is_none_or(|ch| ch.is_whitespace())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        EditorSemanticCompleteness, EditorSemanticDiagnosticKind, EditorSemanticRole, Engine,
-        ParseDiagnosticSpanKind, ParseOptions,
+        EditorLexemeProducerKind, EditorSemanticCompleteness, EditorSemanticDiagnosticKind,
+        EditorSemanticRole, Engine, ParseDiagnosticSpanKind, ParseOptions,
     };
     use futures::executor::block_on;
     use serde_json::json;
@@ -2339,30 +2732,14 @@ bar [1, 2]
                 text.find("Fiscal quarter").expect("x-axis title source"),
             ),
             (
-                "Q1, \"Q 2\"",
-                "xychart x-axis",
-                text.find("Q1, \"Q 2\"").expect("x-axis data source"),
-            ),
-            (
                 "Revenue",
                 "xychart y-axis",
                 text.find("y-axis Revenue").expect("y-axis source") + "y-axis ".len(),
             ),
             (
-                "0 --> 100",
-                "xychart y-axis",
-                text.find("0 --> 100").expect("y-axis data source"),
-            ),
-            (
                 "Forecast line",
                 "xychart line",
                 text.find("Forecast line").expect("plot title source"),
-            ),
-            (
-                "23 \"Low\", 45 \"High\"",
-                "xychart line",
-                text.find("23 \"Low\", 45 \"High\"")
-                    .expect("plot data source"),
             ),
             (
                 "Low",
@@ -2376,6 +2753,17 @@ bar [1, 2]
             ),
         ] {
             assert_payload(name, detail, start);
+        }
+
+        for structured in ["Q1, \"Q 2\"", "0 --> 100", "23 \"Low\", 45 \"High\""] {
+            let start = text.find(structured).expect("structured payload source");
+            assert!(facts.expected_syntax.iter().any(|expected| {
+                expected.kind == EditorExpectedSyntaxKind::Payload
+                    && expected.span == SourceSpan::new(start, start + structured.len())
+            }));
+            assert!(!facts.symbols.iter().any(|symbol| {
+                symbol.name == structured && symbol.role == EditorSemanticRole::Payload
+            }));
         }
     }
 
@@ -2408,5 +2796,245 @@ bar [1, 2]
                         invalid_start + "-4aa5".len(),
                     ))
         }));
+    }
+
+    #[test]
+    fn xychart_parser_lexemes_cover_crlf_unicode_repeated_values_and_comment_ownership() {
+        let text = concat!(
+            "%% 全局注释\r\n",
+            "xychart horizontal\r\n",
+            "title \"收入 计划\"; accTitle: 可访问标题\r\n",
+            "x-axis \"季度\" [\"重复\", \"重复\"]\r\n",
+            "y-axis 金额 -5 --> 10\r\n",
+            "line \"系列\" [5 \"重复\", 5 \"重复\"]\r\n",
+            "bar [3, 4] %% 行尾注释\r\n",
+        );
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .expect("XYChart editor parse")
+            .expect("XYChart editor facts");
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert_eq!(facts.lexeme_failure(), None);
+        for (kind, source) in [
+            (EditorLexemeKind::Keyword, "xychart"),
+            (EditorLexemeKind::Literal, "horizontal"),
+            (EditorLexemeKind::Keyword, "title"),
+            (EditorLexemeKind::Delimiter, "\""),
+            (EditorLexemeKind::String, "收入 计划"),
+            (EditorLexemeKind::Delimiter, ";"),
+            (EditorLexemeKind::Keyword, "accTitle"),
+            (EditorLexemeKind::Delimiter, ":"),
+            (EditorLexemeKind::Keyword, "x-axis"),
+            (EditorLexemeKind::Delimiter, "["),
+            (EditorLexemeKind::Delimiter, ","),
+            (EditorLexemeKind::Keyword, "y-axis"),
+            (EditorLexemeKind::Number, "-5"),
+            (EditorLexemeKind::Operator, "-->"),
+            (EditorLexemeKind::Keyword, "line"),
+            (EditorLexemeKind::Number, "5"),
+            (EditorLexemeKind::Keyword, "bar"),
+            (EditorLexemeKind::Comment, "%% 行尾注释"),
+            (EditorLexemeKind::Comment, "%% 全局注释\r\n"),
+        ] {
+            assert!(
+                facts.lexemes().iter().any(|lexeme| {
+                    let span = lexeme.span();
+                    lexeme.kind() == kind && &text[span.start..span.end] == source
+                }),
+                "missing {kind:?} {source:?}: {:?}",
+                facts.lexemes()
+            );
+        }
+
+        let repeated_source_spans = text
+            .match_indices("重复")
+            .map(|(start, value)| SourceSpan::new(start, start + value.len()))
+            .collect::<Vec<_>>();
+        assert_eq!(repeated_source_spans.len(), 4);
+        for span in repeated_source_spans {
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                lexeme.kind() == EditorLexemeKind::String && lexeme.span() == span
+            }));
+        }
+
+        let global = facts
+            .lexemes()
+            .iter()
+            .find(|lexeme| {
+                let span = lexeme.span();
+                &text[span.start..span.end] == "%% 全局注释\r\n"
+            })
+            .expect("global comment lexeme");
+        assert_eq!(
+            global.producer().kind(),
+            EditorLexemeProducerKind::GlobalPreprocess
+        );
+        let inline = facts
+            .lexemes()
+            .iter()
+            .find(|lexeme| {
+                let span = lexeme.span();
+                &text[span.start..span.end] == "%% 行尾注释"
+            })
+            .expect("family inline comment lexeme");
+        assert_eq!(
+            inline.producer().kind(),
+            EditorLexemeProducerKind::FamilyParser
+        );
+        assert_eq!(
+            inline.producer().family().map(|family| family.as_str()),
+            Some("xychart")
+        );
+        assert_xychart_lexemes_non_overlapping(text, facts.lexemes());
+    }
+
+    #[test]
+    fn xychart_recovery_keeps_confirmed_prefix_and_safe_later_statements() {
+        let text = concat!(
+            "xychart\n",
+            "title Before\n",
+            "bar [1, -4aa5]\n",
+            "y-axis [0, 10]\n",
+            "line \"After 后来\" [2 \"后来\"]\n",
+        );
+        let invalid_start = text.find("-4aa5").expect("invalid token");
+
+        let strict = Engine::new()
+            .parse_diagram_sync(text, ParseOptions::strict())
+            .expect_err("strict XYChart parse must return its first error");
+        let Error::DiagramParse { diagnostic, .. } = strict else {
+            panic!("expected diagram parse error");
+        };
+        assert_eq!(diagnostic.message(), "invalid number: -4aa5");
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(
+                invalid_start,
+                invalid_start + "-4aa5".len()
+            ))
+        );
+
+        reset_xychart_syntax_construction_count();
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .expect("XYChart editor recovery")
+            .expect("XYChart recovered facts");
+        assert_eq!(xychart_syntax_construction_count(), 1);
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(facts.lexeme_failure(), None);
+        for (kind, source) in [
+            (EditorLexemeKind::Number, "1"),
+            (EditorLexemeKind::Literal, "-4aa5"),
+            (EditorLexemeKind::Keyword, "line"),
+            (EditorLexemeKind::String, "After 后来"),
+            (EditorLexemeKind::Number, "2"),
+        ] {
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                let span = lexeme.span();
+                lexeme.kind() == kind && &text[span.start..span.end] == source
+            }));
+        }
+        assert!(facts.symbols.iter().any(|symbol| {
+            symbol.name == "After 后来"
+                && symbol.detail.as_deref() == Some("xychart line")
+                && symbol.role == EditorSemanticRole::Payload
+        }));
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == EditorLexemeProducerKind::FamilyRecovery
+                && lexeme.producer().family().map(|family| family.as_str()) == Some("xychart")
+        }));
+        assert_xychart_lexemes_non_overlapping(text, facts.lexemes());
+    }
+
+    #[test]
+    fn xychart_unterminated_eof_string_keeps_confirmed_delimiter_and_body() {
+        let text = "xychart\ntitle \"未完成 🤓";
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .expect("XYChart editor recovery")
+            .expect("XYChart recovered facts");
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(facts.lexeme_failure(), None);
+        for (kind, source) in [
+            (EditorLexemeKind::Delimiter, "\""),
+            (EditorLexemeKind::String, "未完成 🤓"),
+        ] {
+            assert!(facts.lexemes().iter().any(|lexeme| {
+                let span = lexeme.span();
+                lexeme.kind() == kind && &text[span.start..span.end] == source
+            }));
+        }
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(SourceSpan::new(text.len(), text.len()))
+        }));
+        assert_xychart_lexemes_non_overlapping(text, facts.lexemes());
+    }
+
+    #[test]
+    fn xychart_error_paths_never_publish_an_overlapping_lexeme_tape() {
+        for text in [
+            "xychart-1",
+            "xychart invalid-orientation",
+            "xychart\ntitle \"closed\" trailing",
+            "xychart\naccTitle missing-colon",
+            "xychart\naccDescr {unterminated",
+            "xychart\nx-axis Name aaa --> 33",
+            "xychart\ny-axis [1, 2]",
+            "xychart\nline \"title\" [1, , 2]",
+            "xychart\nbar [1.]",
+            "xychart\nunsupported statement",
+        ] {
+            let facts = Engine::new()
+                .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+                .unwrap_or_else(|error| panic!("editor recovery failed for {text:?}: {error}"))
+                .unwrap_or_else(|| panic!("missing editor facts for {text:?}"));
+            assert_eq!(
+                facts.completeness,
+                EditorSemanticCompleteness::Recovered,
+                "{text:?}"
+            );
+            assert_eq!(facts.lexeme_failure(), None, "{text:?}");
+            assert_xychart_lexemes_non_overlapping(text, facts.lexemes());
+        }
+    }
+
+    #[test]
+    fn xychart_missing_bracket_recovers_at_the_next_statement_boundary() {
+        let text = "xychart\nbar [1, 2\nline [3]\n";
+        let facts = Engine::new()
+            .parse_editor_semantic_facts_with_type_sync("xychart", text, ParseOptions::strict())
+            .expect("XYChart editor recovery")
+            .expect("XYChart recovered facts");
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(facts.lexeme_failure(), None);
+        assert!(facts.lexemes().iter().any(|lexeme| {
+            let span = lexeme.span();
+            lexeme.kind() == EditorLexemeKind::Keyword && &text[span.start..span.end] == "line"
+        }));
+        assert!(facts.lexemes().iter().any(|lexeme| {
+            let span = lexeme.span();
+            lexeme.kind() == EditorLexemeKind::Number && &text[span.start..span.end] == "3"
+        }));
+        assert_xychart_lexemes_non_overlapping(text, facts.lexemes());
+    }
+
+    fn assert_xychart_lexemes_non_overlapping(source: &str, lexemes: &[crate::EditorLexeme]) {
+        for lexeme in lexemes {
+            let span = lexeme.span();
+            assert!(span.start < span.end);
+            assert!(span.end <= source.len());
+            assert!(source.is_char_boundary(span.start));
+            assert!(source.is_char_boundary(span.end));
+        }
+        for pair in lexemes.windows(2) {
+            assert!(
+                pair[0].span().end <= pair[1].span().start,
+                "overlapping XYChart lexemes: {pair:?}"
+            );
+        }
     }
 }
