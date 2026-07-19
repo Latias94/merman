@@ -562,10 +562,13 @@ impl EditorSemanticFacts {
     }
 
     pub(crate) fn replace_family_lexemes(&mut self, batch: EditorLexemeBatchResult) {
+        if self.lexeme_failure.is_some() {
+            self.lexemes.clear();
+            return;
+        }
         match batch {
             Ok(EditorLexemeBatch(lexemes)) => {
                 self.lexemes = lexemes;
-                self.lexeme_failure = None;
             }
             Err(error) => {
                 self.lexemes.clear();
@@ -595,13 +598,14 @@ impl EditorSemanticFacts {
         family: DiagramFamilyId,
         global_lexemes: &[EditorLexeme],
     ) {
+        if self.lexeme_failure.is_some() {
+            self.lexemes.clear();
+            return;
+        }
         let result = self.try_finalize_lexemes(family, global_lexemes);
-        match result {
-            Ok(()) => self.lexeme_failure = None,
-            Err(error) => {
-                self.lexemes.clear();
-                self.lexeme_failure = Some(error);
-            }
+        if let Err(error) = result {
+            self.lexemes.clear();
+            self.lexeme_failure = Some(error);
         }
     }
 
@@ -885,7 +889,7 @@ fn humanize_token_name(token: &str) -> String {
 mod tests {
     use super::{
         EditorLexemeFailure, EditorLexemeJournal, EditorLexemeKind, EditorLexemeModifier,
-        EditorLexemeModifiers, lalrpop_parse_diagnostic,
+        EditorLexemeModifiers, EditorSemanticFacts, lalrpop_parse_diagnostic,
     };
     use crate::ParseDiagnosticSpanKind;
 
@@ -967,5 +971,32 @@ mod tests {
             Err(EditorLexemeFailure::DuplicateModifiers { .. })
         ));
         assert!(serde_json::from_str::<EditorLexemeModifiers>("64").is_err());
+    }
+
+    #[test]
+    fn failed_family_lexeme_batch_is_monotonic_through_finalization() {
+        let mut invalid = EditorLexemeJournal::family_lexer("abc");
+        invalid.push(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifiers::NONE,
+            crate::SourceSpan::new(0, 4),
+        );
+        let mut facts = EditorSemanticFacts::new();
+        facts.replace_family_lexemes(invalid.finish());
+        let failure = facts.lexeme_failure().expect("invalid batch failure");
+
+        let mut valid = EditorLexemeJournal::family_lexer("abc");
+        valid.push(
+            EditorLexemeKind::Identifier,
+            EditorLexemeModifiers::NONE,
+            crate::SourceSpan::new(0, 3),
+        );
+        facts.replace_family_lexemes(valid.finish());
+        let family =
+            crate::family::diagram_type_family_id("flowchart").expect("flowchart family identity");
+        facts.finalize_lexemes(family, &[]);
+
+        assert_eq!(facts.lexeme_failure(), Some(failure));
+        assert!(facts.lexemes().is_empty());
     }
 }
