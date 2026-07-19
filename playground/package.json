@@ -3,17 +3,27 @@
   "version": "0.7.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.17.0",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=11.17.0"
+  },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "postbuild": "node scripts/verify-dist-wasm.mjs",
+    "build:opaque-realm": "node scripts/build-opaque-realm.mjs",
+    "prepare:browser-runtime": "npm run verify:wasm-inputs && npm run build:opaque-realm && npm run verify:opaque-realm",
+    "dev": "npm run prepare:browser-runtime && vite",
+    "build": "npm run prepare:browser-runtime && tsc -b && vite build && npm run verify:dist",
     "preview": "vite preview",
     "verify:dist": "node scripts/verify-dist-wasm.mjs",
+    "verify:opaque-realm": "node scripts/verify-opaque-realm.mjs",
+    "verify:wasm-inputs": "node ../platforms/web/scripts/verify-wasm-inputs.mjs && node ../platforms/web/scripts/verify-wasm-inputs.mjs --preset browser-editor --out-dir-rel pkg/editor",
     "generate:examples": "cargo run -p xtask -- gen-playground-example-catalog",
     "verify:examples": "cargo run -p xtask -- verify-playground-example-catalog",
-    "test": "npm run test:browser:typecheck && npm run test:build-graph && npm run test:semantic-tokens && npm run test:mermaid-config && npm run test:runtime && npm run test:mermaid-requirements && npm run test:realm && npm run test:examples && npm run test:benchmark",
+    "verify:zenuml-candidate": "node scripts/zenuml-core-candidate-matrix.mjs",
+    "verify:zenuml-candidate:online": "node scripts/zenuml-core-candidate-matrix.mjs --online",
+    "test": "npm run prepare:browser-runtime && npm run test:browser:typecheck && npm run test:build-graph && npm run test:semantic-tokens && npm run test:mermaid-config && npm run test:runtime && npm run test:mermaid-requirements && npm run test:realm && npm run test:examples && npm run test:benchmark",
     "test:benchmark": "node --test --experimental-strip-types src/benchmark/*.test.ts src/benchmark/realm/*.test.ts",
-    "test:build-graph": "node --test scripts/benchmark-build-graph.test.mjs scripts/csp-policy.test.mjs",
+    "test:build-graph": "node --test scripts/benchmark-build-graph.test.mjs scripts/csp-policy.test.mjs scripts/package-entrypoints.test.mjs",
     "test:examples": "node --test --experimental-strip-types src/lib/examples.test.ts",
     "test:browser": "npm run build && npm run test:browser:chromium",
     "test:browser:chromium": "playwright test --project=chromium-desktop --project=chromium-mobile",
@@ -21,15 +31,16 @@
     "test:browser:smoke:built": "playwright test --grep @smoke",
     "test:browser:typecheck": "tsc --noEmit -p tsconfig.playwright.json",
     "test:mermaid-config": "node --test --experimental-strip-types src/lib/mermaid-config.test.ts",
-    "test:runtime": "node --test --experimental-strip-types src/runtime/merman.test.ts src/runtime/render-coordinator.test.ts",
-    "test:mermaid-requirements": "node --test --experimental-strip-types src/runtime/mermaid-requirements.test.ts",
+    "test:runtime": "node --test --experimental-strip-types src/runtime/merman.test.ts src/runtime/render-coordinator.test.ts src/runtime/render-artifact.test.ts",
+    "test:mermaid-requirements": "node --test --experimental-strip-types src/runtime/mermaid-requirements.test.ts src/runtime/external-module-registrar.test.ts",
     "test:realm": "node --test --experimental-strip-types src/runtime/realm/*.test.ts src/runtime/mermaid-realm-controller.test.ts",
     "test:semantic-tokens": "node --test scripts/semantic-tokens.test.mjs",
     "lint": "eslint ."
   },
   "dependencies": {
-    "@mermaid-js/layout-elk": "0.2.1",
-    "@mermaid-js/mermaid-zenuml": "0.2.2",
+    "@mermaid-js/layout-elk": "0.2.2",
+    "@mermaid-js/layout-tidy-tree": "0.2.2",
+    "@mermaid-js/mermaid-zenuml": "0.2.3",
     "@mermanjs/web": "file:../platforms/web",
     "@monaco-editor/react": "^4.7.0",
     "@radix-ui/react-checkbox": "1.3.3",
@@ -56,6 +67,10 @@
     "tailwind-merge": "^3.3.1",
     "zustand": "^5.0.14"
   },
+  "overrides": {
+    "@zenuml/core": "3.50.1",
+    "dompurify": "3.4.12"
+  },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
     "@eslint/js": "^10.0.1",
@@ -68,12 +83,12 @@
     "eslint": "^10.4.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.6.0",
-    "postcss": "^8.5",
+    "postcss": "^8.5.20",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3",
     "typescript-eslint": "^8.60.0",
-    "vite": "^8.0.15",
+    "vite": "^8.1.5",
     "vite-plugin-wasm": "^3.6.0"
   }
 }

@@ -9,6 +9,7 @@ import {
   replaceEditorSource,
   waitForPreviewSvg,
 } from "./helpers/playground";
+import { PLAYGROUND_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
 
 test("@smoke loads the production WASM and renders a safe SVG", async ({
   page,
@@ -141,7 +142,7 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
     .poll(() => compareSvgTexts(page))
     .toEqual([expect.stringContaining("Compare start"), expect.stringContaining("Compare start")]);
   await expect
-    .poll(() => compareRealmMatchesViewportHost(page))
+    .poll(() => compareRealmUsesCanonicalViewport(page))
     .toBe(true);
   expect(engineRequests.length).toBeGreaterThan(0);
   for (const requestUrl of engineRequests) {
@@ -185,6 +186,32 @@ test("Compare owns one local Mermaid realm and publishes one coherent batch", as
   errors.assertNone();
 });
 
+test("Compare isolates container-sensitive Gantt rendering from pane width", async ({
+  page,
+  isMobile,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(
+    page,
+    [
+      "gantt",
+      "  title A Gantt Diagram",
+      "  dateFormat  YYYY-MM-DD",
+      "  section A",
+      "  Task1 :a1, 2024-01-01, 1d",
+    ].join("\n")
+  );
+  if (isMobile) {
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
+  }
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+
+  await expect.poll(() => mermaidCompareViewBoxWidth(page)).toBe(800);
+  await expect.poll(() => mermaidGanttTickOverlapCount(page)).toBe(0);
+  errors.assertNone();
+});
+
 async function compareSvgTexts(page: import("@playwright/test").Page): Promise<string[]> {
   return page.locator(".preview-container > div").evaluateAll((hosts) =>
     hosts.map(
@@ -193,18 +220,58 @@ async function compareSvgTexts(page: import("@playwright/test").Page): Promise<s
   );
 }
 
-async function compareRealmMatchesViewportHost(
+async function compareRealmUsesCanonicalViewport(
   page: import("@playwright/test").Page
 ): Promise<boolean> {
-  return page.evaluate(() => {
-    const realm = document.querySelector('iframe[data-merman-realm="compare"]');
-    const host = document.querySelector("[data-merman-compare-viewport-host]");
-    if (!(realm instanceof HTMLIFrameElement) || !(host instanceof HTMLElement)) {
-      return false;
+  return page.evaluate(
+    (viewport) => {
+      const realm = document.querySelector('iframe[data-merman-realm="compare"]');
+      if (!(realm instanceof HTMLIFrameElement)) {
+        return false;
+      }
+      return (
+        realm.clientWidth === viewport.width &&
+        realm.clientHeight === viewport.height
+      );
+    },
+    PLAYGROUND_RENDER_VIEWPORT
+  );
+}
+
+async function mermaidCompareViewBoxWidth(
+  page: import("@playwright/test").Page
+): Promise<number | null> {
+  return mermaidCompareHost(page).evaluate(
+    (host) => host.shadowRoot?.querySelector("svg")?.viewBox.baseVal.width ?? null
+  );
+}
+
+async function mermaidGanttTickOverlapCount(
+  page: import("@playwright/test").Page
+): Promise<number | null> {
+  return mermaidCompareHost(page).evaluate((host) => {
+    const ticks = Array.from(
+      host.shadowRoot?.querySelectorAll<SVGTextElement>(".tick text") ?? []
+    )
+      .map((tick) => tick.getBoundingClientRect())
+      .filter((rect) => rect.width > 0)
+      .sort((left, right) => left.top - right.top || left.left - right.left);
+    if (ticks.length < 2) return null;
+
+    let overlaps = 0;
+    for (let index = 1; index < ticks.length; index += 1) {
+      const previous = ticks[index - 1];
+      const current = ticks[index];
+      if (Math.abs(previous.top - current.top) < 2 && previous.right > current.left) {
+        overlaps += 1;
+      }
     }
-    return (
-      realm.clientWidth === Math.floor(host.clientWidth) &&
-      realm.clientHeight === Math.floor(host.clientHeight)
-    );
+    return overlaps;
   });
+}
+
+function mermaidCompareHost(page: import("@playwright/test").Page) {
+  return page.locator(
+    '[data-merman-compare-engine="mermaid"] .preview-container > div'
+  );
 }

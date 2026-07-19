@@ -7,6 +7,7 @@ pub(crate) mod default_config;
 pub(crate) mod fixtures;
 pub(crate) mod generate;
 pub(crate) mod import;
+pub(crate) mod mermaid_reference;
 pub(crate) mod paths;
 pub(crate) mod playground_catalog;
 pub(crate) mod profile_budget;
@@ -22,9 +23,7 @@ pub(crate) mod verify;
 pub(crate) mod wasm_size_matrix;
 pub(crate) mod web_catalog;
 
-pub(crate) const PINNED_MERMAID_PACKAGE_SHA256: &str =
-    "3b6a6e2a483e5e6b470be13f765dd648271a35b9d4e322d854d85bd065381ad0";
-
+pub(crate) use crate::generated::mermaid_reference::*;
 pub(crate) use admission::*;
 pub(crate) use audit::*;
 pub(crate) use compare::*;
@@ -34,6 +33,7 @@ pub(crate) use default_config::*;
 pub(crate) use fixtures::*;
 pub(crate) use generate::*;
 pub(crate) use import::*;
+pub(crate) use mermaid_reference::*;
 pub(crate) use paths::*;
 pub(crate) use playground_catalog::*;
 pub(crate) use profile_budget::*;

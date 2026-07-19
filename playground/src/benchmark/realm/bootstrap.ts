@@ -1,5 +1,3 @@
-import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
-
 import {
   BENCHMARK_PROTOCOL_VERSION,
   validateBenchmarkSampleProgress,
@@ -30,8 +28,12 @@ import {
   validateRealmHello,
   type CompareRenderPayload,
   type RealmBootIdentity,
+  type RealmEngineArtifactIdentity,
   type RealmIdentity,
 } from "../../runtime/realm/channel-protocol.ts";
+import {
+  verifyAndCreateRealmEngineModuleLoader,
+} from "../../runtime/realm/engine-artifact-loader.ts";
 import {
   BenchmarkEngineError,
   type BenchmarkEngineAdapter,
@@ -43,9 +45,9 @@ import {
   createBenchmarkStageWatchdog,
   type BenchmarkStageWatchdog,
 } from "./stage-watchdog.ts";
-import "./benchmark-realm.css";
-
-void startBenchmarkRealm();
+export type BenchmarkAdapterLoader = (
+  engine: BenchmarkEngine
+) => Promise<BenchmarkEngineAdapter>;
 
 interface FrozenRealmInput {
   readonly engine: BenchmarkEngine;
@@ -66,36 +68,70 @@ type RealmResponseBody<T> = T extends BenchmarkSampleResponse
 
 type BenchmarkRealmResponse = RealmResponseBody<BenchmarkSampleResponse>;
 
-async function startBenchmarkRealm(): Promise<void> {
-  const boot = readBootIdentity();
+interface BenchmarkEngineModule {
+  readonly benchmarkEngineAdapter: BenchmarkEngineAdapter;
+}
+
+function validateBenchmarkEngineModule(
+  module: Record<string, unknown>
+): BenchmarkEngineModule {
+  const adapter = module.benchmarkEngineAdapter;
+  if (
+    Object.keys(module).length !== 1 ||
+    typeof adapter !== "object" ||
+    adapter === null ||
+    typeof (adapter as { initialize?: unknown }).initialize !== "function"
+  ) {
+    throw new RealmProtocolError("Benchmark engine artifact exports are invalid.");
+  }
+  return module as unknown as BenchmarkEngineModule;
+}
+
+export async function startBenchmarkRealm(
+  boot: RealmBootIdentity,
+  expectedArtifact: RealmEngineArtifactIdentity,
+  expectedEngine: BenchmarkEngine
+): Promise<void> {
   if (window.parent === window) {
     throw new RealmProtocolError("Benchmark realm must run inside an iframe.");
   }
 
-  const initGate = createOneTimeRealmInitGate(boot);
+  const initGate = createOneTimeRealmInitGate(boot, expectedArtifact);
   const onInit = (event: MessageEvent) => {
     if (
-      event.origin !== window.location.origin ||
       event.source !== window.parent ||
       !isRealmMessageType(event.data, "realm-init")
     ) {
       return;
     }
-    let init;
+    void acceptInit(event);
+  };
+  const acceptInit = async (event: MessageEvent) => {
     try {
-      init = initGate.consume(event.data, event.ports.length);
+      const init = initGate.consume(event.data, event.ports.length);
+      window.removeEventListener("message", onInit);
+      const loadModule = await verifyAndCreateRealmEngineModuleLoader(
+        init.engineArtifact,
+        validateBenchmarkEngineModule
+      );
+      const loadAdapter: BenchmarkAdapterLoader = async (engine) => {
+        if (engine !== expectedEngine) {
+          throw new RealmProtocolError(
+            `Benchmark realm expected ${expectedEngine}, received ${engine}.`
+          );
+        }
+        return (await loadModule()).benchmarkEngineAdapter;
+      };
+      servePort(
+        event.ports[0],
+        init,
+        loadAdapter,
+        init.engineArtifact.resourceUrl
+      );
     } catch {
       for (const port of event.ports) port.close();
       window.removeEventListener("message", onInit);
-      return;
     }
-    window.removeEventListener("message", onInit);
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${window.location.search}`
-    );
-    servePort(event.ports[0], init);
   };
 
   window.addEventListener("message", onInit);
@@ -108,11 +144,16 @@ async function startBenchmarkRealm(): Promise<void> {
       },
       boot
     ),
-    window.location.origin
+    "*"
   );
 }
 
-function servePort(port: MessagePort, init: RealmIdentity): void {
+function servePort(
+  port: MessagePort,
+  init: RealmIdentity,
+  loadAdapter: BenchmarkAdapterLoader,
+  resourceUrl: string | null
+): void {
   const identity: RealmIdentity = {
     kind: init.kind,
     realmId: init.realmId,
@@ -257,7 +298,9 @@ function servePort(port: MessagePort, init: RealmIdentity): void {
         stageWatchdog?.observe(event);
         postProgress(request, event);
       },
-      timeout.promise
+      timeout.promise,
+      loadAdapter,
+      resourceUrl
     )
       .then(({ response, session }) => {
         if (closed) {
@@ -308,7 +351,9 @@ async function executeSample(
   host: HTMLElement,
   existingSession: BenchmarkEngineSession | null,
   onTraceEvent: (event: BenchmarkTraceMark) => void,
-  timeout: Promise<never>
+  timeout: Promise<never>,
+  loadAdapter: BenchmarkAdapterLoader,
+  resourceUrl: string | null
 ): Promise<{
   response: BenchmarkRealmResponse;
   session: BenchmarkEngineSession | null;
@@ -383,7 +428,7 @@ async function executeSample(
     if (adapter) {
       stage = "initialize";
       session = await waitFor(
-        adapter.initialize({ mark, payload: request.payload })
+        adapter.initialize({ mark, payload: request.payload, resourceUrl })
       );
     }
     if (!session) {
@@ -396,15 +441,14 @@ async function executeSample(
     stage = "render";
     mark("render_start");
     const svg = await waitFor(session.render());
-    stage = "svg-validation";
+    stage = "svg-budget";
     assertRealmSvgBudget(svg);
-    assertSafeSvgForDom(svg);
-    mark("safe_svg_ready");
+    mark("budgeted_svg_ready");
 
     stage = "presentation";
     assertPresentationHost(host, request.payload);
     host.innerHTML = svg;
-    mark("dom_inserted");
+    mark("isolated_dom_inserted");
     const svgElement = host.querySelector("svg");
     if (!(svgElement instanceof SVGSVGElement)) {
       throw new Error("Benchmark engine did not return an SVG root element.");
@@ -413,9 +457,9 @@ async function executeSample(
     if (!isNonEmptyRect(rect)) {
       throw new Error("Benchmark SVG has no finite non-empty layout box.");
     }
-    mark("layout_box_ready");
+    mark("isolated_layout_box_ready");
     await waitFor(nextAnimationFrame());
-    mark("presentation_ready");
+    mark("isolated_presentation_ready");
 
     const evidence = finishEvidence(
       recorder,
@@ -470,14 +514,6 @@ async function executeSample(
       session,
     };
   }
-}
-
-async function loadAdapter(engine: BenchmarkEngine): Promise<BenchmarkEngineAdapter> {
-  const module =
-    engine === "merman"
-      ? await import("./engines/merman.ts")
-      : await import("./engines/mermaid.ts");
-  return module.benchmarkEngineAdapter;
 }
 
 function failureResponse(
@@ -658,32 +694,6 @@ class SampleTimeoutError extends Error {
     super(`Benchmark realm timed out during ${activeStage}.`);
     this.name = "SampleTimeoutError";
   }
-}
-
-function readBootIdentity(): RealmBootIdentity {
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  if (
-    params.size !== 4 ||
-    params.get("protocol") !== String(REALM_PROTOCOL_VERSION) ||
-    params.get("kind") !== "benchmark"
-  ) {
-    throw new RealmProtocolError("Benchmark realm boot fragment is invalid.");
-  }
-  const realmId = params.get("realm");
-  const bootNonce = params.get("boot");
-  if (!realmId || !bootNonce) {
-    throw new RealmProtocolError("Benchmark realm boot identity is invalid.");
-  }
-  const boot: RealmBootIdentity = {
-    kind: "benchmark",
-    realmId,
-    bootNonce,
-  };
-  validateRealmHello(
-    { type: "realm-hello", protocol: REALM_PROTOCOL_VERSION, ...boot },
-    boot
-  );
-  return boot;
 }
 
 function boundedErrorMessage(error: unknown): string {

@@ -8,6 +8,7 @@ struct VerifyOptions {
     all_features: bool,
     feature_matrix: bool,
     root_parity: bool,
+    strict: bool,
 }
 
 pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
@@ -23,6 +24,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
                 "--feature-matrix" => options.feature_matrix = true,
                 "--root-parity" => options.root_parity = true,
                 "--strict" => {
+                    options.strict = true;
                     options.clippy = true;
                     options.all_features = true;
                     options.feature_matrix = true;
@@ -59,9 +61,7 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
         println!("  --feature-matrix");
         println!("                  check public no-default/render/raster feature combinations");
         println!("  --root-parity   run full SVG root parity after normal DOM parity");
-        println!(
-            "  --strict        shorthand for --clippy --all-features --feature-matrix --root-parity"
-        );
+        println!("  --strict        run every optional gate plus Mermaid reference evidence");
     }
 
     let workspace_root = crate::cmd::workspace_root();
@@ -131,6 +131,18 @@ pub(crate) fn verify(args: Vec<String>) -> Result<(), XtaskError> {
     if options.feature_matrix {
         println!("\n== feature matrix ==");
         run_feature_matrix(&workspace_root, &mut run_checked)?;
+    }
+
+    if options.strict {
+        println!("\n== Mermaid reference bundle ==");
+        cmd::verify_mermaid_reference(Vec::new())?;
+
+        println!("\n== ZenUML candidate matrix ==");
+        let mut npm_cmd = Command::new("npm");
+        npm_cmd
+            .args(["run", "verify:zenuml-candidate"])
+            .current_dir(workspace_root.join("playground"));
+        run_checked("npm run verify:zenuml-candidate", &mut npm_cmd)?;
     }
 
     println!("\n== cargo nextest ==");

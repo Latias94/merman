@@ -172,10 +172,10 @@ test("response rejects identity drift, adapter totals, malformed trace, and SVG 
       ...response,
       trace: {
         ...response.trace,
-        safe_svg_ready: 30_010,
-        dom_inserted: 30_010,
-        layout_box_ready: 30_010,
-        presentation_ready: 30_011,
+        budgeted_svg_ready: 30_010,
+        isolated_dom_inserted: 30_010,
+        isolated_layout_box_ready: 30_010,
+        isolated_presentation_ready: 30_011,
         sample_end: 30_011,
       },
     },
@@ -246,10 +246,10 @@ test("failure response retains a validated completed trace prefix", () => {
     version: "0.8.0-alpha.3",
     trace: {
       ...coldMermanTrace(),
-      safe_svg_ready: null,
-      dom_inserted: null,
-      layout_box_ready: null,
-      presentation_ready: null,
+      budgeted_svg_ready: null,
+      isolated_dom_inserted: null,
+      isolated_layout_box_ready: null,
+      isolated_presentation_ready: null,
       sample_end: 9,
     },
   } as Record<string, unknown>;
@@ -280,10 +280,10 @@ test("non-timeout failures cannot hide an over-budget active stage", () => {
   const request = sampleRequest();
   const response = failureFromSuccess("render", {
     ...coldMermanTrace(),
-    safe_svg_ready: null,
-    dom_inserted: null,
-    layout_box_ready: null,
-    presentation_ready: null,
+    budgeted_svg_ready: null,
+    isolated_dom_inserted: null,
+    isolated_layout_box_ready: null,
+    isolated_presentation_ready: null,
     sample_end: 8 + REALM_BUDGETS.stageTimeoutMs + 1,
   });
   assert.throws(
@@ -293,7 +293,7 @@ test("non-timeout failures cannot hide an over-budget active stage", () => {
 
   const presentation = failureFromSuccess("presentation", {
     ...coldMermanTrace(),
-    presentation_ready: null,
+    isolated_presentation_ready: null,
     sample_end: 10 + REALM_BUDGETS.stageTimeoutMs + 1,
   });
   assert.throws(
@@ -306,10 +306,10 @@ test("timeout failures still obey the whole-run budget", () => {
   const request = sampleRequest();
   const response = failureFromSuccess("timeout", {
     ...coldMermanTrace(),
-    safe_svg_ready: null,
-    dom_inserted: null,
-    layout_box_ready: null,
-    presentation_ready: null,
+    budgeted_svg_ready: null,
+    isolated_dom_inserted: null,
+    isolated_layout_box_ready: null,
+    isolated_presentation_ready: null,
     sample_end: REALM_BUDGETS.runTimeoutMs + 1,
   });
   assert.throws(
@@ -357,7 +357,7 @@ function baseSampleRequest() {
       configJson: "{}",
       theme: "default",
       diagramFont: "trebuchet" as const,
-      externalRequirements: { elkLayouts: false, zenuml: false },
+      externalRequirements: { externalDiagrams: [], layoutModules: [] },
       viewport: { width: 800, height: 600 },
     },
   };
@@ -436,10 +436,10 @@ function coldMermanTrace() {
     initialize_start: 6,
     initialize_end: 7,
     render_start: 8,
-    safe_svg_ready: 10,
-    dom_inserted: 10.5,
-    layout_box_ready: 11,
-    presentation_ready: 12,
+    budgeted_svg_ready: 10,
+    isolated_dom_inserted: 10.5,
+    isolated_layout_box_ready: 11,
+    isolated_presentation_ready: 12,
     sample_end: 12.5,
   };
 }

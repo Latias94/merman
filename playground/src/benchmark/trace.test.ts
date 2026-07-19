@@ -49,10 +49,10 @@ test("validates and derives a realm-cold Merman trace without summing overlaps",
     resourceAcquisitionMs: 3.5,
     registrationMs: null,
     initializationMs: 1,
-    firstValidSvgMs: 10,
-    firstPresentationReadyMs: 12,
-    warmValidSvgMs: null,
-    warmPresentationReadyMs: null,
+    firstBudgetedSvgMs: 10,
+    firstIsolatedPresentationMs: 12,
+    warmBudgetedSvgMs: null,
+    warmIsolatedPresentationMs: null,
   });
 });
 
@@ -65,10 +65,10 @@ test("validates Mermaid registration while keeping resource acquisition null", (
     resourceAcquisitionMs: null,
     registrationMs: 1,
     initializationMs: 1,
-    firstValidSvgMs: 8,
-    firstPresentationReadyMs: 10,
-    warmValidSvgMs: null,
-    warmPresentationReadyMs: null,
+    firstBudgetedSvgMs: 8,
+    firstIsolatedPresentationMs: 10,
+    warmBudgetedSvgMs: null,
+    warmIsolatedPresentationMs: null,
   });
 });
 
@@ -81,10 +81,10 @@ test("warm traces exclude every acquisition and initialization phase", () => {
     resourceAcquisitionMs: null,
     registrationMs: null,
     initializationMs: null,
-    firstValidSvgMs: null,
-    firstPresentationReadyMs: null,
-    warmValidSvgMs: 2,
-    warmPresentationReadyMs: 4,
+    firstBudgetedSvgMs: null,
+    firstIsolatedPresentationMs: null,
+    warmBudgetedSvgMs: 2,
+    warmIsolatedPresentationMs: 4,
   });
 });
 
@@ -101,7 +101,7 @@ test("accepts equal adjacent offsets from a coarse monotonic clock", () => {
 
 test("rejects missing and extra serialized fields, including adapter totals", () => {
   const missing = { ...coldMermanTrace() } as Record<string, unknown>;
-  delete missing.layout_box_ready;
+  delete missing.isolated_layout_box_ready;
 
   for (const invalid of [
     missing,
@@ -118,7 +118,7 @@ test("rejects missing and extra serialized fields, including adapter totals", ()
 test("rejects negative and non-finite offsets", () => {
   for (const invalid of [
     coldMermanTrace({ render_start: -1 }),
-    coldMermanTrace({ safe_svg_ready: Number.NaN }),
+    coldMermanTrace({ budgeted_svg_ready: Number.NaN }),
     coldMermanTrace({ sample_end: Number.POSITIVE_INFINITY }),
   ]) {
     assert.throws(
@@ -146,8 +146,8 @@ test("rejects illegal pair, dependency, overlap, and render-tail order", () => {
     coldMermanTrace({ resource_acquire_start: 5.5 }),
     coldMermanTrace({ initialize_start: 5.5 }),
     coldMermanTrace({ render_start: 7.5 }),
-    coldMermanTrace({ dom_inserted: 9.5 }),
-    coldMermanTrace({ presentation_ready: 13 }),
+    coldMermanTrace({ isolated_dom_inserted: 9.5 }),
+    coldMermanTrace({ isolated_presentation_ready: 13 }),
   ]) {
     assert.throws(
       () => validateBenchmarkRawTrace(invalid, COLD_MERMAN),
@@ -160,10 +160,10 @@ test("successful traces require the complete presentation path", () => {
   assert.throws(
     () =>
       validateBenchmarkRawTrace(
-        coldMermanTrace({ presentation_ready: null }),
+        coldMermanTrace({ isolated_presentation_ready: null }),
         COLD_MERMAN
       ),
-    /requires presentation_ready/
+    /requires isolated_presentation_ready/
   );
 });
 
@@ -204,17 +204,17 @@ test("failure traces retain a completed prefix and a final sample_end", () => {
   } as const satisfies BenchmarkTraceContract;
   const trace = validateBenchmarkRawTrace(
     coldMermanTrace({
-      safe_svg_ready: null,
-      dom_inserted: null,
-      layout_box_ready: null,
-      presentation_ready: null,
+      budgeted_svg_ready: null,
+      isolated_dom_inserted: null,
+      isolated_layout_box_ready: null,
+      isolated_presentation_ready: null,
       sample_end: 9,
     }),
     contract
   );
 
   assert.equal(trace.render_start, 8);
-  assert.equal(trace.safe_svg_ready, null);
+  assert.equal(trace.budgeted_svg_ready, null);
   assert.equal(trace.sample_end, 9);
   assert.deepEqual(deriveBenchmarkIntervals(trace, contract), {
     adapterImportMs: 2,
@@ -222,10 +222,10 @@ test("failure traces retain a completed prefix and a final sample_end", () => {
     resourceAcquisitionMs: 3.5,
     registrationMs: null,
     initializationMs: 1,
-    firstValidSvgMs: null,
-    firstPresentationReadyMs: null,
-    warmValidSvgMs: null,
-    warmPresentationReadyMs: null,
+    firstBudgetedSvgMs: null,
+    firstIsolatedPresentationMs: null,
+    warmBudgetedSvgMs: null,
+    warmIsolatedPresentationMs: null,
   });
 });
 
@@ -252,9 +252,9 @@ test("recorder freezes a realm-local failure prefix and finishes once", () => {
   assert(Object.isFrozen(first));
   assert.equal(first.sample_start, 0);
   assert.equal(first.sample_end, 8);
-  assert.equal(first.safe_svg_ready, null);
+  assert.equal(first.budgeted_svg_ready, null);
   assert.strictEqual(recorder.finish(), first);
-  assert.throws(() => recorder.mark("safe_svg_ready"), /already finished/);
+  assert.throws(() => recorder.mark("budgeted_svg_ready"), /already finished/);
   assert.doesNotThrow(() =>
     validateBenchmarkRawTrace(first, {
       ...COLD_MERMAN,
@@ -312,10 +312,10 @@ test("failure trace permits one completed concurrent Merman acquisition", () => 
     initialize_start: null,
     initialize_end: null,
     render_start: null,
-    safe_svg_ready: null,
-    dom_inserted: null,
-    layout_box_ready: null,
-    presentation_ready: null,
+    budgeted_svg_ready: null,
+    isolated_dom_inserted: null,
+    isolated_layout_box_ready: null,
+    isolated_presentation_ready: null,
     sample_end: 8,
   });
   assert.doesNotThrow(() =>
@@ -345,10 +345,10 @@ function coldMermanTrace(
     initialize_start: 6,
     initialize_end: 7,
     render_start: 8,
-    safe_svg_ready: 10,
-    dom_inserted: 11,
-    layout_box_ready: 11,
-    presentation_ready: 12,
+    budgeted_svg_ready: 10,
+    isolated_dom_inserted: 11,
+    isolated_layout_box_ready: 11,
+    isolated_presentation_ready: 12,
     sample_end: 12,
     ...overrides,
   };
@@ -372,10 +372,10 @@ function coldMermaidTrace(
     initialize_start: 4.5,
     initialize_end: 5.5,
     render_start: 6,
-    safe_svg_ready: 8,
-    dom_inserted: 9,
-    layout_box_ready: 9,
-    presentation_ready: 10,
+    budgeted_svg_ready: 8,
+    isolated_dom_inserted: 9,
+    isolated_layout_box_ready: 9,
+    isolated_presentation_ready: 10,
     sample_end: 10,
     ...overrides,
   };
@@ -399,10 +399,10 @@ function warmTrace(
     initialize_start: null,
     initialize_end: null,
     render_start: 1,
-    safe_svg_ready: 3,
-    dom_inserted: 4,
-    layout_box_ready: 4,
-    presentation_ready: 5,
+    budgeted_svg_ready: 3,
+    isolated_dom_inserted: 4,
+    isolated_layout_box_ready: 4,
+    isolated_presentation_ready: 5,
     sample_end: 5,
     ...overrides,
   };

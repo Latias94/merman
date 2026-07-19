@@ -32,7 +32,7 @@ export type BenchmarkFailureStage =
   | "register"
   | "initialize"
   | "render"
-  | "svg-validation"
+  | "svg-budget"
   | "presentation"
   | "protocol"
   | "timeout"
@@ -136,7 +136,7 @@ const FAILURE_STAGES = new Set<BenchmarkFailureStage>([
   "register",
   "initialize",
   "render",
-  "svg-validation",
+  "svg-budget",
   "presentation",
   "protocol",
   "timeout",
@@ -472,8 +472,8 @@ function assertFailureStageMatchesTrace(
       forbidAfter("render_start");
       return;
     case "render":
-    case "svg-validation":
-      if (trace.render_start === null || trace.safe_svg_ready !== null) {
+    case "svg-budget":
+      if (trace.render_start === null || trace.budgeted_svg_ready !== null) {
         throw new RealmProtocolError(
           `Benchmark ${stage} failure has an invalid render prefix.`
         );
@@ -481,8 +481,8 @@ function assertFailureStageMatchesTrace(
       return;
     case "presentation":
       if (
-        trace.safe_svg_ready === null ||
-        trace.presentation_ready !== null
+        trace.budgeted_svg_ready === null ||
+        trace.isolated_presentation_ready !== null
       ) {
         throw new RealmProtocolError(
           "Benchmark presentation failure has an invalid presentation prefix."
@@ -511,8 +511,8 @@ function assertTraceTimeBudget(
     [trace.resource_acquire_start, trace.resource_acquire_end],
     [trace.register_start, trace.register_end],
     [trace.initialize_start, trace.initialize_end],
-    [trace.render_start, trace.safe_svg_ready],
-    [trace.safe_svg_ready, trace.presentation_ready],
+    [trace.render_start, trace.budgeted_svg_ready],
+    [trace.budgeted_svg_ready, trace.isolated_presentation_ready],
   ];
   if (
     spans.some(
@@ -526,8 +526,8 @@ function assertTraceTimeBudget(
   }
 
   const activeSpans: readonly (readonly [number | null, number | null])[] = [
-    [trace.render_start, trace.safe_svg_ready],
-    [trace.safe_svg_ready, trace.presentation_ready],
+    [trace.render_start, trace.budgeted_svg_ready],
+    [trace.budgeted_svg_ready, trace.isolated_presentation_ready],
   ];
   if (
     activeSpans.some(

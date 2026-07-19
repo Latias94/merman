@@ -1,4 +1,3 @@
-import mermanWasmUrl from "@mermanjs/web/pkg/merman_wasm_bg.wasm?url";
 import type {
   MermanWasmModule,
   SvgBindingOptions,
@@ -18,7 +17,8 @@ import {
 } from "../engine.ts";
 
 export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
-  async initialize({ mark, payload }) {
+  async initialize({ mark, payload, resourceUrl }) {
+    const wasmUrl = validateMermanWasmUrl(resourceUrl);
     mark("engine_import_start");
     const webPromise = import("@mermanjs/web");
     const shimPromise = import("@mermanjs/web/pkg/merman_wasm.js");
@@ -36,7 +36,7 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
       "resource-acquire",
       async () => {
         const response = await fetch(
-          new URL(mermanWasmUrl, window.location.href),
+          wasmUrl,
           { cache: "default" }
         );
         validateWasmResponse(response);
@@ -108,6 +108,26 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
     };
   },
 };
+
+function validateMermanWasmUrl(value: string | null): URL {
+  if (!value) {
+    throw new BenchmarkEngineError(
+      "resource-acquire",
+      "Merman benchmark has no WASM resource URL."
+    );
+  }
+  const url = new URL(value, window.location.href);
+  if (
+    url.origin !== window.location.origin ||
+    !/\/merman_wasm_bg(?:-[\w-]+)?\.wasm$/u.test(url.pathname)
+  ) {
+    throw new BenchmarkEngineError(
+      "resource-acquire",
+      "Merman benchmark WASM resource URL is invalid."
+    );
+  }
+  return url;
+}
 
 function bindingOptions(diagramFont: DiagramFont): string {
   const fontFamily = diagramFontStack(diagramFont);

@@ -9,6 +9,7 @@ import {
   validateRealmReady,
   validateRealmViewport,
   type RealmBootIdentity,
+  type RealmEngineArtifact,
   type RealmIdentity,
   type RealmKind,
   type RealmViewport,
@@ -22,35 +23,48 @@ export interface AuthenticatedBrowserRealmChannel {
   setViewport(viewport: RealmViewport): Promise<void>;
 }
 
-export interface BrowserRealmChannelOptions {
+interface BrowserRealmChannelBaseOptions {
+  readonly engineArtifact: RealmEngineArtifact;
   readonly handshakeTimeoutMs?: number;
   readonly initialViewport: RealmViewport;
   readonly kind: RealmKind;
   readonly label: string;
   readonly onFailure: (error: Error) => void;
-  readonly realmUrl: URL;
   readonly signal: AbortSignal;
   readonly title: string;
 }
 
+export type BrowserRealmChannelOptions = BrowserRealmChannelBaseOptions &
+  (
+    | {
+        readonly createRealmDocument: (identity: RealmBootIdentity) => string;
+        readonly realmUrl?: never;
+      }
+    | {
+        readonly createRealmDocument?: never;
+        readonly realmUrl: URL;
+      }
+  );
+
 /**
- * Creates an attached same-origin realm and returns only after its transferred
- * MessagePort has authenticated the peer. Operation messages remain owned by
- * the consumer so this transport cannot accidentally couple realm protocols.
+ * Creates an authenticated execution realm. Generated documents use an
+ * opaque origin and bind authentication to the exact child window, one boot
+ * nonce, and the only transferred MessagePort. Trusted local documents keep
+ * their same-origin URL while using the same closed transport.
  */
-export async function createAuthenticatedBrowserRealmChannel({
-  handshakeTimeoutMs = REALM_BUDGETS.stageTimeoutMs,
-  initialViewport,
-  kind,
-  label,
-  onFailure,
-  realmUrl,
-  signal,
-  title,
-}: BrowserRealmChannelOptions): Promise<AuthenticatedBrowserRealmChannel> {
-  if (realmUrl.origin !== window.location.origin) {
-    throw new RealmProtocolError(`${label} must use a same-origin URL.`);
-  }
+export async function createAuthenticatedBrowserRealmChannel(
+  options: BrowserRealmChannelOptions
+): Promise<AuthenticatedBrowserRealmChannel> {
+  const {
+    handshakeTimeoutMs = REALM_BUDGETS.stageTimeoutMs,
+    engineArtifact,
+    initialViewport,
+    kind,
+    label,
+    onFailure,
+    signal,
+    title,
+  } = options;
   if (!Number.isFinite(handshakeTimeoutMs) || handshakeTimeoutMs <= 0) {
     throw new RealmProtocolError(`${label} handshake timeout is invalid.`);
   }
@@ -66,24 +80,40 @@ export async function createAuthenticatedBrowserRealmChannel({
     realmId: boot.realmId,
     realmToken: createRealmToken(),
   };
-  const frameUrl = new URL(realmUrl.href);
-  frameUrl.hash = new URLSearchParams({
-    protocol: String(REALM_PROTOCOL_VERSION),
-    kind,
-    realm: boot.realmId,
-    boot: boot.bootNonce,
-  }).toString();
+  const createRealmDocument = options.createRealmDocument;
+  const opaque = typeof createRealmDocument === "function";
+  let srcdoc: string | null = null;
+  let frameUrl: URL | null = null;
+  if (opaque) {
+    srcdoc = createRealmDocument(boot);
+    if (typeof srcdoc !== "string" || srcdoc.length === 0) {
+      throw new RealmProtocolError(`${label} document is unavailable.`);
+    }
+  } else {
+    const realmUrl = options.realmUrl;
+    if (!realmUrl || realmUrl.origin !== window.location.origin) {
+      throw new RealmProtocolError(`${label} must use a same-origin URL.`);
+    }
+    frameUrl = new URL(realmUrl.href);
+    frameUrl.hash = new URLSearchParams({
+      protocol: String(REALM_PROTOCOL_VERSION),
+      kind,
+      realm: boot.realmId,
+      boot: boot.bootNonce,
+    }).toString();
+  }
 
-  const iframe = createRealmFrame(kind, title, viewport);
+  const iframe = createRealmFrame(kind, title, viewport, opaque);
   const messageChannel = new MessageChannel();
   const port = messageChannel.port1;
   let transferredPort: MessagePort | null = messageChannel.port2;
   let state: "handshaking" | "ready" | "disposed" = "handshaking";
-  let confirmedViewport: RealmViewport | null = null;
   let iframeLoadCount = 0;
   let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
   let rejectHandshake: ((error: unknown) => void) | null = null;
+  let resolveHandshake: (() => void) | null = null;
   let terminalFailure: Error | null = null;
+  const isReady = () => state === "ready";
 
   const cleanupHandshake = () => {
     window.removeEventListener("message", onHello);
@@ -104,11 +134,10 @@ export async function createAuthenticatedBrowserRealmChannel({
     transferredPort = null;
     iframe.remove();
   };
-  const asError = (error: unknown): Error =>
-    error instanceof Error ? error : new RealmProtocolError(String(error));
   const fail = (error: unknown) => {
     if (state === "disposed") return;
-    const failure = asError(error);
+    const failure =
+      error instanceof Error ? error : new RealmProtocolError(String(error));
     const wasHandshaking = state === "handshaking";
     terminalFailure = failure;
     state = "disposed";
@@ -124,29 +153,23 @@ export async function createAuthenticatedBrowserRealmChannel({
     state = "disposed";
     closeTransport();
   };
-  const isReady = () => state === "ready";
-  const poison = (error: unknown) => fail(error);
-  const onAbort = () => {
+  const onAbort = () =>
     fail(new DOMException(`${label} handshake was aborted.`, "AbortError"));
-  };
-  const onIframeError = () => {
+  const onIframeError = () =>
     fail(new RealmProtocolError(`${label} iframe failed to load.`));
-  };
   const onIframeLoad = () => {
     iframeLoadCount += 1;
     if (iframeLoadCount > 1) {
       fail(new RealmProtocolError(`${label} navigated after handshake.`));
     }
   };
-  const onPortMessageError = () => {
+  const onPortMessageError = () =>
     fail(new RealmProtocolError(`${label} response could not be cloned.`));
-  };
   const onReady = (event: MessageEvent) => {
     if (state !== "handshaking") return;
     try {
       const message = validateRealmReady(event.data, identity);
       assertMatchingViewport(message.viewport, viewport, label);
-      confirmedViewport = viewport;
       state = "ready";
       rejectHandshake = null;
       port.removeEventListener("message", onReady);
@@ -160,14 +183,17 @@ export async function createAuthenticatedBrowserRealmChannel({
   const onHello = (event: MessageEvent) => {
     if (
       state !== "handshaking" ||
-      event.origin !== frameUrl.origin ||
+      event.origin !== (opaque ? "null" : frameUrl?.origin) ||
       event.source !== iframe.contentWindow ||
       !isRealmMessageType(event.data, "realm-hello")
     ) {
       return;
     }
     try {
-      if (iframe.contentWindow?.location.pathname !== frameUrl.pathname) {
+      if (
+        frameUrl &&
+        iframe.contentWindow?.location.pathname !== frameUrl.pathname
+      ) {
         throw new RealmProtocolError(`${label} loaded an unexpected path.`);
       }
       validateRealmHello(event.data, boot);
@@ -177,25 +203,22 @@ export async function createAuthenticatedBrowserRealmChannel({
         protocol: REALM_PROTOCOL_VERSION,
         ...boot,
         realmToken: identity.realmToken,
+        engineArtifact,
       };
       assertEncodedMessageBudget(init);
       const peer = transferredPort;
-      if (!peer) {
-        throw new RealmProtocolError(`${label} INIT was replayed.`);
-      }
+      if (!peer) throw new RealmProtocolError(`${label} INIT was replayed.`);
       transferredPort = null;
-      iframe.contentWindow?.postMessage(init, frameUrl.origin, [peer]);
+      iframe.contentWindow?.postMessage(init, frameUrl?.origin ?? "*", [peer]);
     } catch (error) {
       fail(error);
     }
   };
 
-  let resolveHandshake: (() => void) | null = null;
   const readyPromise = new Promise<void>((resolve, reject) => {
     resolveHandshake = resolve;
     rejectHandshake = reject;
   });
-
   window.addEventListener("message", onHello);
   iframe.addEventListener("error", onIframeError);
   iframe.addEventListener("load", onIframeLoad);
@@ -203,14 +226,16 @@ export async function createAuthenticatedBrowserRealmChannel({
   port.addEventListener("messageerror", onPortMessageError);
   port.start();
   signal.addEventListener("abort", onAbort, { once: true });
-  handshakeTimer = setTimeout(() => {
-    fail(new RealmProtocolError(`${label} handshake timed out.`));
-  }, handshakeTimeoutMs);
+  handshakeTimer = setTimeout(
+    () => fail(new RealmProtocolError(`${label} handshake timed out.`)),
+    handshakeTimeoutMs
+  );
   try {
     if (!document.body) {
       throw new RealmProtocolError(`${label} has no document body host.`);
     }
-    iframe.src = frameUrl.href;
+    if (srcdoc !== null) iframe.srcdoc = srcdoc;
+    else if (frameUrl) iframe.src = frameUrl.href;
     document.body.appendChild(iframe);
   } catch (error) {
     fail(error);
@@ -229,29 +254,18 @@ export async function createAuthenticatedBrowserRealmChannel({
     identity,
     port,
     dispose,
-    poison,
+    poison: fail,
     async setViewport(nextViewport) {
       const normalized = validateRealmViewport(nextViewport);
       if (state !== "ready" || !iframe.isConnected || !iframe.contentWindow) {
         throw new RealmProtocolError(`${label} viewport host is unavailable.`);
       }
-      if (!sameViewport(confirmedViewport, normalized)) {
-        applyViewport(iframe, normalized);
-        await nextAnimationFrame();
-        await nextAnimationFrame();
-      }
+      applyViewport(iframe, normalized);
+      await nextAnimationFrame();
+      await nextAnimationFrame();
       if (state !== "ready" || !iframe.isConnected || !iframe.contentWindow) {
         throw new RealmProtocolError(`${label} viewport host is unavailable.`);
       }
-      assertMatchingViewport(
-        {
-          width: iframe.contentWindow.innerWidth,
-          height: iframe.contentWindow.innerHeight,
-        },
-        normalized,
-        label
-      );
-      confirmedViewport = normalized;
     },
   };
 }
@@ -259,30 +273,38 @@ export async function createAuthenticatedBrowserRealmChannel({
 function createRealmFrame(
   kind: RealmKind,
   title: string,
-  viewport: RealmViewport
+  viewport: RealmViewport,
+  opaque: boolean
 ): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
   iframe.dataset.mermanRealm = kind;
+  if (opaque) iframe.setAttribute("sandbox", "allow-scripts");
+  iframe.setAttribute("referrerpolicy", "no-referrer");
   iframe.setAttribute("aria-hidden", "true");
   iframe.setAttribute("inert", "");
   iframe.tabIndex = -1;
   iframe.title = title;
   iframe.style.position = "fixed";
-  iframe.style.left = "-10000px";
+  iframe.style.left = "0";
   iframe.style.top = "0";
   iframe.style.border = "0";
   iframe.style.display = "block";
   iframe.style.visibility = "visible";
-  iframe.style.opacity = "0";
+  iframe.style.opacity = "1";
   iframe.style.pointerEvents = "none";
   iframe.style.contentVisibility = "visible";
+  iframe.style.transformOrigin = "top left";
+  iframe.style.zIndex = "-1";
   applyViewport(iframe, viewport);
   return iframe;
 }
 
 function applyViewport(iframe: HTMLIFrameElement, viewport: RealmViewport) {
-  iframe.style.width = `${Math.round(viewport.width)}px`;
-  iframe.style.height = `${Math.round(viewport.height)}px`;
+  const width = Math.round(viewport.width);
+  const height = Math.round(viewport.height);
+  iframe.style.width = `${width}px`;
+  iframe.style.height = `${height}px`;
+  iframe.style.transform = `scale(${1 / Math.max(width, height)})`;
 }
 
 function assertMatchingViewport(
@@ -296,17 +318,6 @@ function assertMatchingViewport(
   ) {
     throw new RealmProtocolError(`${label} viewport does not match its host.`);
   }
-}
-
-function sameViewport(
-  left: RealmViewport | null,
-  right: RealmViewport
-): boolean {
-  return (
-    left !== null &&
-    left.width === right.width &&
-    left.height === right.height
-  );
 }
 
 function nextAnimationFrame(): Promise<void> {

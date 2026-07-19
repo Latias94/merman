@@ -60,7 +60,7 @@ const STAGE_START_EVENTS = Object.freeze({
   register_start: "register",
   initialize_start: "initialize",
   render_start: "render",
-  safe_svg_ready: "presentation",
+  budgeted_svg_ready: "presentation",
 } as const satisfies Partial<Record<BenchmarkTraceMark, BenchmarkFailureStage>>);
 
 const STAGE_END_EVENTS = Object.freeze({
@@ -70,18 +70,18 @@ const STAGE_END_EVENTS = Object.freeze({
   resource_acquire_end: "resource-acquire",
   register_end: "register",
   initialize_end: "initialize",
-  safe_svg_ready: "render",
-  presentation_ready: "presentation",
+  budgeted_svg_ready: "render",
+  isolated_presentation_ready: "presentation",
 } as const satisfies Partial<Record<BenchmarkTraceMark, BenchmarkFailureStage>>);
 
 const WARM_PROGRESS = Object.freeze([
   "fonts_wait_start",
   "fonts_wait_end",
   "render_start",
-  "safe_svg_ready",
-  "dom_inserted",
-  "layout_box_ready",
-  "presentation_ready",
+  "budgeted_svg_ready",
+  "isolated_dom_inserted",
+  "isolated_layout_box_ready",
+  "isolated_presentation_ready",
 ] as const satisfies readonly BenchmarkTraceMark[]);
 
 const COLD_COMMON_PROGRESS = Object.freeze([
@@ -233,17 +233,17 @@ export function createBenchmarkProgressGate(
           requireSeen(event, "fonts_wait_end");
           if (isCold) requireSeen(event, "initialize_end");
           break;
-        case "safe_svg_ready":
+        case "budgeted_svg_ready":
           requireSeen(event, "render_start");
           break;
-        case "dom_inserted":
-          requireSeen(event, "safe_svg_ready");
+        case "isolated_dom_inserted":
+          requireSeen(event, "budgeted_svg_ready");
           break;
-        case "layout_box_ready":
-          requireSeen(event, "dom_inserted");
+        case "isolated_layout_box_ready":
+          requireSeen(event, "isolated_dom_inserted");
           break;
-        case "presentation_ready":
-          requireSeen(event, "layout_box_ready");
+        case "isolated_presentation_ready":
+          requireSeen(event, "isolated_layout_box_ready");
           break;
       }
 

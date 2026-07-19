@@ -1,5 +1,4 @@
 import type { Mermaid, MermaidConfig } from "mermaid";
-import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
 
 import {
   buildMermaidConfig,
@@ -7,8 +6,8 @@ import {
 } from "../../../lib/mermaid-config.ts";
 import {
   MERMAID_JS_VERSION,
-  type MermaidExternalRequirements,
 } from "../../mermaid-requirements.ts";
+import { mermaidExternalModuleRegistrar } from "../../external-module-registrar.ts";
 import {
   assertRealmSourceBudget,
   assertRealmSvgBudget,
@@ -34,14 +33,7 @@ export class MermaidEngineError extends Error {
   }
 }
 
-const EXTERNAL_DIAGRAM_LOAD_ERROR = /^Failed to load \d+ external diagrams$/;
-
 let mermaidPromise: Promise<Mermaid> | null = null;
-let zenumlPromise: Promise<Awaited<ReturnType<typeof importZenUml>>> | null = null;
-let elkLayoutsPromise: Promise<Awaited<ReturnType<typeof importElkLayouts>>> | null =
-  null;
-let registeredZenUml: Mermaid | null = null;
-let registeredElkLayouts: Mermaid | null = null;
 let renderSequence = 0;
 
 export async function renderWithMermaid(
@@ -52,7 +44,10 @@ export async function renderWithMermaid(
   const operationStartedAt = performance.now();
   const mermaid = await runStage("load", onStage, loadMermaid);
   await runStage("register", onStage, () =>
-    registerExternalRequirements(mermaid, input.externalRequirements)
+    mermaidExternalModuleRegistrar.register(
+      mermaid,
+      input.externalRequirements
+    )
   );
   const config = await runStage("initialize", onStage, async () => {
     const config = buildMermaidConfig(input.configJson, input.theme, {
@@ -74,40 +69,24 @@ export async function renderWithMermaid(
   try {
     result = await mermaid.render(nextRenderId(), configuredSource);
   } catch (error) {
-    if (
-      !input.externalRequirements.zenuml ||
-      !(error instanceof Error) ||
-      !EXTERNAL_DIAGRAM_LOAD_ERROR.test(error.message)
-    ) {
-      throw new MermaidEngineError("render", error);
-    }
-    await runStage("zenuml-recovery", onStage, async () => {
-      registeredZenUml = null;
-      await ensureZenUmlRegistered(mermaid);
-    });
-    try {
-      result = await mermaid.render(nextRenderId(), configuredSource);
-    } catch (retryError) {
-      throw new MermaidEngineError("zenuml-recovery", retryError);
-    }
+    throw new MermaidEngineError("render", error);
   }
 
   const svg = result.svg;
-  await runStage("svg-validation", onStage, async () => {
+  await runStage("svg-budget", onStage, async () => {
     assertRealmSvgBudget(svg);
-    assertSafeSvgForDom(svg);
   });
-  const safeSvgReadyAt = performance.now();
+  const budgetedSvgReadyAt = performance.now();
   const presentationReadyAt = await runStage(
     "presentation",
     onStage,
-    () => presentSafeSvg(presentationHost, svg)
+    () => presentIsolatedSvg(presentationHost, svg)
   );
 
   return {
     svg,
     prepareTimeMs: renderStartedAt - operationStartedAt,
-    renderTimeMs: safeSvgReadyAt - renderStartedAt,
+    renderTimeMs: budgetedSvgReadyAt - renderStartedAt,
     presentationTimeMs: presentationReadyAt - operationStartedAt,
     version: MERMAID_JS_VERSION,
   };
@@ -121,43 +100,6 @@ async function loadMermaid(): Promise<Mermaid> {
       throw error;
     });
   return mermaidPromise;
-}
-
-async function registerExternalRequirements(
-  mermaid: Mermaid,
-  requirements: MermaidExternalRequirements
-): Promise<void> {
-  if (requirements.elkLayouts && registeredElkLayouts !== mermaid) {
-    elkLayoutsPromise ??= importElkLayouts().catch((error) => {
-      elkLayoutsPromise = null;
-      throw error;
-    });
-    mermaid.registerLayoutLoaders(await elkLayoutsPromise);
-    registeredElkLayouts = mermaid;
-  }
-  if (requirements.zenuml) {
-    await ensureZenUmlRegistered(mermaid);
-  }
-}
-
-async function ensureZenUmlRegistered(mermaid: Mermaid): Promise<void> {
-  if (registeredZenUml === mermaid) return;
-  zenumlPromise ??= importZenUml().catch((error) => {
-    zenumlPromise = null;
-    throw error;
-  });
-  await mermaid.registerExternalDiagrams([await zenumlPromise], {
-    lazyLoad: true,
-  });
-  registeredZenUml = mermaid;
-}
-
-async function importZenUml() {
-  return (await import("@mermaid-js/mermaid-zenuml")).default;
-}
-
-async function importElkLayouts() {
-  return (await import("@mermaid-js/layout-elk")).default;
 }
 
 async function runStage<T>(
@@ -179,7 +121,10 @@ function nextRenderId(): string {
   return `merman-realm-mermaid-${renderSequence}`;
 }
 
-async function presentSafeSvg(host: HTMLElement, svg: string): Promise<number> {
+async function presentIsolatedSvg(
+  host: HTMLElement,
+  svg: string
+): Promise<number> {
   try {
     host.innerHTML = svg;
     const element = host.querySelector("svg");

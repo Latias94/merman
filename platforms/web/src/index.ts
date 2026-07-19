@@ -813,6 +813,7 @@ export function analysisFacts(
 
 const unavailableDiagramDetectionFacts: DiagramDetectionFacts = Object.freeze({
   status: "unavailable",
+  validity: "unknown",
   diagramType: null,
   syntaxId: null,
   effectiveLayoutId: null,
@@ -824,7 +825,11 @@ export function detectDiagramFacts(
 ): DiagramDetectionFacts {
   try {
     const facts: unknown = analysisFacts(source, options);
-    if (!isRecord(facts) || facts.version !== 1 || facts.valid !== true) {
+    if (
+      !isRecord(facts) ||
+      facts.version !== 1 ||
+      typeof facts.valid !== "boolean"
+    ) {
       return unavailableDiagramDetectionFacts;
     }
 
@@ -856,6 +861,7 @@ export function detectDiagramFacts(
 
     return Object.freeze({
       status: "available",
+      validity: facts.valid ? "valid" : "recoverable-invalid",
       diagramType,
       syntaxId,
       effectiveLayoutId,

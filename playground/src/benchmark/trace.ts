@@ -15,10 +15,10 @@ export const BENCHMARK_TRACE_EVENT_NAMES = Object.freeze([
   "initialize_start",
   "initialize_end",
   "render_start",
-  "safe_svg_ready",
-  "dom_inserted",
-  "layout_box_ready",
-  "presentation_ready",
+  "budgeted_svg_ready",
+  "isolated_dom_inserted",
+  "isolated_layout_box_ready",
+  "isolated_presentation_ready",
   "sample_end",
 ] as const);
 
@@ -51,10 +51,10 @@ export interface BenchmarkRawTrace {
   readonly initialize_start: number | null;
   readonly initialize_end: number | null;
   readonly render_start: number | null;
-  readonly safe_svg_ready: number | null;
-  readonly dom_inserted: number | null;
-  readonly layout_box_ready: number | null;
-  readonly presentation_ready: number | null;
+  readonly budgeted_svg_ready: number | null;
+  readonly isolated_dom_inserted: number | null;
+  readonly isolated_layout_box_ready: number | null;
+  readonly isolated_presentation_ready: number | null;
   readonly sample_end: number;
 }
 
@@ -70,10 +70,10 @@ export interface BenchmarkDerivedIntervals {
   readonly resourceAcquisitionMs: number | null;
   readonly registrationMs: number | null;
   readonly initializationMs: number | null;
-  readonly firstValidSvgMs: number | null;
-  readonly firstPresentationReadyMs: number | null;
-  readonly warmValidSvgMs: number | null;
-  readonly warmPresentationReadyMs: number | null;
+  readonly firstBudgetedSvgMs: number | null;
+  readonly firstIsolatedPresentationMs: number | null;
+  readonly warmBudgetedSvgMs: number | null;
+  readonly warmIsolatedPresentationMs: number | null;
 }
 
 export interface BenchmarkTraceRecorder {
@@ -270,15 +270,15 @@ export function validateBenchmarkRawTrace(
     ),
     initialize_end: expectOffset(record.initialize_end, "initialize_end"),
     render_start: expectOffset(record.render_start, "render_start"),
-    safe_svg_ready: expectOffset(record.safe_svg_ready, "safe_svg_ready"),
-    dom_inserted: expectOffset(record.dom_inserted, "dom_inserted"),
-    layout_box_ready: expectOffset(
-      record.layout_box_ready,
-      "layout_box_ready"
+    budgeted_svg_ready: expectOffset(record.budgeted_svg_ready, "budgeted_svg_ready"),
+    isolated_dom_inserted: expectOffset(record.isolated_dom_inserted, "isolated_dom_inserted"),
+    isolated_layout_box_ready: expectOffset(
+      record.isolated_layout_box_ready,
+      "isolated_layout_box_ready"
     ),
-    presentation_ready: expectOffset(
-      record.presentation_ready,
-      "presentation_ready"
+    isolated_presentation_ready: expectOffset(
+      record.isolated_presentation_ready,
+      "isolated_presentation_ready"
     ),
     sample_end: sampleEnd,
   } satisfies BenchmarkRawTrace);
@@ -336,25 +336,25 @@ export function deriveBenchmarkIntervals(
       trace.initialize_start,
       trace.initialize_end
     ),
-    firstValidSvgMs:
-      mode === "realm-cold" && trace.safe_svg_ready !== null
-        ? trace.safe_svg_ready - trace.sample_start
+    firstBudgetedSvgMs:
+      mode === "realm-cold" && trace.budgeted_svg_ready !== null
+        ? trace.budgeted_svg_ready - trace.sample_start
         : null,
-    firstPresentationReadyMs:
-      mode === "realm-cold" && trace.presentation_ready !== null
-        ? trace.presentation_ready - trace.sample_start
+    firstIsolatedPresentationMs:
+      mode === "realm-cold" && trace.isolated_presentation_ready !== null
+        ? trace.isolated_presentation_ready - trace.sample_start
         : null,
-    warmValidSvgMs:
+    warmBudgetedSvgMs:
       mode === "warm" &&
       trace.render_start !== null &&
-      trace.safe_svg_ready !== null
-        ? trace.safe_svg_ready - trace.render_start
+      trace.budgeted_svg_ready !== null
+        ? trace.budgeted_svg_ready - trace.render_start
         : null,
-    warmPresentationReadyMs:
+    warmIsolatedPresentationMs:
       mode === "warm" &&
       trace.render_start !== null &&
-      trace.presentation_ready !== null
-        ? trace.presentation_ready - trace.render_start
+      trace.isolated_presentation_ready !== null
+        ? trace.isolated_presentation_ready - trace.render_start
         : null,
   });
 }
@@ -486,10 +486,10 @@ function assertRenderPath(
 
   const points = [
     ["render_start", trace.render_start],
-    ["safe_svg_ready", trace.safe_svg_ready],
-    ["dom_inserted", trace.dom_inserted],
-    ["layout_box_ready", trace.layout_box_ready],
-    ["presentation_ready", trace.presentation_ready],
+    ["budgeted_svg_ready", trace.budgeted_svg_ready],
+    ["isolated_dom_inserted", trace.isolated_dom_inserted],
+    ["isolated_layout_box_ready", trace.isolated_layout_box_ready],
+    ["isolated_presentation_ready", trace.isolated_presentation_ready],
   ] as const;
 
   for (let index = 1; index < points.length; index += 1) {
@@ -700,10 +700,10 @@ function createEmptyEventVector(): MutableEventVector {
     initialize_start: null,
     initialize_end: null,
     render_start: null,
-    safe_svg_ready: null,
-    dom_inserted: null,
-    layout_box_ready: null,
-    presentation_ready: null,
+    budgeted_svg_ready: null,
+    isolated_dom_inserted: null,
+    isolated_layout_box_ready: null,
+    isolated_presentation_ready: null,
     sample_end: null,
   };
 }
@@ -728,10 +728,10 @@ function freezeTrace(events: MutableEventVector): BenchmarkRawTrace {
     initialize_start: events.initialize_start,
     initialize_end: events.initialize_end,
     render_start: events.render_start,
-    safe_svg_ready: events.safe_svg_ready,
-    dom_inserted: events.dom_inserted,
-    layout_box_ready: events.layout_box_ready,
-    presentation_ready: events.presentation_ready,
+    budgeted_svg_ready: events.budgeted_svg_ready,
+    isolated_dom_inserted: events.isolated_dom_inserted,
+    isolated_layout_box_ready: events.isolated_layout_box_ready,
+    isolated_presentation_ready: events.isolated_presentation_ready,
     sample_end: sampleEnd,
   });
 }

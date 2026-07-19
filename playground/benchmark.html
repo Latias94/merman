@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Merman Benchmark Realm</title>
+    <title>Merman Isolated Benchmark Runtime</title>
   </head>
   <body>
     <div id="presentation-host" aria-hidden="true"></div>
-    <script type="module" src="/src/benchmark/realm/bootstrap.ts"></script>
+    <script type="module" src="/src/benchmark/realm/trusted-merman-entry.ts"></script>
   </body>
 </html>

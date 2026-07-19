@@ -4,12 +4,11 @@ use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use crate::cmd::{MERMAID_SOURCE_COMMIT, MERMAID_SOURCE_TAG, PINNED_MERMAID_VERSION};
 use crate::util::{is_canonical_sha256, sha256_hex};
 
 pub(crate) const MANIFEST_RELATIVE_PATH: &str = "fixtures/_upstream/cypress-11.16.0/_manifest.json";
 const SCHEMA_VERSION: u32 = 1;
-const MERMAID_VERSION: &str = "11.16.0";
-const MERMAID_SOURCE_COMMIT: &str = "7c0cafcf42e76bfaf79d0cbbd12edb986612f014";
 const SCOPE_DESCRIPTION: &str = "Mermaid 11.16 new-family Cypress render calls";
 const PINNED_SOURCE_SPECS: &[(&str, usize)] = &[
     (
@@ -473,9 +472,9 @@ fn validate_pinned_manifest_contract(
             manifest.schema_version
         ));
     }
-    if manifest.mermaid_version != MERMAID_VERSION {
+    if manifest.mermaid_version != PINNED_MERMAID_VERSION {
         failures.push(format!(
-            "Cypress corpus manifest Mermaid version must be {MERMAID_VERSION}, found {}",
+            "Cypress corpus manifest Mermaid version must be {PINNED_MERMAID_VERSION}, found {}",
             manifest.mermaid_version
         ));
     }
@@ -515,7 +514,7 @@ fn validate_pinned_manifest_contract(
             let lock_commit = pinned
                 .and_then(|repo| repo.get("commit"))
                 .and_then(serde_json::Value::as_str);
-            if lock_ref != Some("mermaid@11.16.0") || lock_commit != Some(MERMAID_SOURCE_COMMIT) {
+            if lock_ref != Some(MERMAID_SOURCE_TAG) || lock_commit != Some(MERMAID_SOURCE_COMMIT) {
                 failures.push(format!(
                     "Cypress corpus manifest pin disagrees with {}",
                     lock_path.display()

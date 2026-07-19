@@ -64,16 +64,16 @@
   },
   "bench": {
     "title": "浏览器基准测试",
-    "description": "在隔离浏览器 realm 中平衡测量 Merman 与 Mermaid。Realm-cold 与网络缓存状态分别记录。",
+    "description": "在彼此隔离的浏览器运行环境中平衡测量 Merman 与 Mermaid。全新运行环境可能复用 HTTP 缓存；缓存观察会单独报告。",
     "close": "关闭基准测试",
     "engines": "引擎",
     "mode": "测量模式",
     "modes": {
-      "realm-cold": "Realm 冷启动",
-      "warm": "热渲染"
+      "realm-cold": "全新运行环境",
+      "warm": "复用运行环境"
     },
-    "realmColdDescription": "每个引擎样本使用新的 iframe 与模块映射；HTTP 缓存观察作为独立证据记录。",
-    "warmDescription": "两个引擎分别保留一个隔离 realm，并执行等量的真实源码预热。",
+    "realmColdDescription": "每个测量样本都会重建独立 iframe 与模块状态。主结果使用同一个父页面时钟，从样本派发计至严格 SVG 验证；启动成本与 HTTP 缓存观察仍单独报告。",
+    "warmDescription": "每个引擎保留各自独立的 iframe，经过等量真实源码预热后重复测量，并统一截止到父页面的严格 SVG 边界。",
     "iterations": "测量区块",
     "warmups": "每个引擎的预热次数",
     "run": "运行",
@@ -85,15 +85,17 @@
     "empty": "请先输入 Mermaid 代码",
     "stale": "源码已变化",
     "staleDescription": "本次运行继续使用冻结的源码和选项；基准测试释放实时渲染协调器后，编辑器的最新内容会重新渲染。",
-    "preparing": "正在暂停实时渲染并准备隔离 realm",
+    "preparing": "正在暂停实时渲染并准备独立运行环境",
     "progress": "基准测试进度",
     "sampleProgress": "已完成 {{completed}} / {{total}} 个操作",
     "block": "区块 {{block}}",
     "frozenSource": "冻结源码",
     "versions": "包版本",
     "resourceBounds": "源码 / SVG 限制",
-    "presentationReady": "可呈现结果",
+    "presentationReady": "严格验证的可发布 SVG",
     "statistics": "描述统计",
+    "setupEvidence": "样本前启动",
+    "setupEvidenceDescription": "父页面时钟记录的引擎产物获取与隔离运行环境启动先于隔离运行环境的样本时钟完成；它们单独保留，不会伪装成网络冷启动证据。",
     "metric": "指标",
     "engine": "引擎",
     "samples": "{{count}} 个样本",
@@ -108,7 +110,7 @@
     "order": "平衡顺序",
     "rawEvidence": "原始证据",
     "rawEvidenceDescription": "失败和预热样本保留在此处及下载报告中，但绝不会进入测量聚合。",
-    "noSamples": "终止事件发生前没有 realm 样本完成。",
+    "noSamples": "终止事件发生前没有样本完成。",
     "completedSummary": "保留 {{samples}} 个样本，{{errors}} 个错误，总计 {{duration}}",
     "states": {
       "success": "已完成",
@@ -119,7 +121,7 @@
     },
     "stages": {
       "pausing": "正在暂停实时渲染",
-      "creating-realm": "正在创建隔离 realm",
+      "creating-realm": "正在创建独立运行环境",
       "sampling": "正在测量可呈现结果",
       "cleanup": "正在释放基准测试资源"
     },
@@ -129,18 +131,34 @@
       "measured": "测量"
     },
     "sampleOutcomes": {
-      "success": "有效",
+      "success": "可发布",
       "failure": "失败"
     },
     "metrics": {
-      "firstPresentationReadyMs": "首次可呈现",
-      "firstValidSvgMs": "首次有效 SVG",
-      "warmPresentationReadyMs": "热态可呈现",
-      "warmValidSvgMs": "热态有效 SVG"
+      "adapterImportMs": "模块解析与求值",
+      "engineImportMs": "引擎导入初始化",
+      "resourceAcquisitionMs": "引擎资源获取",
+      "registrationMs": "外部模块注册",
+      "initializationMs": "配置与初始化",
+      "firstBudgetedSvgMs": "全新隔离环境预算内 SVG",
+      "firstIsolatedPresentationMs": "全新隔离环境完成呈现",
+      "warmBudgetedSvgMs": "复用隔离环境预算内 SVG",
+      "warmIsolatedPresentationMs": "复用隔离环境完成呈现",
+      "isolatedPresentationReceiptMs": "父页面派发至收到呈现通知",
+      "responseDeliveryMs": "呈现通知至收到完整响应",
+      "responseEnvelopeValidationMs": "父页面响应协议验证",
+      "strictSvgValidationMs": "父页面严格 SVG 验证",
+      "firstPublishableSvgMs": "全新环境可发布 SVG",
+      "warmPublishableSvgMs": "复用环境可发布 SVG"
+    },
+    "setupMetrics": {
+      "artifactAcquisitionMs": "引擎产物获取",
+      "realmBootstrapMs": "隔离运行环境启动",
+      "totalMs": "样本前启动总计"
     },
     "metricDescriptions": {
-      "firstPresentationReadyMs": "从 realm 本地样本开始，到安全插入、布局完成及下一帧动画回调。",
-      "warmPresentationReadyMs": "从已初始化 realm 中调用渲染，到安全插入、布局完成及下一帧动画回调。"
+      "firstPublishableSvgMs": "使用同一个父页面时钟，从派发到全新隔离环境开始，经过响应协议检查，并截止于 Playground 共用的严格 SVG 投影器。",
+      "warmPublishableSvgMs": "使用同一个父页面时钟，从派发到复用隔离环境开始，经过响应协议检查，并截止于 Playground 共用的严格 SVG 投影器。"
     }
   },
   "examples": {
@@ -242,11 +260,13 @@
     "runningDiagnostics": "正在运行诊断...",
     "diagnosticsEmpty": "暂无诊断结果",
     "diagnosticsUnavailable": "诊断不可用",
+    "errorDetails": "技术详情",
     "mermanEngine": "Merman",
     "mermaidEngine": "Mermaid JS",
     "renderingMermaid": "正在渲染 Mermaid JS...",
     "updatingStale": "更新中",
     "refreshCompare": "刷新对比",
+    "retryCompare": "重试渲染",
     "viewSvgSource": "查看 SVG 源码",
     "viewSvgPreview": "查看 SVG 预览",
     "exportSvg": "导出 SVG",
@@ -254,6 +274,7 @@
     "exporting": "正在导出...",
     "renderingCurrent": "正在渲染当前图表...",
     "currentRenderFailed": "当前渲染失败",
+    "artifactReady": "已就绪",
     "noCurrentArtifact": "暂无当前渲染结果",
     "zoomIn": "放大",
     "zoomOut": "缩小",
@@ -277,7 +298,8 @@
     "disabled": "已禁用",
     "rendering": "渲染中...",
     "loading": "加载中...",
-    "error": "错误"
+    "error": "错误",
+    "syntaxIssues": "语法有误"
   },
   "themes": {
     "default": "默认",

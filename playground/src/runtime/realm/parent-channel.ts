@@ -1,6 +1,6 @@
 import type {
   MermaidRealmRenderInput,
-  MermaidRealmRenderResult,
+  MermaidRealmExecutionResult,
   MermaidRealmSession,
 } from "../mermaid-realm-controller.ts";
 import { createAuthenticatedBrowserRealmChannel } from "./browser-realm-channel.ts";
@@ -23,7 +23,7 @@ import {
 interface PendingRender {
   readonly reject: (error: unknown) => void;
   readonly requestId: string;
-  readonly resolve: (result: MermaidRealmRenderResult) => void;
+  readonly resolve: (result: MermaidRealmExecutionResult) => void;
   stageIndex: number;
   timer: ReturnType<typeof setTimeout> | null;
 }
@@ -33,9 +33,11 @@ export async function createBrowserCompareRealmSession(
   signal: AbortSignal
 ): Promise<MermaidRealmSession> {
   const kind: RealmKind = "compare";
-  const realmUrl = new URL(
-    `${import.meta.env.BASE_URL}compare-realm.html`,
-    window.location.origin
+  const {
+    compareMermaidEngineArtifact,
+    createOpaqueCompareRealmDocument,
+  } = await import(
+    "./opaque-realm-artifacts.ts"
   );
   let disposed = false;
   let transportAvailable = false;
@@ -57,7 +59,8 @@ export async function createBrowserCompareRealmSession(
 
   const channel = await createAuthenticatedBrowserRealmChannel({
     kind,
-    realmUrl,
+    createRealmDocument: createOpaqueCompareRealmDocument,
+    engineArtifact: compareMermaidEngineArtifact,
     initialViewport,
     signal,
     label: "Mermaid realm",
@@ -182,7 +185,7 @@ export async function createBrowserCompareRealmSession(
         identity,
         outgoingSequence
       );
-      return new Promise<MermaidRealmRenderResult>((resolve, reject) => {
+      return new Promise<MermaidRealmExecutionResult>((resolve, reject) => {
         pending = {
           requestId,
           resolve,

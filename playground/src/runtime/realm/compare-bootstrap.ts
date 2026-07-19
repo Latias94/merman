@@ -11,39 +11,45 @@ import {
   type CompareFailureStage,
   type CompareOperationStage,
   type RealmBootIdentity,
+  type RealmEngineArtifactIdentity,
   type RealmIdentity,
 } from "./channel-protocol.ts";
+import {
+  verifyAndCreateRealmEngineModuleLoader,
+} from "./engine-artifact-loader.ts";
 import { createOperationQueue } from "./operation-queue.ts";
-import "./compare-realm.css";
 
-void startCompareRealm();
-
-async function startCompareRealm(): Promise<void> {
-  const boot = readBootIdentity();
+export async function startCompareRealm(
+  boot: RealmBootIdentity,
+  expectedArtifact: RealmEngineArtifactIdentity
+): Promise<void> {
   if (window.parent === window) {
     throw new RealmProtocolError("Compare realm must run inside an iframe.");
   }
 
-  const initGate = createOneTimeRealmInitGate(boot);
+  const initGate = createOneTimeRealmInitGate(boot, expectedArtifact);
   const onInit = (event: MessageEvent) => {
     if (
-      event.origin !== window.location.origin ||
       event.source !== window.parent ||
       !isRealmMessageType(event.data, "realm-init")
     ) {
       return;
     }
-    let init;
+    void acceptInit(event);
+  };
+  const acceptInit = async (event: MessageEvent) => {
     try {
-      init = initGate.consume(event.data, event.ports.length);
+      const init = initGate.consume(event.data, event.ports.length);
+      window.removeEventListener("message", onInit);
+      const loadEngine = await verifyAndCreateRealmEngineModuleLoader(
+        init.engineArtifact,
+        validateCompareEngineModule
+      );
+      servePort(event.ports[0], init, loadEngine);
     } catch {
       for (const port of event.ports) port.close();
       window.removeEventListener("message", onInit);
-      return;
     }
-    window.removeEventListener("message", onInit);
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    servePort(event.ports[0], init);
   };
 
   window.addEventListener("message", onInit);
@@ -55,12 +61,13 @@ async function startCompareRealm(): Promise<void> {
     },
     boot
   );
-  window.parent.postMessage(hello, window.location.origin);
+  window.parent.postMessage(hello, "*");
 }
 
 function servePort(
   port: MessagePort,
-  init: RealmIdentity
+  init: RealmIdentity,
+  loadEngine: () => Promise<CompareEngineModule>
 ): void {
   const identity: RealmIdentity = {
     kind: init.kind,
@@ -134,9 +141,9 @@ function servePort(
         reportStage("fonts");
         await document.fonts.ready;
         reportStage("adapter-import");
-        let engine;
+        let engine: CompareEngineModule;
         try {
-          engine = await import("./engines/mermaid.ts");
+          engine = await loadEngine();
         } catch (error) {
           throw new RealmOperationError("adapter-import", error);
         }
@@ -147,7 +154,7 @@ function servePort(
             reportStage
           );
         } catch (error) {
-          if (error instanceof engine.MermaidEngineError) {
+          if (isCompareEngineError(error)) {
             throw new RealmOperationError(error.stage, error);
           }
           throw error;
@@ -210,6 +217,31 @@ function servePort(
   });
 }
 
+interface CompareEngineModule {
+  renderWithMermaid: typeof import("./engines/mermaid.ts")["renderWithMermaid"];
+}
+
+function validateCompareEngineModule(
+  module: Record<string, unknown>
+): CompareEngineModule {
+  if (
+    Object.keys(module).length !== 1 ||
+    typeof module.renderWithMermaid !== "function"
+  ) {
+    throw new RealmProtocolError("Compare engine artifact exports are invalid.");
+  }
+  return module as unknown as CompareEngineModule;
+}
+
+function isCompareEngineError(
+  error: unknown
+): error is Error & { readonly stage: CompareOperationStage } {
+  return (
+    error instanceof Error &&
+    typeof (error as { stage?: unknown }).stage === "string"
+  );
+}
+
 class RealmOperationError extends Error {
   readonly stage: CompareFailureStage;
 
@@ -218,36 +250,6 @@ class RealmOperationError extends Error {
     this.name = "RealmOperationError";
     this.stage = stage;
   }
-}
-
-function readBootIdentity(): RealmBootIdentity {
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  if (
-    params.size !== 4 ||
-    params.get("protocol") !== String(REALM_PROTOCOL_VERSION)
-  ) {
-    throw new RealmProtocolError("Compare realm boot fragment is invalid.");
-  }
-  const kind = params.get("kind");
-  const realmId = params.get("realm");
-  const bootNonce = params.get("boot");
-  if (
-    kind !== "compare" ||
-    !realmId ||
-    !bootNonce
-  ) {
-    throw new RealmProtocolError("Compare realm boot identity is invalid.");
-  }
-  const boot: RealmBootIdentity = { kind, realmId, bootNonce };
-  validateRealmHello(
-    {
-      type: "realm-hello",
-      protocol: REALM_PROTOCOL_VERSION,
-      ...boot,
-    },
-    boot
-  );
-  return boot;
 }
 
 function boundedErrorMessage(error: unknown): string {

@@ -25,10 +25,10 @@ test("progress gate accepts complete cold and warm execution paths", () => {
     "initialize_start",
     "initialize_end",
     "render_start",
-    "safe_svg_ready",
-    "dom_inserted",
-    "layout_box_ready",
-    "presentation_ready",
+    "budgeted_svg_ready",
+    "isolated_dom_inserted",
+    "isolated_layout_box_ready",
+    "isolated_presentation_ready",
   ] as const) {
     merman.observe(event);
   }
@@ -50,10 +50,10 @@ test("progress gate accepts complete cold and warm execution paths", () => {
     "initialize_start",
     "initialize_end",
     "render_start",
-    "safe_svg_ready",
-    "dom_inserted",
-    "layout_box_ready",
-    "presentation_ready",
+    "budgeted_svg_ready",
+    "isolated_dom_inserted",
+    "isolated_layout_box_ready",
+    "isolated_presentation_ready",
   ] as const) {
     mermaid.observe(event);
   }
@@ -67,10 +67,10 @@ test("progress gate accepts complete cold and warm execution paths", () => {
     "fonts_wait_start",
     "fonts_wait_end",
     "render_start",
-    "safe_svg_ready",
-    "dom_inserted",
-    "layout_box_ready",
-    "presentation_ready",
+    "budgeted_svg_ready",
+    "isolated_dom_inserted",
+    "isolated_layout_box_ready",
+    "isolated_presentation_ready",
   ] as const) {
     warm.observe(event);
   }
@@ -128,7 +128,7 @@ test("overlapping engine and resource stages own independent deadlines", () => {
   assert.deepEqual(timedOut, ["resource-acquire"]);
 });
 
-test("safe SVG completes render and starts the presentation deadline", () => {
+test("budgeted SVG completes render and starts the isolated presentation deadline", () => {
   const timer = fakeTimer();
   const timedOut: string[] = [];
   const watchdog = createBenchmarkStageWatchdog(
@@ -137,7 +137,7 @@ test("safe SVG completes render and starts the presentation deadline", () => {
   );
 
   watchdog.observe("render_start");
-  watchdog.observe("safe_svg_ready");
+  watchdog.observe("budgeted_svg_ready");
   assert.equal(timer.pending.size, 1);
   timer.fireAll();
   assert.deepEqual(timedOut, ["presentation"]);
@@ -163,7 +163,7 @@ test("synchronous work cannot clear an already exceeded deadline", () => {
   watchdog.observe("render_start");
   timer.advance(31);
   assert.throws(
-    () => watchdog.observe("safe_svg_ready"),
+    () => watchdog.observe("budgeted_svg_ready"),
     (error: unknown) =>
       error instanceof BenchmarkStageTimeoutError && error.stage === "render"
   );

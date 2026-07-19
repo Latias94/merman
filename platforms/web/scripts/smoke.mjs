@@ -444,6 +444,7 @@ if (capabilities.analysis) {
 
   assert.deepEqual(api.detectDiagramFacts("flowchart TD\nA-->B\n", deterministicTime), {
     status: "available",
+    validity: "valid",
     diagramType: "flowchart",
     syntaxId: "flowchart-v2",
     effectiveLayoutId: "dagre",
@@ -455,6 +456,7 @@ if (capabilities.analysis) {
     }),
     {
       status: "available",
+      validity: "valid",
       diagramType: "class",
       syntaxId: "class",
       effectiveLayoutId: "elk",
@@ -462,6 +464,7 @@ if (capabilities.analysis) {
   );
   const unavailableDetection = {
     status: "unavailable",
+    validity: "unknown",
     diagramType: null,
     syntaxId: null,
     effectiveLayoutId: null,
@@ -473,11 +476,18 @@ if (capabilities.analysis) {
   );
   assert.deepEqual(
     api.detectDiagramFacts("flowchart TD\nA[unterminated\n", deterministicTime),
-    unavailableDetection
+    {
+      status: "available",
+      validity: "recoverable-invalid",
+      diagramType: "flowchart",
+      syntaxId: "flowchart-v2",
+      effectiveLayoutId: "dagre",
+    }
   );
   if (capabilities.core_full) {
     assert.deepEqual(api.detectDiagramFacts("flowchart-elk TD\nA-->B\n", deterministicTime), {
       status: "available",
+      validity: "valid",
       diagramType: "flowchart",
       syntaxId: "flowchart-elk",
       effectiveLayoutId: "elk",

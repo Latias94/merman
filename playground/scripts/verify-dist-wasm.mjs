@@ -20,7 +20,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const DIST = path.join(ROOT, "dist");
 const INDEX_HTML = path.join(DIST, "index.html");
-const COMPARE_HTML = path.join(DIST, "compare-realm.html");
 const BENCHMARK_HTML = path.join(DIST, "benchmark.html");
 const MANIFEST_FILE = path.join(DIST, ".vite", "manifest.json");
 const ASSETS = path.join(DIST, "assets");
@@ -93,9 +92,6 @@ if (!isNonEmptyFile(INDEX_HTML)) {
     "  Run `npm run build --prefix playground` before publishing the static artifact.",
   ]);
 }
-if (!isNonEmptyFile(COMPARE_HTML)) {
-  fail([`  Missing Compare realm entry: ${COMPARE_HTML}`]);
-}
 if (!isNonEmptyFile(BENCHMARK_HTML)) {
   fail([`  Missing Benchmark realm entry: ${BENCHMARK_HTML}`]);
 }
@@ -106,7 +102,6 @@ if (!isNonEmptyFile(MANIFEST_FILE)) {
 const manifest = loadBuildManifest();
 verifyOwnedEditorWorkers();
 const indexEntry = requireManifestEntry(manifest, "index.html");
-const compareEntry = requireManifestEntry(manifest, "compare-realm.html");
 const benchmarkEntry = requireManifestEntry(manifest, "benchmark.html");
 const benchmarkSourceBoundaries = loadBenchmarkSourceBoundaries();
 const wasmModule = requireManifestModule(manifest, MERMAN_WASM_BINARY_SOURCE);
@@ -115,11 +110,9 @@ const wasm = path.join(DIST, wasmModule.chunk.file);
 const shim = path.join(DIST, shimModule.chunk.file);
 
 const indexHtml = readFileSync(INDEX_HTML, "utf8");
-const compareHtml = readFileSync(COMPARE_HTML, "utf8");
 const benchmarkHtml = readFileSync(BENCHMARK_HTML, "utf8");
 for (const [fileName, html] of [
   ["index.html", indexHtml],
-  ["compare-realm.html", compareHtml],
   ["benchmark.html", benchmarkHtml],
 ]) {
   const violations = verifyHtmlCsp(fileName, html);
@@ -131,7 +124,6 @@ for (const [fileName, html] of [
   }
 }
 const indexAssets = htmlExecutableAssets(indexHtml);
-const compareAssets = htmlExecutableAssets(compareHtml);
 const benchmarkAssets = htmlExecutableAssets(benchmarkHtml);
 const entryScripts = indexAssets.filter((asset) => asset.kind === "script").map(
   (asset) => asset.url,
@@ -150,7 +142,6 @@ for (const script of entryScripts) {
 
 for (const { label, assets } of [
   { label: "index.html", assets: indexAssets },
-  { label: "compare-realm.html", assets: compareAssets },
   { label: "benchmark.html", assets: benchmarkAssets },
 ]) {
   for (const asset of assets) {
@@ -161,16 +152,6 @@ for (const { label, assets } of [
       fail([`  ${label} references a missing ${asset.kind}: ${asset.url}`]);
     }
   }
-}
-
-const compareScripts = compareAssets
-  .filter((asset) => asset.kind === "script")
-  .map((asset) => relativeToDist(resolveDistPath(asset.url)));
-if (compareScripts.length !== 1) {
-  fail(["  compare-realm.html must reference exactly one bootstrap script."]);
-}
-if (compareScripts[0] !== compareEntry.chunk.file) {
-  fail(["  compare-realm.html does not reference its manifest entry chunk."]);
 }
 
 const benchmarkScripts = benchmarkAssets
@@ -192,23 +173,12 @@ if (!indexScripts.includes(indexEntry.chunk.file)) {
 
 const indexStatic = collectManifestClosure(manifest, [indexEntry.key], false);
 const indexReachable = collectManifestClosure(manifest, [indexEntry.key], true);
-const compareStatic = collectManifestClosure(manifest, [compareEntry.key], false);
-const compareDynamicRoots = [...compareStatic].flatMap(
-  (key) => manifest[key].dynamicImports ?? [],
-);
-const compareDynamic = collectManifestClosure(manifest, compareDynamicRoots, true);
 const benchmarkStatic = collectManifestClosure(
   manifest,
   [benchmarkEntry.key],
   false,
 );
 verifyHtmlStaticClosure("index.html", indexAssets, indexStatic, manifest);
-verifyHtmlStaticClosure(
-  "compare-realm.html",
-  compareAssets,
-  compareStatic,
-  manifest,
-);
 verifyHtmlStaticClosure(
   "benchmark.html",
   benchmarkAssets,
@@ -220,14 +190,13 @@ const benchmarkDynamicRoots = [...benchmarkStatic].flatMap(
 );
 const uniqueBenchmarkDynamicRoots = new Set(benchmarkDynamicRoots);
 if (
-  uniqueBenchmarkDynamicRoots.size !== 2 ||
+  uniqueBenchmarkDynamicRoots.size !== 1 ||
   [...uniqueBenchmarkDynamicRoots].some(
-    (key) => !isBenchmarkAdapter(key, manifest[key]),
+    (key) =>
+      !hasManifestSource(key, manifest[key], BENCHMARK_SOURCES.mermanAdapter),
   )
 ) {
-  fail([
-    "  Benchmark bootstrap must expose exactly two dynamic adapter roots.",
-  ]);
+  fail(["  Trusted Benchmark must expose exactly one Merman adapter root."]);
 }
 const benchmarkDynamic = collectManifestClosure(
   manifest,
@@ -235,7 +204,7 @@ const benchmarkDynamic = collectManifestClosure(
   true,
 );
 const eagerReferenceChunks = new Set(
-  [...indexReachable, ...compareStatic, ...benchmarkStatic].filter((key) =>
+  [...indexReachable, ...benchmarkStatic].filter((key) =>
     isReferenceEngineModule(key, manifest[key])
   )
 );
@@ -264,46 +233,21 @@ if (benchmarkEagerEngineChunks.length > 0) {
   ]);
 }
 
-const mermaidAdapters = Object.entries(manifest)
-  .filter(([key, chunk]) => isMermaidAdapter(key, chunk))
-  .map(([key]) => key);
-if (mermaidAdapters.length !== 1 || !compareDynamic.has(mermaidAdapters[0])) {
-  fail(["  Compare must dynamically reach exactly one Mermaid realm adapter."]);
-}
-
-const compareReachable = new Set([...compareStatic, ...compareDynamic]);
-const compareMermanChunks = [...compareReachable].filter((key) =>
-  isMermanEngineModule(key, manifest[key])
-);
-if (compareMermanChunks.length > 0) {
-  fail([`  Compare can reach Merman WASM: ${compareMermanChunks.join(", ")}`]);
-}
-
-const referenceEngineChunks = new Set(
-  [...compareDynamic].filter((key) => isMermaidPackageModule(key, manifest[key]))
-);
-if (referenceEngineChunks.size === 0) {
-  fail(["  Compare has no dynamically reachable local Mermaid engine chunks."]);
-}
-
 const benchmarkAdapters = Object.entries(manifest)
   .filter(([key, chunk]) => isBenchmarkAdapter(key, chunk))
   .map(([key]) => key);
 if (
-  benchmarkAdapters.length !== 2 ||
+  benchmarkAdapters.length !== 1 ||
   benchmarkAdapters.some((key) => !benchmarkDynamic.has(key))
 ) {
-  fail(["  Benchmark must dynamically reach exactly two engine adapters."]);
+  fail(["  Trusted Benchmark must dynamically reach exactly one engine adapter."]);
 }
 
 const benchmarkMermanAdapter = benchmarkAdapters.find((key) =>
   hasManifestSource(key, manifest[key], BENCHMARK_SOURCES.mermanAdapter),
 );
-const benchmarkMermaidAdapter = benchmarkAdapters.find((key) =>
-  hasManifestSource(key, manifest[key], BENCHMARK_SOURCES.mermaidAdapter),
-);
-if (!benchmarkMermanAdapter || !benchmarkMermaidAdapter) {
-  fail(["  Benchmark engine adapter identities are incomplete."]);
+if (!benchmarkMermanAdapter) {
+  fail(["  Trusted Benchmark Merman adapter identity is incomplete."]);
 }
 
 const mermanAdapterDynamicRoots = [
@@ -336,26 +280,13 @@ const benchmarkMermanClosure = collectLazyOperationClosure(
   manifest,
   [benchmarkMermanAdapter],
 );
-const benchmarkMermaidClosure = collectLazyOperationClosure(
-  manifest,
-  [benchmarkMermaidAdapter],
-);
 verifyAdapterManifestBoundary(
   "Merman",
   benchmarkMermanClosure,
   manifest,
   indexEntry.key,
-  compareEntry.key,
-);
-verifyAdapterManifestBoundary(
-  "Mermaid",
-  benchmarkMermaidClosure,
-  manifest,
-  indexEntry.key,
-  compareEntry.key,
 );
 if (
-  benchmarkMermanClosure.has(benchmarkMermaidAdapter) ||
   [...benchmarkMermanClosure].some((key) =>
     isMermaidPackageModule(key, manifest[key]),
   )
@@ -363,22 +294,11 @@ if (
   fail(["  Merman benchmark adapter can reach the Mermaid engine."]);
 }
 if (
-  benchmarkMermaidClosure.has(benchmarkMermanAdapter) ||
-  [...benchmarkMermaidClosure].some((key) =>
-    isMermanEngineModule(key, manifest[key]),
-  )
-) {
-  fail(["  Mermaid benchmark adapter can reach Merman WASM."]);
-}
-if (
   ![...benchmarkMermanClosure].some((key) =>
     isMermanEngineModule(key, manifest[key]),
-  ) ||
-  ![...benchmarkMermaidClosure].some((key) =>
-    isMermaidPackageModule(key, manifest[key]),
   )
 ) {
-  fail(["  Benchmark adapters do not reach their selected local engines."]);
+  fail(["  Trusted Benchmark adapter does not reach the local Merman engine."]);
 }
 
 const wasmName = path.basename(wasm);
@@ -393,9 +313,9 @@ console.log(
     "[merman-playground] dist WASM present.",
     `  WASM: ${relativeToDist(wasm)}`,
     `  JS shim: ${relativeToDist(shim)}`,
-    `  Compare entry: ${relativeToDist(COMPARE_HTML)}`,
+    "  Compare execution: opaque inline realm artifact",
     `  Benchmark entry: ${relativeToDist(BENCHMARK_HTML)}`,
-    `  Dynamic reference chunks: ${referenceEngineChunks.size}`,
+    "  Trusted Benchmark engines: Merman only",
   ].join("\n"),
 );
 
@@ -528,11 +448,8 @@ function verifyAdapterManifestBoundary(
   closure,
   manifest,
   indexEntryKey,
-  compareEntryKey,
 ) {
-  const forbiddenEntries = [indexEntryKey, compareEntryKey].filter((key) =>
-    closure.has(key),
-  );
+  const forbiddenEntries = [indexEntryKey].filter((key) => closure.has(key));
   const forbiddenSources = [...closure].filter((key) =>
     BENCHMARK_ADAPTER_FORBIDDEN_SOURCES.has(manifestSource(key, manifest[key])),
   );
@@ -549,14 +466,6 @@ function manifestSource(key, chunk) {
 
 function hasManifestSource(key, chunk, source) {
   return manifestSource(key, chunk) === source;
-}
-
-function isMermaidAdapter(key, chunk) {
-  return hasManifestSource(
-    key,
-    chunk,
-    "src/runtime/realm/engines/mermaid.ts",
-  );
 }
 
 function isBenchmarkAdapter(key, chunk) {
@@ -577,7 +486,7 @@ function isMermaidPackageModule(key, chunk) {
 
 function isReferenceEngineModule(key, chunk) {
   return (
-    isMermaidAdapter(key, chunk) ||
+    hasManifestSource(key, chunk, "src/runtime/realm/engines/mermaid.ts") ||
     hasManifestSource(key, chunk, BENCHMARK_SOURCES.mermaidAdapter) ||
     isMermaidPackageModule(key, chunk)
   );

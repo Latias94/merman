@@ -541,6 +541,7 @@ export interface AnalysisFactsResult extends AnalysisPayloadFields {
 
 export interface AvailableDiagramDetectionFacts {
   readonly status: "available";
+  readonly validity: "valid" | "recoverable-invalid";
   readonly diagramType: DiagramType;
   readonly syntaxId: string;
   readonly effectiveLayoutId: string;
@@ -548,6 +549,7 @@ export interface AvailableDiagramDetectionFacts {
 
 export interface UnavailableDiagramDetectionFacts {
   readonly status: "unavailable";
+  readonly validity: "unknown";
   readonly diagramType: null;
   readonly syntaxId: null;
   readonly effectiveLayoutId: null;

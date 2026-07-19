@@ -16,15 +16,9 @@ export const EXPECTED_CSP_POLICIES = Object.freeze({
     "worker-src": ["'self'"],
     "frame-src": ["'self'"],
   }),
-  "compare-realm.html": Object.freeze({
-    ...COMMON_DIRECTIVES,
-    "script-src": ["'self'"],
-    "worker-src": ["'none'"],
-    "frame-src": ["'none'"],
-  }),
   "benchmark.html": Object.freeze({
     ...COMMON_DIRECTIVES,
-    "script-src": ["'self'", "'wasm-unsafe-eval'"],
+    "script-src": ["'self'", "blob:", "'wasm-unsafe-eval'"],
     "worker-src": ["'none'"],
     "frame-src": ["'none'"],
   }),

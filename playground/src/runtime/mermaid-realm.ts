@@ -1,5 +1,3 @@
-import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
-
 import {
   createMermaidRealmController,
   type MermaidRealmController,
@@ -11,7 +9,6 @@ function createBrowserCompareRealmController(): MermaidRealmController {
     kind: "compare",
     createSession: (_kind, viewport, signal) =>
       createBrowserCompareRealmSession(viewport, signal),
-    validateSvg: assertSafeSvgForDom,
   });
 }
 

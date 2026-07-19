@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { useAppStore } from "@/src/store";
 import {
+  selectCurrentDetectionValidity,
   selectCurrentDiagramType,
   selectCurrentMermanRenderTime,
   useRenderCoordinator,
@@ -33,6 +34,7 @@ export function StatusBar() {
     }))
   );
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
+  const detectionValidity = useRenderCoordinator(selectCurrentDetectionValidity);
   const lastRenderTime = useRenderCoordinator(selectCurrentMermanRenderTime);
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const facade = useMermanRuntime(selectMermanFacade);
@@ -65,10 +67,18 @@ export function StatusBar() {
             aria-hidden="true"
             className={cn(
               "size-2 rounded-full",
-              diagramType !== "unknown" ? "bg-green-500" : "bg-yellow-500"
+              detectionValidity === "valid"
+                ? "bg-green-500"
+                : detectionValidity === "recoverable-invalid"
+                  ? "bg-yellow-500"
+                  : "bg-muted-foreground"
             )}
           />
-          <span className="truncate">{getDiagramTypeLabel()}</span>
+          <span className="truncate">
+            {getDiagramTypeLabel()}
+            {detectionValidity === "recoverable-invalid" &&
+              ` · ${t("status.syntaxIssues")}`}
+          </span>
         </span>
         <span className="shrink-0">
           {lineCount} {t("status.lines")}

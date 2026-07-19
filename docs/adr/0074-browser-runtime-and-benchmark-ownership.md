@@ -80,10 +80,13 @@ vector described below.
 
 ### 4. Mermaid Mutation Belongs To Its Realm
 
-The main document does not import or configure Mermaid. Compare owns a same-origin iframe and an
-authenticated `MessagePort` capability. The realm validates origin, Window source, protocol,
-token, message budgets, request sequence, source/config size, and result SVG before returning an
-artifact. The parent validates SVG again before DOM insertion.
+The main document does not import or configure Mermaid. Compare owns a generated
+`sandbox="allow-scripts"` iframe with an opaque origin and an authenticated `MessagePort`
+capability. The generated bootstrap is a self-contained, CSP-hashed artifact whose manifest binds
+the exact engine artifact identity. The realm verifies the engine source digest before importing
+it from a blob URL. The channel validates the opaque origin, Window source, boot nonce, token,
+protocol, message budgets, request sequence, viewport, and source/config size. The parent accepts
+only a native SVG that passes the shared strict projector immediately before DOM insertion.
 
 One failure-resilient queue serializes the complete Mermaid operation in that realm: local adapter
 and engine import, external diagram/layout registration, initialization, render, ZenUML recovery,
@@ -92,13 +95,15 @@ destroys the realm before another operation can start.
 
 Compare and benchmark never share a Mermaid object, operation queue, or iframe.
 
-### 5. Benchmark Evidence Is Realm-Local And Phase-Correct
+### 5. Benchmark Evidence Has Explicit Clock And Publication Boundaries
 
-The benchmark runs Merman and Mermaid in separate, equivalent same-origin Window realms. A
-`realm-cold` sample creates a new engine iframe; this means a new Window/module realm, not a proven
-network-cold transfer. A `warm` sample reuses that engine realm. Resource Timing observations are
-retained when available, but they are diagnostics and do not prove HTTP cache provenance when the
-browser omits transfer details.
+The benchmark runs Merman and Mermaid in separate Window realms with the same frozen operation
+input, viewport, sample protocol, and scheduling policy. Merman uses a trusted local document;
+Mermaid uses the same opaque-origin execution boundary as Compare. A `realm-cold` sample creates a
+new engine iframe; this means a new Window/module realm, not a proven network-cold transfer. A
+`warm` sample reuses that engine realm. Resource Timing observations are retained when available,
+but they are diagnostics and do not prove HTTP cache provenance when the browser omits transfer
+details.
 
 Benchmark protocol `1` carries trace schema `1`. Each sample records one realm-local monotonic
 event vector:
@@ -112,19 +117,26 @@ resource_acquire_start/end
 register_start/end
 initialize_start/end
 render_start
-safe_svg_ready
-dom_inserted
-layout_box_ready
-presentation_ready
+budgeted_svg_ready
+isolated_dom_inserted
+isolated_layout_box_ready
+isolated_presentation_ready
 sample_end
 ```
 
 Inapplicable or unobserved events are `null`, not zero. The controller validates ordering and
-derives non-overlapping observations instead of summing spans. Realm-cold output reports adapter
-import, engine import, resource acquisition, registration, initialization, first valid SVG, and
-first presentation-ready observations. Warm output reports render-to-valid-SVG and
-render-to-presentation-ready observations. The UI may summarize median, p95, min, max, mean, and
-coefficient of variation; the versioned JSON download retains the raw event vector.
+derives non-overlapping observations instead of summing spans. Realm-local `budgeted_svg_ready`
+means only that the engine produced a response within its output budget;
+`isolated_presentation_ready` means the isolated document completed DOM insertion, layout, and a
+real animation frame. Neither event claims that the parent may publish the markup.
+
+Every measured sample also records one parent-clock publication vector from sample dispatch,
+through isolated-presentation progress receipt, response receipt, response-envelope validation,
+and the shared strict SVG projector. `firstPublishableSvgMs` and `warmPublishableSvgMs` are the
+primary comparable totals because both engines cross exactly that parent-side boundary. Response
+delivery, envelope-validation, and strict-validation spans remain separate evidence. The UI may
+summarize median, p95, min, max, mean, and coefficient of variation; report schema `4` retains both raw
+realm-local events and parent publication evidence.
 
 Runs use the same frozen source/options, `document.fonts.ready`, equal real-source warmups, a
 recorded deterministic seed, and balanced interleaved AB/BA blocks. Failed samples never enter
@@ -134,6 +146,10 @@ produces an explicit terminal state. Visibility/lifecycle invalidation suppresse
 no result spans an invalid environment boundary.
 
 No report is uploaded or persisted remotely. Download is an explicit local action.
+
+The execution iframe retains the requested client viewport but is transformed to a stable
+one-CSS-pixel presentation footprint. This keeps real animation-frame evidence observable in
+headless and foreground browsers without letting the hidden benchmark UI affect layout inputs.
 
 ### 6. Editor Intelligence Belongs To A Dedicated Worker
 
@@ -155,9 +171,9 @@ These numbers describe different contracts and do not advance together.
 ### 7. Examples And Detection Have Canonical Sources
 
 The Diagram Family catalog remains the type and capability authority. A checked-in manifest
-selects exactly one fixture-backed Playground example for each of the 35 full-profile logical
-families. `xtask` proves exact coverage, fixture/source provenance, canonical detection, pinned
-Mermaid baseline, and generated TypeScript freshness.
+selects one or more fixture-backed Playground examples for each of the 35 full-profile logical
+families. `xtask` proves exact family-set coverage, fixture/source provenance, canonical detection,
+pinned Mermaid baseline, and generated TypeScript freshness.
 
 The Playground consumes typed parser facts from Rust/WASM for logical diagram type, syntax id, and
 effective layout id. Mermaid package-registration requirements are a Playground projection over
@@ -190,10 +206,13 @@ Durable guards operate on contracts rather than private spelling:
 - TypeScript/package import graphs and public export manifests enforce package ownership.
 - WASM preset manifests, smoke tests, ABI checks, and size budgets enforce capability surfaces.
 - Closed channel validators and browser tests enforce realm capability and lifecycle behavior.
-- Generated example checks enforce exact 35-family provenance and freshness.
+- Generated example checks enforce exact 35-family set coverage, per-example provenance, and
+  freshness.
 - Production artifact and request inspection enforce local Monaco/Mermaid dependencies and CSP.
 - Unit tests exercise state transitions, queue recovery, latest-wins publication, event derivation,
   cancellation, invalidation, and cleanup.
+- Browser isolation tests prove opaque origin, denied ambient authority, bounded ephemeral storage,
+  zero server receipt for CSP-blocked network APIs, and realm poisoning after navigation or failure.
 
 Source searches may inventory obsolete files during migration, but parameter names, private
 function prefixes, and arbitrary source substrings are not architecture contracts.

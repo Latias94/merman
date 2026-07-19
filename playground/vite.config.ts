@@ -20,7 +20,6 @@ export default defineConfig({
     rolldownOptions: {
       input: {
         playground: path.resolve(__dirname, "index.html"),
-        compareRealm: path.resolve(__dirname, "compare-realm.html"),
         benchmarkRealm: path.resolve(__dirname, "benchmark.html"),
       },
       output: {

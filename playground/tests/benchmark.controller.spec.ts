@@ -9,7 +9,7 @@ import {
   waitForPreviewSvg,
 } from "./helpers/playground";
 
-test("benchmark controller completes a balanced warm run and downloads matching evidence", async ({
+test("benchmark controller explains runtime reuse and downloads matching evidence", async ({
   page,
   isMobile,
 }) => {
@@ -26,11 +26,24 @@ test("benchmark controller completes a balanced warm run and downloads matching 
   await page.getByRole("button", { name: "Bench", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Browser Benchmark" });
   await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    "Balanced Merman and Mermaid measurements in isolated browser runtimes. Fresh runtime samples may reuse the HTTP cache; cache observations are reported separately."
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Fresh runtime" })
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(dialog).toContainText(
+    "Each measured sample rebuilds a separate iframe and module state for its engine. The HTTP cache may be reused and is reported as separate evidence."
+  );
   const accessibility = await new AxeBuilder({ page })
     .include('[role="dialog"]')
     .analyze();
   expect(accessibility.violations).toEqual([]);
-  await dialog.getByRole("button", { name: "Warm render" }).click();
+  await dialog.getByRole("button", { name: "Reused runtime" }).click();
+  await expect(dialog).toContainText(
+    "Each engine keeps its own isolated iframe, receives the same number of real-source warmups, then is measured repeatedly."
+  );
+  await expect(dialog).not.toContainText(/\brealm(?:-cold)?\b/i);
   await dialog.getByLabel("Measured blocks").click();
   await page.getByRole("option", { name: "2", exact: true }).click();
   await dialog.getByLabel("Warmups per engine").click();

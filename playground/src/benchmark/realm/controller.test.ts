@@ -18,6 +18,7 @@ import {
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
 } from "../../runtime/realm/channel-protocol.ts";
+import { BENCHMARK_PUBLICATION_CLOCK_BOUNDARY } from "../publication.ts";
 
 const IDENTITY = {
   kind: "benchmark" as const,
@@ -29,6 +30,7 @@ const RUN_TOKEN = "r".repeat(43);
 test("parent session validates SVG then projects immutable evidence without SVG", async () => {
   const harness = createControllerHarness();
   const session = await createBenchmarkRealmSession(
+    "merman",
     { width: 800, height: 600 },
     new AbortController().signal,
     harness.dependencies
@@ -44,9 +46,30 @@ test("parent session validates SVG then projects immutable evidence without SVG"
   assert.equal(result.type, "benchmark-sample-success");
   assert.equal("svg" in result, false);
   assert.equal(result.svgBytes, 46);
-  assert.equal(harness.validatedSvgCount, 1);
+  assert.deepEqual(result.parentPublication, {
+    clockBoundary: BENCHMARK_PUBLICATION_CLOCK_BOUNDARY,
+    isolatedPresentationReceiptMs: 0,
+    responseDeliveryMs: 0,
+    responseEnvelopeValidationMs: 0,
+    strictSvgValidationMs: 0,
+    totalMs: 0,
+  });
+  assert(Object.isFrozen(result.parentPublication));
   assert.equal(harness.pendingTimers.size, 1);
   assert(Object.isFrozen(result));
+  assert.deepEqual(session.creationEvidence, {
+    artifact: {
+      bytes: 17,
+      id: "benchmark-merman",
+      schemaVersion: 1,
+      sha256: "a".repeat(64),
+    },
+    artifactAcquisitionMs: 2,
+    clockBoundary: "parent-before-sample",
+    realmBootstrapMs: 3,
+    totalMs: 5,
+  });
+  assert(Object.isFrozen(session.creationEvidence));
 
   const warm = session.sample(sampleInput("warm", "warm-1"));
   const warmRequest = await harness.nextRequest();
@@ -62,9 +85,38 @@ test("parent session validates SVG then projects immutable evidence without SVG"
   harness.close();
 });
 
+test("invalid creation evidence fails closed and disposes the channel", async () => {
+  const harness = createControllerHarness();
+  harness.dependencies.createCreationEvidence = () => ({
+    artifact: {
+      bytes: 17,
+      id: "benchmark-merman",
+      schemaVersion: 1,
+      sha256: "a".repeat(64),
+    },
+    artifactAcquisitionMs: 3,
+    clockBoundary: "parent-before-sample",
+    realmBootstrapMs: 3,
+    totalMs: 5,
+  });
+
+  await assert.rejects(
+    createBenchmarkRealmSession(
+      "merman",
+      { width: 800, height: 600 },
+      new AbortController().signal,
+      harness.dependencies
+    ),
+    /total is inconsistent/
+  );
+  assert.equal(harness.disposeCount, 1);
+  harness.close();
+});
+
 test("failure destroys the realm before resolving and rejects immediate reuse", async () => {
   const harness = createControllerHarness();
   const session = await createBenchmarkRealmSession(
+    "merman",
     { width: 800, height: 600 },
     new AbortController().signal,
     harness.dependencies
@@ -93,10 +145,9 @@ test("failure destroys the realm before resolving and rejects immediate reuse", 
 });
 
 test("unsafe parent-side SVG poisons transport and rejects the active sample", async () => {
-  const harness = createControllerHarness(() => {
-    throw new Error("unsafe SVG");
-  });
+  const harness = createControllerHarness();
   const session = await createBenchmarkRealmSession(
+    "merman",
     { width: 800, height: 600 },
     new AbortController().signal,
     harness.dependencies
@@ -106,9 +157,16 @@ test("unsafe parent-side SVG poisons transport and rejects the active sample", a
   const request = await harness.nextRequest();
   let sequence = sendProgress(harness, request, COLD_MERMAN_PROGRESS, 0);
   sequence += 1;
-  harness.respond(successResponse(request, coldTrace(), sequence));
+  harness.respond(
+    successResponse(
+      request,
+      coldTrace(),
+      sequence,
+      '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    )
+  );
 
-  await assert.rejects(pending, /unsafe SVG/);
+  await assert.rejects(pending, /active embedded content/i);
   assert.equal(harness.poisonCount, 1);
   assert.equal(harness.pendingTimers.size, 0);
   await assert.rejects(
@@ -122,6 +180,7 @@ test("unsafe parent-side SVG poisons transport and rejects the active sample", a
 test("transport failure clears the cumulative timer and rejects active work", async () => {
   const harness = createControllerHarness();
   const session = await createBenchmarkRealmSession(
+    "merman",
     { width: 800, height: 600 },
     new AbortController().signal,
     harness.dependencies
@@ -144,6 +203,7 @@ test("transport failure clears the cumulative timer and rejects active work", as
 test("parent watchdog rejects a sample that sends no progress", async () => {
   const harness = createControllerHarness();
   const session = await createBenchmarkRealmSession(
+    "merman",
     { width: 800, height: 600 },
     new AbortController().signal,
     harness.dependencies
@@ -163,6 +223,7 @@ test("parent watchdog rejects a sample that sends no progress", async () => {
 test("duplicate progress poisons the realm without extending any deadline", async () => {
   const harness = createControllerHarness();
   const session = await createBenchmarkRealmSession(
+    "merman",
     { width: 800, height: 600 },
     new AbortController().signal,
     harness.dependencies
@@ -185,6 +246,7 @@ test("duplicate progress poisons the realm without extending any deadline", asyn
 test("progress in one stage cannot extend an overlapping stage deadline", async () => {
   const harness = createControllerHarness();
   const session = await createBenchmarkRealmSession(
+    "merman",
     { width: 800, height: 600 },
     new AbortController().signal,
     harness.dependencies
@@ -207,6 +269,7 @@ test("progress in one stage cannot extend an overlapping stage deadline", async 
 test("a complete raw trace cannot substitute for live progress", async () => {
   const harness = createControllerHarness();
   const session = await createBenchmarkRealmSession(
+    "merman",
     { width: 800, height: 600 },
     new AbortController().signal,
     harness.dependencies
@@ -234,20 +297,20 @@ const COLD_MERMAN_PROGRESS = Object.freeze([
   "initialize_start",
   "initialize_end",
   "render_start",
-  "safe_svg_ready",
-  "dom_inserted",
-  "layout_box_ready",
-  "presentation_ready",
+  "budgeted_svg_ready",
+  "isolated_dom_inserted",
+  "isolated_layout_box_ready",
+  "isolated_presentation_ready",
 ] as const satisfies readonly BenchmarkTraceMark[]);
 
 const WARM_PROGRESS = Object.freeze([
   "fonts_wait_start",
   "fonts_wait_end",
   "render_start",
-  "safe_svg_ready",
-  "dom_inserted",
-  "layout_box_ready",
-  "presentation_ready",
+  "budgeted_svg_ready",
+  "isolated_dom_inserted",
+  "isolated_layout_box_ready",
+  "isolated_presentation_ready",
 ] as const satisfies readonly BenchmarkTraceMark[]);
 
 function sampleInput(mode: "realm-cold" | "warm", requestId: string) {
@@ -263,7 +326,7 @@ function sampleInput(mode: "realm-cold" | "warm", requestId: string) {
       configJson: "{}",
       theme: "default",
       diagramFont: "trebuchet" as const,
-      externalRequirements: { elkLayouts: false, zenuml: false },
+      externalRequirements: { externalDiagrams: [], layoutModules: [] },
       viewport: { width: 800, height: 600 },
     },
   };
@@ -272,7 +335,8 @@ function sampleInput(mode: "realm-cold" | "warm", requestId: string) {
 function successResponse(
   request: BenchmarkSampleRequest,
   trace: BenchmarkRawTrace,
-  sequence: number
+  sequence: number,
+  svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>'
 ) {
   return {
     type: "benchmark-sample-success",
@@ -290,7 +354,7 @@ function successResponse(
     trace,
     resources: [],
     resourceError: null,
-    svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+    svg,
     version: "test-version",
   };
 }
@@ -311,10 +375,10 @@ function failureResponse(request: BenchmarkSampleRequest, sequence: number) {
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace: {
       ...coldTrace(),
-      safe_svg_ready: null,
-      dom_inserted: null,
-      layout_box_ready: null,
-      presentation_ready: null,
+      budgeted_svg_ready: null,
+      isolated_dom_inserted: null,
+      isolated_layout_box_ready: null,
+      isolated_presentation_ready: null,
       sample_end: 9,
     },
     resources: [],
@@ -377,10 +441,10 @@ function coldTrace(): BenchmarkRawTrace {
     initialize_start: 6,
     initialize_end: 7,
     render_start: 8,
-    safe_svg_ready: 10,
-    dom_inserted: 10.5,
-    layout_box_ready: 11,
-    presentation_ready: 12,
+    budgeted_svg_ready: 10,
+    isolated_dom_inserted: 10.5,
+    isolated_layout_box_ready: 11,
+    isolated_presentation_ready: 12,
     sample_end: 12.5,
   };
 }
@@ -401,15 +465,15 @@ function warmTrace(): BenchmarkRawTrace {
     initialize_start: null,
     initialize_end: null,
     render_start: 1,
-    safe_svg_ready: 3,
-    dom_inserted: 3,
-    layout_box_ready: 4,
-    presentation_ready: 5,
+    budgeted_svg_ready: 3,
+    isolated_dom_inserted: 3,
+    isolated_layout_box_ready: 4,
+    isolated_presentation_ready: 5,
     sample_end: 5,
   };
 }
 
-function createControllerHarness(validateSvg: (svg: string) => void = () => {}) {
+function createControllerHarness() {
   const channel = new MessageChannel();
   const pendingTimers = new Map<
     number,
@@ -419,7 +483,6 @@ function createControllerHarness(validateSvg: (svg: string) => void = () => {}) 
   let timerSetCount = 0;
   let disposeCount = 0;
   let poisonCount = 0;
-  let validatedSvgCount = 0;
   let onFailure: ((error: Error) => void) | null = null;
   const requests: BenchmarkSampleRequest[] = [];
   const requestWaiters: Array<(request: BenchmarkSampleRequest) => void> = [];
@@ -456,18 +519,36 @@ function createControllerHarness(validateSvg: (svg: string) => void = () => {}) 
         setViewport: async () => undefined,
       };
     },
+    createCreationEvidence() {
+      return {
+        artifact: {
+          bytes: 17,
+          id: "benchmark-merman",
+          schemaVersion: 1,
+          sha256: "a".repeat(64),
+        },
+        artifactAcquisitionMs: 2,
+        clockBoundary: "parent-before-sample",
+        realmBootstrapMs: 3,
+        totalMs: 5,
+      };
+    },
     getVisibilityState: () => "visible",
+    engineArtifact: {
+      schemaVersion: 1,
+      id: "benchmark-merman",
+      bytes: 17,
+      sha256: "a".repeat(64),
+      resourceUrl: "https://play.test/merman_wasm_bg.wasm",
+      source: "export default 1;",
+    },
     now: () => 0,
-    realmUrl: new URL("https://play.test/benchmark.html"),
+    realm: { realmUrl: new URL("https://play.test/benchmark.html") },
     setTimer(callback, timeoutMs) {
       nextTimer += 1;
       timerSetCount += 1;
       pendingTimers.set(nextTimer, { callback, timeoutMs });
       return nextTimer;
-    },
-    validateSvg(svg) {
-      validatedSvgCount += 1;
-      validateSvg(svg);
     },
   };
 
@@ -479,9 +560,6 @@ function createControllerHarness(validateSvg: (svg: string) => void = () => {}) 
     },
     get poisonCount() {
       return poisonCount;
-    },
-    get validatedSvgCount() {
-      return validatedSvgCount;
     },
     get timerSetCount() {
       return timerSetCount;

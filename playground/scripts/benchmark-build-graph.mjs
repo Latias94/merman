@@ -8,6 +8,10 @@ export const BENCHMARK_SOURCES = Object.freeze({
   mermaidAdapter: "src/benchmark/realm/engines/mermaid.ts",
 });
 
+export const NON_LITERAL_DYNAMIC_IMPORT_OWNERS = Object.freeze({
+  "src/runtime/realm/engine-artifact-loader.ts": 1,
+});
+
 export const MERMAN_WEB_ROOT_IMPORT = "@mermanjs/web";
 export const MERMAN_WASM_SHIM_IMPORT =
   "@mermanjs/web/pkg/merman_wasm.js";
@@ -205,9 +209,16 @@ function collectModuleImports(sourceText, fileName) {
     ts.getScriptKindFromFileName(fileName),
   );
   const imports = [];
+  const expectedOwnedDynamicImports =
+    NON_LITERAL_DYNAMIC_IMPORT_OWNERS[fileName];
+  let ownedDynamicImports = 0;
 
   function addModuleRequest(node, moduleSpecifier, kind) {
     if (!moduleSpecifier || !ts.isStringLiteralLike(moduleSpecifier)) {
+      if (kind === "dynamic" && expectedOwnedDynamicImports !== undefined) {
+        ownedDynamicImports += 1;
+        return;
+      }
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(
         node.getStart(sourceFile),
       );
@@ -260,6 +271,14 @@ function collectModuleImports(sourceText, fileName) {
   }
 
   visit(sourceFile);
+  if (
+    expectedOwnedDynamicImports !== undefined &&
+    ownedDynamicImports !== expectedOwnedDynamicImports
+  ) {
+    throw new Error(
+      `${fileName} must own exactly ${expectedOwnedDynamicImports} non-literal dynamic module request; found ${ownedDynamicImports}.`,
+    );
+  }
   return imports;
 }
 

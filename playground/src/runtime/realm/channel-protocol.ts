@@ -2,11 +2,15 @@ import {
   isDiagramFont,
   type DiagramFont,
 } from "../../lib/diagram-font.ts";
-import type { MermaidExternalRequirements } from "../mermaid-requirements.ts";
+import {
+  normalizeMermaidExternalRequirements,
+  type MermaidExternalRequirements,
+} from "../mermaid-requirements.ts";
 
 export const REALM_PROTOCOL_VERSION = 1 as const;
 
 export const REALM_BUDGETS = Object.freeze({
+  engineArtifactBytes: 20 * 1024 * 1024,
   sourceBytes: 2 * 1024 * 1024,
   configBytes: 1024 * 1024,
   svgBytes: 24 * 1024 * 1024,
@@ -28,6 +32,22 @@ export const BENCHMARK_BUDGETS = Object.freeze({
 });
 
 export type RealmKind = "compare" | "benchmark";
+export type RealmEngineArtifactId =
+  | "compare-mermaid"
+  | "benchmark-mermaid"
+  | "benchmark-merman";
+
+export interface RealmEngineArtifactIdentity {
+  readonly bytes: number;
+  readonly id: RealmEngineArtifactId;
+  readonly schemaVersion: 1;
+  readonly sha256: string;
+}
+
+export interface RealmEngineArtifact extends RealmEngineArtifactIdentity {
+  readonly resourceUrl: string | null;
+  readonly source: string;
+}
 
 export interface RealmIdentity {
   readonly kind: RealmKind;
@@ -47,6 +67,7 @@ export interface RealmHello extends RealmBootIdentity {
 }
 
 export interface RealmInit extends RealmBootIdentity, RealmIdentity {
+  readonly engineArtifact: RealmEngineArtifact;
   readonly protocol: typeof REALM_PROTOCOL_VERSION;
   readonly type: "realm-init";
 }
@@ -94,7 +115,7 @@ export type CompareOperationStage =
   | "register"
   | "initialize"
   | "render"
-  | "zenuml-recovery"
+  | "svg-budget"
   | "svg-validation"
   | "presentation";
 
@@ -105,7 +126,7 @@ export const COMPARE_OPERATION_STAGES: readonly CompareOperationStage[] = [
   "register",
   "initialize",
   "render",
-  "zenuml-recovery",
+  "svg-budget",
   "svg-validation",
   "presentation",
 ];
@@ -225,7 +246,8 @@ export function validateRealmHello(
 
 export function validateRealmInit(
   value: unknown,
-  expected: RealmBootIdentity
+  expected: RealmBootIdentity,
+  expectedArtifact: RealmEngineArtifactIdentity
 ): RealmInit {
   assertEncodedMessageBudget(value);
   const message = expectRecord(value, "init");
@@ -236,18 +258,27 @@ export function validateRealmInit(
     "realmId",
     "bootNonce",
     "realmToken",
+    "engineArtifact",
   ]);
   assertBootEnvelope(message, expected, "realm-init");
   const realmToken = expectSecureToken(message.realmToken, "realmToken");
+  const engineArtifact = validateRealmEngineArtifact(
+    message.engineArtifact,
+    expectedArtifact
+  );
   return {
     type: "realm-init",
     protocol: REALM_PROTOCOL_VERSION,
     ...expected,
     realmToken,
+    engineArtifact,
   };
 }
 
-export function createOneTimeRealmInitGate(expected: RealmBootIdentity) {
+export function createOneTimeRealmInitGate(
+  expected: RealmBootIdentity,
+  expectedArtifact: RealmEngineArtifactIdentity
+) {
   let consumed = false;
   return {
     consume(value: unknown, transferredPortCount: number): RealmInit {
@@ -257,11 +288,67 @@ export function createOneTimeRealmInitGate(expected: RealmBootIdentity) {
       if (transferredPortCount !== 1) {
         throw new RealmProtocolError("Realm INIT must transfer one port.");
       }
-      const init = validateRealmInit(value, expected);
+      const init = validateRealmInit(value, expected, expectedArtifact);
       consumed = true;
       return init;
     },
   };
+}
+
+export function validateRealmEngineArtifact(
+  value: unknown,
+  expected: RealmEngineArtifactIdentity
+): RealmEngineArtifact {
+  const artifact = expectRecord(value, "engine artifact");
+  assertExactKeys(artifact, [
+    "schemaVersion",
+    "id",
+    "bytes",
+    "sha256",
+    "resourceUrl",
+    "source",
+  ]);
+  if (
+    expected.schemaVersion !== 1 ||
+    artifact.schemaVersion !== 1 ||
+    artifact.id !== expected.id ||
+    artifact.bytes !== expected.bytes ||
+    artifact.sha256 !== expected.sha256 ||
+    typeof artifact.bytes !== "number" ||
+    !Number.isSafeInteger(artifact.bytes) ||
+    artifact.bytes <= 0 ||
+    artifact.bytes > REALM_BUDGETS.engineArtifactBytes ||
+    typeof artifact.sha256 !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(artifact.sha256)
+  ) {
+    throw new RealmProtocolError("Realm engine artifact identity is invalid.");
+  }
+  const source = expectString(artifact.source, "engine artifact source");
+  if (utf8ByteLength(source) !== artifact.bytes) {
+    throw new RealmProtocolError("Realm engine artifact byte length is invalid.");
+  }
+  const resourceUrl = artifact.resourceUrl;
+  if (
+    resourceUrl !== null &&
+    (typeof resourceUrl !== "string" ||
+      resourceUrl.length === 0 ||
+      utf8ByteLength(resourceUrl) > 4096)
+  ) {
+    throw new RealmProtocolError("Realm engine resource URL is invalid.");
+  }
+  if (artifact.id !== "benchmark-merman" && resourceUrl !== null) {
+    throw new RealmProtocolError(
+      "Only the Merman benchmark may receive an engine resource URL."
+    );
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    id: artifact.id as RealmEngineArtifactId,
+    bytes: artifact.bytes,
+    sha256: artifact.sha256,
+    resourceUrl: resourceUrl as string | null,
+    source,
+  });
 }
 
 export function validateRealmReady(
@@ -375,12 +462,31 @@ export function validateCompareRenderPayload(
     payload.externalRequirements,
     "externalRequirements"
   );
-  assertExactKeys(requirements, ["elkLayouts", "zenuml"]);
-  if (
-    typeof requirements.elkLayouts !== "boolean" ||
-    typeof requirements.zenuml !== "boolean"
-  ) {
+  assertExactKeys(requirements, ["externalDiagrams", "layoutModules"]);
+  const externalDiagrams = expectStringArray(
+    requirements.externalDiagrams,
+    "externalDiagrams"
+  );
+  const layoutModules = expectStringArray(
+    requirements.layoutModules,
+    "layoutModules"
+  );
+  let normalizedRequirements: MermaidExternalRequirements;
+  try {
+    normalizedRequirements = normalizeMermaidExternalRequirements({
+      externalDiagrams,
+      layoutModules,
+    });
+  } catch {
     throw new RealmProtocolError("Realm external requirements are invalid.");
+  }
+  if (
+    !sameStrings(externalDiagrams, normalizedRequirements.externalDiagrams) ||
+    !sameStrings(layoutModules, normalizedRequirements.layoutModules)
+  ) {
+    throw new RealmProtocolError(
+      "Realm external requirements must be sorted and deduplicated."
+    );
   }
 
   return {
@@ -388,10 +494,7 @@ export function validateCompareRenderPayload(
     configJson,
     theme,
     diagramFont: diagramFont as DiagramFont,
-    externalRequirements: {
-      elkLayouts: requirements.elkLayouts,
-      zenuml: requirements.zenuml,
-    },
+    externalRequirements: normalizedRequirements,
     viewport: validateRealmViewport(payload.viewport),
   };
 }
@@ -661,6 +764,20 @@ function expectString(value: unknown, label: string): string {
     throw new RealmProtocolError(`Realm ${label} must be a string.`);
   }
   return value;
+}
+
+function expectStringArray(value: unknown, label: string): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new RealmProtocolError(`Realm ${label} must be a string array.`);
+  }
+  return [...value] as string[];
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }
 
 function expectBoundedString(

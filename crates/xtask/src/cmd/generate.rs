@@ -2,9 +2,10 @@ use crate::XtaskError;
 #[cfg(test)]
 use crate::cmd::read_bounded_child_pipe;
 use crate::cmd::{
-    PINNED_MERMAID_PACKAGE_SHA256, ensure_content_addressed_js_script,
-    ensure_upstream_svg_puppeteer_config, spawn_timeout_managed_child,
-    upstream_svg_package_tree_sha256, wait_with_bounded_output, wait_with_timeout,
+    PINNED_MERMAID_CLI_PACKAGE_SHA256, PINNED_MERMAID_PACKAGE_SHA256,
+    ensure_content_addressed_js_script, ensure_upstream_svg_puppeteer_config,
+    spawn_timeout_managed_child, upstream_svg_package_tree_sha256, wait_with_bounded_output,
+    wait_with_timeout,
 };
 use crate::svgdom;
 use crate::util::{extract_add_to_set_string_array, extract_frozen_string_array};
@@ -20,9 +21,6 @@ use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DOMPURIFY_BASELINE_VERSION: &str = "3.4.0";
-const PINNED_MERMAID_CLI_PACKAGE_SHA256: &str =
-    "de9d9ac0cb0e2c55fa7cac7b3d4883bb76bf6d137eec290ed345101d8c0da632";
-
 const UPSTREAM_SVG_DIAGRAMS: &[&str] = &[
     "er",
     "flowchart",
@@ -311,8 +309,10 @@ fn validate_upstream_svg_render_probe(
         || runtimes.mermaid_cli_package_sha256 != PINNED_MERMAID_CLI_PACKAGE_SHA256
     {
         return Err(XtaskError::UpstreamSvgFailed(format!(
-            "installed Mermaid runtime package content does not match the pinned 11.16.0 artifacts: mermaid={}, mermaid-cli={}",
-            runtimes.mermaid_package_sha256, runtimes.mermaid_cli_package_sha256
+            "installed Mermaid runtime package content does not match the pinned {} artifacts: mermaid={}, mermaid-cli={}",
+            crate::cmd::PINNED_MERMAID_VERSION,
+            runtimes.mermaid_package_sha256,
+            runtimes.mermaid_cli_package_sha256
         )));
     }
 

@@ -1,6 +1,10 @@
 import type { DiagramFont } from "../lib/diagram-font.ts";
 import type { MermaidExternalRequirements } from "./mermaid-requirements.ts";
 import {
+  projectSafeInlineSvg,
+  type SafeInlineSvg,
+} from "./render-artifact.ts";
+import {
   REALM_BUDGETS,
   RealmTimeoutError,
   type CompareFailureStage,
@@ -19,6 +23,15 @@ export interface MermaidRealmRenderInput {
 }
 
 export interface MermaidRealmRenderSuccess {
+  readonly artifact: SafeInlineSvg;
+  readonly prepareTimeMs: number;
+  readonly presentationTimeMs: number;
+  readonly renderTimeMs: number;
+  readonly status: "success";
+  readonly version: string;
+}
+
+export interface MermaidRealmExecutionSuccess {
   readonly prepareTimeMs: number;
   readonly presentationTimeMs: number;
   readonly renderTimeMs: number;
@@ -28,6 +41,7 @@ export interface MermaidRealmRenderSuccess {
 }
 
 export interface MermaidRealmRenderFailure {
+  readonly detail?: string | null;
   readonly message: string;
   readonly stage: CompareFailureStage;
   readonly status: "failure";
@@ -36,13 +50,16 @@ export interface MermaidRealmRenderFailure {
 export type MermaidRealmRenderResult =
   | MermaidRealmRenderSuccess
   | MermaidRealmRenderFailure;
+export type MermaidRealmExecutionResult =
+  | MermaidRealmExecutionSuccess
+  | MermaidRealmRenderFailure;
 
 export interface MermaidRealmSession {
   dispose(): void;
   render(
     input: MermaidRealmRenderInput,
     requestId: string
-  ): Promise<MermaidRealmRenderResult>;
+  ): Promise<MermaidRealmExecutionResult>;
   setViewport(viewport: RealmViewport): Promise<void>;
 }
 
@@ -60,14 +77,12 @@ export interface MermaidRealmControllerOptions {
   ) => Promise<MermaidRealmSession>;
   readonly kind: RealmKind;
   readonly operationTimeoutMs?: number;
-  readonly validateSvg: (svg: string) => void;
 }
 
 export function createMermaidRealmController({
   createSession,
   kind,
   operationTimeoutMs = REALM_BUDGETS.runTimeoutMs,
-  validateSvg,
 }: MermaidRealmControllerOptions): MermaidRealmController {
   let disposed = false;
   let generation = 0;
@@ -175,12 +190,13 @@ export function createMermaidRealmController({
         return result;
       }
       try {
-        validateSvg(result.svg);
+        const artifact = projectSafeInlineSvg(result.svg);
+        const { svg: _svg, ...evidence } = result;
+        return { ...evidence, artifact };
       } catch (error) {
         disposeActiveSession(activeSession);
         return failure("svg-validation", errorMessage(error));
       }
-      return result;
     } catch (error) {
       disposeActiveSession(activeSession);
       if (operationTimedOut) return timeoutFailure;

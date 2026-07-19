@@ -1,0 +1,2400 @@
+{
+  "schemaVersion": 4,
+  "harness": "playground/scripts/zenuml-core-candidate-matrix.mjs",
+  "harnessSha256": "b1d52456a2fb31bd7edffe6f5da16171895addbf2da6ea472762ba93f3b4c7d9",
+  "command": "npm run verify:zenuml-candidate",
+  "onlineCommand": "npm run verify:zenuml-candidate:online",
+  "oracle": {
+    "version": "3.47.8",
+    "commit": "c81406671c0833baebb9fac08a0cbcdc99b3907d",
+    "integrity": "sha512-5TAotLfdfBd6V6fLLp4pJW/PSeNi6tBUpxKnCB4Rpqp4vkG0a/pDehaMN1lMujRT89A3tPQayPXGgqLNWO3J1Q==",
+    "tarballUrl": "https://registry.npmjs.org/@zenuml/core/-/core-3.47.8.tgz",
+    "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@zenuml%2fcore@3.47.8",
+    "runtimeEntryBytes": 2432609,
+    "supplyChain": {
+      "attestationArtifact": {
+        "path": "tools/upstreams/attestations/zenuml-core-3.47.8.json",
+        "sha256": "09384bf1f09364436ccc89f8c6e98268f67fe8702a2c92379e422668fc5d5470"
+      },
+      "tarballBytes": 6660537,
+      "tarballSha512Base64": "5TAotLfdfBd6V6fLLp4pJW/PSeNi6tBUpxKnCB4Rpqp4vkG0a/pDehaMN1lMujRT89A3tPQayPXGgqLNWO3J1Q==",
+      "tarballSha512Hex": "e53028b4b7dd7c177a57a7cb2e9e29256fcf49e362ead054a712a7081e11a6aa78be41b46bfa437a168c37594cba3453f3d037b4f41ac8f5c682a2cd58edc9d5",
+      "npmAudit": {
+        "cliVersion": "11.17.0",
+        "registry": "https://registry.npmjs.org/",
+        "verified": true,
+        "predicateTypes": [
+          "https://github.com/npm/attestation/tree/main/specs/publish/v0.1",
+          "https://slsa.dev/provenance/v1"
+        ]
+      },
+      "subject": {
+        "name": "pkg:npm/%40zenuml/core@3.47.8",
+        "digest": {
+          "sha512": "e53028b4b7dd7c177a57a7cb2e9e29256fcf49e362ead054a712a7081e11a6aa78be41b46bfa437a168c37594cba3453f3d037b4f41ac8f5c682a2cd58edc9d5"
+        }
+      },
+      "publish": {
+        "predicateType": "https://github.com/npm/attestation/tree/main/specs/publish/v0.1",
+        "envelopeSha256": "616e8c948941558865227f4c04581f77d09d129ae48fd98050e9f4f4db426144",
+        "payloadSha256": "7fb2dd2c93dbe2adc8c24a2246427f742114e521df5a6360f986efdfd02b4567",
+        "registry": "https://registry.npmjs.org"
+      },
+      "slsa": {
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "envelopeSha256": "8db0ab888e6e2639889a9cef256c9cf3141fc1d189f3a229b43f5a792c9e9f18",
+        "payloadSha256": "6e7a38556ec43441d1037785dce42c30abf0ab96c4af6f1e19c44663c7b355a1",
+        "resolvedGitCommit": "c81406671c0833baebb9fac08a0cbcdc99b3907d",
+        "workflow": {
+          "ref": "refs/heads/main",
+          "repository": "https://github.com/mermaid-js/zenuml-core",
+          "path": ".github/workflows/cd.yml"
+        },
+        "certificateIssuer": "O=sigstore.dev\nCN=sigstore-intermediate",
+        "certificateSubjectAltName": "URI:https://github.com/mermaid-js/zenuml-core/.github/workflows/cd.yml@refs/heads/main",
+        "certificateFingerprint256": "1D:28:F1:71:AC:76:BF:68:4E:84:4E:83:AD:F4:DD:D5:61:76:11:B0:AD:04:AC:66:34:24:15:73:0B:08:92:37"
+      }
+    }
+  },
+  "candidate": {
+    "version": "3.50.1",
+    "commit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+    "integrity": "sha512-Q18BXvIfhRuGw0JfO4e+pltG04Phhv2E7n35EWTNSZKKH/HEkyE4Sh7KERb9dqaOfjOdRdKvLG0YekjK3fcDXw==",
+    "tarballUrl": "https://registry.npmjs.org/@zenuml/core/-/core-3.50.1.tgz",
+    "attestationUrl": "https://registry.npmjs.org/-/npm/v1/attestations/@zenuml%2fcore@3.50.1",
+    "runtimeEntryBytes": 2448459,
+    "supplyChain": {
+      "attestationArtifact": {
+        "path": "tools/upstreams/attestations/zenuml-core-3.50.1.json",
+        "sha256": "98b87995aa4429905d1939383fa87a93c1c41c397485f3ca32d64fd3f69d052f"
+      },
+      "tarballBytes": 5483535,
+      "tarballSha512Base64": "Q18BXvIfhRuGw0JfO4e+pltG04Phhv2E7n35EWTNSZKKH/HEkyE4Sh7KERb9dqaOfjOdRdKvLG0YekjK3fcDXw==",
+      "tarballSha512Hex": "435f015ef21f851b86c3425f3b87bea65b46d383e186fd84ee7df91164cd49928a1ff1c49321384a1eca1116fd76a68e7e339d45d2af2c6d187a48caddf7035f",
+      "npmAudit": {
+        "cliVersion": "11.17.0",
+        "registry": "https://registry.npmjs.org/",
+        "verified": true,
+        "predicateTypes": [
+          "https://github.com/npm/attestation/tree/main/specs/publish/v0.1",
+          "https://slsa.dev/provenance/v1"
+        ]
+      },
+      "subject": {
+        "name": "pkg:npm/%40zenuml/core@3.50.1",
+        "digest": {
+          "sha512": "435f015ef21f851b86c3425f3b87bea65b46d383e186fd84ee7df91164cd49928a1ff1c49321384a1eca1116fd76a68e7e339d45d2af2c6d187a48caddf7035f"
+        }
+      },
+      "publish": {
+        "predicateType": "https://github.com/npm/attestation/tree/main/specs/publish/v0.1",
+        "envelopeSha256": "7ff667fa472826a630bf05e94d5c777e5e561cf4583d32abdefd0a349caee18c",
+        "payloadSha256": "aef7edef86fd81b0e4b1c076623055a8962bc34d6e3d0443fc3880bec82e6a66",
+        "registry": "https://registry.npmjs.org"
+      },
+      "slsa": {
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "envelopeSha256": "a87fc87e5504dbd186b849b5bc74ef77846367e2f241d7e5d49c7e5f9af22947",
+        "payloadSha256": "50200e23f54be9272972dfaaebb89f30b9533b1cfe0122183b3b99561986b17b",
+        "resolvedGitCommit": "38404ccc14243ed54ab45b804b2eb6f2ca73af36",
+        "workflow": {
+          "ref": "refs/heads/main",
+          "repository": "https://github.com/mermaid-js/zenuml-core",
+          "path": ".github/workflows/cd.yml"
+        },
+        "certificateIssuer": "O=sigstore.dev\nCN=sigstore-intermediate",
+        "certificateSubjectAltName": "URI:https://github.com/mermaid-js/zenuml-core/.github/workflows/cd.yml@refs/heads/main",
+        "certificateFingerprint256": "F2:DD:71:B5:BD:36:08:84:43:82:C5:17:2A:28:93:F7:EE:56:B7:D8:AA:F2:50:66:DD:16:0E:07:98:3E:E4:BD"
+      }
+    }
+  },
+  "pluginContract": {
+    "declaredRange": "^3.47.0",
+    "workspaceRange": "^3.47.8",
+    "candidateSatisfiesDeclaredRange": true,
+    "candidateSatisfiesWorkspaceRange": true
+  },
+  "corpus": {
+    "fixtureCount": 22,
+    "corpusDigest": "141c406c4df84aa727d3ba548b654585153336be7dbde2fe7af80a0dccef99ca",
+    "parseAgreementCount": 22,
+    "sources": [
+      {
+        "name": "basic.mmd",
+        "sourceReference": "fixtures/zenuml/basic.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_alt_if_else.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_alt_if_else.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_comments.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_comments.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_creation_new.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_creation_new.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_demo.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_demo.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_loops_while.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_loops_while.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_nesting.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_nesting.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_opt.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_opt.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_parallel_par.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_parallel_par.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_participants_aliases.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_participants_aliases.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_participants_annotators.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_participants_annotators.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_participants_declare_optional.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_participants_declare_optional.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_reply_annotator_return.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_reply_annotator_return.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_reply_assignments.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_reply_assignments.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_reply_return_keyword.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_reply_return_keyword.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_sync_message_method_calls.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_sync_message_method_calls.mmd"
+      },
+      {
+        "name": "upstream_docs_zenuml_try_catch_finally.mmd",
+        "sourceReference": "fixtures/zenuml/upstream_docs_zenuml_try_catch_finally.mmd"
+      },
+      {
+        "name": "advanced-participant-group",
+        "sourceReference": "repo-ref/zenuml-core-3.50.1/test/unit/parser/participant.group.spec.js"
+      },
+      {
+        "name": "advanced-parallel-fragment",
+        "sourceReference": "repo-ref/zenuml-core-3.50.1/test/unit/parser/par.spec.js"
+      },
+      {
+        "name": "advanced-try-catch-finally",
+        "sourceReference": "repo-ref/zenuml-core-3.50.1/test/unit/parser/try.catch.finally.spec.js"
+      },
+      {
+        "name": "advanced-emoji-message",
+        "sourceReference": "repo-ref/zenuml-core-3.50.1/test/unit/parity/corpus/text-corpus.ts#emoji"
+      },
+      {
+        "name": "advanced-known-number-unit",
+        "sourceReference": "repo-ref/zenuml-core-3.50.1/test/unit/parser/digit-leading-name.spec.ts"
+      }
+    ]
+  },
+  "semantic": {
+    "agreementCount": 22,
+    "totals": {
+      "participants": 53,
+      "messages": 42,
+      "fragments": 8,
+      "groups": 1,
+      "returns": 5,
+      "creations": 2
+    },
+    "requiredTopology": {
+      "participantGroups": 1,
+      "parallelFragments": 1,
+      "tryCatchFinallyFragments": 1,
+      "emojiMessages": 1,
+      "numberUnitConditionFragments": 1
+    },
+    "classifiedBehavior": [
+      {
+        "id": "explicit-starter-implicit-method-origin",
+        "classification": "source-verified-endpoint-contract",
+        "source": "@Starter(A)\nmethod()",
+        "sourceAttribution": {
+          "paths": [
+            "src/parser/OrderedParticipants.ts",
+            "src/parser/From.ts",
+            "src/svg/walkStatements.ts"
+          ],
+          "rules": [
+            "starter",
+            "Origin",
+            "From",
+            "message endpoint projection"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "oracle",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.rendered",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.rendered",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.semantic.messages",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.messages",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "A"
+            ],
+            "actual": [
+              "A"
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "A"
+            ],
+            "actual": [
+              "A"
+            ]
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.messageEndpoints",
+            "expected": [
+              {
+                "from": "A",
+                "to": null,
+                "isSelf": false
+              }
+            ],
+            "actual": [
+              {
+                "from": "A",
+                "to": null,
+                "isSelf": false
+              }
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.messageEndpoints",
+            "expected": [
+              {
+                "from": "A",
+                "to": null,
+                "isSelf": false
+              }
+            ],
+            "actual": [
+              {
+                "from": "A",
+                "to": null,
+                "isSelf": false
+              }
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "explicit-starter-implicit-method-origin",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3923,
+            "svgSha256": "9e7ed9b9ee16e0af892444a30ddd1263598aeeb1aedae6844d2e9697b8513b3c",
+            "semantic": {
+              "participants": 1,
+              "messages": 1,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "A"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [
+                "method()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "A",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "explicit-starter-implicit-method-origin",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3923,
+            "svgSha256": "9e7ed9b9ee16e0af892444a30ddd1263598aeeb1aedae6844d2e9697b8513b3c",
+            "semantic": {
+              "participants": 1,
+              "messages": 1,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "A"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [
+                "method()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "A",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "dangling-async-arrow",
+        "classification": "source-verified-endpoint-contract",
+        "source": "A ->",
+        "sourceAttribution": {
+          "paths": [
+            "src/g4/sequenceParser.g4",
+            "src/parser/ToCollector.ts",
+            "src/svg/walkStatements.ts"
+          ],
+          "rules": [
+            "asyncMessage",
+            "missing target recovery",
+            "endpoint projection"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "oracle",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.rendered",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.rendered",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.semantic.messages",
+            "expected": 0,
+            "actual": 0
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.messages",
+            "expected": 0,
+            "actual": 0
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.semantic.returns",
+            "expected": 0,
+            "actual": 0
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.returns",
+            "expected": 0,
+            "actual": 0
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "A"
+            ],
+            "actual": [
+              "A"
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "A"
+            ],
+            "actual": [
+              "A"
+            ]
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.messageEndpoints",
+            "expected": [],
+            "actual": []
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.messageEndpoints",
+            "expected": [],
+            "actual": []
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.returnEndpoints",
+            "expected": [],
+            "actual": []
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.returnEndpoints",
+            "expected": [],
+            "actual": []
+          }
+        ],
+        "oracle": {
+          "id": "dangling-async-arrow",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3935,
+            "svgSha256": "34ea3d335fc5838002661f6108873358b63d946cdcfb3a20c32dc33efff98c14",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "A"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "dangling-async-arrow",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3935,
+            "svgSha256": "34ea3d335fc5838002661f6108873358b63d946cdcfb3a20c32dc33efff98c14",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "A"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "dangling-return-arrow",
+        "classification": "source-verified-endpoint-contract",
+        "source": "A -->",
+        "sourceAttribution": {
+          "paths": [
+            "src/g4/sequenceParser.g4",
+            "src/parser/RetContext.js",
+            "src/svg/walkStatements.ts"
+          ],
+          "rules": [
+            "returnAsyncMessage",
+            "From",
+            "ReturnTo",
+            "endpoint projection"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "oracle",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.rendered",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.rendered",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.semantic.returns",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.returns",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "A"
+            ],
+            "actual": [
+              "A"
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "A"
+            ],
+            "actual": [
+              "A"
+            ]
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.returnEndpoints",
+            "expected": [
+              {
+                "from": "A",
+                "to": null,
+                "isSelf": false
+              }
+            ],
+            "actual": [
+              {
+                "from": "A",
+                "to": null,
+                "isSelf": false
+              }
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.returnEndpoints",
+            "expected": [
+              {
+                "from": "A",
+                "to": null,
+                "isSelf": false
+              }
+            ],
+            "actual": [
+              {
+                "from": "A",
+                "to": null,
+                "isSelf": false
+              }
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "dangling-return-arrow",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3638,
+            "svgSha256": "d2157cbc52793c9681e339223e257559769cf4762277908ba6f4dd1e536d5b7a",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 1,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "A"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [
+                {
+                  "from": "A",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "dangling-return-arrow",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3638,
+            "svgSha256": "d2157cbc52793c9681e339223e257559769cf4762277908ba6f4dd1e536d5b7a",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 1,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "A"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [
+                {
+                  "from": "A",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "explicit-starter-dangling-return-arrow",
+        "classification": "source-verified-endpoint-contract",
+        "source": "@Starter(A)\nA -->",
+        "sourceAttribution": {
+          "paths": [
+            "src/parser/OrderedParticipants.ts",
+            "src/parser/RetContext.js",
+            "src/svg/walkStatements.ts"
+          ],
+          "rules": [
+            "starter",
+            "From",
+            "ReturnTo",
+            "endpoint projection"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "oracle",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.rendered",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.rendered",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.semantic.returns",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.returns",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "A"
+            ],
+            "actual": [
+              "A"
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "A"
+            ],
+            "actual": [
+              "A"
+            ]
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.topology.returnEndpoints",
+            "expected": [
+              {
+                "from": "A",
+                "to": "A",
+                "isSelf": true
+              }
+            ],
+            "actual": [
+              {
+                "from": "A",
+                "to": "A",
+                "isSelf": true
+              }
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.returnEndpoints",
+            "expected": [
+              {
+                "from": "A",
+                "to": "A",
+                "isSelf": true
+              }
+            ],
+            "actual": [
+              {
+                "from": "A",
+                "to": "A",
+                "isSelf": true
+              }
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "explicit-starter-dangling-return-arrow",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3976,
+            "svgSha256": "f7606bf1b5b369d39f706117455dc6081429e49db8a347d8ebcc9eda2e0ee14a",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 1,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "A"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [
+                {
+                  "from": "A",
+                  "to": "A",
+                  "isSelf": true
+                }
+              ],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "explicit-starter-dangling-return-arrow",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3976,
+            "svgSha256": "f7606bf1b5b369d39f706117455dc6081429e49db8a347d8ebcc9eda2e0ee14a",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 1,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "A"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [
+                {
+                  "from": "A",
+                  "to": "A",
+                  "isSelf": true
+                }
+              ],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "digit-leading-participant",
+        "classification": "candidate-semantic-expansion",
+        "source": "3Service.m()",
+        "sourceAttribution": {
+          "paths": [
+            "src/g4/sequenceLexer.g4",
+            "src/g4/sequenceParser.g4"
+          ],
+          "rules": [
+            "DIGIT_LEADING_NAME",
+            "name",
+            "methodName"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "oracle",
+            "fact": "parse.pass",
+            "expected": false,
+            "actual": false
+          },
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.messages",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "_STARTER_",
+              "3Service"
+            ],
+            "actual": [
+              "_STARTER_",
+              "3Service"
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "digit-leading-participant",
+          "parse": {
+            "pass": false,
+            "errorDetails": [
+              {
+                "line": 1,
+                "column": 8,
+                "msg": "no viable alternative at input '3Service.'"
+              }
+            ]
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 5975,
+            "svgSha256": "864dc08f900fb887342c5637b849a5b3148878549f0f7b8e7208b988c9c684db",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 1,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [
+                ""
+              ],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "digit-leading-participant",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 4948,
+            "svgSha256": "df7962921e0bac301e9ded8d4d6903e72b2fa4072a28c926e66a5f4c89b387a4",
+            "semantic": {
+              "participants": 2,
+              "messages": 1,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "3Service"
+              ],
+              "participantTypes": [
+                null,
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "optional-if-brace-recovery",
+        "classification": "candidate-recovery-expansion",
+        "source": "if(x) A.m()",
+        "sourceAttribution": {
+          "paths": [
+            "src/g4/sequenceParser.g4"
+          ],
+          "rules": [
+            "ifBlock",
+            "braceBlock?"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "oracle",
+            "fact": "parse.pass",
+            "expected": false,
+            "actual": false
+          },
+          {
+            "engine": "oracle",
+            "fact": "render.semantic.messages",
+            "expected": 0,
+            "actual": 0
+          },
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.messages",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.fragments",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "_STARTER_",
+              "A"
+            ],
+            "actual": [
+              "_STARTER_",
+              "A"
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "optional-if-brace-recovery",
+          "parse": {
+            "pass": false,
+            "errorDetails": [
+              {
+                "line": 1,
+                "column": 6,
+                "msg": "missing '{' at 'A'"
+              },
+              {
+                "line": 1,
+                "column": 11,
+                "msg": "missing '}' at '<EOF>'"
+              }
+            ]
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 7009,
+            "svgSha256": "5f9f3881ad778fafedc0ff05671b2d4b0bc5dd796fe9f90652189e47488c8995",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 1,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [
+                "x"
+              ],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "optional-if-brace-recovery",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 5735,
+            "svgSha256": "fa9324e2fe9dbb64b3b9c57d9fefe6fdd44e35e6dff89f6fc923ee3494a31565",
+            "semantic": {
+              "participants": 2,
+              "messages": 1,
+              "fragments": 1,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "A"
+              ],
+              "participantTypes": [
+                null,
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [
+                "x"
+              ],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "known-number-unit-with-optional-brace",
+        "classification": "candidate-lexer-and-recovery-expansion",
+        "source": "if(300ms) A.m()",
+        "sourceAttribution": {
+          "paths": [
+            "src/g4/sequenceLexer.g4",
+            "src/g4/sequenceParser.g4"
+          ],
+          "rules": [
+            "NUMBER_UNIT",
+            "KNOWN_UNIT",
+            "textExpr",
+            "ifBlock"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "oracle",
+            "fact": "parse.pass",
+            "expected": false,
+            "actual": false
+          },
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.messages",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.fragmentLabels",
+            "expected": [
+              "300ms"
+            ],
+            "actual": [
+              "300ms"
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "known-number-unit-with-optional-brace",
+          "parse": {
+            "pass": false,
+            "errorDetails": [
+              {
+                "line": 1,
+                "column": 10,
+                "msg": "missing '{' at 'A'"
+              },
+              {
+                "line": 1,
+                "column": 15,
+                "msg": "missing '}' at '<EOF>'"
+              }
+            ]
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 7022,
+            "svgSha256": "a478f69286847896c495d47945a07775d91b606fd3a8136c0956adb7c1e73a4e",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 1,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [
+                "300ms"
+              ],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "known-number-unit-with-optional-brace",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 5748,
+            "svgSha256": "2d1e29fd656fa3ede2c12ed11008003bb726acbd8429381c07302ec7ba0e19d1",
+            "semantic": {
+              "participants": 2,
+              "messages": 1,
+              "fragments": 1,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "A"
+              ],
+              "participantTypes": [
+                null,
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [
+                "300ms"
+              ],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "same-line-message-topology",
+        "classification": "source-verified-preserved-behavior",
+        "source": "A.m() B.m()",
+        "sourceAttribution": {
+          "paths": [
+            "src/g4/sequenceParser.g4",
+            "src/parser/MessageCollector.ts"
+          ],
+          "rules": [
+            "block",
+            "stat",
+            "AllMessages"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "oracle",
+            "fact": "render.semantic.messages",
+            "expected": 2,
+            "actual": 2
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.messages",
+            "expected": 2,
+            "actual": 2
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.messageLabels",
+            "expected": [
+              "m()",
+              "m()"
+            ],
+            "actual": [
+              "m()",
+              "m()"
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "same-line-message-topology",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 5892,
+            "svgSha256": "5a2138804cf79b25d1fb7f9846579fa0b2aa223dd51835b48ce6556ec153dbd9",
+            "semantic": {
+              "participants": 3,
+              "messages": 2,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "A",
+                "B"
+              ],
+              "participantTypes": [
+                null,
+                null,
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()",
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                },
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "same-line-message-topology",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 5892,
+            "svgSha256": "5a2138804cf79b25d1fb7f9846579fa0b2aa223dd51835b48ce6556ec153dbd9",
+            "semantic": {
+              "participants": 3,
+              "messages": 2,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "A",
+                "B"
+              ],
+              "participantTypes": [
+                null,
+                null,
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()",
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                },
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "typed-head-participant-boundary",
+        "classification": "source-verified-preserved-behavior",
+        "source": "@Actor A B.m()",
+        "sourceAttribution": {
+          "paths": [
+            "src/g4/sequenceParser.g4",
+            "src/parser/OrderedParticipants.ts"
+          ],
+          "rules": [
+            "participant",
+            "head",
+            "OrderedParticipants"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.messages",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "_STARTER_",
+              "A",
+              "B"
+            ],
+            "actual": [
+              "_STARTER_",
+              "A",
+              "B"
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantTypes",
+            "expected": [
+              null,
+              "Actor",
+              null
+            ],
+            "actual": [
+              null,
+              "Actor",
+              null
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "typed-head-participant-boundary",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 6077,
+            "svgSha256": "f0b9a567439c45efd047afcb99570e290354dc0fda560c236d595dc38f6a31fb",
+            "semantic": {
+              "participants": 3,
+              "messages": 1,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "A",
+                "B"
+              ],
+              "participantTypes": [
+                null,
+                "Actor",
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "typed-head-participant-boundary",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 6077,
+            "svgSha256": "f0b9a567439c45efd047afcb99570e290354dc0fda560c236d595dc38f6a31fb",
+            "semantic": {
+              "participants": 3,
+              "messages": 1,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "A",
+                "B"
+              ],
+              "participantTypes": [
+                null,
+                "Actor",
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "plain-head-participant-boundary",
+        "classification": "source-verified-preserved-behavior",
+        "source": "A B.m()",
+        "sourceAttribution": {
+          "paths": [
+            "src/g4/sequenceParser.g4",
+            "src/parser/OrderedParticipants.ts"
+          ],
+          "rules": [
+            "participant",
+            "head",
+            "OrderedParticipants"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.semantic.messages",
+            "expected": 1,
+            "actual": 1
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "_STARTER_",
+              "A",
+              "B"
+            ],
+            "actual": [
+              "_STARTER_",
+              "A",
+              "B"
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "plain-head-participant-boundary",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 5313,
+            "svgSha256": "2db23e6fcb33ddd8a14c9a7272a50558b4b42914ada127c440579d98ef2456ef",
+            "semantic": {
+              "participants": 3,
+              "messages": 1,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "A",
+                "B"
+              ],
+              "participantTypes": [
+                null,
+                null,
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "plain-head-participant-boundary",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 5313,
+            "svgSha256": "2db23e6fcb33ddd8a14c9a7272a50558b4b42914ada127c440579d98ef2456ef",
+            "semantic": {
+              "participants": 3,
+              "messages": 1,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "_STARTER_",
+                "A",
+                "B"
+              ],
+              "participantTypes": [
+                null,
+                null,
+                null
+              ],
+              "participantStereotypes": [
+                null,
+                null,
+                null
+              ],
+              "participantGroupIds": [
+                null,
+                null,
+                null
+              ],
+              "messageLabels": [
+                "m()"
+              ],
+              "messageEndpoints": [
+                {
+                  "from": "_STARTER_",
+                  "to": null,
+                  "isSelf": false
+                }
+              ],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "missing-typed-participant-recovery",
+        "classification": "source-verified-recovery-contract",
+        "source": "@Actor",
+        "sourceAttribution": {
+          "paths": [
+            "src/parser/ToCollector.ts",
+            "test/unit/parser/to-collector.spec.js"
+          ],
+          "rules": [
+            "participantType-only",
+            "Missing `Participant`"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "Missing `Participant`"
+            ],
+            "actual": [
+              "Missing `Participant`"
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantTypes",
+            "expected": [
+              "Actor"
+            ],
+            "actual": [
+              "Actor"
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "missing-typed-participant-recovery",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 4126,
+            "svgSha256": "8e69c6af772c5bf4996146b6529bcb1dbae18fe65f77fb0f4be77daf377eefc6",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "Missing `Participant`"
+              ],
+              "participantTypes": [
+                "Actor"
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "missing-typed-participant-recovery",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 4126,
+            "svgSha256": "8e69c6af772c5bf4996146b6529bcb1dbae18fe65f77fb0f4be77daf377eefc6",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "Missing `Participant`"
+              ],
+              "participantTypes": [
+                "Actor"
+              ],
+              "participantStereotypes": [
+                null
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      },
+      {
+        "id": "missing-stereotyped-participant-recovery",
+        "classification": "source-verified-recovery-contract",
+        "source": "<<Service>>",
+        "sourceAttribution": {
+          "paths": [
+            "src/parser/ToCollector.ts",
+            "test/unit/parser/to-collector.spec.js"
+          ],
+          "rules": [
+            "stereotype-only",
+            "Missing `Participant`"
+          ]
+        },
+        "assertions": [
+          {
+            "engine": "candidate",
+            "fact": "parse.pass",
+            "expected": true,
+            "actual": true
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantNames",
+            "expected": [
+              "Missing `Participant`"
+            ],
+            "actual": [
+              "Missing `Participant`"
+            ]
+          },
+          {
+            "engine": "candidate",
+            "fact": "render.topology.participantStereotypes",
+            "expected": [
+              "Service"
+            ],
+            "actual": [
+              "Service"
+            ]
+          }
+        ],
+        "oracle": {
+          "id": "missing-stereotyped-participant-recovery",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3512,
+            "svgSha256": "cae653c4b7a17f97ba0afdb2bd1b9718664a21575d0355f05699c6f634431283",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "Missing `Participant`"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                "Service"
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        },
+        "candidate": {
+          "id": "missing-stereotyped-participant-recovery",
+          "parse": {
+            "pass": true,
+            "errorDetails": []
+          },
+          "render": {
+            "rendered": true,
+            "svgBytes": 3512,
+            "svgSha256": "cae653c4b7a17f97ba0afdb2bd1b9718664a21575d0355f05699c6f634431283",
+            "semantic": {
+              "participants": 1,
+              "messages": 0,
+              "fragments": 0,
+              "groups": 0,
+              "returns": 0,
+              "creations": 0
+            },
+            "topology": {
+              "participantNames": [
+                "Missing `Participant`"
+              ],
+              "participantTypes": [
+                null
+              ],
+              "participantStereotypes": [
+                "Service"
+              ],
+              "participantGroupIds": [
+                null
+              ],
+              "messageLabels": [],
+              "messageEndpoints": [],
+              "returnEndpoints": [],
+              "fragmentLabels": [],
+              "groupNames": []
+            }
+          }
+        }
+      }
+    ]
+  },
+  "render": {
+    "svgAgreementCount": 22
+  },
+  "strictInlineSvg": {
+    "fixtureCount": 22,
+    "passedCount": 22,
+    "totalSvgBytes": 147525,
+    "maxSvgBytes": 24888,
+    "validatorSources": [
+      {
+        "path": "platforms/web/src/svg-safety-policy.ts",
+        "sha256": "f18a0864aaf30db31cc3bcf39290c17015dfa7edb889f3315a2f039075ad77d1"
+      },
+      {
+        "path": "platforms/web/src/svg-safety.ts",
+        "sha256": "ed915775295c6a1c66097bdbea5c6c00e613f0cd88fe7f5584bf77cbbb11c0cd"
+      }
+    ],
+    "fixtures": [
+      {
+        "name": "basic.mmd",
+        "svgBytes": 4537,
+        "svgSha256": "746d00178ad2953c5de2c97bcb8e2dbe39258687d33386043073b2b468816b44",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_alt_if_else.mmd",
+        "svgBytes": 6274,
+        "svgSha256": "86fe6ff97ec607e01fa03ecb370b2e0015c05da5fd9b812f28ce8ed52337b72b",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_comments.mmd",
+        "svgBytes": 5165,
+        "svgSha256": "042f9485e33e7c2897aa331b20d3c6113abf7cc492808877a38dc647f0f5b50a",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_creation_new.mmd",
+        "svgBytes": 5834,
+        "svgSha256": "ce724faaa60263a9d5576eef6014cf5a26b81a7252fcde27c5405ff4d10220e2",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_demo.mmd",
+        "svgBytes": 5326,
+        "svgSha256": "5d87f38a46c71429f76f5c57183a0555346ea1374dc3b31c4312bdaf40b92a36",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_loops_while.mmd",
+        "svgBytes": 6241,
+        "svgSha256": "7f6b4cc40088cdc53424cd3a27f88680fc9bbcaaddab0b3a95cba6c9a715b790",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_nesting.mmd",
+        "svgBytes": 6808,
+        "svgSha256": "94b1d299746bb0f3055fb46d37e46d2c892038a79f293f115dc0dc7ebfb2fd8e",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_opt.mmd",
+        "svgBytes": 5881,
+        "svgSha256": "13aad3d592ea3d446649053d8d4a4b87c98d9771a981e04e0198b6b7b8ca7fba",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_parallel_par.mmd",
+        "svgBytes": 5844,
+        "svgSha256": "d67bb07201dc9f19e15ff764ddd521fd3555a1028acb42077cfe61b5e38aead9",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_participants_aliases.mmd",
+        "svgBytes": 4822,
+        "svgSha256": "dc43ed9216e965f08dee9c63b51a5946d9595cf92403227aab2d7c291dbb67a5",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_participants_annotators.mmd",
+        "svgBytes": 24888,
+        "svgSha256": "bbba9a61f72f6a635c1dd0cfaaf9698d4c667e3c65ce857266671093512eb60e",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_participants_declare_optional.mmd",
+        "svgBytes": 4829,
+        "svgSha256": "0e2fcf12ef63ffb51607379aade0dd1b35839f6e45f0dbb6fd4e5f63dbc24427",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_reply_annotator_return.mmd",
+        "svgBytes": 4038,
+        "svgSha256": "f75aef28a0096577a19bd285df66a522fa3b0ec4b35ffebf52b66f042e770438",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_reply_assignments.mmd",
+        "svgBytes": 6472,
+        "svgSha256": "780928f68efc34faea6eb3db90ff20372c307e3b5a325ef58e6b0ed490d31f7f",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_reply_return_keyword.mmd",
+        "svgBytes": 5310,
+        "svgSha256": "d06eb27a8192599d800efb31305061cdda75a1a61fccbdf2413d17c741dd33b7",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_sync_message_method_calls.mmd",
+        "svgBytes": 6634,
+        "svgSha256": "c61a31d5a65a5c9fb00df75d0b1dce14a98e3a0d2378f0a0060fb8fd640e0888",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "upstream_docs_zenuml_try_catch_finally.mmd",
+        "svgBytes": 7682,
+        "svgSha256": "c7fd5b80b6f945269f9822a011a5c511241471e417693ba304e1710e85e6cd2a",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "advanced-participant-group",
+        "svgBytes": 6017,
+        "svgSha256": "e668b251bc769d5c95df483e44f8276ca82d5a5de5d7687a9ade0aaf88731c9a",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "advanced-parallel-fragment",
+        "svgBytes": 6658,
+        "svgSha256": "e68e4e846877891d24d5f1627cf56d5ae670c6f4d16ad2ab74b60490119ded78",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "advanced-try-catch-finally",
+        "svgBytes": 8327,
+        "svgSha256": "d037a6b158b960daa04d3ae58e0423decc30e60b4702c384e8a8fc50318f6826",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "advanced-emoji-message",
+        "svgBytes": 4187,
+        "svgSha256": "65a7c1a947a737464bfbbbc408c6507e2b295f76fb4b6797e12e19a01de1c4fd",
+        "foreignObjectFree": true,
+        "passed": true
+      },
+      {
+        "name": "advanced-known-number-unit",
+        "svgBytes": 5751,
+        "svgSha256": "e7d8427c2d2a3648356a2aa4204846e752ed3ffffaf9482b126c5c0090f52b4b",
+        "foreignObjectFree": true,
+        "passed": true
+      }
+    ]
+  },
+  "resource": {
+    "measurementScope": "runtime-entry",
+    "runtimeEntryDeltaBytes": 15850,
+    "runtimeEntryDeltaBasisPoints": 65
+  }
+}

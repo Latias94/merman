@@ -136,9 +136,18 @@ fn pinned_source_metadata_is_mermaid_11_16() {
         source.mermaid_source_commit,
         "7c0cafcf42e76bfaf79d0cbbd12edb986612f014"
     );
-    assert_eq!(source.package_json_sha256, PACKAGE_JSON_SHA256);
-    assert_eq!(source.package_lock_sha256, PACKAGE_LOCK_SHA256);
-    assert_eq!(source.mermaid_config_sha256, MERMAID_CONFIG_SHA256);
+    assert_eq!(
+        source.package_json_sha256,
+        crate::cmd::REFERENCE_CLI_PACKAGE_JSON_SHA256
+    );
+    assert_eq!(
+        source.package_lock_sha256,
+        crate::cmd::REFERENCE_CLI_PACKAGE_LOCK_SHA256
+    );
+    assert_eq!(
+        source.mermaid_config_sha256,
+        crate::cmd::REFERENCE_CLI_CONFIG_SHA256
+    );
 }
 
 #[test]

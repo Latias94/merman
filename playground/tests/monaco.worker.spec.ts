@@ -55,20 +55,14 @@ test("Monaco and the Rust editor session start only local production workers", a
   errors.assertNone();
 });
 
-test("Compare and Benchmark realm entries cannot reach Monaco", async ({ page }) => {
-  for (const entry of ["compare-realm.html", "benchmark.html"]) {
-    const requests: string[] = [];
-    const workers: string[] = [];
-    const recordRequest = (request: { url(): string }) => requests.push(request.url());
-    const recordWorker = (worker: { url(): string }) => workers.push(worker.url());
-    page.on("request", recordRequest);
-    page.on("worker", recordWorker);
+test("the trusted Merman Benchmark entry cannot reach Monaco", async ({ page }) => {
+  const requests: string[] = [];
+  const workers: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  page.on("worker", (worker) => workers.push(worker.url()));
 
-    await page.goto(`./${entry}`, { waitUntil: "networkidle" });
+  await page.goto("./benchmark.html", { waitUntil: "networkidle" });
 
-    expect(requests.filter((url) => /monaco|editor\.worker|json\.worker/i.test(url))).toEqual([]);
-    expect(workers.filter((url) => /monaco|editor\.worker|json\.worker/i.test(url))).toEqual([]);
-    page.off("request", recordRequest);
-    page.off("worker", recordWorker);
-  }
+  expect(requests.filter((url) => /monaco|editor\.worker|json\.worker/i.test(url))).toEqual([]);
+  expect(workers.filter((url) => /monaco|editor\.worker|json\.worker/i.test(url))).toEqual([]);
 });

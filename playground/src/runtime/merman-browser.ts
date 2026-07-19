@@ -51,6 +51,7 @@ import type {
 const PLAYGROUND_DOCUMENT_URI = "file:///merman/playground.mmd";
 const UNAVAILABLE_DIAGRAM_DETECTION: DiagramDetectionFacts = Object.freeze({
   status: "unavailable",
+  validity: "unknown",
   diagramType: null,
   syntaxId: null,
   effectiveLayoutId: null,

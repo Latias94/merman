@@ -39,6 +39,14 @@ export function selectCurrentDiagramType(
   return state.detection.diagramType;
 }
 
+export function selectCurrentDetectionValidity(
+  state: RenderCoordinatorState
+): "valid" | "recoverable-invalid" | "unknown" {
+  return isCompletedRenderState(state)
+    ? state.detection.validity
+    : "unknown";
+}
+
 export function selectCurrentMermanRenderTime(
   state: RenderCoordinatorState
 ): number {

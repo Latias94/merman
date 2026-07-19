@@ -64,16 +64,16 @@
   },
   "bench": {
     "title": "Browser Benchmark",
-    "description": "Balanced Merman and Mermaid measurements in isolated browser realms. Realm-cold is separate from network cache state.",
+    "description": "Balanced Merman and Mermaid measurements in isolated browser runtimes. Fresh runtime samples may reuse the HTTP cache; cache observations are reported separately.",
     "close": "Close benchmark",
     "engines": "Engines",
     "mode": "Measurement mode",
     "modes": {
-      "realm-cold": "Realm-cold",
-      "warm": "Warm render"
+      "realm-cold": "Fresh runtime",
+      "warm": "Reused runtime"
     },
-    "realmColdDescription": "Each measured engine sample receives a fresh iframe and module map. HTTP cache observations remain separate evidence.",
-    "warmDescription": "Each engine keeps one isolated realm after equal real-source warmups.",
+    "realmColdDescription": "Each measured sample rebuilds a separate iframe and module state. The primary result uses one parent clock from sample dispatch through strict SVG validation; bootstrap and HTTP cache observations remain separate.",
+    "warmDescription": "Each engine keeps its own isolated iframe, receives the same number of real-source warmups, then is measured repeatedly to the same strict parent-side SVG boundary.",
     "iterations": "Measured blocks",
     "warmups": "Warmups per engine",
     "run": "Run",
@@ -85,15 +85,17 @@
     "empty": "Enter Mermaid code first",
     "stale": "Source changed",
     "staleDescription": "This run keeps its frozen source and options. Current editor changes will render after the benchmark releases the live coordinator.",
-    "preparing": "Pausing live rendering and preparing isolated realms",
+    "preparing": "Pausing live rendering and preparing isolated runtimes",
     "progress": "Benchmark progress",
     "sampleProgress": "{{completed}} of {{total}} operations",
     "block": "Block {{block}}",
     "frozenSource": "Frozen source",
     "versions": "Package versions",
     "resourceBounds": "Source / SVG limits",
-    "presentationReady": "Presentation-ready",
+    "presentationReady": "Strictly publishable SVG",
     "statistics": "Descriptive statistics",
+    "setupEvidence": "Pre-sample setup",
+    "setupEvidenceDescription": "Parent-clock artifact acquisition and isolated-runtime bootstrap finish before the isolated-runtime sample clock. They are retained separately and are not presented as network-cold evidence.",
     "metric": "Metric",
     "engine": "Engine",
     "samples": "{{count}} samples",
@@ -108,7 +110,7 @@
     "order": "Balanced order",
     "rawEvidence": "Raw evidence",
     "rawEvidenceDescription": "Failed and warmup samples remain inspectable here and in the downloaded report; they never enter measured aggregates.",
-    "noSamples": "No realm sample completed before the terminal event.",
+    "noSamples": "No sample completed before the terminal event.",
     "completedSummary": "{{samples}} retained samples, {{errors}} errors, {{duration}} total",
     "states": {
       "success": "Complete",
@@ -119,7 +121,7 @@
     },
     "stages": {
       "pausing": "Pausing live rendering",
-      "creating-realm": "Creating isolated realm",
+      "creating-realm": "Creating isolated runtime",
       "sampling": "Measuring presentation",
       "cleanup": "Releasing benchmark resources"
     },
@@ -129,18 +131,34 @@
       "measured": "Measured"
     },
     "sampleOutcomes": {
-      "success": "Valid",
+      "success": "Publishable",
       "failure": "Failed"
     },
     "metrics": {
-      "firstPresentationReadyMs": "First presentation",
-      "firstValidSvgMs": "First valid SVG",
-      "warmPresentationReadyMs": "Warm presentation",
-      "warmValidSvgMs": "Warm valid SVG"
+      "adapterImportMs": "Module parse and evaluation",
+      "engineImportMs": "Engine initialization import",
+      "resourceAcquisitionMs": "Engine resource acquisition",
+      "registrationMs": "External registration",
+      "initializationMs": "Configuration and initialization",
+      "firstBudgetedSvgMs": "Fresh isolated runtime budgeted SVG",
+      "firstIsolatedPresentationMs": "Fresh isolated runtime presentation",
+      "warmBudgetedSvgMs": "Reused isolated runtime budgeted SVG",
+      "warmIsolatedPresentationMs": "Reused isolated runtime presentation",
+      "isolatedPresentationReceiptMs": "Parent dispatch to presentation notice",
+      "responseDeliveryMs": "Presentation notice to response receipt",
+      "responseEnvelopeValidationMs": "Parent response validation",
+      "strictSvgValidationMs": "Strict parent SVG validation",
+      "firstPublishableSvgMs": "Fresh runtime publishable SVG",
+      "warmPublishableSvgMs": "Reused runtime publishable SVG"
+    },
+    "setupMetrics": {
+      "artifactAcquisitionMs": "Engine artifact acquisition",
+      "realmBootstrapMs": "Isolated runtime bootstrap",
+      "totalMs": "Total pre-sample setup"
     },
     "metricDescriptions": {
-      "firstPresentationReadyMs": "From realm-local sample start through safe insertion, layout, and the next animation frame.",
-      "warmPresentationReadyMs": "From render invocation through safe insertion, layout, and the next animation frame in an initialized realm."
+      "firstPublishableSvgMs": "One parent clock from dispatch to a fresh isolated runtime through response-envelope checks and the same strict SVG projector used by the Playground.",
+      "warmPublishableSvgMs": "One parent clock from dispatch to a reused isolated runtime through response-envelope checks and the same strict SVG projector used by the Playground."
     }
   },
   "examples": {
@@ -242,11 +260,13 @@
     "runningDiagnostics": "Running diagnostics...",
     "diagnosticsEmpty": "No diagnostics available",
     "diagnosticsUnavailable": "Diagnostics unavailable",
+    "errorDetails": "Technical details",
     "mermanEngine": "Merman",
     "mermaidEngine": "Mermaid JS",
     "renderingMermaid": "Rendering Mermaid JS...",
     "updatingStale": "Updating",
     "refreshCompare": "Refresh compare",
+    "retryCompare": "Retry render",
     "viewSvgSource": "View SVG source",
     "viewSvgPreview": "View SVG preview",
     "exportSvg": "Export SVG",
@@ -254,6 +274,7 @@
     "exporting": "Exporting...",
     "renderingCurrent": "Rendering current diagram...",
     "currentRenderFailed": "Current render failed",
+    "artifactReady": "Ready",
     "noCurrentArtifact": "No current render available",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
@@ -277,7 +298,8 @@
     "disabled": "Disabled",
     "rendering": "Rendering...",
     "loading": "Loading...",
-    "error": "Error"
+    "error": "Error",
+    "syntaxIssues": "Syntax issues"
   },
   "themes": {
     "default": "Default",

@@ -10,7 +10,11 @@ import {
   type BenchmarkRawTrace,
   type BenchmarkSampleMode,
 } from "./trace.ts";
-import type { BenchmarkRealmSampleResult } from "./realm/controller.ts";
+import type {
+  BenchmarkRealmCreationEvidence,
+  BenchmarkRealmSampleResult,
+} from "./realm/controller.ts";
+import type { BenchmarkParentPublicationEvidence } from "./publication.ts";
 import type { BalancedBenchmarkSchedule } from "./schedule.ts";
 import {
   calculateBenchmarkStatistics,
@@ -22,7 +26,16 @@ import {
   type CompareRenderPayload,
 } from "../runtime/realm/channel-protocol.ts";
 
-export const BENCHMARK_REPORT_SCHEMA_VERSION = 1 as const;
+export const BENCHMARK_REPORT_SCHEMA_VERSION = 4 as const;
+
+export interface BenchmarkReportIntervals extends BenchmarkDerivedIntervals {
+  readonly firstPublishableSvgMs: number | null;
+  readonly isolatedPresentationReceiptMs: number | null;
+  readonly responseEnvelopeValidationMs: number | null;
+  readonly responseDeliveryMs: number | null;
+  readonly strictSvgValidationMs: number | null;
+  readonly warmPublishableSvgMs: number | null;
+}
 
 export const BENCHMARK_INTERVAL_NAMES = Object.freeze([
   "adapterImportMs",
@@ -30,11 +43,17 @@ export const BENCHMARK_INTERVAL_NAMES = Object.freeze([
   "resourceAcquisitionMs",
   "registrationMs",
   "initializationMs",
-  "firstValidSvgMs",
-  "firstPresentationReadyMs",
-  "warmValidSvgMs",
-  "warmPresentationReadyMs",
-] as const satisfies readonly (keyof BenchmarkDerivedIntervals)[]);
+  "firstBudgetedSvgMs",
+  "firstIsolatedPresentationMs",
+  "warmBudgetedSvgMs",
+  "warmIsolatedPresentationMs",
+  "isolatedPresentationReceiptMs",
+  "responseDeliveryMs",
+  "responseEnvelopeValidationMs",
+  "strictSvgValidationMs",
+  "firstPublishableSvgMs",
+  "warmPublishableSvgMs",
+] as const satisfies readonly (keyof BenchmarkReportIntervals)[]);
 
 export type BenchmarkIntervalName = (typeof BENCHMARK_INTERVAL_NAMES)[number];
 export type BenchmarkTerminalStatus =
@@ -50,6 +69,7 @@ export interface BenchmarkDetectionSnapshot {
   readonly effectiveLayoutId: string | null;
   readonly status: "available" | "unavailable";
   readonly syntaxId: string | null;
+  readonly validity: "valid" | "recoverable-invalid" | "unknown";
 }
 
 export interface BenchmarkFrozenInput extends CompareRenderPayload {
@@ -81,8 +101,10 @@ export interface BenchmarkSampleMetadata {
 interface BenchmarkRecordedSampleBase extends BenchmarkSampleMetadata {
   readonly engine: BenchmarkEngine;
   readonly failure: BenchmarkRecordedFailureDetail | null;
-  readonly intervals: BenchmarkDerivedIntervals | null;
+  readonly intervals: BenchmarkReportIntervals | null;
   readonly mode: BenchmarkSampleMode;
+  readonly parentPublication: BenchmarkParentPublicationEvidence | null;
+  readonly realmCreation: BenchmarkRealmCreationEvidence | null;
   readonly requestId: string;
   readonly resourceError: string | null;
   readonly resources: readonly BenchmarkResourceObservation[];
@@ -96,7 +118,7 @@ interface BenchmarkRecordedSampleBase extends BenchmarkSampleMetadata {
 
 export interface BenchmarkRecordedSuccess extends BenchmarkRecordedSampleBase {
   readonly failure: null;
-  readonly intervals: BenchmarkDerivedIntervals;
+  readonly intervals: BenchmarkReportIntervals;
   readonly outcome: "success";
   readonly sequence: number;
   readonly svgBytes: number;
@@ -170,12 +192,14 @@ export interface BenchmarkReportDownloadDependencies {
 
 export function projectBenchmarkRealmSample(
   metadata: BenchmarkSampleMetadata,
-  result: BenchmarkRealmSampleResult
+  result: BenchmarkRealmSampleResult,
+  realmCreation: BenchmarkRealmCreationEvidence | null = null
 ): BenchmarkRecordedSample {
   const common = {
     ...metadata,
     engine: result.engine,
     mode: result.mode,
+    realmCreation,
     requestId: result.requestId,
     resourceError: result.resourceError,
     resources: result.resources,
@@ -189,7 +213,12 @@ export function projectBenchmarkRealmSample(
       outcome: "success",
       failure: null,
       trace: result.trace,
-      intervals: deriveBenchmarkIntervals(result.trace, { mode: result.mode }),
+      intervals: deriveReportIntervals(
+        result.trace,
+        result.mode,
+        result.parentPublication
+      ),
+      parentPublication: result.parentPublication,
       version: result.version,
       svgBytes: result.svgBytes,
     });
@@ -201,7 +230,8 @@ export function projectBenchmarkRealmSample(
     intervals:
       result.trace === null
         ? null
-        : deriveBenchmarkIntervals(result.trace, { mode: result.mode }),
+        : deriveReportIntervals(result.trace, result.mode, null),
+    parentPublication: null,
     version: result.version,
     failure: Object.freeze({
       kind: "realm",
@@ -222,19 +252,22 @@ export function projectBenchmarkTransportFailure(
     runId: string;
   }>,
   error: unknown,
-  stage = "transport"
+  stage = "transport",
+  realmCreation: BenchmarkRealmCreationEvidence | null = null
 ): BenchmarkRecordedFailure {
   return Object.freeze({
     ...metadata,
     outcome: "failure",
     engine: input.engine,
     mode: input.mode,
+    realmCreation,
     requestId: input.requestId,
     role: input.role,
     runId: input.runId,
     sequence: null,
     trace: null,
     intervals: null,
+    parentPublication: null,
     resources: Object.freeze([]),
     resourceError: null,
     version: null,
@@ -296,6 +329,27 @@ export function downloadBenchmarkReport(
 
 function shouldAggregate(status: BenchmarkTerminalStatus): boolean {
   return status === "success" || status === "complete-with-errors";
+}
+
+function deriveReportIntervals(
+  trace: BenchmarkRawTrace,
+  mode: BenchmarkSampleMode,
+  parentPublication: BenchmarkParentPublicationEvidence | null
+): BenchmarkReportIntervals {
+  const local = deriveBenchmarkIntervals(trace, { mode });
+  return Object.freeze({
+    ...local,
+    isolatedPresentationReceiptMs:
+      parentPublication?.isolatedPresentationReceiptMs ?? null,
+    responseDeliveryMs: parentPublication?.responseDeliveryMs ?? null,
+    responseEnvelopeValidationMs:
+      parentPublication?.responseEnvelopeValidationMs ?? null,
+    strictSvgValidationMs: parentPublication?.strictSvgValidationMs ?? null,
+    firstPublishableSvgMs:
+      mode === "realm-cold" ? (parentPublication?.totalMs ?? null) : null,
+    warmPublishableSvgMs:
+      mode === "warm" ? (parentPublication?.totalMs ?? null) : null,
+  });
 }
 
 function buildAggregates(

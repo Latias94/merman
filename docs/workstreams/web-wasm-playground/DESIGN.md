@@ -69,10 +69,13 @@ The Render Coordinator freezes source, config, theme, font, measurement mode, SV
 viewport, and package version. It publishes only the latest coherent batch and keeps request
 failures outside runtime lifecycle state.
 
-The main document never imports Mermaid. Compare uses a same-origin iframe, authenticated
-MessagePort, closed protocol, message budgets, and SVG validation in both the realm and parent. One
-recovering queue owns local imports, external registration, initialization, render, ZenUML
-recovery, and validation. Timeout or protocol corruption destroys the realm.
+The main document never imports Mermaid. Compare uses a generated
+`sandbox="allow-scripts"` iframe with an opaque origin, authenticated MessagePort, closed protocol,
+and message budgets. A CSP-hashed bootstrap manifest binds the exact engine artifact identity; the
+realm verifies the engine digest before blob import. One recovering queue owns external
+registration, initialization, render, and ZenUML recovery. The parent alone converts returned
+markup into `SafeInlineSvg` through the shared strict validator immediately before publication.
+Timeout, protocol corruption, invalid SVG, or navigation poisons and destroys the realm.
 
 The visible interactive render timer measures the actual source. There is no hidden synthetic
 render. The preview separately records when a validated artifact reaches its presentation
@@ -80,14 +83,18 @@ boundary; this feedback is not represented as a formal cross-engine benchmark.
 
 ## Benchmark
 
-Benchmark is a separate product surface with one Window realm per engine. `realm-cold` recreates an
+Benchmark is a separate product surface with one Window realm per engine. Merman uses a trusted
+local document and Mermaid uses an opaque execution document. `realm-cold` recreates an
 iframe/module realm; `warm` reuses it. It does not claim that realm-cold means network-cold.
 Resource Timing entries are retained as observations without inferring unavailable HTTP-cache
 provenance.
 
 Protocol `1` and trace schema `1` record realm-local events for font readiness, adapter/engine
-imports, resource acquisition, registration, initialization, rendering, SVG safety, DOM insertion,
-layout, and presentation. The controller alone derives intervals and aggregate statistics. Equal
+imports, resource acquisition, registration, initialization, budgeted output, isolated DOM
+insertion, layout, and presentation. Those events do not claim parent publication safety. Report
+schema `4` adds one parent-clock vector from sample dispatch through response delivery, envelope
+validation, and strict SVG projection. Parent-side first/warm publishable-SVG totals are the primary
+cross-engine metrics. The controller alone derives intervals and aggregate statistics. Equal
 real-source warmups, a recorded seed, and balanced AB/BA blocks reduce order bias. Failed samples
 are excluded, ratios fail closed, and hidden/frozen/navigation boundaries invalidate the run and
 suppress aggregates. Evidence can be downloaded locally as versioned JSON; it is not uploaded.
@@ -108,10 +115,11 @@ adapters.
 
 ## Examples And Detection
 
-`playground/examples/manifest.json` selects exactly one fixture-backed example for every full
-profile logical family. `xtask` proves the 35-family set, source provenance, canonical detection,
-Mermaid `11.16.0` baseline, and generated output freshness. The gallery searches generated titles,
-categories, aliases, syntax ids, and family types.
+`playground/examples/manifest.json` selects one or more fixture-backed examples for every full
+profile logical family. The current teaching catalog contains 70 examples across the exact
+35-family set. `xtask` proves source provenance, canonical detection, Mermaid `11.16.0` baseline,
+and generated output freshness. The gallery searches generated titles, categories, aliases, syntax
+ids, and family types.
 
 Live diagram identity comes from typed Rust/WASM parser facts, including logical family, syntax id,
 and effective layout. Playground-only Mermaid registration requirements project those facts.
@@ -120,8 +128,14 @@ First-line prefix and regex classification are not canonical paths.
 ## Browser Trust And Cache Boundary
 
 All runtime modules, Monaco workers, Mermaid, ZenUML, ELK, and WASM assets are production-bundled
-and same-origin. Realm channels validate capabilities rather than accepting ambient globals. SVG
-must pass the shared DOM-safety policy before insertion.
+and acquired from owned application artifacts. Mermaid and its external modules execute inside an
+opaque-origin document that cannot directly fetch them; the parent transfers a digest-bound engine
+artifact over the authenticated channel. CSP denies connection, worker, frame, media, object, and
+non-data image capabilities. Only bounded frozen ephemeral storage facades are installed after
+engine verification. A self-navigation can issue its first document request before observation;
+the next load poisons the session and removes the frame, so absolute zero egress remains a host
+interception capability rather than a browser-iframe claim. SVG must pass the shared parent-side
+DOM-safety policy before insertion.
 
 Vite content hashes allow HTTP caching, but deployment headers are externally owned. The currently
 observed hashed-asset policy is `Cache-Control: max-age=14400`, without `immutable`. Long-lived

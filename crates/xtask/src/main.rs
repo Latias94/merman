@@ -1,4 +1,5 @@
 mod cmd;
+mod generated;
 mod state_svgdump;
 mod svgdom;
 mod util;
@@ -37,6 +38,8 @@ enum XtaskError {
     DefaultConfigProjection(String),
     #[error("text-measurement ABI descriptor is invalid: {0}")]
     TextMeasurementAbi(String),
+    #[error("Mermaid reference bundle is invalid:\n{0}")]
+    MermaidReference(String),
     #[error("missing reference checkout: {0}")]
     MissingReference(String),
     #[error("verification failed:\n{0}")]
@@ -83,6 +86,7 @@ fn print_help(topic: Option<&str>) {
     println!("  verify-default-config");
     println!("  verify-dompurify-defaults");
     println!("  verify-playground-example-catalog");
+    println!("  verify-mermaid-reference");
     println!("  verify-web-diagram-catalog");
     println!("  check-alignment");
     println!("  profile-budget");
@@ -120,6 +124,7 @@ fn print_help(topic: Option<&str>) {
     println!("  gen-text-measurement-abi");
     println!("  verify-text-measurement-abi");
     println!("  gen-playground-example-catalog");
+    println!("  gen-mermaid-reference");
     println!("  gen-web-diagram-catalog");
     println!();
     println!("Per-diagram SVG compare commands:");
@@ -169,6 +174,7 @@ fn main() -> Result<(), XtaskError> {
         "gen-default-config" => cmd::gen_default_config(args.collect()),
         "gen-dompurify-defaults" => cmd::gen_dompurify_defaults(args.collect()),
         "gen-playground-example-catalog" => cmd::gen_playground_example_catalog(args.collect()),
+        "gen-mermaid-reference" => cmd::gen_mermaid_reference(args.collect()),
         "gen-web-diagram-catalog" => cmd::gen_web_diagram_catalog(args.collect()),
         "gen-text-measurement-abi" => cmd::gen_text_measurement_abi(args.collect()),
         "verify" => cmd::verify(args.collect()),
@@ -177,6 +183,7 @@ fn main() -> Result<(), XtaskError> {
         "verify-playground-example-catalog" => {
             cmd::verify_playground_example_catalog(args.collect())
         }
+        "verify-mermaid-reference" => cmd::verify_mermaid_reference(args.collect()),
         "verify-web-diagram-catalog" => cmd::verify_web_diagram_catalog(args.collect()),
         "verify-text-measurement-abi" => cmd::verify_text_measurement_abi(args.collect()),
         "verify-generated" => cmd::verify_generated(args.collect()),

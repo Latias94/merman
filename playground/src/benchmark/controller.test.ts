@@ -26,6 +26,7 @@ import {
   REALM_BUDGETS,
   REALM_PROTOCOL_VERSION,
 } from "../runtime/realm/channel-protocol.ts";
+import { BENCHMARK_PUBLICATION_CLOCK_BOUNDARY } from "./publication.ts";
 
 test("realm-cold runs deterministic balanced blocks with one fresh realm per sample", async () => {
   const harness = createHarness();
@@ -52,7 +53,16 @@ test("realm-cold runs deterministic balanced blocks with one fresh realm per sam
     )
   );
   assert(report.aggregates);
-  assert.equal(report.aggregates.ratios.firstPresentationReadyMs, 1.5);
+  assert.equal(report.aggregates.ratios.firstIsolatedPresentationMs, 1.5);
+  assert.equal(report.aggregates.ratios.firstPublishableSvgMs, 1.5);
+  assert.equal(report.aggregates.ratios.resourceAcquisitionMs, null);
+  assert(
+    report.samples.every(
+      (sample) =>
+        sample.realmCreation?.clockBoundary === "parent-before-sample" &&
+        sample.realmCreation.artifact.id === `benchmark-${sample.engine}`
+    )
+  );
 });
 
 test("warm mode creates two engine realms, applies equal warmups, and reuses each realm", async () => {
@@ -77,8 +87,18 @@ test("warm mode creates two engine realms, applies equal warmups, and reuses eac
     assert.equal(inputs.filter((sample) => sample.role === "measured").length, 4);
   }
   assert(report.aggregates);
-  assert.equal(report.aggregates.ratios.warmPresentationReadyMs, 1.5);
-  assert.equal(report.aggregates.ratios.firstPresentationReadyMs, null);
+  assert.equal(report.aggregates.ratios.warmIsolatedPresentationMs, 1.5);
+  assert.equal(report.aggregates.ratios.warmPublishableSvgMs, 1.5);
+  assert.equal(report.aggregates.ratios.firstIsolatedPresentationMs, null);
+  assert.equal(
+    report.samples.filter((sample) => sample.realmCreation !== null).length,
+    2
+  );
+  assert(
+    report.samples
+      .filter((sample) => sample.mode === "warm")
+      .every((sample) => sample.realmCreation === null)
+  );
 });
 
 test("realm failure remains raw evidence and fails every ratio closed", async () => {
@@ -117,8 +137,8 @@ test("observed package version drift becomes retained protocol failure", async (
     (sample) => sample.failure?.stage === "version"
   );
   assert(drift);
-  assert.equal(drift.trace?.presentation_ready !== null, true);
-  assert.equal(report.aggregates?.ratios.firstPresentationReadyMs, null);
+  assert.equal(drift.trace?.isolated_presentation_ready !== null, true);
+  assert.equal(report.aggregates?.ratios.firstIsolatedPresentationMs, null);
 });
 
 test("visibility invalidation is atomic, retains the transition, and releases all ownership", async () => {
@@ -267,11 +287,12 @@ function runRequest(
       configJson: "{}",
       theme: "default",
       diagramFont: "trebuchet",
-      externalRequirements: { elkLayouts: false, zenuml: false },
+      externalRequirements: { externalDiagrams: [], layoutModules: [] },
       viewport: { width: 800, height: 600 },
     },
     detection: {
       status: "available",
+      validity: "valid",
       diagramType: "flowchart",
       syntaxId: "flowchart",
       effectiveLayoutId: "dagre",
@@ -303,12 +324,24 @@ function createHarness(
     clearTimer(handle) {
       timers.delete(handle as number);
     },
-    createRealm: async () => {
+    createRealm: async (engine) => {
       createCount += 1;
       liveRealms += 1;
       maxLiveRealms = Math.max(maxLiveRealms, liveRealms);
       let disposed = false;
       const session: BrowserBenchmarkRealmSession = {
+        creationEvidence: {
+          artifact: {
+            bytes: 17,
+            id: `benchmark-${engine}`,
+            schemaVersion: 1,
+            sha256: "a".repeat(64),
+          },
+          artifactAcquisitionMs: 2,
+          clockBoundary: "parent-before-sample",
+          realmBootstrapMs: 3,
+          totalMs: 5,
+        },
         dispose() {
           if (disposed) return;
           disposed = true;
@@ -432,6 +465,7 @@ function realmSuccess(input: BenchmarkSampleInput): BenchmarkRealmSampleResult {
     input.mode === "warm"
       ? warmTrace(input.engine)
       : coldTrace(input.engine);
+  const scale = input.engine === "merman" ? 1 : 1.5;
   return {
     type: "benchmark-sample-success",
     protocol: REALM_PROTOCOL_VERSION,
@@ -446,6 +480,14 @@ function realmSuccess(input: BenchmarkSampleInput): BenchmarkRealmSampleResult {
     resources: [],
     resourceError: null,
     version: `test-${input.engine}`,
+    parentPublication: Object.freeze({
+      clockBoundary: BENCHMARK_PUBLICATION_CLOCK_BOUNDARY,
+      isolatedPresentationReceiptMs: 10 * scale,
+      responseDeliveryMs: 0.25 * scale,
+      responseEnvelopeValidationMs: 0.25 * scale,
+      strictSvgValidationMs: 0.5 * scale,
+      totalMs: 11 * scale,
+    }),
     svgBytes: 100,
   };
 }
@@ -464,10 +506,10 @@ function realmFailure(input: BenchmarkSampleInput): BenchmarkSampleFailure {
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
     trace: {
       ...trace,
-      safe_svg_ready: null,
-      dom_inserted: null,
-      layout_box_ready: null,
-      presentation_ready: null,
+      budgeted_svg_ready: null,
+      isolated_dom_inserted: null,
+      isolated_layout_box_ready: null,
+      isolated_presentation_ready: null,
     },
     resources: [],
     resourceError: null,
@@ -494,10 +536,10 @@ function coldTrace(engine: BenchmarkEngine): BenchmarkRawTrace {
     initialize_start: 5 * scale,
     initialize_end: 6 * scale,
     render_start: 6 * scale,
-    safe_svg_ready: 8 * scale,
-    dom_inserted: 8 * scale,
-    layout_box_ready: 9 * scale,
-    presentation_ready: 10 * scale,
+    budgeted_svg_ready: 8 * scale,
+    isolated_dom_inserted: 8 * scale,
+    isolated_layout_box_ready: 9 * scale,
+    isolated_presentation_ready: 10 * scale,
     sample_end: 10.5 * scale,
   };
 }
@@ -519,10 +561,10 @@ function warmTrace(engine: BenchmarkEngine): BenchmarkRawTrace {
     initialize_start: null,
     initialize_end: null,
     render_start: 1 * scale,
-    safe_svg_ready: 3 * scale,
-    dom_inserted: 3 * scale,
-    layout_box_ready: 4 * scale,
-    presentation_ready: 5 * scale,
+    budgeted_svg_ready: 3 * scale,
+    isolated_dom_inserted: 3 * scale,
+    isolated_layout_box_ready: 4 * scale,
+    isolated_presentation_ready: 5 * scale,
     sample_end: 5.5 * scale,
   };
 }

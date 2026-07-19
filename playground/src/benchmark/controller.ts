@@ -72,6 +72,7 @@ export interface BenchmarkLifecycleTarget {
 export interface BenchmarkControllerDependencies {
   clearTimer(handle: unknown): void;
   createRealm(
+    engine: BenchmarkEngine,
     viewport: RealmViewport,
     signal: AbortSignal
   ): Promise<BrowserBenchmarkRealmSession>;
@@ -338,7 +339,8 @@ export function createBenchmarkController(
   };
 
   const createSession = async (
-    run: ActiveBenchmarkRun
+    run: ActiveBenchmarkRun,
+    engine: BenchmarkEngine
   ): Promise<BrowserBenchmarkRealmSession> => {
     if (run.sessions.size >= BENCHMARK_BUDGETS.maxLiveRealms) {
       throw new RealmProtocolError(
@@ -346,6 +348,7 @@ export function createBenchmarkController(
       );
     }
     const session = await dependencies.createRealm(
+      engine,
       run.request.input.viewport,
       run.abort.signal
     );
@@ -396,10 +399,17 @@ export function createBenchmarkController(
     metadata: BenchmarkSampleMetadata,
     input: BenchmarkSampleInput,
     error: unknown,
-    stage: string
+    stage: string,
+    realmCreation = null as BrowserBenchmarkRealmSession["creationEvidence"] | null
   ) => {
     run.samples.push(
-      projectBenchmarkTransportFailure(metadata, input, error, stage)
+      projectBenchmarkTransportFailure(
+        metadata,
+        input,
+        error,
+        stage,
+        realmCreation
+      )
     );
     run.completed += 1;
   };
@@ -428,7 +438,13 @@ export function createBenchmarkController(
     try {
       const result = await session.sample(input);
       if (run.settled) return false;
-      let projected = projectBenchmarkRealmSample(metadata, result);
+      const realmCreation =
+        input.mode === "realm-cold" ? session.creationEvidence : null;
+      let projected = projectBenchmarkRealmSample(
+        metadata,
+        result,
+        realmCreation
+      );
       if (
         projected.outcome === "success" &&
         projected.version !== run.request.versions[input.engine]
@@ -451,7 +467,14 @@ export function createBenchmarkController(
       return projected.outcome === "success";
     } catch (error) {
       if (run.settled || error instanceof RunAlreadySettledError) return false;
-      recordTransportFailure(run, metadata, input, error, "transport");
+      recordTransportFailure(
+        run,
+        metadata,
+        input,
+        error,
+        "transport",
+        input.mode === "realm-cold" ? session.creationEvidence : null
+      );
       return false;
     }
   };
@@ -471,7 +494,7 @@ export function createBenchmarkController(
     );
     let session: BrowserBenchmarkRealmSession | null = null;
     try {
-      session = await createSession(run);
+      session = await createSession(run, engine);
       await sample(run, session, input, metadata);
     } catch (error) {
       if (!run.settled && !(error instanceof RunAlreadySettledError)) {
@@ -510,7 +533,7 @@ export function createBenchmarkController(
       updateProgress(run, "creating-realm", engine, "setup", null);
       let session: BrowserBenchmarkRealmSession;
       try {
-        session = await createSession(run);
+        session = await createSession(run, engine);
       } catch (error) {
         if (!run.settled && !(error instanceof RunAlreadySettledError)) {
           recordTransportFailure(run, metadata, input, error, "realm-create");
@@ -747,6 +770,13 @@ function validateDetection(
   if (detection.status !== "available" && detection.status !== "unavailable") {
     throw new RealmProtocolError("Benchmark detection status is invalid.");
   }
+  if (
+    detection.validity !== "valid" &&
+    detection.validity !== "recoverable-invalid" &&
+    detection.validity !== "unknown"
+  ) {
+    throw new RealmProtocolError("Benchmark detection validity is invalid.");
+  }
   const values = [
     detection.diagramType,
     detection.syntaxId,
@@ -763,7 +793,7 @@ function validateDetection(
   }
   if (
     detection.status === "available" &&
-    values.some((value) => value === null)
+    (values.some((value) => value === null) || detection.validity === "unknown")
   ) {
     throw new RealmProtocolError(
       "Available benchmark detection facts must be complete."
@@ -771,7 +801,7 @@ function validateDetection(
   }
   if (
     detection.status === "unavailable" &&
-    values.some((value) => value !== null)
+    (values.some((value) => value !== null) || detection.validity !== "unknown")
   ) {
     throw new RealmProtocolError(
       "Unavailable benchmark detection facts cannot retain stale values."

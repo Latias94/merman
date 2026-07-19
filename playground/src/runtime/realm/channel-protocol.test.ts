@@ -12,6 +12,7 @@ import {
   validateCompareRenderRequest,
   validateCompareRenderResponse,
   validateRealmHello,
+  validateRealmEngineArtifact,
   validateRealmInit,
   validateRealmReady,
 } from "./channel-protocol.ts";
@@ -21,6 +22,20 @@ const IDENTITY = {
   kind: "compare" as const,
   realmId: "realm-1",
   realmToken: "t".repeat(43),
+};
+const ENGINE_ARTIFACT = {
+  schemaVersion: 1 as const,
+  id: "compare-mermaid" as const,
+  bytes: 17,
+  sha256: "a".repeat(64),
+  resourceUrl: null,
+  source: "export default 1;",
+};
+const ENGINE_IDENTITY = {
+  schemaVersion: ENGINE_ARTIFACT.schemaVersion,
+  id: ENGINE_ARTIFACT.id,
+  bytes: ENGINE_ARTIFACT.bytes,
+  sha256: ENGINE_ARTIFACT.sha256,
 };
 
 test("one-time handshake messages bind boot and port identities", () => {
@@ -45,13 +60,14 @@ test("one-time handshake messages bind boot and port identities", () => {
     protocol: REALM_PROTOCOL_VERSION,
     ...IDENTITY,
     bootNonce: BOOT_NONCE,
+    engineArtifact: ENGINE_ARTIFACT,
   };
   assert.deepEqual(
     validateRealmInit(init, {
       kind: IDENTITY.kind,
       realmId: IDENTITY.realmId,
       bootNonce: BOOT_NONCE,
-    }),
+    }, ENGINE_IDENTITY),
     init
   );
 
@@ -90,6 +106,39 @@ test("handshake validation rejects foreign identity and schema drift", () => {
   }
 });
 
+test("engine artifact validation binds identity, bytes, and resource authority", () => {
+  assert.deepEqual(
+    validateRealmEngineArtifact(ENGINE_ARTIFACT, ENGINE_IDENTITY),
+    ENGINE_ARTIFACT
+  );
+  for (const invalid of [
+    { ...ENGINE_ARTIFACT, id: "benchmark-mermaid" },
+    { ...ENGINE_ARTIFACT, bytes: ENGINE_ARTIFACT.bytes + 1 },
+    { ...ENGINE_ARTIFACT, source: `${ENGINE_ARTIFACT.source}x` },
+    { ...ENGINE_ARTIFACT, sha256: "A".repeat(64) },
+    { ...ENGINE_ARTIFACT, resourceUrl: "https://example.test/engine.wasm" },
+    { ...ENGINE_ARTIFACT, extra: true },
+  ]) {
+    assert.throws(
+      () => validateRealmEngineArtifact(invalid, ENGINE_IDENTITY),
+      RealmProtocolError
+    );
+  }
+
+  const merman = {
+    ...ENGINE_ARTIFACT,
+    id: "benchmark-merman" as const,
+    resourceUrl: "https://play.test/merman_wasm_bg.wasm",
+  };
+  assert.equal(
+    validateRealmEngineArtifact(merman, {
+      ...ENGINE_IDENTITY,
+      id: "benchmark-merman",
+    }).resourceUrl,
+    merman.resourceUrl
+  );
+});
+
 test("one-time realm init gate rejects missing ports and replay", () => {
   const boot = {
     kind: IDENTITY.kind,
@@ -101,13 +150,14 @@ test("one-time realm init gate rejects missing ports and replay", () => {
     protocol: REALM_PROTOCOL_VERSION,
     ...IDENTITY,
     bootNonce: BOOT_NONCE,
+    engineArtifact: ENGINE_ARTIFACT,
   };
   assert.throws(
-    () => createOneTimeRealmInitGate(boot).consume(init, 0),
+    () => createOneTimeRealmInitGate(boot, ENGINE_IDENTITY).consume(init, 0),
     /transfer one port/
   );
 
-  const gate = createOneTimeRealmInitGate(boot);
+  const gate = createOneTimeRealmInitGate(boot, ENGINE_IDENTITY);
   assert.deepEqual(gate.consume(init, 1), init);
   assert.throws(() => gate.consume(init, 1), /INIT was replayed/);
 });
@@ -244,7 +294,7 @@ function renderRequest(
       configJson: overrides.configJson ?? "{}",
       theme: "default",
       diagramFont: "trebuchet",
-      externalRequirements: { elkLayouts: false, zenuml: false },
+      externalRequirements: { externalDiagrams: [], layoutModules: [] },
       viewport: { width: 800, height: 600 },
     },
   };

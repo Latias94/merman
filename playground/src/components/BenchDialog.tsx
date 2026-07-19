@@ -65,7 +65,10 @@ import type {
   BenchmarkRecordedSample,
   BenchmarkReport,
 } from "@/src/benchmark/report";
-import type { BenchmarkStatistics } from "@/src/benchmark/statistics";
+import {
+  calculateBenchmarkStatistics,
+  type BenchmarkStatistics,
+} from "@/src/benchmark/statistics";
 import {
   MERMAID_JS_VERSION,
   mermaidExternalRequirementsFor,
@@ -75,10 +78,39 @@ import {
   useMermanRuntime,
 } from "@/src/runtime/use-merman-runtime";
 import { REALM_BUDGETS } from "@/src/runtime/realm/channel-protocol";
+import { PLAYGROUND_RENDER_VIEWPORT } from "@/src/runtime/render-viewport";
 
 const ITERATION_OPTIONS = [2, 4, 6, 10, 20] as const;
+const COLD_METRICS = [
+  "adapterImportMs",
+  "engineImportMs",
+  "resourceAcquisitionMs",
+  "registrationMs",
+  "initializationMs",
+  "firstBudgetedSvgMs",
+  "firstIsolatedPresentationMs",
+  "isolatedPresentationReceiptMs",
+  "responseDeliveryMs",
+  "responseEnvelopeValidationMs",
+  "strictSvgValidationMs",
+  "firstPublishableSvgMs",
+] as const satisfies readonly BenchmarkIntervalName[];
+const WARM_METRICS = [
+  "warmBudgetedSvgMs",
+  "warmIsolatedPresentationMs",
+  "isolatedPresentationReceiptMs",
+  "responseDeliveryMs",
+  "responseEnvelopeValidationMs",
+  "strictSvgValidationMs",
+  "warmPublishableSvgMs",
+] as const satisfies readonly BenchmarkIntervalName[];
+const SETUP_METRICS = [
+  "artifactAcquisitionMs",
+  "realmBootstrapMs",
+  "totalMs",
+] as const;
+type SetupMetric = (typeof SETUP_METRICS)[number];
 const WARMUP_OPTIONS = [0, 1, 2, 3, 5] as const;
-const BENCHMARK_VIEWPORT = Object.freeze({ width: 800, height: 600 });
 
 export function BenchDialog() {
   const { t } = useTranslation();
@@ -196,7 +228,7 @@ export function BenchDialog() {
         theme: diagramTheme,
         diagramFont,
         externalRequirements: mermaidExternalRequirementsFor(detection),
-        viewport: BENCHMARK_VIEWPORT,
+        viewport: PLAYGROUND_RENDER_VIEWPORT,
       },
       detection,
       versions: {
@@ -529,10 +561,10 @@ function ReportView({ report }: { report: BenchmarkReport }) {
   const { t } = useTranslation();
   const metric: BenchmarkIntervalName =
     report.run.mode === "realm-cold"
-      ? "firstPresentationReadyMs"
-      : "warmPresentationReadyMs";
-  const secondaryMetric: BenchmarkIntervalName =
-    report.run.mode === "realm-cold" ? "firstValidSvgMs" : "warmValidSvgMs";
+      ? "firstPublishableSvgMs"
+      : "warmPublishableSvgMs";
+  const metrics =
+    report.run.mode === "realm-cold" ? COLD_METRICS : WARM_METRICS;
   const merman = report.aggregates?.engines.merman[metric] ?? null;
   const mermaid = report.aggregates?.engines.mermaid[metric] ?? null;
   const ratio = report.aggregates?.ratios[metric] ?? null;
@@ -596,7 +628,19 @@ function ReportView({ report }: { report: BenchmarkReport }) {
 
           <section className="space-y-2">
             <h3 className="text-sm font-semibold">{t("bench.statistics")}</h3>
-            <StatisticsTable report={report} metrics={[metric, secondaryMetric]} />
+            <StatisticsTable report={report} metrics={metrics} />
+          </section>
+
+          <section className="space-y-2">
+            <div>
+              <h3 className="text-sm font-semibold">
+                {t("bench.setupEvidence")}
+              </h3>
+              <p className="text-muted-foreground mt-1 text-xs">
+                {t("bench.setupEvidenceDescription")}
+              </p>
+            </div>
+            <SetupEvidenceTable report={report} />
           </section>
         </>
       )}
@@ -638,6 +682,52 @@ function ReportView({ report }: { report: BenchmarkReport }) {
       </section>
     </>
   );
+}
+
+function SetupEvidenceTable({ report }: { report: BenchmarkReport }) {
+  const { t } = useTranslation();
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{t("bench.metric")}</TableHead>
+          <TableHead>{t("bench.engine")}</TableHead>
+          <TableHead className="text-right">{t("bench.median")}</TableHead>
+          <TableHead className="text-right">{t("bench.p95")}</TableHead>
+          <TableHead className="text-right">{t("bench.mean")}</TableHead>
+          <TableHead className="text-right">{t("bench.range")}</TableHead>
+          <TableHead className="text-right">CV</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {SETUP_METRICS.flatMap((metric) =>
+          (["merman", "mermaid"] as const).map((engine) => (
+            <TableRow key={`${metric}-${engine}`}>
+              <TableCell>{t(`bench.setupMetrics.${metric}`)}</TableCell>
+              <TableCell>{engineLabel(engine)}</TableCell>
+              <StatisticCells
+                statistics={setupStatistics(report, engine, metric)}
+              />
+            </TableRow>
+          ))
+        )}
+      </TableBody>
+    </Table>
+  );
+}
+
+function setupStatistics(
+  report: BenchmarkReport,
+  engine: "merman" | "mermaid",
+  metric: SetupMetric
+): BenchmarkStatistics | null {
+  const values = report.samples
+    .filter(
+      (sample) => sample.engine === engine && sample.realmCreation !== null
+    )
+    .map((sample) => sample.realmCreation?.[metric])
+    .filter((value): value is number => value !== undefined);
+  return values.length === 0 ? null : calculateBenchmarkStatistics(values);
 }
 
 function StatisticsTable({

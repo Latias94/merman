@@ -12,6 +12,7 @@ import test from "node:test";
 
 import {
   BENCHMARK_SOURCES,
+  NON_LITERAL_DYNAMIC_IMPORT_OWNERS,
   collectRuntimeImports,
   inspectBenchmarkSourceBoundaries,
 } from "./benchmark-build-graph.mjs";
@@ -212,6 +213,28 @@ test("runtime import parser fails closed for computed module requests", () => {
   assert.throws(
     () => collectRuntimeImports("const name = './engine.ts'; import(name);"),
     /non-literal dynamic module request/,
+  );
+});
+
+test("the engine artifact loader exclusively owns one computed module request", () => {
+  const [[owner, expectedCount]] = Object.entries(
+    NON_LITERAL_DYNAMIC_IMPORT_OWNERS
+  );
+  assert.equal(expectedCount, 1);
+  assert.deepEqual(
+    collectRuntimeImports(
+      "const verifiedArtifactUrl = './engine.ts'; import(verifiedArtifactUrl);",
+      owner,
+    ),
+    [],
+  );
+  assert.throws(
+    () =>
+      collectRuntimeImports(
+        "const first = './a.ts'; const second = './b.ts'; import(first); import(second);",
+        owner,
+      ),
+    /must own exactly 1 non-literal dynamic module request; found 2/,
   );
 });
 

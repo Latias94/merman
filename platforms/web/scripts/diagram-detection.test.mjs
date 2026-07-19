@@ -35,6 +35,7 @@ test("detectDiagramFacts projects raw parser ids through canonical metadata ids"
   analysisResult = facts("gitGraph", "dagre");
   assert.deepEqual(webApi.detectDiagramFacts("gitGraph\ncommit id: 0"), {
     status: "available",
+    validity: "valid",
     diagramType: "gitgraph",
     syntaxId: "gitGraph",
     effectiveLayoutId: "dagre",
@@ -43,6 +44,7 @@ test("detectDiagramFacts projects raw parser ids through canonical metadata ids"
   analysisResult = facts("railroad-abnf", "dagre");
   assert.deepEqual(webApi.detectDiagramFacts("railroad-abnf\nrule = token"), {
     status: "available",
+    validity: "valid",
     diagramType: "railroadAbnf",
     syntaxId: "railroad-abnf",
     effectiveLayoutId: "dagre",
@@ -56,16 +58,28 @@ test("detectDiagramFacts forwards binding options without interpreting source", 
   assert.equal(receivedOptions, JSON.stringify(options));
 });
 
-test("detectDiagramFacts fails closed for invalid or unsupported facts", () => {
+test("detectDiagramFacts preserves syntax identity from parser recovery", () => {
+  analysisResult = { ...facts("flowchart-v2", "dagre"), valid: false };
+  assert.deepEqual(webApi.detectDiagramFacts("flowchart TD\nA[unterminated"), {
+    status: "available",
+    validity: "recoverable-invalid",
+    diagramType: "flowchart",
+    syntaxId: "flowchart-v2",
+    effectiveLayoutId: "dagre",
+  });
+});
+
+test("detectDiagramFacts fails closed for malformed or unsupported facts", () => {
   const unavailable = {
     status: "unavailable",
+    validity: "unknown",
     diagramType: null,
     syntaxId: null,
     effectiveLayoutId: null,
   };
   const invalidFacts = [
     { ...facts("flowchart-v2", "dagre"), version: 2 },
-    { ...facts("flowchart-v2", "dagre"), valid: false },
+    { ...facts("flowchart-v2", "dagre"), valid: "yes" },
     { ...facts("flowchart-v2", "dagre"), diagrams: [] },
     {
       ...facts("flowchart-v2", "dagre"),

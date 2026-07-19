@@ -2,9 +2,11 @@ import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
 
 import { compareMermaidRealmController } from "./mermaid-realm.ts";
 import { createRenderCoordinator } from "./render-coordinator.ts";
+import { PLAYGROUND_RENDER_VIEWPORT } from "./render-viewport.ts";
 
 export const renderCoordinator = createRenderCoordinator({
   compare: compareMermaidRealmController,
+  compareViewport: PLAYGROUND_RENDER_VIEWPORT,
   validateSvg: assertSafeSvgForDom,
 });
 
@@ -20,9 +22,6 @@ export const refreshRenderCoordinator = () => renderCoordinator.refresh();
 export const resumeRenderCoordinator = () => renderCoordinator.resume();
 export const setCompareEnabled = (enabled: boolean) =>
   renderCoordinator.setCompareEnabled(enabled);
-export const setCompareViewport = (
-  viewport: { width: number; height: number } | null
-) => renderCoordinator.setCompareViewport(viewport);
 export const setDiagnosticsEnabled = (enabled: boolean) =>
   renderCoordinator.setDiagnosticsEnabled(enabled);
 export const setRenderCoordinatorInput = renderCoordinator.setInput;

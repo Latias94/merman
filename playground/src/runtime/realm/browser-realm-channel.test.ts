@@ -1,16 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { REALM_PROTOCOL_VERSION } from "./channel-protocol.ts";
+import {
+  REALM_PROTOCOL_VERSION,
+  type RealmBootIdentity,
+} from "./channel-protocol.ts";
 import { createAuthenticatedBrowserRealmChannel } from "./browser-realm-channel.ts";
 
-test("browser realm channel authenticates one exact peer and transfers one port", async () => {
+const ENGINE_ARTIFACT = {
+  schemaVersion: 1 as const,
+  id: "compare-mermaid" as const,
+  bytes: 17,
+  sha256: "a".repeat(64),
+  resourceUrl: null,
+  source: "export default 1;",
+};
+
+test("opaque realm authenticates exact source and transfers one port", async () => {
   const harness = installBrowserHarness();
   try {
     const failures: Error[] = [];
     const channel = await createAuthenticatedBrowserRealmChannel({
       kind: "compare",
-      realmUrl: new URL("https://play.test/compare-realm.html"),
+      engineArtifact: ENGINE_ARTIFACT,
+      createRealmDocument: harness.createRealmDocument,
       initialViewport: { width: 800, height: 600 },
       signal: new AbortController().signal,
       label: "Test realm",
@@ -20,124 +33,102 @@ test("browser realm channel authenticates one exact peer and transfers one port"
 
     assert.equal(harness.initMessages.length, 1);
     assert.equal(harness.transfers.length, 1);
-    assert.equal(harness.transfers[0]?.length, 1);
+    assert.equal(harness.targetOrigins[0], "*");
     assert.deepEqual(harness.initMessages[0], {
       type: "realm-init",
       protocol: REALM_PROTOCOL_VERSION,
       kind: "compare",
       realmId: channel.identity.realmId,
-      bootNonce: harness.bootNonce,
+      bootNonce: harness.boot?.bootNonce,
       realmToken: channel.identity.realmToken,
+      engineArtifact: ENGINE_ARTIFACT,
     });
-    assert.match(channel.identity.realmId, /^[A-Za-z0-9_-]{43}$/);
+    assert.equal(harness.frame.attributes.get("sandbox"), "allow-scripts");
+    assert.equal(harness.frame.attributes.has("allow-same-origin"), false);
+    assert.equal(harness.frame.src, "");
+    assert.equal(harness.frame.srcdoc, "<!doctype html><title>opaque compare</title>");
     assert.equal(harness.frame.dataset.mermanRealm, "compare");
-    assert.equal(harness.frame.title, "Test Realm");
-    assert.equal(harness.frame.style.width, "800px");
-    assert.equal(harness.frame.style.height, "600px");
+    assert.equal(harness.frame.style.left, "0");
+    assert.equal(harness.frame.style.opacity, "1");
+    assert.equal(harness.frame.style.transform, "scale(0.00125)");
+    assert.equal(harness.frame.style.zIndex, "-1");
     assert.equal(failures.length, 0);
 
     await channel.setViewport({ width: 640, height: 480 });
     assert.equal(harness.frame.style.width, "640px");
     assert.equal(harness.frame.style.height, "480px");
+    assert.equal(harness.frame.style.transform, "scale(0.0015625)");
 
     channel.dispose();
     channel.dispose();
     assert.equal(harness.frame.removeCount, 1);
-    assert.equal(failures.length, 0);
   } finally {
     harness.restore();
   }
 });
 
-test("browser realm channel rejects an authenticated hello from the wrong path", async () => {
-  const harness = installBrowserHarness({ realmPath: "/unexpected.html" });
+test("opaque realm ignores forged origin, source, and boot messages", async () => {
+  const harness = installBrowserHarness({ includeForgedMessages: true });
   try {
-    const failures: Error[] = [];
-    await assert.rejects(
-      createAuthenticatedBrowserRealmChannel({
-        kind: "compare",
-        realmUrl: new URL("https://play.test/compare-realm.html"),
-        initialViewport: { width: 800, height: 600 },
-        signal: new AbortController().signal,
-        label: "Test realm",
-        title: "Test Realm",
-        onFailure: (error) => failures.push(error),
-      }),
-      /unexpected path/
-    );
-    assert.equal(harness.initMessages.length, 0);
-    assert.equal(failures.length, 1);
-    assert.equal(harness.frame.removeCount, 1);
+    const channel = await createAuthenticatedBrowserRealmChannel({
+      kind: "compare",
+      engineArtifact: ENGINE_ARTIFACT,
+      createRealmDocument: harness.createRealmDocument,
+      initialViewport: { width: 800, height: 600 },
+      signal: new AbortController().signal,
+      label: "Test realm",
+      title: "Test Realm",
+      onFailure: () => {},
+    });
+    assert.equal(harness.initMessages.length, 1);
+    channel.dispose();
   } finally {
     harness.restore();
   }
 });
 
-test("browser realm channel refuses a cross-origin realm before attachment", async () => {
-  const harness = installBrowserHarness({ autoHandshake: false });
-  try {
-    await assert.rejects(
-      createAuthenticatedBrowserRealmChannel({
-        kind: "compare",
-        realmUrl: new URL("https://foreign.test/compare-realm.html"),
-        initialViewport: { width: 800, height: 600 },
-        signal: new AbortController().signal,
-        label: "Test realm",
-        title: "Test Realm",
-        onFailure: () => {},
-      }),
-      /same-origin URL/
-    );
-    assert.equal(harness.frame.isConnected, false);
-  } finally {
-    harness.restore();
-  }
-});
-
-test("browser realm channel poisons a realm that navigates after authentication", async () => {
+test("opaque realm is poisoned if its frame navigates after authentication", async () => {
   const harness = installBrowserHarness();
   try {
     const failed = Promise.withResolvers<Error>();
     const channel = await createAuthenticatedBrowserRealmChannel({
       kind: "compare",
-      realmUrl: new URL("https://play.test/compare-realm.html"),
+      engineArtifact: ENGINE_ARTIFACT,
+      createRealmDocument: harness.createRealmDocument,
       initialViewport: { width: 800, height: 600 },
       signal: new AbortController().signal,
       label: "Test realm",
       title: "Test Realm",
       onFailure: failed.resolve,
     });
-
     harness.frame.dispatchEvent(new Event("load"));
     assert.match((await failed.promise).message, /navigated after handshake/);
     await assert.rejects(
       channel.setViewport({ width: 640, height: 480 }),
       /viewport host is unavailable/
     );
-    assert.equal(harness.frame.removeCount, 1);
   } finally {
     harness.restore();
   }
 });
 
-test("browser realm channel rejects timeout and pre-aborted handshakes", async () => {
+test("opaque realm rejects timeout and pre-aborted handshakes", async () => {
   const timeoutHarness = installBrowserHarness({ autoHandshake: false });
   try {
-    const failures: Error[] = [];
     await assert.rejects(
       createAuthenticatedBrowserRealmChannel({
         kind: "benchmark",
-        realmUrl: new URL("https://play.test/benchmark.html"),
+        engineArtifact: { ...ENGINE_ARTIFACT, id: "benchmark-mermaid" },
+        createRealmDocument: timeoutHarness.createRealmDocument,
         initialViewport: { width: 800, height: 600 },
         signal: new AbortController().signal,
         handshakeTimeoutMs: 5,
         label: "Benchmark realm",
         title: "Benchmark Realm",
-        onFailure: (error) => failures.push(error),
+        onFailure: () => {},
       }),
       /handshake timed out/
     );
-    assert.equal(failures.length, 1);
     assert.equal(timeoutHarness.frame.removeCount, 1);
   } finally {
     timeoutHarness.restore();
@@ -150,7 +141,8 @@ test("browser realm channel rejects timeout and pre-aborted handshakes", async (
     await assert.rejects(
       createAuthenticatedBrowserRealmChannel({
         kind: "benchmark",
-        realmUrl: new URL("https://play.test/benchmark.html"),
+        engineArtifact: { ...ENGINE_ARTIFACT, id: "benchmark-mermaid" },
+        createRealmDocument: abortHarness.createRealmDocument,
         initialViewport: { width: 800, height: 600 },
         signal: controller.signal,
         label: "Benchmark realm",
@@ -160,7 +152,6 @@ test("browser realm channel rejects timeout and pre-aborted handshakes", async (
       (error: unknown) =>
         error instanceof DOMException && error.name === "AbortError"
     );
-    assert.equal(abortHarness.frame.removeCount, 1);
   } finally {
     abortHarness.restore();
   }
@@ -168,12 +159,12 @@ test("browser realm channel rejects timeout and pre-aborted handshakes", async (
 
 interface HarnessOptions {
   readonly autoHandshake?: boolean;
-  readonly realmPath?: string;
+  readonly includeForgedMessages?: boolean;
 }
 
 function installBrowserHarness({
   autoHandshake = true,
-  realmPath,
+  includeForgedMessages = false,
 }: HarnessOptions = {}) {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
@@ -185,17 +176,15 @@ function installBrowserHarness({
     location: { origin: "https://play.test" },
   });
   const initMessages: unknown[] = [];
+  const targetOrigins: string[] = [];
   const transfers: MessagePort[][] = [];
   let realmPort: MessagePort | null = null;
-  let bootNonce = "";
+  let boot: RealmBootIdentity | null = null;
 
   const contentWindow = {
-    innerWidth: 800,
-    innerHeight: 600,
-    location: { pathname: realmPath ?? "/compare-realm.html" },
     postMessage(data: unknown, targetOrigin: string, ports: MessagePort[]) {
-      assert.equal(targetOrigin, "https://play.test");
       initMessages.push(data);
+      targetOrigins.push(targetOrigin);
       transfers.push(ports);
       realmPort = ports[0] ?? null;
       assert.ok(realmPort);
@@ -213,15 +202,16 @@ function installBrowserHarness({
           realmId: init.realmId,
           realmToken: init.realmToken,
           sequence: 0,
-          viewport: {
-            width: contentWindow.innerWidth,
-            height: contentWindow.innerHeight,
-          },
+          viewport: { width: 800, height: 600 },
         });
       });
     },
   };
   const frame = new FakeIFrame(contentWindow);
+  const createRealmDocument = (identity: RealmBootIdentity) => {
+    boot = identity;
+    return `<!doctype html><title>opaque ${identity.kind}</title>`;
+  };
   const document = {
     body: {
       appendChild(element: FakeIFrame) {
@@ -230,34 +220,23 @@ function installBrowserHarness({
         frame.dispatchEvent(new Event("load"));
         if (!autoHandshake) return;
         queueMicrotask(() => {
-          const url = new URL(frame.src);
-          const params = new URLSearchParams(url.hash.slice(1));
-          bootNonce = params.get("boot") ?? "";
+          assert.ok(boot);
           const hello = {
             type: "realm-hello",
             protocol: REALM_PROTOCOL_VERSION,
-            kind: params.get("kind"),
-            realmId: params.get("realm"),
-            bootNonce,
+            ...boot,
           };
-          dispatchWindowMessage(
-            parentWindow,
-            hello,
-            "https://foreign.test",
-            contentWindow
-          );
-          dispatchWindowMessage(
-            parentWindow,
-            hello,
-            "https://play.test",
-            {}
-          );
-          dispatchWindowMessage(
-            parentWindow,
-            hello,
-            "https://play.test",
-            contentWindow
-          );
+          if (includeForgedMessages) {
+            dispatchWindowMessage(parentWindow, hello, "https://play.test", contentWindow);
+            dispatchWindowMessage(parentWindow, hello, "null", {});
+            dispatchWindowMessage(
+              parentWindow,
+              { ...hello, bootNonce: "x".repeat(43) },
+              "null",
+              {}
+            );
+          }
+          dispatchWindowMessage(parentWindow, hello, "null", contentWindow);
         });
       },
     },
@@ -275,11 +254,13 @@ function installBrowserHarness({
   });
 
   return {
+    createRealmDocument,
     frame,
     initMessages,
+    targetOrigins,
     transfers,
-    get bootNonce() {
-      return bootNonce;
+    get boot() {
+      return boot;
     },
     restore() {
       realmPort?.close();
@@ -293,9 +274,6 @@ function installBrowserHarness({
 class FakeIFrame extends EventTarget {
   readonly attributes = new Map<string, string>();
   readonly contentWindow: {
-    innerHeight: number;
-    innerWidth: number;
-    location: { pathname: string };
     postMessage(data: unknown, targetOrigin: string, ports: MessagePort[]): void;
   };
   readonly dataset: Record<string, string> = {};
@@ -303,18 +281,13 @@ class FakeIFrame extends EventTarget {
   isConnected = false;
   removeCount = 0;
   src = "";
+  srcdoc = "";
   tabIndex = 0;
   title = "";
 
   constructor(contentWindow: FakeIFrame["contentWindow"]) {
     super();
     this.contentWindow = contentWindow;
-    defineDimension(this.style, "width", (value) => {
-      this.contentWindow.innerWidth = value;
-    });
-    defineDimension(this.style, "height", (value) => {
-      this.contentWindow.innerHeight = value;
-    });
   }
 
   remove() {
@@ -326,23 +299,6 @@ class FakeIFrame extends EventTarget {
   setAttribute(name: string, value: string) {
     this.attributes.set(name, value);
   }
-}
-
-function defineDimension(
-  style: Record<string, string>,
-  name: "height" | "width",
-  update: (value: number) => void
-) {
-  let stored = "";
-  Object.defineProperty(style, name, {
-    configurable: true,
-    enumerable: true,
-    get: () => stored,
-    set(value: string) {
-      stored = value;
-      update(Number.parseFloat(value));
-    },
-  });
 }
 
 function dispatchWindowMessage(
@@ -368,13 +324,7 @@ function defineGlobal(name: string, value: unknown) {
   });
 }
 
-function restoreGlobal(
-  name: string,
-  descriptor: PropertyDescriptor | undefined
-) {
-  if (descriptor) {
-    Object.defineProperty(globalThis, name, descriptor);
-    return;
-  }
-  Reflect.deleteProperty(globalThis, name);
+function restoreGlobal(name: string, descriptor?: PropertyDescriptor) {
+  if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+  else Reflect.deleteProperty(globalThis, name);
 }

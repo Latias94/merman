@@ -1,5 +1,3 @@
-import { assertSafeSvgForDom } from "@mermanjs/web/svg-safety";
-
 import {
   BENCHMARK_PROTOCOL_VERSION,
   validateBenchmarkSampleProgress,
@@ -25,6 +23,9 @@ import {
   utf8ByteLength,
   validateRealmFatal,
   type RealmViewport,
+  type RealmBootIdentity,
+  type RealmEngineArtifact,
+  type RealmEngineArtifactIdentity,
 } from "../../runtime/realm/channel-protocol.ts";
 import {
   createBenchmarkProgressGate,
@@ -33,6 +34,12 @@ import {
   type BenchmarkStageWatchdog,
   type BenchmarkStageTimer,
 } from "./stage-watchdog.ts";
+import { projectSafeInlineSvg } from "../../runtime/render-artifact.ts";
+import type { BenchmarkEngine } from "../trace.ts";
+import {
+  deriveBenchmarkParentPublicationEvidence,
+  type BenchmarkParentPublicationEvidence,
+} from "../publication.ts";
 
 export type BenchmarkSampleInput = Pick<
   BenchmarkSampleRequest,
@@ -46,12 +53,22 @@ export type BenchmarkSampleInput = Pick<
 >;
 
 export interface BrowserBenchmarkRealmSession {
+  readonly creationEvidence: BenchmarkRealmCreationEvidence;
   dispose(): void;
   sample(input: BenchmarkSampleInput): Promise<BenchmarkRealmSampleResult>;
 }
 
+export interface BenchmarkRealmCreationEvidence {
+  readonly artifact: RealmEngineArtifactIdentity;
+  readonly artifactAcquisitionMs: number;
+  readonly clockBoundary: "parent-before-sample";
+  readonly realmBootstrapMs: number;
+  readonly totalMs: number;
+}
+
 export interface BenchmarkRealmSampleSuccess
   extends Omit<BenchmarkSampleSuccess, "svg"> {
+  readonly parentPublication: BenchmarkParentPublicationEvidence;
   readonly svgBytes: number;
 }
 
@@ -64,11 +81,16 @@ export interface BenchmarkRealmSessionDependencies {
   createChannel(
     options: BrowserRealmChannelOptions
   ): Promise<AuthenticatedBrowserRealmChannel>;
+  createCreationEvidence(): BenchmarkRealmCreationEvidence;
   getVisibilityState(): string;
+  readonly engineArtifact: RealmEngineArtifact;
   now(): number;
-  readonly realmUrl: URL;
+  readonly realm:
+    | {
+        readonly createRealmDocument: (identity: RealmBootIdentity) => string;
+      }
+    | { readonly realmUrl: URL };
   setTimer(callback: () => void, timeoutMs: number): unknown;
-  validateSvg(svg: string): void;
 }
 
 interface PendingSample {
@@ -77,29 +99,64 @@ interface PendingSample {
   readonly reject: (error: unknown) => void;
   readonly resolve: (response: BenchmarkRealmSampleResult) => void;
   readonly stageWatchdog: BenchmarkStageWatchdog;
+  readonly dispatchedAt: number;
+  isolatedPresentationReceivedAt: number | null;
   progressTimer: unknown | null;
 }
 
 export async function createBrowserBenchmarkRealmSession(
+  engine: BenchmarkEngine,
   initialViewport: RealmViewport,
   signal: AbortSignal
 ): Promise<BrowserBenchmarkRealmSession> {
-  return createBenchmarkRealmSession(initialViewport, signal, {
+  const setupStartedAt = performance.now();
+  const opaqueRealm =
+    engine === "mermaid"
+      ? await import("../../runtime/realm/opaque-realm-artifacts.ts")
+      : null;
+  const mermanRealm =
+    engine === "merman" ? await import("./merman-engine-artifact.ts") : null;
+  const engineArtifact =
+    engine === "mermaid"
+      ? opaqueRealm!.benchmarkMermaidEngineArtifact
+      : mermanRealm!.createMermanBenchmarkEngineArtifact();
+  const artifactAcquiredAt = performance.now();
+  const bootstrapStartedAt = performance.now();
+  return createBenchmarkRealmSession(engine, initialViewport, signal, {
     clearTimer: (handle) =>
       clearTimeout(handle as ReturnType<typeof setTimeout>),
     createChannel: createAuthenticatedBrowserRealmChannel,
+    createCreationEvidence() {
+      const readyAt = performance.now();
+      return {
+        artifact: artifactIdentity(engineArtifact),
+        artifactAcquisitionMs: artifactAcquiredAt - setupStartedAt,
+        clockBoundary: "parent-before-sample",
+        realmBootstrapMs: readyAt - bootstrapStartedAt,
+        totalMs: readyAt - setupStartedAt,
+      };
+    },
     getVisibilityState: () => document.visibilityState,
     now: () => performance.now(),
-    realmUrl: new URL(
-      `${import.meta.env.BASE_URL}benchmark.html`,
-      window.location.origin
-    ),
+    engineArtifact,
+    realm:
+      engine === "mermaid"
+        ? {
+            createRealmDocument:
+              opaqueRealm!.createOpaqueMermaidBenchmarkRealmDocument,
+          }
+        : {
+            realmUrl: new URL(
+              `${import.meta.env.BASE_URL}benchmark.html`,
+              window.location.origin
+            ),
+          },
     setTimer: (callback, timeoutMs) => setTimeout(callback, timeoutMs),
-    validateSvg: assertSafeSvgForDom,
   });
 }
 
 export async function createBenchmarkRealmSession(
+  expectedEngine: BenchmarkEngine,
   initialViewport: RealmViewport,
   signal: AbortSignal,
   dependencies: BenchmarkRealmSessionDependencies
@@ -149,7 +206,8 @@ export async function createBenchmarkRealmSession(
   };
   const channel = await dependencies.createChannel({
     kind: "benchmark",
-    realmUrl: dependencies.realmUrl,
+    ...dependencies.realm,
+    engineArtifact: dependencies.engineArtifact,
     initialViewport,
     signal,
     label: "Benchmark realm",
@@ -159,6 +217,17 @@ export async function createBenchmarkRealmSession(
   channelRef = channel;
   transportAvailable = true;
   const { identity, port } = channel;
+  let creationEvidence: BenchmarkRealmCreationEvidence;
+  try {
+    creationEvidence = validateCreationEvidence(
+      dependencies.createCreationEvidence(),
+      dependencies.engineArtifact
+    );
+  } catch (error) {
+    transportAvailable = false;
+    channel.dispose();
+    throw error;
+  }
 
   const dispose = () => {
     if (disposed) return;
@@ -203,6 +272,7 @@ export async function createBenchmarkRealmSession(
       }
       const current = pending;
       if (isRealmMessageType(event.data, "benchmark-progress")) {
+        const progressReceivedAt = dependencies.now();
         const progress = validateBenchmarkSampleProgress(
           event.data,
           identity,
@@ -211,10 +281,14 @@ export async function createBenchmarkRealmSession(
         );
         current.progressGate.observe(progress.event);
         current.stageWatchdog.observe(progress.event);
+        if (progress.event === "isolated_presentation_ready") {
+          current.isolatedPresentationReceivedAt = progressReceivedAt;
+        }
         incomingSequence = expectedSequence;
         armProgressTimer(current);
         return;
       }
+      const responseReceivedAt = dependencies.now();
       const response = validateBenchmarkSampleResponse(
         event.data,
         identity,
@@ -231,10 +305,26 @@ export async function createBenchmarkRealmSession(
           "Pre-clock benchmark failure cannot contain progress."
         );
       }
+      const envelopeValidatedAt = dependencies.now();
+      let parentPublication: BenchmarkParentPublicationEvidence | null = null;
       if (response.type === "benchmark-sample-success") {
-        dependencies.validateSvg(response.svg);
+        if (current.isolatedPresentationReceivedAt === null) {
+          throw new RealmProtocolError(
+            "Successful benchmark response has no isolated presentation receipt."
+          );
+        }
+        projectSafeInlineSvg(response.svg);
+        const strictSvgValidatedAt = dependencies.now();
+        parentPublication = deriveBenchmarkParentPublicationEvidence({
+          dispatchedAt: current.dispatchedAt,
+          isolatedPresentationReceivedAt:
+            current.isolatedPresentationReceivedAt,
+          responseReceivedAt,
+          envelopeValidatedAt,
+          strictSvgValidatedAt,
+        });
       }
-      const projected = projectSample(response);
+      const projected = projectSample(response, parentPublication);
       incomingSequence = expectedSequence;
       pending = null;
       cleanupPending(current);
@@ -248,6 +338,7 @@ export async function createBenchmarkRealmSession(
   };
 
   return {
+    creationEvidence,
     dispose,
     sample(input) {
       if (disposed || !transportAvailable) {
@@ -265,6 +356,11 @@ export async function createBenchmarkRealmSession(
       if (pending) {
         return Promise.reject(
           new RealmProtocolError("Benchmark realm already has active work.")
+        );
+      }
+      if (input.engine !== expectedEngine) {
+        return Promise.reject(
+          new RealmProtocolError("Benchmark session engine is invalid.")
         );
       }
       const nextSequence = outgoingSequence + 1;
@@ -301,8 +397,11 @@ export async function createBenchmarkRealmSession(
             )
           );
         }, stageTimer);
+        const dispatchedAt = dependencies.now();
         current = {
           expected: request,
+          dispatchedAt,
+          isolatedPresentationReceivedAt: null,
           progressGate,
           resolve,
           reject,
@@ -321,12 +420,85 @@ export async function createBenchmarkRealmSession(
   };
 }
 
+function artifactIdentity(
+  artifact: RealmEngineArtifact
+): RealmEngineArtifactIdentity {
+  return Object.freeze({
+    bytes: artifact.bytes,
+    id: artifact.id,
+    schemaVersion: artifact.schemaVersion,
+    sha256: artifact.sha256,
+  });
+}
+
+function validateCreationEvidence(
+  evidence: BenchmarkRealmCreationEvidence,
+  artifact: RealmEngineArtifact
+): BenchmarkRealmCreationEvidence {
+  if (
+    evidence.clockBoundary !== "parent-before-sample" ||
+    !sameArtifactIdentity(evidence.artifact, artifact)
+  ) {
+    throw new RealmProtocolError(
+      "Benchmark realm creation evidence identity is invalid."
+    );
+  }
+  for (const [name, value] of [
+    ["artifactAcquisitionMs", evidence.artifactAcquisitionMs],
+    ["realmBootstrapMs", evidence.realmBootstrapMs],
+    ["totalMs", evidence.totalMs],
+  ] as const) {
+    if (!Number.isFinite(value) || value < 0 || value > REALM_BUDGETS.runTimeoutMs) {
+      throw new RealmProtocolError(
+        `Benchmark realm creation evidence ${name} is invalid.`
+      );
+    }
+  }
+  if (
+    evidence.totalMs + Number.EPSILON <
+    evidence.artifactAcquisitionMs + evidence.realmBootstrapMs
+  ) {
+    throw new RealmProtocolError(
+      "Benchmark realm creation evidence total is inconsistent."
+    );
+  }
+  return Object.freeze({
+    artifact: artifactIdentity(artifact),
+    artifactAcquisitionMs: evidence.artifactAcquisitionMs,
+    clockBoundary: "parent-before-sample",
+    realmBootstrapMs: evidence.realmBootstrapMs,
+    totalMs: evidence.totalMs,
+  });
+}
+
+function sameArtifactIdentity(
+  left: RealmEngineArtifactIdentity,
+  right: RealmEngineArtifactIdentity
+): boolean {
+  return (
+    left.bytes === right.bytes &&
+    left.id === right.id &&
+    left.schemaVersion === right.schemaVersion &&
+    left.sha256 === right.sha256
+  );
+}
+
 function projectSample(
-  response: BenchmarkSampleResponse
+  response: BenchmarkSampleResponse,
+  parentPublication: BenchmarkParentPublicationEvidence | null
 ): BenchmarkRealmSampleResult {
   if (response.type === "benchmark-sample-failure") {
     return Object.freeze(response);
   }
+  if (parentPublication === null) {
+    throw new RealmProtocolError(
+      "Successful benchmark sample has no parent publication evidence."
+    );
+  }
   const { svg, ...evidence } = response;
-  return Object.freeze({ ...evidence, svgBytes: utf8ByteLength(svg) });
+  return Object.freeze({
+    ...evidence,
+    parentPublication,
+    svgBytes: utf8ByteLength(svg),
+  });
 }

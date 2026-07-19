@@ -5,6 +5,7 @@ import type { BenchmarkTraceMark } from "../trace.ts";
 export interface BenchmarkEngineContext {
   readonly mark: (event: BenchmarkTraceMark) => void;
   readonly payload: CompareRenderPayload;
+  readonly resourceUrl: string | null;
 }
 
 export interface BenchmarkEngineSession {

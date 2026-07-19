@@ -23,6 +23,7 @@ import type {
   ValidationResult,
 } from "@mermanjs/web";
 import type { DiagramFont } from "../lib/diagram-font.ts";
+import { projectError } from "./error-projection.ts";
 
 export type MermanLoadStage =
   | "acquire"
@@ -118,6 +119,7 @@ export interface MermanSession {
 
 export interface MermanRuntimeFailure {
   readonly cause: unknown;
+  readonly detail: string | null;
   readonly message: string;
   readonly recovery: MermanRecovery;
   readonly stage: MermanLoadStage;
@@ -170,6 +172,7 @@ export interface MermanRuntime {
 
 class StagedRuntimeError extends Error {
   readonly cause: unknown;
+  readonly detail: string | null;
   readonly recovery: MermanRecovery;
   readonly stage: MermanLoadStage;
 
@@ -178,9 +181,11 @@ class StagedRuntimeError extends Error {
     recovery: MermanRecovery,
     cause: unknown
   ) {
-    super(errorMessage(cause));
+    const projection = projectError(cause);
+    super(projection.summary);
     this.name = "StagedRuntimeError";
     this.cause = cause;
+    this.detail = projection.detail;
     this.recovery = recovery;
     this.stage = stage;
   }
@@ -261,6 +266,7 @@ export function createMermanRuntime(
         replaceState({
           error: {
             cause: staged.cause,
+            detail: staged.detail,
             message: staged.message,
             recovery: staged.recovery,
             stage: staged.stage,
@@ -450,10 +456,6 @@ function toStagedError(error: unknown): StagedRuntimeError {
   return error instanceof StagedRuntimeError
     ? error
     : new StagedRuntimeError("session", "retry", error);
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function runtimeFailureError(failure: MermanRuntimeFailure): Error {

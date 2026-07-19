@@ -12,6 +12,7 @@ import {
 import { BENCHMARK_PROTOCOL_VERSION } from "./protocol.ts";
 import { BENCHMARK_TRACE_SCHEMA_VERSION } from "./trace.ts";
 import { REALM_PROTOCOL_VERSION } from "../runtime/realm/channel-protocol.ts";
+import { BENCHMARK_PUBLICATION_CLOCK_BOUNDARY } from "./publication.ts";
 
 test("report derives intervals from raw traces and strips capability tokens", () => {
   const sample = projectBenchmarkRealmSample(
@@ -24,8 +25,11 @@ test("report derives intervals from raw traces and strips capability tokens", ()
   );
 
   assert.equal(sample.outcome, "success");
-  assert.equal(sample.intervals.firstPresentationReadyMs, 12);
+  assert.equal(sample.intervals.firstIsolatedPresentationMs, 12);
+  assert.equal(sample.intervals.firstPublishableSvgMs, 26);
+  assert.equal(sample.intervals.strictSvgValidationMs, 3);
   assert.equal(sample.intervals.resourceAcquisitionMs, 3.5);
+  assert.deepEqual(sample.parentPublication, parentPublication());
   assert.equal("runToken" in sample, false);
   assert.equal("realmToken" in sample, false);
 });
@@ -46,13 +50,13 @@ test("failed samples remain in evidence but cannot produce a ratio", () => {
   assert.equal(report.samples.length, 2);
   assert.equal(report.samples[1].outcome, "failure");
   assert(report.aggregates);
-  assert.equal(report.aggregates.ratios.firstPresentationReadyMs, null);
+  assert.equal(report.aggregates.ratios.firstIsolatedPresentationMs, null);
   assert.equal(
-    report.aggregates.engines.merman.firstPresentationReadyMs?.count,
+    report.aggregates.engines.merman.firstIsolatedPresentationMs?.count,
     1
   );
   assert.equal(
-    report.aggregates.engines.mermaid.firstPresentationReadyMs,
+    report.aggregates.engines.mermaid.firstIsolatedPresentationMs,
     null
   );
 });
@@ -81,7 +85,7 @@ test("ratio requires the same measured block identities on both engines", () => 
   const report = buildBenchmarkReport(baseEvidence([merman, mermaid]), "success");
 
   assert(report.aggregates);
-  assert.equal(report.aggregates.ratios.firstPresentationReadyMs, null);
+  assert.equal(report.aggregates.ratios.firstIsolatedPresentationMs, null);
 });
 
 test("JSON download exactly serializes the displayed report and revokes its URL", () => {
@@ -140,10 +144,11 @@ function baseEvidence(
       configJson: "{}",
       theme: "default",
       diagramFont: "trebuchet",
-      externalRequirements: { elkLayouts: false, zenuml: false },
+      externalRequirements: { externalDiagrams: [], layoutModules: [] },
       viewport: { width: 800, height: 600 },
       detection: {
         status: "available",
+        validity: "valid",
         diagramType: "flowchart",
         syntaxId: "flowchart",
         effectiveLayoutId: "dagre",
@@ -196,8 +201,20 @@ function realmSuccess(
     resources: [],
     resourceError: null,
     version: `test-${engine}`,
+    parentPublication: parentPublication(),
     svgBytes: 100,
   };
+}
+
+function parentPublication() {
+  return Object.freeze({
+    clockBoundary: BENCHMARK_PUBLICATION_CLOCK_BOUNDARY,
+    isolatedPresentationReceiptMs: 20,
+    responseDeliveryMs: 1,
+    responseEnvelopeValidationMs: 2,
+    strictSvgValidationMs: 3,
+    totalMs: 26,
+  });
 }
 
 function realmFailure(
@@ -220,7 +237,7 @@ function realmFailure(
     mode,
     role: "measured" as const,
     traceSchema: BENCHMARK_TRACE_SCHEMA_VERSION,
-    trace: { ...coldTrace(), safe_svg_ready: null, dom_inserted: null, layout_box_ready: null, presentation_ready: null },
+    trace: { ...coldTrace(), budgeted_svg_ready: null, isolated_dom_inserted: null, isolated_layout_box_ready: null, isolated_presentation_ready: null },
     resources: [],
     resourceError: null,
     version: `test-${engine}`,
@@ -245,10 +262,10 @@ function coldTrace() {
     initialize_start: 6,
     initialize_end: 7,
     render_start: 8,
-    safe_svg_ready: 10,
-    dom_inserted: 10.5,
-    layout_box_ready: 11,
-    presentation_ready: 12,
+    budgeted_svg_ready: 10,
+    isolated_dom_inserted: 10.5,
+    isolated_layout_box_ready: 11,
+    isolated_presentation_ready: 12,
     sample_end: 12.5,
   };
 }

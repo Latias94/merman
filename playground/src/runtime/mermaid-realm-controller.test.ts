@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   createMermaidRealmController,
-  type MermaidRealmRenderResult,
+  type MermaidRealmExecutionResult,
   type MermaidRealmSession,
 } from "./mermaid-realm-controller.ts";
 import { RealmTimeoutError } from "./realm/channel-protocol.ts";
@@ -13,13 +13,13 @@ const INPUT = {
   configJson: "{}",
   theme: "default",
   diagramFont: "trebuchet" as const,
-  externalRequirements: { elkLayouts: false, zenuml: false },
+  externalRequirements: { externalDiagrams: [], layoutModules: [] },
   viewport: { width: 800, height: 600 },
 };
 
 test("ordinary realm failures do not poison the serialized operation queue", async () => {
   const calls: string[] = [];
-  const results: MermaidRealmRenderResult[] = [
+  const results: MermaidRealmExecutionResult[] = [
     failure("render", "bad syntax"),
     success("next"),
   ];
@@ -30,7 +30,6 @@ test("ordinary realm failures do not poison the serialized operation queue", asy
   const controller = createMermaidRealmController({
     kind: "compare",
     createSession: async () => session,
-    validateSvg: () => {},
   });
 
   assert.equal((await controller.render(INPUT)).status, "failure");
@@ -40,7 +39,7 @@ test("ordinary realm failures do not poison the serialized operation queue", asy
 });
 
 test("concurrent controller callers cannot interleave one realm", async () => {
-  const first = deferred<MermaidRealmRenderResult>();
+  const first = deferred<MermaidRealmExecutionResult>();
   const calls: string[] = [];
   const session = fakeSession(async (_input, requestId) => {
     calls.push(requestId);
@@ -49,7 +48,6 @@ test("concurrent controller callers cannot interleave one realm", async () => {
   const controller = createMermaidRealmController({
     kind: "compare",
     createSession: async () => session,
-    validateSvg: () => {},
   });
 
   const firstRender = controller.render(INPUT);
@@ -64,7 +62,7 @@ test("concurrent controller callers cannot interleave one realm", async () => {
 });
 
 test("timeout destroys the old realm before a later operation creates one", async () => {
-  const stuck = deferred<MermaidRealmRenderResult>();
+  const stuck = deferred<MermaidRealmExecutionResult>();
   const first = fakeSession(async () => stuck.promise);
   const second = fakeSession(async () => success("recovered"));
   const sessions = [first, second];
@@ -72,7 +70,6 @@ test("timeout destroys the old realm before a later operation creates one", asyn
     kind: "compare",
     createSession: async () => sessions.shift()!,
     operationTimeoutMs: 5,
-    validateSvg: () => {},
   });
 
   const timedOut = await controller.render(INPUT);
@@ -85,7 +82,7 @@ test("timeout destroys the old realm before a later operation creates one", asyn
 });
 
 test("timeout remains classified when disposing rejects the active render", async () => {
-  const stuck = deferred<MermaidRealmRenderResult>();
+  const stuck = deferred<MermaidRealmExecutionResult>();
   const session = fakeSession(
     async () => stuck.promise,
     () => stuck.reject(new Error("channel closed"))
@@ -94,7 +91,6 @@ test("timeout remains classified when disposing rejects the active render", asyn
     kind: "compare",
     createSession: async () => session,
     operationTimeoutMs: 5,
-    validateSvg: () => {},
   });
 
   assert.deepEqual(
@@ -111,7 +107,6 @@ test("channel stage timeouts retain their timeout failure stage", async () => {
   const controller = createMermaidRealmController({
     kind: "compare",
     createSession: async () => session,
-    validateSvg: () => {},
   });
 
   assert.deepEqual(
@@ -122,23 +117,22 @@ test("channel stage timeouts retain their timeout failure stage", async () => {
 });
 
 test("parent-side SVG rejection poisons a realm that claimed success", async () => {
-  const unsafe = fakeSession(async () => success("unsafe"));
+  const unsafe = fakeSession(async () => ({
+    ...success("unsafe"),
+    svg: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>',
+  }));
   const safe = fakeSession(async () => success("safe"));
   const sessions = [unsafe, safe];
-  let validations = 0;
   const controller = createMermaidRealmController({
     kind: "compare",
     createSession: async () => sessions.shift()!,
-    validateSvg: () => {
-      validations += 1;
-      if (validations === 1) throw new Error("unsafe SVG");
-    },
   });
 
-  assert.deepEqual(
-    await controller.render(INPUT),
-    failure("svg-validation", "unsafe SVG")
-  );
+  const rejected = await controller.render(INPUT);
+  assert.equal(rejected.status, "failure");
+  if (rejected.status === "failure") {
+    assert.equal(rejected.stage, "svg-validation");
+  }
   assert.equal(unsafe.disposeCalls, 1);
   assert.equal((await controller.render(INPUT)).status, "success");
 });
@@ -151,7 +145,6 @@ test("dispose is idempotent and prevents queued work from acquiring a realm", as
       creates += 1;
       return fakeSession(async () => success("unused"));
     },
-    validateSvg: () => {},
   });
 
   controller.dispose();
@@ -163,7 +156,7 @@ test("dispose is idempotent and prevents queued work from acquiring a realm", as
   assert.equal(creates, 0);
 });
 
-function success(label: string): MermaidRealmRenderResult {
+function success(label: string): MermaidRealmExecutionResult {
   return {
     status: "success",
     svg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${label}</text></svg>`,
@@ -177,7 +170,7 @@ function success(label: string): MermaidRealmRenderResult {
 function failure(
   stage: "render" | "timeout" | "svg-validation" | "disposed",
   message: string
-): MermaidRealmRenderResult {
+): Extract<MermaidRealmExecutionResult, { status: "failure" }> {
   return { status: "failure", stage, message };
 }
 

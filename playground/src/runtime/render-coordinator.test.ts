@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { projectSafeInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
 import {
@@ -10,8 +11,58 @@ import type {
   MermaidRealmController,
   MermaidRealmRenderResult,
 } from "./mermaid-realm-controller.ts";
+import { projectError } from "./error-projection.ts";
 
 const VIEWPORT = { width: 800, height: 600 };
+
+test("projects binding and cyclic object failures without object coercion", () => {
+  const binding = projectError({
+    version: 2,
+    ok: false,
+    code: 5,
+    code_name: "MERMAN_PARSE_ERROR",
+    message: "Expected a diagram statement.",
+  });
+  assert.equal(binding.summary, "Expected a diagram statement.");
+  assert.doesNotMatch(binding.summary, /\[object Object\]/);
+  assert.match(binding.detail ?? "", /"code_name": "MERMAN_PARSE_ERROR"/);
+
+  const cyclic: { message: string; self?: unknown } = {
+    message: "Structured failure",
+  };
+  cyclic.self = cyclic;
+  const projected = projectError(cyclic);
+  assert.equal(projected.summary, "Structured failure");
+  assert.match(projected.detail ?? "", /\[circular\]/);
+  assert.doesNotMatch(projected.detail ?? "", /\[object Object\]/);
+
+  const opaque = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error("unreadable getter");
+      },
+      ownKeys() {
+        throw new Error("unreadable keys");
+      },
+    }
+  );
+  assert.doesNotThrow(() => projectError(opaque));
+  assert.equal(projectError(opaque).detail, '"[unreadable object]"');
+
+  const hostilePrototype = new Proxy(
+    {},
+    {
+      getPrototypeOf() {
+        throw new Error("unreadable prototype");
+      },
+    }
+  );
+  assert.deepEqual(projectError(hostilePrototype), {
+    summary: "Unexpected error.",
+    detail: '"[unreadable error]"',
+  });
+});
 
 test("latest request publishes Merman and Mermaid as one coherent batch", async () => {
   const first = deferred<MermaidRealmRenderResult>();
@@ -19,10 +70,10 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
   const compare = fakeCompare([first.promise, second.promise]);
   const coordinator = createRenderCoordinator({
     compare,
+    compareViewport: VIEWPORT,
     debounceMs: 0,
     validateSvg: () => {},
   });
-  coordinator.setCompareViewport(VIEWPORT);
   coordinator.setCompareEnabled(true);
 
   coordinator.setInput(input("first"));
@@ -40,7 +91,10 @@ test("latest request publishes Merman and Mermaid as one coherent batch", async 
   if (state.status !== "success") return;
   assert.match(state.merman.svg, /second/);
   assert.ok(state.mermaid);
-  assert.match(state.mermaid.svg, /second/);
+  assert.equal(state.mermaid.artifact.kind, "safe-inline-svg");
+  if (state.mermaid.artifact.kind === "safe-inline-svg") {
+    assert.match(state.mermaid.artifact.svg, /second/);
+  }
   assert.equal(state.snapshot.source, "second");
 });
 
@@ -50,10 +104,10 @@ test("updating disables old pair and partial replaces the failed pane", async ()
   const compare = fakeCompare([first.promise, second.promise]);
   const coordinator = createRenderCoordinator({
     compare,
+    compareViewport: VIEWPORT,
     debounceMs: 0,
     validateSvg: () => {},
   });
-  coordinator.setCompareViewport(VIEWPORT);
   coordinator.setCompareEnabled(true);
 
   coordinator.setInput(input("stable"));
@@ -70,7 +124,10 @@ test("updating disables old pair and partial replaces the failed pane", async ()
     const previousMermaid = updating.previous.mermaid;
     assert.equal(previousMermaid?.status, "success");
     assert.match(
-      previousMermaid?.status === "success" ? previousMermaid.svg : "",
+      previousMermaid?.status === "success" &&
+        previousMermaid.artifact.kind === "safe-inline-svg"
+        ? previousMermaid.artifact.svg
+        : "",
       /stable/
     );
   }
@@ -96,10 +153,10 @@ test("pause waits for active work and resumes only the latest snapshot", async (
   const compare = fakeCompare([active.promise, resumed.promise]);
   const coordinator = createRenderCoordinator({
     compare,
+    compareViewport: VIEWPORT,
     debounceMs: 0,
     validateSvg: () => {},
   });
-  coordinator.setCompareViewport(VIEWPORT);
   coordinator.setCompareEnabled(true);
   coordinator.setInput(input("active"));
   await waitFor(() => compare.calls.length === 1);
@@ -124,10 +181,10 @@ test("blank source and suspend reject every late completion", async () => {
   const compare = fakeCompare([active.promise]);
   const coordinator = createRenderCoordinator({
     compare,
+    compareViewport: VIEWPORT,
     debounceMs: 0,
     validateSvg: () => {},
   });
-  coordinator.setCompareViewport(VIEWPORT);
   coordinator.setCompareEnabled(true);
   coordinator.setInput(input("active"));
   await waitFor(() => compare.calls.length === 1);
@@ -147,10 +204,10 @@ test("request exceptions become typed failures and later work still runs", async
   const compare = fakeCompare([rejected.promise, recovered.promise]);
   const coordinator = createRenderCoordinator({
     compare,
+    compareViewport: VIEWPORT,
     debounceMs: 0,
     validateSvg: () => {},
   });
-  coordinator.setCompareViewport(VIEWPORT);
   coordinator.setCompareEnabled(true);
   coordinator.setInput(input("throws", throwingFacade()));
   await waitFor(() => compare.calls.length === 1);
@@ -169,6 +226,24 @@ test("request exceptions become typed failures and later work still runs", async
   await waitFor(() => compare.calls.length === 2);
   recovered.resolve(mermaidSuccess("recovered"));
   await waitFor(() => coordinator.store.getState().status === "success");
+});
+
+test("render failures retain binding details in the completed batch", async () => {
+  const coordinator = createRenderCoordinator({
+    compare: fakeCompare([]),
+    compareViewport: VIEWPORT,
+    debounceMs: 0,
+    validateSvg: () => {},
+  });
+  coordinator.setInput(input("broken", bindingFailureFacade()));
+  await waitFor(() => coordinator.store.getState().status === "failed");
+
+  const state = coordinator.store.getState();
+  assert.equal(state.status, "failed");
+  if (state.status !== "failed") return;
+  assert.equal(state.merman.message, "Source is invalid.");
+  assert.match(state.merman.detail ?? "", /MERMAN_PARSE_ERROR/);
+  assert.doesNotMatch(state.merman.message, /\[object Object\]/);
 });
 
 function input(
@@ -199,11 +274,27 @@ function throwingFacade(): MermanDomainFacade {
   };
 }
 
+function bindingFailureFacade(): MermanDomainFacade {
+  return {
+    ...facade(),
+    render() {
+      throw {
+        version: 2,
+        ok: false,
+        code: 5,
+        code_name: "MERMAN_PARSE_ERROR",
+        message: "Source is invalid.",
+      };
+    },
+  };
+}
+
 function facade(): MermanDomainFacade {
   return {
     packageVersion: "test-merman",
     detectDiagram: () => ({
       status: "available",
+      validity: "valid",
       diagramType: "flowchart",
       syntaxId: "flowchart-v2",
       effectiveLayoutId: "dagre",
@@ -241,9 +332,10 @@ function fakeCompare(
 }
 
 function mermaidSuccess(label: string): MermaidRealmRenderResult {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg"><text>${label}</text></svg>`;
   return {
     status: "success",
-    svg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${label}</text></svg>`,
+    artifact: projectSafeInlineSvg(svg),
     prepareTimeMs: 1,
     renderTimeMs: 2,
     presentationTimeMs: 3,

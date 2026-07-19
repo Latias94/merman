@@ -161,6 +161,30 @@ test("marks dynamic import failure as reload-required", async () => {
   await assert.rejects(runtime.retry(), /chunk unavailable/);
 });
 
+test("preserves structured binding failure details", async () => {
+  const runtime = createMermanRuntime(
+    dependencies({
+      loadModule: async () => {
+        throw {
+          version: 2,
+          ok: false,
+          code: 9,
+          code_name: "MERMAN_INTERNAL_ERROR",
+          message: "Runtime initialization failed.",
+        };
+      },
+    })
+  );
+
+  await assert.rejects(runtime.ensureReady());
+  const state = runtime.store.getState();
+  assert.equal(state.status, "error");
+  if (state.status !== "error") return;
+  assert.equal(state.error.message, "Runtime initialization failed.");
+  assert.match(state.error.detail ?? "", /MERMAN_INTERNAL_ERROR/);
+  assert.doesNotMatch(state.error.message, /\[object Object\]/);
+});
+
 test("aborts the sibling WASM fetch when module import fails", async () => {
   let fetchAborted = false;
   const runtime = createMermanRuntime(

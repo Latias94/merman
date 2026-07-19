@@ -17,6 +17,7 @@ import type {
   CompareFailureStage,
   RealmViewport,
 } from "./realm/channel-protocol.ts";
+import { projectError } from "./error-projection.ts";
 
 export interface RenderCoordinatorInput {
   readonly configJson: string;
@@ -54,6 +55,7 @@ export interface MermaidRenderSuccess extends MermaidRealmRenderSuccess {
 }
 
 export interface MermanRenderFailure {
+  readonly detail: string | null;
   readonly engine: "merman";
   readonly message: string;
   readonly stage: "render" | "svg-validation";
@@ -61,6 +63,7 @@ export interface MermanRenderFailure {
 }
 
 export interface MermaidRenderFailure {
+  readonly detail: string | null;
   readonly engine: "mermaid";
   readonly message: string;
   readonly stage: CompareFailureStage;
@@ -74,6 +77,7 @@ export type EngineRenderFailure =
 export interface DiagnosticArtifact {
   readonly elapsedMs: number | null;
   readonly error: string | null;
+  readonly errorDetail: string | null;
   readonly json: string | null;
 }
 
@@ -170,7 +174,6 @@ export interface RenderCoordinator {
   refresh(): void;
   resume(): void;
   setCompareEnabled(enabled: boolean): void;
-  setCompareViewport(viewport: RealmViewport | null): void;
   setDiagnosticsEnabled(enabled: boolean): void;
   setInput(input: RenderCoordinatorInput): void;
   suspend(): void;
@@ -178,6 +181,7 @@ export interface RenderCoordinator {
 
 export interface RenderCoordinatorOptions {
   readonly compare: MermaidRealmController;
+  readonly compareViewport: RealmViewport;
   readonly debounceMs?: number;
   readonly now?: () => number;
   readonly validateSvg: (svg: string) => void;
@@ -210,6 +214,7 @@ const EMPTY_STATE: RenderCoordinatorState = Object.freeze({
 });
 const UNAVAILABLE_DETECTION: DiagramDetectionFacts = Object.freeze({
   status: "unavailable",
+  validity: "unknown",
   diagramType: null,
   syntaxId: null,
   effectiveLayoutId: null,
@@ -217,6 +222,7 @@ const UNAVAILABLE_DETECTION: DiagramDetectionFacts = Object.freeze({
 
 export function createRenderCoordinator({
   compare,
+  compareViewport,
   debounceMs = 300,
   now = () => performance.now(),
   validateSvg,
@@ -227,7 +233,6 @@ export function createRenderCoordinator({
   let pauseCount = 0;
   let compareEnabled = false;
   let diagnosticsEnabled = false;
-  let compareViewport: RealmViewport | null = null;
   let requestSequence = 0;
   let currentInput: RenderCoordinatorInput | null = null;
   let latest: ScheduledRequest | null = null;
@@ -285,10 +290,7 @@ export function createRenderCoordinator({
       requestId: requestSequence,
       source,
       theme: currentInput.theme,
-      viewport:
-        compareEnabled && compareViewport
-          ? Object.freeze({ ...compareViewport })
-          : null,
+      viewport: compareEnabled ? Object.freeze({ ...compareViewport }) : null,
     });
     latest = {
       facade,
@@ -391,12 +393,6 @@ export function createRenderCoordinator({
     compareEnabled = enabled;
     scheduleCurrent(true, true);
   };
-  const setCompareViewport = (viewport: RealmViewport | null) => {
-    const normalized = viewport ? { ...viewport } : null;
-    if (sameViewport(compareViewport, normalized)) return;
-    compareViewport = normalized;
-    if (compareEnabled) scheduleCurrent(true, true);
-  };
   const setDiagnosticsEnabled = (enabled: boolean) => {
     if (diagnosticsEnabled === enabled) return;
     diagnosticsEnabled = enabled;
@@ -472,7 +468,6 @@ export function createRenderCoordinator({
     refresh,
     resume,
     setCompareEnabled,
-    setCompareViewport,
     setDiagnosticsEnabled,
     setInput,
     suspend,
@@ -517,11 +512,15 @@ function renderCompare(
       externalRequirements,
       viewport: snapshot.viewport,
     })
-    .catch((error) => ({
-      status: "failure" as const,
-      stage: "protocol" as const,
-      message: errorMessage(error),
-    }));
+    .catch((error) => {
+      const projection = projectError(error);
+      return {
+        status: "failure" as const,
+        stage: "protocol" as const,
+        message: projection.summary,
+        detail: projection.detail,
+      };
+    });
 }
 
 function renderMerman(
@@ -539,7 +538,7 @@ function renderMerman(
       snapshot.options
     );
   } catch (error) {
-    return mermanFailure("render", errorMessage(error));
+    return mermanFailure("render", error);
   }
   if (!result.svg) {
     return mermanFailure("render", result.error ?? "Merman render failed.");
@@ -547,7 +546,7 @@ function renderMerman(
   try {
     validateSvg(result.svg);
   } catch (error) {
-    return mermanFailure("svg-validation", errorMessage(error));
+    return mermanFailure("svg-validation", error);
   }
   const diagramType =
     detection.status === "available" ? detection.diagramType : null;
@@ -582,7 +581,7 @@ function toMermaidBatchResult(
   result: MermaidRealmRenderResult
 ): MermaidBatchResult {
   if (result.status === "failure") {
-    return mermaidFailure(result.stage, result.message);
+    return mermaidFailure(result.stage, result.message, result.detail ?? null);
   }
   return {
     ...result,
@@ -629,12 +628,15 @@ function collectDiagnostic(
     return {
       json: formatDiagnosticJson(operation()),
       error: null,
+      errorDetail: null,
       elapsedMs: now() - startedAt,
     };
   } catch (error) {
+    const projection = projectError(error);
     return {
       json: null,
-      error: errorMessage(error),
+      error: projection.summary,
+      errorDetail: projection.detail,
       elapsedMs: now() - startedAt,
     };
   }
@@ -685,16 +687,24 @@ function classifyBatch(
 
 function mermanFailure(
   stage: MermanRenderFailure["stage"],
-  message: string
+  error: unknown
 ): MermanRenderFailure {
-  return { status: "failure", engine: "merman", stage, message };
+  const projection = projectError(error);
+  return {
+    status: "failure",
+    engine: "merman",
+    stage,
+    message: projection.summary,
+    detail: projection.detail,
+  };
 }
 
 function mermaidFailure(
   stage: MermaidRenderFailure["stage"],
-  message: string
+  message: string,
+  detail: string | null
 ): MermaidRenderFailure {
-  return { status: "failure", engine: "mermaid", stage, message };
+  return { status: "failure", engine: "mermaid", stage, message, detail };
 }
 
 function requestIdentity(
@@ -737,19 +747,6 @@ function sameRequestIdentity(
   );
 }
 
-function sameViewport(
-  left: RealmViewport | null,
-  right: RealmViewport | null
-): boolean {
-  return (
-    left === right ||
-    (left !== null &&
-      right !== null &&
-      left.width === right.width &&
-      left.height === right.height)
-  );
-}
-
 export function isCompletedRenderState(
   state: RenderCoordinatorState
 ): state is CompletedRenderBatch {
@@ -758,8 +755,4 @@ export function isCompletedRenderState(
     state.status === "partial" ||
     state.status === "failed"
   );
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

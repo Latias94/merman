@@ -6,8 +6,8 @@ import {
 } from "../../../lib/mermaid-config.ts";
 import {
   MERMAID_JS_VERSION,
-  type MermaidExternalRequirements,
 } from "../../../runtime/mermaid-requirements.ts";
+import { mermaidExternalModuleRegistrar } from "../../../runtime/external-module-registrar.ts";
 import { assertRealmSourceBudget } from "../../../runtime/realm/channel-protocol.ts";
 import {
   BenchmarkEngineError,
@@ -18,7 +18,13 @@ import {
 let renderSequence = 0;
 
 export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
-  async initialize({ mark, payload }) {
+  async initialize({ mark, payload, resourceUrl }) {
+    if (resourceUrl !== null) {
+      throw new BenchmarkEngineError(
+        "protocol",
+        "Mermaid benchmark received an unexpected resource URL."
+      );
+    }
     mark("engine_import_start");
     let mermaid: Mermaid;
     try {
@@ -32,7 +38,10 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
     mark("register_start");
     try {
       await runBenchmarkEngineStage("register", () =>
-        registerExternalRequirements(mermaid, payload.externalRequirements)
+        mermaidExternalModuleRegistrar.register(
+          mermaid,
+          payload.externalRequirements
+        )
       );
     } finally {
       mark("register_end");
@@ -80,23 +89,6 @@ export const benchmarkEngineAdapter: BenchmarkEngineAdapter = {
     };
   },
 };
-
-async function registerExternalRequirements(
-  mermaid: Mermaid,
-  requirements: MermaidExternalRequirements
-): Promise<void> {
-  if (requirements.elkLayouts) {
-    mermaid.registerLayoutLoaders(
-      (await import("@mermaid-js/layout-elk")).default
-    );
-  }
-  if (requirements.zenuml) {
-    await mermaid.registerExternalDiagrams(
-      [(await import("@mermaid-js/mermaid-zenuml")).default],
-      { lazyLoad: false }
-    );
-  }
-}
 
 function nextRenderId(): string {
   renderSequence += 1;

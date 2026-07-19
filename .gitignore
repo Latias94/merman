@@ -6,6 +6,7 @@
 /platforms/web/pkg/
 /playground/node_modules/
 /playground/dist/
+/playground/.runtime/
 /playground/playwright-report/
 /playground/test-results/
 /playground/*.tsbuildinfo

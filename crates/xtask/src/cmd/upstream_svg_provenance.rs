@@ -26,6 +26,9 @@ pub(crate) use snapshot::{
 };
 
 use crate::XtaskError;
+use crate::cmd::{
+    MERMAID_SOURCE_COMMIT, MERMAID_SOURCE_TAG, PINNED_MERMAID_CLI_VERSION, PINNED_MERMAID_VERSION,
+};
 use crate::util::sha256_hex;
 use family_lock::acquire_upstream_svg_family_locks_with_timeout;
 use regex::Regex;
@@ -40,17 +43,7 @@ use transaction::{write_manifest_batch, write_manifest_with_post_install_validat
 
 const MANIFEST_FILE_NAME: &str = "_baseline-manifest.json";
 const MANIFEST_SCHEMA_VERSION: u32 = 2;
-const PINNED_MERMAID_VERSION: &str = "11.16.0";
-const PINNED_MERMAID_CLI_VERSION: &str = "11.16.0";
-const MERMAID_SOURCE_TAG: &str = "mermaid@11.16.0";
-const MERMAID_SOURCE_COMMIT: &str = "7c0cafcf42e76bfaf79d0cbbd12edb986612f014";
 const RENDERER_REVISION: &str = "xtask-upstream-svg-v2";
-const PACKAGE_JSON_SHA256: &str =
-    "b5a4bb3b8d8b8d6d535fe237c9ad8a0c7cb8a8e1d87a8a0710f3dbb8b05e85b7";
-const PACKAGE_LOCK_SHA256: &str =
-    "0303e5502127385caf6808e56be6390836e6c807119c8d1e95f7988ebd79f77e";
-const MERMAID_CONFIG_SHA256: &str =
-    "da34e9d1dae1882d3b32a479e6223bad495f31877e6d0a3f0a3e3a157832eacc";
 #[derive(Debug)]
 struct CompleteCorpus {
     fixtures: BTreeMap<String, PathBuf>,
@@ -703,8 +696,9 @@ fn load_upstream_svg_provenance_with_source(
     let manifest_path = upstream_dir.join(MANIFEST_FILE_NAME);
     let manifest = read_manifest(&manifest_path)?.ok_or_else(|| {
         XtaskError::SvgCompareFailed(format!(
-            "missing upstream SVG provenance manifest {}; regenerate the {diagram} baseline with pinned Mermaid 11.16.0",
-            manifest_path.display()
+            "missing upstream SVG provenance manifest {}; regenerate the {diagram} baseline with pinned Mermaid {}",
+            manifest_path.display(),
+            crate::cmd::PINNED_MERMAID_VERSION,
         ))
     })?;
     if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
@@ -1191,17 +1185,17 @@ fn current_source() -> Result<UpstreamSvgSource, XtaskError> {
         (
             "package.json",
             package_json_sha256.as_str(),
-            PACKAGE_JSON_SHA256,
+            crate::cmd::REFERENCE_CLI_PACKAGE_JSON_SHA256,
         ),
         (
             "package-lock.json",
             package_lock_sha256.as_str(),
-            PACKAGE_LOCK_SHA256,
+            crate::cmd::REFERENCE_CLI_PACKAGE_LOCK_SHA256,
         ),
         (
             "mermaid-config.json",
             mermaid_config_sha256.as_str(),
-            MERMAID_CONFIG_SHA256,
+            crate::cmd::REFERENCE_CLI_CONFIG_SHA256,
         ),
     ] {
         if actual != expected {

@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use std::sync::OnceLock;
 
 pub mod dompurify_defaults;
+pub mod mermaid_reference;
 
 static UPSTREAM_DEFAULT_CONFIG: OnceLock<MermaidConfig> = OnceLock::new();
 static DEFAULT_SITE_CONFIG: OnceLock<MermaidConfig> = OnceLock::new();

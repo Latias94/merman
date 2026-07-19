@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 
 const SCHEMA_VERSION: u32 = 1;
 const COMPARISON_REVISION: &str = "svgdom-root-v3";
-const MERMAID_SOURCE_COMMIT: &str = "7c0cafcf42e76bfaf79d0cbbd12edb986612f014";
 const CATALOG_RELATIVE_PATH: &str = "_verification/root-parity-residuals.json";
 const CANDIDATE_FILE_NAME: &str = "root-parity-residuals.candidate.json";
 
@@ -35,7 +34,7 @@ impl RootResidualContract {
     fn current(decimals: u32) -> Self {
         Self {
             mermaid_version: merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION.to_string(),
-            mermaid_source_commit: MERMAID_SOURCE_COMMIT.to_string(),
+            mermaid_source_commit: crate::cmd::MERMAID_SOURCE_COMMIT.to_string(),
             comparison_revision: COMPARISON_REVISION.to_string(),
             root_attributes: ["style", "viewBox", "width", "height"]
                 .into_iter()

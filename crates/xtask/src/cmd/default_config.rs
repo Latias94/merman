@@ -15,7 +15,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const PROJECTION_BASELINE_VERSION: &str = "11.16.0";
 const DEFAULT_CONFIG_OUTPUT: &str = "crates/merman-core/src/generated/default_config.json";
 const DEFAULT_CONFIG_SHAPE_OUTPUT: &str =
     "crates/merman-core/src/generated/default_config_shape.json";
@@ -40,9 +39,10 @@ struct DefaultConfigProjection {
 
 impl DefaultConfigProjection {
     fn from_runtime(payload: RuntimeProjectionPayload) -> Result<Self, XtaskError> {
-        if payload.version != PROJECTION_BASELINE_VERSION {
+        if payload.version != crate::cmd::PINNED_MERMAID_VERSION {
             return Err(XtaskError::DefaultConfigProjection(format!(
-                "runtime projection requires Mermaid {PROJECTION_BASELINE_VERSION}, found {}",
+                "runtime projection requires Mermaid {}, found {}",
+                crate::cmd::PINNED_MERMAID_VERSION,
                 payload.version
             )));
         }
@@ -85,7 +85,7 @@ impl DefaultConfigProjection {
 
     fn shape_json(&self) -> JsonValue {
         json!({
-            "baselineVersion": PROJECTION_BASELINE_VERSION,
+            "baselineVersion": crate::cmd::PINNED_MERMAID_VERSION,
             "configKeys": self.config_keys,
             "undefinedPaths": self.undefined_paths,
             "functionPaths": self.function_paths,
@@ -147,9 +147,11 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
 }
 
 fn project_pinned_mermaid_runtime() -> Result<DefaultConfigProjection, XtaskError> {
-    if merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION != PROJECTION_BASELINE_VERSION {
+    if merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION != crate::cmd::PINNED_MERMAID_VERSION
+    {
         return Err(XtaskError::DefaultConfigProjection(format!(
-            "default-config generation targets Mermaid {PROJECTION_BASELINE_VERSION}, but the workspace pins {}",
+            "default-config generation targets Mermaid {}, but the workspace pins {}",
+            crate::cmd::PINNED_MERMAID_VERSION,
             merman_core::baseline::PINNED_MERMAID_BASELINE_VERSION
         )));
     }
@@ -202,7 +204,8 @@ fn validate_pinned_mermaid_runtime(tools_root: &Path) -> Result<(), XtaskError> 
     let package_hash = crate::cmd::upstream_svg_package_tree_sha256(&runtime_root)?;
     if package_hash != crate::cmd::PINNED_MERMAID_PACKAGE_SHA256 {
         return Err(XtaskError::DefaultConfigProjection(format!(
-            "installed mermaid@{PROJECTION_BASELINE_VERSION} content differs from the pinned package: expected {}, found {package_hash}; run `npm ci --prefix tools/mermaid-cli`",
+            "installed mermaid@{} content differs from the pinned package: expected {}, found {package_hash}; run `npm ci --prefix tools/mermaid-cli`",
+            crate::cmd::PINNED_MERMAID_VERSION,
             crate::cmd::PINNED_MERMAID_PACKAGE_SHA256
         )));
     }
@@ -336,7 +339,7 @@ mod tests {
 
     fn valid_payload() -> RuntimeProjectionPayload {
         RuntimeProjectionPayload {
-            version: PROJECTION_BASELINE_VERSION.to_string(),
+            version: crate::cmd::PINNED_MERMAID_VERSION.to_string(),
             values: json!({ "flowchart": {}, "secure": ["secure"] }),
             config_keys: vec![
                 "flowchart".to_string(),
@@ -393,7 +396,7 @@ mod tests {
         assert_eq!(values["railroad"], json!({}));
         assert!(values["sankey"].get("nodeColors").is_none());
 
-        assert_eq!(shape["baselineVersion"], PROJECTION_BASELINE_VERSION);
+        assert_eq!(shape["baselineVersion"], crate::cmd::PINNED_MERMAID_VERSION);
         let config_keys = shape["configKeys"]
             .as_array()
             .expect("configKeys should be an array");
