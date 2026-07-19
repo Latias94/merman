@@ -1171,6 +1171,59 @@ fn registry_characterization_matrix_executes_representative_and_malformed_contra
                     row.variant_id, facts.diagnostics
                 ));
             }
+            if let Some(failure) = facts.lexeme_failure() {
+                recovery_contract_mismatches.push(format!(
+                    "{} malformed recovery returned invalid lexemes: {failure:?}",
+                    row.variant_id
+                ));
+            }
+            for lexeme in facts.lexemes() {
+                let span = lexeme.span();
+                if span.start >= span.end
+                    || span.end > row.malformed_source.len()
+                    || !row.malformed_source.is_char_boundary(span.start)
+                    || !row.malformed_source.is_char_boundary(span.end)
+                {
+                    recovery_contract_mismatches.push(format!(
+                        "{} malformed recovery returned invalid source span {span:?}",
+                        row.variant_id
+                    ));
+                }
+                match lexeme.producer().kind() {
+                    crate::EditorLexemeProducerKind::GlobalPreprocess => {
+                        if lexeme.producer().family().is_some() {
+                            recovery_contract_mismatches.push(format!(
+                                "{} global recovery lexeme unexpectedly names a family",
+                                row.variant_id
+                            ));
+                        }
+                    }
+                    crate::EditorLexemeProducerKind::FamilyRecovery => {
+                        if lexeme.producer().family().is_none() {
+                            recovery_contract_mismatches.push(format!(
+                                "{} family recovery lexeme has no family provenance",
+                                row.variant_id
+                            ));
+                        }
+                    }
+                    producer => recovery_contract_mismatches.push(format!(
+                        "{} malformed recovery retained non-recovery producer {producer:?}",
+                        row.variant_id
+                    )),
+                }
+            }
+            if let Some(pair) = facts
+                .lexemes()
+                .windows(2)
+                .find(|pair| pair[0].span().end > pair[1].span().start)
+            {
+                recovery_contract_mismatches.push(format!(
+                    "{} malformed recovery returned overlapping lexemes {:?} and {:?}",
+                    row.variant_id,
+                    pair[0].span(),
+                    pair[1].span()
+                ));
+            }
         }
         let observed_contract = match (&malformed_semantic, &malformed_editor) {
             (Ok(Some(_)), Ok(Some(_))) => MalformedContract::StrictAcceptsEditorAvailable,

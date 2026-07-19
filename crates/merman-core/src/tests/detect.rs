@@ -234,6 +234,32 @@ fn detects_11_16_new_family_headers_with_upstream_boundaries() {
 }
 
 #[test]
+fn kanban_detector_and_known_type_parser_preserve_distinct_upstream_case_rules() {
+    let engine = Engine::new();
+
+    let detected = engine
+        .parse_metadata_sync("kanban\nTodo[Todo]\n", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(detected.diagram_type, "kanban");
+
+    let detection_error = engine
+        .parse_metadata_sync("KaNbAn\nTodo[Todo]\n", ParseOptions::strict())
+        .unwrap_err();
+    assert!(
+        detection_error
+            .to_string()
+            .contains("No diagram type detected matching given configuration")
+    );
+
+    let parsed = engine
+        .parse_diagram_with_type_sync("kanban", "KaNbAn\nTodo[Todo]\n", ParseOptions::strict())
+        .expect("known-type Kanban parser follows Jison's case-insensitive mode")
+        .expect("known-type Kanban parse returns a model");
+    assert_eq!(parsed.meta.diagram_type, "kanban");
+}
+
+#[test]
 fn c4_detector_preserves_upstream_ungrouped_regex_shape() {
     let engine = Engine::new();
 
