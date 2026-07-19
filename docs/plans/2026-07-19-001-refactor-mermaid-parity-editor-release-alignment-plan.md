@@ -16,7 +16,7 @@ execution: code
 - **Objective:** Make Mermaid compatibility one source-backed, repeatable capability across parser, semantic model, headless render, editor facts, LSP, Web, Playground, upstream evidence, and companion packages. Close the known Gantt, ZenUML, theme-color, Quadrant visibility, Block geometry, source-map, and semantic-token defects without preserving incorrect alpha-era architecture.
 - **Authority:** The pinned Mermaid source checkout and its exact companion dependency graph are authoritative for behavior. Merman family-owned semantic construction, operation-owned rendering, native ABI `2`, and analysis/facts/LSP schema number `1` remain architectural constraints. Browser-dependent residuals must be explicit artifact contracts, never comparator exceptions or source heuristics.
 - **Execution profile:** Fearless alpha refactor. Breaking internal Rust and TypeScript APIs, replacing the editor facts payload in-place under schema number `1`, changing the LSP semantic-token legend, deleting heuristic ZenUML parsing and sparse token projection, and removing stale Web runtime paths are allowed. Do not add v2 aliases, dual implementations, or compatibility shims for unpublished alpha surfaces.
-- **Stop conditions:** Do not loosen canonical SVG safety to admit rich HTML, tune chart colors or edge endpoints with fixture-specific constants, use regex/Monarch fallbacks as a second parser, accept semantic comparator whitelists, hand-edit generated provenance, or split a Cargo feature without measured dependency and artifact evidence.
+- **Stop conditions:** Do not loosen canonical SVG safety to admit non-SVG or unsafe output, tune chart colors or edge endpoints with fixture-specific constants, use regex/Monarch fallbacks as a second parser, accept semantic comparator whitelists, hand-edit generated provenance, or split a Cargo feature without measured dependency and artifact evidence.
 - **Tail ownership:** Implement and verify on the current feature branch using focused Conventional Commits. Do not push, open a PR, publish, or release unless separately requested.
 
 ---
@@ -27,7 +27,7 @@ execution: code
 
 Merman must not treat Mermaid compatibility as a renderer-only exercise. A Mermaid release is a graph of core source, parser packages, external diagrams, external layouts, generated defaults, fixtures, editor grammar, and browser behavior. One generated reference bundle will pin and project that graph into tooling, the Playground, the reference CLI, provenance, and version labels. A repository skill will make upgrading that graph repeatable and fail closed when any surface is stale.
 
-The Playground will use one canonical render viewport and honest benchmark language, expose at least two source-backed examples for each supported family where useful, and display rich external artifacts such as ZenUML only through an explicit sanitized sandbox boundary. It will not weaken the strict inline SVG path. The Rust ZenUML family will stop approximating the language with a line heuristic and instead own a grammar-derived semantic model aligned to the selected, exact compatible ZenUML Core source.
+The Playground will use one canonical render viewport and honest benchmark language, expose at least two source-backed examples for each supported family where useful, and execute external Mermaid modules in an opaque-origin realm. Every returned diagram must still pass the existing strict inline-SVG boundary; the current release graph does not gain a speculative second artifact format or sanitizer. The Rust ZenUML family will stop approximating the language with a line heuristic and instead own a grammar-derived semantic model aligned to the selected, exact compatible ZenUML Core source.
 
 Editor support will become a real language surface. Preprocessing will retain an exact edit map, global syntax and each family will emit lexical facts, and one editor-core planner will merge lexical and semantic overlays into validated, sorted, non-overlapping tokens. LSP, WASM, Monaco, and the unpublished VS Code extension will consume the same descriptor and token plan. Completion, rename, structure, diagnostics, and render semantics remain family-owned and continue to share one parse pipeline.
 
@@ -38,7 +38,7 @@ The current branch has already established family-owned semantics, typed render 
 The remaining defects reveal deeper missing contracts:
 
 - Mermaid Gantt derives ticks from its host width. Compare used a pane-derived width while Merman used an 800-by-600 canonical viewport, so the same source was compared under different layout inputs and labels overlapped.
-- Advanced ZenUML is recoverably identified by Rust facts, but the Web projection discarded identity whenever full parsing failed. Once the JS plugin is registered, it returns a rich `foreignObject` document that the strict inline SVG safety boundary correctly rejects. The local ZenUML parser also implements only a conservative Sequence subset and cannot parse official groups, stereotypes, starters, fragments, assignments, and expressions.
+- Advanced ZenUML is recoverably identified by Rust facts, but the Web projection discarded identity whenever full parsing failed. The JS plugin was not registered consistently. Source and executable evidence now show that Mermaid 11.16's plugin calls `@zenuml/core.renderToSvg` and returns native SVG that the existing strict inline-SVG validator accepts across the full fixture corpus; no `foreignObject` fallback is required. The local ZenUML parser also implements only a conservative Sequence subset and cannot parse official groups, stereotypes, starters, fragments, assignments, and expressions.
 - Supplying only a font override enters Mermaid's user-theme-variable path. Merman currently performs only one color-scale derivation instead of reproducing constructor defaults, override calculation, color updates, and explicit-value replay. Radar, Kanban, Mindmap, and Timeline therefore share incorrect derived colors.
 - Block layout allocates rectangular slots but non-rectangular rendering uses label-derived geometry. Edge intersection still clips against the slot, leaving visible gaps for circle-like and other non-rectangular shapes.
 - Quadrant raw parity intentionally preserves Mermaid 11.16's invalid `hsl(...NaN%)`; browsers ignore it and inherit a dark point color. A stale Playground WASM artifact made the already-correct Rust fix appear absent, showing that build freshness is not proven by file existence.
@@ -50,7 +50,7 @@ The remaining defects reveal deeper missing contracts:
 #### Release reference and companion alignment
 
 - **R1.** One machine-readable Mermaid reference bundle must pin the Mermaid tag and commit, core/parser packages, external diagram packages and their behavior-source repositories, external layout packages, npm tarball integrity and publish provenance, reference CLI inputs, and generated artifact schema. Handwritten version constants in Rust or TypeScript may only be generated projections of this bundle.
-- **R2.** For the current `mermaid@11.16.0` baseline, the bundle must record both the normative upstream oracle and a candidate product graph. The oracle is `@mermaid-js/parser@1.2.0`, `@mermaid-js/mermaid-zenuml@0.2.3`, and Mermaid's workspace-resolved `@zenuml/core@3.47.8`. The candidate uses the newest version satisfying the plugin's declared major-compatible range, currently `@zenuml/core@3.50.1`, plus `@mermaid-js/layout-elk@0.2.2` and `@mermaid-js/layout-tidy-tree@0.2.2`. It becomes the selected product/reference/headless target only after U1's plugin-contract, corpus, semantic, render, rich-artifact, security, and resource matrix passes with every delta classified from source; otherwise the selected graph remains the oracle and the candidate is a failed admission. Playground and `tools/mermaid-cli` locks must resolve the resulting selected versions exactly; `tools/upstreams/REPOS.lock.json` must pin oracle and candidate source commits needed for evidence.
+- **R2.** For the current `mermaid@11.16.0` baseline, the bundle must record both the normative upstream oracle and a candidate product graph. The oracle is `@mermaid-js/parser@1.2.0`, `@mermaid-js/mermaid-zenuml@0.2.3`, and Mermaid's workspace-resolved `@zenuml/core@3.47.8`. The candidate uses the newest version satisfying the plugin's declared major-compatible range, currently `@zenuml/core@3.50.1`, plus `@mermaid-js/layout-elk@0.2.2` and `@mermaid-js/layout-tidy-tree@0.2.2`. It becomes the selected product/reference/headless target only after U1's plugin-contract, corpus, semantic, render, strict-inline-artifact, execution-isolation, security, and resource matrix passes with every delta classified from source; otherwise the selected graph remains the oracle and the candidate is a failed admission. Playground and `tools/mermaid-cli` locks must resolve the resulting selected versions exactly; `tools/upstreams/REPOS.lock.json` must pin oracle and candidate source commits needed for evidence.
 - **R3.** External runtime requirements must be typed sets of `externalDiagrams` and `layoutModules`, derived from canonical analysis/effective-config facts. Compare and Benchmark must share registration code and support ZenUML, ELK, and tidy-tree without source scans or independent booleans.
 - **R4.** An alignment command must fail closed on source/lock/provenance/generated-output drift, detect added or removed Mermaid diagram and layout registrations, inventory parser/editor/render/Playground coverage, and identify companion dependencies that require source behavior ports. It must distinguish the Mermaid-compatible companion graph from each companion's latest stable release: a newer major outside the Mermaid plugin's declared range becomes a separate behavior-delta admission, never an implicit override. Dependency materialization defaults to disabled lifecycle scripts; package integrity and provenance are verified before an explicitly audited allowlist may run any required install action.
 - **R5.** A new optional Cargo feature may be introduced only when a release adds a dependency whose platform, license, clean-build, or artifact-size cost cannot fit an existing semantic capability. The decision must use `cargo tree`, target support, license evidence, clean-build timing, and the existing WASM/package-surface budgets. Browser-only lazy companion chunks are typed runtime capabilities, not automatically Cargo features.
@@ -61,14 +61,14 @@ The remaining defects reveal deeper missing contracts:
 - **R7.** The example catalog must contain at least one source-backed example for all 35 full-profile families and a second meaningful variant for each family where upstream/local fixtures provide distinct syntax or behavior. Search, family metadata, generated provenance, and exact source selection remain generated and tested.
 - **R8.** Benchmark copy must call the cold mode `Fresh runtime` and the warm mode `Reused runtime` (localized equivalently). Help text/tooltips must explain fresh iframe/module-map scope and report HTTP-cache evidence separately; the product must not expose the implementation term `realm` as an unexplained user-facing label.
 - **R9.** The Playground must project structured Rust/binding errors into concise messages and details; `[object Object]` is forbidden. Parse recovery may retain a canonical diagram identity while marking syntax/semantic validity separately, so external requirements can load for incomplete or independently supported syntax.
-- **R10.** Rich external output must use a distinct artifact kind. Pinned and provenance-verified Mermaid/external diagram code executes in an opaque-origin `sandbox="allow-scripts"` realm built as a self-contained local artifact. The realm has no `allow-same-origin`, parent DOM, origin-backed storage, credentials, or direct fetch/XHR/WebSocket/EventSource/beacon/worker/subresource capability; it may return only budgeted strings through an authenticated MessagePort. A normal browser sandbox cannot prevent a script from navigating its own frame before the parent observes the second load, so self-navigation is an explicit residual: the parent must detect it, poison the operation, and remove the frame, while absolute zero-egress execution remains a host capability for Electron/WebView/extension request interception or a server sandbox with enforced egress policy. Canonical Merman and ordinary returned Mermaid SVG remain subject to strict `assertSafeSvgForDom` and inline insertion. A rich artifact is independently sanitized under explicit element/attribute/URL/style budgets, rendered in a second zero-permission scriptless sandboxed iframe with a local CSP, and never inserted into the parent DOM. Unsupported export formats are disabled explicitly rather than silently degraded.
-- **R11.** UI changes for examples, benchmark results, rich artifacts, diagnostics, and syntax highlighting must follow the existing quiet workbench design, remain usable at desktop/mobile viewports, use accessible Dialog/Tabs/buttons, and avoid nested decorative cards or explanatory feature copy. Visual polish must not obscure artifact state, errors, versions, or capability limits.
+- **R10.** Pinned and provenance-verified Mermaid/external diagram code executes in an opaque-origin `sandbox="allow-scripts"` realm built as a self-contained local artifact. The realm has no `allow-same-origin`, parent DOM, origin-backed storage, credentials, or direct fetch/XHR/WebSocket/EventSource/beacon/worker/subresource capability; it may return only budgeted strings through an authenticated MessagePort. A normal browser sandbox cannot prevent a script from navigating its own frame before the parent observes the second load, so self-navigation is an explicit residual: the parent must detect it, poison the operation, and remove the frame, while absolute zero-egress execution remains a host capability for Electron/WebView/extension request interception or a server sandbox with enforced egress policy. Every returned Mermaid artifact in the selected release graph must be native SVG accepted by strict `assertSafeSvgForDom` before inline insertion; rejection is terminal for that render and may not fall back to a family-name exception or a generic sanitizer. A later release that introduces a genuinely different artifact format must fail admission until that concrete format earns a closed type, validator, presenter, resource budget, and browser evidence in a separate design.
+- **R11.** UI changes for examples, benchmark results, external artifact failures, diagnostics, and syntax highlighting must follow the existing quiet workbench design, remain usable at desktop/mobile viewports, use accessible Dialog/Tabs/buttons, and avoid nested decorative cards or explanatory feature copy. Visual polish must not obscure artifact state, errors, versions, or capability limits.
 
 #### ZenUML behavior alignment
 
 - **R12.** The ZenUML family must replace its heuristic line parser with grammar-derived parsing based on U1's matrix-selected exact Core version (`3.50.1` only when admitted, otherwise the `3.47.8` oracle), its `sequenceLexer.g4`, `sequenceParser.g4`, and corresponding model behavior. Oracle/candidate delta evidence remains attached to the decision. It must support official participant annotations/colors/stereotypes, title, starter, comments, calls, creation, assignments, return values, groups, `par`, `opt`, `critical`, sections, references, `try/catch/finally`, alternatives, loops, and expressions with exact source ranges and recovery.
 - **R13.** ZenUML must construct one family-owned semantic artifact consumed by detection, analysis, editor facts, completion/rename/structure, layout, and headless render. Do not translate it through Sequence JSON or retain the old compatibility parser.
-- **R14.** The headless renderer must reproduce source-backed participant/message/fragment topology, labels, colors, and geometry from the selected exact ZenUML behavior. Browser JS comparison may use the rich artifact path, but parser or renderer support metadata must not claim official coverage until corpus and behavior gates pass.
+- **R14.** The headless renderer must reproduce source-backed participant/message/fragment topology, labels, colors, and geometry from the selected exact ZenUML behavior. Browser JS comparison must use the plugin's strict validated native SVG; parser or renderer support metadata must not claim official coverage until corpus and behavior gates pass.
 
 #### Theme, visible parity, and shape geometry
 
@@ -90,7 +90,7 @@ The remaining defects reveal deeper missing contracts:
 #### Build freshness, evidence, and durable workflow
 
 - **R26.** Playground/Web builds must prove the WASM artifact matches relevant Rust, Cargo, generated ABI, and build-script inputs using a content digest manifest. File existence alone is insufficient. A stale artifact must fail with one actionable rebuild command before Vite starts or builds.
-- **R27.** Browser tests must inspect computed presentation for Gantt ticks, Quadrant points, shared theme colors, Block edge contact, rich ZenUML sandboxing, and 35-family semantic tokens. Structural/raw SVG tests remain separate and may not stand in for visible behavior.
+- **R27.** Browser tests must inspect computed presentation for Gantt ticks, Quadrant points, shared theme colors, Block edge contact, opaque ZenUML execution plus strict inline publication, and 35-family semantic tokens. Structural/raw SVG tests remain separate and may not stand in for visible behavior.
 - **R28.** Architecture regressions already fixed in HEAD remain gated: Flowchart complexity before all layout dispatch, full time-zone rules for target dates, range-owned root SVG finalization, checked boundary dates, closed family/report types, generated text-measurement ABI, no Quadrant comparator whitelist, and independent Wardley admission.
 - **R29.** Add `.agents/skills/align-mermaid-release` as a model-invoked repository skill. It must guide an agent through release discovery, exact source/companion pinning, generated reference updates, family/layout admission, parser/editor/LSP/render/Playground work, feature-split evidence, parity gates, documentation, and a no-publish handoff. It must call repository commands and reference a concise checklist instead of duplicating implementation logic.
 - **R30.** Documentation must update the Mermaid upgrade playbook, relevant ADRs, ZenUML/theme/editor alignment records, package surfaces, and Playground design. Generated status and provenance must remain readable and reproducible.
@@ -99,7 +99,7 @@ The remaining defects reveal deeper missing contracts:
 
 - **F1. Release intake:** the maintainer selects a Mermaid release; the alignment workflow resolves the exact source commit and companion graph, updates one reference bundle, materializes sources under `repo-ref`, inventories behavior changes, and creates explicit admission work for every new diagram/layout/parser surface.
 - **F2. Live editing:** one source enters preprocessing and the family parser once; exact facts feed diagnostics, completion, rename, structure, semantic tokens, detection, and render. Invalid local syntax preserves mappable facts around the error and never falls back to regex coloring.
-- **F3. Compare:** one frozen source/config/viewport is sent to both engines. Typed external requirements register the exact companion modules. Safe SVG is inserted inline; rich external output is sanitized and displayed only in its sandbox artifact viewer.
+- **F3. Compare:** one frozen source/config/viewport is sent to both engines. Typed external requirements register the exact companion modules in the opaque execution realm. Only strict-validated native SVG is published inline; any other artifact fails closed.
 - **F4. Benchmark:** Fresh runtime and Reused runtime use identical source, config, viewport, registration, font readiness, and presentation boundaries. Raw evidence identifies exact reference-bundle versions and HTTP-cache observations.
 - **F5. Headless parity:** the family semantic artifact drives geometry and SVG. Theme stages and shape geometry are shared by rendering and routing; browser-dependent raw/computed/resvg-safe differences are separately asserted.
 - **F6. Build:** the Web/Playground build checks the WASM input digest, generated reference bundle, dependency locks, catalogs, token descriptor, and provenance before compiling UI assets. Stale artifacts fail before browser tests can produce misleading evidence.
@@ -107,7 +107,7 @@ The remaining defects reveal deeper missing contracts:
 ### Acceptance Examples
 
 - **AE1.** The provided Gantt source renders in Compare at 800 by 600 for both engines; adjacent date labels have no intersecting client rects at desktop or mobile presentation widths.
-- **AE2.** A fresh page renders the provided advanced ZenUML source without a prior simple ZenUML render. Merman produces its typed headless artifact; Mermaid's rich output appears inside a scriptless sandbox; no `foreignObject` enters the parent DOM; invalid ZenUML reports a structured error and does not poison the next render.
+- **AE2.** A fresh page renders the provided advanced ZenUML source without a prior simple ZenUML render. Merman produces its typed headless artifact; Mermaid executes in an opaque realm and its native SVG passes strict parent-side validation before inline publication. No `foreignObject` or alternate sanitizer path is involved; invalid ZenUML reports a structured error and does not poison the next render.
 - **AE3.** The provided Radar, Kanban, and font-only theme fixtures match pinned Mermaid computed colors. The provided Quadrant points compute to the inherited dark color in Chromium while raw and resvg-safe contracts remain explicit.
 - **AE4.** For every non-rectangular Block shape, the final edge point lies on the actual rendered outline within tolerance under horizontal, vertical, diagonal, styled, and long-label cases.
 - **AE5.** `classDef c fill:#f00` and the same source with a trailing semicolon retain equivalent unrelated tokens. A malformed middle statement keeps valid tokens before and after the error. ZenUML `new A1` and `new A2(args)` produce no overlapping semantic tokens.
@@ -143,13 +143,13 @@ The implementation must preserve these HEAD contracts while changing adjacent ar
 
 **Rejected:** More handwritten constants in Playground, CLI, and `xtask`; treating `package-lock.json` as the only readable policy; overriding unrelated transitive packages without behavior evidence.
 
-#### KTD2. Keep artifact safety types disjoint
+#### KTD2. Separate untrusted execution from strict artifact publication
 
-**Decision:** Model `SafeInlineSvg` and `SanitizedSandboxDocument` as distinct closed artifacts with separate validators and presenters. Execute pinned Mermaid/external diagram code in an opaque-origin script-only realm before either artifact exists. The rich sanitizer is an allowlist transformation with explicit budgets, not an exception flag to `assertSafeSvgForDom`, and presentation uses a second zero-permission sandbox.
+**Decision:** Execute pinned Mermaid/external diagram code in an opaque-origin script-only realm, then accept exactly one current publication artifact: `SafeInlineSvg`, produced only after parent-side `assertSafeSvgForDom` succeeds. Mermaid 11.16's ZenUML plugin and the candidate Core corpus emit native SVG, so strict rejection is an operation failure rather than an invitation to guess a second format. A future non-SVG or otherwise non-inline artifact requires its own release-admission design before selection.
 
-**Why:** ZenUML's upstream output is a positioned XHTML application inside SVG. Sanitizing only after its generator ran in a same-origin realm would leave the parent page exposed to a renderer exploit; admitting the output into the parent DOM would then expand the trust boundary again. Exact package provenance and the opaque realm are complementary controls: the former owns dependency trust, while the latter removes parent DOM, credential, storage, and ordinary network capabilities. It is containment, not an impossible claim that a DOM-capable browser iframe can safely execute arbitrary compromised code with zero egress.
+**Why:** Source inspection of `packages/mermaid-zenuml/src/zenumlRenderer.ts` and executable evidence across all 17 repository ZenUML fixtures prove that the selected plugin calls `renderToSvg`, returns no `foreignObject`, and already passes the strict inline validator. A generic rich sanitizer and second presentation iframe would have no producer in the selected graph while adding a large security and accessibility surface. Exact package provenance, opaque execution, and strict parent-side validation are complementary controls; containment still does not make the impossible claim that a DOM-capable browser iframe can execute arbitrary compromised code with absolute zero egress.
 
-**Rejected:** Same-origin execution for external diagram code; globally allowing `foreignObject`; special-casing a ZenUML string inside the inline validator; hiding the upstream side when it can be presented safely.
+**Rejected:** Same-origin execution for external diagram code; globally allowing `foreignObject`; special-casing a ZenUML string after strict validation fails; a speculative generic sanitizer/presenter with no current producer; hiding the upstream side when its native SVG passes the existing boundary.
 
 #### KTD3. Port ZenUML grammar and semantics, not JavaScript containers
 
@@ -245,9 +245,8 @@ flowchart TB
     Render --> SafeSvg[Safe inline SVG]
     Locks --> MermaidRealm[Mermaid browser realm]
     MermaidRealm --> SafeSvg
-    MermaidRealm --> Rich[Sanitized sandbox document]
     SafeSvg --> Playground[Compare and Benchmark]
-    Rich --> Playground
+    MermaidRealm --> Rejected[Fail closed on non-SVG or unsafe output]
     Skill[align-mermaid-release skill] --> RefBundle
     Skill --> Admission
     Skill --> Provenance
@@ -257,7 +256,7 @@ flowchart TB
 
 ```text
 U1 reference bundle and dependency graph --> U1A WASM freshness gate
- +--> U2 Playground viewport/examples/errors --> U3 external modules/rich artifacts
+ +--> U2 Playground viewport/examples/errors --> U3 external modules/opaque execution
  +--> U4 ZenUML grammar/model/render
  +--> U11 release alignment skill
 
@@ -284,20 +283,20 @@ The plan does not upgrade beyond Mermaid 11.16 as part of the current implementa
 
 ### Interaction Contracts
 
-#### Rich artifact presentation
+#### External artifact publication
 
 | State | Visible content and actions | Publication, focus, and cleanup |
 |---|---|---|
 | `empty` | No artifact; render/export controls disabled. | No iframe exists. |
-| `pending` | Bounded progress state; no prior artifact presented as current. | Request owns no published iframe until validation completes. |
-| `updating-with-prior` | Prior artifact may remain only with explicit stale/updating treatment; its export actions are disabled. | Focus stays outside the old iframe; superseding publication destroys it after the replacement is ready. |
-| `ready` | Current sanitized artifact, exact engine/version, safe supported actions, and an external status region. | Publish atomically for the current request id; iframe has an accessible name identifying engine and artifact state. |
-| `rejected` | Sanitizer, protocol, or budget reason with retry/recovery outside the iframe; no partial rich document. | Destroy candidate and prior stale iframe; restore focus to the viewer trigger/status action. |
-| `timeout/replaced` | Timeout or poisoned-realm state and an explicit rerender action. | Destroy execution and presentation realms before another request; ignore late messages by tokens. |
-| `mixed-partial` | Current successful safe-SVG side and current rich-side failure, or vice versa; no ratio or cross-side artifact action. | Publish one coherent current batch and remove every prior artifact for the failed side. |
-| `superseded` | No visible transition. | Discard and destroy candidate realms/documents without stealing focus. |
+| `pending` | Bounded progress state; no prior artifact presented as current. | Request owns no published SVG until opaque execution and parent validation complete. |
+| `updating-with-prior` | Prior SVG may remain only with explicit stale/updating treatment; its export actions are disabled. | Superseding publication replaces it atomically after validation. |
+| `ready` | Current strict-validated SVG, exact engine/version, and safe supported actions. | Publish atomically for the current request id in the existing preview viewport. |
+| `rejected` | Protocol, resource, non-SVG, or strict-validation reason with one retry action; no partial output. | Poison and destroy the execution realm when required; retain no candidate markup. |
+| `timeout/replaced` | Timeout or poisoned-realm state and an explicit rerender action. | Destroy the execution realm before another request; ignore late messages by identity tokens. |
+| `mixed-partial` | The successful engine remains current while the other side shows its current failure; no cross-side artifact action. | Publish one coherent current batch and remove every stale failed-side artifact. |
+| `superseded` | No visible transition. | Discard the candidate response without stealing focus. |
 
-The presentation iframe is zero-permission and scriptless. Its accessible name identifies the engine and status. Sanitization preserves only validated `title`, `desc`, `role`, and ARIA ID references whose targets survive sanitization. Status, retry, export, zoom, and close controls remain in the parent document. One bounded outer viewer owns scrolling; keyboard/touch pan and zoom cannot trap focus, and replacement restores focus to the originating parent control. Desktop, narrow portrait, landscape, browser zoom, and soft-keyboard layouts must not create incoherent nested scrolling.
+Status, retry, export, zoom, and close controls remain in the parent document. One bounded outer viewer owns scrolling; keyboard/touch pan and zoom cannot trap focus, and replacement restores focus to the originating parent control. Desktop, narrow portrait, landscape, browser zoom, and soft-keyboard layouts must not create incoherent nested scrolling.
 
 #### Monaco language service
 
@@ -333,7 +332,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 1. Define a schema with core release/tag/commit, package name/version/range, source repository/ref/commit, tarball integrity, role (`core`, `parser`, `external-diagram`, `external-layout`, `reference-cli`), latest-stable observation, compatibility decision, and required surfaces.
 2. Pin both ZenUML graphs from R2. Verify the `3.47.8` oracle at npm `gitHead` `c81406671c0833baebb9fac08a0cbcdc99b3907d`, and register compatible `3.50.1` at `38404ccc14243ed54ab45b804b2eb6f2ca73af36` as the candidate after tarball integrity checks. Account for the release-time package version rewrite instead of treating a source-tree version string alone as provenance.
 3. Generate display/runtime constants; do not parse JSON ad hoc from browser code.
-4. Run the candidate matrix against the same plugin and frozen inputs: official and regression syntax corpus, parser acceptance/recovery, participant/message/fragment semantics, static/rich render structure and visible behavior, sanitizer/execution isolation, errors, resource limits, and startup/render budgets. Every delta must map to reviewed source behavior; any unexplained or breaking delta fails admission.
+4. Run the candidate matrix against the same plugin and frozen inputs: official and regression syntax corpus, parser acceptance/recovery, participant/message/fragment semantics, native SVG structure and visible behavior, strict artifact validation, execution isolation, errors, resource limits, and startup/render budgets. Every delta must map to reviewed source behavior; any unexplained or breaking delta fails admission.
 5. Resolve and update both locks with lifecycle scripts disabled and an exact override for the matrix-selected Core version, preventing later compatible-range drift. Verify tarball integrity/source records before any package code runs.
 6. Inventory packages with lifecycle scripts. Permit only reviewed build-tool actions that are necessary after scriptless materialization, and invoke those actions explicitly rather than through an unrestricted install hook.
 7. Make `xtask` verify installed/locked versions, source checkout commits, tarball integrity/publish evidence, matrix decision, provenance package-lock hashes, generated projections, and absence of handwritten duplicate constants.
@@ -372,7 +371,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 
 ### U2. Finish the canonical Playground viewport, examples, labels, and error contract
 
-**Goal:** Make current Playground behavior truthful and stable before adding richer artifacts and language data.
+**Goal:** Make current Playground behavior truthful and stable before adding external runtime and language data.
 
 **Files:**
 
@@ -397,7 +396,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 
 **Verification:** Playground unit tests, typecheck, lint, production build, and focused Playwright desktop/mobile tests.
 
-### U3. Unify external module registration and add a rich artifact boundary
+### U3. Unify external module registration and isolate external execution
 
 **Goal:** Support the exact ZenUML/ELK/tidy-tree browser graph without weakening inline SVG safety.
 
@@ -406,9 +405,9 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 - Refactor `playground/src/runtime/mermaid-requirements.ts` and its tests.
 - Modify Compare and Benchmark Mermaid engines under `playground/src/runtime/realm/engines/` and `playground/src/benchmark/realm/engines/`.
 - Create a shared external module registrar under `playground/src/runtime/`.
-- Extend render/realm protocols with a closed artifact union.
-- Create rich-artifact sanitizer/presenter modules and focused components/styles/tests.
-- Modify CSP/Vite/Playwright configuration only as required by the local scriptless sandbox.
+- Keep render/realm protocols closed over strict validated native SVG and structured failures.
+- Create the opaque execution artifact and focused protocol/security tests.
+- Modify CSP/Vite/Playwright configuration only as required by the self-contained opaque realm.
 
 **Approach:**
 
@@ -416,15 +415,15 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 2. Register modules through one operation-queued function used by Compare and Benchmark.
 3. Add lazy local imports for ZenUML `0.2.3`, ELK `0.2.2`, and tidy-tree `0.2.2`.
 4. Build the Mermaid realm as a self-contained HTML/script artifact with a hash-locked CSP. Run it under `sandbox="allow-scripts"` without `allow-same-origin`; authenticate the unique-origin bootstrap by exact `contentWindow`, an unguessable one-run token, and one transferred MessagePort. The realm receives only frozen bounded inputs. Prove CSP denial for direct fetch/XHR/WebSocket/EventSource/beacon/worker and external subresource paths; separately prove that a self-navigation attempt triggers immediate parent-side poisoning and frame removal, while recording that the browser may already have issued that first navigation request.
-5. Define `SafeInlineSvg` and `SanitizedSandboxDocument` protocol payloads with source/config/size/element/attribute/style/URL budgets. Parent-side validation is mandatory even when the execution realm reports success.
-6. Sanitize rich SVG/XHTML into a separate scriptless `srcdoc` document; forbid active content, event handlers, external URLs, navigation, forms, and parent DOM access. Preserve only validated safe accessibility semantics and revalidate after structured clone.
-7. Implement the Rich artifact presentation state contract above in an unframed operational viewer. Keep strict SVG export paths; disable PNG or other unsupported conversion explicitly.
+5. Define one `SafeInlineSvg` publication type with source/config/size budgets. Parent-side strict validation is mandatory even when the execution realm reports success; non-SVG and unsafe output are terminal structured failures.
+6. Delete speculative rich-document sanitizer, presenter, and second-iframe code. Do not infer an alternate artifact from family names or validation failures.
+7. Publish validated SVG through the canonical preview state contract. Keep export paths bound to the validated artifact and disable unsupported conversion explicitly.
 
 **Requirements:** R3, R9-R11, R27.
 
-**Test scenarios:** advanced ZenUML first render, reused render, invalid source recovery, opaque-origin proof, parent/origin-storage/credential access denial, CSP denial for direct network and subresource APIs, self-navigation detection and containment with the first-request residual documented, forged bootstrap/port messages, sanitizer bypass corpus, oversized artifact, external URL, script/event attribute, tidy-tree Mindmap, ELK `mergeEdges`, realm timeout and replacement.
+**Test scenarios:** advanced ZenUML first render, reused render, invalid source recovery, opaque-origin proof, parent/origin-storage/credential access denial, CSP denial for direct network and subresource APIs, self-navigation detection and containment with the first-request residual documented, forged bootstrap/port messages, non-SVG output, unsafe/oversized SVG, external URL, script/event attribute, tidy-tree Mindmap, ELK `mergeEdges`, realm timeout and replacement.
 
-**Verification:** runtime/protocol unit tests; production CSP build; Playwright cold/reused ZenUML and layout-module tests; parent DOM assertion that no rich `foreignObject` is inserted.
+**Verification:** runtime/protocol unit tests; production CSP build; Playwright cold/reused ZenUML and layout-module tests; full ZenUML corpus proof that returned native SVG passes the same strict parent-side validator with no alternate artifact path.
 
 ### U4. Replace the ZenUML compatibility parser with a grammar-derived family
 
@@ -514,12 +513,12 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 
 1. Require a passing U1A digest before any browser evidence is collected.
 2. Define evidence lanes: raw SVG/source parity, browser computed presentation, and resvg-safe normalized output.
-3. Add computed-style/geometry browser assertions for Quadrant, theme families, Gantt, Block, and rich ZenUML.
+3. Add computed-style/geometry browser assertions for Quadrant, theme families, Gantt, Block, and strict-validated ZenUML.
 4. Keep comparator normalization narrow and prohibit semantic color equivalence exceptions.
 
 **Requirements:** R16-R18, R27-R28.
 
-**Test scenarios:** raw invalid Quadrant fill with dark computed point, valid resvg-safe fallback, font-only theme colors, Gantt tick geometry, Block endpoint contact, rich ZenUML execution/presentation isolation, comparator-whitelist absence.
+**Test scenarios:** raw invalid Quadrant fill with dark computed point, valid resvg-safe fallback, font-only theme colors, Gantt tick geometry, Block endpoint contact, ZenUML opaque execution and strict inline publication, comparator-whitelist absence.
 
 **Verification:** U1A freshness precondition; Playwright presentation matrix; resvg-safe renderer tests; compare gates.
 
@@ -638,7 +637,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 
 **Approach:**
 
-1. Add the reference bundle, companion graph, exact source map, lexical facts, token descriptor, WASM digest, rich artifact, visible-browser, and family admission checks to strict verification.
+1. Add the reference bundle, companion graph, exact source map, lexical facts, token descriptor, WASM digest, opaque-execution/strict-artifact, visible-browser, and family admission checks to strict verification.
 2. Run the architecture invariants in R28 and ensure no source-substring ownership guards return.
 3. Audit all parser-only or analysis-only supported families against the pinned release and either admit full precise behavior or mark capability honestly with evidence.
 4. Run reachability/dependency analysis and remove dead paths introduced or exposed by the refactor.
@@ -660,7 +659,7 @@ Rapid edits, worker replacement, legend changes, and stale responses may only tr
 | Surface | Required evidence |
 |---|---|
 | Reference bundle | Exact package/source graph, lock resolution, generated projections, provenance freshness, delta inventory |
-| ZenUML | Grammar corpus, semantic snapshots, source ranges/recovery, headless layout/SVG, cold/reused rich JS artifact, sanitizer adversarial corpus |
+| ZenUML | Grammar corpus, semantic snapshots, source ranges/recovery, headless layout/SVG, cold/reused opaque JS execution, full-corpus strict native-SVG validation and adversarial rejection corpus |
 | Theme | Ordered-stage unit tests, font-only/partial override matrix, Radar/Kanban/Mindmap/Timeline raw and computed colors |
 | Quadrant | Raw invalid-token parity, browser-computed dark point, valid resvg-safe fallback, no comparator whitelist |
 | Block | Shape geometry unit tests, endpoint-on-boundary matrix, structure/root compare, browser contact assertion |
@@ -699,7 +698,7 @@ Also run each affected JavaScript workspace's unit tests, typecheck, lint, produ
 - A missing source checkout, mismatched package lock, or stale generated reference projection fails before parity work starts.
 - A new upstream diagram/layout/parser registration without an admission owner fails the release delta gate.
 - An unmappable editor span drops only that span with evidence; unresolved overlap or invalid range fails token planning.
-- A rich artifact that fails sanitization/budget/CSP validation is not displayed and cannot fall back to inline insertion.
+- External output that is non-SVG or fails strict validation, budgets, protocol checks, or execution CSP is not displayed and cannot fall back to a family-specific exception or alternate presenter.
 - A stale WASM input digest fails dev/build/test before Vite serves the Playground.
 - Browser-visible parity failures cannot be waived by raw comparator normalization.
 - Unsupported environments may be reported with exact evidence, but Rust/Web/editor gates that can run locally must pass.
@@ -710,7 +709,7 @@ Also run each affected JavaScript workspace's unit tests, typecheck, lint, produ
 
 - The pinned Mermaid 11.16 reference graph and all companion packages are exact, generated, verified, and displayed from one descriptor.
 - Gantt comparison uses one 800-by-600 operation viewport; the source-backed catalog covers all 35 families and retains only evidence-backed variants; benchmark labels and structured error projection are honest.
-- Advanced official ZenUML parses and renders headlessly, and upstream rich output is safely usable on first load without weakening inline SVG safety.
+- Advanced official ZenUML parses and renders headlessly, and upstream native SVG is safely usable on first load through opaque execution and the unchanged strict inline-SVG boundary.
 - Radar, Kanban, Mindmap, and Timeline share correct ordered theme calculation; Quadrant and Block match their explicit visible contracts.
 - Preprocessing has exact composable edit maps, all 35 families emit rich lexical facts, and editor-core guarantees sorted non-overlapping tokens.
 - LSP, Web WASM, Monaco, and VS Code consume one generated token descriptor and produce equivalent results; completion, hover/structure, rename, code actions, diagnostics, detection, and tokens prove the same parse-snapshot identity; old sparse/heuristic paths are deleted.
