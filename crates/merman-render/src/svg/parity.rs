@@ -88,11 +88,6 @@ use util::{
     theme_color,
 };
 
-const PINNED_MERMAID_SEQUENCE_BASE_DEFS: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/sequence_base_defs_11_16_0.svgfrag"
-));
-
 #[derive(Debug, Clone)]
 pub struct SvgRenderOptions {
     /// Adds extra space around the computed viewBox.

@@ -110,10 +110,12 @@
     "build:wasm:editor": "node scripts/build-wasm.mjs --preset browser-editor --out-dir-rel pkg/editor",
     "build:wasm:full": "node scripts/build-wasm.mjs --preset browser-full",
     "build:wasm:ratex-math": "node scripts/build-wasm.mjs --preset browser-ratex-math",
+    "verify:wasm-inputs": "node scripts/verify-wasm-inputs.mjs",
+    "test:wasm-inputs": "node --test scripts/wasm-input-manifest.test.mjs scripts/wasm-input-closure.test.mjs scripts/verify-wasm-inputs.test.mjs scripts/wasm-build-transaction.test.mjs scripts/package-ownership.test.mjs",
     "check:contracts": "node scripts/check-contracts.mjs",
     "smoke:dom-safety": "tsc -p tsconfig.build.json && node scripts/dom-safety-smoke.mjs",
-    "smoke": "node scripts/smoke.mjs && npm run smoke:dom-safety",
-    "prepack": "npm run check:contracts && node --test scripts/*.test.mjs && node scripts/prepack-check.mjs",
+    "smoke": "npm run verify:wasm-inputs && node scripts/smoke.mjs && npm run smoke:dom-safety",
+    "prepack": "npm run check:contracts && node --test scripts/*.test.mjs && npm run verify:wasm-inputs -- --all-surfaces && node scripts/prepack-check.mjs",
     "prepublishOnly": "npm run build && npm run smoke"
   },
   "files": [

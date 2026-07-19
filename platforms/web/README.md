@@ -43,7 +43,30 @@ package. The TypeScript build first runs `npm run check:contracts --prefix platf
 checks the wasm-bindgen declarations against the public wrapper, `MermanWasmModule`, and the
 capability-specific subpath runtime bindings.
 
-Each build writes `pkg/merman_wasm_preset.json`. `npm run prepack` expects `browser-full` unless
+Each build writes `pkg/merman_wasm_preset.json` and `pkg/merman_wasm_inputs.json`. The input
+manifest hashes the normal/build Cargo dependency closure for `merman-wasm`, workspace manifests
+and lockfile, the pinned toolchain, generated ABI inputs, the selected preset and features, the
+owned WASM build module directory, and the emitted wasm-bindgen artifacts. Cargo closure discovery
+uses an isolated workspace probe so features enabled by unrelated workspace members cannot leak
+into slim surfaces. Compile-time renderer assets live under their owning crate `src` tree. The
+manifest deliberately ignores documentation, runtime-only audit assets, and dev-only dependencies.
+Freshness is content-based; timestamps and file existence are not evidence that a committed WASM
+binary matches the current Rust source.
+
+Builds hold a per-output cross-process lock and write into a staging directory. Child surfaces are
+published with one directory rename. The root `pkg` output must preserve child directories, so it is
+a multi-file, manifest-last transaction rather than an OS-atomic directory replacement: the
+committed manifest is absent throughout the replacement and a failure restores the previous output.
+A verifier therefore sees either the previous complete artifact, a fail-closed transition, or the
+new complete artifact. Interrupted transactions are recovered on the next build. The package
+descriptor owns every allowed `pkg/` surface; undeclared directories and files fail prepack instead
+of entering the tarball.
+
+Run `npm run verify:wasm-inputs --prefix platforms/web` to check the default artifact or add
+`-- --all-surfaces` to check every published surface. Consumers that load a subset can use a
+descriptor-backed selection such as `-- --surfaces root,editor`. `smoke` and `prepack` run the
+relevant check automatically and fail with one exact repository-root rebuild command when an input,
+feature profile, manifest, or artifact differs. `npm run prepack` still expects `browser-full` unless
 `MERMAN_WEB_ALLOW_NON_DEFAULT_PRESET=1` is set for an intentional local slim package, and it also
 runs the wrapper/subpath contract check.
 

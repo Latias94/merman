@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
 import { surfaces } from "./surface-manifest.mjs";
+import { WASM_INPUT_MANIFEST_NAME } from "./wasm-build/input-manifest.mjs";
+import { assertPackageOutputOwnership } from "./wasm-build/package-ownership.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = path.join(root, "..", "..");
@@ -10,6 +12,12 @@ const wasmSizeBudgets = path.join(workspaceRoot, "docs", "release", "WASM_SIZE_B
 const generatedPackageJson = path.join(root, "pkg", "package.json");
 const presetManifest = path.join(root, "pkg", "merman_wasm_preset.json");
 const wasmBinary = path.join(root, "pkg", "merman_wasm_bg.wasm");
+try {
+  assertPackageOutputOwnership(path.join(root, "pkg"));
+} catch (error) {
+  console.error(`prepack: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
 const required = [
   path.join(root, "dist", "index.js"),
   path.join(root, "dist", "index.d.ts"),
@@ -19,6 +27,7 @@ const required = [
   path.join(root, "dist", "svg-safety.d.ts"),
   generatedPackageJson,
   presetManifest,
+  path.join(root, "pkg", WASM_INPUT_MANIFEST_NAME),
   path.join(root, "pkg", "merman_wasm.js"),
   path.join(root, "pkg", "merman_wasm.d.ts"),
   wasmBinary,
@@ -30,6 +39,7 @@ const required = [
     path.join(root, "pkg", surface.entry, "merman_wasm.d.ts"),
     path.join(root, "pkg", surface.entry, "merman_wasm_bg.wasm"),
     path.join(root, "pkg", surface.entry, "merman_wasm_preset.json"),
+    path.join(root, "pkg", surface.entry, WASM_INPUT_MANIFEST_NAME),
   ]),
 ];
 

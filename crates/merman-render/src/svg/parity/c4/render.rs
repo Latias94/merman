@@ -214,10 +214,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let _ = write!(&mut out, r#"<style>{}</style>"#, css);
     out.push_str("<g/>");
 
-    const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/assets/c4_database_d_11_16_0.txt"
-    ));
+    const PINNED_C4_DATABASE_SYMBOL_D: &str = include_str!("c4_database_d_11_16_0.txt");
 
     let _ = write!(
         &mut out,
