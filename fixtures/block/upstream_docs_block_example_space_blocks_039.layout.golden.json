@@ -29,6 +29,56 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "ida",
+          "allocated": {
+            "x": 13.12,
+            "y": 0.0,
+            "width": 26.24,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 26.24,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "idb",
+          "allocated": {
+            "x": 150.08,
+            "y": 0.0,
+            "width": 26.24,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 26.24,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "idc",
+          "allocated": {
+            "x": 184.32,
+            "y": 0.0,
+            "width": 26.24,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 26.24,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,

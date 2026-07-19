@@ -61,6 +61,119 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "id-<id>-2",
+          "allocated": {
+            "x": 79.2,
+            "y": -68.8,
+            "width": 158.4,
+            "height": 129.6
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 158.4,
+            "height": 129.6,
+            "radius": 0.0,
+            "kind": "composite"
+          }
+        },
+        {
+          "id": "id-<id>-1",
+          "allocated": {
+            "x": 79.2,
+            "y": -99.2,
+            "width": 142.4,
+            "height": 52.8
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 142.4,
+            "height": 52.8,
+            "radius": 0.0,
+            "kind": "composite"
+          }
+        },
+        {
+          "id": "id1",
+          "allocated": {
+            "x": 34.4,
+            "y": -99.2,
+            "width": 36.8,
+            "height": 36.8
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 36.8,
+            "height": 36.8,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "id2",
+          "allocated": {
+            "x": 79.2,
+            "y": -99.2,
+            "width": 36.8,
+            "height": 36.8
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 36.8,
+            "height": 36.8,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "id2.1",
+          "allocated": {
+            "x": 124.0,
+            "y": -99.2,
+            "width": 36.8,
+            "height": 36.8
+          },
+          "boundary": {
+            "shape": "circle",
+            "radius": 18.4,
+            "width_attribute": 36.8,
+            "height_attribute": 32.0
+          }
+        },
+        {
+          "id": "id48",
+          "allocated": {
+            "x": 79.2,
+            "y": -38.4,
+            "width": 142.4,
+            "height": 52.8
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 142.4,
+            "height": 52.8,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "id3",
+          "allocated": {
+            "x": 79.2,
+            "y": 68.8,
+            "width": 158.4,
+            "height": 129.6
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 158.4,
+            "height": 129.6,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -133.6,

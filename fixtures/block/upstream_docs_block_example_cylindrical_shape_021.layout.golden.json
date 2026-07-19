@@ -13,6 +13,24 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "id1",
+          "allocated": {
+            "x": 32.88,
+            "y": 0.0,
+            "width": 65.76,
+            "height": 57.854
+          },
+          "boundary": {
+            "shape": "cylinder",
+            "width": 65.76,
+            "body_height": 40.618,
+            "radius_x": 32.88,
+            "radius_y": 8.618
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -28.927,

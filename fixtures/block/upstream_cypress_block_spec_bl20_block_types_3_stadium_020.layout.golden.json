@@ -13,6 +13,22 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "A",
+          "allocated": {
+            "x": 33.68,
+            "y": 0.0,
+            "width": 67.36,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "stadium",
+            "width": 67.36,
+            "height": 32.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,

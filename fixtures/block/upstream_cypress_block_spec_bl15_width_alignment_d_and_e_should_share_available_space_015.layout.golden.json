@@ -37,6 +37,72 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "id-<id>-1",
+          "allocated": {
+            "x": 89.84,
+            "y": 0.0,
+            "width": 179.68,
+            "height": 48.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 179.68,
+            "height": 48.0,
+            "radius": 0.0,
+            "kind": "composite"
+          }
+        },
+        {
+          "id": "D",
+          "allocated": {
+            "x": 46.92,
+            "y": 0.0,
+            "width": 77.84,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 77.84,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "E",
+          "allocated": {
+            "x": 132.76,
+            "y": 0.0,
+            "width": 77.84,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 77.84,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "db",
+          "allocated": {
+            "x": 277.52,
+            "y": 0.0,
+            "width": 179.68,
+            "height": 48.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 179.68,
+            "height": 48.0,
+            "radius": 5.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -24.0,

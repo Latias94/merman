@@ -21,6 +21,40 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "block1",
+          "allocated": {
+            "x": 29.44,
+            "y": -20.0,
+            "width": 58.88,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 58.88,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "block2",
+          "allocated": {
+            "x": 29.44,
+            "y": 20.0,
+            "width": 58.88,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 58.88,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -36.0,

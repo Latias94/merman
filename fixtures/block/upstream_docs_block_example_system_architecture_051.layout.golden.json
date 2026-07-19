@@ -61,6 +61,218 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "Frontend",
+          "allocated": {
+            "x": 32.88,
+            "y": -65.854,
+            "width": 65.76,
+            "height": 57.854
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 65.76,
+            "height": 57.854,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "blockArrowId6",
+          "allocated": {
+            "x": 106.64,
+            "y": -65.854,
+            "width": 65.76,
+            "height": 57.854
+          },
+          "boundary": {
+            "shape": "polygon",
+            "points": [
+              {
+                "x": 8.0,
+                "y": -4.0
+              },
+              {
+                "x": 8.0,
+                "y": -4.0
+              },
+              {
+                "x": 16.0,
+                "y": -4.0
+              },
+              {
+                "x": 16.0,
+                "y": 0.0
+              },
+              {
+                "x": 24.0,
+                "y": -8.0
+              },
+              {
+                "x": 16.0,
+                "y": -16.0
+              },
+              {
+                "x": 16.0,
+                "y": -12.0
+              },
+              {
+                "x": 8.0,
+                "y": -12.0
+              },
+              {
+                "x": 8.0,
+                "y": -12.0
+              }
+            ],
+            "translation": {
+              "x": -12.0,
+              "y": 8.0
+            }
+          }
+        },
+        {
+          "id": "Backend",
+          "allocated": {
+            "x": 180.4,
+            "y": -65.854,
+            "width": 65.76,
+            "height": 57.854
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 65.76,
+            "height": 57.854,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "down",
+          "allocated": {
+            "x": 180.4,
+            "y": 0.0,
+            "width": 65.76,
+            "height": 57.854
+          },
+          "boundary": {
+            "shape": "polygon",
+            "points": [
+              {
+                "x": 12.0,
+                "y": 0.0
+              },
+              {
+                "x": 0.0,
+                "y": -4.0
+              },
+              {
+                "x": 8.0,
+                "y": -4.0
+              },
+              {
+                "x": 8.0,
+                "y": -12.0
+              },
+              {
+                "x": 16.0,
+                "y": -12.0
+              },
+              {
+                "x": 16.0,
+                "y": -4.0
+              },
+              {
+                "x": 24.0,
+                "y": -4.0
+              }
+            ],
+            "translation": {
+              "x": -12.0,
+              "y": 8.0
+            }
+          }
+        },
+        {
+          "id": "Disk",
+          "allocated": {
+            "x": 32.88,
+            "y": 65.854,
+            "width": 65.76,
+            "height": 57.854
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 65.76,
+            "height": 57.854,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "left",
+          "allocated": {
+            "x": 106.64,
+            "y": 65.854,
+            "width": 65.76,
+            "height": 57.854
+          },
+          "boundary": {
+            "shape": "polygon",
+            "points": [
+              {
+                "x": 8.0,
+                "y": 0.0
+              },
+              {
+                "x": 8.0,
+                "y": -4.0
+              },
+              {
+                "x": 16.0,
+                "y": -4.0
+              },
+              {
+                "x": 16.0,
+                "y": -12.0
+              },
+              {
+                "x": 8.0,
+                "y": -12.0
+              },
+              {
+                "x": 8.0,
+                "y": -16.0
+              },
+              {
+                "x": 0.0,
+                "y": -8.0
+              }
+            ],
+            "translation": {
+              "x": -12.0,
+              "y": 8.0
+            }
+          }
+        },
+        {
+          "id": "Database",
+          "allocated": {
+            "x": 180.4,
+            "y": 65.854,
+            "width": 65.76,
+            "height": 57.854
+          },
+          "boundary": {
+            "shape": "cylinder",
+            "width": 65.76,
+            "body_height": 40.618,
+            "radius_x": 32.88,
+            "radius_y": 8.618
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -94.782,

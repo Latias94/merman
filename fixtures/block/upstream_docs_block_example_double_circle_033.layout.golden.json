@@ -13,6 +13,24 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "id1",
+          "allocated": {
+            "x": 102.76,
+            "y": 0.0,
+            "width": 205.52,
+            "height": 205.52
+          },
+          "boundary": {
+            "shape": "doubleCircle",
+            "outer_radius": 102.76,
+            "inner_radius": 97.76,
+            "inner_width_attribute": 195.52,
+            "inner_height_attribute": 32.0
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -102.76,

@@ -37,6 +37,72 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "id-<id>-2",
+          "allocated": {
+            "x": 82.24,
+            "y": 0.0,
+            "width": 164.48,
+            "height": 64.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 164.48,
+            "height": 64.0,
+            "radius": 0.0,
+            "kind": "composite"
+          }
+        },
+        {
+          "id": "aBlock",
+          "allocated": {
+            "x": 43.12,
+            "y": 0.0,
+            "width": 70.24,
+            "height": 48.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 70.24,
+            "height": 48.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "id-<id>-1",
+          "allocated": {
+            "x": 121.36,
+            "y": 0.0,
+            "width": 70.24,
+            "height": 48.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 70.24,
+            "height": 48.0,
+            "radius": 0.0,
+            "kind": "composite"
+          }
+        },
+        {
+          "id": "bBlock",
+          "allocated": {
+            "x": 121.36,
+            "y": 0.0,
+            "width": 54.24,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 54.24,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -32.0,

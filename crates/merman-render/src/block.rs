@@ -8,6 +8,12 @@ mod config;
 
 use config::{BlockConfigView, BlockLayoutSettings};
 
+mod geometry;
+
+pub use geometry::{
+    BlockAllocatedBounds, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
+};
+
 pub(crate) type BlockNode = merman_core::diagrams::block::BlockNodeRenderModel;
 
 #[derive(Debug, Clone)]
@@ -51,11 +57,11 @@ pub(crate) struct BlockArrowPoint {
     pub(crate) y: f64,
 }
 
-pub(crate) fn block_arrow_points(
+pub(crate) fn block_arrow_points_for_width(
     directions: &[String],
-    bbox_w: f64,
     bbox_h: f64,
     node_padding: f64,
+    width: f64,
 ) -> Vec<BlockArrowPoint> {
     fn expand_and_dedup(directions: &[String]) -> std::collections::BTreeSet<String> {
         let mut out = std::collections::BTreeSet::new();
@@ -81,7 +87,6 @@ pub(crate) fn block_arrow_points(
     let dirs = expand_and_dedup(directions);
     let height = bbox_h + 2.0 * node_padding;
     let midpoint = height / 2.0;
-    let width = bbox_w + 2.0 * midpoint + node_padding;
     let pad = node_padding / 2.0;
 
     let has = |name: &str| dirs.contains(name);
@@ -474,25 +479,6 @@ pub(crate) fn block_arrow_points(
     vec![BlockArrowPoint { x: 0.0, y: 0.0 }]
 }
 
-fn polygon_bounds(points: &[BlockArrowPoint]) -> (f64, f64) {
-    if points.is_empty() {
-        return (0.0, 0.0);
-    }
-
-    let mut min_x = points[0].x;
-    let mut max_x = points[0].x;
-    let mut min_y = points[0].y;
-    let mut max_y = points[0].y;
-    for point in &points[1..] {
-        min_x = min_x.min(point.x);
-        max_x = max_x.max(point.x);
-        min_y = min_y.min(point.y);
-        max_y = max_y.max(point.y);
-    }
-
-    ((max_x - min_x).max(0.0), (max_y - min_y).max(0.0))
-}
-
 fn block_shape_size(
     block_type: &str,
     directions: &[String],
@@ -501,47 +487,14 @@ fn block_shape_size(
     padding: f64,
     has_label: bool,
 ) -> Option<(f64, f64)> {
-    let rect_w = (label_width + padding).max(1.0);
-    let rect_h = (label_height + padding).max(1.0);
-
-    match block_type {
-        "composite" => has_label.then(|| (label_width.max(1.0), (label_height + padding).max(1.0))),
-        "group" => has_label.then_some((rect_w, rect_h)),
-        "space" => None,
-        "circle" => Some((rect_w, rect_w)),
-        "doublecircle" => {
-            let outer_diameter = rect_w + 10.0;
-            Some((outer_diameter, outer_diameter))
-        }
-        "stadium" => Some(((label_width + rect_h / 4.0 + padding).max(1.0), rect_h)),
-        "cylinder" => {
-            let rx = rect_w / 2.0;
-            let ry = rx / (2.5 + rect_w / 50.0);
-            let body_h = (label_height + ry + padding).max(1.0);
-            Some((rect_w, body_h + 2.0 * ry))
-        }
-        "diamond" => {
-            let side = (rect_w + rect_h).max(1.0);
-            Some((side, side))
-        }
-        "hexagon" => {
-            let shoulder = rect_h / 4.0;
-            Some(((label_width + 2.0 * shoulder + padding).max(1.0), rect_h))
-        }
-        "rect_left_inv_arrow" => Some((rect_w + rect_h / 2.0, rect_h)),
-        "subroutine" => Some((rect_w + 16.0, rect_h)),
-        "lean_right" | "trapezoid" | "inv_trapezoid" => {
-            Some((rect_w + (2.0 * rect_h) / 3.0, rect_h))
-        }
-        "lean_left" => Some((rect_w + rect_h / 3.0, rect_h)),
-        "block_arrow" => Some(polygon_bounds(&block_arrow_points(
-            directions,
-            label_width,
-            label_height,
-            padding,
-        ))),
-        _ => Some((rect_w, rect_h)),
-    }
+    geometry::natural_shape_size(
+        block_type,
+        directions,
+        label_width,
+        label_height,
+        padding,
+        has_label,
+    )
 }
 
 fn to_sized_block_shallow(
@@ -956,6 +909,38 @@ fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
     }
 }
 
+#[derive(Debug, Clone)]
+struct BlockShapeSource {
+    block_type: String,
+    directions: Vec<String>,
+    width_in_columns: i64,
+}
+
+fn collect_shape_sources(root: &BlockNode, out: &mut HashMap<String, BlockShapeSource>) {
+    let mut stack = vec![root];
+    while let Some(block) = stack.pop() {
+        let source = out
+            .entry(block.id.clone())
+            .or_insert_with(|| BlockShapeSource {
+                block_type: block.block_type.clone(),
+                directions: block.directions.clone(),
+                width_in_columns: block.width_in_columns.unwrap_or(1).max(1),
+            });
+        if !block.block_type.is_empty() && block.block_type != "na" {
+            source.block_type = block.block_type.clone();
+        }
+        if !block.directions.is_empty() {
+            source.directions = block.directions.clone();
+        }
+        if let Some(width_in_columns) = block.width_in_columns {
+            source.width_in_columns = width_in_columns.max(1);
+        }
+        for child in block.children.iter().rev() {
+            stack.push(child);
+        }
+    }
+}
+
 pub fn layout_block_diagram_typed(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     effective_config: &Value,
@@ -980,6 +965,30 @@ pub fn layout_block_diagram_typed(
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
     collect_nodes(&root, &mut nodes);
+
+    let mut shape_sources = HashMap::new();
+    for block in &model.blocks_flat {
+        collect_shape_sources(block, &mut shape_sources);
+    }
+    let mut shape_geometries = Vec::with_capacity(nodes.len());
+    for node in &nodes {
+        let source = shape_sources
+            .get(&node.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing Block shape source for node `{}`", node.id),
+            })?;
+        let geometry = BlockShapeGeometry::from_layout_node(
+            node,
+            &source.block_type,
+            &source.directions,
+            padding,
+            source.width_in_columns,
+        )
+        .ok_or_else(|| Error::InvalidModel {
+            message: format!("missing Block geometry for visible node `{}`", node.id),
+        })?;
+        shape_geometries.push(geometry);
+    }
 
     let mut bounds = Bounds {
         min_x: 0.0,
@@ -1047,6 +1056,7 @@ pub fn layout_block_diagram_typed(
     Ok(BlockDiagramLayout {
         nodes,
         edges,
+        shape_geometries,
         bounds,
     })
 }

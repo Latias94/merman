@@ -13,6 +13,24 @@
         }
       ],
       "edges": [],
+      "shapeGeometries": [
+        {
+          "id": "X",
+          "allocated": {
+            "x": 8.8,
+            "y": 0.0,
+            "width": 17.6,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 17.6,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,

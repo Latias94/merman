@@ -118,6 +118,12 @@ pub struct LayoutEdge {
 pub struct BlockDiagramLayout {
     pub nodes: Vec<LayoutNode>,
     pub edges: Vec<LayoutEdge>,
+    #[serde(
+        default,
+        rename = "shapeGeometries",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub shape_geometries: Vec<crate::block::BlockShapeGeometry>,
     pub bounds: Option<Bounds>,
 }
 

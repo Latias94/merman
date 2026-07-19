@@ -56,6 +56,40 @@
           "stroke_dasharray": null
         }
       ],
+      "shapeGeometries": [
+        {
+          "id": "ingress",
+          "allocated": {
+            "x": 222.52,
+            "y": 0.0,
+            "width": 445.04,
+            "height": 44.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 445.04,
+            "height": 44.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "dispatch",
+          "allocated": {
+            "x": 675.56,
+            "y": 0.0,
+            "width": 445.04,
+            "height": 44.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 445.04,
+            "height": 44.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -22.0,

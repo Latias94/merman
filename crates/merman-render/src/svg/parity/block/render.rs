@@ -1,7 +1,5 @@
 use super::super::*;
-use crate::block::{
-    BlockArrowPoint as ArrowPoint, block_arrow_points, block_label_is_effectively_empty,
-};
+use crate::block::{BlockRectangleKind, BlockShapeBoundary, block_label_is_effectively_empty};
 use crate::model::LayoutPoint;
 
 // Block diagram SVG renderer implementation (split from parity.rs).
@@ -67,17 +65,15 @@ pub(crate) fn render_block_diagram_svg_model(
         }
     }
 
-    let node_padding = config_f64(effective_config, &["block", "padding"]).unwrap_or(8.0);
     let mut nodes_by_id: std::collections::HashMap<String, RenderNode> =
         std::collections::HashMap::new();
     for n in &model.blocks_flat {
         collect_nodes(n, &mut nodes_by_id);
     }
-    let layout_nodes_by_id: std::collections::HashMap<String, LayoutNode> = layout
-        .nodes
+    let shape_geometries_by_id: std::collections::HashMap<_, _> = layout
+        .shape_geometries
         .iter()
-        .cloned()
-        .map(|n| (n.id.clone(), n))
+        .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
 
     fn marker_id(diagram_id: &str, marker: &str) -> String {
@@ -345,392 +341,6 @@ pub(crate) fn render_block_diagram_svg_model(
         out
     }
 
-    fn intersect_line(
-        p1: &LayoutPoint,
-        p2: &LayoutPoint,
-        q1: &LayoutPoint,
-        q2: &LayoutPoint,
-    ) -> Option<LayoutPoint> {
-        let a1 = p2.y - p1.y;
-        let b1 = p1.x - p2.x;
-        let c1 = p2.x * p1.y - p1.x * p2.y;
-
-        let r3 = a1 * q1.x + b1 * q1.y + c1;
-        let r4 = a1 * q2.x + b1 * q2.y + c1;
-        if r3 != 0.0 && r4 != 0.0 && r3 * r4 > 0.0 {
-            return None;
-        }
-
-        let a2 = q2.y - q1.y;
-        let b2 = q1.x - q2.x;
-        let c2 = q2.x * q1.y - q1.x * q2.y;
-
-        let r1 = a2 * p1.x + b2 * p1.y + c2;
-        let r2 = a2 * p2.x + b2 * p2.y + c2;
-        if r1 != 0.0 && r2 != 0.0 && r1 * r2 > 0.0 {
-            return None;
-        }
-
-        let denom = a1 * b2 - a2 * b1;
-        if denom.abs() <= 1e-12 {
-            return None;
-        }
-
-        let offset = (denom / 2.0).abs();
-
-        let num_x = b1 * c2 - b2 * c1;
-        let x = if num_x < 0.0 {
-            (num_x - offset) / denom
-        } else {
-            (num_x + offset) / denom
-        };
-
-        let num_y = a2 * c1 - a1 * c2;
-        let y = if num_y < 0.0 {
-            (num_y - offset) / denom
-        } else {
-            (num_y + offset) / denom
-        };
-
-        Some(LayoutPoint { x, y })
-    }
-
-    fn intersect_rect(node: &LayoutNode, point: &LayoutPoint) -> LayoutPoint {
-        let dx = point.x - node.x;
-        let dy = point.y - node.y;
-        let mut w = node.width / 2.0;
-        let mut h = node.height / 2.0;
-
-        let (sx, sy) = if dy.abs() * w > dx.abs() * h {
-            if dy < 0.0 {
-                h = -h;
-            }
-            let sx = if dy == 0.0 { 0.0 } else { (h * dx) / dy };
-            (sx, h)
-        } else {
-            if dx < 0.0 {
-                w = -w;
-            }
-            let sy = if dx == 0.0 { 0.0 } else { (w * dy) / dx };
-            (w, sy)
-        };
-
-        LayoutPoint {
-            x: node.x + sx,
-            y: node.y + sy,
-        }
-    }
-
-    fn intersect_circle(node: &LayoutNode, point: &LayoutPoint) -> LayoutPoint {
-        let dx = point.x - node.x;
-        let dy = point.y - node.y;
-        let dist = (dx * dx + dy * dy).sqrt();
-        if dist <= 1e-12 {
-            return LayoutPoint {
-                x: node.x,
-                y: node.y,
-            };
-        }
-        let radius = (node.width.min(node.height) / 2.0).max(0.0);
-        LayoutPoint {
-            x: node.x + dx / dist * radius,
-            y: node.y + dy / dist * radius,
-        }
-    }
-
-    fn intersect_cylinder(node: &LayoutNode, point: &LayoutPoint) -> LayoutPoint {
-        let mut pos = intersect_rect(node, point);
-        let x = pos.x - node.x;
-
-        let width = node.width.max(1.0);
-        let rx = width / 2.0;
-        let ry = rx / (2.5 + width / 50.0);
-
-        if rx != 0.0
-            && (x.abs() < width / 2.0
-                || ((x.abs() - width / 2.0).abs() < 1e-12
-                    && (pos.y - node.y).abs() > node.height / 2.0 - ry))
-        {
-            let mut y = ry * ry * (1.0 - (x * x) / (rx * rx));
-            if y > 0.0 {
-                y = y.sqrt();
-            } else {
-                y = 0.0;
-            }
-            y = ry - y;
-            if point.y - node.y > 0.0 {
-                y = -y;
-            }
-            pos.y += y;
-        }
-
-        pos
-    }
-
-    fn intersect_polygon(
-        node: &LayoutNode,
-        poly_points: &[ArrowPoint],
-        point: &LayoutPoint,
-    ) -> LayoutPoint {
-        let mut min_x = f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        for entry in poly_points {
-            min_x = min_x.min(entry.x);
-            min_y = min_y.min(entry.y);
-        }
-
-        let left = node.x - node.width / 2.0 - min_x;
-        let top = node.y - node.height / 2.0 - min_y;
-
-        let mut intersections = Vec::new();
-        for idx in 0..poly_points.len() {
-            let p1 = &poly_points[idx];
-            let p2 = &poly_points[(idx + 1) % poly_points.len()];
-            let q1 = LayoutPoint {
-                x: left + p1.x,
-                y: top + p1.y,
-            };
-            let q2 = LayoutPoint {
-                x: left + p2.x,
-                y: top + p2.y,
-            };
-            if let Some(intersection) = intersect_line(
-                &LayoutPoint {
-                    x: node.x,
-                    y: node.y,
-                },
-                point,
-                &q1,
-                &q2,
-            ) {
-                intersections.push(intersection);
-            }
-        }
-
-        intersections
-            .into_iter()
-            .min_by(|p, q| {
-                let p_dist = (p.x - point.x).powi(2) + (p.y - point.y).powi(2);
-                let q_dist = (q.x - point.x).powi(2) + (q.y - point.y).powi(2);
-                p_dist.total_cmp(&q_dist)
-            })
-            .unwrap_or(LayoutPoint {
-                x: node.x,
-                y: node.y,
-            })
-    }
-
-    fn block_polygon_points(
-        node: &LayoutNode,
-        render_node: &RenderNode,
-        node_padding: f64,
-    ) -> Option<Vec<ArrowPoint>> {
-        let bbox_w = node.label_width.unwrap_or(0.0).max(0.0);
-        let bbox_h = node.label_height.unwrap_or(0.0).max(0.0);
-        let rect_w = (bbox_w + node_padding).max(1.0);
-        let rect_h = (bbox_h + node_padding).max(1.0);
-
-        match render_node.block_type.as_str() {
-            "diamond" => {
-                let side = (rect_w + rect_h).max(1.0);
-                Some(vec![
-                    ArrowPoint {
-                        x: side / 2.0,
-                        y: 0.0,
-                    },
-                    ArrowPoint {
-                        x: side,
-                        y: -side / 2.0,
-                    },
-                    ArrowPoint {
-                        x: side / 2.0,
-                        y: -side,
-                    },
-                    ArrowPoint {
-                        x: 0.0,
-                        y: -side / 2.0,
-                    },
-                ])
-            }
-            "hexagon" => {
-                let shoulder = rect_h / 4.0;
-                let hex_w = (bbox_w + 2.0 * shoulder + node_padding).max(1.0);
-                Some(vec![
-                    ArrowPoint {
-                        x: shoulder,
-                        y: 0.0,
-                    },
-                    ArrowPoint {
-                        x: hex_w - shoulder,
-                        y: 0.0,
-                    },
-                    ArrowPoint {
-                        x: hex_w,
-                        y: -rect_h / 2.0,
-                    },
-                    ArrowPoint {
-                        x: hex_w - shoulder,
-                        y: -rect_h,
-                    },
-                    ArrowPoint {
-                        x: shoulder,
-                        y: -rect_h,
-                    },
-                    ArrowPoint {
-                        x: 0.0,
-                        y: -rect_h / 2.0,
-                    },
-                ])
-            }
-            "rect_left_inv_arrow" => Some(vec![
-                ArrowPoint {
-                    x: -rect_h / 2.0,
-                    y: 0.0,
-                },
-                ArrowPoint { x: rect_w, y: 0.0 },
-                ArrowPoint {
-                    x: rect_w,
-                    y: -rect_h,
-                },
-                ArrowPoint {
-                    x: -rect_h / 2.0,
-                    y: -rect_h,
-                },
-                ArrowPoint {
-                    x: 0.0,
-                    y: -rect_h / 2.0,
-                },
-            ]),
-            "subroutine" => Some(vec![
-                ArrowPoint { x: 0.0, y: 0.0 },
-                ArrowPoint { x: rect_w, y: 0.0 },
-                ArrowPoint {
-                    x: rect_w,
-                    y: -rect_h,
-                },
-                ArrowPoint { x: 0.0, y: -rect_h },
-                ArrowPoint { x: 0.0, y: 0.0 },
-                ArrowPoint { x: -8.0, y: 0.0 },
-                ArrowPoint {
-                    x: rect_w + 8.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w + 8.0,
-                    y: -rect_h,
-                },
-                ArrowPoint {
-                    x: -8.0,
-                    y: -rect_h,
-                },
-                ArrowPoint { x: -8.0, y: 0.0 },
-            ]),
-            "lean_right" => Some(vec![
-                ArrowPoint {
-                    x: (-2.0 * rect_h) / 6.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w - rect_h / 6.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w + (2.0 * rect_h) / 6.0,
-                    y: -rect_h,
-                },
-                ArrowPoint {
-                    x: rect_h / 6.0,
-                    y: -rect_h,
-                },
-            ]),
-            "lean_left" => Some(vec![
-                ArrowPoint {
-                    x: (2.0 * rect_h) / 6.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w + rect_h / 6.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w - (2.0 * rect_h) / 6.0,
-                    y: -rect_h,
-                },
-                ArrowPoint {
-                    x: -rect_h / 6.0,
-                    y: -rect_h,
-                },
-            ]),
-            "trapezoid" => Some(vec![
-                ArrowPoint {
-                    x: (-2.0 * rect_h) / 6.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w + (2.0 * rect_h) / 6.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w - rect_h / 6.0,
-                    y: -rect_h,
-                },
-                ArrowPoint {
-                    x: rect_h / 6.0,
-                    y: -rect_h,
-                },
-            ]),
-            "inv_trapezoid" => Some(vec![
-                ArrowPoint {
-                    x: rect_h / 6.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w - rect_h / 6.0,
-                    y: 0.0,
-                },
-                ArrowPoint {
-                    x: rect_w + (2.0 * rect_h) / 6.0,
-                    y: -rect_h,
-                },
-                ArrowPoint {
-                    x: (-2.0 * rect_h) / 6.0,
-                    y: -rect_h,
-                },
-            ]),
-            "block_arrow" => Some(block_arrow_points(
-                &render_node.directions,
-                bbox_w,
-                bbox_h,
-                node_padding,
-            )),
-            _ => None,
-        }
-    }
-
-    fn block_intersect_node(
-        node: &LayoutNode,
-        render_node: &RenderNode,
-        point: &LayoutPoint,
-        node_padding: f64,
-    ) -> LayoutPoint {
-        match render_node.block_type.as_str() {
-            "circle" | "doublecircle" => intersect_circle(node, point),
-            "cylinder" => intersect_cylinder(node, point),
-            "diamond"
-            | "hexagon"
-            | "rect_left_inv_arrow"
-            | "subroutine"
-            | "lean_right"
-            | "lean_left"
-            | "trapezoid"
-            | "inv_trapezoid"
-            | "block_arrow" => block_polygon_points(node, render_node, node_padding)
-                .map(|points| intersect_polygon(node, &points, point))
-                .unwrap_or_else(|| intersect_rect(node, point)),
-            _ => intersect_rect(node, point),
-        }
-    }
-
     let diagram_id = options.diagram_id.as_deref().unwrap_or("merman");
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -809,393 +419,142 @@ pub(crate) fn render_block_diagram_svg_model(
         let (node_box_style, node_text_style, node_div_style_prefix) =
             compile_block_inline_styles(&node.styles);
 
-        let width = n.width.max(1.0);
-        let height = n.height.max(1.0);
-        let x = -width / 2.0;
-        let y = -height / 2.0;
-
+        let geometry =
+            shape_geometries_by_id
+                .get(n.id.as_str())
+                .ok_or_else(|| Error::InvalidModel {
+                    message: format!("missing Block shape geometry for node `{}`", n.id),
+                })?;
         let id_attr = format!(r#" id="{}""#, escape_attr(&dom_id(diagram_id, &n.id)));
         let _ = write!(
             &mut out,
             r#"<g class="node default {}"{} transform="translate({}, {})">"#,
             escape_attr(&class_str),
             id_attr,
-            fmt(n.x),
-            fmt(n.y)
+            fmt(geometry.allocated.x),
+            fmt(geometry.allocated.y)
         );
 
-        fn emit_polygon(
-            out: &mut String,
-            points: &[ArrowPoint],
-            base_w: f64,
-            base_h: f64,
-            style_attr: &str,
-        ) {
-            out.push_str(r#"<polygon points=""#);
-            for (idx, point) in points.iter().enumerate() {
-                if idx > 0 {
-                    out.push(' ');
-                }
-                let _ = write!(out, "{},{}", fmt_display(point.x), fmt_display(point.y));
+        match &geometry.boundary {
+            BlockShapeBoundary::Rectangle {
+                width,
+                height,
+                radius,
+                kind,
+            } => {
+                let class = match kind {
+                    BlockRectangleKind::Basic => "basic label-container",
+                    BlockRectangleKind::Composite => "basic cluster composite label-container",
+                };
+                let _ = write!(
+                    &mut out,
+                    r#"<rect class="{}" rx="{}" ry="{}" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    class,
+                    fmt(*radius),
+                    fmt(*radius),
+                    escape_attr(&node_box_style),
+                    fmt(-width / 2.0),
+                    fmt(-height / 2.0),
+                    fmt(*width),
+                    fmt(*height)
+                );
             }
-            let _ = write!(
-                out,
-                r#"" class="label-container" style="{}" transform="translate({},{})"/>"#,
-                escape_attr(style_attr),
-                fmt_display(-base_w / 2.0),
-                fmt_display(base_h / 2.0)
-            );
-        }
-
-        let bbox_w = n.label_width.unwrap_or(0.0).max(0.0);
-        let bbox_h = n.label_height.unwrap_or(0.0).max(0.0);
-        let rect_w = (bbox_w + node_padding).max(1.0);
-        let rect_h = (bbox_h + node_padding).max(1.0);
-
-        match node.block_type.as_str() {
-            "circle" => {
+            BlockShapeBoundary::Circle {
+                radius,
+                width_attribute,
+                height_attribute,
+            } => {
                 let _ = write!(
                     &mut out,
                     r#"<circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/>"#,
                     escape_attr(&node_box_style),
-                    fmt(rect_w / 2.0),
-                    fmt(rect_w),
-                    fmt(rect_h)
+                    fmt(*radius),
+                    fmt(*width_attribute),
+                    fmt(*height_attribute)
                 );
             }
-            "doublecircle" => {
-                let outer_w = rect_w + 10.0;
-                let outer_h = rect_h + 10.0;
+            BlockShapeBoundary::DoubleCircle {
+                outer_radius,
+                inner_radius,
+                inner_width_attribute,
+                inner_height_attribute,
+            } => {
                 let _ = write!(
                     &mut out,
                     r#"<g class="default flowchart-label"><circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/><circle style="{}" rx="0" ry="0" r="{}" width="{}" height="{}"/></g>"#,
                     escape_attr(&node_box_style),
-                    fmt(outer_w / 2.0),
-                    fmt(outer_w),
-                    fmt(outer_h),
+                    fmt(*outer_radius),
+                    fmt(inner_width_attribute + 10.0),
+                    fmt(inner_height_attribute + 10.0),
                     escape_attr(&node_box_style),
-                    fmt(rect_w / 2.0),
-                    fmt(rect_w),
-                    fmt(rect_h)
+                    fmt(*inner_radius),
+                    fmt(*inner_width_attribute),
+                    fmt(*inner_height_attribute)
                 );
             }
-            "stadium" => {
-                let stadium_w = (bbox_w + rect_h / 4.0 + node_padding).max(1.0);
+            BlockShapeBoundary::Stadium { width, height } => {
+                let radius = height / 2.0;
                 let _ = write!(
                     &mut out,
                     r#"<rect rx="{}" ry="{}" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-                    fmt(rect_h / 2.0),
-                    fmt(rect_h / 2.0),
+                    fmt(radius),
+                    fmt(radius),
                     escape_attr(&node_box_style),
-                    fmt(-stadium_w / 2.0),
-                    fmt(-rect_h / 2.0),
-                    fmt(stadium_w),
-                    fmt(rect_h)
+                    fmt(-width / 2.0),
+                    fmt(-height / 2.0),
+                    fmt(*width),
+                    fmt(*height)
                 );
             }
-            "cylinder" => {
-                let rx = rect_w / 2.0;
-                let ry = rx / (2.5 + rect_w / 50.0);
-                let body_h = (bbox_h + ry + node_padding).max(1.0);
+            BlockShapeBoundary::Cylinder {
+                width,
+                body_height,
+                radius_x,
+                radius_y,
+            } => {
                 let _ = write!(
                     &mut out,
                     r#"<path d="M {},{} a {},{} 0,0,0 {} 0 a {},{} 0,0,0 {} 0 l 0,{} a {},{} 0,0,0 {} 0 l 0,{}" style="{}" transform="translate({},{})"/>"#,
                     fmt_display(0.0),
-                    fmt_display(ry),
-                    fmt_display(rx),
-                    fmt_display(ry),
-                    fmt_display(rect_w),
-                    fmt_display(rx),
-                    fmt_display(ry),
-                    fmt_display(-rect_w),
-                    fmt_display(body_h),
-                    fmt_display(rx),
-                    fmt_display(ry),
-                    fmt_display(rect_w),
-                    fmt_display(-body_h),
+                    fmt_display(*radius_y),
+                    fmt_display(*radius_x),
+                    fmt_display(*radius_y),
+                    fmt_display(*width),
+                    fmt_display(*radius_x),
+                    fmt_display(*radius_y),
+                    fmt_display(-width),
+                    fmt_display(*body_height),
+                    fmt_display(*radius_x),
+                    fmt_display(*radius_y),
+                    fmt_display(*width),
+                    fmt_display(-body_height),
                     escape_attr(&node_box_style),
-                    fmt_display(-rect_w / 2.0),
-                    fmt_display(-(body_h / 2.0 + ry))
+                    fmt_display(-width / 2.0),
+                    fmt_display(-(body_height / 2.0 + radius_y))
                 );
             }
-            "diamond" => {
-                let side = (rect_w + rect_h).max(1.0);
-                emit_polygon(
-                    &mut out,
-                    &[
-                        ArrowPoint {
-                            x: side / 2.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: side,
-                            y: -side / 2.0,
-                        },
-                        ArrowPoint {
-                            x: side / 2.0,
-                            y: -side,
-                        },
-                        ArrowPoint {
-                            x: 0.0,
-                            y: -side / 2.0,
-                        },
-                    ],
-                    side,
-                    side,
-                    &node_box_style,
-                );
-            }
-            "hexagon" => {
-                let shoulder = rect_h / 4.0;
-                let hex_w = (bbox_w + 2.0 * shoulder + node_padding).max(1.0);
-                emit_polygon(
-                    &mut out,
-                    &[
-                        ArrowPoint {
-                            x: shoulder,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: hex_w - shoulder,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: hex_w,
-                            y: -rect_h / 2.0,
-                        },
-                        ArrowPoint {
-                            x: hex_w - shoulder,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: shoulder,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: 0.0,
-                            y: -rect_h / 2.0,
-                        },
-                    ],
-                    hex_w,
-                    rect_h,
-                    &node_box_style,
-                );
-            }
-            "rect_left_inv_arrow" => {
-                emit_polygon(
-                    &mut out,
-                    &[
-                        ArrowPoint {
-                            x: -rect_h / 2.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint { x: rect_w, y: 0.0 },
-                        ArrowPoint {
-                            x: rect_w,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: -rect_h / 2.0,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: 0.0,
-                            y: -rect_h / 2.0,
-                        },
-                    ],
-                    rect_w,
-                    rect_h,
-                    &node_box_style,
-                );
-            }
-            "subroutine" => {
-                emit_polygon(
-                    &mut out,
-                    &[
-                        ArrowPoint { x: 0.0, y: 0.0 },
-                        ArrowPoint { x: rect_w, y: 0.0 },
-                        ArrowPoint {
-                            x: rect_w,
-                            y: -rect_h,
-                        },
-                        ArrowPoint { x: 0.0, y: -rect_h },
-                        ArrowPoint { x: 0.0, y: 0.0 },
-                        ArrowPoint { x: -8.0, y: 0.0 },
-                        ArrowPoint {
-                            x: rect_w + 8.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w + 8.0,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: -8.0,
-                            y: -rect_h,
-                        },
-                        ArrowPoint { x: -8.0, y: 0.0 },
-                    ],
-                    rect_w,
-                    rect_h,
-                    &node_box_style,
-                );
-            }
-            "lean_right" => {
-                emit_polygon(
-                    &mut out,
-                    &[
-                        ArrowPoint {
-                            x: (-2.0 * rect_h) / 6.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w - rect_h / 6.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w + (2.0 * rect_h) / 6.0,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: rect_h / 6.0,
-                            y: -rect_h,
-                        },
-                    ],
-                    rect_w,
-                    rect_h,
-                    &node_box_style,
-                );
-            }
-            "lean_left" => {
-                emit_polygon(
-                    &mut out,
-                    &[
-                        ArrowPoint {
-                            x: (2.0 * rect_h) / 6.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w + rect_h / 6.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w - (2.0 * rect_h) / 6.0,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: -rect_h / 6.0,
-                            y: -rect_h,
-                        },
-                    ],
-                    rect_w,
-                    rect_h,
-                    &node_box_style,
-                );
-            }
-            "trapezoid" => {
-                emit_polygon(
-                    &mut out,
-                    &[
-                        ArrowPoint {
-                            x: (-2.0 * rect_h) / 6.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w + (2.0 * rect_h) / 6.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w - rect_h / 6.0,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: rect_h / 6.0,
-                            y: -rect_h,
-                        },
-                    ],
-                    rect_w,
-                    rect_h,
-                    &node_box_style,
-                );
-            }
-            "inv_trapezoid" => {
-                emit_polygon(
-                    &mut out,
-                    &[
-                        ArrowPoint {
-                            x: rect_h / 6.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w - rect_h / 6.0,
-                            y: 0.0,
-                        },
-                        ArrowPoint {
-                            x: rect_w + (2.0 * rect_h) / 6.0,
-                            y: -rect_h,
-                        },
-                        ArrowPoint {
-                            x: (-2.0 * rect_h) / 6.0,
-                            y: -rect_h,
-                        },
-                    ],
-                    rect_w,
-                    rect_h,
-                    &node_box_style,
-                );
-            }
-            "composite" => {
-                let _ = write!(
-                    &mut out,
-                    r#"<rect class="basic cluster composite label-container" rx="0" ry="0" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-                    escape_attr(&node_box_style),
-                    fmt(x),
-                    fmt(y),
-                    fmt(width),
-                    fmt(height)
-                );
-            }
-            "block_arrow" => {
-                let h = (bbox_h + 2.0 * node_padding).max(1.0);
-                let m = h / 2.0;
-                let w = (bbox_w + 2.0 * m + node_padding).max(1.0);
-                let pts = block_arrow_points(&node.directions, bbox_w, bbox_h, node_padding);
-
+            BlockShapeBoundary::Polygon {
+                points,
+                translation,
+            } => {
                 out.push_str(r#"<polygon points=""#);
-                for (idx, p) in pts.iter().enumerate() {
-                    if idx > 0 {
+                for (index, point) in points.iter().enumerate() {
+                    if index > 0 {
                         out.push(' ');
                     }
-                    let _ = write!(&mut out, "{},{}", fmt_display(p.x), fmt_display(p.y));
+                    let _ = write!(
+                        &mut out,
+                        "{},{}",
+                        fmt_display(point.x),
+                        fmt_display(point.y)
+                    );
                 }
                 let _ = write!(
                     &mut out,
                     r#"" class="label-container" style="{}" transform="translate({},{})"/>"#,
                     escape_attr(&node_box_style),
-                    fmt_display(-w / 2.0),
-                    fmt_display(h / 2.0)
-                );
-            }
-            "round" => {
-                let _ = write!(
-                    &mut out,
-                    r#"<rect class="basic label-container" rx="5" ry="5" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-                    escape_attr(&node_box_style),
-                    fmt(x),
-                    fmt(y),
-                    fmt(width),
-                    fmt(height)
-                );
-            }
-            _ => {
-                let _ = write!(
-                    &mut out,
-                    r#"<rect class="basic label-container" rx="0" ry="0" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-                    escape_attr(&node_box_style),
-                    fmt(x),
-                    fmt(y),
-                    fmt(width),
-                    fmt(height)
+                    fmt_display(translation.x),
+                    fmt_display(translation.y)
                 );
             }
         }
@@ -1241,21 +600,15 @@ pub(crate) fn render_block_diagram_svg_model(
             continue;
         };
         let mut edge_points = match (
-            layout_nodes_by_id.get(&e.start),
-            layout_nodes_by_id.get(&e.end),
-            nodes_by_id.get(&e.start),
-            nodes_by_id.get(&e.end),
+            shape_geometries_by_id.get(e.start.as_str()),
+            shape_geometries_by_id.get(e.end.as_str()),
         ) {
-            (Some(from), Some(to), Some(from_render), Some(to_render)) => {
+            (Some(from), Some(to)) => {
                 let mid = le.points.get(1).cloned().unwrap_or(LayoutPoint {
-                    x: from.x + (to.x - from.x) / 2.0,
-                    y: from.y + (to.y - from.y) / 2.0,
+                    x: from.allocated.x + (to.allocated.x - from.allocated.x) / 2.0,
+                    y: from.allocated.y + (to.allocated.y - from.allocated.y) / 2.0,
                 });
-                vec![
-                    block_intersect_node(from, from_render, &mid, node_padding),
-                    mid.clone(),
-                    block_intersect_node(to, to_render, &mid, node_padding),
-                ]
+                vec![from.intersect(&mid), mid.clone(), to.intersect(&mid)]
             }
             _ => le.points.clone(),
         };

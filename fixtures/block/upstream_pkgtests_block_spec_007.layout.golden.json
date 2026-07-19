@@ -56,6 +56,40 @@
           "stroke_dasharray": null
         }
       ],
+      "shapeGeometries": [
+        {
+          "id": "id1",
+          "allocated": {
+            "x": 24.64,
+            "y": 0.0,
+            "width": 49.28,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 49.28,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        },
+        {
+          "id": "id2",
+          "allocated": {
+            "x": 81.92,
+            "y": 0.0,
+            "width": 49.28,
+            "height": 32.0
+          },
+          "boundary": {
+            "shape": "rectangle",
+            "width": 49.28,
+            "height": 32.0,
+            "radius": 0.0,
+            "kind": "basic"
+          }
+        }
+      ],
       "bounds": {
         "min_x": 0.0,
         "min_y": -16.0,

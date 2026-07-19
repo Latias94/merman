@@ -6,6 +6,7 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use regex::Regex;
 
 fn render_block_svg_from_text(text: &str) -> String {
     let engine = Engine::new();
@@ -26,6 +27,33 @@ fn render_block_svg_from_text_with_engine(engine: &Engine, text: &str) -> String
         .expect("svg render ok")
         .svg()
         .to_owned()
+}
+
+fn translated_center(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
+    let transform = node.attribute("transform").expect("node transform");
+    let captures = Regex::new(
+        r"^translate\(\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*\)$",
+    )
+    .expect("valid transform regex")
+    .captures(transform)
+    .expect("translate(x, y) transform");
+    (
+        captures[1].parse().expect("numeric translate x"),
+        captures[2].parse().expect("numeric translate y"),
+    )
+}
+
+fn path_start(path: roxmltree::Node<'_, '_>) -> (f64, f64) {
+    let d = path.attribute("d").expect("path data");
+    let captures =
+        Regex::new(r"^M\s*(-?(?:\d+(?:\.\d*)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d*)?|\.\d+))")
+            .expect("valid path regex")
+            .captures(d)
+            .expect("path starts with an absolute move");
+    (
+        captures[1].parse().expect("numeric path x"),
+        captures[2].parse().expect("numeric path y"),
+    )
 }
 
 fn deep_block_chain(depth: usize) -> String {
@@ -169,4 +197,101 @@ block
         ),
         "expected block composite cluster CSS to follow Mermaid 11.15 fade() colors"
     );
+}
+
+#[test]
+fn block_circle_edge_starts_on_the_rendered_circle_boundary() {
+    let svg = render_block_svg_from_text(
+        r##"block-beta
+  columns 3
+  user(("User")):3
+  space:3
+  ui["Web UI"] api["API Server"] db[("Database")]
+
+  user --> ui
+  ui --> api
+  api --> db
+
+  style user fill:#ffe0b2,stroke:#fb8c00
+  style db fill:#bbdefb,stroke:#1e88e5
+"##,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let user = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-user"))
+        .expect("rendered user node");
+    let circle = user
+        .descendants()
+        .find(|node| node.has_tag_name("circle"))
+        .expect("rendered user circle");
+    let edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class").is_some_and(|class| {
+                    class
+                        .split_ascii_whitespace()
+                        .any(|part| part == "flowchart-link")
+                })
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.contains("user-ui"))
+        })
+        .expect("user to ui edge");
+
+    let (center_x, center_y) = translated_center(user);
+    let (edge_x, edge_y) = path_start(edge);
+    let radius: f64 = circle
+        .attribute("r")
+        .expect("circle radius")
+        .parse()
+        .expect("numeric circle radius");
+    let endpoint_radius = ((edge_x - center_x).powi(2) + (edge_y - center_y).powi(2)).sqrt();
+
+    assert!(
+        (endpoint_radius - radius).abs() <= 1e-3,
+        "edge must start on the rendered circle: center=({center_x},{center_y}), endpoint=({edge_x},{edge_y}), endpoint_radius={endpoint_radius}, circle_radius={radius}, svg={svg}"
+    );
+}
+
+#[test]
+fn block_short_stadium_edge_starts_on_the_svg_clamped_boundary() {
+    let svg = render_block_svg_from_text(
+        r#"block
+  A(["A"]) --> B["B"]
+"#,
+    );
+    let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+    let stadium = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some("merman-A"))
+        .expect("rendered stadium node");
+    let rect = stadium
+        .descendants()
+        .find(|node| node.has_tag_name("rect") && node.attribute("width").is_some())
+        .expect("rendered stadium outline");
+    let edge = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("path") && node.attribute("id").is_some_and(|id| id.contains("A-B"))
+        })
+        .expect("stadium edge");
+
+    let (center_x, center_y) = translated_center(stadium);
+    let (edge_x, edge_y) = path_start(edge);
+    let width: f64 = rect
+        .attribute("width")
+        .expect("stadium width")
+        .parse()
+        .expect("numeric stadium width");
+    let height: f64 = rect
+        .attribute("height")
+        .expect("stadium height")
+        .parse()
+        .expect("numeric stadium height");
+
+    assert!(width < height, "fixture must exercise SVG radius clamping");
+    assert!((edge_x - (center_x + width / 2.0)).abs() <= 1e-3);
+    assert!((edge_y - center_y).abs() <= 1e-3);
 }
