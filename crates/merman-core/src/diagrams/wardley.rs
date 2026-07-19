@@ -1,12 +1,13 @@
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
-    LangiumCommonFacts, parse_langium_common, parse_langium_string,
+    LangiumCommonFacts, LangiumLexemeTrace, parse_langium_common, parse_langium_string,
     push_langium_common_editor_fact, strip_langium_inline_comment,
 };
 use crate::diagrams::scan::physical_line_at;
 use crate::{
-    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticFacts,
-    EditorSemanticKind, EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
+    EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorLexemeKind, EditorLexemeModifier,
+    EditorLexemeModifiers, EditorRenamePolicy, EditorSemanticFacts, EditorSemanticKind,
+    EditorSemanticSymbol, Error, ParseMetadata, Result, SourceSpan,
 };
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -277,6 +278,13 @@ impl WardleySemanticSource {
 struct WardleySemanticFailure {
     error: Box<Error>,
     editor_facts: Box<EditorSemanticFacts>,
+}
+
+#[derive(Debug)]
+struct WardleyParseOutcome {
+    ast: WardleyAst,
+    editor_facts: EditorSemanticFacts,
+    first_problem: Option<WardleyParseProblem>,
 }
 
 impl WardleySemanticFailure {
@@ -556,6 +564,58 @@ impl WardleyParseProblem {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct WardleyNameLexeme {
+    kind: EditorLexemeKind,
+    modifiers: EditorLexemeModifiers,
+}
+
+impl WardleyNameLexeme {
+    fn definition() -> Self {
+        Self::identifier(EditorLexemeModifier::Definition)
+    }
+
+    fn reference() -> Self {
+        Self::identifier(EditorLexemeModifier::Reference)
+    }
+
+    fn payload() -> Self {
+        Self {
+            kind: EditorLexemeKind::String,
+            modifiers: EditorLexemeModifiers::NONE,
+        }
+    }
+
+    fn identifier(modifier: EditorLexemeModifier) -> Self {
+        Self {
+            kind: EditorLexemeKind::Identifier,
+            modifiers: EditorLexemeModifiers::from_modifier(modifier),
+        }
+    }
+}
+
+fn push_wardley_keyword(lexemes: &mut LangiumLexemeTrace, start: usize, keyword: &str) {
+    lexemes.keyword(SourceSpan::new(start, start + keyword.len()));
+}
+
+fn push_wardley_text_lexeme(
+    lexemes: &mut LangiumLexemeTrace,
+    text: &SpannedText,
+    classification: WardleyNameLexeme,
+) {
+    if text.quoted {
+        lexemes.delimiter(SourceSpan::new(text.span.start, text.selection.start));
+    }
+    lexemes.push_with_modifiers(
+        classification.kind,
+        classification.modifiers,
+        text.selection,
+    );
+    if text.quoted {
+        lexemes.delimiter(SourceSpan::new(text.selection.end, text.span.end));
+    }
+}
+
 fn construct_wardley_semantic_source(
     code: &str,
     meta: &ParseMetadata,
@@ -563,13 +623,14 @@ fn construct_wardley_semantic_source(
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("wardley");
 
-    let mut editor_facts = EditorSemanticFacts::new();
-    let ast = match parse_wardley_ast(code, &mut editor_facts) {
-        Ok(ast) => ast,
-        Err(problem) => {
-            return Err(wardley_failure(meta, problem, editor_facts));
-        }
-    };
+    let WardleyParseOutcome {
+        ast,
+        editor_facts,
+        first_problem,
+    } = parse_wardley_ast(code);
+    if let Some(problem) = first_problem {
+        return Err(wardley_failure(meta, problem, editor_facts));
+    }
     let model = match build_wardley_model(&ast) {
         Ok(model) => model,
         Err(problem) => {
@@ -598,12 +659,13 @@ fn wardley_failure(
     }
 }
 
-fn parse_wardley_ast(
-    code: &str,
-    editor_facts: &mut EditorSemanticFacts,
-) -> std::result::Result<WardleyAst, WardleyParseProblem> {
+fn parse_wardley_ast(code: &str) -> WardleyParseOutcome {
     let mut ast = WardleyAst::default();
+    let mut editor_facts = EditorSemanticFacts::new();
+    let mut lexemes = LangiumLexemeTrace::default();
+    let mut first_problem = None;
     let mut offset = 0usize;
+    let mut header_decided = false;
     let mut saw_header = false;
 
     while offset < code.len() {
@@ -616,24 +678,34 @@ fn parse_wardley_ast(
             continue;
         }
 
-        let (statement, statement_start) = if !saw_header {
+        let (statement, statement_start) = if !header_decided {
+            header_decided = true;
             let leading = visible.len() - visible.trim_start().len();
             let header_start = line_start + leading;
-            let rest = visible.trim_start().strip_prefix(HEADER).ok_or_else(|| {
-                WardleyParseProblem::new(
-                    "expected wardley-beta header",
-                    trimmed_span(visible, line_start),
-                )
-            })?;
+            let Some(rest) = visible.trim_start().strip_prefix(HEADER) else {
+                remember_wardley_problem(
+                    &mut first_problem,
+                    WardleyParseProblem::new(
+                        "expected wardley-beta header",
+                        trimmed_span(visible, line_start),
+                    ),
+                );
+                continue;
+            };
+            lexemes.keyword(SourceSpan::new(header_start, header_start + HEADER.len()));
             if rest
                 .chars()
                 .next()
                 .is_some_and(|ch| !ch.is_ascii_whitespace())
             {
-                return Err(WardleyParseProblem::new(
-                    "expected whitespace or end of line after wardley-beta header",
-                    SourceSpan::new(header_start, header_start + HEADER.len()),
-                ));
+                remember_wardley_problem(
+                    &mut first_problem,
+                    WardleyParseProblem::new(
+                        "expected whitespace or end of line after wardley-beta header",
+                        SourceSpan::new(header_start, header_start + HEADER.len()),
+                    ),
+                );
+                continue;
             }
             saw_header = true;
             editor_facts.push_directive_prefix(HEADER);
@@ -652,38 +724,76 @@ fn parse_wardley_ast(
         let statement_start = statement_start + leading;
         let statement = &statement[leading..];
         if let Some(parsed) = parse_langium_common(code, statement_start) {
+            lexemes.extend(parsed.lexemes);
+            push_langium_common_editor_fact(&mut editor_facts, &parsed.fact, "wardley");
             if let Some(diagnostic) = parsed.diagnostic {
-                return Err(WardleyParseProblem::new(
-                    diagnostic.message,
-                    diagnostic.span,
-                ));
+                remember_wardley_problem(
+                    &mut first_problem,
+                    WardleyParseProblem::new(diagnostic.message, diagnostic.span),
+                );
+            } else {
+                ast.common.push(parsed.fact);
             }
-            push_langium_common_editor_fact(editor_facts, &parsed.fact, "wardley");
-            ast.common.push(parsed.fact);
             offset = statement_start + parsed.consumed;
             continue;
         }
 
         if keyword_body(statement, "pipeline").is_some() {
             editor_facts.push_directive_prefix("pipeline");
-            let (pipeline, after_pipeline) =
-                parse_pipeline(code, statement, statement_start, offset, editor_facts)?;
-            ast.pipelines.push(pipeline);
-            offset = after_pipeline;
+            lexemes.keyword(SourceSpan::new(
+                statement_start,
+                statement_start + "pipeline".len(),
+            ));
+            let pipeline = parse_pipeline(
+                code,
+                statement,
+                statement_start,
+                offset,
+                &mut editor_facts,
+                &mut lexemes,
+            );
+            offset = pipeline.next_offset;
+            if let Some(problem) = pipeline.first_problem {
+                remember_wardley_problem(&mut first_problem, problem);
+            } else if let Some(pipeline) = pipeline.pipeline {
+                ast.pipelines.push(pipeline);
+            }
             continue;
         }
 
-        parse_wardley_statement(statement, statement_start, &mut ast, editor_facts)?;
+        if let Err(problem) = parse_wardley_statement(
+            statement,
+            statement_start,
+            &mut ast,
+            &mut editor_facts,
+            &mut lexemes,
+        ) {
+            remember_wardley_problem(&mut first_problem, problem);
+        }
     }
 
-    if !saw_header {
-        return Err(WardleyParseProblem::new(
-            "expected wardley-beta header",
-            SourceSpan::new(0, 0),
-        ));
+    if !header_decided || !saw_header {
+        remember_wardley_problem(
+            &mut first_problem,
+            WardleyParseProblem::new("expected wardley-beta header", SourceSpan::new(0, 0)),
+        );
     }
 
-    Ok(ast)
+    lexemes.attach(code, &mut editor_facts);
+    WardleyParseOutcome {
+        ast,
+        editor_facts,
+        first_problem,
+    }
+}
+
+fn remember_wardley_problem(
+    first_problem: &mut Option<WardleyParseProblem>,
+    problem: WardleyParseProblem,
+) {
+    if first_problem.is_none() {
+        *first_problem = Some(problem);
+    }
 }
 
 fn parse_wardley_statement(
@@ -691,10 +801,12 @@ fn parse_wardley_statement(
     statement_start: usize,
     ast: &mut WardleyAst,
     editor_facts: &mut EditorSemanticFacts,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<(), WardleyParseProblem> {
     if let Some(body) = keyword_body(statement, "size") {
         editor_facts.push_directive_prefix("size");
-        let size = parse_size(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "size");
+        let size = parse_size(body, body_start(statement, statement_start, body), lexemes)?;
         push_number_fact(editor_facts, size.width, "wardley canvas width");
         push_number_fact(editor_facts, size.height, "wardley canvas height");
         ast.size = Some(size);
@@ -702,7 +814,9 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "evolution") {
         editor_facts.push_directive_prefix("evolution");
-        let evolution = parse_evolution(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "evolution");
+        let evolution =
+            parse_evolution(body, body_start(statement, statement_start, body), lexemes)?;
         for stage in &evolution.stages {
             push_payload_fact(editor_facts, &stage.name, "wardley evolution stage");
             if let Some(boundary) = stage.boundary {
@@ -721,7 +835,13 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "anchor") {
         editor_facts.push_directive_prefix("anchor");
-        let anchor = parse_positioned_node(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "anchor");
+        let anchor = parse_positioned_node(
+            body,
+            body_start(statement, statement_start, body),
+            WardleyNameLexeme::definition(),
+            lexemes,
+        )?;
         push_entity_fact(editor_facts, &anchor.name, "wardley anchor");
         push_number_fact(editor_facts, anchor.visibility, "wardley anchor visibility");
         push_number_fact(editor_facts, anchor.evolution, "wardley anchor evolution");
@@ -730,14 +850,17 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "component") {
         editor_facts.push_directive_prefix("component");
-        let component = parse_component(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "component");
+        let component =
+            parse_component(body, body_start(statement, statement_start, body), lexemes)?;
         push_component_facts(editor_facts, &component, "wardley component");
         ast.components.push(component);
         return Ok(());
     }
     if let Some(body) = keyword_body(statement, "evolve") {
         editor_facts.push_directive_prefix("evolve");
-        let evolve = parse_evolve(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "evolve");
+        let evolve = parse_evolve(body, body_start(statement, statement_start, body), lexemes)?;
         push_entity_fact(editor_facts, &evolve.component, "wardley evolved component");
         push_number_fact(editor_facts, evolve.target, "wardley evolution target");
         ast.evolves.push(evolve);
@@ -745,7 +868,8 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "note") {
         editor_facts.push_directive_prefix("note");
-        let note = parse_note(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "note");
+        let note = parse_note(body, body_start(statement, statement_start, body), lexemes)?;
         push_payload_fact(editor_facts, &note.text, "wardley note");
         push_number_fact(editor_facts, note.visibility, "wardley note visibility");
         push_number_fact(editor_facts, note.evolution, "wardley note evolution");
@@ -754,8 +878,9 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "annotations") {
         editor_facts.push_directive_prefix("annotations");
+        push_wardley_keyword(lexemes, statement_start, "annotations");
         let annotations =
-            parse_annotations_box(body, body_start(statement, statement_start, body))?;
+            parse_annotations_box(body, body_start(statement, statement_start, body), lexemes)?;
         push_number_fact(
             editor_facts,
             annotations.x,
@@ -767,7 +892,9 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "annotation") {
         editor_facts.push_directive_prefix("annotation");
-        let annotation = parse_annotation(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "annotation");
+        let annotation =
+            parse_annotation(body, body_start(statement, statement_start, body), lexemes)?;
         push_integer_fact(
             editor_facts,
             annotation.number,
@@ -782,7 +909,8 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "accelerator") {
         editor_facts.push_directive_prefix("accelerator");
-        let force = parse_force(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "accelerator");
+        let force = parse_force(body, body_start(statement, statement_start, body), lexemes)?;
         push_outline_fact(editor_facts, &force.name, "wardley accelerator");
         push_number_fact(editor_facts, force.x, "wardley accelerator visibility");
         push_number_fact(editor_facts, force.y, "wardley accelerator evolution");
@@ -791,7 +919,8 @@ fn parse_wardley_statement(
     }
     if let Some(body) = keyword_body(statement, "deaccelerator") {
         editor_facts.push_directive_prefix("deaccelerator");
-        let force = parse_force(body, body_start(statement, statement_start, body))?;
+        push_wardley_keyword(lexemes, statement_start, "deaccelerator");
+        let force = parse_force(body, body_start(statement, statement_start, body), lexemes)?;
         push_outline_fact(editor_facts, &force.name, "wardley deaccelerator");
         push_number_fact(editor_facts, force.x, "wardley deaccelerator visibility");
         push_number_fact(editor_facts, force.y, "wardley deaccelerator evolution");
@@ -799,7 +928,7 @@ fn parse_wardley_statement(
         return Ok(());
     }
 
-    let link = parse_link(statement, statement_start)?;
+    let link = parse_link(statement, statement_start, lexemes)?;
     push_entity_fact(editor_facts, &link.from, "wardley link source");
     push_entity_fact(editor_facts, &link.to, "wardley link target");
     if let Some(label) = &link.label {
@@ -809,41 +938,80 @@ fn parse_wardley_statement(
     Ok(())
 }
 
+struct WardleyPipelineOutcome {
+    pipeline: Option<WardleyPipelineAst>,
+    next_offset: usize,
+    first_problem: Option<WardleyParseProblem>,
+}
+
 fn parse_pipeline(
     code: &str,
     statement: &str,
     statement_start: usize,
-    mut offset: usize,
+    offset: usize,
     editor_facts: &mut EditorSemanticFacts,
-) -> std::result::Result<(WardleyPipelineAst, usize), WardleyParseProblem> {
+    lexemes: &mut LangiumLexemeTrace,
+) -> WardleyPipelineOutcome {
+    let mut offset = offset;
+    let mut first_problem = None;
     let body = keyword_body(statement, "pipeline").expect("pipeline dispatch checked keyword");
     let pipeline_body_start = body_start(statement, statement_start, body);
     let trimmed = body.trim();
     let Some(open_brace) = find_unquoted_char(trimmed, '{') else {
-        return Err(WardleyParseProblem::new(
-            "expected '{' after wardley pipeline parent",
-            trimmed_span(body, pipeline_body_start),
-        ));
+        return WardleyPipelineOutcome {
+            pipeline: None,
+            next_offset: offset,
+            first_problem: Some(WardleyParseProblem::new(
+                "expected '{' after wardley pipeline parent",
+                trimmed_span(body, pipeline_body_start),
+            )),
+        };
     };
-    if !trimmed[open_brace + 1..].trim().is_empty() {
-        return Err(WardleyParseProblem::new(
-            "unexpected tokens after wardley pipeline opening brace",
-            trimmed_span(body, pipeline_body_start),
-        ));
-    }
     let leading = body.len() - body.trim_start().len();
+    let opening_start = pipeline_body_start + leading + open_brace;
+    lexemes.delimiter(SourceSpan::new(opening_start, opening_start + 1));
+    if !trimmed[open_brace + 1..].trim().is_empty() {
+        remember_wardley_problem(
+            &mut first_problem,
+            WardleyParseProblem::new(
+                "unexpected tokens after wardley pipeline opening brace",
+                SourceSpan::new(opening_start + 1, pipeline_body_start + body.len()),
+            ),
+        );
+    }
     let parent_raw = &trimmed[..open_brace];
-    let parent = parse_name(parent_raw, pipeline_body_start + leading)?;
-    push_entity_fact(editor_facts, &parent, "wardley pipeline parent");
+    let parent = match parse_name(
+        parent_raw,
+        pipeline_body_start + leading,
+        WardleyNameLexeme::reference(),
+        lexemes,
+    ) {
+        Ok(parent) => {
+            push_entity_fact(editor_facts, &parent, "wardley pipeline parent");
+            Some(parent)
+        }
+        Err(problem) => {
+            remember_wardley_problem(&mut first_problem, problem);
+            None
+        }
+    };
     let mut components = Vec::new();
     let mut saw_component = false;
 
     loop {
         if offset >= code.len() {
-            return Err(WardleyParseProblem::new(
-                "unterminated wardley pipeline block",
-                SourceSpan::new(code.len(), code.len()),
-            ));
+            remember_wardley_problem(
+                &mut first_problem,
+                WardleyParseProblem::new(
+                    "unterminated wardley pipeline block",
+                    SourceSpan::new(code.len(), code.len()),
+                ),
+            );
+            return WardleyPipelineOutcome {
+                pipeline: None,
+                next_offset: offset,
+                first_problem,
+            };
         }
         let line_start = offset;
         let (line, next_offset) = physical_line_at(code, offset);
@@ -852,41 +1020,74 @@ fn parse_pipeline(
         let trimmed_line = visible.trim();
         if trimmed_line.is_empty() {
             if saw_component {
-                return Err(WardleyParseProblem::new(
-                    "unexpected blank line inside wardley pipeline components",
-                    SourceSpan::new(line_start, line_start + line.len()),
-                ));
+                remember_wardley_problem(
+                    &mut first_problem,
+                    WardleyParseProblem::new(
+                        "unexpected blank line inside wardley pipeline components",
+                        SourceSpan::new(line_start, line_start + line.len()),
+                    ),
+                );
             }
             continue;
         }
         let leading = visible.len() - visible.trim_start().len();
         let absolute = line_start + leading;
-        if trimmed_line.starts_with('}') {
-            if trimmed_line != "}" {
-                return Err(WardleyParseProblem::new(
-                    "unexpected tokens after wardley pipeline closing brace",
-                    SourceSpan::new(absolute, absolute + trimmed_line.len()),
+        if let Some(after_closing) = trimmed_line.strip_prefix('}') {
+            lexemes.delimiter(SourceSpan::new(absolute, absolute + 1));
+            if !after_closing.is_empty() {
+                let trailing_start = absolute + 1 + after_closing.len()
+                    - after_closing.trim_start_matches([' ', '\t']).len();
+                lexemes.literal(SourceSpan::new(
+                    trailing_start,
+                    absolute + trimmed_line.len(),
                 ));
+                remember_wardley_problem(
+                    &mut first_problem,
+                    WardleyParseProblem::new(
+                        "unexpected tokens after wardley pipeline closing brace",
+                        SourceSpan::new(trailing_start, absolute + trimmed_line.len()),
+                    ),
+                );
             }
             if components.is_empty() {
-                return Err(WardleyParseProblem::new(
-                    "wardley pipeline requires at least one component",
-                    SourceSpan::new(absolute, absolute + 1),
-                ));
+                remember_wardley_problem(
+                    &mut first_problem,
+                    WardleyParseProblem::new(
+                        "wardley pipeline requires at least one component",
+                        SourceSpan::new(absolute, absolute + 1),
+                    ),
+                );
             }
-            return Ok((parent_with_components(parent, components), offset));
+            let pipeline = if first_problem.is_none() {
+                parent.map(|parent| parent_with_components(parent, components))
+            } else {
+                None
+            };
+            return WardleyPipelineOutcome {
+                pipeline,
+                next_offset: offset,
+                first_problem,
+            };
         }
         let Some(component_body) = keyword_body(trimmed_line, "component") else {
-            return Err(WardleyParseProblem::new(
-                "expected component or '}' inside wardley pipeline",
-                SourceSpan::new(absolute, absolute + trimmed_line.len()),
-            ));
+            let span = SourceSpan::new(absolute, absolute + trimmed_line.len());
+            lexemes.literal(span);
+            remember_wardley_problem(
+                &mut first_problem,
+                WardleyParseProblem::new("expected component or '}' inside wardley pipeline", span),
+            );
+            continue;
         };
         editor_facts.push_directive_prefix("component");
+        lexemes.keyword(SourceSpan::new(absolute, absolute + "component".len()));
         let component_start = body_start(trimmed_line, absolute, component_body);
-        let component = parse_pipeline_component(component_body, component_start)?;
-        push_pipeline_component_facts(editor_facts, &component);
-        components.push(component);
+        match parse_pipeline_component(component_body, component_start, lexemes) {
+            Ok(component) => {
+                push_pipeline_component_facts(editor_facts, &component);
+                components.push(component);
+            }
+            Err(problem) => remember_wardley_problem(&mut first_problem, problem),
+        }
         saw_component = true;
     }
 }
@@ -905,22 +1106,24 @@ enum WardleyNumberKind {
     Integer,
 }
 
-struct WardleyCursor<'a> {
-    input: &'a str,
+struct WardleyCursor<'input, 'lexemes> {
+    input: &'input str,
     base: usize,
     pos: usize,
+    lexemes: &'lexemes mut LangiumLexemeTrace,
 }
 
-impl<'a> WardleyCursor<'a> {
-    fn new(input: &'a str, base: usize) -> Self {
+impl<'input, 'lexemes> WardleyCursor<'input, 'lexemes> {
+    fn new(input: &'input str, base: usize, lexemes: &'lexemes mut LangiumLexemeTrace) -> Self {
         Self {
             input,
             base,
             pos: 0,
+            lexemes,
         }
     }
 
-    fn remaining(&self) -> &'a str {
+    fn remaining(&self) -> &'input str {
         &self.input[self.pos..]
     }
 
@@ -945,6 +1148,8 @@ impl<'a> WardleyCursor<'a> {
         let start = self.absolute();
         if self.remaining().starts_with(expected) {
             self.pos += expected.len_utf8();
+            self.lexemes
+                .delimiter(SourceSpan::new(start, start + expected.len_utf8()));
             Ok(())
         } else {
             Err(WardleyParseProblem::new(
@@ -1003,6 +1208,8 @@ impl<'a> WardleyCursor<'a> {
             ));
         }
         let token = &self.remaining()[..consumed];
+        let token_span = SourceSpan::new(token_start, token_start + consumed);
+        self.lexemes.number(token_span);
         if !has_dot && token.len() > 1 && token.starts_with('0') {
             return Err(WardleyParseProblem::new(
                 format!("invalid leading zero in {context}"),
@@ -1029,7 +1236,7 @@ impl<'a> WardleyCursor<'a> {
         self.pos += consumed;
         Ok(SpannedNumber {
             value,
-            span: SourceSpan::new(token_start, token_start + consumed),
+            span: token_span,
         })
     }
 
@@ -1042,6 +1249,8 @@ impl<'a> WardleyCursor<'a> {
         let negative = self.remaining().starts_with('-');
         if negative {
             self.pos += 1;
+            self.lexemes
+                .operator(SourceSpan::new(start, start + '-'.len_utf8()));
         }
         let number = self.take_number(WardleyNumberKind::Integer, context)?;
         let magnitude = number.value as i64;
@@ -1056,16 +1265,22 @@ impl<'a> WardleyCursor<'a> {
         if self.remaining().is_empty() {
             Ok(())
         } else {
+            let span = SourceSpan::new(self.absolute(), self.base + self.input.len());
+            self.lexemes.literal(span);
             Err(WardleyParseProblem::new(
                 format!("unexpected trailing tokens in {context}"),
-                SourceSpan::new(self.absolute(), self.base + self.input.len()),
+                span,
             ))
         }
     }
 }
 
-fn parse_size(body: &str, base: usize) -> std::result::Result<WardleySizeAst, WardleyParseProblem> {
-    let mut cursor = WardleyCursor::new(body, base);
+fn parse_size(
+    body: &str,
+    base: usize,
+    lexemes: &mut LangiumLexemeTrace,
+) -> std::result::Result<WardleySizeAst, WardleyParseProblem> {
+    let mut cursor = WardleyCursor::new(body, base, lexemes);
     cursor.consume_char('[', "after wardley size")?;
     let width = cursor.take_number(WardleyNumberKind::Integer, "wardley canvas width")?;
     cursor.consume_char(',', "between wardley canvas dimensions")?;
@@ -1078,8 +1293,9 @@ fn parse_size(body: &str, base: usize) -> std::result::Result<WardleySizeAst, Wa
 fn parse_evolution(
     body: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyEvolutionAst, WardleyParseProblem> {
-    let ranges = split_unquoted_token(body, "->", base)?;
+    let ranges = split_unquoted_token(body, "->", base, lexemes)?;
     if ranges.len() < 2 {
         return Err(WardleyParseProblem::new(
             "wardley evolution requires at least two stages",
@@ -1088,7 +1304,11 @@ fn parse_evolution(
     }
     let mut stages = Vec::with_capacity(ranges.len());
     for (start, end) in ranges {
-        stages.push(parse_evolution_stage(&body[start..end], base + start)?);
+        stages.push(parse_evolution_stage(
+            &body[start..end],
+            base + start,
+            lexemes,
+        )?);
     }
     Ok(WardleyEvolutionAst { stages })
 }
@@ -1096,6 +1316,7 @@ fn parse_evolution(
 fn parse_evolution_stage(
     input: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyEvolutionStageAst, WardleyParseProblem> {
     let (trimmed, trimmed_start) = trim_horizontal(input, base);
     if trimmed.is_empty() {
@@ -1109,9 +1330,15 @@ fn parse_evolution_stage(
     let primary = &trimmed[..primary_end];
     let boundary_at = find_unquoted_char(primary, '@');
     let name_end = boundary_at.unwrap_or(primary.len());
-    let name = parse_name(&primary[..name_end], trimmed_start)?;
+    let name = parse_name(
+        &primary[..name_end],
+        trimmed_start,
+        WardleyNameLexeme::payload(),
+        lexemes,
+    )?;
     let boundary = if let Some(at) = boundary_at {
-        let mut cursor = WardleyCursor::new(&primary[at + 1..], trimmed_start + at + 1);
+        lexemes.operator(SourceSpan::new(trimmed_start + at, trimmed_start + at + 1));
+        let mut cursor = WardleyCursor::new(&primary[at + 1..], trimmed_start + at + 1, lexemes);
         let number = cursor.take_number(
             WardleyNumberKind::Decimal,
             "wardley evolution stage boundary",
@@ -1121,9 +1348,20 @@ fn parse_evolution_stage(
     } else {
         None
     };
-    let second_name = slash
-        .map(|slash| parse_name(&trimmed[slash + 1..], trimmed_start + slash + 1))
-        .transpose()?;
+    let second_name = if let Some(slash) = slash {
+        lexemes.operator(SourceSpan::new(
+            trimmed_start + slash,
+            trimmed_start + slash + 1,
+        ));
+        Some(parse_name(
+            &trimmed[slash + 1..],
+            trimmed_start + slash + 1,
+            WardleyNameLexeme::payload(),
+            lexemes,
+        )?)
+    } else {
+        None
+    };
     Ok(WardleyEvolutionStageAst {
         name,
         boundary,
@@ -1134,6 +1372,8 @@ fn parse_evolution_stage(
 fn parse_positioned_node(
     body: &str,
     base: usize,
+    classification: WardleyNameLexeme,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyPositionedNodeAst, WardleyParseProblem> {
     let bracket = find_unquoted_char(body, '[').ok_or_else(|| {
         WardleyParseProblem::new(
@@ -1141,8 +1381,8 @@ fn parse_positioned_node(
             trimmed_span(body, base),
         )
     })?;
-    let name = parse_name(&body[..bracket], base)?;
-    let mut cursor = WardleyCursor::new(&body[bracket..], base + bracket);
+    let name = parse_name(&body[..bracket], base, classification, lexemes)?;
+    let mut cursor = WardleyCursor::new(&body[bracket..], base + bracket, lexemes);
     let (visibility, evolution) = take_position_pair(
         &mut cursor,
         WardleyNumberKind::Decimal,
@@ -1159,6 +1399,7 @@ fn parse_positioned_node(
 fn parse_component(
     body: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyComponentAst, WardleyParseProblem> {
     let bracket = find_unquoted_char(body, '[').ok_or_else(|| {
         WardleyParseProblem::new(
@@ -1166,8 +1407,13 @@ fn parse_component(
             trimmed_span(body, base),
         )
     })?;
-    let name = parse_name(&body[..bracket], base)?;
-    let mut cursor = WardleyCursor::new(&body[bracket..], base + bracket);
+    let name = parse_name(
+        &body[..bracket],
+        base,
+        WardleyNameLexeme::definition(),
+        lexemes,
+    )?;
+    let mut cursor = WardleyCursor::new(&body[bracket..], base + bracket, lexemes);
     let (visibility, evolution) = take_position_pair(
         &mut cursor,
         WardleyNumberKind::Decimal,
@@ -1194,6 +1440,7 @@ fn parse_component(
 fn parse_pipeline_component(
     body: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyPipelineComponentAst, WardleyParseProblem> {
     let bracket = find_unquoted_char(body, '[').ok_or_else(|| {
         WardleyParseProblem::new(
@@ -1201,8 +1448,13 @@ fn parse_pipeline_component(
             trimmed_span(body, base),
         )
     })?;
-    let name = parse_name(&body[..bracket], base)?;
-    let mut cursor = WardleyCursor::new(&body[bracket..], base + bracket);
+    let name = parse_name(
+        &body[..bracket],
+        base,
+        WardleyNameLexeme::definition(),
+        lexemes,
+    )?;
+    let mut cursor = WardleyCursor::new(&body[bracket..], base + bracket, lexemes);
     cursor.consume_char('[', "before wardley pipeline component evolution")?;
     let evolution = cursor.take_number(
         WardleyNumberKind::Decimal,
@@ -1219,7 +1471,7 @@ fn parse_pipeline_component(
 }
 
 fn take_position_pair(
-    cursor: &mut WardleyCursor<'_>,
+    cursor: &mut WardleyCursor<'_, '_>,
     kind: WardleyNumberKind,
     context: &str,
 ) -> std::result::Result<(SpannedNumber, SpannedNumber), WardleyParseProblem> {
@@ -1232,13 +1484,18 @@ fn take_position_pair(
 }
 
 fn parse_optional_label(
-    cursor: &mut WardleyCursor<'_>,
+    cursor: &mut WardleyCursor<'_, '_>,
 ) -> std::result::Result<Option<WardleyLabelAst>, WardleyParseProblem> {
     cursor.skip_ws();
     let Some(rest) = keyword_body(cursor.remaining(), "label") else {
         return Ok(None);
     };
+    let keyword_start = cursor.absolute();
     cursor.pos += cursor.remaining().len() - rest.len();
+    cursor.lexemes.keyword(SourceSpan::new(
+        keyword_start,
+        keyword_start + "label".len(),
+    ));
     cursor.consume_char('[', "after wardley label")?;
     let (offset_x, offset_x_span) = cursor.take_signed_integer("wardley label X offset")?;
     cursor.consume_char(',', "between wardley label offsets")?;
@@ -1253,20 +1510,33 @@ fn parse_optional_label(
 }
 
 fn parse_optional_strategy(
-    cursor: &mut WardleyCursor<'_>,
+    cursor: &mut WardleyCursor<'_, '_>,
 ) -> std::result::Result<Option<(WardleySourceStrategy, SourceSpan)>, WardleyParseProblem> {
     cursor.skip_ws();
     if !cursor.remaining().starts_with('(') {
         return Ok(None);
     }
     let start = cursor.absolute();
+    cursor.lexemes.delimiter(SourceSpan::new(start, start + 1));
     let Some(close) = cursor.remaining().find(')') else {
+        cursor
+            .lexemes
+            .literal(SourceSpan::new(start + 1, cursor.base + cursor.input.len()));
         return Err(WardleyParseProblem::new(
             "unterminated wardley component decorator",
             SourceSpan::new(start, cursor.base + cursor.input.len()),
         ));
     };
     let token = cursor.remaining()[1..close].trim();
+    let token_leading =
+        cursor.remaining()[1..close].len() - cursor.remaining()[1..close].trim_start().len();
+    let token_span = SourceSpan::new(
+        start + 1 + token_leading,
+        start + 1 + token_leading + token.len(),
+    );
+    cursor
+        .lexemes
+        .delimiter(SourceSpan::new(start + close, start + close + 1));
     let strategy = match token {
         "build" => WardleySourceStrategy::Build,
         "buy" => WardleySourceStrategy::Buy,
@@ -1274,6 +1544,7 @@ fn parse_optional_strategy(
         "market" => WardleySourceStrategy::Market,
         "inertia" => return Ok(None),
         _ => {
+            cursor.lexemes.literal(token_span);
             return Err(WardleyParseProblem::new(
                 "expected build, buy, outsource, or market wardley source strategy",
                 SourceSpan::new(start + 1, start + close),
@@ -1281,24 +1552,30 @@ fn parse_optional_strategy(
         }
     };
     cursor.pos += close + 1;
-    Ok(Some((strategy, SourceSpan::new(start + 1, start + close))))
+    cursor.lexemes.style(token_span);
+    Ok(Some((strategy, token_span)))
 }
 
 fn parse_optional_inertia(
-    cursor: &mut WardleyCursor<'_>,
+    cursor: &mut WardleyCursor<'_, '_>,
 ) -> std::result::Result<Option<SourceSpan>, WardleyParseProblem> {
     cursor.skip_ws();
     let start = cursor.absolute();
     if let Some(rest) = keyword_body(cursor.remaining(), "inertia") {
         cursor.pos += cursor.remaining().len() - rest.len();
-        return Ok(Some(SourceSpan::new(start, start + "inertia".len())));
+        let span = SourceSpan::new(start, start + "inertia".len());
+        cursor.lexemes.keyword(span);
+        return Ok(Some(span));
     }
     if cursor.remaining().starts_with("(inertia)") {
         cursor.pos += "(inertia)".len();
-        return Ok(Some(SourceSpan::new(
-            start + 1,
-            start + 1 + "inertia".len(),
-        )));
+        let keyword = SourceSpan::new(start + 1, start + 1 + "inertia".len());
+        cursor.lexemes.delimiter(SourceSpan::new(start, start + 1));
+        cursor.lexemes.keyword(keyword);
+        cursor
+            .lexemes
+            .delimiter(SourceSpan::new(keyword.end, keyword.end + 1));
+        return Ok(Some(keyword));
     }
     Ok(None)
 }
@@ -1306,6 +1583,7 @@ fn parse_optional_inertia(
 fn parse_evolve(
     body: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyEvolveAst, WardleyParseProblem> {
     let (trimmed, trimmed_start) = trim_horizontal(body, base);
     let target_start = trimmed
@@ -1323,8 +1601,17 @@ fn parse_evolve(
                 trimmed_span(body, base),
             )
         })?;
-    let component = parse_name(&trimmed[..target_start], trimmed_start)?;
-    let mut cursor = WardleyCursor::new(&trimmed[target_start..], trimmed_start + target_start);
+    let component = parse_name(
+        &trimmed[..target_start],
+        trimmed_start,
+        WardleyNameLexeme::reference(),
+        lexemes,
+    )?;
+    let mut cursor = WardleyCursor::new(
+        &trimmed[target_start..],
+        trimmed_start + target_start,
+        lexemes,
+    );
     let target = cursor.take_number(
         WardleyNumberKind::Decimal,
         "wardley component evolution target",
@@ -1333,22 +1620,19 @@ fn parse_evolve(
     Ok(WardleyEvolveAst { component, target })
 }
 
-fn parse_note(body: &str, base: usize) -> std::result::Result<WardleyNoteAst, WardleyParseProblem> {
+fn parse_note(
+    body: &str,
+    base: usize,
+    lexemes: &mut LangiumLexemeTrace,
+) -> std::result::Result<WardleyNoteAst, WardleyParseProblem> {
     let (trimmed, trimmed_start) = trim_horizontal(body, base);
-    let parsed = parse_langium_string(trimmed, trimmed_start).ok_or_else(|| {
-        WardleyParseProblem::new(
-            "expected quoted wardley note text",
-            trimmed_span(body, base),
-        )
-    })?;
-    let text = SpannedText {
-        text: parsed.value,
-        span: parsed.raw_span,
-        selection: parsed.value_span,
-        quoted: true,
-    };
-    let mut cursor =
-        WardleyCursor::new(&trimmed[parsed.consumed..], trimmed_start + parsed.consumed);
+    let (text, consumed) = parse_wardley_quoted_text(
+        trimmed,
+        trimmed_start,
+        "expected quoted wardley note text",
+        lexemes,
+    )?;
+    let mut cursor = WardleyCursor::new(&trimmed[consumed..], trimmed_start + consumed, lexemes);
     let (visibility, evolution) = take_position_pair(
         &mut cursor,
         WardleyNumberKind::Decimal,
@@ -1365,8 +1649,9 @@ fn parse_note(body: &str, base: usize) -> std::result::Result<WardleyNoteAst, Wa
 fn parse_annotations_box(
     body: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyAnnotationsBoxAst, WardleyParseProblem> {
-    let mut cursor = WardleyCursor::new(body, base);
+    let mut cursor = WardleyCursor::new(body, base, lexemes);
     let (x, y) = take_position_pair(
         &mut cursor,
         WardleyNumberKind::IntegerOrDecimal,
@@ -1379,8 +1664,9 @@ fn parse_annotations_box(
 fn parse_annotation(
     body: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyAnnotationAst, WardleyParseProblem> {
-    let mut cursor = WardleyCursor::new(body, base);
+    let mut cursor = WardleyCursor::new(body, base, lexemes);
     let number = cursor.take_number(WardleyNumberKind::Integer, "wardley annotation number")?;
     cursor.consume_char(',', "after wardley annotation number")?;
     let (x, y) = take_position_pair(
@@ -1390,33 +1676,29 @@ fn parse_annotation(
     )?;
     cursor.skip_ws();
     let text_start = cursor.absolute();
-    let parsed = parse_langium_string(cursor.remaining(), text_start).ok_or_else(|| {
-        WardleyParseProblem::new(
-            "expected quoted wardley annotation text",
-            SourceSpan::new(text_start, cursor.base + cursor.input.len()),
-        )
-    })?;
-    cursor.pos += parsed.consumed;
+    let (text, consumed) = parse_wardley_quoted_text(
+        cursor.remaining(),
+        text_start,
+        "expected quoted wardley annotation text",
+        cursor.lexemes,
+    )?;
+    cursor.pos += consumed;
     cursor.expect_end("wardley annotation")?;
     Ok(WardleyAnnotationAst {
         number: number.value as u64,
         number_span: number.span,
         x,
         y,
-        text: SpannedText {
-            text: parsed.value,
-            span: parsed.raw_span,
-            selection: parsed.value_span,
-            quoted: true,
-        },
+        text,
     })
 }
 
 fn parse_force(
     body: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyForceAst, WardleyParseProblem> {
-    let positioned = parse_positioned_node(body, base)?;
+    let positioned = parse_positioned_node(body, base, WardleyNameLexeme::definition(), lexemes)?;
     Ok(WardleyForceAst {
         name: positioned.name,
         x: positioned.visibility,
@@ -1427,10 +1709,11 @@ fn parse_force(
 fn parse_link(
     statement: &str,
     statement_start: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<WardleyLinkAst, WardleyParseProblem> {
-    let (link_body, label) = split_link_label(statement, statement_start)?;
+    let (link_body, label) = split_link_label(statement, statement_start, lexemes)?;
     let Some((operator_start, first_operator)) = find_link_operator(link_body) else {
-        let (from, to, to_port) = parse_operatorless_link(link_body, statement_start)?;
+        let (from, to, to_port) = parse_operatorless_link(link_body, statement_start, lexemes)?;
         return Ok(WardleyLinkAst {
             from,
             to,
@@ -1440,7 +1723,16 @@ fn parse_link(
             label,
         });
     };
-    let from = parse_name(&link_body[..operator_start], statement_start)?;
+    let from = parse_name(
+        &link_body[..operator_start],
+        statement_start,
+        WardleyNameLexeme::reference(),
+        lexemes,
+    )?;
+    lexemes.operator(SourceSpan::new(
+        statement_start + operator_start,
+        statement_start + operator_start + first_operator.len(),
+    ));
     let mut cursor = operator_start + first_operator.len();
     while link_body[cursor..].starts_with([' ', '\t']) {
         cursor += 1;
@@ -1453,6 +1745,10 @@ fn parse_link(
         if let Some(second) = link_operator_at(link_body, cursor)
             && !is_link_port(second)
         {
+            lexemes.operator(SourceSpan::new(
+                statement_start + cursor,
+                statement_start + cursor + second.len(),
+            ));
             arrow = Some(second.to_string());
             cursor += second.len();
         }
@@ -1463,26 +1759,42 @@ fn parse_link(
     let target_raw = &link_body[cursor..];
     let (target_without_port, to_port) = split_trailing_link_port(target_raw);
     let target_base = statement_start + cursor;
-    let to = parse_name(target_without_port, target_base)?;
+    let to = parse_name(
+        target_without_port,
+        target_base,
+        WardleyNameLexeme::reference(),
+        lexemes,
+    )?;
+    if let Some((port, port_start)) = to_port {
+        lexemes.operator(SourceSpan::new(
+            target_base + port_start,
+            target_base + port_start + port.len(),
+        ));
+    }
 
     Ok(WardleyLinkAst {
         from,
         to,
         arrow,
         from_port,
-        to_port: to_port.map(str::to_string),
+        to_port: to_port.map(|(port, _)| port.to_string()),
         label,
     })
 }
 
-fn split_link_label(
-    statement: &str,
+fn split_link_label<'source>(
+    statement: &'source str,
     statement_start: usize,
-) -> std::result::Result<(&str, Option<SpannedText>), WardleyParseProblem> {
+    lexemes: &mut LangiumLexemeTrace,
+) -> std::result::Result<(&'source str, Option<SpannedText>), WardleyParseProblem> {
     let Some(index) = find_unquoted_char(statement, ';') else {
         return Ok((statement, None));
     };
     let raw = &statement[index + 1..];
+    lexemes.delimiter(SourceSpan::new(
+        statement_start + index,
+        statement_start + index + 1,
+    ));
     if raw.is_empty() {
         return Err(WardleyParseProblem::new(
             "expected wardley link label after ';'",
@@ -1490,13 +1802,14 @@ fn split_link_label(
         ));
     }
     let (trimmed, start) = trim_horizontal(raw, statement_start + index + 1);
-    let label = Some(SpannedText {
+    let label = SpannedText {
         text: trimmed.to_string(),
         span: SourceSpan::new(statement_start + index, statement_start + statement.len()),
         selection: SourceSpan::new(start, start + trimmed.len()),
         quoted: false,
-    });
-    Ok((&statement[..index], label))
+    };
+    push_wardley_text_lexeme(lexemes, &label, WardleyNameLexeme::payload());
+    Ok((&statement[..index], Some(label)))
 }
 
 fn find_link_operator(input: &str) -> Option<(usize, &str)> {
@@ -1565,13 +1878,13 @@ fn is_link_port(operator: &str) -> bool {
     matches!(operator, "+<>" | "+>" | "+<")
 }
 
-fn split_trailing_link_port(input: &str) -> (&str, Option<&str>) {
+fn split_trailing_link_port(input: &str) -> (&str, Option<(&str, usize)>) {
     let trimmed_end = input.trim_end_matches([' ', '\t']);
     for port in ["+<>", "+>", "+<"] {
         if let Some(prefix) = trimmed_end.strip_suffix(port)
             && !prefix.trim().is_empty()
         {
-            return (prefix, Some(port));
+            return (prefix, Some((port, prefix.len())));
         }
     }
     (input, None)
@@ -1580,27 +1893,47 @@ fn split_trailing_link_port(input: &str) -> (&str, Option<&str>) {
 fn parse_operatorless_link(
     input: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<(SpannedText, SpannedText, Option<String>), WardleyParseProblem> {
     let (trimmed, start) = trim_horizontal(input, base);
-    let first_len = wardley_lexical_name_len(trimmed).ok_or_else(|| {
-        WardleyParseProblem::new(
+    let Some(first_len) = wardley_lexical_name_len(trimmed) else {
+        let span = trimmed_span(input, base);
+        lexemes.literal(span);
+        return Err(WardleyParseProblem::new(
             "expected wardley statement or link operator",
-            trimmed_span(input, base),
-        )
-    })?;
+            span,
+        ));
+    };
+    let from = parse_name(
+        &trimmed[..first_len],
+        start,
+        WardleyNameLexeme::reference(),
+        lexemes,
+    )?;
     if first_len == trimmed.len() {
         return Err(WardleyParseProblem::new(
             "expected a second wardley link endpoint",
             SourceSpan::new(start + first_len, start + first_len),
         ));
     }
-    let from = parse_name(&trimmed[..first_len], start)?;
     let remainder = &trimmed[first_len..];
     let remainder_leading = remainder.len() - remainder.trim_start_matches([' ', '\t']).len();
     let target_start = start + first_len + remainder_leading;
-    let (target, to_port) = split_trailing_link_port(&remainder[remainder_leading..]);
-    let to = parse_name(target, target_start)?;
-    Ok((from, to, to_port.map(str::to_string)))
+    let target_raw = &remainder[remainder_leading..];
+    let (target, to_port) = split_trailing_link_port(target_raw);
+    let to = parse_name(
+        target,
+        target_start,
+        WardleyNameLexeme::reference(),
+        lexemes,
+    )?;
+    if let Some((port, port_start)) = to_port {
+        lexemes.operator(SourceSpan::new(
+            target_start + port_start,
+            target_start + port_start + port.len(),
+        ));
+    }
+    Ok((from, to, to_port.map(|(port, _)| port.to_string())))
 }
 
 fn wardley_lexical_name_len(input: &str) -> Option<usize> {
@@ -1650,7 +1983,12 @@ fn wardley_lexical_name_len(input: &str) -> Option<usize> {
     None
 }
 
-fn parse_name(input: &str, base: usize) -> std::result::Result<SpannedText, WardleyParseProblem> {
+fn parse_name(
+    input: &str,
+    base: usize,
+    classification: WardleyNameLexeme,
+    lexemes: &mut LangiumLexemeTrace,
+) -> std::result::Result<SpannedText, WardleyParseProblem> {
     let (trimmed, start) = trim_horizontal(input, base);
     if trimmed.is_empty() {
         return Err(WardleyParseProblem::new(
@@ -1659,37 +1997,93 @@ fn parse_name(input: &str, base: usize) -> std::result::Result<SpannedText, Ward
         ));
     }
     if matches!(trimmed.chars().next(), Some('\'' | '"')) {
-        let parsed = parse_langium_string(trimmed, start).ok_or_else(|| {
-            WardleyParseProblem::new(
+        let Some(parsed) = parse_langium_string(trimmed, start) else {
+            let quote_len = trimmed
+                .chars()
+                .next()
+                .expect("quoted branch has an opening quote")
+                .len_utf8();
+            lexemes.delimiter(SourceSpan::new(start, start + quote_len));
+            lexemes.push_with_modifiers(
+                classification.kind,
+                classification.modifiers,
+                SourceSpan::new(start + quote_len, start + trimmed.len()),
+            );
+            return Err(WardleyParseProblem::new(
                 "unterminated quoted wardley name",
                 SourceSpan::new(start, start + trimmed.len()),
-            )
-        })?;
+            ));
+        };
+        let text = SpannedText {
+            text: parsed.value,
+            span: parsed.raw_span,
+            selection: parsed.value_span,
+            quoted: true,
+        };
+        push_wardley_text_lexeme(lexemes, &text, classification);
         if parsed.consumed != trimmed.len() {
+            lexemes.literal(SourceSpan::new(
+                start + parsed.consumed,
+                start + trimmed.len(),
+            ));
             return Err(WardleyParseProblem::new(
                 "unexpected tokens after quoted wardley name",
                 SourceSpan::new(start + parsed.consumed, start + trimmed.len()),
             ));
         }
-        return Ok(SpannedText {
-            text: parsed.value,
-            span: parsed.raw_span,
-            selection: parsed.value_span,
-            quoted: true,
-        });
+        return Ok(text);
     }
     if !is_valid_wardley_bare_name(trimmed) {
+        lexemes.literal(SourceSpan::new(start, start + trimmed.len()));
         return Err(WardleyParseProblem::new(
             format!("invalid unquoted wardley name: {trimmed}"),
             SourceSpan::new(start, start + trimmed.len()),
         ));
     }
-    Ok(SpannedText {
+    let text = SpannedText {
         text: trimmed.to_string(),
         span: SourceSpan::new(start, start + trimmed.len()),
         selection: SourceSpan::new(start, start + trimmed.len()),
         quoted: false,
-    })
+    };
+    push_wardley_text_lexeme(lexemes, &text, classification);
+    Ok(text)
+}
+
+fn parse_wardley_quoted_text(
+    input: &str,
+    start: usize,
+    context: &str,
+    lexemes: &mut LangiumLexemeTrace,
+) -> std::result::Result<(SpannedText, usize), WardleyParseProblem> {
+    let Some(quote) = input
+        .chars()
+        .next()
+        .filter(|quote| matches!(quote, '\'' | '"'))
+    else {
+        return Err(WardleyParseProblem::new(
+            context,
+            SourceSpan::new(start, start + input.len()),
+        ));
+    };
+    let Some(parsed) = parse_langium_string(input, start) else {
+        let opening = SourceSpan::new(start, start + quote.len_utf8());
+        lexemes.delimiter(opening);
+        lexemes.string(SourceSpan::new(opening.end, start + input.len()));
+        return Err(WardleyParseProblem::new(
+            context,
+            SourceSpan::new(start, start + input.len()),
+        ));
+    };
+    let consumed = parsed.consumed;
+    let text = SpannedText {
+        text: parsed.value,
+        span: parsed.raw_span,
+        selection: parsed.value_span,
+        quoted: true,
+    };
+    push_wardley_text_lexeme(lexemes, &text, WardleyNameLexeme::payload());
+    Ok((text, consumed))
 }
 
 fn is_valid_wardley_bare_name(name: &str) -> bool {
@@ -1775,6 +2169,7 @@ fn split_unquoted_token(
     input: &str,
     token: &str,
     base: usize,
+    lexemes: &mut LangiumLexemeTrace,
 ) -> std::result::Result<Vec<(usize, usize)>, WardleyParseProblem> {
     let mut ranges = Vec::new();
     let mut quote = None;
@@ -1798,8 +2193,8 @@ fn split_unquoted_token(
         }
         if matches!(ch, '\'' | '"') {
             match quote {
-                Some(open) if open == ch => quote = None,
-                None => quote = Some(ch),
+                Some((open, _)) if open == ch => quote = None,
+                None => quote = Some((ch, index)),
                 _ => {}
             }
             index += ch.len_utf8();
@@ -1807,13 +2202,17 @@ fn split_unquoted_token(
         }
         if quote.is_none() && input[index..].starts_with(token) {
             ranges.push((segment_start, index));
+            lexemes.operator(SourceSpan::new(base + index, base + index + token.len()));
             index += token.len();
             segment_start = index;
             continue;
         }
         index += ch.len_utf8();
     }
-    if quote.is_some() {
+    if let Some((open, quote_start)) = quote {
+        let opening = SourceSpan::new(base + quote_start, base + quote_start + open.len_utf8());
+        lexemes.delimiter(opening);
+        lexemes.string(SourceSpan::new(opening.end, base + input.len()));
         return Err(WardleyParseProblem::new(
             "unterminated quoted wardley value",
             SourceSpan::new(base, base + input.len()),
@@ -2698,5 +3097,169 @@ batch-loader->end-user
             render_model_to_compat_json(&model, &typed.meta).unwrap(),
             combined.diagram.model
         );
+    }
+
+    #[test]
+    fn emits_exact_parser_lexemes_for_crlf_unicode_repeated_text_and_global_comments() {
+        let source = concat!(
+            "wardley-beta\r\n",
+            "title 重复 🤓\r\n",
+            "%% global preprocessing owns this comment 🤓\r\n",
+            "component \"重复 🤓\" [0.50, 0.60] label [-20, 10] (build) (inertia)\r\n",
+            "component Target [0.40, 0.70]\r\n",
+            "\"重复 🤓\" +'同步'> Target+> ; 重复 🤓\r\n",
+            "note \"重复 🤓\" [0.20, 0.30]\r\n",
+        );
+        let facts = parse_wardley_editor_facts(source, &meta());
+
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        assert_eq!(facts.lexeme_failure(), None);
+        for kind in [
+            EditorLexemeKind::Keyword,
+            EditorLexemeKind::Operator,
+            EditorLexemeKind::Delimiter,
+            EditorLexemeKind::Identifier,
+            EditorLexemeKind::Number,
+            EditorLexemeKind::String,
+            EditorLexemeKind::Style,
+        ] {
+            assert!(
+                facts.lexemes().iter().any(|lexeme| lexeme.kind() == kind),
+                "missing {kind:?}: {:?}",
+                facts.lexemes()
+            );
+        }
+        assert!(
+            !facts
+                .lexemes()
+                .iter()
+                .any(|lexeme| lexeme.kind() == EditorLexemeKind::Comment)
+        );
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == crate::EditorLexemeProducerKind::FamilyParser
+                && lexeme.producer().family().is_none()
+        }));
+
+        let definition = exact_wardley_lexeme(source, &facts, "重复 🤓", 1);
+        assert_eq!(definition.kind(), EditorLexemeKind::Identifier);
+        assert!(
+            definition
+                .modifiers()
+                .contains(EditorLexemeModifier::Definition)
+        );
+        let reference = exact_wardley_lexeme(source, &facts, "重复 🤓", 2);
+        assert_eq!(reference.kind(), EditorLexemeKind::Identifier);
+        assert!(
+            reference
+                .modifiers()
+                .contains(EditorLexemeModifier::Reference)
+        );
+        assert_eq!(
+            exact_wardley_lexeme(source, &facts, "build", 0).kind(),
+            EditorLexemeKind::Style
+        );
+        assert_eq!(
+            exact_wardley_lexeme(source, &facts, "+'同步'>", 0).kind(),
+            EditorLexemeKind::Operator
+        );
+        assert_wardley_lexemes_are_valid(source, &facts);
+    }
+
+    #[test]
+    fn recovery_keeps_confirmed_prefix_pipeline_suffix_and_unterminated_eof_text() {
+        let source = concat!(
+            "wardley-beta\r\n",
+            "component Before [0.10, 0.20]\r\n",
+            "component Broken [0.30, 1]\r\n",
+            "pipeline Before {\r\n",
+            "  component Child [0.40]\r\n",
+            "  invalid pipeline syntax\r\n",
+            "  component \"后续 子项\" [0.50]\r\n",
+            "}\r\n",
+            "component \"后来 🤓\" [0.60, 0.70]\r\n",
+            "note \"未结束 🤓",
+        );
+        let invalid_number = source.find(", 1]").unwrap() + 2;
+        let error = parse_wardley_model_for_render(source, &meta()).unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected wardley parse error");
+        };
+        assert_eq!(
+            diagnostic.span(),
+            Some(SourceSpan::new(invalid_number, invalid_number + 1))
+        );
+
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("wardley");
+        let facts = parse_wardley_editor_facts(source, &meta());
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("wardley"),
+            1
+        );
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert_eq!(facts.lexeme_failure(), None);
+        assert!(facts.lexemes().iter().all(|lexeme| {
+            lexeme.producer().kind() == crate::EditorLexemeProducerKind::FamilyRecovery
+        }));
+        for later in ["后续 子项", "后来 🤓"] {
+            assert!(
+                facts.symbols.iter().any(|symbol| symbol.name == later),
+                "missing recovered symbol {later:?}: {:?}",
+                facts.symbols
+            );
+            let lexeme = exact_wardley_lexeme(source, &facts, later, 0);
+            assert_eq!(lexeme.kind(), EditorLexemeKind::Identifier);
+            assert!(
+                lexeme
+                    .modifiers()
+                    .contains(EditorLexemeModifier::Definition)
+            );
+        }
+        assert_eq!(
+            exact_wardley_lexeme(source, &facts, "invalid pipeline syntax", 0).kind(),
+            EditorLexemeKind::Literal
+        );
+        assert_eq!(
+            exact_wardley_lexeme(source, &facts, "未结束 🤓", 0).kind(),
+            EditorLexemeKind::String
+        );
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(SourceSpan::new(invalid_number, invalid_number + 1))
+        }));
+        assert_wardley_lexemes_are_valid(source, &facts);
+    }
+
+    fn exact_wardley_lexeme<'facts>(
+        source: &str,
+        facts: &'facts EditorSemanticFacts,
+        needle: &str,
+        occurrence: usize,
+    ) -> &'facts crate::EditorLexeme {
+        let start = source
+            .match_indices(needle)
+            .nth(occurrence)
+            .map(|(start, _)| start)
+            .unwrap_or_else(|| panic!("missing occurrence {occurrence} of {needle:?}"));
+        let span = SourceSpan::new(start, start + needle.len());
+        facts
+            .lexemes()
+            .iter()
+            .find(|lexeme| lexeme.span() == span)
+            .unwrap_or_else(|| panic!("missing exact lexeme for {needle:?}: {:?}", facts.lexemes()))
+    }
+
+    fn assert_wardley_lexemes_are_valid(source: &str, facts: &EditorSemanticFacts) {
+        for lexeme in facts.lexemes() {
+            let span = lexeme.span();
+            assert!(span.start < span.end && span.end <= source.len());
+            assert!(source.is_char_boundary(span.start));
+            assert!(source.is_char_boundary(span.end));
+        }
+        for pair in facts.lexemes().windows(2) {
+            assert!(
+                pair[0].span().end <= pair[1].span().start,
+                "overlapping wardley lexemes: {pair:?}"
+            );
+        }
     }
 }
