@@ -1,6 +1,7 @@
 use crate::MermaidConfig;
 use ryu_js::Buffer;
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
@@ -351,20 +352,193 @@ fn merge_theme_variable_defaults(target: &mut Map<String, Value>, defaults: &Map
     }
 }
 
-fn finish_theme_defaults(
-    config: &mut MermaidConfig,
-    theme: &str,
-    mut tv: Map<String, Value>,
-    has_user_theme_variables: bool,
-) {
-    if let Some(snapshot) = upstream_theme_snapshot(theme) {
-        if has_user_theme_variables {
-            merge_theme_variable_defaults(&mut tv, snapshot);
-        } else {
-            tv = snapshot.clone();
+fn finish_theme_defaults(config: &mut MermaidConfig, theme: &str, tv: Map<String, Value>) {
+    let explicit = theme_variables_map(config);
+    let resolution = ThemeResolution::new(theme, explicit, tv);
+    config.set_value(
+        "themeVariables",
+        Value::Object(resolution.into_resolved_variables()),
+    );
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThemeResolutionStage {
+    DefaultSnapshot,
+    OverridesApplied,
+    Calculated,
+    ExplicitReplay,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThemeValueOrigin {
+    DefaultSnapshot,
+    Calculated,
+    ExplicitOverride,
+}
+
+#[derive(Debug, Clone)]
+struct ThemeStageSnapshot {
+    stage: ThemeResolutionStage,
+    variables: Map<String, Value>,
+    origins: BTreeMap<String, ThemeValueOrigin>,
+}
+
+impl ThemeStageSnapshot {
+    fn from_variables(
+        stage: ThemeResolutionStage,
+        variables: Map<String, Value>,
+        origin: ThemeValueOrigin,
+    ) -> Self {
+        let origins = variables.keys().map(|key| (key.clone(), origin)).collect();
+        Self {
+            stage,
+            variables,
+            origins,
         }
     }
-    config.set_value("themeVariables", Value::Object(tv));
+
+    fn overlay(&mut self, values: &Map<String, Value>, origin: ThemeValueOrigin) {
+        for (key, value) in values {
+            self.variables.insert(key.clone(), value.clone());
+            self.origins.insert(key.clone(), origin);
+        }
+    }
+}
+
+/// Ordered theme resolution stages shared by every family renderer.
+///
+/// The upstream theme classes are mutable JavaScript objects, but their observable contract is
+/// an ordered pipeline. Keeping each stage as an immutable snapshot makes the order explicit and
+/// gives tests a place to assert value provenance without leaking a mutable theme object into
+/// diagram families.
+#[derive(Debug, Clone)]
+struct ThemeResolution {
+    default_snapshot: ThemeStageSnapshot,
+    overrides_applied: ThemeStageSnapshot,
+    calculated: ThemeStageSnapshot,
+    explicit_replay: ThemeStageSnapshot,
+}
+
+impl ThemeResolution {
+    fn new(theme: &str, explicit: Map<String, Value>, calculated: Map<String, Value>) -> Self {
+        let has_user_theme_variables = !explicit.is_empty();
+        let default_variables = upstream_theme_snapshot(theme).cloned().unwrap_or_default();
+        let default_snapshot = ThemeStageSnapshot::from_variables(
+            ThemeResolutionStage::DefaultSnapshot,
+            default_variables,
+            ThemeValueOrigin::DefaultSnapshot,
+        );
+
+        let mut overrides_applied = default_snapshot.clone();
+        overrides_applied.stage = ThemeResolutionStage::OverridesApplied;
+        overrides_applied.overlay(&explicit, ThemeValueOrigin::ExplicitOverride);
+
+        let mut calculated_snapshot = ThemeStageSnapshot::from_variables(
+            ThemeResolutionStage::Calculated,
+            calculated,
+            ThemeValueOrigin::Calculated,
+        );
+
+        if !has_user_theme_variables || is_font_family_only_override(&explicit) {
+            // The generated snapshot is the exact no-override result of getThemeVariables().
+            // fontFamily is not an input to updateColors(), so a font-only override takes this
+            // complete snapshot and is replayed below without running a divergent color pass.
+            calculated_snapshot = default_snapshot.clone();
+            calculated_snapshot.stage = ThemeResolutionStage::Calculated;
+        } else if let Some(snapshot) = upstream_theme_snapshot(theme) {
+            merge_theme_variable_defaults(&mut calculated_snapshot.variables, snapshot);
+            for key in snapshot.keys() {
+                calculated_snapshot
+                    .origins
+                    .entry(key.clone())
+                    .or_insert(ThemeValueOrigin::DefaultSnapshot);
+            }
+        }
+
+        let mut explicit_replay = calculated_snapshot.clone();
+        explicit_replay.stage = ThemeResolutionStage::ExplicitReplay;
+
+        // `theme-default` constructs and updates its color scale before calculate() applies
+        // overrides. A second update darkens the already-created cScale values, while peer and
+        // inverse values retain their first-pass values. Restore the generated no-override palette
+        // baseline before replaying explicit values; this is why a font-only override must not
+        // change Radar/Kanban/Mindmap/Timeline colors.
+        if has_user_theme_variables && theme == "default" {
+            restore_default_baseline_palette(
+                &mut explicit_replay.variables,
+                &mut explicit_replay.origins,
+                &default_snapshot.variables,
+            );
+        }
+        explicit_replay.overlay(&explicit, ThemeValueOrigin::ExplicitOverride);
+
+        Self {
+            default_snapshot,
+            overrides_applied,
+            calculated: calculated_snapshot,
+            explicit_replay,
+        }
+    }
+
+    fn into_resolved_variables(self) -> Map<String, Value> {
+        // Touch the intermediate snapshots so the compiler and debug views retain the full
+        // ordered pipeline even though callers only need the final map.
+        debug_assert_eq!(
+            self.default_snapshot.stage,
+            ThemeResolutionStage::DefaultSnapshot
+        );
+        debug_assert_eq!(
+            self.overrides_applied.stage,
+            ThemeResolutionStage::OverridesApplied
+        );
+        debug_assert_eq!(self.calculated.stage, ThemeResolutionStage::Calculated);
+        debug_assert_eq!(
+            self.explicit_replay.stage,
+            ThemeResolutionStage::ExplicitReplay
+        );
+        self.explicit_replay.variables
+    }
+}
+
+fn is_font_family_only_override(explicit: &Map<String, Value>) -> bool {
+    explicit.len() == 1 && explicit.contains_key("fontFamily")
+}
+
+fn restore_default_baseline_palette(
+    target: &mut Map<String, Value>,
+    origins: &mut BTreeMap<String, ThemeValueOrigin>,
+    baseline: &Map<String, Value>,
+) {
+    for prefix in [
+        "cScale",
+        "cScalePeer",
+        "cScaleInv",
+        "cScaleLabel",
+        "surface",
+        "surfacePeer",
+    ] {
+        for index in 0..12 {
+            let key = format!("{prefix}{index}");
+            if let Some(value) = baseline.get(&key) {
+                target.insert(key.clone(), value.clone());
+                origins.insert(key, ThemeValueOrigin::DefaultSnapshot);
+            }
+        }
+    }
+    for index in 1..=12 {
+        let key = format!("pie{index}");
+        if let Some(value) = baseline.get(&key) {
+            target.insert(key.clone(), value.clone());
+            origins.insert(key, ThemeValueOrigin::DefaultSnapshot);
+        }
+    }
+    if let Some(value) = baseline.get("scaleLabelColor") {
+        target.insert("scaleLabelColor".to_string(), value.clone());
+        origins.insert(
+            "scaleLabelColor".to_string(),
+            ThemeValueOrigin::DefaultSnapshot,
+        );
+    }
 }
 
 fn mermaid_default_font_family() -> Value {
@@ -448,7 +622,7 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) {
 fn apply_snapshot_theme_defaults(config: &mut MermaidConfig, theme: &str) {
     let tv = theme_variables_map(config);
     if tv.is_empty() {
-        finish_theme_defaults(config, theme, tv, false);
+        finish_theme_defaults(config, theme, tv);
         return;
     }
 
@@ -458,7 +632,7 @@ fn apply_snapshot_theme_defaults(config: &mut MermaidConfig, theme: &str) {
         merge_theme_variable_defaults(&mut resolved, snapshot);
     }
     apply_extended_theme_visible_derivations(theme, &explicit, &mut resolved);
-    config.set_value("themeVariables", Value::Object(resolved));
+    finish_theme_defaults(config, theme, resolved);
 }
 
 fn apply_extended_theme_visible_derivations(
@@ -631,9 +805,8 @@ fn derive_redux_dark_git_palette(explicit: &Map<String, Value>, tv: &mut Map<Str
 
 fn apply_default_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
-    let has_user_theme_variables = !tv.is_empty();
 
-    // Mermaid 11.12.3: `theme-default` constructor defaults and `updateColors()`.
+    // Mermaid 11.16.0: `theme-default` constructor defaults and `updateColors()`.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js`.
     let default_primary = "#ECECFF";
     let default_secondary = "#ffffde";
@@ -1016,16 +1189,19 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
         "cScalePeer2",
         Value::String(fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
     );
-    for (i, c_hsl) in c_scales.iter().enumerate() {
+    for (i, fallback_c_hsl) in c_scales.iter().enumerate() {
+        let c_hsl = get_truthy_string(&tv, &format!("cScale{i}"))
+            .and_then(|value| parse_color_hsl(&value))
+            .unwrap_or(*fallback_c_hsl);
         set_if_missing(
             &mut tv,
             &format!("cScalePeer{i}"),
-            Value::String(fmt_hsl(adjust_hsl(*c_hsl, 0.0, 0.0, -25.0))),
+            Value::String(fmt_hsl(adjust_hsl(c_hsl, 0.0, 0.0, -25.0))),
         );
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(fmt_hsl(adjust_hsl(*c_hsl, 180.0, 0.0, 0.0))),
+            Value::String(fmt_hsl(adjust_hsl(c_hsl, 180.0, 0.0, 0.0))),
         );
         if i == 0 || i == 3 {
             set_if_missing(
@@ -1192,14 +1368,13 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) {
         "#ECECFF,#8493A6,#FFC3A0,#DCDDE1,#B8E994,#D1A36F,#C3CDE6,#FFB6C1,#496078,#F8F3E3",
     );
 
-    finish_theme_defaults(config, "default", tv, has_user_theme_variables);
+    finish_theme_defaults(config, "default", tv);
 }
 
 fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
-    let has_user_theme_variables = !tv.is_empty();
 
-    // Mermaid 11.12.2: `theme-dark` color scale seeds.
+    // Mermaid 11.16.0: `theme-dark` color scale seeds.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-dark.js`.
     //
     // Note: `theme-dark` keeps `cScale*` as the provided hex strings, while derived
@@ -1429,16 +1604,20 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| label_text_color.clone());
 
     for (i, c_hex) in c_scales_hex.iter().enumerate() {
-        set_if_missing(
-            &mut tv,
-            &format!("cScale{i}"),
-            Value::String((*c_hex).to_string()),
-        );
+        let c_scale_key = format!("cScale{i}");
+        let default_scale = if i == 0 {
+            primary_color.clone()
+        } else {
+            (*c_hex).to_string()
+        };
+        set_if_missing(&mut tv, &c_scale_key, Value::String(default_scale));
 
-        let Some(rgb) = parse_hex_rgb01(c_hex) else {
+        let Some(c_scale) = get_truthy_string(&tv, &c_scale_key) else {
             continue;
         };
-        let hsl = rgb01_to_hsl(rgb);
+        let Some(hsl) = parse_color_hsl(&c_scale) else {
+            continue;
+        };
 
         // `theme-dark` peers: `lighten(cScale, 10)`.
         set_if_missing(
@@ -1451,7 +1630,7 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(invert_rgb01_to_hex(rgb)),
+            Value::String(invert_color_css_string(&c_scale).unwrap_or_else(|| c_scale.clone())),
         );
 
         // `theme-dark` label scale: `scaleLabelColor`.
@@ -1488,14 +1667,14 @@ fn apply_dark_theme_defaults(config: &mut MermaidConfig) {
         "#3498db,#2ecc71,#e74c3c,#f1c40f,#bdc3c7,#ffffff,#34495e,#9b59b6,#1abc9c,#e67e22",
     );
 
-    finish_theme_defaults(config, "dark", tv, has_user_theme_variables);
+    finish_theme_defaults(config, "dark", tv);
 }
 
 fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
-    let has_user_theme_variables = !tv.is_empty();
+    let explicit_theme_variables = tv.clone();
 
-    // Mermaid 11.12.2: `theme-forest` base colors.
+    // Mermaid 11.16.0: `theme-forest` base colors.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-forest.js`.
     //
     // NOTE: `theme-forest` is not a thin palette override. It sets several diagram-facing
@@ -1539,11 +1718,11 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
     );
 
     let Some(primary_color) = get_truthy_string(&tv, "primaryColor") else {
-        finish_theme_defaults(config, "forest", tv, has_user_theme_variables);
+        finish_theme_defaults(config, "forest", tv);
         return;
     };
     let Some(primary_rgb) = parse_hex_rgb01(&primary_color) else {
-        finish_theme_defaults(config, "forest", tv, has_user_theme_variables);
+        finish_theme_defaults(config, "forest", tv);
         return;
     };
     let primary_hsl = rgb01_to_hsl(primary_rgb);
@@ -1687,16 +1866,23 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         Value::String(fmt_hsl(adjust_hsl(tertiary_hsl, 0.0, 0.0, -40.0))),
     );
 
-    for (i, c_hsl) in c_scales.iter().enumerate() {
+    for (i, fallback_c_hsl) in c_scales.iter().enumerate() {
+        let c_scale_key = format!("cScale{i}");
+        let mut c_hsl = get_truthy_string(&tv, &c_scale_key)
+            .and_then(|value| parse_color_hsl(&value))
+            .unwrap_or(*fallback_c_hsl);
+        if explicit_theme_variables.contains_key(&c_scale_key) {
+            c_hsl = adjust_hsl(c_hsl, 0.0, 0.0, -10.0);
+        }
         set_if_missing(
             &mut tv,
             &format!("cScalePeer{i}"),
-            Value::String(fmt_hsl(adjust_hsl(*c_hsl, 0.0, 0.0, -25.0))),
+            Value::String(fmt_hsl(adjust_hsl(c_hsl, 0.0, 0.0, -25.0))),
         );
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(fmt_hsl(adjust_hsl(*c_hsl, 180.0, 0.0, 0.0))),
+            Value::String(fmt_hsl(adjust_hsl(c_hsl, 180.0, 0.0, 0.0))),
         );
         set_if_missing(
             &mut tv,
@@ -1712,12 +1898,11 @@ fn apply_forest_theme_defaults(config: &mut MermaidConfig) {
         "#CDE498,#FF6B6B,#A0D2DB,#D7BDE2,#F0F0F0,#FFC3A0,#7FD8BE,#FF9A8B,#FAF3E0,#FFF176",
     );
 
-    finish_theme_defaults(config, "forest", tv, has_user_theme_variables);
+    finish_theme_defaults(config, "forest", tv);
 }
 
 fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
-    let has_user_theme_variables = !tv.is_empty();
 
     // `theme-neutral` constructor defaults.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
@@ -1735,7 +1920,7 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         );
     }
 
-    // Mermaid 11.12.2: `theme-neutral` color scale seeds.
+    // Mermaid 11.16.0: `theme-neutral` color scale seeds.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
     let c_scales_hex: [&str; 12] = [
         "#555", "#F4F4F4", "#555", "#BBB", "#777", "#999", "#DDD", "#FFF", "#DDD", "#BBB", "#999",
@@ -1926,16 +2111,15 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "#333".to_string());
 
     for (i, c_hex) in c_scales_hex.iter().enumerate() {
-        set_if_missing(
-            &mut tv,
-            &format!("cScale{i}"),
-            Value::String((*c_hex).to_string()),
-        );
+        let c_scale_key = format!("cScale{i}");
+        set_if_missing(&mut tv, &c_scale_key, Value::String((*c_hex).to_string()));
 
-        let Some(rgb) = parse_hex_rgb01(c_hex) else {
+        let Some(c_scale) = get_truthy_string(&tv, &c_scale_key) else {
             continue;
         };
-        let hsl = rgb01_to_hsl(rgb);
+        let Some(hsl) = parse_color_hsl(&c_scale) else {
+            continue;
+        };
 
         // `theme-neutral` peers: `darken(cScale, 10)` (darkMode defaults to false).
         set_if_missing(
@@ -1948,7 +2132,7 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         set_if_missing(
             &mut tv,
             &format!("cScaleInv{i}"),
-            Value::String(invert_rgb01_to_hex(rgb)),
+            Value::String(invert_color_css_string(&c_scale).unwrap_or_else(|| c_scale.clone())),
         );
 
         // `theme-neutral` label scale: `scaleLabelColor`, with special-cased indices.
@@ -1993,12 +2177,12 @@ fn apply_neutral_theme_defaults(config: &mut MermaidConfig) {
         "#EEE,#6BB8E4,#8ACB88,#C7ACD6,#E8DCC2,#FFB2A8,#FFF380,#7E8D91,#FFD8B1,#FAF3E0",
     );
 
-    finish_theme_defaults(config, "neutral", tv, has_user_theme_variables);
+    finish_theme_defaults(config, "neutral", tv);
 }
 
 fn apply_base_theme_defaults(config: &mut MermaidConfig) {
     let mut tv = theme_variables_map(config);
-    let has_user_theme_variables = !tv.is_empty();
+    let explicit_theme_variables = tv.clone();
 
     let dark_mode = tv
         .get("darkMode")
@@ -2176,6 +2360,44 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         set_if_missing(&mut tv, key, Value::String(fmt_hsl(v)));
     }
 
+    // Derived scale fields must use the value that survived the override stage. In particular,
+    // an explicit cScale0 is the input to Mermaid's inverse/peer calculations before it is
+    // replayed, rather than a reason to keep the default peer values.
+    let scale_label_color = get_truthy_string(&tv, "labelTextColor")
+        .unwrap_or_else(|| if dark_mode { "black" } else { "#333" }.to_string());
+    for i in 0..12 {
+        let key = format!("cScale{i}");
+        let Some(color) = get_truthy_string(&tv, &key) else {
+            continue;
+        };
+        let Some(mut hsl) = parse_color_hsl(&color) else {
+            continue;
+        };
+        if explicit_theme_variables.contains_key(&key) {
+            hsl = adjust_hsl(hsl, 0.0, 0.0, -darken_amount);
+        }
+        let peer = if dark_mode {
+            adjust_hsl(hsl, 0.0, 0.0, 10.0)
+        } else {
+            adjust_hsl(hsl, 0.0, 0.0, -10.0)
+        };
+        set_if_missing(
+            &mut tv,
+            &format!("cScalePeer{i}"),
+            Value::String(fmt_hsl(peer)),
+        );
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleInv{i}"),
+            Value::String(invert_color_css_string(&fmt_hsl(hsl)).unwrap_or_else(|| fmt_hsl(hsl))),
+        );
+        set_if_missing(
+            &mut tv,
+            &format!("cScaleLabel{i}"),
+            Value::String(scale_label_color.clone()),
+        );
+    }
+
     // Diagram style defaults (themeVariables.radar.*).
     let mut radar = match tv.get("radar") {
         Some(Value::Object(m)) => m.clone(),
@@ -2205,7 +2427,7 @@ fn apply_base_theme_defaults(config: &mut MermaidConfig) {
         "#FFF4DD,#FFD8B1,#FFA07A,#ECEFF1,#D6DBDF,#C3E0A8,#FFB6A4,#FFD74D,#738FA7,#FFFFF0",
     );
 
-    finish_theme_defaults(config, "base", tv, has_user_theme_variables);
+    finish_theme_defaults(config, "base", tv);
 }
 
 #[cfg(test)]
@@ -2266,6 +2488,220 @@ mod tests {
 
             assert_contains_snapshot_keys(actual, expected);
         }
+    }
+
+    #[test]
+    fn font_only_override_preserves_upstream_derived_palette_for_public_themes() {
+        for theme in ["default", "dark", "forest", "neutral", "base"] {
+            let mut cfg = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": {
+                    "fontFamily": "Inter, sans-serif"
+                }
+            }));
+            apply_theme_defaults(&mut cfg);
+
+            let actual = cfg
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
+            let expected = upstream_theme_snapshot(theme).unwrap();
+
+            for key in [
+                "cScale0",
+                "cScale1",
+                "cScalePeer0",
+                "cScaleInv0",
+                "cScaleLabel0",
+            ] {
+                assert_eq!(
+                    actual.get(key),
+                    expected.get(key),
+                    "theme {theme} has derived palette drift at {key}"
+                );
+            }
+            for (key, expected_value) in expected {
+                if key == "fontFamily" {
+                    continue;
+                }
+                assert_eq!(
+                    actual.get(key),
+                    Some(expected_value),
+                    "theme {theme} has a non-font snapshot drift at {key}"
+                );
+            }
+            assert_eq!(
+                actual.get("fontFamily").and_then(Value::as_str),
+                Some("Inter, sans-serif"),
+                "theme {theme} should replay the explicit font override"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_scale_override_recomputes_peer_and_inverse_from_override_stage() {
+        // Oracle values from Mermaid 11.16.0 `getThemeVariables()` with the same overrides.
+        let cases = [
+            (
+                "default",
+                "hsl(240, 100%, 61.2745098039%)",
+                "hsl(60, 100%, 86.2745098039%)",
+            ),
+            ("dark", "hsl(210, 68%, 90.3921568627%)", "#543210"),
+            (
+                "forest",
+                "hsl(210, 68%, 45.3921568627%)",
+                "hsl(30, 68%, 70.3921568627%)",
+            ),
+            ("neutral", "hsl(210, 68%, 70.3921568627%)", "#543210"),
+            (
+                "base",
+                "hsl(210, 68%, 45.3921568627%)",
+                "rgb(191.1000000002, 113.7500000001, 36.4)",
+            ),
+        ];
+
+        for (theme, expected_peer, expected_inverse) in cases {
+            let mut cfg = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": {
+                    "primaryColor": "#123456",
+                    "cScale0": "#abcdef"
+                }
+            }));
+            apply_theme_defaults(&mut cfg);
+            let actual = cfg
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
+
+            assert_eq!(
+                actual.get("cScale0").and_then(Value::as_str),
+                Some("#abcdef"),
+                "theme {theme} must replay explicit cScale0"
+            );
+            assert_eq!(
+                actual.get("cScalePeer0").and_then(Value::as_str),
+                Some(expected_peer),
+                "theme {theme} must derive cScalePeer0 from the override stage"
+            );
+            assert_eq!(
+                actual.get("cScaleInv0").and_then(Value::as_str),
+                Some(expected_inverse),
+                "theme {theme} must derive cScaleInv0 from the override stage"
+            );
+        }
+    }
+
+    #[test]
+    fn primary_color_override_follows_each_upstream_theme_scale_contract() {
+        // Oracle values from Mermaid 11.16.0 `getThemeVariables()` with the same overrides.
+        let cases = [
+            (
+                "default",
+                "hsl(240, 100%, 76.2745098039%)",
+                "hsl(240, 100%, 61.2745098039%)",
+                "hsl(60, 100%, 86.2745098039%)",
+            ),
+            (
+                "dark",
+                "#123456",
+                "hsl(210, 65.3846153846%, 30.3921568627%)",
+                "#edcba9",
+            ),
+            (
+                "forest",
+                "hsl(210, 65.3846153846%, 10.3921568627%)",
+                "hsl(210, 65.3846153846%, 0%)",
+                "hsl(30, 65.3846153846%, 10.3921568627%)",
+            ),
+            ("neutral", "#555", "hsl(0, 0%, 23.3333333333%)", "#aaaaaa"),
+            (
+                "base",
+                "hsl(210, 65.3846153846%, 0%)",
+                "hsl(210, 65.3846153846%, 0%)",
+                "#ffffff",
+            ),
+        ];
+
+        for (theme, expected_scale, expected_peer, expected_inverse) in cases {
+            let mut cfg = MermaidConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": {
+                    "primaryColor": "#123456"
+                }
+            }));
+            apply_theme_defaults(&mut cfg);
+            let actual = cfg
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
+
+            for (key, expected) in [
+                ("cScale0", expected_scale),
+                ("cScalePeer0", expected_peer),
+                ("cScaleInv0", expected_inverse),
+            ] {
+                assert_eq!(
+                    actual.get(key).and_then(Value::as_str),
+                    Some(expected),
+                    "theme {theme} has incorrect {key} after primaryColor override"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn theme_resolution_records_stage_and_final_value_provenance() {
+        let explicit = json!({
+            "fontFamily": "Inter, sans-serif",
+            "cScale0": "#abcdef"
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+        let calculated = json!({
+            "fontFamily": "Inter, sans-serif",
+            "cScale0": "hsl(210, 68%, 70.3921568627%)",
+            "cScalePeer0": "hsl(210, 68%, 55.3921568627%)"
+        })
+        .as_object()
+        .unwrap()
+        .clone();
+
+        let resolution = ThemeResolution::new("default", explicit, calculated);
+
+        assert_eq!(
+            resolution.default_snapshot.stage,
+            ThemeResolutionStage::DefaultSnapshot
+        );
+        assert_eq!(
+            resolution.overrides_applied.stage,
+            ThemeResolutionStage::OverridesApplied
+        );
+        assert_eq!(
+            resolution.calculated.stage,
+            ThemeResolutionStage::Calculated
+        );
+        assert_eq!(
+            resolution.explicit_replay.stage,
+            ThemeResolutionStage::ExplicitReplay
+        );
+        assert_eq!(
+            resolution.explicit_replay.origins.get("fontFamily"),
+            Some(&ThemeValueOrigin::ExplicitOverride)
+        );
+        assert_eq!(
+            resolution.explicit_replay.origins.get("cScale0"),
+            Some(&ThemeValueOrigin::ExplicitOverride)
+        );
+        assert_eq!(
+            resolution.explicit_replay.origins.get("cScalePeer0"),
+            Some(&ThemeValueOrigin::DefaultSnapshot)
+        );
     }
 
     #[test]
@@ -2351,7 +2787,7 @@ mod tests {
             tv.get("primaryColor").and_then(|v| v.as_str()),
             Some("#111111")
         );
-        assert_eq!(tv.get("pie1").and_then(|v| v.as_str()), Some("#111111"));
+        assert_eq!(tv.get("pie1").and_then(|v| v.as_str()), Some("#ECECFF"));
         assert_eq!(tv.get("pie2").and_then(|v| v.as_str()), Some("#ffffde"));
         assert_eq!(tv.get("mainBkg").and_then(|v| v.as_str()), Some("#101010"));
         assert_eq!(tv.get("nodeBkg").and_then(|v| v.as_str()), Some("#101010"));
@@ -2366,10 +2802,7 @@ mod tests {
 
         let xy = tv.get("xyChart").and_then(|v| v.as_object()).unwrap();
         assert_eq!(xy.get("titleColor").and_then(|v| v.as_str()), Some("red"));
-        assert_eq!(
-            xy.get("dataLabelColor").and_then(|v| v.as_str()),
-            Some("#131300")
-        );
+        assert_eq!(xy.get("dataLabelColor"), None);
     }
 
     #[test]
