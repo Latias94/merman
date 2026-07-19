@@ -1088,6 +1088,20 @@ mod tests {
         assert_flowchart_node_limit(error, 2, 1);
     }
 
+    #[cfg(all(feature = "core-full", feature = "elk-layout"))]
+    #[test]
+    fn elk_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
+        let source = "flowchart-elk TD\nA --> B";
+        let artifact = prepare_with_flowchart_node_limit(source, 2).unwrap();
+        assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
+
+        let error = match prepare_with_flowchart_node_limit(source, 1) {
+            Err(error) => error,
+            Ok(_) => panic!("ELK flowchart above the node limit unexpectedly rendered"),
+        };
+        assert_flowchart_node_limit(error, 2, 1);
+    }
+
     #[test]
     fn custom_semantic_json_is_explicitly_non_renderable() {
         let mut engine = Engine::new();
